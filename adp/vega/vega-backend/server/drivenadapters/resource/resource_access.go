@@ -1089,7 +1089,7 @@ func (ra *resourceAccess) DeleteByIDs(ctx context.Context, ids []string) error {
 		return nil
 	}
 
-	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, entityextension.KindResource, ids); err != nil {
+	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, nil, entityextension.KindResource, ids); err != nil {
 		span.SetStatus(codes.Error, "Delete entity extensions failed")
 		return err
 	}
@@ -1200,7 +1200,7 @@ func (ra *resourceAccess) CheckExistByCategories(ctx context.Context, catalogID 
 	return total > 0, nil
 }
 
-func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
+func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete resources by catalog IDs")
 	defer span.End()
 
@@ -1215,7 +1215,12 @@ func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []s
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
-	ridRows, err := ra.db.QueryContext(ctx, idSql, idArgs...)
+	var ridRows *sql.Rows
+	if tx != nil {
+		ridRows, err = tx.QueryContext(ctx, idSql, idArgs...)
+	} else {
+		ridRows, err = ra.db.QueryContext(ctx, idSql, idArgs...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Query resource ids failed")
 		return err
@@ -1235,7 +1240,7 @@ func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []s
 		span.SetStatus(codes.Error, "Iterate rows failed")
 		return err
 	}
-	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, entityextension.KindResource, resIDs); err != nil {
+	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, tx, entityextension.KindResource, resIDs); err != nil {
 		span.SetStatus(codes.Error, "Delete entity extensions failed")
 		return err
 	}
@@ -1244,10 +1249,14 @@ func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []s
 		Where(sq.Eq{"f_catalog_id": catalogIDs}).
 		ToSql()
 
-	_, execErr := ra.db.ExecContext(ctx, sqlStr, vals...)
-	if execErr != nil {
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
 		span.SetStatus(codes.Error, "Delete failed")
-		return execErr
+		return err
 	}
 
 	span.SetStatus(codes.Ok, "")

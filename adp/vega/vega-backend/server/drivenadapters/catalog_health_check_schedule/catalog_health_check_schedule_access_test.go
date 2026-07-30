@@ -33,7 +33,7 @@ func TestCatalogHealthCheckScheduleAccessCreate(t *testing.T) {
 		schedule := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit}
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_catalog_health_check_schedule (f_catalog_id,f_mode,f_cron_expr,f_last_run,f_next_run,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)")).
 			WithArgs("catalog-1", "inherit", "", int64(0), int64(0), "", "", int64(0), "", "", int64(0)).WillReturnResult(sqlmock.NewResult(1, 1))
-		require.NoError(t, access.Create(context.Background(), schedule))
+		require.NoError(t, access.Create(context.Background(), nil, schedule))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -44,9 +44,24 @@ func TestCatalogHealthCheckScheduleAccessCreate(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_catalog_health_check_schedule (f_catalog_id,f_mode,f_cron_expr,f_last_run,f_next_run,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)")).
 			WithArgs("catalog-1", "inherit", "", int64(0), int64(0), "", "", int64(0), "", "", int64(0)).WillReturnError(insertErr)
 
-		err := access.Create(context.Background(), &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
+		err := access.Create(context.Background(), nil, &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
 
 		require.ErrorIs(t, err, insertErr)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("creates schedule with transaction", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+
+		mock.ExpectExec("INSERT INTO t_catalog_health_check_schedule").WillReturnResult(sqlmock.NewResult(1, 1))
+		require.NoError(t, access.Create(context.Background(), tx,
+			&interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit}))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -177,7 +192,7 @@ func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id IN (?,?)")).
 			WithArgs("catalog-1", "catalog-2").WillReturnResult(sqlmock.NewResult(0, 2))
 
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1", "catalog-2"}))
+		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1", "catalog-2"}))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -185,7 +200,7 @@ func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil))
+		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, nil))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -196,7 +211,7 @@ func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id IN (?)")).
 			WithArgs("catalog-1").WillReturnError(deleteErr)
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.ErrorIs(t, err, deleteErr)
 		require.NoError(t, mock.ExpectationsWereMet())

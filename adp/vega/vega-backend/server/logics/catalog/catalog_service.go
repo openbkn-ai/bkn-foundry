@@ -9,6 +9,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -53,13 +54,15 @@ var (
 type catalogService struct {
 	appSetting *common.AppSetting
 	cipher     kwcrypto.Cipher
-	ca         interfaces.CatalogAccess
-	ra         interfaces.ResourceAccess
-	ps         interfaces.PermissionService
-	ums        interfaces.UserMgmtService
-	bta        interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
-	hcss       interfaces.CatalogHealthCheckScheduleService
-	lim        interfaces.LocalIndexManager
+	db         *sql.DB
+
+	ca   interfaces.CatalogAccess
+	ra   interfaces.ResourceAccess
+	ps   interfaces.PermissionService
+	ums  interfaces.UserMgmtService
+	bta  interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
+	hcss interfaces.CatalogHealthCheckScheduleService
+	lim  interfaces.LocalIndexManager
 }
 
 // NewCatalogService creates a new CatalogService.
@@ -81,6 +84,7 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 		cService = &catalogService{
 			appSetting: appSetting,
 			cipher:     cipher,
+			db:         logics.DB,
 
 			bta:  logics.BTA,
 			ca:   logics.CA,
@@ -250,30 +254,38 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		UpdateTime: now,
 	}
 
-	err = cs.ca.Create(ctx, catalog)
+	if req.Extensions != nil {
+		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
+			return "", err
+		}
+	}
+
+	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
-		otellog.LogError(ctx, "Create catalog failed", err)
+		otellog.LogError(ctx, "Create catalog transaction failed", err)
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
 	}
+	defer func() { _ = tx.Rollback() }()
 
-	if err := cs.createHealthCheckSchedule(ctx, catalog, req.HealthCheckSchedule); err != nil {
-		span.SetStatus(codes.Error, "Create catalog health check schedule failed")
-		return "", err
+	err = cs.ca.Create(ctx, tx, catalog)
+	if err == nil {
+		err = cs.createHealthCheckSchedule(ctx, tx, catalog, req.HealthCheckSchedule)
 	}
-
-	if req.Extensions != nil {
-		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
-			_ = cs.ca.DeleteByIDs(ctx, []string{catalog.ID})
-			return "", err
+	if err == nil && req.Extensions != nil {
+		err = entityextension.NewStore(cs.appSetting).Replace(
+			ctx, tx, entityextension.KindCatalog, catalog.ID, *req.Extensions)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		otellog.LogError(ctx, "Create catalog transaction failed", err)
+		if httpErr, ok := err.(*rest.HTTPError); ok {
+			return "", httpErr
 		}
-		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
-			_ = cs.ca.DeleteByIDs(ctx, []string{catalog.ID})
-			logger.Errorf("Replace catalog extensions failed: %v", err)
-			span.SetStatus(codes.Error, "Replace catalog extensions failed")
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
-		}
+		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
 	}
 
 	// 注册资源
@@ -294,15 +306,13 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	return catalog.ID, nil
 }
 
-func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogHealthCheckScheduleRequest) error {
+func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog,
+	req *interfaces.CatalogHealthCheckScheduleRequest) error {
 	if catalog.Type != interfaces.CatalogTypePhysical {
 		return nil
 	}
-	if _, err := cs.hcss.Create(ctx, catalog, req); err != nil {
-		_ = cs.ca.DeleteByIDs(ctx, []string{catalog.ID})
-		return err
-	}
-	return nil
+	_, err := cs.hcss.Create(ctx, tx, catalog, req)
+	return err
 }
 
 // Get retrieves a Catalog by ID.
@@ -718,7 +728,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
 			return err
 		}
-		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
+		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, nil, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace catalog extensions failed")
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
@@ -830,23 +840,28 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 		}
 	}
 
-	if err := cs.ca.DeleteByIDs(ctx, ids); err != nil {
-		span.SetStatus(codes.Error, "Delete catalogs failed")
+	tx, err := cs.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Delete catalog transaction failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).WithErrorDetails(err.Error())
 	}
+	defer func() { _ = tx.Rollback() }()
 
-	if err := cs.hcss.DeleteByCatalogIDs(ctx, ids); err != nil {
-		span.SetStatus(codes.Error, "Delete catalog health check schedules failed")
+	err = cs.hcss.DeleteByCatalogIDs(ctx, tx, ids)
+	if err == nil {
+		err = cs.ra.DeleteByCatalogIDs(ctx, tx, ids)
+	}
+	if err == nil {
+		err = cs.ca.DeleteByIDs(ctx, tx, ids)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Delete catalog transaction failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).WithErrorDetails(err.Error())
-	}
-
-	// 清理关联resource数据
-	if err := cs.ra.DeleteByCatalogIDs(ctx, ids); err != nil {
-		span.SetStatus(codes.Error, "Delete resources failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_DeleteFailed).WithErrorDetails(err.Error())
 	}
 
 	//  清除资源策略，按内部/普通目录分组删除对应类型的策略

@@ -23,7 +23,6 @@ func TestStoreReplace(t *testing.T) {
 		defer cleanup()
 		mock.MatchExpectationsInOrder(false)
 
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_entity_extension WHERE f_entity_id = ? AND f_entity_kind = ?")).
 			WithArgs("catalog-1", KindCatalog).
 			WillReturnResult(sqlmock.NewResult(0, 2))
@@ -33,9 +32,8 @@ func TestStoreReplace(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_entity_extension (f_entity_kind,f_entity_id,f_key,f_value,f_create_time,f_update_time) VALUES (?,?,?,?,?,?)")).
 			WithArgs(KindCatalog, "catalog-1", "env", "prod", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnResult(sqlmock.NewResult(2, 1))
-		mock.ExpectCommit()
 
-		err := store.Replace(context.Background(), KindCatalog, "catalog-1", map[string]string{
+		err := store.Replace(context.Background(), nil, KindCatalog, "catalog-1", map[string]string{
 			"owner": "team-a",
 			"env":   "prod",
 		})
@@ -48,13 +46,11 @@ func TestStoreReplace(t *testing.T) {
 		store, mock, cleanup := newStoreMock(t)
 		defer cleanup()
 
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_entity_extension WHERE f_entity_id = ? AND f_entity_kind = ?")).
 			WithArgs("resource-1", KindResource).
 			WillReturnResult(sqlmock.NewResult(0, 1))
-		mock.ExpectCommit()
 
-		require.NoError(t, store.Replace(context.Background(), KindResource, "resource-1", map[string]string{}))
+		require.NoError(t, store.Replace(context.Background(), nil, KindResource, "resource-1", map[string]string{}))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -64,7 +60,7 @@ func TestStoreDeleteByEntityIDs(t *testing.T) {
 		store, mock, cleanup := newStoreMock(t)
 		defer cleanup()
 
-		require.NoError(t, store.DeleteByEntityIDs(context.Background(), KindCatalog, nil))
+		require.NoError(t, store.DeleteByEntityIDs(context.Background(), nil, KindCatalog, nil))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -76,7 +72,23 @@ func TestStoreDeleteByEntityIDs(t *testing.T) {
 			WithArgs("catalog-1", "catalog-2", KindCatalog).
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		require.NoError(t, store.DeleteByEntityIDs(context.Background(), KindCatalog, []string{"catalog-1", "catalog-2"}))
+		require.NoError(t, store.DeleteByEntityIDs(context.Background(), nil, KindCatalog, []string{"catalog-1", "catalog-2"}))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("deletes with transaction", func(t *testing.T) {
+		store, mock, cleanup := newStoreMock(t)
+		defer cleanup()
+		mock.ExpectBegin()
+		tx, err := store.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_entity_extension WHERE f_entity_id IN (?) AND f_entity_kind = ?")).
+			WithArgs("catalog-1", KindCatalog).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		require.NoError(t, store.DeleteByEntityIDs(context.Background(), tx, KindCatalog, []string{"catalog-1"}))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

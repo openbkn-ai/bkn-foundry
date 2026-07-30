@@ -542,7 +542,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil))
+		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, nil))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -554,7 +554,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnError(errors.New("db down"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -568,7 +568,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "extra"}).AddRow("resource-1", "unexpected"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -588,7 +588,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"resource-1", "resource-2"}, store.deletedIDs)
@@ -605,7 +605,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("resource-1"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "store down")
@@ -720,7 +720,7 @@ func replaceResourceExtensionStore(store *fakeResourceExtensionStore) func() {
 		return &entityextension.Store{}
 	})
 	patches.ApplyMethod(&entityextension.Store{}, "DeleteByEntityIDs",
-		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) error {
+		func(_ *entityextension.Store, ctx context.Context, _ *sql.Tx, kind string, entityIDs []string) error {
 			return store.DeleteByEntityIDs(ctx, kind, entityIDs)
 		})
 	patches.ApplyMethod(&entityextension.Store{}, "GetByEntityID",

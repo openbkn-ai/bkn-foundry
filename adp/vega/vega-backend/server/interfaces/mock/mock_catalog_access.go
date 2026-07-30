@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -56,31 +57,31 @@ func (mr *MockCatalogAccessMockRecorder) AttachListExtensions(ctx, params, catal
 }
 
 // Create mocks base method.
-func (m *MockCatalogAccess) Create(ctx context.Context, catalog *interfaces.Catalog) error {
+func (m *MockCatalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, catalog)
+	ret := m.ctrl.Call(m, "Create", ctx, tx, catalog)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockCatalogAccessMockRecorder) Create(ctx, catalog any) *gomock.Call {
+func (mr *MockCatalogAccessMockRecorder) Create(ctx, tx, catalog any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogAccess)(nil).Create), ctx, catalog)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogAccess)(nil).Create), ctx, tx, catalog)
 }
 
 // DeleteByIDs mocks base method.
-func (m *MockCatalogAccess) DeleteByIDs(ctx context.Context, ids []string) error {
+func (m *MockCatalogAccess) DeleteByIDs(ctx context.Context, tx *sql.Tx, ids []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids)
+	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, tx, ids)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteByIDs indicates an expected call of DeleteByIDs.
-func (mr *MockCatalogAccessMockRecorder) DeleteByIDs(ctx, ids any) *gomock.Call {
+func (mr *MockCatalogAccessMockRecorder) DeleteByIDs(ctx, tx, ids any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockCatalogAccess)(nil).DeleteByIDs), ctx, ids)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockCatalogAccess)(nil).DeleteByIDs), ctx, tx, ids)
 }
 
 // GetByID mocks base method.

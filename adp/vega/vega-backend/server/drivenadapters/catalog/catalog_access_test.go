@@ -55,7 +55,21 @@ func TestCatalogAccessCreate(t *testing.T) {
 			).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
-		require.NoError(t, access.Create(context.Background(), sampleCatalog()))
+		require.NoError(t, access.Create(context.Background(), nil, sampleCatalog()))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("creates catalog with transaction", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+
+		mock.ExpectExec("INSERT INTO t_catalog").WillReturnResult(sqlmock.NewResult(1, 1))
+		require.NoError(t, access.Create(context.Background(), tx, sampleCatalog()))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -455,7 +469,7 @@ func TestCatalogAccessDeleteByIDs(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
-		require.NoError(t, access.DeleteByIDs(context.Background(), nil))
+		require.NoError(t, access.DeleteByIDs(context.Background(), nil, nil))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -470,7 +484,7 @@ func TestCatalogAccessDeleteByIDs(t *testing.T) {
 			WithArgs("catalog-1", "catalog-2").
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		err := access.DeleteByIDs(context.Background(), []string{"catalog-1", "catalog-2"})
+		err := access.DeleteByIDs(context.Background(), nil, []string{"catalog-1", "catalog-2"})
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"catalog-1", "catalog-2"}, store.deletedIDs)
@@ -483,7 +497,7 @@ func TestCatalogAccessDeleteByIDs(t *testing.T) {
 		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{err: errors.New("store down")})
 		defer restore()
 
-		err := access.DeleteByIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "store down")
@@ -598,7 +612,7 @@ func replaceCatalogExtensionStore(store *fakeCatalogExtensionStore) func() {
 		return &entityextension.Store{}
 	})
 	patches.ApplyMethod(&entityextension.Store{}, "DeleteByEntityIDs",
-		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) error {
+		func(_ *entityextension.Store, ctx context.Context, _ *sql.Tx, kind string, entityIDs []string) error {
 			return store.DeleteByEntityIDs(ctx, kind, entityIDs)
 		})
 	patches.ApplyMethod(&entityextension.Store{}, "GetByEntityID",

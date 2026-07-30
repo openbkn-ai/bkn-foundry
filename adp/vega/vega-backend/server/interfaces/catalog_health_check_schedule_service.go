@@ -5,12 +5,15 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 //go:generate mockgen -source ../interfaces/catalog_health_check_schedule_service.go -destination ../interfaces/mock/mock_catalog_health_check_schedule_service.go
 type CatalogHealthCheckScheduleService interface {
-	Create(ctx context.Context, catalog *Catalog, req *CatalogHealthCheckScheduleRequest) (*CatalogHealthCheckSchedule, error)
+	Create(ctx context.Context, tx *sql.Tx, catalog *Catalog, req *CatalogHealthCheckScheduleRequest) (*CatalogHealthCheckSchedule, error)
 	GetByCatalogID(ctx context.Context, catalogID string) (*CatalogHealthCheckSchedule, error)
 	Update(ctx context.Context, catalogID string, req *CatalogHealthCheckScheduleRequest) (*CatalogHealthCheckSchedule, error)
-	DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error
+	DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error
 }

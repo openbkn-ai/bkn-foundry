@@ -8,12 +8,14 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -270,10 +272,16 @@ func TestCatalogServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, catalog *interfaces.Catalog) error {
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
+				require.NotNil(t, tx)
 				if catalog.Enabled {
 					t.Fatal("expected catalog to be disabled by default")
 				}
@@ -285,22 +293,47 @@ func TestCatalogServiceCreate(t *testing.T) {
 		)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS}
-		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name: "catalog",
 		}, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("rolls back transaction when catalog creation fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		createErr := errors.New("create catalog failed")
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Return(createErr)
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "catalog"}, false)
+
+		require.Error(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 	t.Run("create enabled true", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, catalog *interfaces.Catalog) error {
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog) error {
 				if !catalog.Enabled {
 					t.Fatal("expected catalog to be enabled")
 				}
@@ -312,26 +345,32 @@ func TestCatalogServiceCreate(t *testing.T) {
 		)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS}
-		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:    "catalog",
 			Enabled: true,
 		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 	t.Run("create internal uses internal auth type", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
 			ID:   interfaces.RESOURCE_ID_ALL,
 		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
-		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, catalog *interfaces.Catalog) error {
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog) error {
 				if !catalog.Internal {
 					t.Fatal("expected catalog.Internal=true")
 				}
@@ -347,22 +386,23 @@ func TestCatalogServiceCreate(t *testing.T) {
 			},
 		)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS}
-		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:     "internal-catalog",
 			Internal: true,
 		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 	t.Run("physical catalog creates default inherit schedule", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
-		mockHCSS.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Catalog{}), nil).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
+		mockHCSS.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Catalog{}), nil).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
 
 		cs := &catalogService{hcss: mockHCSS}
-		err := cs.createHealthCheckSchedule(context.Background(), &interfaces.Catalog{
+		err := cs.createHealthCheckSchedule(context.Background(), nil, &interfaces.Catalog{
 			ID:   "catalog-1",
 			Type: interfaces.CatalogTypePhysical,
 		}, nil)
@@ -373,7 +413,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 	t.Run("logical catalog does not create schedule", func(t *testing.T) {
 		cs := &catalogService{}
 
-		err := cs.createHealthCheckSchedule(context.Background(), &interfaces.Catalog{
+		err := cs.createHealthCheckSchedule(context.Background(), nil, &interfaces.Catalog{
 			ID:   "catalog-1",
 			Type: interfaces.CatalogTypeLogical,
 		}, &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *"})
@@ -381,18 +421,16 @@ func TestCatalogServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("removes catalog when schedule creation fails", func(t *testing.T) {
+	t.Run("returns schedule creation error without compensating delete", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
 		createErr := errors.New("schedule insert failed")
 		catalog := &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}
 
-		mockHCSS.EXPECT().Create(gomock.Any(), catalog, gomock.Any()).Return(nil, createErr)
-		mockCA.EXPECT().DeleteByIDs(gomock.Any(), []string{"catalog-1"}).Return(nil)
+		mockHCSS.EXPECT().Create(gomock.Any(), gomock.Any(), catalog, gomock.Any()).Return(nil, createErr)
 
-		cs := &catalogService{ca: mockCA, hcss: mockHCSS}
-		err := cs.createHealthCheckSchedule(context.Background(), catalog, &interfaces.CatalogHealthCheckScheduleRequest{
+		cs := &catalogService{hcss: mockHCSS}
+		err := cs.createHealthCheckSchedule(context.Background(), nil, catalog, &interfaces.CatalogHealthCheckScheduleRequest{
 			Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "*/5 * * * *",
 		})
 
@@ -718,7 +756,12 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
@@ -728,15 +771,16 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
-		mockCA.EXPECT().DeleteByIDs(gomock.Any(), []string{"c1"}).Return(nil)
-		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), []string{"c1"}).Return(nil)
-		mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), []string{"c1"}).Return(nil)
+		mockCA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
+		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
+		mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM, hcss: mockHCSS}
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM, hcss: mockHCSS}
 		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 	t.Run("delete by ids refuses when task running", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

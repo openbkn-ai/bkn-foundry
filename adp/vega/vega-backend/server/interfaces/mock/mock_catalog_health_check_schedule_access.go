@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -42,31 +43,31 @@ func (m *MockCatalogHealthCheckScheduleAccess) EXPECT() *MockCatalogHealthCheckS
 }
 
 // Create mocks base method.
-func (m *MockCatalogHealthCheckScheduleAccess) Create(ctx context.Context, schedule *interfaces.CatalogHealthCheckSchedule) error {
+func (m *MockCatalogHealthCheckScheduleAccess) Create(ctx context.Context, tx *sql.Tx, schedule *interfaces.CatalogHealthCheckSchedule) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, schedule)
+	ret := m.ctrl.Call(m, "Create", ctx, tx, schedule)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) Create(ctx, schedule any) *gomock.Call {
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) Create(ctx, tx, schedule any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).Create), ctx, schedule)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).Create), ctx, tx, schedule)
 }
 
 // DeleteByCatalogIDs mocks base method.
-func (m *MockCatalogHealthCheckScheduleAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
+func (m *MockCatalogHealthCheckScheduleAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByCatalogIDs", ctx, catalogIDs)
+	ret := m.ctrl.Call(m, "DeleteByCatalogIDs", ctx, tx, catalogIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteByCatalogIDs indicates an expected call of DeleteByCatalogIDs.
-func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) DeleteByCatalogIDs(ctx, catalogIDs any) *gomock.Call {
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) DeleteByCatalogIDs(ctx, tx, catalogIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogIDs", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).DeleteByCatalogIDs), ctx, catalogIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogIDs", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).DeleteByCatalogIDs), ctx, tx, catalogIDs)
 }
 
 // GetByCatalogID mocks base method.

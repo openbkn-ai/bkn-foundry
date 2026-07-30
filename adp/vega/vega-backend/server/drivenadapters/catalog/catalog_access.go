@@ -54,7 +54,7 @@ func NewCatalogAccess(appSetting *common.AppSetting) interfaces.CatalogAccess {
 }
 
 // Create creates ca new Catalog.
-func (ca *catalogAccess) Create(ctx context.Context, catalog *interfaces.Catalog) error {
+func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Insert into catalog")
 	defer span.End()
 
@@ -130,7 +130,11 @@ func (ca *catalogAccess) Create(ctx context.Context, catalog *interfaces.Catalog
 
 	otellog.LogInfo(ctx, fmt.Sprintf("Insert catalog SQL: %s", sqlStr))
 
-	_, err = ca.db.ExecContext(ctx, sqlStr, vals...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ca.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		otellog.LogError(ctx, "Insert catalog failed", err)
 		return err
@@ -871,7 +875,7 @@ func (ca *catalogAccess) Update(ctx context.Context, catalog *interfaces.Catalog
 }
 
 // DeleteByIDs deletes Catalogs by IDs.
-func (ca *catalogAccess) DeleteByIDs(ctx context.Context, ids []string) error {
+func (ca *catalogAccess) DeleteByIDs(ctx context.Context, tx *sql.Tx, ids []string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalogs")
 	defer span.End()
 
@@ -881,16 +885,23 @@ func (ca *catalogAccess) DeleteByIDs(ctx context.Context, ids []string) error {
 		return nil
 	}
 
-	if err := entityextension.NewStore(ca.appSetting).DeleteByEntityIDs(ctx, entityextension.KindCatalog, ids); err != nil {
+	extensionErr := entityextension.NewStore(ca.appSetting).
+		DeleteByEntityIDs(ctx, tx, entityextension.KindCatalog, ids)
+	if extensionErr != nil {
 		span.SetStatus(codes.Error, "Delete entity extensions failed")
-		return err
+		return extensionErr
 	}
 
 	sqlStr, vals, _ := sq.Delete(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
 
-	_, err := ca.db.ExecContext(ctx, sqlStr, vals...)
+	var err error
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ca.db.ExecContext(ctx, sqlStr, vals...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete failed")
 		return err

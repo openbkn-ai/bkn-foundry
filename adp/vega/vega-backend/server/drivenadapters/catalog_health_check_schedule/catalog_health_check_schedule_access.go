@@ -90,7 +90,7 @@ func NewCatalogHealthCheckScheduleAccess(appSetting *common.AppSetting) interfac
 	return chcsAccess
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) Create(ctx context.Context, s *interfaces.CatalogHealthCheckSchedule) error {
+func (chcsa *catalogHealthCheckScheduleAccess) Create(ctx context.Context, tx *sql.Tx, s *interfaces.CatalogHealthCheckSchedule) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Insert catalog health check schedule")
 	defer span.End()
 
@@ -121,7 +121,11 @@ func (chcsa *catalogHealthCheckScheduleAccess) Create(ctx context.Context, s *in
 		return err
 	}
 
-	_, err = chcsa.db.ExecContext(ctx, query, args...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, args...)
+	} else {
+		_, err = chcsa.db.ExecContext(ctx, query, args...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Insert failed")
 		otellog.LogError(ctx, "Insert catalog health check schedule failed", err)
@@ -279,7 +283,7 @@ func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Con
 	return nil
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
+func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalog health check schedules")
 	defer span.End()
 
@@ -298,7 +302,11 @@ func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogIDs(ctx context.Co
 		return err
 	}
 
-	_, err = chcsa.db.ExecContext(ctx, query, args...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, args...)
+	} else {
+		_, err = chcsa.db.ExecContext(ctx, query, args...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete failed")
 		otellog.LogError(ctx, "Delete catalog health check schedules failed", err)

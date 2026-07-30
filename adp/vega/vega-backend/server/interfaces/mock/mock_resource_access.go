@@ -100,17 +100,17 @@ func (mr *MockResourceAccessMockRecorder) CreateWithTx(ctx, tx, resource any) *g
 }
 
 // DeleteByCatalogIDs mocks base method.
-func (m *MockResourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
+func (m *MockResourceAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByCatalogIDs", ctx, catalogIDs)
+	ret := m.ctrl.Call(m, "DeleteByCatalogIDs", ctx, tx, catalogIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteByCatalogIDs indicates an expected call of DeleteByCatalogIDs.
-func (mr *MockResourceAccessMockRecorder) DeleteByCatalogIDs(ctx, catalogIDs any) *gomock.Call {
+func (mr *MockResourceAccessMockRecorder) DeleteByCatalogIDs(ctx, tx, catalogIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogIDs", reflect.TypeOf((*MockResourceAccess)(nil).DeleteByCatalogIDs), ctx, catalogIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogIDs", reflect.TypeOf((*MockResourceAccess)(nil).DeleteByCatalogIDs), ctx, tx, catalogIDs)
 }
 
 // DeleteByIDs mocks base method.

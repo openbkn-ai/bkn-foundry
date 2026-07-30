@@ -8,6 +8,7 @@ package catalog_health_check_schedule
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"sync"
@@ -54,7 +55,7 @@ func NewCatalogHealthCheckScheduleService(appSetting *common.AppSetting) interfa
 	return chcsService
 }
 
-func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, catalog *interfaces.Catalog,
+func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog,
 	req *interfaces.CatalogHealthCheckScheduleRequest) (*interfaces.CatalogHealthCheckSchedule, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogHealthCheckScheduleService.Create")
@@ -111,7 +112,7 @@ func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, cata
 		schedule.NextRun = nextRun
 	}
 
-	if err := chcss.sa.Create(ctx, schedule); err != nil {
+	if err := chcss.sa.Create(ctx, tx, schedule); err != nil {
 		span.SetStatus(codes.Error, "Create health check schedule failed")
 		otellog.LogError(ctx, "Create catalog health check schedule failed", err)
 		return nil, err
@@ -239,13 +240,13 @@ func (chcss *catalogHealthCheckScheduleService) nextRun(mode, cronExpr string, n
 	return schedule.Next(now).UnixMilli(), nil
 }
 
-func (chcss *catalogHealthCheckScheduleService) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
+func (chcss *catalogHealthCheckScheduleService) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogHealthCheckScheduleService.DeleteByCatalogIDs")
 	defer span.End()
 
 	span.SetAttributes(attr.Key("catalog_ids").StringSlice(catalogIDs))
 
-	if err := chcss.sa.DeleteByCatalogIDs(ctx, catalogIDs); err != nil {
+	if err := chcss.sa.DeleteByCatalogIDs(ctx, tx, catalogIDs); err != nil {
 		span.SetStatus(codes.Error, "Delete health check schedules failed")
 		otellog.LogError(ctx, "Delete catalog health check schedules failed", err)
 		return err

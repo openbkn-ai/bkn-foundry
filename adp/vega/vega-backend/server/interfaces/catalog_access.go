@@ -6,14 +6,17 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // CatalogAccess defines catalog data access interface.
 //
 //go:generate mockgen -source ../interfaces/catalog_access.go -destination ../interfaces/mock/mock_catalog_access.go
 type CatalogAccess interface {
 	// Create creates a new Catalog.
-	Create(ctx context.Context, catalog *Catalog) error
+	Create(ctx context.Context, tx *sql.Tx, catalog *Catalog) error
 	// GetByID retrieves a Catalog by ID.
 	GetByID(ctx context.Context, id string) (*Catalog, error)
 	// GetByIDs retrieves a Catalog by IDs.
@@ -31,7 +34,7 @@ type CatalogAccess interface {
 	// Update updates a Catalog.
 	Update(ctx context.Context, catalog *Catalog) error
 	// DeleteByIDs deletes Catalogs by IDs.
-	DeleteByIDs(ctx context.Context, ids []string) error
+	DeleteByIDs(ctx context.Context, tx *sql.Tx, ids []string) error
 	// UpdateHealthCheckStatus updates Catalog health check status.
 	UpdateHealthCheckStatus(ctx context.Context, id string, status CatalogHealthCheckStatus) error
 	// UpdateEnabled updates Catalog enabled status and health check status.

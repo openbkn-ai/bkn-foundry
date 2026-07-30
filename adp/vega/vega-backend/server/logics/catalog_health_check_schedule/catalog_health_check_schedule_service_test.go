@@ -50,7 +50,7 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, account)
 		beforeCreate := time.Now().UnixMilli()
 
-		sa.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.CatalogHealthCheckSchedule{})).DoAndReturn(func(_ context.Context, schedule *interfaces.CatalogHealthCheckSchedule) error {
+		sa.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.AssignableToTypeOf(&interfaces.CatalogHealthCheckSchedule{})).DoAndReturn(func(_ context.Context, _ *sql.Tx, schedule *interfaces.CatalogHealthCheckSchedule) error {
 			assert.Equal(t, "catalog-1", schedule.CatalogID)
 			assert.Equal(t, interfaces.CatalogHealthCheckScheduleModeInherit, schedule.Mode)
 			assert.Empty(t, schedule.CronExpr)
@@ -60,7 +60,7 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 			return nil
 		})
 
-		got, err := service.Create(ctx, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
+		got, err := service.Create(ctx, nil, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.CatalogHealthCheckScheduleModeInherit, got.Mode)
@@ -69,7 +69,7 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 	t.Run("rejects invalid custom schedule before persistence", func(t *testing.T) {
 		service := &catalogHealthCheckScheduleService{}
 
-		got, err := service.Create(context.Background(), &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, &interfaces.CatalogHealthCheckScheduleRequest{
+		got, err := service.Create(context.Background(), nil, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, &interfaces.CatalogHealthCheckScheduleRequest{
 			Mode: interfaces.CatalogHealthCheckScheduleModeEnabled,
 		})
 
@@ -82,9 +82,9 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		service := &catalogHealthCheckScheduleService{sa: sa}
 		createErr := errors.New("schedule insert failed")
-		sa.EXPECT().Create(gomock.Any(), gomock.Any()).Return(createErr)
+		sa.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Return(createErr)
 
-		got, err := service.Create(context.Background(), &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
+		got, err := service.Create(context.Background(), nil, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
 
 		require.ErrorIs(t, err, createErr)
 		assert.Nil(t, got)
