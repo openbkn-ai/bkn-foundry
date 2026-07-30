@@ -72,7 +72,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
   - 受影响的模块（如 `adp/bkn`、`adp/vega/vega-backend`、`infra/sandbox`）
   - 运行时（Java / Go / Python / Node 及版本，如 JDK 17、Go 1.23、Python 3.11）
   - 操作系统（Linux 发行版与内核 / macOS / Windows）
-  - 集群形态（单机 K3s / kubeadm / 托管 K8s）以及安装方式（`deploy.sh bkn-foundry install`）
+  - 集群形态（单机 K3s / kubeadm / 托管 K8s）以及安装方式（`deploy.sh openbkn install`）
   - 涉及的存储/中间件（MariaDB / DM8、OpenSearch、Redis、Kafka）
 
 - **复现步骤**: 清晰、逐步的复现说明
@@ -91,7 +91,7 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 - 模块: adp/bkn
 - 运行时: JDK 17
 - 操作系统: Linux Ubuntu 22.04
-- 集群: 单机 K3s（deploy.sh bkn-foundry install）
+- 集群: 单机 K3s（deploy.sh openbkn install）
 - 数据库: MariaDB 11.4
 
 **复现步骤:**
@@ -561,7 +561,7 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 
    ```bash
    cd deploy
-   ./deploy.sh bkn-foundry install
+   ./deploy.sh openbkn install
    ```
 
 ---

@@ -61,12 +61,12 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 # (Same deploy/ directory as step 2)
 
 # Install the full BKN Foundry stack
-./deploy.sh bkn-foundry install
+./deploy.sh openbkn install
 
 # Or specify addresses explicitly (skips interactive prompts):
 #   --access_address       Address for clients to reach OpenBKN services (can be IP or domain)
 #   --api_server_address   IP bound to a local network interface for K8s API server (must be a real NIC IP)
-./deploy.sh bkn-foundry install \
+./deploy.sh openbkn install \
   --access_address=<your-ip> \
   --api_server_address=<your-ip>
 

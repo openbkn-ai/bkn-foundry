@@ -307,18 +307,18 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
             echo "    - Node/bkn on an admin host: default preflight is check-only; run sudo bash ./preflight.sh --fix to opt in to help installing Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ and CLIs (y/N per step)"
             echo "    - Configure models / BKN search:    sudo bash ./onboard.sh   (Linux; macOS dev: bash ./dev/mac.sh onboard)"
             echo "    - Check status:                     sudo bash ./deploy.sh bkn-foundry status"
-            echo "    - Only if you really want to upgrade: sudo bash ./deploy.sh bkn-foundry install --force-upgrade"
+            echo "    - Only if you really want to upgrade: sudo bash ./deploy.sh openbkn install --force-upgrade"
         else
             echo ""
             echo "  However, ${_pf_bad}/${_pf_total} release(s) are NOT in 'deployed' state."
             echo "  Suggested next step:"
             echo "    - Inspect:  helm list -A | grep -iE 'bkn|isf|dip'"
-            echo "    - Repair:   sudo bash ./deploy.sh bkn-foundry install --force-upgrade"
+            echo "    - Repair:   sudo bash ./deploy.sh openbkn install --force-upgrade"
         fi
     else
         if [[ ${exit_code} -eq 0 ]]; then
             echo "  No BKN Foundry releases detected. Environment looks ready for a first-time install:"
-            echo "    sudo bash ./deploy.sh bkn-foundry install              # install the full stack"
+            echo "    sudo bash ./deploy.sh openbkn install              # install the full stack"
             echo ""
             echo "  After deploy: from this repo's deploy/ directory run sudo bash ./onboard.sh (Linux; macOS dev uses plain bash; needs Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ + bkn CLI on that host)."
             echo "  If this host still lacks Node/CLIs: sudo bash ./preflight.sh --fix"
@@ -328,7 +328,7 @@ if [[ "${PREFLIGHT_OUTPUT_JSON}" != "true" ]]; then
             echo "    sudo bash ./preflight.sh --fix          # applies safe fixes / opt-in tooling (y/N unless -y)"
             echo "    sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] items are addressed (or sudo bash ./preflight.sh --check-only --lenient if you accept the caveats)"
             echo "  Only then install:"
-            echo "    sudo bash ./deploy.sh bkn-foundry install              # install the full stack"
+            echo "    sudo bash ./deploy.sh openbkn install              # install the full stack"
             echo "  Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ + bkn on PATH; sudo bash ./preflight.sh --fix helps install tooling on this machine)."
         fi
     fi

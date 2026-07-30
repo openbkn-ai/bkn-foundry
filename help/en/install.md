@@ -6,7 +6,7 @@ This page covers **prerequisites**, **install steps**, and **post-install checks
 
 > Use the `deploy.sh` script under the `deploy/` directory from your product bundle or build tree.
 
-> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s bkn-foundry install --minimum`. A trailing `... install --minimum --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
+> **`deploy.sh` global flags** (`--distro=k3s|k8s`, `-y`, `--force-upgrade`, `--config=…`, …) are parsed only when they appear **before** the module, e.g. `bash ./deploy.sh --distro=k8s openbkn install --minimum`. A trailing `... install --minimum --distro=k8s` is **not** applied as distro. Use `export KUBE_DISTRO=k8s` for the same effect, or move `--distro` forward (same rule as `-y` / `--force-upgrade`).
 
 ---
 
@@ -139,7 +139,7 @@ Common environment variables:
 
 Exit codes: **0** all OK · **1** any FAIL present · **2** only WARN (no FAIL).
 
-> Run preflight **before** every `deploy.sh bkn-foundry install` on a new host. Re-running it is safe — already-satisfied checks are reported as `OK` and skipped. If you intentionally run on a low-spec lab box (memory / disk below recommendation, no Docker CE repo, etc.), use `--lenient` to keep the report informative without blocking install.
+> Run preflight **before** every `deploy.sh openbkn install` on a new host. Re-running it is safe — already-satisfied checks are reported as `OK` and skipped. If you intentionally run on a low-spec lab box (memory / disk below recommendation, no Docker CE repo, etc.), use `--lenient` to keep the report informative without blocking install.
 
 ### Reading the report: `Summary` and `Conclusion`
 
@@ -170,8 +170,8 @@ After `--check-only` or `--fix`, preflight prints a **Summary** (counts per stat
     sudo bash ./preflight.sh --fix          # … (per-item y/N unless -y)
     sudo bash ./preflight.sh --check-only   # re-check until blocking [FAIL] are gone (or use --lenient)
   Only then install:
-    sudo bash ./deploy.sh bkn-foundry install --minimum
-    sudo bash ./deploy.sh bkn-foundry install
+    sudo bash ./deploy.sh openbkn install --minimum
+    sudo bash ./deploy.sh openbkn install
   Finally: sudo bash ./onboard.sh from deploy/ (Linux; macOS dev uses plain bash. Node 22+ + openbkn on PATH; sudo bash ./preflight.sh --fix helps …)
 ```
 
@@ -192,13 +192,13 @@ For more troubleshooting and manual fallbacks, see **`deploy/README.md` → Trou
 Skips some optional modules (e.g. auth / business domain) for a lighter footprint:
 
 ```bash
-./deploy.sh bkn-foundry install --minimum
+./deploy.sh openbkn install --minimum
 ```
 
 Equivalent flags:
 
 ```bash
-./deploy.sh bkn-foundry install --set auth.enabled=false --set businessDomain.enabled=false
+./deploy.sh openbkn install --set auth.enabled=false --set businessDomain.enabled=false
 ```
 
 ### Full install
@@ -206,7 +206,7 @@ Equivalent flags:
 Includes auth and business-domain related components:
 
 ```bash
-./deploy.sh bkn-foundry install
+./deploy.sh openbkn install
 ```
 
 > The script may prompt for **access address** and detect **API server address** automatically.
@@ -214,7 +214,7 @@ Includes auth and business-domain related components:
 ### Non-interactive install
 
 ```bash
-./deploy.sh bkn-foundry install \
+./deploy.sh openbkn install \
   --access_address=<your-ip-or-domain> \
   --api_server_address=<nic-ip-for-k8s-api>
 ```
@@ -227,7 +227,7 @@ Includes auth and business-domain related components:
 ```bash
 export INGRESS_NGINX_HTTP_PORT=8080
 export INGRESS_NGINX_HTTPS_PORT=8443
-./deploy.sh bkn-foundry install
+./deploy.sh openbkn install
 ```
 
 ### Useful commands
@@ -250,7 +250,7 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install: `onboard.sh`
 
-After `deploy.sh bkn-foundry install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
+After `deploy.sh openbkn install`, use **`deploy/onboard.sh`** on a machine with **Node 22+**, **`kubectl`** (cluster access), and **`openbkn`** (`npm i -g @openbkn/bkn-sdk`). Run from the `deploy/` directory **with `sudo` on Linux** (matches `sudo deploy.sh`):
 
 ```bash
 cd deploy
@@ -357,7 +357,7 @@ After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`
 | `openbkn` (`@openbkn/bkn-sdk`) | End users / Agents | BKN, Action, Skill, query, agent chat |
 | `openbkn admin` (same package) | Platform administrators | Users, organizations, roles, models, audit, raw HTTP |
 
-**When usable:** after a full install (`./deploy.sh bkn-foundry install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
+**When usable:** after a full install (`./deploy.sh openbkn install` without `--minimum`). **On a `--minimum` install most `openbkn admin` commands return 401 / 404 — that is expected, the relevant services are not deployed.**
 
 **Backend services it talks to:** `user-management` / `deploy-manager` / `deploy-auth` / `eacp` / `mf-model-manager` / OAuth2 (Hydra) — exactly the set enabled by a full install.
 
@@ -493,7 +493,7 @@ Skill source: [`skills/openbkn/SKILL.md`](https://github.com/openbkn-ai/bkn-sdk/
 
 ## ✅ After install (check cluster and API)
 
-When `deploy.sh bkn-foundry install` finishes, confirm the cluster and that you can reach the platform.
+When `deploy.sh openbkn install` finishes, confirm the cluster and that you can reach the platform.
 
 ### Kubernetes
 

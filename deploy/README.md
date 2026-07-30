@@ -18,11 +18,11 @@ This `deploy` directory provides scripts to install BKN Foundry along with its d
 
 Single-node kubeadm flow is **`bash ./deploy.sh k8s install`** (`deploy/scripts/services/k8s.sh`). Product modules reuse an existing cluster when `kubectl` already works (`ensure_k8s` skips reinstall), then **`ensure_platform_prerequisites`** installs the bundled **data-services** layer (MariaDB, Redis, Kafka, OpenSearch, …) before Core. **macOS kind** skips host kubeadm but **`bkn-foundry install` still runs `ensure_data_services` first** (see macOS section). Legacy **`kubeadm`** is still accepted as an alias for **`k8s`**.
 
-**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s bkn-foundry install`. Wrong: `bash ./deploy.sh bkn-foundry install --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh bkn-foundry install`.
+**`deploy.sh` global flags** (`--distro`, `-y`, `--force-upgrade`, `--config`, …) must appear **before** the module name. Correct: `bash ./deploy.sh --distro=k3s openbkn install`. Wrong: `bash ./deploy.sh openbkn install --distro=k3s` (that `--distro` is not read as a global option). Equivalent without moving flags: `export KUBE_DISTRO=k3s` then `bash ./deploy.sh openbkn install`.
 
 ```bash
 bash ./deploy.sh k8s install
-bash ./deploy.sh bkn-foundry install
+bash ./deploy.sh openbkn install
 ```
 
 ### k3s (optional — lightweight single-node)
@@ -35,8 +35,8 @@ cd bkn-foundry/deploy
 bash ./deploy.sh k3s install
 
 # Align distro with k3s for preflight and platform bootstrap:
-bash ./deploy.sh --distro=k3s bkn-foundry install
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install
+bash ./deploy.sh --distro=k3s openbkn install
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh openbkn install
 ```
 
 Check status: `bash ./deploy.sh k3s status` — remove: `bash ./deploy.sh k3s uninstall`.
@@ -103,16 +103,16 @@ sudo bash ./preflight.sh --help         # all flags (--role, --skip, --report, -
 
 # 3. Install BKN Foundry
 # Install BKN Foundry full stack
-bash ./deploy.sh bkn-foundry install
+bash ./deploy.sh openbkn install
 # Default is kubeadm (k8s). For single-node k3s instead (--distro must be BEFORE bkn-foundry):
-# bash ./deploy.sh --distro=k3s bkn-foundry install
-# or: export KUBE_DISTRO=k3s && bash ./deploy.sh bkn-foundry install
+# bash ./deploy.sh --distro=k3s openbkn install
+# or: export KUBE_DISTRO=k3s && bash ./deploy.sh openbkn install
 # The script will interactively prompt for the access address and auto-detect the API server address.
 
 # Or specify addresses explicitly (skips interactive prompts):
 #   --access_address       Address for clients to reach BKN Foundry services (can be IP or domain)
 #   --api_server_address   IP bound to a local network interface for K8s API server (must be a real NIC IP)
-bash ./deploy.sh bkn-foundry install \
+bash ./deploy.sh openbkn install \
   --access_address=<your-ip> \
   --api_server_address=<your-ip>
 
@@ -160,7 +160,7 @@ chart's version from GHCR and writes a manifest you pass with `--version_file`:
 ./scripts/gen-dev-manifest.sh --branch=fix/my-thing --out=/tmp/m.yaml
 
 # install the generated manifest
-sudo bash ./deploy.sh --distro=k3s bkn-foundry install --version_file=/tmp/m.yaml
+sudo bash ./deploy.sh --distro=k3s openbkn install --version_file=/tmp/m.yaml
 ```
 
 Per-chart resolution (stable-first): `--branch` newest build → latest stable →
@@ -192,10 +192,10 @@ On clusters that can't reach `docker.io` or pull GHCR image blobs (read timeouts
 
 ```bash
 # Newest builds + BKN images from SWR + docker.io third-party via the default mirror:
-sudo bash ./deploy.sh bkn-foundry install --latest --registry=swr
+sudo bash ./deploy.sh openbkn install --latest --registry=swr
 
 # Or with a pre-generated manifest (e.g. built on a dev box, no git on the target):
-sudo bash ./deploy.sh bkn-foundry install --version_file=/tmp/m.yaml --registry=swr
+sudo bash ./deploy.sh openbkn install --version_file=/tmp/m.yaml --registry=swr
 ```
 
 > The committed migrations fix any DB-schema drift (e.g. `vega-backend` 0.9.x), but
@@ -209,12 +209,12 @@ You can set Kubernetes resource requests and limits for all Core services via en
 ```bash
 # Set CPU and memory requests
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
-  sudo bash ./deploy.sh bkn-foundry install
+  sudo bash ./deploy.sh openbkn install
 
 # Set full resource limits
 OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
   OPENBKN_CORE_LIM_CPU=2 OPENBKN_CORE_LIM_MEM=2Gi \
-  sudo bash ./deploy.sh bkn-foundry install
+  sudo bash ./deploy.sh openbkn install
 ```
 
 | Environment Variable | Description | Example Values |
@@ -270,7 +270,7 @@ The Core application layer includes charts for data services management, applica
 
 ```bash
 # Install BKN Foundry
-./deploy.sh bkn-foundry install
+./deploy.sh openbkn install
 
 # Show Core status
 ./deploy.sh bkn-foundry status

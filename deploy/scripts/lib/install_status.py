@@ -395,7 +395,7 @@ def _trunc(s, n):
 
 def emit_table(namespace, product, product_version, rows, meta, deps, health):
     GREEN, YELLOW, RED, NC = "\033[0;32m", "\033[1;33m", "\033[0;31m", "\033[0m"
-    print("BKN Foundry install status  —  product {} {}  ns {}".format(
+    print("OpenBKN  install status  —  product {} {}  ns {}".format(
         product, product_version, namespace))
     print("")
     fmt = "{:<28} {:<9} {:<24} {:<24} {:<4} {:<10} {:<7} {}"
