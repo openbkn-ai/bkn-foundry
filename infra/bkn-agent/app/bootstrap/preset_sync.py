@@ -55,17 +55,20 @@ def load_presets(directory: Path = PRESET_DIR) -> list[AgentExportItem]:
 
 
 async def _preserve_env_fields(session, item: AgentExportItem) -> AgentExportItem:
-    """model 与 limits 归环境管：已存在的 agent 保留库内现值。
+    """只有 model 归环境管：已存在的 agent 若显式绑过模型，保留库内现值。
 
     包里 model 恒为空（走系统默认大模型，不钉模型名）。若无条件覆盖，运维在界面上
     给某个内置 agent 换过模型，就会被每次重启悄悄改回去。
+
+    limits 刻意不在此列——它是提示词的配套参数（max_output_tokens 8192 是为 catalog
+    语义理解的长 JSON 定的，不是环境偏好）。保留库内值会让「升级调高输出上限」这类
+    改动在存量环境永远不生效，而截断的表现是 JSON 断在半截、极难归因。
     """
     existing = await dao.get_agent(session, item.agent_id)
-    if not existing:
+    if not existing or not existing.model:
         return item
     merged = item.model_copy(deep=True)
     merged.spec.model = existing.model
-    merged.spec.limits = existing.limits
     return merged
 
 

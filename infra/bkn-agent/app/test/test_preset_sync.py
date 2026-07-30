@@ -62,7 +62,7 @@ def test_preset_limits_cap_output_tokens():
         assert item.spec.limits and item.spec.limits.max_output_tokens >= 8192
 
 
-def test_preserve_env_fields_keeps_existing_model_and_limits(monkeypatch):
+def test_preserve_env_fields_keeps_existing_model(monkeypatch):
     item = preset_sync.load_presets()[0]
     existing = _agent(item.agent_id, "qwen-max", {"max_turns": 3, "timeout_s": 60})
 
@@ -72,17 +72,33 @@ def test_preserve_env_fields_keeps_existing_model_and_limits(monkeypatch):
     monkeypatch.setattr(dao, "get_agent", fake_get_agent)
     merged = asyncio.run(preset_sync._preserve_env_fields(None, item))
 
-    assert merged.spec.model == "qwen-max"
-    assert merged.spec.limits.max_turns == 3
+    assert merged.spec.model == "qwen-max"  # 运维绑过的模型不被重启改回
     assert merged.spec.prompt_id == item.spec.prompt_id  # 其余字段仍由包说了算
     assert item.spec.model == "", "不得就地改写加载出来的包"
 
 
-def test_preserve_env_fields_noop_when_absent(monkeypatch):
+def test_preserve_env_fields_lets_package_own_limits(monkeypatch):
+    """limits 是提示词的配套参数，必须能随升级生效——不保留库内旧值。"""
     item = preset_sync.load_presets()[0]
+    existing = _agent(item.agent_id, "qwen-max", {"max_turns": 1, "max_output_tokens": 1024})
 
     async def fake_get_agent(session, agent_id):
-        return None
+        return existing
+
+    monkeypatch.setattr(dao, "get_agent", fake_get_agent)
+    merged = asyncio.run(preset_sync._preserve_env_fields(None, item))
+
+    assert merged.spec.limits.max_output_tokens == item.spec.limits.max_output_tokens
+
+
+@pytest.mark.parametrize("existing", [None, "no-model"])
+def test_preserve_env_fields_noop(monkeypatch, existing):
+    """不存在，或存在但没绑过模型（空 model 不是「环境的选择」）：包原样生效。"""
+    item = preset_sync.load_presets()[0]
+    row = None if existing is None else _agent(item.agent_id, "", None)
+
+    async def fake_get_agent(session, agent_id):
+        return row
 
     monkeypatch.setattr(dao, "get_agent", fake_get_agent)
     assert asyncio.run(preset_sync._preserve_env_fields(None, item)) is item
