@@ -130,6 +130,8 @@ minio:
 
   persistence:
     enabled: true
+    # PV 由 StorageClass 动态供给，chart 不再创建 hostPath PV。
+    # 留空则使用集群默认 StorageClass；填写名称则使用该 StorageClass。
     storageClass: ""
     accessMode: ReadWriteOnce
     size: 10Gi
