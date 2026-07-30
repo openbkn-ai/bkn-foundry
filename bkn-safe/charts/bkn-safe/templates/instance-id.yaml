@@ -1,0 +1,27 @@
+{{- /*
+The instance identity a license activation is bound to, kept in its own object
+for one reason: it must outlive everything else in the release.
+
+helm.sh/resource-policy: keep means `helm uninstall` leaves it behind, so a
+reinstall onto the same cluster keeps the activated license valid. Re-deriving
+from the node would usually produce the same value anyway (that is the real
+guarantee — see bkn-safe.instanceID), but the derivation depends on a node
+still being readable; this object does not.
+
+Reinstalling under a DIFFERENT release name cannot adopt this ConfigMap (its
+Helm ownership metadata names the old release). Delete it by hand in that case,
+and expect a one-time unbind + reactivate if the node it was derived from is
+also gone.
+*/ -}}
+{{- $id := include "bkn-safe.instanceID" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-instance-id
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+data: {{ if not $id }}{}{{ end }}
+{{- if $id }}
+  OPENBKN_INSTANCE_ID: {{ $id | quote }}
+{{- end }}

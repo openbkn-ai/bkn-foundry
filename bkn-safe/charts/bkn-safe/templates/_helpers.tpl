@@ -1,4 +1,37 @@
 {{/*
+bkn-safe.instanceID resolves OPENBKN_INSTANCE_ID — the instance identity a
+license activation is bound to (licverify hashes it into the fingerprint).
+
+Stability is the whole point: the fingerprint must survive Pod rebuilds and
+Helm upgrades, because a changed fingerprint invalidates an activated license
+(openbkn-ai/bkn-foundry#508). Resolution order:
+
+  1. an explicit config.license.instanceId wins — deploy.sh passes the value it
+     derived from the node's hardware (status.nodeInfo.systemUUID, falling back
+     to nodeInfo.machineID);
+  2. otherwise reuse the value already stored in the release's instance-id
+     ConfigMap, so a `helm upgrade` that forgets the --set does not silently
+     drop the identity;
+  3. otherwise empty — no key is rendered, and licverify falls back to its own
+     host-identity chain. Inside a Pod that chain finds nothing durable and
+     fails loudly rather than inventing a value that drifts.
+
+Deliberately NOT randAlphaNum like bkn-safe.hydraSecret: a generated identity
+would be stable in this cluster yet meaningless as a machine identity, and it
+would travel with any copy of the config. Derive from the host or render nothing.
+*/}}
+{{- define "bkn-safe.instanceID" -}}
+{{- if .Values.config.license.instanceId -}}
+{{- .Values.config.license.instanceId -}}
+{{- else -}}
+{{- $existing := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-instance-id" .Release.Name) -}}
+{{- if and $existing $existing.data -}}
+{{- index $existing.data "OPENBKN_INSTANCE_ID" | default "" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 bkn-safe.hydraSecret resolves the hydra SECRETS_SYSTEM value.
 
 hydra uses this key to sign/encrypt session and token material, so it must be a

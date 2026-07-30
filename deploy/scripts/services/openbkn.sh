@@ -326,14 +326,92 @@ _openbkn_find_local_chart() {
     find_cached_chart_tgz "${charts_dir}" "${chart_name}"
 }
 
+# Resolve OPENBKN_INSTANCE_ID for bkn-safe: the instance identity a license
+# activation binds to. It must stay identical across Pod rebuilds and upgrades —
+# a changed identity changes the fingerprint and invalidates an activated
+# license (openbkn-ai/bkn-foundry#508).
+#
+# An identity already recorded in the cluster always wins, so re-running the
+# installer can never move it. Otherwise it is DERIVED from the node the license
+# is meant to be bound to:
+#
+#   status.nodeInfo.systemUUID — the host's DMI product_uuid as reported by
+#     kubelet. Lives in firmware, so it survives an OS reinstall and changes
+#     only when the machine does: exactly the licensing boundary.
+#   status.nodeInfo.machineID — the host's /etc/machine-id, for hosts whose DMI
+#     kubelet cannot read (restricted or containerised kubelets). Weaker (a host
+#     OS reinstall regenerates it) but still host-scoped and durable.
+#
+# Reading them through the API server means no hostPath mount, no root in the
+# container, and it works from wherever the installer runs.
+#
+# Never generate a value here: a random UUID would be stable in this cluster but
+# meaningless as a machine identity and would travel with any copy of config.yaml.
+# When nothing can be derived, emit nothing and warn — bkn-safe then reports an
+# unlicensed instance instead of activating against an identity that will drift.
+_bkn_safe_instance_id() {
+    local namespace="$1"
+    local existing derived
+
+    existing="$(kubectl get configmap bkn-safe-instance-id -n "${namespace}" \
+        -o jsonpath='{.data.OPENBKN_INSTANCE_ID}' 2>/dev/null || true)"
+    derived="$(_bkn_safe_derive_instance_id)"
+
+    if [[ -n "${existing}" ]]; then
+        # Sticky by design, but say so when the host stopped matching: someone
+        # replaced the node, and the license is still bound to the old one.
+        # The warning goes to stderr — this function's stdout IS the identity.
+        if [[ -n "${derived}" && "${derived}" != "${existing}" ]]; then
+            log_warn "bkn-safe instance identity ${existing} is kept, but this cluster now derives ${derived} — the node it was bound to was replaced. The activated license stays on the old identity; unbind and reactivate to move it." >&2
+        fi
+        printf '%s' "${existing}"
+        return 0
+    fi
+
+    printf '%s' "${derived}"
+}
+
+# Derive a host-scoped instance identity from the cluster's nodes. Deterministic
+# node choice (lowest name among control-plane nodes, else any node): a
+# multi-node cluster must resolve the same identity on every run. Prints nothing
+# when no node reports a usable value.
+_bkn_safe_derive_instance_id() {
+    local selector field value lowered
+    for field in systemUUID machineID; do
+        for selector in "-l node-role.kubernetes.io/control-plane" ""; do
+            # shellcheck disable=SC2086
+            value="$(kubectl get nodes ${selector} --sort-by=.metadata.name \
+                -o jsonpath="{.items[0].status.nodeInfo.${field}}" 2>/dev/null || true)"
+            # tr, not ${value,,}: deploy.sh also runs on macOS, whose /bin/bash
+            # is 3.2 and has no case-conversion expansion.
+            lowered="$(printf '%s' "${value}" | tr 'A-Z' 'a-z')"
+            # Firmware placeholders that several vendors ship identically on
+            # every unit — using one would give unrelated hosts one identity.
+            case "${lowered}" in
+                ""|none|"not specified"|"default string"|\
+                00000000-0000-0000-0000-000000000000|\
+                ffffffff-ffff-ffff-ffff-ffffffffffff|\
+                03000200-0400-0500-0006-000700080009)
+                    continue
+                    ;;
+            esac
+            printf '%s' "${value}"
+            return 0
+        done
+    done
+    return 0
+}
+
 # Per-release extra --set values, filled into CORE_RELEASE_EXTRA_SETS.
 # bkn-safe: pass the per-install platform initial password recorded in
 # config.yaml by generate_config_yaml (seeded admin + users created without an
-# explicit password — no baked-in default). Applied BEFORE CORE_SET_VALUES so an
-# explicit --set config.initialPassword=... still wins.
+# explicit password — no baked-in default), plus the license instance identity.
+# Applied BEFORE CORE_SET_VALUES so an explicit --set config.initialPassword=...
+# still wins.
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_release_extra_sets() {
     local release_name="$1"
+    local namespace="${2:-${CORE_NAMESPACE}}"
     CORE_RELEASE_EXTRA_SETS=()
     if [[ "${release_name}" == "bkn-safe" ]]; then
         local initial_pwd
@@ -342,6 +420,14 @@ _openbkn_release_extra_sets() {
             CORE_RELEASE_EXTRA_SETS+=("config.initialPassword=${initial_pwd}")
         else
             log_warn "bknSafe.initialPassword not recorded in ${CONFIG_YAML_PATH} — bkn-safe will generate an admin password and log it once (re-run 'deploy.sh config generate' to record one)."
+        fi
+
+        local instance_id
+        instance_id="$(_bkn_safe_instance_id "${namespace}")"
+        if [[ -n "${instance_id}" ]]; then
+            CORE_RELEASE_EXTRA_SETS+=("config.license.instanceId=${instance_id}")
+        else
+            log_warn "Could not derive a hardware instance identity from any node (status.nodeInfo.systemUUID) — commercial licenses cannot be activated on this cluster until config.license.instanceId is set to a host-derived, stable value."
         fi
     fi
 }
@@ -390,7 +476,7 @@ _install_openbkn_release_local() {
 
     # Per-release values first, then all --set values (so explicit --set wins)
     local set_value
-    _openbkn_release_extra_sets "${release_name}"
+    _openbkn_release_extra_sets "${release_name}" "${namespace}"
     for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
         helm_args+=("--set" "${set_value}")
     done
@@ -460,7 +546,7 @@ _install_openbkn_release_repo() {
 
     # Per-release values first, then all --set values (so explicit --set wins)
     local set_value
-    _openbkn_release_extra_sets "${release_name}"
+    _openbkn_release_extra_sets "${release_name}" "${namespace}"
     for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
         helm_args+=("--set" "${set_value}")
     done

@@ -36,4 +36,7 @@ data:
   SAFE_LICENSE_SERVER_URL: {{ .Values.config.license.serverURL | quote }}
   SAFE_LICENSE_CA_FILE: {{ .Values.config.license.caFile | quote }}
   SAFE_LICENSE_INSECURE_SKIP_VERIFY: {{ .Values.config.license.insecureSkipVerify | quote }}
+  {{- /* OPENBKN_INSTANCE_ID is NOT here — the instance identity lives in its
+         own ConfigMap (templates/instance-id.yaml) so that it survives
+         `helm uninstall`. Both are pulled in via envFrom. */}}
   GIN_MODE: "release"

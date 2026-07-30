@@ -19,6 +19,10 @@ spec:
         app: {{ .Values.image.name }}
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum | trunc 10 | quote }}
+        {{- /* A changed instance identity changes the license fingerprint, and
+               the fingerprint is resolved once at startup — the Pod has to be
+               replaced for it to take effect. */}}
+        checksum/instance-id: {{ include (print $.Template.BasePath "/instance-id.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -31,6 +35,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+            - configMapRef:
+                name: {{ .Release.Name }}-instance-id
             - secretRef:
                 name: {{ .Release.Name }}-secrets
           ports:
