@@ -13,6 +13,7 @@ import (
 	"hash/fnv"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -182,7 +183,17 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	sourceIdentifier := resource.SourceIdentifier
-	database := catalog.ConnectorCfg["database"]
+	database, err := streamingDatabase(catalog)
+	if err != nil {
+		logger.Errorf("Invalid streaming connector configuration for task %s: %v", taskID, err)
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg(err.Error())
+		if _, updateErr := sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update); updateErr != nil {
+			return fmt.Errorf("update build task status failed: %w", updateErr)
+		}
+		return nil
+	}
 
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
 	err = createManagedLocalIndex(ctx, sbw.lim, indexName, buildTaskInfo, resource)
@@ -213,7 +224,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 }
 
 // executeBuild executes the build logic
-func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database any, sourceIdentifier string) error {
+func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database string, sourceIdentifier string) error {
 	// Use the connector name as the Kafka topic prefix
 	topic := fmt.Sprintf("%s-%s.%s", interfaces.BUILD_PREFIX, catalog.ID, sourceIdentifier)
 	groupID := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, resource.ID)
@@ -422,7 +433,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 }
 
 // createKafkaConnector creates a Kafka connector for the build task
-func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database any, sourceIdentifier string) error {
+func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database string, sourceIdentifier string) error {
 	// get connector
 	kafkaConnectSetting := sbw.appSetting.KafkaConnectSetting
 	// connector name 和 catalog 绑定，catalog 下多个 resource 公有一个 connector，各自订阅自己的表的 topic
@@ -499,7 +510,7 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 }
 
 // buildConnectorConfig builds the connector configuration
-func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database any, _ string) map[string]any {
+func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database string, _ string) map[string]any {
 	// Connector not found, create connector
 	mqSetting := sbw.appSetting.MQSetting
 	connectorBody := map[string]any{
@@ -544,6 +555,52 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 	}
 
 	return connectorBody
+}
+
+// streamingDatabase returns the Debezium capture database configuration for a catalog.
+func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
+	switch catalog.ConnectorType {
+	case interfaces.ConnectorTypePostgreSQL:
+		database, ok := catalog.ConnectorCfg["database"].(string)
+		if !ok || strings.TrimSpace(database) == "" {
+			return "", fmt.Errorf("PostgreSQL streaming build requires connector_config.database")
+		}
+		return database, nil
+	case interfaces.ConnectorTypeMySQL:
+		value, ok := catalog.ConnectorCfg["databases"]
+		if !ok {
+			return "", fmt.Errorf("MySQL streaming build requires a non-empty connector_config.databases")
+		}
+
+		var databases []string
+		switch configuredDatabases := value.(type) {
+		case []string:
+			databases = configuredDatabases
+		case []any:
+			databases = make([]string, 0, len(configuredDatabases))
+			for _, configuredDatabase := range configuredDatabases {
+				database, ok := configuredDatabase.(string)
+				if !ok {
+					return "", fmt.Errorf("MySQL streaming build requires connector_config.databases to contain only strings")
+				}
+				databases = append(databases, database)
+			}
+		default:
+			return "", fmt.Errorf("MySQL streaming build requires connector_config.databases to be an array")
+		}
+
+		if len(databases) == 0 {
+			return "", fmt.Errorf("MySQL streaming build requires a non-empty connector_config.databases")
+		}
+		for _, database := range databases {
+			if strings.TrimSpace(database) == "" {
+				return "", fmt.Errorf("MySQL streaming build requires connector_config.databases without empty values")
+			}
+		}
+		return strings.Join(databases, ","), nil
+	default:
+		return "", fmt.Errorf("unsupported streaming connector type: %s", catalog.ConnectorType)
+	}
 }
 
 // handleUpdateOperation 处理更新操作
