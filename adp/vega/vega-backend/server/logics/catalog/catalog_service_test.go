@@ -466,15 +466,27 @@ func TestCatalogServiceCreate(t *testing.T) {
 }
 
 func TestCatalogServiceTestConnection(t *testing.T) {
-	t.Run("test connection nil catalog", func(t *testing.T) {
-		cs := &catalogService{}
-		_, err := cs.TestConnection(context.Background(), nil)
-		if err == nil {
-			t.Fatal("expected error for nil catalog")
-		}
+	t.Run("returns not found for missing catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "missing",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
+
+		cs := &catalogService{ca: ca, ps: ps}
+		result, err := cs.TestConnection(context.Background(), "missing")
+
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+		assert.Nil(t, result)
 	})
 	t.Run("test connection logical catalog returns an explicit failure", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		catalog := &interfaces.Catalog{
 			ID: "catalog-1",
@@ -483,13 +495,14 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 				LastCheckTime:     1234567890,
 			},
 		}
+		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(catalog, nil)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			ID:   "catalog-1",
 		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 
-		cs := &catalogService{ps: mockPS}
-		result, err := cs.TestConnection(context.Background(), catalog)
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -505,22 +518,25 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		permissionErr := errors.New("modify permission denied")
-		catalog := &interfaces.Catalog{ID: "catalog-1", ConnectorType: "mysql"}
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			ID:   "catalog-1",
 		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(permissionErr)
 
 		cs := &catalogService{ps: mockPS}
-		result, err := cs.TestConnection(context.Background(), catalog)
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
 
 		require.ErrorIs(t, err, permissionErr)
 		assert.Nil(t, result)
 	})
 
 	t.Run("internal connection test bypasses user permission checks", func(t *testing.T) {
-		cs := &catalogService{}
-		result, err := cs.InternalTestConnection(context.Background(), &interfaces.Catalog{ID: "catalog-1"})
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1"}, nil)
+
+		cs := &catalogService{ca: mockCA}
+		result, err := cs.InternalTestConnection(context.Background(), "catalog-1")
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)

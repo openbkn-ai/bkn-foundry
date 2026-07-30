@@ -161,18 +161,18 @@ func (mr *MockCatalogServiceMockRecorder) InternalGetByIDs(ctx, ids any) *gomock
 }
 
 // InternalTestConnection mocks base method.
-func (m *MockCatalogService) InternalTestConnection(ctx context.Context, catalog *interfaces.Catalog) (*interfaces.CatalogHealthCheckStatus, error) {
+func (m *MockCatalogService) InternalTestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalTestConnection", ctx, catalog)
+	ret := m.ctrl.Call(m, "InternalTestConnection", ctx, catalogID)
 	ret0, _ := ret[0].(*interfaces.CatalogHealthCheckStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalTestConnection indicates an expected call of InternalTestConnection.
-func (mr *MockCatalogServiceMockRecorder) InternalTestConnection(ctx, catalog any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) InternalTestConnection(ctx, catalogID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalTestConnection", reflect.TypeOf((*MockCatalogService)(nil).InternalTestConnection), ctx, catalog)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalTestConnection", reflect.TypeOf((*MockCatalogService)(nil).InternalTestConnection), ctx, catalogID)
 }
 
 // List mocks base method.
@@ -237,18 +237,18 @@ func (mr *MockCatalogServiceMockRecorder) SetEnabled(ctx, catalog, enabled any) 
 }
 
 // TestConnection mocks base method.
-func (m *MockCatalogService) TestConnection(ctx context.Context, catalog *interfaces.Catalog) (*interfaces.CatalogHealthCheckStatus, error) {
+func (m *MockCatalogService) TestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TestConnection", ctx, catalog)
+	ret := m.ctrl.Call(m, "TestConnection", ctx, catalogID)
 	ret0, _ := ret[0].(*interfaces.CatalogHealthCheckStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // TestConnection indicates an expected call of TestConnection.
-func (mr *MockCatalogServiceMockRecorder) TestConnection(ctx, catalog any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) TestConnection(ctx, catalogID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnection", reflect.TypeOf((*MockCatalogService)(nil).TestConnection), ctx, catalog)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnection", reflect.TypeOf((*MockCatalogService)(nil).TestConnection), ctx, catalogID)
 }
 
 // TestConnectionConfig mocks base method.

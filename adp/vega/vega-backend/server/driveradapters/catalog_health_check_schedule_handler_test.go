@@ -78,8 +78,7 @@ func TestCatalogHealthCheckScheduleHandlerUpdate(t *testing.T) {
 	defer restoreGinMode()
 
 	t.Run("updates schedule", func(t *testing.T) {
-		engine, cs, hcss := setupCatalogHealthCheckScheduleHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
+		engine, _, hcss := setupCatalogHealthCheckScheduleHandlerTest(t)
 		hcss.EXPECT().Update(gomock.Any(), "catalog-1", &interfaces.CatalogHealthCheckScheduleRequest{
 			Mode:     interfaces.CatalogHealthCheckScheduleModeEnabled,
 			CronExpr: "0 * * * *",
@@ -95,8 +94,7 @@ func TestCatalogHealthCheckScheduleHandlerUpdate(t *testing.T) {
 	})
 
 	t.Run("returns validation error from service", func(t *testing.T) {
-		engine, cs, hcss := setupCatalogHealthCheckScheduleHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
+		engine, _, hcss := setupCatalogHealthCheckScheduleHandlerTest(t)
 		hcss.EXPECT().Update(gomock.Any(), "catalog-1", gomock.Any()).Return(nil,
 			rest.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails("cron_expr is required"))
 

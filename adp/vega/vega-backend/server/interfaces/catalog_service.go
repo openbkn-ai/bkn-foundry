@@ -33,7 +33,7 @@ type CatalogService interface {
 	// CheckExistByName checks if a Catalog exists by name.
 	CheckExistByName(ctx context.Context, name string) (bool, error)
 	// TestConnection tests catalog connection.
-	TestConnection(ctx context.Context, catalog *Catalog) (*CatalogHealthCheckStatus, error)
+	TestConnection(ctx context.Context, catalogID string) (*CatalogHealthCheckStatus, error)
 	// TestConnectionConfig tests an unpersisted physical catalog connection configuration.
 	TestConnectionConfig(ctx context.Context, req *CatalogConnectionTestRequest) (*CatalogHealthCheckStatus, error)
 
@@ -48,5 +48,5 @@ type CatalogService interface {
 	// InternalGetByIDs retrieves Catalogs for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
 	// InternalTestConnection tests catalog connection without user permission checks.
-	InternalTestConnection(ctx context.Context, catalog *Catalog) (*CatalogHealthCheckStatus, error)
+	InternalTestConnection(ctx context.Context, catalogID string) (*CatalogHealthCheckStatus, error)
 }

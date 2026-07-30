@@ -142,6 +142,22 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		assert.Nil(t, got)
 	})
 
+	t.Run("returns not found when catalog does not exist", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		service := &catalogHealthCheckScheduleService{ca: ca}
+		ca.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
+
+		got, err := service.Update(context.Background(), "missing", &interfaces.CatalogHealthCheckScheduleRequest{
+			Mode: interfaces.CatalogHealthCheckScheduleModeInherit,
+		})
+
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+		assert.Nil(t, got)
+	})
+
 	t.Run("returns catalog access error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := vmock.NewMockCatalogAccess(ctrl)

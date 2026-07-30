@@ -93,10 +93,6 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 		return
 	}
 
-	if !r.requirePhysicalCatalog(ctx, c, catalogID) {
-		return
-	}
-
 	schedule, err := r.hcss.Update(ctx, catalogID, &req)
 	if err != nil {
 		replyCatalogHealthCheckScheduleError(ctx, c, err, http.StatusInternalServerError)

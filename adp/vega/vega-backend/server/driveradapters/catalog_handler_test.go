@@ -442,9 +442,7 @@ func Test_CatalogRestHandler_TestConnection(t *testing.T) {
 
 	t.Run("returns success for healthy status", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(catalog, nil)
-		cs.EXPECT().TestConnection(gomock.Any(), catalog).
+		cs.EXPECT().TestConnection(gomock.Any(), "catalog-1").
 			Return(&interfaces.CatalogHealthCheckStatus{
 				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
 				HealthCheckResult: "ok",
@@ -462,9 +460,7 @@ func Test_CatalogRestHandler_TestConnection(t *testing.T) {
 
 	t.Run("returns false for unhealthy status", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
-		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(catalog, nil)
-		cs.EXPECT().TestConnection(gomock.Any(), catalog).
+		cs.EXPECT().TestConnection(gomock.Any(), "catalog-1").
 			Return(&interfaces.CatalogHealthCheckStatus{
 				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
 				HealthCheckResult: "failed",

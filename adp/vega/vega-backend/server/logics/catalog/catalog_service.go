@@ -942,21 +942,25 @@ func (cs *catalogService) CheckExistByName(ctx context.Context, name string) (bo
 }
 
 // TestConnection tests catalog connection.
-func (cs *catalogService) TestConnection(ctx context.Context, catalog *interfaces.Catalog) (*interfaces.CatalogHealthCheckStatus, error) {
+func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Test catalog connection")
 	defer span.End()
 
-	if catalog == nil {
-		span.SetStatus(codes.Error, "Catalog not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
-	}
-
 	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
-		ID:   catalog.ID,
+		ID:   catalogID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
 		span.SetStatus(codes.Error, "Check catalog modify permission failed")
 		return nil, err
+	}
+
+	catalog, err := cs.ca.GetByID(ctx, catalogID)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if catalog == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
 	result, err := cs.testCatalogConnection(ctx, catalog)
@@ -969,11 +973,17 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalog *interface
 }
 
 // InternalTestConnection tests catalog connection for internal workers.
-func (cs *catalogService) InternalTestConnection(
-	ctx context.Context, catalog *interfaces.Catalog,
-) (*interfaces.CatalogHealthCheckStatus, error) {
+func (cs *catalogService) InternalTestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Test catalog connection internally")
 	defer span.End()
+
+	catalog, err := cs.ca.GetByID(ctx, catalogID)
+	if err != nil {
+		return nil, err
+	}
+	if catalog == nil {
+		return nil, fmt.Errorf("catalog not found: %s", catalogID)
+	}
 
 	result, err := cs.testCatalogConnection(ctx, catalog)
 	if err != nil {
@@ -1000,25 +1010,17 @@ func (cs *catalogService) testCatalogConnection(
 		return &result, nil
 	}
 
-	persisted, err := cs.ca.GetByID(ctx, catalog.ID)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
-	}
-	if persisted == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
-	}
-	sensitiveFields := factory.GetFactory().GetSensitiveFields(persisted.ConnectorType)
-	config, err := cs.decryptSensitiveFields(sensitiveFields, persisted.ConnectorCfg)
+	sensitiveFields := factory.GetFactory().GetSensitiveFields(catalog.ConnectorType)
+	config, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 	}
-	result, err := cs.probeConnection(ctx, persisted.ConnectorType, interfaces.ConnectorConfig(config))
+	result, err := cs.probeConnection(ctx, catalog.ConnectorType, interfaces.ConnectorConfig(config))
 	if err != nil {
 		return nil, err
 	}
-	if err := cs.ca.UpdateHealthCheckStatus(ctx, persisted.ID, *result); err != nil {
+	if err := cs.ca.UpdateHealthCheckStatus(ctx, catalog.ID, *result); err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}

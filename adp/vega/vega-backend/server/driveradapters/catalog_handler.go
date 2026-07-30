@@ -773,16 +773,7 @@ func (r *restHandler) testConnection(c *gin.Context, visitor hydra.Visitor) {
 
 	id := c.Param("id")
 
-	// Check if id exists
-	catalog, err := r.cs.GetByID(ctx, id, false)
-	if err != nil {
-		httpErr := err.(*rest.HTTPError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	status, err := r.cs.TestConnection(ctx, catalog)
+	status, err := r.cs.TestConnection(ctx, id)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

@@ -172,7 +172,11 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 		otellog.LogError(ctx, "Get catalog for health check schedule failed", err)
 		return nil, err
 	}
-	if catalog == nil || catalog.Type != interfaces.CatalogTypePhysical {
+	if catalog == nil {
+		span.SetStatus(codes.Error, "Catalog not found")
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	if catalog.Type != interfaces.CatalogTypePhysical {
 		span.SetStatus(codes.Error, "Catalog is not physical")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails("health check schedules are only supported for physical catalogs")
