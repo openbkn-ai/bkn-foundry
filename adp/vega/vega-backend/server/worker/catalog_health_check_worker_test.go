@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"
@@ -145,5 +146,58 @@ func TestCatalogHealthCheckWorkerStart(t *testing.T) {
 		w := newCatalogHealthCheckWorker(&common.AppSetting{}, vmock.NewMockCatalogService(ctrl), vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl))
 
 		require.NoError(t, w.Start())
+	})
+
+	t.Run("reschedules future inherit checks before running", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+		w := newCatalogHealthCheckWorker(
+			&common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{
+				WorkerEnabled: true,
+				CronExpr:      "0 * * * *",
+			}},
+			vmock.NewMockCatalogService(ctrl),
+			sa,
+		)
+		runStarted := make(chan struct{})
+
+		gomock.InOrder(
+			sa.EXPECT().UpdateInheritedNextRun(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, now, nextRun int64) error {
+					assert.Greater(t, nextRun, now)
+					assert.Equal(t, 0, time.UnixMilli(nextRun).Minute())
+					return nil
+				}),
+			sa.EXPECT().ListDue(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, int64) ([]*interfaces.CatalogHealthCheckSchedule, error) {
+					close(runStarted)
+					return nil, errors.New("stop test run")
+				}),
+		)
+
+		require.NoError(t, w.Start())
+		select {
+		case <-runStarted:
+		case <-time.After(time.Second):
+			t.Fatal("worker did not start")
+		}
+	})
+
+	t.Run("does not start when rescheduling fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+		w := newCatalogHealthCheckWorker(
+			&common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{WorkerEnabled: true}},
+			vmock.NewMockCatalogService(ctrl),
+			sa,
+		)
+		updateErr := errors.New("database unavailable")
+		sa.EXPECT().UpdateInheritedNextRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(updateErr)
+
+		err := w.Start()
+
+		require.ErrorIs(t, err, updateErr)
 	})
 }

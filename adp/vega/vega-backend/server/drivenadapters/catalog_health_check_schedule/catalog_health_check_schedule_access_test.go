@@ -120,6 +120,35 @@ func TestCatalogHealthCheckScheduleAccessListDue(t *testing.T) {
 	})
 }
 
+func TestCatalogHealthCheckScheduleAccessUpdateInheritedNextRun(t *testing.T) {
+	t.Run("reschedules only inherit schedules that are not due", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_next_run = ? WHERE f_mode = ? AND f_next_run > ?")).
+			WithArgs(int64(200), "inherit", int64(100)).
+			WillReturnResult(sqlmock.NewResult(0, 2))
+
+		require.NoError(t, access.UpdateInheritedNextRun(context.Background(), 100, 200))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("propagates update error", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+
+		updateErr := sql.ErrConnDone
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_next_run = ? WHERE f_mode = ? AND f_next_run > ?")).
+			WithArgs(int64(200), "inherit", int64(100)).
+			WillReturnError(updateErr)
+
+		err := access.UpdateInheritedNextRun(context.Background(), 100, 200)
+
+		require.ErrorIs(t, err, updateErr)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 	t.Run("updates configuration without modifying last run", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)

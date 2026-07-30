@@ -219,6 +219,39 @@ func (chcsa *catalogHealthCheckScheduleAccess) ListDue(ctx context.Context, now 
 	return schedules, nil
 }
 
+func (chcsa *catalogHealthCheckScheduleAccess) UpdateInheritedNextRun(ctx context.Context, now, nextRun int64) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update inherited catalog health check schedule next run")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("now").Int64(now),
+		attr.Key("next_run").Int64(nextRun),
+		attr.Key("db_url").String(libdb.GetDBUrl()),
+		attr.Key("db_type").String(libdb.GetDBType()),
+	)
+
+	query, args, err := sq.Update(tableName).
+		Set("f_next_run", nextRun).
+		Where(sq.Eq{"f_mode": interfaces.CatalogHealthCheckScheduleModeInherit}).
+		Where(sq.Gt{"f_next_run": now}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build inherited next run update SQL failed")
+		otellog.LogError(ctx, "Build inherited catalog health check schedule next run update SQL failed", err)
+		return err
+	}
+
+	_, err = chcsa.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		otellog.LogError(ctx, "Update inherited catalog health check schedule next run failed", err)
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 func (chcsa *catalogHealthCheckScheduleAccess) Update(ctx context.Context, s *interfaces.CatalogHealthCheckSchedule) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog health check schedule")
 	defer span.End()

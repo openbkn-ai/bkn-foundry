@@ -114,6 +114,20 @@ func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) Update(ctx, schedule
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).Update), ctx, schedule)
 }
 
+// UpdateInheritedNextRun mocks base method.
+func (m *MockCatalogHealthCheckScheduleAccess) UpdateInheritedNextRun(ctx context.Context, now, nextRun int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateInheritedNextRun", ctx, now, nextRun)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateInheritedNextRun indicates an expected call of UpdateInheritedNextRun.
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) UpdateInheritedNextRun(ctx, now, nextRun any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateInheritedNextRun", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).UpdateInheritedNextRun), ctx, now, nextRun)
+}
+
 // UpdateRunMetadata mocks base method.
 func (m *MockCatalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context, catalogID string, scheduleUpdateTime, lastRun, nextRun int64) error {
 	m.ctrl.T.Helper()

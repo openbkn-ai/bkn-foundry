@@ -64,6 +64,15 @@ func (w *CatalogHealthCheckWorker) Start() error {
 		return nil
 	}
 
+	now := time.Now()
+	if err := w.chcsa.UpdateInheritedNextRun(
+		context.Background(),
+		now.UnixMilli(),
+		w.defaultCronSchedule.Next(now).UnixMilli(),
+	); err != nil {
+		return err
+	}
+
 	go w.run()
 	logger.Info("Catalog health check worker started")
 	return nil
