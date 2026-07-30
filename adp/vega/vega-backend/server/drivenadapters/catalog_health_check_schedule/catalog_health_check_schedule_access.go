@@ -251,19 +251,25 @@ func (chcsa *catalogHealthCheckScheduleAccess) Update(ctx context.Context, s *in
 	return err
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context, catalogID string, lastRun, nextRun int64) error {
+func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(
+	ctx context.Context, catalogID string, scheduleUpdateTime, lastRun, nextRun int64,
+) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog health check schedule run metadata")
 	defer span.End()
 
 	span.SetAttributes(
 		attr.Key("catalog_id").String(catalogID),
+		attr.Key("schedule_update_time").Int64(scheduleUpdateTime),
 		attr.Key("last_run").Int64(lastRun),
 		attr.Key("next_run").Int64(nextRun),
 	)
 
 	query, args, err := sq.Update(tableName).
 		Set("f_last_run", lastRun).
-		Set("f_next_run", nextRun).
+		Set("f_next_run", sq.Expr(
+			"CASE WHEN f_update_time = ? THEN ? ELSE f_next_run END",
+			scheduleUpdateTime, nextRun,
+		)).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
 	if err != nil {

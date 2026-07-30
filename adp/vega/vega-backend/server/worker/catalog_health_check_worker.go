@@ -128,7 +128,14 @@ func (w *CatalogHealthCheckWorker) runCatalogHealthCheck(ctx context.Context, sc
 	}
 
 	lastRun := time.Now()
-	if err := w.chcsa.UpdateRunMetadata(ctx, schedule.CatalogID, lastRun.UnixMilli(), cronSchedule.Next(lastRun).UnixMilli()); err != nil {
+	nextRun := cronSchedule.Next(lastRun)
+	if err := w.chcsa.UpdateRunMetadata(
+		ctx,
+		schedule.CatalogID,
+		schedule.UpdateTime,
+		lastRun.UnixMilli(),
+		nextRun.UnixMilli(),
+	); err != nil {
 		logger.Errorf("Update catalog health check run metadata failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
 	}
 }

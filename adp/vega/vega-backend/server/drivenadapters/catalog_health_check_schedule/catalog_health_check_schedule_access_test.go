@@ -157,15 +157,15 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 }
 
 func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
-	t.Run("updates runtime metadata without modifying configuration or audit fields", func(t *testing.T) {
+	t.Run("always updates last run and advances next run only when schedule update time matches", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ?")).
-			WithArgs(int64(100), int64(200), "catalog-1").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = CASE WHEN f_update_time = ? THEN ? ELSE f_next_run END WHERE f_catalog_id = ?")).
+			WithArgs(int64(100), int64(50), int64(200), "catalog-1").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateRunMetadata(context.Background(), "catalog-1", 100, 200))
+		require.NoError(t, access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -174,11 +174,11 @@ func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
 		defer cleanup()
 
 		updateErr := sql.ErrConnDone
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ?")).
-			WithArgs(int64(100), int64(200), "catalog-1").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = CASE WHEN f_update_time = ? THEN ? ELSE f_next_run END WHERE f_catalog_id = ?")).
+			WithArgs(int64(100), int64(50), int64(200), "catalog-1").
 			WillReturnError(updateErr)
 
-		err := access.UpdateRunMetadata(context.Background(), "catalog-1", 100, 200)
+		err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200)
 
 		require.ErrorIs(t, err, updateErr)
 		require.NoError(t, mock.ExpectationsWereMet())

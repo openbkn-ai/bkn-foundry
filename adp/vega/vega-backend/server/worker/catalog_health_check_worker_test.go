@@ -78,7 +78,7 @@ func TestCatalogHealthCheckWorkerRunDueContinuesAfterSchedulePanic(t *testing.T)
 			func(context.Context, *interfaces.Catalog) { panic("connector panic") },
 		),
 		cs.EXPECT().TestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-2", ConnectorType: "scheduled"}).Return(&interfaces.CatalogHealthCheckStatus{}, nil),
-		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-2", gomock.Any(), gomock.Any()).Return(nil),
+		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-2", second.UpdateTime, gomock.Any(), gomock.Any()).Return(nil),
 	)
 
 	assert.NotPanics(t, w.runDue)
@@ -91,11 +91,15 @@ func TestCatalogHealthCheckWorkerRunCatalogHealthCheck(t *testing.T) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 		w := newCatalogHealthCheckWorker(&common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{CronExpr: "0 * * * *"}}, cs, sa)
-		schedule := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit}
+		schedule := &interfaces.CatalogHealthCheckSchedule{
+			CatalogID:  "catalog-1",
+			Mode:       interfaces.CatalogHealthCheckScheduleModeInherit,
+			UpdateTime: 123,
+		}
 
 		cs.EXPECT().TestConnection(gomock.Any(), &interfaces.Catalog{ID: "catalog-1", ConnectorType: "scheduled"}).Return(&interfaces.CatalogHealthCheckStatus{}, nil)
-		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, lastRun, nextRun int64) error {
+		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", int64(123), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, _ int64, lastRun, nextRun int64) error {
 				assert.Greater(t, lastRun, int64(0))
 				assert.Greater(t, nextRun, lastRun)
 				return nil

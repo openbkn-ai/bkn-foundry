@@ -115,15 +115,15 @@ func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) Update(ctx, schedule
 }
 
 // UpdateRunMetadata mocks base method.
-func (m *MockCatalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context, catalogID string, lastRun, nextRun int64) error {
+func (m *MockCatalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context, catalogID string, scheduleUpdateTime, lastRun, nextRun int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRunMetadata", ctx, catalogID, lastRun, nextRun)
+	ret := m.ctrl.Call(m, "UpdateRunMetadata", ctx, catalogID, scheduleUpdateTime, lastRun, nextRun)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateRunMetadata indicates an expected call of UpdateRunMetadata.
-func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) UpdateRunMetadata(ctx, catalogID, lastRun, nextRun any) *gomock.Call {
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) UpdateRunMetadata(ctx, catalogID, scheduleUpdateTime, lastRun, nextRun any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunMetadata", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).UpdateRunMetadata), ctx, catalogID, lastRun, nextRun)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunMetadata", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).UpdateRunMetadata), ctx, catalogID, scheduleUpdateTime, lastRun, nextRun)
 }
