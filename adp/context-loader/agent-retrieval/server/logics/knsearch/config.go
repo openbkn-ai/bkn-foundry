@@ -8,7 +8,7 @@
 // file: config.go
 package knsearch
 
-import "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+import "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 
 // DefaultConceptRetrievalConfig 返回概念召回默认配置
 func DefaultConceptRetrievalConfig() *interfaces.KnSearchConceptRetrievalConfig {

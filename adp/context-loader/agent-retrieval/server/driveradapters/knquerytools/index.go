@@ -14,13 +14,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knresources"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knrunsql"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 )
 
 // KnQueryToolsHandler 处理 run_sql / list_knowledge_networks / get_kn_detail /

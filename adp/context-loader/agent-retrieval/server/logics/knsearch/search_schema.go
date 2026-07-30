@@ -15,10 +15,10 @@ import (
 
 	"github.com/creasty/defaults"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/bkntrace"
-	aerrors "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	aerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 var newBknBackendAccess = drivenadapters.NewBknBackendAccess

@@ -9,7 +9,7 @@ package knfindskills
 import (
 	"strings"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 var skillQueryTargetFields = map[string]struct{}{

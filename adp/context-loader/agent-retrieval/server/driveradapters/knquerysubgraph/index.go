@@ -15,11 +15,11 @@ import (
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/config"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
-	logicskn "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	logicskn "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
 )
 
 // KnQuerySubgraphHandler 子图查询处理器

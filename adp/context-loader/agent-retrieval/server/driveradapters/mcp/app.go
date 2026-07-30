@@ -15,14 +15,14 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	logicsKar "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
-	logicsFs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knfindskills"
-	logicsKlp "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
-	logicsKqs "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knresources"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knrunsql"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/logics/knsearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
+	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
+	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
+	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
 const (
