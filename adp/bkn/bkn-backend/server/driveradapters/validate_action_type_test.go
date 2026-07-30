@@ -366,6 +366,100 @@ func Test_ValidateActionType(t *testing.T) {
 			So(err, ShouldBeNil) // and/or operation doesn't require field
 		})
 
+		Convey("Failed with empty and condition in strict mode\n", func() {
+			at := &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:         "at1",
+					ATName:       "action1",
+					ObjectTypeID: "ot1",
+					ActionType:   interfaces.ACTION_TYPE_ADD,
+					Condition: &interfaces.ActionCondCfg{
+						ObjectTypeID: "ot1",
+						Operation:    cond.OperationAnd,
+					},
+				},
+			}
+			err := ValidateActionType(ctx, at, true)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
+		})
+
+		Convey("Failed with empty or condition in strict mode\n", func() {
+			at := &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:         "at1",
+					ATName:       "action1",
+					ObjectTypeID: "ot1",
+					ActionType:   interfaces.ACTION_TYPE_ADD,
+					Condition: &interfaces.ActionCondCfg{
+						ObjectTypeID: "ot1",
+						Operation:    cond.OperationOr,
+					},
+				},
+			}
+			err := ValidateActionType(ctx, at, true)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
+		})
+
+		Convey("Failed with empty and condition when strictMode false\n", func() {
+			at := &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:         "at1",
+					ATName:       "action1",
+					ObjectTypeID: "ot1",
+					ActionType:   interfaces.ACTION_TYPE_ADD,
+					Condition: &interfaces.ActionCondCfg{
+						ObjectTypeID: "ot1",
+						Operation:    cond.OperationAnd,
+					},
+				},
+			}
+			err := ValidateActionType(ctx, at, false)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
+		})
+
+		Convey("Failed with nested empty or condition path\n", func() {
+			at := &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:         "at1",
+					ATName:       "action1",
+					ObjectTypeID: "ot1",
+					ActionType:   interfaces.ACTION_TYPE_ADD,
+					Condition: &interfaces.ActionCondCfg{
+						ObjectTypeID: "ot1",
+						Operation:    cond.OperationAnd,
+						SubConds: []*interfaces.ActionCondCfg{
+							{
+								ObjectTypeID: "ot1",
+								Field:        "field1",
+								Operation:    cond.OperationEq,
+								ValueOptCfg: cond.ValueOptCfg{
+									Value: "value1",
+								},
+							},
+							{
+								ObjectTypeID: "ot1",
+								Operation:    cond.OperationOr,
+							},
+						},
+					},
+				},
+			}
+			err := ValidateActionType(ctx, at, true)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions[1].sub_conditions")
+		})
+
 		Convey("Failed with eq operation having array value\n", func() {
 			at := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{

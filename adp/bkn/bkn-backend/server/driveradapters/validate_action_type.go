@@ -166,11 +166,18 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 		return err
 	}
 
-	// 行动条件非空时，校验行动条件（strict_mode 关闭时不校验）
-	if actionType.Condition != nil && strictMode {
-		err = validateActionCondition(ctx, actionType.Condition, actionType.ObjectTypeID)
-		if err != nil {
-			return err
+	// Always reject structurally invalid conditions; strict mode adds semantic validation.
+	if actionType.Condition != nil {
+		if strictMode {
+			err = validateActionCondition(ctx, actionType.Condition, actionType.ObjectTypeID)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = validateActionConditionShape(ctx, actionType.Condition, "condition")
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -295,6 +302,32 @@ func foldedImpactMatchesAffect(at *interfaces.ActionType) bool {
 
 // 校验行动条件的合法性
 func validateActionCondition(ctx context.Context, cfg *interfaces.ActionCondCfg, objectTypeID string) error {
+	return validateActionConditionWithPath(ctx, cfg, objectTypeID, "condition")
+}
+
+func validateActionConditionShape(ctx context.Context, cfg *interfaces.ActionCondCfg, path string) error {
+	if cfg == nil {
+		return nil
+	}
+
+	switch cfg.Operation {
+	case cond.OperationAnd, cond.OperationOr:
+		if len(cfg.SubConds) == 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("%s.sub_conditions must not be empty for operation [%s]", path, cfg.Operation))
+		}
+		for i, subCond := range cfg.SubConds {
+			err := validateActionConditionShape(ctx, subCond, fmt.Sprintf("%s.sub_conditions[%d]", path, i))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.ActionCondCfg, objectTypeID string, path string) error {
 	if cfg == nil {
 		return nil
 	}
@@ -323,13 +356,18 @@ func validateActionCondition(ctx context.Context, cfg *interfaces.ActionCondCfg,
 	switch cfg.Operation {
 	case cond.OperationAnd, cond.OperationOr:
 		// 子过滤条件不能超过100个
+		if len(cfg.SubConds) == 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("%s.sub_conditions must not be empty for operation [%s]", path, cfg.Operation))
+		}
+
 		if len(cfg.SubConds) > cond.MaxSubCondition {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
 				WithErrorDetails(fmt.Sprintf("行动条件的子条件不能超过 %d 个", cond.MaxSubCondition))
 		}
 
-		for _, subCond := range cfg.SubConds {
-			err := validateActionCondition(ctx, subCond, objectTypeID)
+		for i, subCond := range cfg.SubConds {
+			err := validateActionConditionWithPath(ctx, subCond, objectTypeID, fmt.Sprintf("%s.sub_conditions[%d]", path, i))
 			if err != nil {
 				return err
 			}
