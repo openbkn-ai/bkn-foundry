@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/common"
 )
 
 func FormatDSN(cfg common.DSNConfig) (string, error) {

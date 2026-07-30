@@ -25,7 +25,7 @@ type RDSDriver
 Examples are available in example directory.
 ```go
 import (
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver"
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
 )
 
 // ...

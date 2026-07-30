@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	"github.com/openbkn-ai/bkn-comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/common"
 )
 
 type LogSetting struct {

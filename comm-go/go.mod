@@ -1,4 +1,4 @@
-module github.com/openbkn-ai/bkn-comm-go
+module github.com/openbkn-ai/bkn-foundry/comm-go
 
 go 1.25.0
 

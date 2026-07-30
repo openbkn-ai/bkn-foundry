@@ -18,7 +18,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"golang.org/x/text/language"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 type Message struct {

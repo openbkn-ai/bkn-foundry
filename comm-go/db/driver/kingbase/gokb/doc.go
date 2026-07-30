@@ -7,7 +7,7 @@ gokb包为基于database/sql包的Kingbase驱动
 	import (
 		"database/sql"
 
-		_ "github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb"
+		_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb"
 	)
 
 	func main() {

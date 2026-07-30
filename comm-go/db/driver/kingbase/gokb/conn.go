@@ -43,12 +43,12 @@ import (
 	"unicode"
 	"unsafe"
 
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/oid"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/oid/mysqlOid"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/oid/oracleOid"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/oid/sqlserverOid"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/scram"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/sm3"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/oid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/oid/mysqlOid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/oid/oracleOid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/oid/sqlserverOid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/scram"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/sm3"
 
 	"github.com/golang-sql/civil"
 	"github.com/shopspring/decimal"

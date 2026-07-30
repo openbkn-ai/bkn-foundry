@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 const (

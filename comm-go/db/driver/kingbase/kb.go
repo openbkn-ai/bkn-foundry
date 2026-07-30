@@ -9,8 +9,8 @@ package kingbase
 import (
 	"database/sql/driver"
 
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/common"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb"
 )
 
 func Open(dsn string) (driver.Conn, error) {

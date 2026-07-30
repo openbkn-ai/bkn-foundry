@@ -11,7 +11,7 @@ import (
 
 	"gitee.com/chunanyong/dm"
 
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/common"
 )
 
 func Open(dsn string) (driver.Conn, error) {

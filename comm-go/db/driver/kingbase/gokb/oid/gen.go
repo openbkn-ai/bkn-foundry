@@ -31,7 +31,7 @@ import (
 	"os/exec"
 	"strings"
 
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb"
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb"
 )
 
 const (

@@ -34,8 +34,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/oid"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/oid/oracleOid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/oid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/oid/oracleOid"
 
 	"github.com/golang-sql/civil"
 	"github.com/shopspring/decimal"

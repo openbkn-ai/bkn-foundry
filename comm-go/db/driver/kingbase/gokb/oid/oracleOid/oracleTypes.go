@@ -3,7 +3,7 @@
 package oracleOid
 
 import (
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase/gokb/oid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase/gokb/oid"
 )
 
 var OracleOid = oid.AllOid{

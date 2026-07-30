@@ -11,8 +11,8 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"github.com/openbkn-ai/bkn-comm-go/i18n"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 type BaseError struct {

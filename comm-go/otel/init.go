@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 )
 
 // InitOTel 初始化 traces 和 logs 两类 provider。

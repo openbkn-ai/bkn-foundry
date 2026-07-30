@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 const (

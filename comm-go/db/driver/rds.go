@@ -12,11 +12,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/dmdb"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/goldendb"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/kingbase"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/mysql"
-	"github.com/openbkn-ai/bkn-comm-go/db/driver/tidb"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/dmdb"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/goldendb"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/kingbase"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/mysql"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/driver/tidb"
 )
 
 type RDSDriver struct {

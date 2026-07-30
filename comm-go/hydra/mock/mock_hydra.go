@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	gin "github.com/gin-gonic/gin"
-	hydra "github.com/openbkn-ai/bkn-comm-go/hydra"
+	hydra "github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -26,7 +26,7 @@ The `OpenBKNMQClient` interface defines the core method of publish/subscribe mes
 
 import sdk use 
 ```go
-import msqclient "github.com/openbkn-ai/bkn-comm-go/mq"
+import msqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 ```
 
 Available value of variable `mqType`:
