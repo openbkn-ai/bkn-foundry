@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/rs/xid"
+	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
@@ -44,6 +45,7 @@ const (
 
 	catalogAuthResourcePermissionBatchSize = 10000
 	defaultConnectionTestTimeout           = 30 * time.Second
+	connectionTestFailedResult             = "Connection test failed."
 )
 
 var (
@@ -198,6 +200,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 				WithErrorDetails("health check schedules are only supported for physical catalogs")
 		}
 	} else {
+		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
+
 		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
 		sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
@@ -217,14 +221,15 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
-			otellog.LogError(ctx, "Failed to test connection to data source", err)
+			otellog.LogError(ctx, "Failed to test connection to data source", errors.New(connectionTestFailedResult))
 			_ = connector.Close(ctx)
 			if !allowUnhealthy {
 				return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
-					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
+					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
+					WithErrorDetails(connectionTestFailedResult)
 			}
 			healthStatus = interfaces.CatalogHealthStatusUnhealthy
-			healthResult = "Connection test failed."
+			healthResult = connectionTestFailedResult
 		} else {
 			defer func() { _ = connector.Close(ctx) }()
 			healthStatus = interfaces.CatalogHealthStatusHealthy
@@ -666,6 +671,8 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	catalog.Description = req.Description
 
 	if req.ConnectorType != "" {
+		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
+
 		// 注：connector_type 不可变性由 PUT handler 兜底校验（catalog_handler.go），
 		// 此处不重复，仅按 req.ConnectorType 走解密 + 试连 + 持久化流程。
 
@@ -688,16 +695,17 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		}
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
-			otellog.LogError(ctx, "Failed to test connection to data source", err)
+			otellog.LogError(ctx, "Failed to test connection to data source", errors.New(connectionTestFailedResult))
 			_ = connector.Close(ctx)
 			if !allowUnhealthy {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
+					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
+					WithErrorDetails(connectionTestFailedResult)
 			}
 			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
 				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
 				LastCheckTime:     time.Now().UnixMilli(),
-				HealthCheckResult: "Connection test failed.",
+				HealthCheckResult: connectionTestFailedResult,
 			}
 		} else {
 			defer func() { _ = connector.Close(ctx) }()
@@ -1063,7 +1071,7 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	}
 	if err := cs.testConnectorConnection(ctx, connector); err != nil {
 		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
-		result.HealthCheckResult = "Connection test failed."
+		result.HealthCheckResult = connectionTestFailedResult
 		return result, nil
 	}
 	result.HealthCheckStatus = interfaces.CatalogHealthStatusHealthy

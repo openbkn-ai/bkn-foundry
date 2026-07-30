@@ -28,6 +28,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
+	"vega-backend/logics/connector/factory"
 )
 
 // mockCipher 实现 kwcrypto.Cipher 接口用于测试
@@ -273,6 +274,46 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 }
 
 func TestCatalogServiceCreate(t *testing.T) {
+	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+
+		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+			return &factory.ConnectorFactory{}
+		})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+			func(*factory.ConnectorFactory, string) []string {
+				return nil
+			})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				return connector, nil
+			})
+		t.Cleanup(patches.Reset)
+
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			ps:         mockPS,
+		}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
+	})
+
 	t.Run("create logical catalog defaults to disabled and unchecked", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
@@ -576,6 +617,49 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 }
 
 func TestCatalogServiceUpdate(t *testing.T) {
+	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+
+		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+			return &factory.ConnectorFactory{}
+		})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+			func(*factory.ConnectorFactory, string) []string {
+				return nil
+			})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				return connector, nil
+			})
+		t.Cleanup(patches.Reset)
+
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			ps:         mockPS,
+		}
+		err := cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "physical-catalog",
+		}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
+	})
+
 	t.Run("uses transaction when extensions are omitted", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
