@@ -16,7 +16,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9
 	github.com/nsqio/go-nsq v1.1.0
-	github.com/openbkn-ai/licverify v0.4.1-0.20260730071819-2301b8f6fb3c
+	github.com/openbkn-ai/licverify v0.5.0
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/rs/xid v1.6.0
 	github.com/segmentio/kafka-go v0.4.51
