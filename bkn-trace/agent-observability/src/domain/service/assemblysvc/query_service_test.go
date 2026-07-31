@@ -174,6 +174,9 @@ func TestQueryBusinessProjectionFailsClosedWhenResolverCannotAuthorizeRefs(t *te
 			if len(view.Assembly.BusinessRefs) != 0 || len(view.Assembly.OperationBusinessEdges) != 0 {
 				t.Fatalf("unresolved authorization leaked business refs or edges: %#v", view.Assembly)
 			}
+			if view.Assembly.BusinessRefs == nil || view.Assembly.OperationBusinessEdges == nil {
+				t.Fatalf("empty projected collections must serialize as arrays: %#v", view.Assembly)
+			}
 			if !view.Assembly.DisclosurePartial || len(view.Assembly.DisclosureReasons) == 0 {
 				t.Fatalf("resolver degradation was not disclosed separately: %#v", view.Assembly)
 			}

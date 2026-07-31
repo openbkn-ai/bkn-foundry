@@ -60,6 +60,9 @@ evidence:
     allowUnauthenticated: false
 
 businessResolver:
+  # Opt in only when the deployment can reach the BKN and Vega authorization-aware APIs.
+  # When disabled, business refs and operation-business edges are returned as empty arrays
+  # and disclosure_partial reports that user-visible business metadata was not resolved.
   enabled: false
   bknBaseURL: ""
   vegaBaseURL: ""

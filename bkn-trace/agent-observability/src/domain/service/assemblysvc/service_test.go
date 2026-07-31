@@ -276,7 +276,7 @@ func TestAssembleRichInteractionKeepsAllBusinessDimensionsAndClaimSpecificSuppor
 	query := semanticEvent("evt-query", "op-query", 1)
 	for index, refType := range refTypes {
 		ref := sessionvo.BusinessRef{
-			RefType: refType, RefID: string(refType) + ":supplychain:" + string(rune('a'+index)),
+			RefType: refType, RefID: refType.CanonicalRefPrefix() + ":supplychain:" + string(rune('a'+index)),
 			BusinessDomainID: "domain-1", Version: "2026.07",
 		}
 		query.BusinessRefs = append(query.BusinessRefs, ref)

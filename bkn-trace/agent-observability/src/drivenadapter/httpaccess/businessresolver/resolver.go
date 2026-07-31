@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 )
 
@@ -148,39 +149,39 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 }
 
 func resolverKind(ref ibusinessresolver.BusinessRef) (string, string) {
-	kinds := map[string]struct {
-		kind   string
-		source string
-	}{
-		"knowledge_network": {kind: "kn", source: "bkn"},
-		"object_type":       {kind: "object", source: "bkn"},
-		"object":            {kind: "object", source: "bkn"},
-		"object_instance":   {kind: "object_instance", source: "bkn"},
-		"property":          {kind: "property", source: "bkn"},
-		"relation_type":     {kind: "relation", source: "bkn"},
-		"relation":          {kind: "relation", source: "bkn"},
-		"data_resource":     {kind: "resource", source: "vega"},
-		"data_field":        {kind: "field", source: "vega"},
-		"metric":            {kind: "metric", source: "bkn"},
-		"logic":             {kind: "logic", source: "bkn"},
-		"function":          {kind: "function", source: "bkn"},
-		"action_type":       {kind: "action_type", source: "bkn"},
-		"action_instance":   {kind: "action_instance", source: "bkn"},
+	// Evidence APIs historically identify these references by their RefID prefix.
+	if ref.RefType == "data_field" {
+		return "field", "vega"
 	}
-	if selected, found := kinds[ref.RefType]; found {
-		return selected.kind, selected.source
+	if kind, source := resolverPrefix(ref.RefType); kind != "" {
+		return kind, source
+	}
+	refType := sessionvo.BusinessRefType(ref.RefType)
+	if kind := refType.CanonicalRefPrefix(); kind != "" {
+		source := "bkn"
+		if refType == sessionvo.BusinessRefDataResource {
+			source = "vega"
+		}
+		return kind, source
 	}
 	if ref.RefType == "" {
-		parts := strings.SplitN(ref.RefID, ":", 2)
-		if len(parts) == 2 {
-			for _, selected := range kinds {
-				if selected.kind == parts[0] {
-					return selected.kind, selected.source
-				}
-			}
+		prefix, _, found := strings.Cut(ref.RefID, ":")
+		if found {
+			return resolverPrefix(prefix)
 		}
 	}
 	return "", ""
+}
+
+func resolverPrefix(prefix string) (string, string) {
+	switch prefix {
+	case "resource", "field":
+		return prefix, "vega"
+	case "kn", "object", "object_instance", "property", "relation", "metric", "logic", "function", "action_type", "action_instance":
+		return prefix, "bkn"
+	default:
+		return "", ""
+	}
 }
 
 func entityResolution(base ibusinessresolver.Resolution, status int, err error, entity namedEntity, businessPath []string) (ibusinessresolver.Resolution, error) {

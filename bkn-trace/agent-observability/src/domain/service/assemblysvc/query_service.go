@@ -226,6 +226,7 @@ func priorSupports(currentInteractionID string, events []ledgervo.Event) []sessi
 func (s *QueryService) projectBusinessRefs(ctx context.Context, scope evidencevo.QueryScope, assembled Result) ProjectedResult {
 	projected := ProjectedResult{
 		Completeness: assembled.Completeness, Claims: assembled.Claims, Events: assembled.Events,
+		BusinessRefs: []BusinessRefView{}, OperationBusinessEdges: []OperationBusinessEdgeView{},
 		ArtifactRefs: assembled.ArtifactRefs, EvidenceRefs: assembled.EvidenceRefs,
 		UnusedEvidenceRefs: assembled.UnusedEvidenceRefs,
 		IncludedEventIDs:   assembled.IncludedEventIDs, EventLayers: assembled.EventLayers,

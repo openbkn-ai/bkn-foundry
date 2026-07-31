@@ -101,6 +101,60 @@ func TestResolverRejectsTypeOrSourceSystemConfusion(t *testing.T) {
 	}
 }
 
+func TestResolverSupportsExistingEvidenceServiceRefTypes(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/bkn-backend/in/v1/knowledge-networks/supplychain":
+			_, _ = w.Write([]byte(`{"id":"supplychain","name":"供应链知识网络"}`))
+		case "/api/vega-backend/in/v1/resources/resource-1":
+			_, _ = w.Write([]byte(`{"entries":[{"id":"resource-1","name":"需求预测数据","schema_definition":[{"name":"forecast_month","display_name":"预测月份"}]}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	result, err := New(server.URL, server.URL, server.Client()).ResolveBusinessRefs(context.Background(), ibusinessresolver.ResolveRequest{
+		Refs: []ibusinessresolver.BusinessRef{
+			{RefID: "kn:supplychain", RefType: "kn"},
+			{RefID: "resource:resource-1", RefType: "resource"},
+			{RefID: "field:resource-1:forecast_month", RefType: "field"},
+		},
+	})
+	if err != nil || len(result) != 3 {
+		t.Fatalf("resolve existing evidence service refs: result=%+v err=%v", result, err)
+	}
+	for _, resolution := range result {
+		if resolution.Visibility != "visible" || resolution.Display == nil {
+			t.Fatalf("existing evidence service ref was not resolved: %+v", resolution)
+		}
+	}
+}
+
+func TestResolverKindFallsBackToSupportedPrefixWhenRefTypeIsMissing(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"kn:supplychain": "kn", "object:supplychain:forecast": "object",
+		"property:supplychain:forecast:qty": "property", "relation:supplychain:contains": "relation",
+		"resource:resource-1": "resource", "field:resource-1:qty": "field",
+		"metric:supplychain:total": "metric", "logic:supplychain:forecast:total": "logic",
+		"function:supplychain:calculate": "function", "action_type:supplychain:approve": "action_type",
+	}
+	for refID, wantKind := range tests {
+		kind, source := resolverKind(ibusinessresolver.BusinessRef{RefID: refID})
+		wantSource := "bkn"
+		if wantKind == "resource" || wantKind == "field" {
+			wantSource = "vega"
+		}
+		if kind != wantKind || source != wantSource {
+			t.Fatalf("%s resolved to %s/%s, want %s/%s", refID, kind, source, wantKind, wantSource)
+		}
+	}
+}
+
 func TestResolverMapsForbiddenToUnauthorizedWithoutLeakingDisplay(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

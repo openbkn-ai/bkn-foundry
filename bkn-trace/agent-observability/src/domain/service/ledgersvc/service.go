@@ -114,7 +114,8 @@ func validateSemanticEvidence(event ledgervo.Event) error {
 		}
 	}
 	for _, ref := range event.BusinessRefs {
-		if ref.RefID == "" || ref.BusinessDomainID != event.Owner.BusinessDomainID || ref.Version == "" || !validBusinessRefType(ref.RefType) {
+		if ref.RefID == "" || ref.BusinessDomainID != event.Owner.BusinessDomainID || ref.Version == "" ||
+			!validBusinessRefType(ref.RefType) || !ref.RefType.MatchesCanonicalRefID(ref.RefID) {
 			return &DomainError{Code: CodeInvalidEvent, Message: "business_refs contains an invalid typed business reference"}
 		}
 	}
@@ -142,7 +143,8 @@ func validateSemanticEvidence(event ledgervo.Event) error {
 		if edge.OperationID == "" || edge.OperationID != event.OperationID || edge.ObservedAt.IsZero() ||
 			edge.ObservedAt.Before(event.StartedAt) || edge.ObservedAt.After(event.EmittedAt) || !validOperationRole(edge.Role) ||
 			edge.BusinessRef.RefID == "" || edge.BusinessRef.BusinessDomainID != event.Owner.BusinessDomainID ||
-			edge.BusinessRef.Version == "" || !validBusinessRefType(edge.BusinessRef.RefType) {
+			edge.BusinessRef.Version == "" || !validBusinessRefType(edge.BusinessRef.RefType) ||
+			!edge.BusinessRef.RefType.MatchesCanonicalRefID(edge.BusinessRef.RefID) {
 			return &DomainError{Code: CodeInvalidEvent, Message: "operation_business_edges contains an invalid typed edge"}
 		}
 	}

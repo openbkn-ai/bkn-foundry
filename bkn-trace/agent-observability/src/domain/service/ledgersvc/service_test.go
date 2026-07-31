@@ -268,6 +268,32 @@ func TestEvidenceLedgerRejectsUnknownBusinessRefAndOperationRole(t *testing.T) {
 	}
 }
 
+func TestEvidenceLedgerRejectsBusinessRefTypePrefixMismatch(t *testing.T) {
+	t.Parallel()
+
+	businessRefMismatch := testEvent()
+	businessRefMismatch.BusinessRefs = []sessionvo.BusinessRef{{
+		RefType: sessionvo.BusinessRefObjectType, RefID: "resource:forecast",
+		BusinessDomainID: "domain-1", Version: "1",
+	}}
+	if _, err := ledgersvc.New(ledgerstore.New()).Ingest(context.Background(), businessRefMismatch); !ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) {
+		t.Fatalf("business ref with mismatched canonical prefix must be rejected, got %v", err)
+	}
+
+	edgeMismatch := testEvent()
+	edgeMismatch.OperationBusinessEdges = []sessionvo.OperationBusinessEdge{{
+		OperationID: edgeMismatch.OperationID,
+		BusinessRef: sessionvo.BusinessRef{
+			RefType: sessionvo.BusinessRefDataResource, RefID: "object:forecast",
+			BusinessDomainID: "domain-1", Version: "1",
+		},
+		Role: sessionvo.OperationRoleRead, ObservedAt: edgeMismatch.ObservedAt,
+	}}
+	if _, err := ledgersvc.New(ledgerstore.New()).Ingest(context.Background(), edgeMismatch); !ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) {
+		t.Fatalf("operation edge with mismatched canonical prefix must be rejected, got %v", err)
+	}
+}
+
 func TestEvidenceLedgerRejectsInvalidExecutionTimesAndForeignOperationEdges(t *testing.T) {
 	t.Parallel()
 

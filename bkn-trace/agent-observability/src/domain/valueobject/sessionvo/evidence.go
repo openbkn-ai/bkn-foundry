@@ -1,6 +1,9 @@
 package sessionvo
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type BusinessRefType string
 
@@ -17,6 +20,41 @@ const (
 	BusinessRefActionType       BusinessRefType = "action_type"
 	BusinessRefActionInstance   BusinessRefType = "action_instance"
 )
+
+// CanonicalRefPrefix returns the stable RefID prefix for a BKN Trace 3.0 business reference type.
+func (value BusinessRefType) CanonicalRefPrefix() string {
+	switch value {
+	case BusinessRefKnowledgeNetwork:
+		return "kn"
+	case BusinessRefObjectType:
+		return "object"
+	case BusinessRefObjectInstance:
+		return "object_instance"
+	case BusinessRefProperty:
+		return "property"
+	case BusinessRefRelationType:
+		return "relation"
+	case BusinessRefDataResource:
+		return "resource"
+	case BusinessRefMetric:
+		return "metric"
+	case BusinessRefLogic:
+		return "logic"
+	case BusinessRefFunction:
+		return "function"
+	case BusinessRefActionType:
+		return "action_type"
+	case BusinessRefActionInstance:
+		return "action_instance"
+	default:
+		return ""
+	}
+}
+
+func (value BusinessRefType) MatchesCanonicalRefID(refID string) bool {
+	prefix, remainder, found := strings.Cut(refID, ":")
+	return found && remainder != "" && prefix == value.CanonicalRefPrefix()
+}
 
 type EvidenceRefType string
 

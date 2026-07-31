@@ -69,10 +69,11 @@ type Receipt struct {
 }
 
 type BusinessRef struct {
-	RefType          BusinessRefType `json:"ref_type" binding:"required"`
-	RefID            string          `json:"ref_id" binding:"required"`
-	BusinessDomainID string          `json:"business_domain_id" binding:"required"`
-	Version          string          `json:"version" binding:"required"`
-	AsOf             *time.Time      `json:"as_of,omitempty"`
-	DisplayHint      string          `json:"display_hint,omitempty"`
+	RefType BusinessRefType `json:"ref_type" binding:"required"`
+	// RefID starts with the canonical prefix defined by RefType, followed by a colon and its typed identifier.
+	RefID            string     `json:"ref_id" binding:"required"`
+	BusinessDomainID string     `json:"business_domain_id" binding:"required"`
+	Version          string     `json:"version" binding:"required"`
+	AsOf             *time.Time `json:"as_of,omitempty"`
+	DisplayHint      string     `json:"display_hint,omitempty"`
 }
