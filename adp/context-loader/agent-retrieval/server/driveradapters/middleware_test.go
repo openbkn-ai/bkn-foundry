@@ -274,7 +274,7 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
 		convey.So(w.Body.String(), convey.ShouldEqual, "ok")
 		convey.So(w.Header().Get("Content-Type"), convey.ShouldEqual, "text/plain; charset=utf-8")
-		convey.So(w.Header().Get("BKN-Receipt-ID"), convey.ShouldEqual, "receipt-route")
+		convey.So(w.Header().Get(common.HeaderBKNReceiptID), convey.ShouldEqual, "receipt-route")
 	})
 }
 

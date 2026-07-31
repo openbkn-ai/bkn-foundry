@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -468,6 +469,48 @@ func TestSessionGuardConvertsDownstreamGoErrorToFailedReceipt(t *testing.T) {
 	receipt := result.StructuredContent.(map[string]any)["bkn_receipt"].(map[string]any)
 	if receipt["receipt_status"] != "failed" {
 		t.Fatalf("failed durable receipt missing: %#v", result.StructuredContent)
+	}
+}
+
+func TestSessionGuardConvertsDownstreamPanicToFailedReceipt(t *testing.T) {
+	finishCalls := 0
+	guarded := guardBusinessToolCallWithCompletion(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created:   true,
+				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
+				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
+			}, nil, nil
+		},
+		func(_ context.Context, ensured *operationResult, downstream *mcpsdk.CallToolResult) (*operationResult, *lifecycleError, error) {
+			finishCalls++
+			if !downstream.IsError {
+				t.Fatal("panic must be represented as failed tool result for finalization")
+			}
+			return &operationResult{
+				Operation: ensured.Operation,
+				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "failed"},
+			}, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			panic("sensitive downstream detail")
+		},
+	)
+
+	result, err := guarded(context.Background(), validBusinessToolRequest())
+	if err != nil {
+		t.Fatalf("business panic must not escape as protocol error: %v", err)
+	}
+	if finishCalls != 1 || !result.IsError {
+		t.Fatalf("panic left operation pending: finish_calls=%d result=%#v", finishCalls, result)
+	}
+	text, ok := mcpsdk.AsTextContent(result.Content[0])
+	if !ok || strings.Contains(text.Text, "sensitive") {
+		t.Fatalf("panic detail leaked to caller: %#v", result.Content)
+	}
+	receipt := result.StructuredContent.(map[string]any)["bkn_receipt"].(map[string]any)
+	if receipt["receipt_status"] != "failed" {
+		t.Fatalf("failed receipt missing after panic: %#v", result.StructuredContent)
 	}
 }
 

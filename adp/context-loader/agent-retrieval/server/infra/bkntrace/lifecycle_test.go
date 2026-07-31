@@ -102,6 +102,39 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	}
 }
 
+func TestLifecycleClientDoesNotClaimDurableEvidenceWithoutAck(t *testing.T) {
+	var durability string
+	client := NewLifecycleClient("http://core.test", &http.Client{
+		Transport: lifecycleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			durability, _ = body["evidence_durability"].(string)
+			return lifecycleJSONResponse(http.StatusOK, OperationResult{
+				Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+				Receipt: Receipt{
+					ReceiptID: "receipt-1", ReceiptStatus: "completed",
+					EvidenceDurability: durability,
+				},
+			}), nil
+		}),
+	})
+
+	_, apiErr, err := client.CompleteAttempt(
+		trustedLifecycleTestContext(),
+		FinishAttemptInput{
+			OperationID: "op-1", Attempt: 1, ReceiptID: "receipt-1",
+			PayloadHash: "sha256:result", RequestID: "req_01JZVALIDREQUESTID000000011",
+			TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		},
+	)
+	if err != nil || apiErr != nil {
+		t.Fatalf("complete attempt failed: api=%#v err=%v", apiErr, err)
+	}
+	if durability != "pending" {
+		t.Fatalf("evidence durability = %q, want pending without durable ACK", durability)
+	}
+}
+
 func TestLifecycleClientStartsExplicitRetryWithAuthoritativeLease(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -157,25 +190,6 @@ func TestLifecycleClientStartsExplicitRetryWithAuthoritativeLease(t *testing.T) 
 	}
 }
 
-func TestLifecycleClientReadinessRequiresReachableCoreWithoutBusinessContext(t *testing.T) {
-	if err := NewLifecycleClient("", nil).Ready(context.Background()); !errors.Is(err, ErrFeatureNotInstalled) {
-		t.Fatalf("unconfigured readiness error = %v, want feature not installed", err)
-	}
-	var path string
-	client := NewLifecycleClient("http://core.test", &http.Client{
-		Transport: lifecycleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-			path = r.URL.Path
-			return lifecycleJSONResponse(http.StatusOK, map[string]any{"status": "ready"}), nil
-		}),
-	})
-	if err := client.Ready(context.Background()); err != nil {
-		t.Fatalf("reachable Core was not ready: %v", err)
-	}
-	if path != "/health/ready" {
-		t.Fatalf("readiness path = %q, want /health/ready", path)
-	}
-}
-
 func trustedLifecycleTestContext() context.Context {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		TenantID: "tenant-1", BusinessDomain: "domain-1",
@@ -184,6 +198,36 @@ func trustedLifecycleTestContext() context.Context {
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
 	})
+}
+
+func TestEnsureFinishCorrelationDerivesStableSyntheticTraceFromRequest(t *testing.T) {
+	contextFor := func(requestID string) context.Context {
+		return common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+			RequestID: requestID,
+		})
+	}
+	first, err := ensureFinishCorrelation(contextFor("req_01JZVALIDREQUESTID000000021"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := ensureFinishCorrelation(contextFor("req_01JZVALIDREQUESTID000000021"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := ensureFinishCorrelation(contextFor("req_01JZVALIDREQUESTID000000022"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSpan := trace.SpanContextFromContext(first)
+	replaySpan := trace.SpanContextFromContext(replay)
+	otherSpan := trace.SpanContextFromContext(other)
+	if firstSpan.TraceID() != replaySpan.TraceID() || firstSpan.SpanID() != replaySpan.SpanID() {
+		t.Fatalf("same request produced different synthetic correlation: %s/%s vs %s/%s",
+			firstSpan.TraceID(), firstSpan.SpanID(), replaySpan.TraceID(), replaySpan.SpanID())
+	}
+	if firstSpan.TraceID() == otherSpan.TraceID() {
+		t.Fatalf("different requests produced the same synthetic trace ID: %s", firstSpan.TraceID())
+	}
 }
 
 func TestLifecycleValueTypesPreserveCore30RequiredFields(t *testing.T) {

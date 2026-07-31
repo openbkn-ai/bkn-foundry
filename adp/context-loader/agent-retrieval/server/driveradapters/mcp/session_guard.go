@@ -142,7 +142,10 @@ func guardBusinessToolCallWithCompletion(
 			traceContext.Attempt = attempt
 			ctx = common.SetTraceContextToCtx(ctx, traceContext)
 		}
-		result, err := next(ctx, req)
+		result, err, panicked := callBusinessTool(ctx, req, next)
+		if panicked {
+			ctx = context.WithValue(ctx, downstreamRetryableKey{}, true)
+		}
 		if err != nil {
 			result = mcpsdk.NewToolResultError(err.Error())
 			ctx = context.WithValue(ctx, downstreamRetryableKey{}, true)
@@ -174,6 +177,22 @@ func guardBusinessToolCallWithCompletion(
 		}
 		return result, nil
 	}
+}
+
+func callBusinessTool(
+	ctx context.Context,
+	req mcpsdk.CallToolRequest,
+	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
+) (result *mcpsdk.CallToolResult, err error, panicked bool) {
+	defer func() {
+		if recover() != nil {
+			result = mcpsdk.NewToolResultError("business tool execution failed")
+			err = nil
+			panicked = true
+		}
+	}()
+	result, err = next(ctx, req)
+	return result, err, false
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {

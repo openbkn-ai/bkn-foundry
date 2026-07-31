@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
 func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
@@ -274,8 +275,8 @@ func writeBufferedLifecycleResponse(
 	buffered *lifecycleResponseWriter,
 	receipt bkntrace.Receipt,
 ) {
-	c.Header("BKN-Receipt-ID", receipt.ReceiptID)
-	c.Header("BKN-Operation-ID", receipt.OperationID)
+	c.Header(common.HeaderBKNReceiptID, receipt.ReceiptID)
+	c.Header(common.HeaderBKNOperationID, receipt.OperationID)
 	c.Status(buffered.status)
 	_, _ = c.Writer.Write(buffered.body.Bytes())
 }

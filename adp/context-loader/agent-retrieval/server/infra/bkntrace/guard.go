@@ -8,7 +8,7 @@ package bkntrace
 
 import (
 	"context"
-	"crypto/rand"
+	"crypto/sha256"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -99,20 +99,13 @@ func ensureFinishCorrelation(ctx context.Context) (context.Context, error) {
 	if trace.SpanContextFromContext(ctx).IsValid() {
 		return ctx, nil
 	}
+	traceContext, _ = common.GetTraceContextFromCtx(ctx)
+	traceSum := sha256.Sum256([]byte("bkn.synthetic.trace:" + traceContext.RequestID))
+	spanSum := sha256.Sum256([]byte("bkn.synthetic.span:" + traceContext.RequestID))
 	var traceID trace.TraceID
 	var spanID trace.SpanID
-	if _, err := rand.Read(traceID[:]); err != nil {
-		return ctx, err
-	}
-	if _, err := rand.Read(spanID[:]); err != nil {
-		return ctx, err
-	}
-	if !traceID.IsValid() {
-		traceID[len(traceID)-1] = 1
-	}
-	if !spanID.IsValid() {
-		spanID[len(spanID)-1] = 1
-	}
+	copy(traceID[:], traceSum[:len(traceID)])
+	copy(spanID[:], spanSum[:len(spanID)])
 	return trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID: traceID,
 		SpanID:  spanID,

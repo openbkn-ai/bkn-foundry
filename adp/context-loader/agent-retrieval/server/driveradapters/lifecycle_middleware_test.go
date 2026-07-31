@@ -251,7 +251,7 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body["answer"] != "ok" {
 				t.Fatalf("downstream REST response was not preserved: %v body=%s", err, response.Body)
 			}
-			if response.Header().Get("BKN-Receipt-ID") != "receipt-rest-1" {
+			if response.Header().Get(common.HeaderBKNReceiptID) != "receipt-rest-1" {
 				t.Fatalf("durable receipt header missing: %#v", response.Header())
 			}
 			mu.Lock()

@@ -185,6 +185,7 @@ type FinishAttemptInput struct {
 	PayloadHash          string
 	RequestID            string
 	TraceID              string
+	EvidenceDurability   string
 	Retryable            bool
 	ObservedEvidenceRefs []string
 }
@@ -207,26 +208,6 @@ func NewLifecycleClientFromEnv() *LifecycleClient {
 
 func (c *LifecycleClient) Enabled() bool {
 	return c != nil && c.baseURL != ""
-}
-
-// Ready verifies the Core process is reachable without requiring business context.
-func (c *LifecycleClient) Ready(ctx context.Context) error {
-	if !c.Enabled() {
-		return ErrFeatureNotInstalled
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health/ready", nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("BKN Trace Core readiness returned HTTP %d", resp.StatusCode)
-	}
-	return nil
 }
 
 func (c *LifecycleClient) EnsureOperation(
@@ -272,7 +253,11 @@ func (c *LifecycleClient) CompleteAttempt(
 	ctx context.Context,
 	input FinishAttemptInput,
 ) (OperationResult, *APIError, error) {
-	return c.finishAttempt(ctx, input, "complete", "durable")
+	evidenceDurability := strings.TrimSpace(input.EvidenceDurability)
+	if evidenceDurability == "" {
+		evidenceDurability = "pending"
+	}
+	return c.finishAttempt(ctx, input, "complete", evidenceDurability)
 }
 
 func (c *LifecycleClient) FailAttempt(
