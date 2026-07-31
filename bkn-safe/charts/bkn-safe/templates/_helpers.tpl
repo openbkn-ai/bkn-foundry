@@ -6,12 +6,19 @@ Stability is the whole point: the fingerprint must survive Pod rebuilds and
 Helm upgrades, because a changed fingerprint invalidates an activated license
 (openbkn-ai/bkn-foundry#508). Resolution order:
 
-  1. an explicit config.license.instanceId wins — deploy.sh passes the value it
-     derived from the node's hardware (status.nodeInfo.systemUUID, falling back
-     to nodeInfo.machineID);
+  1. an explicit config.license.instanceId wins. Note this is the OVERRIDE, not
+     the sticky path: a bare `helm upgrade --set config.license.instanceId=…`
+     moves the identity, and moving it invalidates the activated license. That
+     is deliberate — it is the escape hatch for pinning an identity by hand —
+     but it means the chart alone cannot protect an operator from typing it.
+     deploy.sh is what makes the normal path sticky: it reads the value already
+     in the cluster FIRST and passes that back here, and only derives from the
+     node (status.nodeInfo.systemUUID, falling back to nodeInfo.machineID) when
+     the cluster has none;
   2. otherwise reuse the value already stored in the release's instance-id
-     ConfigMap, so a `helm upgrade` that forgets the --set does not silently
-     drop the identity;
+     ConfigMap, so a `helm upgrade` that passes no value at all — the plain
+     `helm upgrade` an operator runs by hand — does not silently drop the
+     identity;
   3. otherwise empty — no key is rendered, and licverify falls back to its own
      host-identity chain. Inside a Pod that chain finds nothing durable and
      fails loudly rather than inventing a value that drifts.

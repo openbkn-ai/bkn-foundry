@@ -376,43 +376,68 @@ _bkn_safe_instance_id() {
 # multi-node cluster must resolve the same identity on every run. Prints nothing
 # when no node reports a usable value.
 _bkn_safe_derive_instance_id() {
-    local selector field value lowered
+    local selector field candidate
     for field in systemUUID machineID; do
         for selector in "-l node-role.kubernetes.io/control-plane" ""; do
-            # shellcheck disable=SC2086
-            value="$(kubectl get nodes ${selector} --sort-by=.metadata.name \
-                -o jsonpath="{.items[0].status.nodeInfo.${field}}" 2>/dev/null || true)"
-            # tr, not ${value,,}: deploy.sh also runs on macOS, whose /bin/bash
-            # is 3.2 and has no case-conversion expansion.
-            lowered="$(printf '%s' "${value}" | tr 'A-Z' 'a-z')"
-            # Firmware placeholders that several vendors ship identically on
-            # every unit — using one would give unrelated hosts one identity.
-            case "${lowered}" in
-                ""|none|"not specified"|"default string"|\
-                00000000-0000-0000-0000-000000000000|\
-                ffffffff-ffff-ffff-ffff-ffffffffffff|\
-                03000200-0400-0500-0006-000700080009)
-                    continue
-                    ;;
-            esac
-            printf '%s' "${value}"
-            return 0
+            # Sorted here rather than with `kubectl --sort-by`: there sorting is
+            # a printer concern, and the identity of a whole install should not
+            # rest on how it composes with -o jsonpath across kubectl versions.
+            # One "<node-name> <value>" line per node; nodes that report nothing
+            # yield a name-only line and are skipped.
+            while read -r _ candidate; do
+                if _bkn_safe_usable_instance_id "${candidate}"; then
+                    printf '%s' "${candidate}"
+                    return 0
+                fi
+            done <<EOF
+$(_bkn_safe_node_field "${selector}" "${field}" | sort)
+EOF
         done
     done
     return 0
 }
 
-# Per-release extra --set values, filled into CORE_RELEASE_EXTRA_SETS.
+# One "<node-name> <field-value>" line per node, unsorted.
+_bkn_safe_node_field() {
+    local selector="$1" field="$2"
+    # shellcheck disable=SC2086
+    kubectl get nodes ${selector} -o \
+        jsonpath="{range .items[*]}{.metadata.name}{' '}{.status.nodeInfo.${field}}{'\n'}{end}" \
+        2>/dev/null || true
+}
+
+# Reject firmware placeholders that several vendors ship identically on every
+# unit — using one would hand unrelated hosts a single identity.
+_bkn_safe_usable_instance_id() {
+    local lowered
+    # tr, not ${1,,}: deploy.sh also runs on macOS, whose /bin/bash is 3.2 and
+    # has no case-conversion expansion.
+    lowered="$(printf '%s' "${1:-}" | tr 'A-Z' 'a-z')"
+    case "${lowered}" in
+        ""|none|"not specified"|"default string"|\
+        00000000-0000-0000-0000-000000000000|\
+        ffffffff-ffff-ffff-ffff-ffffffffffff|\
+        03000200-0400-0500-0006-000700080009)
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+# Per-release extra values, filled into CORE_RELEASE_EXTRA_SETS (--set) and
+# CORE_RELEASE_EXTRA_SET_STRINGS (--set-string).
 # bkn-safe: pass the per-install platform initial password recorded in
 # config.yaml by generate_config_yaml (seeded admin + users created without an
 # explicit password — no baked-in default), plus the license instance identity.
 # Applied BEFORE CORE_SET_VALUES so an explicit --set config.initialPassword=...
 # still wins.
 CORE_RELEASE_EXTRA_SETS=()
+CORE_RELEASE_EXTRA_SET_STRINGS=()
 _openbkn_release_extra_sets() {
     local release_name="$1"
     local namespace="${2:-${CORE_NAMESPACE}}"
     CORE_RELEASE_EXTRA_SETS=()
+    CORE_RELEASE_EXTRA_SET_STRINGS=()
     if [[ "${release_name}" == "bkn-safe" ]]; then
         local initial_pwd
         initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
@@ -425,9 +450,11 @@ _openbkn_release_extra_sets() {
         local instance_id
         instance_id="$(_bkn_safe_instance_id "${namespace}")"
         if [[ -n "${instance_id}" ]]; then
-            CORE_RELEASE_EXTRA_SETS+=("config.license.instanceId=${instance_id}")
+            # --set-string: an all-digit machineID would otherwise be coerced to
+            # a number and come back out reformatted, changing the fingerprint.
+            CORE_RELEASE_EXTRA_SET_STRINGS+=("config.license.instanceId=${instance_id}")
         else
-            log_warn "Could not derive a hardware instance identity from any node (status.nodeInfo.systemUUID) — commercial licenses cannot be activated on this cluster until config.license.instanceId is set to a host-derived, stable value."
+            log_warn "Could not derive a hardware instance identity from any node (status.nodeInfo.systemUUID / machineID) — commercial licenses cannot be activated on this cluster until config.license.instanceId is set to a host-derived, stable value."
         fi
     fi
 }
@@ -479,6 +506,9 @@ _install_openbkn_release_local() {
     _openbkn_release_extra_sets "${release_name}" "${namespace}"
     for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
         helm_args+=("--set" "${set_value}")
+    done
+    for set_value in "${CORE_RELEASE_EXTRA_SET_STRINGS[@]}"; do
+        helm_args+=("--set-string" "${set_value}")
     done
     for set_value in "${CORE_SET_VALUES[@]}"; do
         helm_args+=("--set" "${set_value}")
@@ -549,6 +579,9 @@ _install_openbkn_release_repo() {
     _openbkn_release_extra_sets "${release_name}" "${namespace}"
     for set_value in "${CORE_RELEASE_EXTRA_SETS[@]}"; do
         helm_args+=("--set" "${set_value}")
+    done
+    for set_value in "${CORE_RELEASE_EXTRA_SET_STRINGS[@]}"; do
+        helm_args+=("--set-string" "${set_value}")
     done
     for set_value in "${CORE_SET_VALUES[@]}"; do
         helm_args+=("--set" "${set_value}")
