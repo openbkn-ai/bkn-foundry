@@ -13,6 +13,7 @@ from typing import Any
 
 from jsonschema import validate as _jsonschema_validate
 from jsonschema.exceptions import SchemaError, ValidationError
+from langchain_core.messages import SystemMessage
 
 from app.core.llm import normalize_response_format
 
@@ -30,14 +31,41 @@ def _extract_json(text: str) -> Any:
     return json.loads(t)
 
 
-async def structured_extract(model, messages: list, schema: dict) -> dict:
+def _with_system_prompt(messages: list, system_prompt: str | None) -> list:
+    """把 agent 的系统提示词补回抽取调用的消息头。
+
+    langchain 1.x 的 create_agent(system_prompt=...) 只在模型请求时注入，不落进
+    graph state——实测 result["messages"] 只有 [HumanMessage, AIMessage]。抽取是
+    另起的一次模型调用，若不补，它看到的就只有「原始输入 + 上一轮回答」，agent
+    的领域约束一条都不在场。对语义理解这类任务，最省力的填法就是把输入里的技术
+    字段名原样抄进 display_name（#556）。
+
+    state 里已带 SystemMessage 时不重复补（未来 langgraph 若改行为，这里自适应）。
+    """
+    if not system_prompt:
+        return list(messages)
+    if messages and isinstance(messages[0], SystemMessage):
+        return list(messages)
+    return [SystemMessage(content=system_prompt), *messages]
+
+
+async def structured_extract(
+    model, messages: list, schema: dict, system_prompt: str | None = None
+) -> dict:
     """从 messages 抽出符合 schema 的对象。model 应为非流式（见 build_chat_model）。"""
-    obj, _ = await structured_extract_with_path(model, messages, schema)
+    obj, _ = await structured_extract_with_path(model, messages, schema, system_prompt)
     return obj
 
 
-async def structured_extract_with_path(model, messages: list, schema: dict) -> tuple[dict, str]:
-    """返回结构化对象及 validation path：native 或 fallback。"""
+async def structured_extract_with_path(
+    model, messages: list, schema: dict, system_prompt: str | None = None
+) -> tuple[dict, str]:
+    """返回结构化对象及 validation path：native 或 fallback。
+
+    system_prompt 为 agent 本轮生效的系统提示词（含技能段），抽取调用必须带上，
+    否则模型在无约束状态下填 schema，见 _with_system_prompt。
+    """
+    messages = _with_system_prompt(messages, system_prompt)
     # 1. 原生
     try:
         norm = normalize_response_format(schema)
