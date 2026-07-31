@@ -10,8 +10,9 @@
 | [function.yaml](function.yaml) | 函数 | `POST /function/execute`、`GET /function/dependencies`、`GET /function/dependency-versions/{package_name}`、`GET /template/{template_type}`、`POST /ai_generate/function/{type}`、`GET /ai_generate/prompt/{type}` |
 | [sandbox.yaml](sandbox.yaml) | 沙箱观测 | `GET /sandbox/health`、`GET /sandbox/pool`、`GET /sandbox/sessions`、`GET /sandbox/sessions/{id}` |
 | [impex.yaml](impex.yaml) | 导入导出 | `GET /impex/export/{type}/{id}`、`POST /impex/import/{type}` |
+| [operator.yaml](operator.yaml) | 算子 | 注册 / 编辑 / 更新 / 列表 / 详情 / 批量取名 / 状态 / 删除 / 调试 / 历史版本 / 市场 / 分类 / 内置算子，共 15 条 |
 
-> 算子 / 工具箱 / MCP / Skill 四面（约 77 个端点）尚未收录，见本文末「覆盖边界」。
+> 工具箱 / MCP / Skill 三面（62 个端点）尚未收录，见本文末「覆盖边界」。
 
 ## 写一个函数：完整走一遍
 
@@ -113,15 +114,18 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 ## 覆盖边界
 
-本批次收录**函数 6 + 沙箱观测 4 + 导入导出 2 = 12 个端点**。同一公开面还有 77 个
-端点未文档化：
+已收录**函数 6 + 沙箱观测 4 + 导入导出 2 + 算子 15 = 27 个端点**（公开面共 89）。
+剩余 62 个：
 
 | 面 | 端点数 | 说明 |
 |---|---|---|
-| 算子 operator | 15 | 注册 / 编辑 / 列表 / 调试 / 版本历史 / 市场 |
 | 工具箱 toolbox | 22 | 工具箱与工具的增删改查、调试、代理调用、市场 |
 | MCP | 15 | MCP 注册、状态、工具列表与代理调用、市场 |
 | Skill | 25 | 注册 / 发布 / 版本 / 内容读取 / 下载 / 索引构建 |
+
+**验证程度分两级**，模块内不同文件不一样：**路由与收录范围**全部从代码的
+`RegisterPublic` 核过；**字段级**只有实机打过的算数——函数 5 条、沙箱 3 条、
+算子的分类与两个列表。其余按 Go 类型与服务目录草稿写成，标注为未实机验证。
 
 这些接口的**响应结构未经本批次验证**，改动时请人工核对。服务目录下
 `adp/execution-factory/operator-integration/docs/apis/` 里有一份历史草稿可作参照，

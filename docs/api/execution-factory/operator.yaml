@@ -1,0 +1,1305 @@
+---
+openapi: 3.0.3
+info:
+  title: 算子
+  description: |
+    算子（operator）是把一段能力**注册成可复用、可版本化、可发布**的产物。
+    [function.yaml](function.yaml) 里的 `/function/execute` 是「跑一段临时代码」；
+    这里是「把它固化下来，带上元数据、执行控制与生命周期」。
+
+    **两种元数据类型**，注册时用 `operator_metadata_type` 指定，**决定哪些字段必填**：
+
+    | 类型 | 算子是什么 | 必填 |
+    |---|---|---|
+    | `function` | 一段 Python 代码 | `function_input`（含 `code`、入参 / 出参定义） |
+    | `openapi` | 一个已有的 HTTP 接口 | `data`（OpenAPI JSON/YAML 原文） |
+
+    **生命周期**：`unpublish`（新建未发布）→ `published`（已发布）→ `offline`（下架），
+    已发布后再改会进 `editing`。每次编辑产生新 `version`，历史版本可查、可回看。
+    发布后的算子才会出现在**算子市场**（`/operator/market`）。
+
+    **业务域**：注册、列表、删除、市场相关接口要求 `x-business-domain` 头，
+    算子按业务域隔离。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-operator-integration/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /operator/register:
+    post:
+      tags:
+        - Operator
+      summary: 注册算子
+      operationId: registerOperator
+      description: |
+        创建一个新算子。`operator_metadata_type` 决定必填字段——`function` 走
+        `function_input`，`openapi` 走 `data`。
+
+        `direct_publish=true` 表示注册完直接进入 `published`，跳过手工发布一步。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorRegisterRequest'
+            examples:
+              函数算子:
+                value:
+                  operator_metadata_type: function
+                  description: 求和
+                  operator_info:
+                    operator_type: basic
+                    execution_mode: sync
+                    category: data_process
+                  function_input:
+                    name: sum_numbers
+                    description: 把两个数相加
+                    script_type: python
+                    code: |
+                      from typing import Dict, Any
+
+                      def handler(event: Dict[str, Any]) -> Any:
+                          return {"sum": event.get("a", 0) + event.get("b", 0)}
+                    inputs:
+                      - name: a
+                        type: number
+                        required: true
+                      - name: b
+                        type: number
+                        required: true
+                    outputs:
+                      - name: sum
+                        type: number
+                  direct_publish: true
+              OpenAPI 算子:
+                value:
+                  operator_metadata_type: openapi
+                  description: 查询天气
+                  data: '{"openapi":"3.0.0","info":{"title":"weather","version":"1.0"},"paths":{}}'
+      responses:
+        '200':
+          description: 注册结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorRegisterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/info:
+    post:
+      tags:
+        - Operator
+      summary: 编辑算子
+      operationId: editOperator
+      description: |
+        改已有算子。**方法是 POST 不是 PUT**，算子由请求体里的 `operator_id` 指定。
+
+        编辑已发布的算子会把状态推进到 `editing`，并产生新的 `version`；
+        原来那个已发布版本仍在历史里可查。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorEditRequest'
+      responses:
+        '200':
+          description: 编辑结果，含新版本号与当前状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorEditResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/info/update:
+    post:
+      tags:
+        - Operator
+      summary: 用 OpenAPI 原文整体更新算子
+      operationId: updateOperatorByOpenAPI
+      description: |
+        用一份新的元数据整体覆盖算子，请求体是注册请求再加一个 `operator_id`。
+        与 `/operator/info` 的差别：那边是按字段改，这边是整包替换。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorUpdateRequest'
+      responses:
+        '200':
+          description: 更新结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorRegisterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/info/list:
+    get:
+      tags:
+        - Operator
+      summary: 分页查询算子
+      operationId: listOperators
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+        provides:
+          ef_operator_id: data[0].operator_id
+      description: |
+        按业务域分页列出算子，支持按名称、状态、分类、创建人、算子类型过滤。
+
+        **`page_size` 传负数等价于「不分页、全量返回」**（服务端会把它翻译成
+        `all=true`）；正常范围是 1–100。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按名称过滤。
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/BizStatus'
+          description: 按状态过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤，取值见 `GET /operator/category`。
+        - name: operator_type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OperatorType'
+          description: 按算子类型过滤。
+        - name: is_data_source
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 只看 / 排除数据源算子。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 算子分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorPage'
+              examples:
+                空结果:
+                  value:
+                    total: 0
+                    page: 1
+                    page_size: 10
+                    total_pages: 0
+                    has_next: false
+                    has_prev: false
+                    data: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/info/{operator_id}:
+    get:
+      tags:
+        - Operator
+      summary: 查询算子详情
+      operationId: getOperator
+      description: 按 ID 取算子的当前版本详情，含元数据与执行控制。
+      parameters:
+        - $ref: '#/components/parameters/OperatorID'
+      responses:
+        '200':
+          description: 算子详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorDataInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/names:
+    post:
+      tags:
+        - Operator
+      summary: 按 ID 批量取算子名
+      operationId: getOperatorNames
+      description: |
+        给一批算子 ID，换回它们的名称。前端的对象级授权页用它回显名字。
+
+        **不存在的 ID 会被静默略过**，不报错也不占位——调用方要自己比对哪些没回来。
+        `ids` 传空数组时返回空 `entries`。
+
+        工具箱、Skill 有同名同形的接口（`/tool-box/names`、`/skills/names`），
+        契约完全一致。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchNamesRequest'
+      responses:
+        '200':
+          description: ID 到名称的映射
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchNamesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/status:
+    post:
+      tags:
+        - Operator
+      summary: 批量改算子状态
+      operationId: updateOperatorStatus
+      description: |
+        发布 / 下架 / 撤回。**请求体是数组**，一次可以改多个算子。
+
+        把状态改成 `published` 即发布，算子随即出现在算子市场；改成 `offline`
+        即从市场下架。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/OperatorStatusItem'
+            examples:
+              批量发布:
+                value:
+                  - operator_id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                    status: published
+                  - operator_id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+                    status: offline
+      responses:
+        '200':
+          description: 状态更新成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/delete:
+    delete:
+      tags:
+        - Operator
+      summary: 批量删除算子
+      operationId: deleteOperators
+      description: |
+        **DELETE 带请求体**，且请求体是数组——不是常见的路径参数删除，
+        很多 HTTP 客户端默认不给 DELETE 发 body，注意。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required:
+                  - operator_id
+                properties:
+                  operator_id:
+                    type: string
+                    format: uuid
+                    description: 算子 ID。
+            examples:
+              批量删除:
+                value:
+                  - operator_id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      responses:
+        '200':
+          description: 删除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/debug:
+    post:
+      tags:
+        - Operator
+      summary: 调试算子
+      operationId: debugOperator
+      description: |
+        用指定版本跑一次算子，看真实请求与响应。调的是**某个具体 version**，
+        不是「当前版本」——`version` 必填。
+
+        请求参数按 HTTP 的四个位置分开传：`header` / `query` / `path` / `body`。
+        函数类算子只用 `body`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DebugOperatorRequest'
+            examples:
+              调试:
+                value:
+                  operator_id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                  version: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+                  timeout: 30
+                  body:
+                    a: 1
+                    b: 2
+      responses:
+        '200':
+          description: 调试结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/history/{operator_id}:
+    get:
+      tags:
+        - Operator
+      summary: 查询算子历史版本列表
+      operationId: listOperatorHistory
+      description: 列出该算子已发布过的版本。
+      parameters:
+        - $ref: '#/components/parameters/OperatorID'
+      responses:
+        '200':
+          description: 历史版本列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OperatorDataInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/history/{operator_id}/{version}:
+    get:
+      tags:
+        - Operator
+      summary: 查询算子指定历史版本详情
+      operationId: getOperatorHistoryDetail
+      description: 取某个已发布版本的完整定义，用于版本对比或回看。
+      parameters:
+        - $ref: '#/components/parameters/OperatorID'
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 版本 ID。
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 版本号（递增序号），与 `version` 二选一定位。
+      responses:
+        '200':
+          description: 该版本的算子详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorDataInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/market:
+    get:
+      tags:
+        - Operator
+      summary: 算子市场列表
+      operationId: listOperatorMarket
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+      description: |
+        市场只收**已发布 / 已下架**的算子——`status` 的可选值只有 `published`
+        与 `offline`，传 `unpublish` / `editing` 会 400。这是它与
+        `/operator/info/list` 的关键差别：那边看的是工作区的全部算子。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - published
+              - offline
+          description: 市场内的状态过滤，只接受这两个值。
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按名称过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: release_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按发布人过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 市场分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/market/{operator_id}:
+    get:
+      tags:
+        - Operator
+      summary: 算子市场详情
+      operationId: getOperatorMarketDetail
+      description: 在市场视角查看某个算子的详情。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/OperatorID'
+      responses:
+        '200':
+          description: 算子详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorDataInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/category:
+    get:
+      tags:
+        - Operator
+      summary: 算子分类列表
+      operationId: listOperatorCategories
+      x-contract-probe:
+        readonly: true
+        order: 1
+      description: |
+        返回可用的算子分类。`category_type` 是机器可读值（过滤与注册时填它），
+        `name` 是随请求语言本地化的显示名。
+      responses:
+        '200':
+          description: 分类列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryInfo'
+              examples:
+                实测:
+                  value:
+                    - category_type: other_category
+                      name: 未分类
+                    - category_type: system
+                      name: 系统工具
+                    - category_type: data_query
+                      name: 数据查询
+                    - category_type: data_analysis
+                      name: 数据分析
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/intcomp:
+    post:
+      tags:
+        - Operator
+      summary: 注册内置算子
+      operationId: registerInternalOperator
+      description: |
+        注册**内置算子**——随平台预置、在列表里带 `is_internal: true` 标记的那类。
+        请求体与普通注册一致，区别在于归属与可见性由平台控制。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperatorRegisterRequest'
+      responses:
+        '200':
+          description: 注册结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorRegisterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    BusinessDomain:
+      name: x-business-domain
+      in: header
+      required: true
+      schema:
+        type: string
+      description: 业务域 ID。算子按业务域隔离，缺失返回 400。
+    OperatorID:
+      name: operator_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 算子 ID。
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 页码，从 1 开始。
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        maximum: 100
+        default: 10
+      description: 每页数量，上限 100。**传负数等价于不分页全量返回**。
+    SortBy:
+      name: sort_by
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - update_time
+          - create_time
+          - name
+        default: update_time
+      description: 排序字段。
+    SortOrder:
+      name: sort_order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+      description: 排序方向。
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    NotFound:
+      description: 算子或版本不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  schemas:
+    BizStatus:
+      type: string
+      enum:
+        - unpublish
+        - published
+        - offline
+        - editing
+      description: |
+        生命周期状态：`unpublish` 未发布、`published` 已发布、`offline` 已下架、
+        `editing` 已发布后编辑中。
+
+    OperatorType:
+      type: string
+      enum:
+        - basic
+        - composite
+      description: 算子类型：基础算子 / 组合算子。
+
+    ExecutionMode:
+      type: string
+      enum:
+        - sync
+        - async
+        - stream
+      description: 执行模式。
+
+    MetadataType:
+      type: string
+      enum:
+        - openapi
+        - function
+      description: |
+        元数据类型。`function` 走 `function_input`，`openapi` 走 `data`，
+        二者决定注册时哪些字段必填。
+
+    CommonPage:
+      type: object
+      description: 本服务通用的分页信封。
+      properties:
+        total:
+          type: integer
+          description: 总记录数。
+        page:
+          type: integer
+          description: 当前页码。
+        page_size:
+          type: integer
+          description: 每页数量。
+        total_pages:
+          type: integer
+          description: 总页数。
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+
+    OperatorPage:
+      allOf:
+        - $ref: '#/components/schemas/CommonPage'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/OperatorDataInfo'
+              description: 算子列表。
+
+    OperatorRegisterRequest:
+      type: object
+      required:
+        - operator_metadata_type
+      properties:
+        operator_metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        description:
+          type: string
+          description: 算子描述。
+        operator_info:
+          $ref: '#/components/schemas/OperatorInfo'
+        operator_execute_control:
+          $ref: '#/components/schemas/OperatorExecuteControl'
+        function_input:
+          $ref: '#/components/schemas/FunctionInput'
+        data:
+          type: string
+          description: |
+            OpenAPI 原文（JSON 或 YAML 字符串）。
+            **`operator_metadata_type=openapi` 时必填**。
+        extend_info:
+          type: object
+          additionalProperties: true
+          description: 扩展信息，原样存取。
+        direct_publish:
+          type: boolean
+          description: 注册后直接发布，跳过手工发布一步。
+
+    OperatorUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/OperatorRegisterRequest'
+        - type: object
+          required:
+            - operator_id
+          properties:
+            operator_id:
+              type: string
+              format: uuid
+              description: 要更新的算子 ID。
+
+    OperatorRegisterResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+            - failed
+          description: 注册结果。
+        operator_id:
+          type: string
+          description: 算子 ID。
+        version:
+          type: string
+          description: 本次产生的版本 ID。
+        error:
+          description: 失败原因；成功时不返回。
+
+    OperatorEditRequest:
+      type: object
+      required:
+        - operator_id
+      properties:
+        operator_id:
+          type: string
+          format: uuid
+          description: 算子 ID。
+        name:
+          type: string
+          description: 算子名称。
+        description:
+          type: string
+          description: 算子描述。
+        operator_info:
+          $ref: '#/components/schemas/OperatorInfoEdit'
+        operator_execute_control:
+          $ref: '#/components/schemas/OperatorExecuteControl'
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        function_input:
+          $ref: '#/components/schemas/FunctionInputEdit'
+        data:
+          type: string
+          description: OpenAPI 原文，编辑 openapi 类算子时用。
+        extend_info:
+          type: object
+          additionalProperties: true
+          description: 扩展信息。
+
+    OperatorEditResponse:
+      type: object
+      properties:
+        operator_id:
+          type: string
+        version:
+          type: string
+          description: 编辑后产生的新版本 ID。
+        status:
+          $ref: '#/components/schemas/BizStatus'
+
+    OperatorInfo:
+      type: object
+      properties:
+        operator_type:
+          $ref: '#/components/schemas/OperatorType'
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        category:
+          type: string
+          default: other_category
+          description: 算子分类，取值见 `GET /operator/category`。
+        category_name:
+          type: string
+          description: 分类显示名（本地化）。响应里返回，请求不用传。
+        source:
+          type: string
+          default: unknown
+          description: 算子来源，如 `system` / `unknown`。
+        is_data_source:
+          type: boolean
+          default: false
+          description: 是否为数据源算子。
+
+    OperatorInfoEdit:
+      type: object
+      description: 编辑时的算子信息，比 `OperatorInfo` 少了只读的 `category_name`。
+      properties:
+        operator_type:
+          $ref: '#/components/schemas/OperatorType'
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        category:
+          type: string
+        source:
+          type: string
+        is_data_source:
+          type: boolean
+
+    OperatorExecuteControl:
+      type: object
+      description: 执行控制：超时与重试。
+      properties:
+        timeout:
+          type: integer
+          format: int64
+          default: 3000
+          description: 超时时间。
+        retry_policy:
+          $ref: '#/components/schemas/RetryPolicy'
+
+    RetryPolicy:
+      type: object
+      description: 指数退避重试策略。
+      properties:
+        max_attempts:
+          type: integer
+          format: int64
+          default: 3
+          description: 最大重试次数。
+        initial_delay:
+          type: integer
+          format: int64
+          default: 1000
+          description: 初始延迟（毫秒）。
+        backoff_factor:
+          type: integer
+          format: int64
+          default: 2
+          description: 指数退避因子。
+        max_delay:
+          type: integer
+          format: int64
+          default: 6000
+          description: 最大延迟（毫秒）。
+        retry_conditions:
+          type: object
+          description: 触发重试的条件。
+          properties:
+            status_code:
+              type: array
+              items:
+                type: integer
+                format: int64
+              description: 命中这些 HTTP 状态码时重试。
+            error_codes:
+              type: array
+              items:
+                type: string
+              description: 命中这些业务错误码时重试。
+
+    FunctionInput:
+      type: object
+      description: |
+        函数类算子的定义。**`operator_metadata_type=function` 时必填**。
+        代码约定与 [function.yaml](function.yaml) 一致：入口函数必须叫 `handler`。
+      properties:
+        name:
+          type: string
+          description: 函数名称。
+        description:
+          type: string
+          description: 函数说明，供大模型理解该算子做什么。
+        script_type:
+          type: string
+          enum:
+            - python
+          default: python
+          description: 脚本类型。
+        code:
+          type: string
+          description: 代码正文。必须导出 `handler` 函数。
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+          description: 入参定义。写清楚有助于大模型正确调用该算子。
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+          description: 出参定义。
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyInfo'
+          description: 第三方库依赖。
+        dependencies_url:
+          type: string
+          description: 依赖安装源地址。
+
+    FunctionInputEdit:
+      type: object
+      description: 编辑时的函数定义，比 `FunctionInput` 少了 `name` / `description`。
+      properties:
+        script_type:
+          type: string
+          enum:
+            - python
+        code:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyInfo'
+        dependencies_url:
+          type: string
+
+    ParameterDef:
+      type: object
+      description: |
+        参数定义。`object` 用 `sub_parameters` 列出属性；`array` 的
+        `sub_parameters` 只放一个元素描述元素结构。
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        required:
+          type: boolean
+        type:
+          type: string
+          enum:
+            - string
+            - number
+            - boolean
+            - array
+            - object
+        default:
+          description: 默认值。
+        enum:
+          type: array
+          items: {}
+          description: 可选值。
+        example:
+          description: 示例值。
+        sub_parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+
+    DependencyInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        install_location:
+          type: string
+        install_time:
+          type: string
+        is_from_template:
+          type: boolean
+
+    OperatorDataInfo:
+      type: object
+      description: 算子的完整数据。
+      properties:
+        business_domain_id:
+          type: string
+          description: 所属业务域。
+        operator_id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+          description: 当前版本 ID。
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        metadata:
+          $ref: '#/components/schemas/MetadataInfo'
+        operator_info:
+          $ref: '#/components/schemas/OperatorInfo'
+        operator_execute_control:
+          $ref: '#/components/schemas/OperatorExecuteControl'
+        extend_info:
+          type: object
+          additionalProperties: true
+        is_internal:
+          type: boolean
+          description: 是否内置算子。
+        tag:
+          type: integer
+          description: 版本序号。
+        create_user:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+          description: 创建时间（毫秒时间戳）。
+        update_user:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+          description: 更新时间（毫秒时间戳）。
+        release_user:
+          type: string
+          description: 发布人。未发布时不返回。
+        release_time:
+          type: integer
+          format: int64
+          description: 发布时间（毫秒时间戳）。未发布时不返回。
+
+    MetadataInfo:
+      type: object
+      description: |
+        算子元数据。`openapi` 类算子的接口定义在 `api_spec` 里，`function` 类的
+        代码在 `function_content` 里。
+      properties:
+        version:
+          type: string
+        summary:
+          type: string
+          description: 摘要。
+        description:
+          type: string
+        server_url:
+          type: string
+          description: 服务地址（openapi 类）。
+        path:
+          type: string
+          description: 接口路径（openapi 类）。
+        method:
+          type: string
+          description: HTTP 方法（openapi 类）。
+        api_spec:
+          type: object
+          additionalProperties: true
+          description: OpenAPI 规格。
+        function_content:
+          type: object
+          additionalProperties: true
+          description: 函数内容。函数类算子才有。
+        create_time:
+          type: integer
+          format: int64
+        update_time:
+          type: integer
+          format: int64
+        create_user:
+          type: string
+        update_user:
+          type: string
+
+    OperatorStatusItem:
+      type: object
+      required:
+        - operator_id
+        - status
+      properties:
+        operator_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/BizStatus'
+
+    DebugOperatorRequest:
+      type: object
+      required:
+        - operator_id
+        - version
+      properties:
+        operator_id:
+          type: string
+          format: uuid
+        version:
+          type: string
+          format: uuid
+          description: 要调试的版本 ID。**必填**，调的是具体版本而非「当前版本」。
+        timeout:
+          type: integer
+          description: 超时（秒）。
+        header:
+          type: object
+          additionalProperties: true
+          description: 请求头参数。
+        query:
+          type: object
+          additionalProperties: true
+          description: 查询参数。
+        path:
+          type: object
+          additionalProperties:
+            type: string
+          description: 路径参数。
+        body:
+          description: 请求体。函数类算子只用这个。
+
+    HTTPResponse:
+      type: object
+      description: 调试结果，即算子实际发出的 HTTP 调用的响应。
+      properties:
+        status_code:
+          type: integer
+          description: 状态码。
+        headers:
+          type: object
+          additionalProperties: true
+          description: 响应头。
+        body:
+          description: 响应体。
+        error:
+          type: string
+          description: 错误信息。
+
+    CategoryInfo:
+      type: object
+      properties:
+        category_type:
+          type: string
+          description: 分类机器值，过滤与注册时填它。
+        name:
+          type: string
+          description: 分类显示名，随请求语言本地化。
+
+    BatchNamesRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+          description: 待取名的 ID 列表。空列表返回空 `entries`。
+
+    BatchNamesResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+          description: ID 到名称的映射。**不存在的 ID 被静默略过**。
