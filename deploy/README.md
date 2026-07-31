@@ -233,12 +233,13 @@ OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
 
 ### System requirements
 
-| Item | Minimum | Recommended |
+| Item | Minimum configuration (testing and learning) | Recommended configuration (minimum for production) |
 | --- | --- | --- |
-| OS | CentOS 8+, OpenEuler 23+ | CentOS 8+ |
-| CPU | 16 cores | 16 cores |
-| Memory | 48 GB | 64 GB |
-| Disk | 200 GB | 500 GB |
+| Operating system | CentOS 8+, OpenEuler 23+, or compatible Linux | CentOS 8+ |
+| CPU | 4 cores | 16 cores or more |
+| Memory | 8 GB | 32 GB or more |
+| Disk | 200 GB | 500 GB or more |
+| Privileges | root or a user with sudo access | root or a user with sudo access |
 
 ### Network requirements
 
