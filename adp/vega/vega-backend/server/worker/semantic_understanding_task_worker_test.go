@@ -454,6 +454,34 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["supplier_id: display_name equals technical field name"],"field_details":[{"name":"supplier_id","status":"unchanged","reasons":["display_name equals technical field name"]}]}`, got.DetailJSON)
 	})
 
+	t.Run("rejects whitespace-only display names in force mode", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		task := &interfaces.SemanticUnderstandingTask{
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID:          "resource-1",
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeForce,
+			ConfidenceThreshold: 0.75,
+		}
+		resourceService.EXPECT().
+			GetByID(gomock.Any(), "resource-1").
+			Return(&interfaces.Resource{
+				ID: "resource-1",
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "supplier_id", DisplayName: "供应商ID", Type: interfaces.DataType_String},
+				},
+			}, nil)
+
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"　","confidence":0.9}]}`, 0.9, nil)
+
+		require.NoError(t, err)
+		assert.False(t, got.Applied)
+		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["supplier_id: display_name equals technical field name"],"field_details":[{"name":"supplier_id","status":"unchanged","reasons":["display_name equals technical field name"]}]}`, got.DetailJSON)
+	})
+
 	t.Run("fills resource name when it still equals the source identifier", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
