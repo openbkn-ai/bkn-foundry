@@ -42,30 +42,31 @@ func NewConfiguredLedgerHandler(service *ledgersvc.Service) *LedgerHandler {
 }
 
 type evidenceEventRequest struct {
-	EventID           string                  `json:"event_id"`
-	EventType         string                  `json:"event_type"`
-	SchemaVersion     string                  `json:"schema_version"`
-	PayloadHash       string                  `json:"payload_hash"`
-	TenantID          string                  `json:"tenant_id,omitempty"`
-	BusinessDomainID  string                  `json:"business_domain_id,omitempty"`
-	ConversationID    string                  `json:"conversation_id"`
-	InteractionID     string                  `json:"interaction_id"`
-	OperationID       string                  `json:"operation_id,omitempty"`
-	Attempt           uint32                  `json:"attempt,omitempty"`
-	RequestID         string                  `json:"request_id,omitempty"`
-	TraceID           string                  `json:"trace_id,omitempty"`
-	SpanID            string                  `json:"span_id,omitempty"`
-	ProducerID        string                  `json:"producer_id"`
-	ProducerStreamID  string                  `json:"producer_stream_id"`
-	ProducerEpoch     uint64                  `json:"producer_epoch"`
-	ProducerSequence  uint64                  `json:"producer_sequence"`
-	CausationEventIDs []string                `json:"causation_event_ids,omitempty"`
-	StartedAt         time.Time               `json:"started_at"`
-	ObservedAt        time.Time               `json:"observed_at"`
-	EmittedAt         time.Time               `json:"emitted_at"`
-	Envelope          json.RawMessage         `json:"envelope"`
-	BusinessRefs      []sessionvo.BusinessRef `json:"business_refs,omitempty"`
-	ArtifactRefs      []string                `json:"artifact_refs,omitempty"`
+	EventID                string                            `json:"event_id" binding:"required"`
+	EventType              string                            `json:"event_type" binding:"required"`
+	SchemaVersion          string                            `json:"bkn.trace.schema.version" binding:"required"`
+	PayloadHash            string                            `json:"payload_hash" binding:"required"`
+	ConversationID         string                            `json:"conversation_id" binding:"required"`
+	InteractionID          string                            `json:"interaction_id" binding:"required"`
+	OperationID            string                            `json:"operation_id,omitempty"`
+	Attempt                uint32                            `json:"attempt,omitempty"`
+	RequestID              string                            `json:"request_id,omitempty"`
+	TraceID                string                            `json:"trace_id,omitempty"`
+	SpanID                 string                            `json:"span_id,omitempty"`
+	ProducerID             string                            `json:"producer_id" binding:"required"`
+	ProducerStreamID       string                            `json:"producer_stream_id" binding:"required"`
+	ProducerEpoch          uint64                            `json:"producer_epoch" binding:"required"`
+	ProducerSequence       uint64                            `json:"producer_sequence" binding:"required"`
+	CausationEventIDs      []string                          `json:"causation_event_ids,omitempty"`
+	StartedAt              time.Time                         `json:"started_at" binding:"required"`
+	ObservedAt             time.Time                         `json:"observed_at" binding:"required"`
+	EmittedAt              time.Time                         `json:"emitted_at" binding:"required"`
+	Envelope               json.RawMessage                   `json:"envelope" binding:"required"`
+	BusinessRefs           []sessionvo.BusinessRef           `json:"business_refs,omitempty"`
+	ArtifactRefs           []string                          `json:"artifact_refs,omitempty"`
+	EvidenceRefs           []sessionvo.EvidenceRef           `json:"evidence_refs,omitempty"`
+	Claims                 []sessionvo.Claim                 `json:"claims,omitempty"`
+	OperationBusinessEdges []sessionvo.OperationBusinessEdge `json:"operation_business_edges,omitempty"`
 }
 
 // Ingest accepts one immutable BKN Trace 3.0 evidence event.
@@ -106,6 +107,8 @@ func (h *LedgerHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 		CausationEventIDs: request.CausationEventIDs, StartedAt: request.StartedAt,
 		ObservedAt: request.ObservedAt, EmittedAt: request.EmittedAt, Envelope: request.Envelope,
 		BusinessRefs: request.BusinessRefs, ArtifactRefs: request.ArtifactRefs,
+		EvidenceRefs: request.EvidenceRefs, Claims: request.Claims,
+		OperationBusinessEdges: request.OperationBusinessEdges,
 	})
 	if err != nil {
 		var domainErr *ledgersvc.DomainError

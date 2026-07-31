@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 )
 
@@ -20,6 +21,40 @@ func (s *Store) Commit(ctx context.Context, event ledgervo.Event) (ledgervo.Dura
 		}
 	}
 	return ledgervo.DurableAck{}, errors.New("evidence transaction retry budget exhausted")
+}
+
+func (s *Store) ListInteractionEvents(ctx context.Context, owner sessionvo.Owner, interactionID string) ([]ledgervo.Event, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT l.envelope
+		FROM bkn_trace_evidence_event_ledger l
+		JOIN bkn_trace_conversations c ON c.conversation_id=l.conversation_id
+		WHERE l.tenant_id=? AND l.business_domain_id=? AND l.interaction_id=?
+		  AND c.tenant_id=? AND c.business_domain_id=?
+		  AND c.application_principal_id=? AND c.effective_subject_type=?
+		  AND c.effective_subject_id=? AND c.delegation_id=?
+		ORDER BY l.ingest_sequence`,
+		owner.TenantID, owner.BusinessDomainID, interactionID,
+		owner.TenantID, owner.BusinessDomainID,
+		owner.ApplicationPrincipalID, owner.EffectiveSubjectType,
+		owner.EffectiveSubjectID, owner.DelegationID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]ledgervo.Event, 0)
+	for rows.Next() {
+		var envelope []byte
+		if err := rows.Scan(&envelope); err != nil {
+			return nil, err
+		}
+		var event ledgervo.Event
+		if err := json.Unmarshal(envelope, &event); err != nil {
+			return nil, err
+		}
+		result = append(result, event)
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (ledgervo.DurableAck, bool, error) {

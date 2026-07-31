@@ -1100,6 +1100,7 @@ func TestLateDurableReceiptCreatesNewImmutableAssemblyRevision(t *testing.T) {
 		ReceiptID: receipt.ID, PayloadHash: "sha256:late-result",
 		EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID:          "req-late", TraceID: validTraceIDOne,
+		ObservedEvidenceRefs: []string{"evt-late-evidence"},
 	})
 	if err != nil {
 		t.Fatalf("complete late receipt: %v", err)
@@ -1110,7 +1111,8 @@ func TestLateDurableReceiptCreatesNewImmutableAssemblyRevision(t *testing.T) {
 	}
 	if len(revisions) != 2 || revisions[0].Completeness != sessionvo.EvidencePartial ||
 		revisions[1].Completeness != sessionvo.EvidenceComplete ||
-		revisions[1].ParentRevisionID != revisions[0].ID || revisions[1].Trigger != "late_receipt" {
+		revisions[1].ParentRevisionID != revisions[0].ID || revisions[1].Trigger != "late_receipt" ||
+		revisions[0].ArtifactManifestHash == revisions[1].ArtifactManifestHash {
 		t.Fatalf("unexpected immutable revision chain: %#v", revisions)
 	}
 }
@@ -1200,7 +1202,7 @@ func TestDurableReceiptFreezesEvidenceBusinessAndArtifactReferences(t *testing.T
 
 	service, owner, _, interaction, operation, receipt := mustCreateOperation(t)
 	businessRef := sessionvo.BusinessRef{
-		RefType: "object_type", RefID: "supplychain_hd0202_forecast",
+		RefType: "object_type", RefID: "object:supplychain_hd0202:forecast",
 		BusinessDomainID: owner.BusinessDomainID, Version: "v3",
 		DisplayHint: "需求预测单",
 	}
@@ -1271,6 +1273,109 @@ func TestDurableReceiptFreezesEvidenceBusinessAndArtifactReferences(t *testing.T
 	)
 	if !sessionsvc.IsCode(err, sessionsvc.CodeIdempotencyConflict) {
 		t.Fatalf("receipt replay changed immutable evidence refs: %v", err)
+	}
+}
+
+func TestOperationReceiptRejectsInvalidTypedBusinessReference(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]sessionvo.BusinessRef{
+		"unknown type": {
+			RefType: "result", RefID: "result:forecast", BusinessDomainID: "domain-1", Version: "1",
+		},
+		"short ref id": {
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast", BusinessDomainID: "domain-1", Version: "1",
+		},
+		"foreign business domain": {
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-2", Version: "1",
+		},
+		"missing version": {
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-1",
+		},
+	}
+	for name, businessRef := range tests {
+		name, businessRef := name, businessRef
+		t.Run(name, func(t *testing.T) {
+			service, owner, _, _, operation, receipt := mustCreateOperation(t)
+			if name != "foreign business domain" {
+				businessRef.BusinessDomainID = owner.BusinessDomainID
+			}
+			_, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+				Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+				ReceiptID: receipt.ID, PayloadHash: "sha256:invalid-business-ref",
+				EvidenceDurability: sessionvo.DurabilityDurable,
+				RequestID:          "req-invalid-business-ref", TraceID: validTraceIDOne,
+				BusinessRefs: []sessionvo.BusinessRef{businessRef},
+			})
+			if !sessionsvc.IsCode(err, sessionsvc.CodeOperationRequired) {
+				t.Fatalf("invalid receipt business ref must be rejected, got %v", err)
+			}
+		})
+	}
+}
+
+func TestOperationReceiptReplaysLegacyTerminalBusinessReferenceIdempotently(t *testing.T) {
+	t.Parallel()
+
+	store, service, owner, _, _, operation, receipt := mustCreateOperationWithStore(t)
+	command := sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+		ReceiptID: receipt.ID, PayloadHash: "sha256:legacy-business-ref",
+		EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID:          "req-legacy-business-ref", TraceID: validTraceIDOne,
+		BusinessRefs: []sessionvo.BusinessRef{{
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
+			BusinessDomainID: owner.BusinessDomainID, Version: "1",
+		}},
+	}
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("complete canonical receipt: %v", err)
+	}
+	legacyRef := command.BusinessRefs[0]
+	legacyRef.RefID = "object:forecast"
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		stored, found := tx.FindReceipt(receipt.ID)
+		if !found {
+			t.Fatal("completed receipt missing")
+		}
+		stored.BusinessRefs = []sessionvo.BusinessRef{legacyRef}
+		tx.SaveReceipt(stored)
+		return nil
+	}); err != nil {
+		t.Fatalf("seed legacy receipt: %v", err)
+	}
+	command.BusinessRefs = []sessionvo.BusinessRef{legacyRef}
+
+	_, replayed, err := service.CompleteOperationAttempt(context.Background(), command)
+	if err != nil || len(replayed.BusinessRefs) != 1 || replayed.BusinessRefs[0] != legacyRef {
+		t.Fatalf("legacy terminal receipt replay must remain idempotent: receipt=%#v err=%v", replayed, err)
+	}
+}
+
+func TestOperationReceiptComparesBusinessReferenceAsOfByValue(t *testing.T) {
+	t.Parallel()
+
+	service, owner, _, _, operation, receipt := mustCreateOperation(t)
+	firstAsOf := time.Date(2026, 7, 1, 0, 0, 0, 123, time.UTC)
+	command := sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+		ReceiptID: receipt.ID, PayloadHash: "sha256:business-ref-as-of",
+		EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID:          "req-business-ref-as-of", TraceID: validTraceIDOne,
+		BusinessRefs: []sessionvo.BusinessRef{{
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
+			BusinessDomainID: owner.BusinessDomainID, Version: "1", AsOf: &firstAsOf,
+		}},
+	}
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("complete receipt with as_of: %v", err)
+	}
+	replayedAsOf := firstAsOf.In(time.FixedZone("UTC+8", 8*60*60))
+	command.BusinessRefs[0].AsOf = &replayedAsOf
+
+	_, _, err := service.CompleteOperationAttempt(context.Background(), command)
+	if err != nil {
+		t.Fatalf("equal as_of instants must replay idempotently: %v", err)
 	}
 }
 
@@ -1643,7 +1748,14 @@ func mustEnsureConversation(t *testing.T, service *sessionsvc.Service, owner ses
 
 func mustCreateOperation(t *testing.T) (*sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
 	t.Helper()
-	service := newTestService()
+	_, service, owner, conversation, interaction, operation, receipt := mustCreateOperationWithStore(t)
+	return service, owner, conversation, interaction, operation, receipt
+}
+
+func mustCreateOperationWithStore(t *testing.T) (*sessionstore.Store, *sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
+	t.Helper()
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{})
 	owner := testOwner()
 	conversation := mustEnsureConversation(t, service, owner, "thread-operation")
 	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
@@ -1661,7 +1773,7 @@ func mustCreateOperation(t *testing.T) (*sessionsvc.Service, sessionvo.Owner, se
 	if err != nil {
 		t.Fatalf("ensure operation: %v", err)
 	}
-	return service, owner, conversation, interaction, operation, receipt
+	return store, service, owner, conversation, interaction, operation, receipt
 }
 
 func mustCreateOptionalOperation(t *testing.T) (*sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {

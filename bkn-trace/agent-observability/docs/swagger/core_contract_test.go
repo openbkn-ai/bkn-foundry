@@ -94,12 +94,21 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	documents["published YAML"] = parseSwagger(t, published)
 
 	definitions := []string{
+		"assemblysvc.BusinessRefView",
+		"assemblysvc.ProjectedResult",
+		"httphandler.evidenceEventRequest",
 		"httphandler.finishAttemptRequest",
 		"httphandler.operationResult",
 		"sessionvo.BusinessRef",
+		"sessionvo.BusinessRefType",
+		"sessionvo.Claim",
+		"sessionvo.ClaimSupport",
 		"sessionvo.Conversation",
+		"sessionvo.EvidenceRef",
 		"sessionvo.Interaction",
 		"sessionvo.Operation",
+		"sessionvo.OperationBusinessEdge",
+		"sessionvo.OperationBusinessRole",
 		"sessionvo.Receipt",
 	}
 	for _, definition := range definitions {
@@ -131,6 +140,22 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	if complete.Responses["200"].Schema.Ref != "#/definitions/httphandler.operationResult" {
 		t.Fatalf("finish response contract drifted: %#v", complete.Responses["200"])
 	}
+
+	event := documents["swagger.json"].Definitions["httphandler.evidenceEventRequest"]
+	assertStringSet(t, event.Required,
+		"bkn.trace.schema.version", "event_id", "event_type", "payload_hash", "conversation_id", "interaction_id",
+		"producer_id", "producer_stream_id", "producer_epoch", "producer_sequence",
+		"started_at", "observed_at", "emitted_at", "envelope")
+	for _, forbidden := range []string{"schema_version", "tenant_id", "business_domain_id"} {
+		if _, exists := event.Properties[forbidden]; exists {
+			t.Fatalf("3.0 evidence request exposes forbidden legacy or caller-controlled field %q", forbidden)
+		}
+	}
+	for _, required := range []string{"artifact_refs", "business_refs", "evidence_refs", "claims", "operation_business_edges"} {
+		if _, exists := event.Properties[required]; !exists {
+			t.Fatalf("3.0 evidence request is missing semantic field %q", required)
+		}
+	}
 }
 
 func TestGeneratedSwaggerContainsEveryManagedLifecycleRoute(t *testing.T) {
@@ -146,6 +171,7 @@ func TestGeneratedSwaggerContainsEveryManagedLifecycleRoute(t *testing.T) {
 		"/conversations/{conversation_id}/interactions",
 		"/conversations/{conversation_id}/interactions/{interaction_id}/operations:ensure",
 		"/interactions/{interaction_id}",
+		"/interactions/{interaction_id}/business-graph",
 		"/interactions/{interaction_id}/complete",
 		"/interactions/{interaction_id}/fail",
 		"/interactions/{interaction_id}/cancel",

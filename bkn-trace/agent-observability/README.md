@@ -60,6 +60,46 @@ python3 scripts/bkn_trace_e2e_lite_probe.py \
 
 阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、最小 Evidence Chain 查询、Business Graph 查询和 Evidence Node 查询；默认使用内存 repository，生产或共享测试环境可切换到 OpenSearch evidence index store。
 
+### BKN Trace 3.0 Interaction 业务语义图
+
+`POST /api/agent-observability/v1/evidence/events` 与 `GET /api/agent-observability/v1/interactions/{interaction_id}/business-graph` 使用 BKN Trace 3.0 强类型合同。3.0 是 0.1.3 的新基线，不兼容未发布的旧请求体：事件必须使用 `bkn.trace.schema.version`，归属只能来自可信身份上下文，请求体中的 `schema_version`、`tenant_id` 和 `business_domain_id` 会被拒绝。
+
+Interaction 业务语义图遵循以下口径：
+
+- `adopted_supports`、`rejected_supports` 和 `unused_evidence_refs` 互斥；Claim 级 unused 表示既未被该 Claim 采纳、也未被该 Claim 拒绝，全局 unused 表示未被本修订任何 Claim 分类。
+- `claim_status=withdrawn` 保留历史 Claim 及其支持关系，但不参与当前修订的证据完备性判断。
+- 相同支持合同命中多个版本、时间点或证据类型时，不任意选择，返回 `support_target_ambiguous` 并标记客观证据不完整。
+- `completeness` / `partial_reasons` 描述客观证据组装；`disclosure_partial` / `disclosure_reasons` 描述当前用户授权投影。resolver 不可用、未配置或无法确认权限时，业务节点及其操作边默认不披露。
+- resolver 按 `ref_type + ref_id + source_system` 判定，不使用不匹配的 RefID 前缀推断权限。暂时没有安全实例级授权接口的类型保持 `unresolved`，不能由父类型权限推断实例权限。
+
+`ref_type` 与 `ref_id` 的规范结构是一一对应的写入合同。事件与 operation receipt 两条写入路径都必须使用完整限定格式；前缀、段数、业务域或版本不合法时会拒绝写入，避免业务节点在查询时静默消失。
+
+| `ref_type` | `ref_id` 规范结构 |
+|---|---|
+| `knowledge_network` | `kn:<kn_id>` |
+| `object_type` | `object:<kn_id>:<object_type_id>` |
+| `object_instance` | `object_instance:<kn_id>:<object_type_id>:<opaque_instance_id>`（不透明尾段可包含 `:`） |
+| `property` | `property:<kn_id>:<object_type_id>:<property_id>` |
+| `relation_type` | `relation:<kn_id>:<relation_type_id>` |
+| `data_resource` | `resource:<resource_id>` |
+| `metric` | `metric:<kn_id>:<metric_id>` |
+| `logic` | `logic:<kn_id>:<object_type_id>:<logic_id>` |
+| `function` | `function:<kn_id>:<function_id>` |
+| `action_type` | `action_type:<kn_id>:<action_type_id>` |
+| `action_instance` | `action_instance:<kn_id>:<action_type_id>:<opaque_instance_id>`（不透明尾段可包含 `:`） |
+
+业务名称和授权可见性解析默认关闭，因为 BKN 与 Vega 的内部服务地址因部署环境而异。关闭时业务语义图仍返回技术事件、Claim 和证据结构，但 `business_refs` 与 `operation_business_edges` 会安全返回空数组，并通过 `disclosure_partial` 标记解析能力未启用。生产环境应显式配置：
+
+```bash
+helm upgrade --install agent-observability charts/agent-observability \
+  --set businessResolver.enabled=true \
+  --set businessResolver.bknBaseURL=http://bkn-backend \
+  --set businessResolver.vegaBaseURL=http://vega-backend \
+  -n observability
+```
+
+内部服务地址需按实际命名空间和 Service 名称调整；不能访问这两个授权接口时，不应启用 resolver。
+
 ### Evidence Store
 
 默认配置保持兼容：
@@ -280,7 +320,7 @@ Business Graph 查询返回从 `business.refs.resolved` 派生的业务语义图
 }
 ```
 
-Business Graph 当前只消费已进入 BKN Trace 的 `business_refs`，并复用 `visibility` 做响应过滤。`unresolved` 与 `unauthorized` 会分别进入 `visibility_summary` 和 `partial_reason[]`，不会生成业务节点或边。真实 BKN / Vega / Metric / Action resolver、按账号/租户的实时授权裁决和 resolver-backed 节点详情补全属于后续阶段。
+Business Graph 只消费已进入 BKN Trace 的 `business_refs`，并复用当前用户身份调用 BKN / Vega resolver 做实时授权投影。`unresolved` 与 `unauthorized` 不会生成业务节点或边；resolver 不可用会明确标记披露降级。没有安全实例级授权接口的对象实例、行动实例和函数引用保持 fail-closed，不能仅凭父类型权限披露。
 
 Evidence Node 查询用于打开单个可见节点详情：
 

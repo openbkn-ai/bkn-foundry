@@ -52,7 +52,46 @@ python3 docs/api/tools/api_contract_diff.py --spec-dir docs/api \
 
 - 只发 `GET`。
 - 带 `x-http-method-override: GET` 语义的只读 `POST` 需显式 `--include-query-post`。
-- 任何情况下都不发 `PUT` / `DELETE`，也不发不带 override 的 `POST`。
+- 文档中用 `x-contract-probe.readonly: true` 显式标注的只读 `POST` 需显式 `--include-probe-post`。
+- 任何情况下都不发 `PUT` / `DELETE`，也不发未被上面两种方式显式标注为只读的 `POST`。
+
+## 探测「查询即 POST」的服务
+
+有的服务把查询也做成 `POST`，参数在请求体里、没有 override 头——context-loader 的
+对外端点全是这样。这类接口靠前两条一个都覆盖不到，需要在 OpenAPI 的操作上写一段
+`x-contract-probe`，声明「这个 POST 是只读的，可以这样调」：
+
+```yaml
+  /kn/list_knowledge_networks:
+    post:
+      operationId: listKnowledgeNetworks
+      x-contract-probe:
+        readonly: true                    # 显式承诺无副作用；不写就永远不会被请求
+        order: 1                          # 批次；低的先跑，同批并发
+        body: {limit: 3}                  # 请求体模板
+        provides: {cl_kn_id: entries[0].id}   # 从响应里取值，供后续批次引用
+  /kn/get_kn_detail:
+    post:
+      x-contract-probe:
+        readonly: true
+        order: 2
+        body: {kn_id: '{cl_kn_id}'}       # 引用上一批产出的值
+        provides: {cl_ot_id: object_types[0].id}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `readonly` | 必须显式为 `true`。**这是唯一的开关**——工具不猜哪个 POST 安全，只认这行声明 |
+| `order` | 执行批次，默认 1。低批先跑完并抽出 `provides`，高批才开始 |
+| `body` / `query` | 请求体 / 额外 query 的模板。值里可写 `{name}` 引用已发现的参数 |
+| `provides` | `{参数名: 取值路径}`，路径形如 `entries[0].id`。取不到就不产出，依赖它的后续接口会被标为「缺少探测参数」而不是发一个必然失败的请求 |
+
+写标注时的三条纪律：
+
+1. **有副作用的端点不要写这段**（`execute_action` 之类）。没有标注 = 永不请求。
+2. **参数名建议加模块前缀**（如 `cl_kn_id`），避免和 `DISCOVERY` 表里自动发现的
+   通用参数名（`kn_id` / `ot_id` / `id`）串用。
+3. **标注与端点同源**，改接口时在同一个文件里改，评审时一起看。
 
 ## 工作方式
 
@@ -85,6 +124,8 @@ python3 docs/api/tools/api_contract_diff.py --spec-dir docs/api \
   报告末尾按原因列出。
 - **内部面与外部面有差异**。`auth-resources`、`connector-types`、bkn `/resources` 只有外部面，
   用 `--face in` 会 404，这几个必须带 token 跑。
+- **依赖真实数据才能探测的接口会被跳过**。探测参数取不到（如该知识网络没有行动类，
+  就拿不到 `at_id`）时，报告会以「缺少探测参数 xxx」列出，不算缺口也不算已验证。
 - **嵌套深度上限 7 层**（脚本 `MAX_DEPTH`），递归 schema（如 `condition.sub_conditions`）
   到引用环即停。
 

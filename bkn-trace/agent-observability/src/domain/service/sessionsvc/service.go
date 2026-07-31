@@ -882,6 +882,14 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 			}
 			return domainError(CodeIdempotencyConflict, "receipt terminal payload conflicts with the durable result")
 		}
+		for _, ref := range command.BusinessRefs {
+			if !ref.IsCanonicalForBusinessDomain(command.Owner.BusinessDomainID) {
+				return domainError(
+					CodeOperationRequired,
+					"receipt business_refs contains an invalid typed business reference",
+				)
+			}
+		}
 		if evidenceReferenceCount(tx.ListReceipts(interaction.ID), currentReceipt.ID, command.ObservedEvidenceRefs) >
 			maxEvidenceRefsPerInteraction {
 			return domainError(CodeOperationRequired, "interaction evidence reference limit of 2048 was exceeded")
@@ -974,10 +982,24 @@ func receiptTerminalMatches(
 		receipt.RequestID == command.RequestID &&
 		receipt.TraceID == command.TraceID &&
 		slices.Equal(receipt.ObservedEvidenceRefs, command.ObservedEvidenceRefs) &&
-		slices.Equal(receipt.BusinessRefs, command.BusinessRefs) &&
+		businessRefsEqual(receipt.BusinessRefs, command.BusinessRefs) &&
 		slices.Equal(receipt.ArtifactRefs, command.ArtifactRefs) &&
 		slices.Equal(receipt.PartialReasons, command.PartialReasons) &&
 		(status != sessionvo.ReceiptFailed || operation.Retryable == retryable)
+}
+
+func businessRefsEqual(left, right []sessionvo.BusinessRef) bool {
+	return slices.EqualFunc(left, right, func(a, b sessionvo.BusinessRef) bool {
+		if a.RefType != b.RefType || a.RefID != b.RefID ||
+			a.BusinessDomainID != b.BusinessDomainID || a.Version != b.Version ||
+			a.DisplayHint != b.DisplayHint {
+			return false
+		}
+		if a.AsOf == nil || b.AsOf == nil {
+			return a.AsOf == nil && b.AsOf == nil
+		}
+		return a.AsOf.Equal(*b.AsOf)
+	})
 }
 
 func validEvidenceDurability(value sessionvo.EvidenceDurability) bool {
@@ -1173,8 +1195,9 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 		IncludedReceiptIDs: receiptIDs, IncludedEventIDs: eventIDs,
 		ArtifactManifestHash: hashValue(struct {
 			Claims       []string
+			EventIDs     []string
 			ArtifactRefs []string
-		}{manifest.Claims, artifactRefs}),
+		}{manifest.Claims, eventIDs, artifactRefs}),
 		Completeness: interaction.EvidenceStatus, PartialReasons: partialReasons,
 		Trigger: trigger, CreatedAt: tx.Now(),
 	}

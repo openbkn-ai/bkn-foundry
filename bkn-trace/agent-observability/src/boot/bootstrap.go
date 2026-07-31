@@ -13,6 +13,7 @@ import (
 
 	docs "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/docs/swagger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
@@ -31,6 +32,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/coremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/server/httpserver"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
@@ -74,8 +76,9 @@ func NewApp() (*App, error) {
 		evidenceStore = opensearchevidencestore.New(openSearchClient, openSearchConfig.EvidenceIndex)
 	}
 	evidenceService := evidencesvc.New(evidenceStore)
+	var resolver ibusinessresolver.BusinessResolverPort
 	if resolverConfig.Enabled {
-		resolver := businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout})
+		resolver = businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout})
 		evidenceService = evidencesvc.NewWithBusinessResolver(evidenceStore, resolver)
 	}
 	evidenceHandler := httphandler.NewEvidenceHandler(evidenceService)
@@ -94,7 +97,10 @@ func NewApp() (*App, error) {
 		},
 		Metrics: metrics,
 	})
-	sessionHandler := httphandler.NewSessionHandler(sessionService)
+	sessionHandler := httphandler.NewSessionHandlerWithAssembly(
+		sessionService,
+		assemblysvc.NewQueryServiceWithBusinessResolver(sessionStore, ledgerStore, resolver),
+	)
 	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
 
 	app := newApp(httpServerConfig, traceHandler, evidenceHandler, sessionHandler, ledgerHandler, metrics)

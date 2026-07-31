@@ -3,17 +3,43 @@ package ledgerstore
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 )
 
 type ledgerRecord struct {
 	event ledgervo.Event
 	ack   ledgervo.DurableAck
+}
+
+func (s *Store) ListInteractionEvents(ctx context.Context, owner sessionvo.Owner, interactionID string) ([]ledgervo.Event, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	type orderedEvent struct {
+		sequence uint64
+		event    ledgervo.Event
+	}
+	ordered := make([]orderedEvent, 0)
+	for _, record := range s.ledger {
+		if record.event.Owner.Equal(owner) && record.event.InteractionID == interactionID {
+			ordered = append(ordered, orderedEvent{sequence: record.ack.IngestSequence, event: record.event})
+		}
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].sequence < ordered[j].sequence })
+	result := make([]ledgervo.Event, 0, len(ordered))
+	for _, item := range ordered {
+		result = append(result, item.event)
+	}
+	return result, nil
 }
 
 type Store struct {
