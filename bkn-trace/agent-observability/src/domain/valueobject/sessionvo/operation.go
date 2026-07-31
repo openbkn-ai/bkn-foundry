@@ -5,6 +5,7 @@ import "time"
 type AttemptStatus string
 
 const (
+	AttemptReady     AttemptStatus = "ready"
 	AttemptPending   AttemptStatus = "pending"
 	AttemptCompleted AttemptStatus = "completed"
 	AttemptFailed    AttemptStatus = "failed"

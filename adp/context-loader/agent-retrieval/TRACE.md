@@ -38,7 +38,9 @@
 Core 为每次受管业务工具调用分配稳定 `operation_id`、`attempt` 和 `receipt_id`。Context Loader 把这些可信标识写入当前 Context，再传播给 BKN、ontology、Vega、模型或 Operator 子调用。
 
 - 同一逻辑调用的网络重试复用 `operation_key`，响应丢失后先查询 Operation/Receipt，不重新执行下游调用。
-- 只有上一 Attempt 是 retryable failed 时，才能显式创建下一 Attempt。
+- 只有上一 Attempt 是 retryable failed 时，才能调用 `bkn_retry_operation` 创建 `ready` 状态的下一 Attempt；随后必须以同一 `operation_key` 重调原业务工具，由 Core 原子领取执行权并转为 `pending`。只有首次领取者执行下游，其他并发调用返回 `receipt_pending`。
+- `created` 只表示 Operation 是否首次创建，`execute` 表示本次 ensure 是否获得当前 Attempt 的执行权；调用方不得用 `created` 推断是否执行。
+- Attempt 的终结由 Context Loader 可信适配器根据实际下游结果完成。第三方 Agent 只能查询 Operation/Receipt，不能提交 `payload_hash`、`outcome` 或直接终结 Receipt。
 - `conversation_id`、`interaction_id`、`operation_id`、`attempt`、business domain 和因果标识随可信内部调用传播。
 - 调用不可信第三方前必须剥离 OpenBKN 业务因果、业务域和 observed time。
 
@@ -83,9 +85,14 @@ Core 为每次受管业务工具调用分配稳定 `operation_id`、`attempt` �
 - Given 缺少或无效受管上下文，When 调用任一业务工具，Then 返回稳定生命周期错误且下游调用次数为 0。
 - Given 相同 `operation_key + normalized_input_hash` 重放，When Receipt 已终态，Then 返回原 Receipt 且下游调用次数仍为 1。
 - Given 下游返回错误或 panic，When Context Loader 完成 Attempt，Then Receipt 进入 failed，不遗留永久 pending，也不向调用方泄露 panic 细节。
+- Given retryable failed Attempt，When 显式创建下一 Attempt 并以同一 `operation_key` 重调业务工具，Then 新 Attempt 只执行一次；并发重放只返回 pending Receipt。
+- Given 第三方 Agent 获取 pending Receipt，When 枚举生命周期工具，Then 不存在允许其自行声明平台输出和终态的 finalize 工具。
 - Given 未收到 Core durable ACK，When 成功完成 Attempt，Then Receipt 为 completed + pending。
 - Given 没有有效 OTel Span 且同一 request 重放，When 完成 Attempt，Then使用相同合成 trace ID；不同 request 使用不同 ID。
 
 ## 八、已知限制
 
 3.0 Evidence Producer、真实 evidence refs、持久 Outbox 和 durable ACK 由 #533/#544 继续实现；在这些依赖落地前，业务执行可以终态，但证据完整性必须保持 assembling/pending，不得显示 complete。
+
+- 成功 Interaction 如果包含 `evidence_durability=pending` 的 Receipt，必须在终结清单中提供 `assembler_deadline`。到期后由 #544 的 assembler 根据 durable evidence 结果收敛为 complete/partial/failed。
+- #544 落地前没有持续运行的 assembler，未提供 `assembler_deadline` 的 Interaction 会保持 assembling；这是当前实施阶段的已知中间态，不应误判为 Core 卡死，也不得人为改写为 complete。

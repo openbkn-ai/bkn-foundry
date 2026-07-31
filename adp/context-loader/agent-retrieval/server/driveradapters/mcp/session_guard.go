@@ -11,11 +11,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 )
 
 type bknContext struct {
@@ -36,6 +38,7 @@ type operationResult struct {
 	Operation        any             `json:"operation"`
 	Receipt          any             `json:"receipt"`
 	Created          bool            `json:"created"`
+	Execute          bool            `json:"execute"`
 	LifecycleContext context.Context `json:"-"`
 }
 
@@ -127,7 +130,7 @@ func guardBusinessToolCallWithCompletion(
 			result.IsError = status == "failed"
 			return result, nil
 		}
-		if ensured != nil && !ensured.Created && status == "pending" {
+		if ensured != nil && !ensured.Execute && !ensured.Created && status == "pending" {
 			return receiptPendingToolError(ensured.Receipt), nil
 		}
 		if ensured != nil {
@@ -142,10 +145,7 @@ func guardBusinessToolCallWithCompletion(
 			traceContext.Attempt = attempt
 			ctx = common.SetTraceContextToCtx(ctx, traceContext)
 		}
-		result, err, panicked := callBusinessTool(ctx, req, next)
-		if panicked {
-			ctx = context.WithValue(ctx, downstreamRetryableKey{}, true)
-		}
+		result, err := callBusinessTool(ctx, req, next)
 		if err != nil {
 			result = mcpsdk.NewToolResultError(err.Error())
 			ctx = context.WithValue(ctx, downstreamRetryableKey{}, true)
@@ -183,16 +183,19 @@ func callBusinessTool(
 	ctx context.Context,
 	req mcpsdk.CallToolRequest,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
-) (result *mcpsdk.CallToolResult, err error, panicked bool) {
+) (result *mcpsdk.CallToolResult, err error) {
 	defer func() {
-		if recover() != nil {
+		if recovered := recover(); recovered != nil {
+			logger.DefaultLogger().WithContext(ctx).Errorf(
+				"[BKN Trace] MCP business tool %q panicked: %v\n%s",
+				req.Params.Name, recovered, debug.Stack(),
+			)
 			result = mcpsdk.NewToolResultError("business tool execution failed")
 			err = nil
-			panicked = true
 		}
 	}()
 	result, err = next(ctx, req)
-	return result, err, false
+	return result, err
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {

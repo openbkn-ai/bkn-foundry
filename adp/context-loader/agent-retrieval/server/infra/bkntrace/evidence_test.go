@@ -655,8 +655,8 @@ func TestSubmitEventsCarriesCorrelationIDs(t *testing.T) {
 	if got := traceBlock["bkn.conversation.id"]; got != "agent:thread_abc" {
 		t.Fatalf("expected conversation id in trace block, got %v", got)
 	}
-	if got := traceBlock["bkn.interaction.id"]; got != "itr_2026072701" {
-		t.Fatalf("expected interaction id in trace block, got %v", got)
+	if _, exists := traceBlock["bkn.interaction.id"]; exists {
+		t.Fatal("legacy evidence envelope must not claim an unsupported interaction field")
 	}
 }
 
@@ -670,7 +670,7 @@ func TestSubmitEventsOmitsConversationIDWhenAbsent(t *testing.T) {
 	if _, ok := traceBlock["bkn.conversation.id"]; ok {
 		t.Fatalf("expected no conversation id when the caller sent none")
 	}
-	if got := traceBlock["bkn.interaction.id"]; got != traceContext.InteractionID {
-		t.Fatalf("required interaction id was not preserved: %v", got)
+	if _, exists := traceBlock["bkn.interaction.id"]; exists {
+		t.Fatal("legacy evidence envelope must not claim an unsupported interaction field")
 	}
 }

@@ -127,10 +127,11 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 		Operation sessionvo.Operation `json:"operation"`
 		Receipt   sessionvo.Receipt   `json:"receipt"`
 		Created   bool                `json:"created"`
+		Execute   bool                `json:"execute"`
 	}
 	decodeLifecycleResponse(t, operationResponse, &operationResult)
-	if !operationResult.Created {
-		t.Fatal("new operation must report created=true")
+	if !operationResult.Created || !operationResult.Execute {
+		t.Fatal("new operation must report created=true and execute=true")
 	}
 
 	receiptResponse := performLifecycleRequest(t, mux, http.MethodPost,
@@ -165,14 +166,31 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 		Operation sessionvo.Operation `json:"operation"`
 		Receipt   sessionvo.Receipt   `json:"receipt"`
 		Created   bool                `json:"created"`
+		Execute   bool                `json:"execute"`
 	}
 	decodeLifecycleResponse(t, retryResponse, &retryResult)
-	if !retryResult.Created {
-		t.Fatal("new attempt must report created=true")
+	if retryResult.Created || retryResult.Execute ||
+		retryResult.Operation.AttemptStatus != sessionvo.AttemptReady {
+		t.Fatalf("new attempt must be prepared but not claimed: %#v", retryResult)
+	}
+	claimRetryResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions/"+interaction.ID+"/operations:ensure",
+		`{"operation_key":"retry-orders","tool_name":"ontology-query","normalized_input_hash":"sha256:retry-input","required":true,"lease_token":"`+
+			interaction.LeaseToken+`","lease_epoch":1}`)
+	var claimedRetry struct {
+		Operation sessionvo.Operation `json:"operation"`
+		Receipt   sessionvo.Receipt   `json:"receipt"`
+		Created   bool                `json:"created"`
+		Execute   bool                `json:"execute"`
+	}
+	decodeLifecycleResponse(t, claimRetryResponse, &claimedRetry)
+	if claimedRetry.Created || !claimedRetry.Execute ||
+		claimedRetry.Operation.AttemptStatus != sessionvo.AttemptPending {
+		t.Fatalf("retry ensure must claim the prepared attempt: %#v", claimedRetry)
 	}
 	retryCompleteResponse := performLifecycleRequest(t, mux, http.MethodPost,
-		"/api/agent-observability/v1/operations/"+retryResult.Operation.ID+"/attempts/2:complete",
-		`{"receipt_id":"`+retryResult.Receipt.ID+`","payload_hash":"sha256:retry-result","evidence_durability":"durable","request_id":"req-retry-complete","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+		"/api/agent-observability/v1/operations/"+claimedRetry.Operation.ID+"/attempts/2:complete",
+		`{"receipt_id":"`+claimedRetry.Receipt.ID+`","payload_hash":"sha256:retry-result","evidence_durability":"durable","request_id":"req-retry-complete","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
 	if retryCompleteResponse.Code != http.StatusOK {
 		t.Fatalf("complete retry attempt: %d %s", retryCompleteResponse.Code, retryCompleteResponse.Body.String())
 	}
@@ -239,12 +257,14 @@ func TestEnsureOperationHTTPReportsCreatedAndReplay(t *testing.T) {
 	}
 	var firstResult, replayedResult struct {
 		Created   bool                `json:"created"`
+		Execute   bool                `json:"execute"`
 		Operation sessionvo.Operation `json:"operation"`
 		Receipt   sessionvo.Receipt   `json:"receipt"`
 	}
 	decodeLifecycleResponse(t, first, &firstResult)
 	decodeLifecycleResponse(t, replayed, &replayedResult)
-	if !firstResult.Created || replayedResult.Created ||
+	if !firstResult.Created || !firstResult.Execute ||
+		replayedResult.Created || replayedResult.Execute ||
 		firstResult.Operation.ID != replayedResult.Operation.ID ||
 		firstResult.Receipt.ID != replayedResult.Receipt.ID {
 		t.Fatalf("unexpected created/replay contract: first=%#v replay=%#v", firstResult, replayedResult)

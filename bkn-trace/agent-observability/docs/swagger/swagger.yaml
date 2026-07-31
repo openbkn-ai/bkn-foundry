@@ -729,12 +729,15 @@ definitions:
     properties:
       created:
         type: boolean
+      execute:
+        type: boolean
       operation:
         $ref: '#/definitions/sessionvo.Operation'
       receipt:
         $ref: '#/definitions/sessionvo.Receipt'
     required:
     - created
+    - execute
     - operation
     - receipt
     type: object
@@ -825,11 +828,13 @@ definitions:
     type: object
   sessionvo.AttemptStatus:
     enum:
+    - ready
     - pending
     - completed
     - failed
     type: string
     x-enum-varnames:
+    - AttemptReady
     - AttemptPending
     - AttemptCompleted
     - AttemptFailed

@@ -678,14 +678,14 @@ func TestEnsureOperationReportsCreatedDisposition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first ensure: %v", err)
 	}
-	if !first.Created {
-		t.Fatalf("first ensure must report created=true: %#v", first)
+	if !first.Created || !first.Execute {
+		t.Fatalf("first ensure must report created=true and execute=true: %#v", first)
 	}
 	replayed, err := service.EnsureOperationWithDisposition(context.Background(), command)
 	if err != nil {
 		t.Fatalf("replay ensure: %v", err)
 	}
-	if replayed.Created || replayed.Operation.ID != first.Operation.ID ||
+	if replayed.Created || replayed.Execute || replayed.Operation.ID != first.Operation.ID ||
 		replayed.Receipt.ID != first.Receipt.ID {
 		t.Fatalf("replay must report created=false and reuse resources: %#v", replayed)
 	}
@@ -717,8 +717,8 @@ func TestEnsureOperationCreatedDispositionDoesNotLeakAcrossTransactionRetry(t *t
 	if store.callbackCalls != 2 {
 		t.Fatalf("expected two transaction callbacks, got %d", store.callbackCalls)
 	}
-	if result.Created {
-		t.Fatalf("second callback replay leaked first callback created=true: %#v", result)
+	if result.Created || result.Execute {
+		t.Fatalf("second callback replay leaked first callback execution claim: %#v", result)
 	}
 }
 
@@ -804,7 +804,7 @@ func TestOperationIntentRequiresCurrentInteractionLeaseAndRenewsIt(t *testing.T)
 func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 	t.Parallel()
 
-	service, owner, _, interaction, operation, receipt := mustCreateOperation(t)
+	service, owner, conversation, interaction, operation, receipt := mustCreateOperation(t)
 	if _, _, err := service.StartOperationAttempt(context.Background(), sessionsvc.StartAttemptCommand{
 		Owner: owner, OperationID: operation.ID,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
@@ -827,6 +827,53 @@ func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 	}
 	if retry.Attempt != 2 || retryReceipt.Attempt != 2 || retryReceipt.ID == receipt.ID {
 		t.Fatalf("expected a new attempt and receipt, got %#v / %#v", retry, retryReceipt)
+	}
+	if retry.AttemptStatus != sessionvo.AttemptReady {
+		t.Fatalf("explicit retry must prepare, not execute, the next attempt: %#v", retry)
+	}
+	if _, _, err := service.CompleteOperationAttempt(
+		context.Background(),
+		sessionsvc.FinishAttemptCommand{
+			Owner: owner, OperationID: retry.ID, Attempt: retry.Attempt,
+			ReceiptID: retryReceipt.ID, PayloadHash: "sha256:not-executed",
+			EvidenceDurability: sessionvo.DurabilityDurable,
+			RequestID:          "req-not-executed", TraceID: validTraceIDOne,
+		},
+	); !sessionsvc.IsCode(err, sessionsvc.CodeReceiptPending) {
+		t.Fatalf("unclaimed retry attempt was allowed to finalize: %v", err)
+	}
+
+	claimed, err := service.EnsureOperationWithDisposition(
+		context.Background(),
+		sessionsvc.EnsureOperationCommand{
+			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+			OperationKey: operation.OperationKey, ToolName: operation.ToolName,
+			NormalizedInputHash: operation.NormalizedInputHash, Required: true,
+			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		},
+	)
+	if err != nil {
+		t.Fatalf("claim retry attempt: %v", err)
+	}
+	if claimed.Created || !claimed.Execute ||
+		claimed.Operation.AttemptStatus != sessionvo.AttemptPending {
+		t.Fatalf("first ensure after retry must claim execution exactly once: %#v", claimed)
+	}
+
+	replayed, err := service.EnsureOperationWithDisposition(
+		context.Background(),
+		sessionsvc.EnsureOperationCommand{
+			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+			OperationKey: operation.OperationKey, ToolName: operation.ToolName,
+			NormalizedInputHash: operation.NormalizedInputHash, Required: true,
+			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		},
+	)
+	if err != nil {
+		t.Fatalf("replay claimed retry attempt: %v", err)
+	}
+	if replayed.Execute {
+		t.Fatalf("retry attempt execution was claimed more than once: %#v", replayed)
 	}
 }
 

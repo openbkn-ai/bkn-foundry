@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -45,6 +44,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Created: true,
+				Execute: true,
 				Operation: bkntrace.Operation{
 					OperationID: "op-1", ConversationID: "conv-1", InteractionID: "int-1",
 					Attempt: 1, AttemptStatus: "pending",
@@ -231,92 +231,6 @@ func TestLifecycleOperationToolsUseExplicitQueryAndRetryPaths(t *testing.T) {
 	}
 }
 
-func TestFinalizeOperationRecoversPendingReceiptWithoutReexecutingDownstream(t *testing.T) {
-	var paths []string
-	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.Method+" "+r.URL.Path)
-		switch r.URL.Path {
-		case "/api/agent-observability/v1/operations/op-finalize":
-			_ = json.NewEncoder(w).Encode(bkntrace.Operation{
-				OperationID: "op-finalize", InteractionID: "int-1",
-				Attempt: 1, AttemptStatus: "pending",
-			})
-		case "/api/agent-observability/v1/receipts/receipt-finalize":
-			_ = json.NewEncoder(w).Encode(bkntrace.Receipt{
-				ReceiptID: "receipt-finalize", OperationID: "op-finalize",
-				Attempt: 1, ReceiptStatus: "pending",
-			})
-		case "/api/agent-observability/v1/operations/op-finalize/attempts/1:complete":
-			var body struct {
-				ReceiptID   string `json:"receipt_id"`
-				PayloadHash string `json:"payload_hash"`
-				RequestID   string `json:"request_id"`
-				TraceID     string `json:"trace_id"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body.ReceiptID != "receipt-finalize" || body.PayloadHash != "sha256:durable-output" ||
-				body.RequestID == "" || len(body.TraceID) != 32 {
-				t.Errorf("invalid explicit finalize body: %#v", body)
-			}
-			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
-				Operation: bkntrace.Operation{
-					OperationID: "op-finalize", Attempt: 1, AttemptStatus: "completed",
-				},
-				Receipt: bkntrace.Receipt{
-					ReceiptID: "receipt-finalize", OperationID: "op-finalize",
-					Attempt: 1, ReceiptStatus: "completed",
-				},
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer core.Close()
-
-	ctx := trustedLifecycleAdapterContext()
-	result, err := handleLifecycleTool(
-		bkntrace.NewLifecycleClient(core.URL, core.Client()),
-		"bkn_finalize_operation",
-	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
-		Name: "bkn_finalize_operation",
-		Arguments: map[string]any{
-			"operation_id": "op-finalize", "receipt_id": "receipt-finalize",
-			"payload_hash": "sha256:durable-output", "outcome": "complete",
-		},
-	}})
-	if err != nil || result == nil || result.IsError {
-		t.Fatalf("explicit finalize failed: result=%#v err=%v", result, err)
-	}
-	want := []string{
-		"GET /api/agent-observability/v1/operations/op-finalize",
-		"GET /api/agent-observability/v1/receipts/receipt-finalize",
-		"POST /api/agent-observability/v1/operations/op-finalize/attempts/1:complete",
-	}
-	if len(paths) != len(want) {
-		t.Fatalf("explicit finalize calls = %#v, want %#v", paths, want)
-	}
-	for index := range want {
-		if paths[index] != want[index] {
-			t.Fatalf("explicit finalize call %d = %q, want %q", index, paths[index], want[index])
-		}
-	}
-}
-
-func trustedLifecycleAdapterContext() context.Context {
-	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_explicit_finalize_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
-	traceID := trace.TraceID{0x4b, 0x3d, 0x59, 0xda, 0xef, 0xf5, 0xbf, 0xbb, 0x23, 0xd4, 0x6c, 0x47, 0xa5, 0x05, 0x1e, 0xc9}
-	spanID := trace.SpanID{0x00, 0xf0, 0x67, 0xaa, 0x0b, 0xa9, 0x02, 0xb7}
-	ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled,
-	}))
-	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
-		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
-		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
-	})
-}
-
 func TestLifecycleReceiptToolUsesAuthoritativePollPath(t *testing.T) {
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet ||
@@ -347,5 +261,11 @@ func TestLifecycleReceiptToolUsesAuthoritativePollPath(t *testing.T) {
 	receipt, ok := result.StructuredContent.(bkntrace.Receipt)
 	if !ok || receipt.ReceiptID != "receipt-1" {
 		t.Fatalf("receipt poll returned wrong type: %#v", result.StructuredContent)
+	}
+}
+
+func TestLifecycleToolRegistryDoesNotExposeCallerControlledFinalize(t *testing.T) {
+	if _, exposed := lifecycleToolNames["bkn_finalize_operation"]; exposed {
+		t.Fatal("third-party callers must not be allowed to finalize platform execution receipts")
 	}
 }

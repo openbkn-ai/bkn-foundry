@@ -81,7 +81,7 @@ func (g *Guard) Begin(
 	case "completed", "failed":
 		return ctx, state, GuardReplay, nil, nil
 	case "pending":
-		if !result.Created {
+		if !result.Execute {
 			return ctx, state, GuardPending, nil, nil
 		}
 	}
@@ -119,6 +119,10 @@ func (g *Guard) Finish(
 	failed bool,
 	retryable bool,
 ) (OperationResult, *APIError, error) {
+	ctx, err := ensureFinishCorrelation(ctx)
+	if err != nil {
+		return OperationResult{}, nil, err
+	}
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
 	spanContext := trace.SpanContextFromContext(ctx)
 	if traceContext.RequestID == "" || !spanContext.IsValid() {

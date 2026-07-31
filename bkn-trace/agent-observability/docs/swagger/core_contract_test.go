@@ -112,7 +112,7 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 		t.Fatal("finish request must expose optional retryable")
 	}
 	result := documents["swagger.json"].Definitions["httphandler.operationResult"]
-	assertStringSet(t, result.Required, "operation", "receipt", "created")
+	assertStringSet(t, result.Required, "operation", "receipt", "created", "execute")
 	businessRef := documents["swagger.json"].Definitions["sessionvo.BusinessRef"]
 	assertStringSet(t, businessRef.Required, "ref_type", "ref_id", "business_domain_id", "version")
 

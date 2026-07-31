@@ -3534,11 +3534,15 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "created",
+                "execute",
                 "operation",
                 "receipt"
             ],
             "properties": {
                 "created": {
+                    "type": "boolean"
+                },
+                "execute": {
                     "type": "boolean"
                 },
                 "operation": {
@@ -3680,11 +3684,13 @@ const docTemplate = `{
         "sessionvo.AttemptStatus": {
             "type": "string",
             "enum": [
+                "ready",
                 "pending",
                 "completed",
                 "failed"
             ],
             "x-enum-varnames": [
+                "AttemptReady",
                 "AttemptPending",
                 "AttemptCompleted",
                 "AttemptFailed"

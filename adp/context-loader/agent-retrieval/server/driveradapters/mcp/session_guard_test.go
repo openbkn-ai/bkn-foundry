@@ -286,6 +286,36 @@ func TestSessionGuardPendingReplayReturnsReceiptPendingWithoutDownstream(t *test
 	}
 }
 
+func TestSessionGuardExecutesPreparedRetryAttempt(t *testing.T) {
+	downstreamCalls := 0
+	guarded := guardBusinessToolCall(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created: false,
+				Execute: true,
+				Operation: map[string]any{
+					"operation_id": "op-1", "attempt": 2, "attempt_status": "pending",
+				},
+				Receipt: map[string]any{
+					"receipt_id": "receipt-2", "receipt_status": "pending",
+				},
+			}, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			downstreamCalls++
+			return mcpsdk.NewToolResultText("retried"), nil
+		},
+	)
+
+	result, err := guarded(context.Background(), validBusinessToolRequest())
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("prepared retry attempt did not execute: result=%#v err=%v", result, err)
+	}
+	if downstreamCalls != 1 {
+		t.Fatalf("prepared retry attempt executed %d times, want 1", downstreamCalls)
+	}
+}
+
 func TestSessionGuardFinishPendingPreservesStableReceipt(t *testing.T) {
 	guarded := guardBusinessToolCallWithCompletion(
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {

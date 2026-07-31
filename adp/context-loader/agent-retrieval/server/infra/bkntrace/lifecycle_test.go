@@ -56,6 +56,7 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(OperationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "pending"},
 				Receipt:   Receipt{ReceiptID: "receipt-1", ReceiptStatus: "pending"},
 			})
@@ -157,9 +158,10 @@ func TestLifecycleClientStartsExplicitRetryWithAuthoritativeLease(t *testing.T) 
 				t.Errorf("retry did not use authoritative lease: %#v", body)
 			}
 			_ = json.NewEncoder(w).Encode(OperationResult{
-				Operation: Operation{OperationID: "op-1", Attempt: 2, AttemptStatus: "pending"},
+				Operation: Operation{OperationID: "op-1", Attempt: 2, AttemptStatus: "ready"},
 				Receipt:   Receipt{ReceiptID: "receipt-2", Attempt: 2, ReceiptStatus: "pending"},
-				Created:   true,
+				Created:   false,
+				Execute:   false,
 			})
 		default:
 			http.NotFound(w, r)
@@ -172,7 +174,8 @@ func TestLifecycleClientStartsExplicitRetryWithAuthoritativeLease(t *testing.T) 
 	if err != nil || apiErr != nil {
 		t.Fatalf("start retry failed: api=%#v err=%v", apiErr, err)
 	}
-	if result.Operation.Attempt != 2 || result.Receipt.ReceiptID != "receipt-2" || !result.Created {
+	if result.Operation.Attempt != 2 || result.Receipt.ReceiptID != "receipt-2" ||
+		result.Created || result.Execute {
 		t.Fatalf("unexpected retry result: %#v", result)
 	}
 	want := []string{
@@ -227,6 +230,46 @@ func TestEnsureFinishCorrelationDerivesStableSyntheticTraceFromRequest(t *testin
 	}
 	if firstSpan.TraceID() == otherSpan.TraceID() {
 		t.Fatalf("different requests produced the same synthetic trace ID: %s", firstSpan.TraceID())
+	}
+}
+
+func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
+	var requestBody map[string]any
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodPost ||
+			!strings.HasSuffix(request.URL.Path, "/attempts/1:complete") {
+			return lifecycleJSONResponse(http.StatusNotFound, nil), nil
+		}
+		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode finish request: %v", err)
+		}
+		return lifecycleJSONResponse(http.StatusOK, OperationResult{
+			Operation: Operation{
+				OperationID: "op-1", Attempt: 1, AttemptStatus: "completed",
+			},
+			Receipt: Receipt{
+				ReceiptID: "receipt-1", OperationID: "op-1",
+				Attempt: 1, ReceiptStatus: "completed",
+			},
+		}), nil
+	})
+	ctx := trustedLifecycleTestContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.RequestID = "req_finish_without_span_0001"
+	ctx = common.SetTraceContextToCtx(ctx, traceContext)
+
+	_, apiErr, err := NewGuard(client).Finish(
+		ctx, pendingGuardState(), "sha256:result", false, false,
+	)
+	if err != nil || apiErr != nil {
+		t.Fatalf("finish without caller span failed: api=%#v err=%v", apiErr, err)
+	}
+	if requestBody["request_id"] != "req_finish_without_span_0001" {
+		t.Fatalf("finish request lost request correlation: %#v", requestBody)
+	}
+	traceID, _ := requestBody["trace_id"].(string)
+	if len(traceID) != 32 {
+		t.Fatalf("finish request did not derive a valid trace ID: %#v", requestBody)
 	}
 }
 
@@ -524,6 +567,7 @@ func lifecycleJSONResponse(status int, value any) *http.Response {
 func pendingGuardState() GuardState {
 	return GuardState{Result: OperationResult{
 		Created: true,
+		Execute: true,
 		Operation: Operation{
 			OperationID: "op-1", Attempt: 1, AttemptStatus: "pending",
 		},

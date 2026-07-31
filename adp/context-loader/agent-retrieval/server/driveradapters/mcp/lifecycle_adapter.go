@@ -34,7 +34,6 @@ var lifecycleToolNames = map[string]struct{}{
 	"bkn_get_operation":        {},
 	"bkn_retry_operation":      {},
 	"bkn_get_receipt":          {},
-	"bkn_finalize_operation":   {},
 }
 
 func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandlerMiddleware {
@@ -72,6 +71,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 		}
 		return &operationResult{
 			Operation: state.Result.Operation, Receipt: state.Result.Receipt, Created: state.Result.Created,
+			Execute:          state.Result.Execute || state.Result.Created,
 			LifecycleContext: lifecycleContext,
 		}, nil, nil
 	}
@@ -169,8 +169,6 @@ func handleLifecycleTool(
 		case "bkn_get_receipt":
 			target, apiErr, err := client.GetReceipt(ctx, stringValue(args["receipt_id"]))
 			return lifecycleCallResult(target, apiErr, err)
-		case "bkn_finalize_operation":
-			return finalizeOperation(client, ctx, args)
 		}
 		method, path, body := lifecycleRequest(name, args)
 		var target any
@@ -189,47 +187,6 @@ func handleLifecycleTool(
 		}
 		return mcpsdk.NewToolResultStructured(target, "managed lifecycle state updated"), nil
 	}
-}
-
-func finalizeOperation(
-	client *bkntrace.LifecycleClient,
-	ctx context.Context,
-	args map[string]any,
-) (*mcpsdk.CallToolResult, error) {
-	operation, apiErr, err := client.GetOperation(ctx, stringValue(args["operation_id"]))
-	if err != nil || apiErr != nil {
-		return lifecycleCallResult(operation, apiErr, err)
-	}
-	receipt, apiErr, err := client.GetReceipt(ctx, stringValue(args["receipt_id"]))
-	if err != nil || apiErr != nil {
-		return lifecycleCallResult(receipt, apiErr, err)
-	}
-	if receipt.OperationID != operation.OperationID || receipt.Attempt != operation.Attempt {
-		return lifecycleToolError(lifecycleError{
-			Code: "operation_required", Message: "receipt does not match the current operation attempt",
-			RequiredAction: "ensure_operation",
-		}), nil
-	}
-	state := bkntrace.GuardState{Result: bkntrace.OperationResult{
-		Operation: operation, Receipt: receipt,
-	}}
-	failed := stringValue(args["outcome"]) == "fail"
-	retryable, _ := args["retryable"].(bool)
-	result, apiErr, err := bkntrace.NewGuard(client).Finish(
-		ctx, state, stringValue(args["payload_hash"]), failed, retryable,
-	)
-	if err != nil {
-		return lifecycleToolError(lifecycleAvailabilityError(err)), nil
-	}
-	if apiErr != nil {
-		errorResult := lifecycleToolError(lifecycleError(*apiErr))
-		if apiErr.Code == "receipt_pending" {
-			structured := errorResult.StructuredContent.(map[string]any)
-			structured["receipt"] = result.Receipt
-		}
-		return errorResult, nil
-	}
-	return mcpsdk.NewToolResultStructured(result, "operation receipt finalized"), nil
 }
 
 func lifecycleCallResult(target any, apiErr *bkntrace.APIError, err error) (*mcpsdk.CallToolResult, error) {

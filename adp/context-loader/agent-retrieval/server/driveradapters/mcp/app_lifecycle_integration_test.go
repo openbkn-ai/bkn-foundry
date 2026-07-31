@@ -69,6 +69,7 @@ func TestMCPProtocolLifecycleThreeRoundsAcrossConversationsAndReconnect(t *testi
 			mu.Unlock()
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Created: true,
+				Execute: true,
 				Operation: bkntrace.Operation{
 					OperationID: operationID, ConversationID: conversationID,
 					InteractionID: interactionID, OperationKey: body.OperationKey,

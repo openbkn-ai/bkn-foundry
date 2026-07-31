@@ -98,13 +98,6 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 		addString("operation_id", true)
 	case "bkn_get_receipt":
 		addString("receipt_id", true)
-	case "bkn_finalize_operation":
-		addString("operation_id", true)
-		addString("receipt_id", true)
-		addString("payload_hash", true)
-		properties["outcome"] = enumSchema("complete", "fail")
-		properties["retryable"] = booleanSchema()
-		required = append(required, "outcome")
 	default:
 		addString("interaction_id", true)
 		addString("terminal_idempotency_key", true)
@@ -136,14 +129,15 @@ func lifecycleOutputSchema(toolKey string) map[string]any {
 		return interactionOutputSchema()
 	case "bkn_get_operation":
 		return operationOutputSchema()
-	case "bkn_retry_operation", "bkn_finalize_operation":
+	case "bkn_retry_operation":
 		return closedSchema(
 			map[string]any{
 				"operation": operationOutputSchema(),
 				"receipt":   receiptOutputSchema(),
 				"created":   map[string]any{"type": "boolean"},
+				"execute":   map[string]any{"type": "boolean"},
 			},
-			[]string{"operation", "receipt", "created"},
+			[]string{"operation", "receipt", "created", "execute"},
 		)
 	case "bkn_get_receipt":
 		return receiptOutputSchema()
@@ -206,7 +200,7 @@ func operationOutputSchema() map[string]any {
 		"parent_operation_id":   stringSchema(),
 		"causation_event_ids":   stringArraySchema(),
 		"attempt":               integerSchema(),
-		"attempt_status":        enumSchema("pending", "completed", "failed"),
+		"attempt_status":        enumSchema("ready", "pending", "completed", "failed"),
 		"retryable":             booleanSchema(),
 		"row_version":           integerSchema(),
 		"created_at":            dateTimeSchema(),

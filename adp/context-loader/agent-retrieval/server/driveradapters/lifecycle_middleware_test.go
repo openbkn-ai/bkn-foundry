@@ -177,6 +177,7 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Created: true,
+				Execute: true,
 				Operation: bkntrace.Operation{
 					OperationID: "op-rest-1", ConversationID: "conv-1", InteractionID: "int-1",
 					Attempt: 1, AttemptStatus: "pending",
@@ -326,6 +327,7 @@ func TestLifecycleMiddlewareFinalizesPanicsAndLetsRecoveryReturn500(t *testing.T
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: bkntrace.Operation{OperationID: "op-panic", Attempt: 1, AttemptStatus: "pending"},
 				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-panic", ReceiptStatus: "pending"},
 			})
@@ -417,6 +419,7 @@ func inProcessLifecycleClient(t testing.TB) *bkntrace.LifecycleClient {
 			status = http.StatusCreated
 			value = bkntrace.OperationResult{
 				Created: true,
+				Execute: true,
 				Operation: bkntrace.Operation{
 					OperationID: "op-route", ConversationID: "conv-route",
 					InteractionID: "int-route", Attempt: 1, AttemptStatus: "pending",

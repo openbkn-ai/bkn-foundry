@@ -166,6 +166,7 @@ type OperationResult struct {
 	Operation Operation `json:"operation"`
 	Receipt   Receipt   `json:"receipt"`
 	Created   bool      `json:"created"`
+	Execute   bool      `json:"execute"`
 }
 
 type EnsureOperationInput struct {

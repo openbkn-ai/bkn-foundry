@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestBusinessToolSchemasRequireExplicitBKNContext(t *testing.T) {
@@ -66,6 +68,55 @@ func TestBusinessToolSchemasRequireExplicitBKNContext(t *testing.T) {
 				if _, ok := contextSchema.Properties[field]; !ok {
 					t.Fatalf("%s bkn_context must declare optional %s", toolKey, field)
 				}
+			}
+		})
+	}
+}
+
+func TestModuleOpenAPIRequiresManagedBKNContext(t *testing.T) {
+	documents := map[string]string{
+		"api_public/kn.yaml":                           "SemanticSearchRequest",
+		"api_private/kn_schema_search.yaml":            "SemanticSearchRequest",
+		"api_private/kn_search.yaml":                   "KnSearchCompatRequest",
+		"api_private/search_schema.yaml":               "SearchSchemaRequest",
+		"api_private/find_skills.yaml":                 "FindSkillsRequest",
+		"api_private/get_action_info.yaml":             "ActionRecallRequest",
+		"api_private/get_logic_properties_values.yaml": "ResolveLogicPropertiesRequest",
+		"api_private/query_object_instance.yaml":       "FirstQueryWithSearchAfter",
+		"api_private/query_instance_subgraph.yaml":     "SubGraphQueryBaseOnTypePath",
+	}
+	for relativePath, requestSchema := range documents {
+		t.Run(relativePath, func(t *testing.T) {
+			path := filepath.Join("../../../docs/apis", relativePath)
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read module OpenAPI: %v", err)
+			}
+			var document struct {
+				Components struct {
+					Schemas map[string]struct {
+						Required   []string                  `yaml:"required"`
+						Properties map[string]map[string]any `yaml:"properties"`
+					} `yaml:"schemas"`
+				} `yaml:"components"`
+			}
+			if err := yaml.Unmarshal(raw, &document); err != nil {
+				t.Fatalf("decode module OpenAPI: %v", err)
+			}
+			contextSchema, ok := document.Components.Schemas["BKNContext"]
+			if !ok || !sameStringSet(
+				contextSchema.Required,
+				[]string{"conversation_id", "interaction_id", "operation_key"},
+			) {
+				t.Fatalf("BKNContext contract is missing or incomplete: %#v", contextSchema)
+			}
+			request, ok := document.Components.Schemas[requestSchema]
+			if !ok || !containsString(request.Required, "bkn_context") {
+				t.Fatalf("%s must require bkn_context: %#v", requestSchema, request)
+			}
+			property, ok := request.Properties["bkn_context"]
+			if !ok || property["$ref"] != "#/components/schemas/BKNContext" {
+				t.Fatalf("%s must reference BKNContext: %#v", requestSchema, property)
 			}
 		})
 	}
@@ -130,14 +181,14 @@ func TestLifecycleToolsExposeExactCoreOutputSchemas(t *testing.T) {
 			}
 		}
 	}
-	for _, tool := range []string{"bkn_retry_operation", "bkn_finalize_operation"} {
+	for _, tool := range []string{"bkn_retry_operation"} {
 		_, output := loadToolSchemas(tool)
 		var result struct {
 			Properties map[string]json.RawMessage `json:"properties"`
 			Required   []string                   `json:"required"`
 		}
 		_ = json.Unmarshal(output, &result)
-		for _, field := range []string{"operation", "receipt", "created"} {
+		for _, field := range []string{"operation", "receipt", "created", "execute"} {
 			if _, ok := result.Properties[field]; !ok || !containsString(result.Required, field) {
 				t.Fatalf("%s output must require %s: %s", tool, field, output)
 			}
@@ -197,7 +248,6 @@ func TestLifecycleSchemaUsesRegisteredIssue541ErrorsAndCoreTypes(t *testing.T) {
 		"bkn_get_operation":       "sessionvo.Operation",
 		"bkn_get_receipt":         "sessionvo.Receipt",
 		"bkn_retry_operation":     "httphandler.operationResult",
-		"bkn_finalize_operation":  "httphandler.operationResult",
 	}
 	for tool, definition := range outputs {
 		_, rawOutput := loadToolSchemas(tool)
@@ -285,7 +335,7 @@ func TestLifecycleSwaggerPathsRequestsAndResponsesAreStructurallyFrozen(t *testi
 			"terminal_idempotency_key", "lease_token", "lease_epoch",
 			"completion_manifest_version", "completion_reason",
 		},
-		"httphandler.operationResult": {"operation", "receipt", "created"},
+		"httphandler.operationResult": {"operation", "receipt", "created", "execute"},
 	}
 	for name, fields := range requiredDefinitions {
 		definition, ok := document.Definitions[name]
@@ -313,7 +363,6 @@ func TestLifecycleMCPInputRequiredFieldsMatchCorePathAndBody(t *testing.T) {
 		"bkn_get_operation":        {"operation_id"},
 		"bkn_retry_operation":      {"operation_id"},
 		"bkn_get_receipt":          {"receipt_id"},
-		"bkn_finalize_operation":   {"operation_id", "receipt_id", "payload_hash", "outcome"},
 	}
 	for tool, want := range expected {
 		input, _ := loadToolSchemas(tool)

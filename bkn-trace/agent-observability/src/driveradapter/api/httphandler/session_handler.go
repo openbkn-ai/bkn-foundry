@@ -104,6 +104,7 @@ type operationResult struct {
 	Operation sessionvo.Operation `json:"operation" binding:"required"`
 	Receipt   sessionvo.Receipt   `json:"receipt" binding:"required"`
 	Created   bool                `json:"created" binding:"required"`
+	Execute   bool                `json:"execute" binding:"required"`
 }
 
 func RegisterSessionRoutes(
@@ -303,6 +304,7 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 		})
 		h.writeLifecycleResult(w, r, operationResult{
 			Operation: result.Operation, Receipt: result.Receipt, Created: result.Created,
+			Execute: result.Execute,
 		}, err, http.StatusCreated)
 	default:
 		writeLifecycleError(w, r, http.StatusNotFound, "conversation_not_found", "lifecycle route was not found")
@@ -407,7 +409,7 @@ func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *ht
 			LeaseToken: request.LeaseToken, LeaseEpoch: request.LeaseEpoch,
 		})
 		h.writeLifecycleResult(w, r, operationResult{
-			Operation: operation, Receipt: receipt, Created: err == nil,
+			Operation: operation, Receipt: receipt, Created: false, Execute: false,
 		}, err, http.StatusCreated)
 		return
 	}

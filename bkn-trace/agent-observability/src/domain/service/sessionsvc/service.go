@@ -115,6 +115,7 @@ type EnsureOperationResult struct {
 	Operation sessionvo.Operation
 	Receipt   sessionvo.Receipt
 	Created   bool
+	Execute   bool
 }
 
 type StartAttemptCommand struct {
@@ -596,10 +597,12 @@ func (s *Service) EnsureOperationWithDisposition(
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
 	created := false
+	execute := false
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operation = sessionvo.Operation{}
 		receipt = sessionvo.Receipt{}
 		created = false
+		execute = false
 		conversation, err := ownedConversation(tx, command.Owner, command.ConversationID)
 		if err != nil {
 			return err
@@ -641,6 +644,19 @@ func (s *Service) EnsureOperationWithDisposition(
 			if !receiptFound {
 				return errors.New("operation receipt invariant violated")
 			}
+			if existing.AttemptStatus == sessionvo.AttemptReady {
+				now := tx.Now()
+				existing.AttemptStatus = sessionvo.AttemptPending
+				existing.RowVersion++
+				existing.UpdatedAt = now
+				tx.SaveOperation(existing)
+				if err := s.appendProjection(
+					tx, "operation", existing.ID, "operation.attempt.started", existing,
+				); err != nil {
+					return err
+				}
+				execute = true
+			}
 			operation, receipt = existing, existingReceipt
 			return nil
 		}
@@ -673,6 +689,7 @@ func (s *Service) EnsureOperationWithDisposition(
 			IssuedAt:             now,
 		}
 		created = true
+		execute = true
 		tx.SaveOperation(operation)
 		tx.SaveReceipt(receipt)
 		if err := s.appendProjection(tx, "operation", operation.ID, "operation.started", operation); err != nil {
@@ -691,7 +708,9 @@ func (s *Service) EnsureOperationWithDisposition(
 		)
 	})
 	s.observeLifecycleError(err)
-	return EnsureOperationResult{Operation: operation, Receipt: receipt, Created: created}, err
+	return EnsureOperationResult{
+		Operation: operation, Receipt: receipt, Created: created, Execute: execute,
+	}, err
 }
 
 func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemptCommand) (sessionvo.Operation, sessionvo.Receipt, error) {
@@ -734,7 +753,7 @@ func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemp
 		}
 		now := tx.Now()
 		current.Attempt++
-		current.AttemptStatus = sessionvo.AttemptPending
+		current.AttemptStatus = sessionvo.AttemptReady
 		current.Retryable = false
 		current.RowVersion++
 		current.UpdatedAt = now
@@ -755,7 +774,7 @@ func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemp
 		}
 		tx.SaveOperation(current)
 		tx.SaveReceipt(receipt)
-		if err := s.appendProjection(tx, "operation", current.ID, "operation.attempt.started", current); err != nil {
+		if err := s.appendProjection(tx, "operation", current.ID, "operation.attempt.ready", current); err != nil {
 			return err
 		}
 		if err := s.appendProjection(tx, "receipt", receipt.ID, "receipt.started", receipt); err != nil {
@@ -851,6 +870,9 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		}
 		if currentReceipt.ID != claimedReceipt.ID {
 			return domainError(CodeIdempotencyConflict, "operation attempt or receipt does not match")
+		}
+		if current.AttemptStatus == sessionvo.AttemptReady {
+			return domainError(CodeReceiptPending, "operation attempt has not been claimed for execution")
 		}
 		retryable := coreRetryableFailure(current, command, status)
 		if currentReceipt.Status != sessionvo.ReceiptPending {
