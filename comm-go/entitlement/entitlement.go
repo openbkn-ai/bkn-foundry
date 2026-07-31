@@ -145,7 +145,16 @@ func Features() []string {
 
 // Snap returns the whole snapshot, for operator endpoints that report several
 // of these at once and want them mutually consistent.
-func Snap() Snapshot { return current() }
+func Snap() Snapshot {
+	s := current()
+	// Copy the slice for the same reason Features does. A Snapshot is a value,
+	// but its Features field shares the backing array with the published
+	// snapshot, so a caller that sorts it in place — which an operator endpoint
+	// rendering a template plausibly would — rewrites what every other reader
+	// sees until the next refresh.
+	s.Features = append([]string(nil), s.Features...)
+	return s
+}
 
 func current() Snapshot {
 	mu.RLock()

@@ -20,8 +20,14 @@ import (
 // separation is the point, and it has to be a compile-time one: services run on
 // customer hardware where the customer has root and owns the environment, so a
 // stub that shipped and merely logged a warning would be a licence bypass with
-// a polite note attached. CI asserts that a release artefact contains no
-// OPENBKN_EDITION string.
+// a polite note attached.
+//
+// Each service's release job should assert that its artefact contains no
+// OPENBKN_EDITION string (`! strings <bin> | grep -q OPENBKN_EDITION`). That
+// assertion does not exist yet — it belongs on the pipelines that produce
+// binaries, and this module produces none. Stated as a to-do rather than as
+// fact on purpose: a comment claiming a defence that is not there is worse than
+// no comment, because the next person relaxes on the strength of it.
 //
 // The environment is re-read on every call rather than resolved once, so the
 // stub has the same shape as the shipped gate: a licence that changes under a
@@ -33,6 +39,14 @@ func DefaultGate() Gate {
 		ed := licverify.Edition(strings.TrimSpace(os.Getenv("OPENBKN_EDITION")))
 		if ed == "" || ed == licverify.EditionCommunity {
 			return Snapshot{Edition: licverify.EditionCommunity, State: licverify.StateUnlicensed}
+		}
+		if !ed.Known() {
+			// Edition is a plain string conversion, so a typo would sail
+			// through as Licensed: true with an edition that satisfies no bar
+			// at all — "it says licensed and nothing works", with nothing
+			// pointing at the misspelling. The whole value of this stub is
+			// saving a developer that afternoon.
+			panic("entitlement: OPENBKN_EDITION=" + string(ed) + " is not a known edition (community, professional, enterprise, industry)")
 		}
 		return Snapshot{
 			Licensed: true,

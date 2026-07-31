@@ -7,6 +7,7 @@
 package entitlement
 
 import (
+	"log/slog"
 	"os"
 
 	"github.com/openbkn-ai/licverify/keys"
@@ -39,6 +40,40 @@ func DefaultGate() Gate {
 	return g
 }
 
+// defaultHubGate resolves the hub configuration, or reports that this
+// deployment has none.
+//
+// Every path that ends in "no gate" is logged except the one that is genuinely
+// normal — neither variable set, i.e. a community deployment. The others look
+// identical from the outside (all paid capability off, no certificate fetched),
+// and without a line in the log an operator cannot tell "this is a community
+// install" from "the helm upgrade dropped BKN_SAFE_APPKEY".
+func defaultHubGate() (*HubGate, error) {
+	base, appkey := os.Getenv("BKN_SAFE_URL"), os.Getenv("BKN_SAFE_APPKEY")
+	switch {
+	case base == "" && appkey == "":
+		return nil, nil
+	case base == "" || appkey == "":
+		slog.Warn("entitlement: licence hub is half-configured; running as community",
+			"has_url", base != "", "has_appkey", appkey != "")
+		return nil, nil
+	}
+
+	g, err := NewHubGate(HubConfig{
+		BaseURL: base,
+		AppKey:  appkey,
+		Keys:    keys.Official(),
+	})
+	if err != nil {
+		// The realistic cause is an empty verification key table, which means
+		// this build cannot verify a certificate even if it fetches one.
+		// Community behaviour is the right outcome; silence is not.
+		slog.Error("entitlement: licence hub unusable; running as community", "err", err)
+		return nil, err
+	}
+	return g, nil
+}
+
 // GateWithRunner returns the production gate together with its background
 // refresher, or (deniedGate, nil) when this deployment has no hub configured.
 //
@@ -51,16 +86,4 @@ func GateWithRunner() (Gate, func(stop <-chan struct{})) {
 		return deniedGate{}, nil
 	}
 	return g, g.Run
-}
-
-func defaultHubGate() (*HubGate, error) {
-	base, appkey := os.Getenv("BKN_SAFE_URL"), os.Getenv("BKN_SAFE_APPKEY")
-	if base == "" || appkey == "" {
-		return nil, nil
-	}
-	return NewHubGate(HubConfig{
-		BaseURL: base,
-		AppKey:  appkey,
-		Keys:    keys.Official(),
-	})
 }

@@ -65,7 +65,12 @@ type HubConfig struct {
 	// binary. Required — without them nothing can be verified and every fetch
 	// would be pointless.
 	Keys map[string]ed25519.PublicKey
-	// Interval is the steady-state re-check cadence. Default 1h.
+	// Interval is the steady-state re-check cadence. Default 5 minutes,
+	// which is the cadence bkn-safe's distribution endpoint documents
+	// (bkn-safe/server/internal/httpapi/license.go). Steady-state polls answer
+	// 304 with no body, so the cost is a conditional request per service; what
+	// the interval really buys is how fast a revoked or downgraded certificate
+	// reaches the services.
 	Interval time.Duration
 	// ColdInterval is the initial retry delay before the first successful
 	// verification; it doubles up to ColdMaxInterval. Defaults 1s / 30s.
@@ -103,7 +108,7 @@ func NewHubGate(cfg HubConfig) (*HubGate, error) {
 		return nil, errors.New("entitlement: hub gate needs verification keys — a build that cannot verify must not pretend to be licensed")
 	}
 	if cfg.Interval <= 0 {
-		cfg.Interval = time.Hour
+		cfg.Interval = 5 * time.Minute
 	}
 	if cfg.ColdInterval <= 0 {
 		cfg.ColdInterval = time.Second
@@ -164,28 +169,57 @@ func (g *HubGate) Run(stop <-chan struct{}) {
 // refresh fetches, verifies and publishes. It returns an error only to drive
 // the retry cadence — callers never gate on it.
 func (g *HubGate) refresh() error {
-	text, changed, err := g.fetch()
+	r, err := g.fetch()
 	if err != nil {
 		return err
 	}
-	if !changed && g.Snapshot().Licensed {
-		// 304 and we already hold a verified snapshot. Re-evaluate anyway:
-		// an unchanged certificate still expires with the passage of time.
+	if r.absent {
+		// The hub answered, and the answer is "no certificate installed".
+		// That is a definite reply, not a failure: a deployment can sit here
+		// indefinitely and should poll at the steady cadence rather than the
+		// cold-start one, and it should not log every time.
+		//
+		// The cached validator goes too. The hub's ETag is a hash of the
+		// licence text, so re-installing the same certificate would otherwise
+		// be answered 304 against a validator whose text we no longer hold,
+		// and the gate could never climb back out of community.
+		g.remember("", "")
+		g.publish(Snapshot{Edition: licverify.EditionCommunity})
+		return nil
+	}
+
+	text := r.text
+	if !r.changed {
+		// 304: the certificate has not changed, but time has passed and it may
+		// have crossed into grace or out of it, so re-evaluate the text we
+		// hold. The question is whether we still have verified text, not
+		// whether the last verdict was "licensed" — a certificate that lapsed
+		// past grace is unlicensed and still perfectly re-evaluable.
 		text = g.currentText()
 	}
 	if text == "" {
 		return errors.New("no licence text")
 	}
-	snap := evaluate(text, g.keys)
-	g.publish(snap)
+	g.publish(evaluate(text, g.keys))
 	return nil
 }
 
-// fetch returns the licence text, whether it changed, and any transport error.
-func (g *HubGate) fetch() (text string, changed bool, err error) {
+// fetchResult separates the three answers the hub can give: here is the
+// certificate, nothing has changed, and there is no certificate. Collapsing the
+// last one into an error would turn a legitimate steady state — an enterprise
+// deployment waiting for its certificate — into a permanent hot retry loop.
+type fetchResult struct {
+	text    string
+	changed bool
+	absent  bool
+}
+
+// fetch asks the hub. The error return is for transport and protocol failures
+// only.
+func (g *HubGate) fetch() (fetchResult, error) {
 	req, err := http.NewRequest(http.MethodGet, g.cfg.BaseURL+"/api/safe/v1/internal/license/current", nil)
 	if err != nil {
-		return "", false, err
+		return fetchResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+g.cfg.AppKey)
 	if et := g.currentETag(); et != "" {
@@ -194,29 +228,19 @@ func (g *HubGate) fetch() (text string, changed bool, err error) {
 
 	resp, err := g.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return "", false, err
+		return fetchResult{}, err
 	}
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusNotModified:
-		return "", false, nil
+		return fetchResult{}, nil
 	case http.StatusNotFound:
-		// No licence installed in the cluster. That is a legitimate steady
-		// state (community deployment), not a transport failure — but there is
-		// nothing to verify, so the snapshot stays community.
-		//
-		// Drop the cached ETag too: the hub's ETag is a hash of the licence
-		// text, so re-installing the *same* certificate would otherwise be
-		// answered 304 against a validator we no longer have text for, and the
-		// gate could never climb back out of community without a restart.
-		g.remember("", "")
-		g.publish(Snapshot{Edition: licverify.EditionCommunity})
-		return "", false, nil
+		return fetchResult{absent: true}, nil
 	case http.StatusOK:
 	default:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", false, fmt.Errorf("licence hub returned %s: %s", resp.Status, body)
+		return fetchResult{}, fmt.Errorf("licence hub returned %s: %s", resp.Status, body)
 	}
 
 	var payload struct {
@@ -224,10 +248,10 @@ func (g *HubGate) fetch() (text string, changed bool, err error) {
 		ETag    string `json:"etag"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return "", false, err
+		return fetchResult{}, err
 	}
 	g.remember(payload.ETag, payload.License)
-	return payload.License, true, nil
+	return fetchResult{text: payload.License, changed: true}, nil
 }
 
 func (g *HubGate) publish(s Snapshot) { g.snap.Store(&s) }
