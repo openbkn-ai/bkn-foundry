@@ -360,12 +360,12 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 		}
 
 		totalRows := result.Total
-		readRows := len(result.Rows)
+		readRows := len(result.Entries)
 
 		if readRows > 0 {
 			// Update lastBatchKeyValues with the last values in this batch
 			newSyncedMark := map[string]any{}
-			lastItem := result.Rows[readRows-1]
+			lastItem := result.Entries[readRows-1]
 			lastBatchKeyValues = advanceCursor(lastBatchKeyValues, keys, lastItem)
 			for _, field := range batchFields {
 				newSyncedMark[field] = lastItem[field]
@@ -373,7 +373,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 
 			// Convert documents to upsert format
 			upsertRequests := make([]map[string]any, 0, readRows)
-			for _, doc := range result.Rows {
+			for _, doc := range result.Entries {
 				docID := getNewDocID(lastBatchKeyValues, doc)
 				if docID == "" {
 					return fmt.Errorf("build document ID: no build key values found in source row")

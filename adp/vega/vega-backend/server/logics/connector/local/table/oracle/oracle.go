@@ -238,6 +238,56 @@ func (c *OracleConnector) TestConnection(ctx context.Context) error {
 	return nil
 }
 
+// ExecuteRawSQL executes a validated read-only SQL statement for Raw Query.
+func (c *OracleConnector) ExecuteRawSQL(ctx context.Context, statement string) (*interfaces.RawQueryResponse, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("connect failed: %w", err)
+	}
+	rows, err := c.db.QueryContext(ctx, statement)
+	if err != nil {
+		return nil, fmt.Errorf("execute query failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("get columns failed: %w", err)
+	}
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, fmt.Errorf("get column types failed: %w", err)
+	}
+	result := &interfaces.RawQueryResponse{Columns: make([]interfaces.ColumnInfo, len(columns)), Entries: make([]map[string]any, 0)}
+	for i, column := range columns {
+		result.Columns[i] = interfaces.ColumnInfo{Name: column, Type: c.MapType(columnTypes[i].DatabaseTypeName())}
+	}
+	for rows.Next() {
+		values := make([]any, len(columns))
+		pointers := make([]any, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, fmt.Errorf("scan row failed: %w", err)
+		}
+		entry := make(map[string]any, len(columns))
+		for i, column := range columns {
+			if bytes, ok := values[i].([]byte); ok {
+				entry[column] = string(bytes)
+			} else {
+				entry[column] = values[i]
+			}
+		}
+		result.Entries = append(result.Entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows failed: %w", err)
+	}
+	total := int64(len(result.Entries))
+	result.TotalCount = &total
+	return result, nil
+}
+
 // validateSchemas verifies that configured schemas exist
 func (c *OracleConnector) validateSchemas(ctx context.Context) error {
 	// Get all schemas list

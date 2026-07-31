@@ -99,7 +99,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 
 	result := &interfaces.QueryResult{
-		Rows: make([]map[string]any, 0),
+		Entries: make([]map[string]any, 0),
 	}
 
 	tableRef := qualTable(resource)
@@ -250,7 +250,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		for i, col := range columns {
 			row[col] = convertValue(values[i], col, origTypeMap)
 		}
-		result.Rows = append(result.Rows, row)
+		result.Entries = append(result.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

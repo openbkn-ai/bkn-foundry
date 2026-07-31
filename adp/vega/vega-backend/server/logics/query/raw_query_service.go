@@ -28,8 +28,6 @@ import (
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
 	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
-	"vega-backend/logics/connector/local/table/mariadb"
-	"vega-backend/logics/connector/local/table/postgresql"
 	"vega-backend/logics/query/querypolicy"
 	"vega-backend/logics/query/sqlglot"
 	resourcelogic "vega-backend/logics/resource"
@@ -692,6 +690,8 @@ func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (
 		return "mysql", nil
 	case interfaces.ConnectorTypePostgreSQL:
 		return "postgres", nil
+	case interfaces.ConnectorTypeSQLServer:
+		return "tsql", nil
 	default:
 		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
@@ -928,20 +928,12 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 	}
 	defer func() { _ = connector.Close(ctx) }()
 
-	// 根据connector类型执行SQL
-	var result *interfaces.RawQueryResponse
-	switch catalog.ConnectorType {
-	case interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypeMySQL:
-		mariadbConnector := connector.(*mariadb.MariaDBConnector)
-		result, err = mariadbConnector.ExecuteRawSQL(ctx, sql)
-	case interfaces.ConnectorTypePostgreSQL:
-		postgresqlConnector := connector.(*postgresql.PostgresqlConnector)
-		result, err = postgresqlConnector.ExecuteRawSQL(ctx, sql)
-	default:
+	tableConnector, ok := connector.(interfaces.TableConnector)
+	if !ok {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
 	}
-
+	result, err := tableConnector.ExecuteRawSQL(ctx, sql)
 	if err != nil {
 		otellog.LogError(ctx, "Execute SQL failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).

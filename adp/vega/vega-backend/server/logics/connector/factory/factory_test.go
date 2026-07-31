@@ -27,6 +27,7 @@ func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMySQL)
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMariaDB)
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypePostgreSQL)
+		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeSQLServer)
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeOpenSearch)
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeAnyShare)
 		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)

@@ -30,7 +30,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{}
 		docs := []map[string]any{{"id": 1}}
 		queryResult := &interfaces.QueryResult{
-			Rows:        []map[string]any{{"id": 1}},
+			Entries:     []map[string]any{{"id": 1}},
 			Total:       1,
 			SearchAfter: []any{"sort-1"},
 		}

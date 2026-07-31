@@ -304,6 +304,21 @@ func (mr *MockTableConnectorMockRecorder) ExecuteQuery(ctx, resource, params any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteQuery", reflect.TypeOf((*MockTableConnector)(nil).ExecuteQuery), ctx, resource, params)
 }
 
+// ExecuteRawSQL mocks base method.
+func (m *MockTableConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteRawSQL", ctx, sql)
+	ret0, _ := ret[0].(*interfaces.RawQueryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteRawSQL indicates an expected call of ExecuteRawSQL.
+func (mr *MockTableConnectorMockRecorder) ExecuteRawSQL(ctx, sql any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteRawSQL", reflect.TypeOf((*MockTableConnector)(nil).ExecuteRawSQL), ctx, sql)
+}
+
 // GetCategory mocks base method.
 func (m *MockTableConnector) GetCategory() string {
 	m.ctrl.T.Helper()
@@ -2109,43 +2124,4 @@ func (m *MockAPIConnector) TestConnection(ctx context.Context) error {
 func (mr *MockAPIConnectorMockRecorder) TestConnection(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnection", reflect.TypeOf((*MockAPIConnector)(nil).TestConnection), ctx)
-}
-
-// MockMariaDBSQLExecutor is a mock of MariaDBSQLExecutor interface.
-type MockMariaDBSQLExecutor struct {
-	ctrl     *gomock.Controller
-	recorder *MockMariaDBSQLExecutorMockRecorder
-	isgomock struct{}
-}
-
-// MockMariaDBSQLExecutorMockRecorder is the mock recorder for MockMariaDBSQLExecutor.
-type MockMariaDBSQLExecutorMockRecorder struct {
-	mock *MockMariaDBSQLExecutor
-}
-
-// NewMockMariaDBSQLExecutor creates a new mock instance.
-func NewMockMariaDBSQLExecutor(ctrl *gomock.Controller) *MockMariaDBSQLExecutor {
-	mock := &MockMariaDBSQLExecutor{ctrl: ctrl}
-	mock.recorder = &MockMariaDBSQLExecutorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMariaDBSQLExecutor) EXPECT() *MockMariaDBSQLExecutorMockRecorder {
-	return m.recorder
-}
-
-// ExecuteRawSQL mocks base method.
-func (m *MockMariaDBSQLExecutor) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteRawSQL", ctx, sql)
-	ret0, _ := ret[0].(*interfaces.RawQueryResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ExecuteRawSQL indicates an expected call of ExecuteRawSQL.
-func (mr *MockMariaDBSQLExecutorMockRecorder) ExecuteRawSQL(ctx, sql any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteRawSQL", reflect.TypeOf((*MockMariaDBSQLExecutor)(nil).ExecuteRawSQL), ctx, sql)
 }

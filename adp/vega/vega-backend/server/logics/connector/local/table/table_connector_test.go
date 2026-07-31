@@ -41,7 +41,7 @@ func TestScanRows(t *testing.T) {
 		assert.Equal(t, []map[string]any{
 			{"id": int64(1), "name": "alice"},
 			{"id": int64(2), "name": "bob"},
-		}, got.Rows)
+		}, got.Entries)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 	t.Run("scan rows returns rows error", func(t *testing.T) {

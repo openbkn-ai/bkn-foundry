@@ -32,6 +32,7 @@ const (
 	ConnectorTypeMySQL      string = "mysql"
 	ConnectorTypeMariaDB    string = "mariadb"
 	ConnectorTypePostgreSQL string = "postgresql"
+	ConnectorTypeSQLServer  string = "sqlserver"
 	ConnectorTypeOpenSearch string = "opensearch"
 	ConnectorTypeOracle     string = "oracle"
 	ConnectorTypeAnyShare   string = "anyshare"
@@ -43,6 +44,7 @@ var SupportedConnectorTypesForQuery = map[string]bool{
 	ConnectorTypeMySQL:      true,
 	ConnectorTypeMariaDB:    true,
 	ConnectorTypePostgreSQL: true,
+	ConnectorTypeSQLServer:  true,
 	ConnectorTypeOpenSearch: true,
 }
 
@@ -53,6 +55,7 @@ func GetSupportedConnectorTypesForQuery() []string {
 		ConnectorTypeMySQL,
 		ConnectorTypeMariaDB,
 		ConnectorTypePostgreSQL,
+		ConnectorTypeSQLServer,
 		ConnectorTypeOpenSearch,
 	}
 }

@@ -81,8 +81,8 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	hitsArray, ok := hits["hits"].([]any)
 	if !ok {
 		return &interfaces.QueryResult{
-			Rows:  []map[string]any{},
-			Total: total,
+			Entries: []map[string]any{},
+			Total:   total,
 		}, nil
 	}
 
@@ -112,8 +112,8 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	}
 
 	return &interfaces.QueryResult{
-		Rows:  documents,
-		Total: total,
+		Entries: documents,
+		Total:   total,
 	}, nil
 }
 
@@ -488,8 +488,8 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		aggregations, ok := result["aggregations"].(map[string]any)
 		if !ok {
 			return &interfaces.QueryResult{
-				Rows:  []map[string]any{},
-				Total: totalCount,
+				Entries: []map[string]any{},
+				Total:   totalCount,
 			}, nil
 		}
 
@@ -514,8 +514,8 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}
 
 		return &interfaces.QueryResult{
-			Rows:  rows,
-			Total: totalCount,
+			Entries: rows,
+			Total:   totalCount,
 		}, nil
 	}
 
@@ -637,8 +637,8 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	hitsArray, ok := hits["hits"].([]any)
 	if !ok {
 		return &interfaces.QueryResult{
-			Rows:  []map[string]any{},
-			Total: int64(total),
+			Entries: []map[string]any{},
+			Total:   int64(total),
 		}, nil
 	}
 
@@ -668,7 +668,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	}
 
 	return &interfaces.QueryResult{
-		Rows:        documents,
+		Entries:     documents,
 		Total:       int64(total),
 		SearchAfter: searchAfter,
 	}, nil

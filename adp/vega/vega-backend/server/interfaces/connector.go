@@ -62,7 +62,7 @@ type TableForeignKeyMeta struct {
 // QueryResult represents query execution result.
 type QueryResult struct {
 	Columns     []string         `json:"columns"`
-	Rows        []map[string]any `json:"rows"`
+	Entries     []map[string]any `json:"entries"`
 	Total       int64            `json:"total"`
 	SearchAfter []any            `json:"-"` // OpenSearch cursor continuation state
 }

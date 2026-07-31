@@ -173,7 +173,7 @@ func (r RawQueryContract) validateInputDialect() error {
 	switch r.QueryFormat {
 	case QueryFormatSQL:
 		switch dialect {
-		case "postgres", "mysql", "trino", "duckdb":
+		case "postgres", "mysql", "trino", "duckdb", "tsql":
 			return nil
 		default:
 			return fmt.Errorf("unsupported SQL input_dialect: %s", r.InputDialect)

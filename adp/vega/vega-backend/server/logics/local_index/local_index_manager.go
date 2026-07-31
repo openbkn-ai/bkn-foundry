@@ -85,7 +85,7 @@ func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName strin
 		params.SearchAfter = append([]any(nil), queryResult.SearchAfter...)
 	}
 
-	return queryResult.Rows, queryResult.Total, nil
+	return queryResult.Entries, queryResult.Total, nil
 }
 
 func (lim *localIndexManager) GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error) {

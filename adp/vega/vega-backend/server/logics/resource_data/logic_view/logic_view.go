@@ -545,7 +545,7 @@ func executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resourc
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 	}
 	params.SearchAfter = append([]any(nil), result.SearchAfter...)
-	return result.Rows, result.Total, nil
+	return result.Entries, result.Total, nil
 }
 
 func executeTableQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
@@ -582,7 +582,7 @@ func executeTableQuery(ctx context.Context, catalog *interfaces.Catalog, resourc
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 	}
-	return result.Rows, result.Total, nil
+	return result.Entries, result.Total, nil
 }
 
 // FieldInfo 表示SQL查询输出的字段信息

@@ -356,7 +356,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		}
 
 		span.SetStatus(codes.Ok, "")
-		return result.Rows, result.Total, nil
+		return result.Entries, result.Total, nil
 
 	case interfaces.ResourceCategoryIndex:
 		indexConnector, ok := connector.(interfaces.IndexConnector)
@@ -376,7 +376,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 
 		span.SetStatus(codes.Ok, "")
 		params.SearchAfter = append([]any(nil), result.SearchAfter...)
-		return result.Rows, result.Total, nil
+		return result.Entries, result.Total, nil
 
 	case interfaces.ResourceCategoryFileset:
 		fc, ok := connector.(interfaces.FilesetConnector)
@@ -396,7 +396,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		}
 
 		span.SetStatus(codes.Ok, "")
-		return result.Rows, result.Total, nil
+		return result.Entries, result.Total, nil
 
 	default:
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).

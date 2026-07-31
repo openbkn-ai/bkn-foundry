@@ -30,7 +30,7 @@ func ScanRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 
 	result := &interfaces.QueryResult{
 		Columns: columns,
-		Rows:    make([]map[string]any, 0),
+		Entries: make([]map[string]any, 0),
 	}
 
 	for rows.Next() {
@@ -48,12 +48,12 @@ func ScanRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 		for i, col := range columns {
 			row[col] = convertValue(values[i])
 		}
-		result.Rows = append(result.Rows, row)
+		result.Entries = append(result.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	result.Total = int64(len(result.Rows))
+	result.Total = int64(len(result.Entries))
 	return result, nil
 }

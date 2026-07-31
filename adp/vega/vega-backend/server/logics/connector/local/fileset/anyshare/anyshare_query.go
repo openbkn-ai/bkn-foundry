@@ -77,7 +77,7 @@ func (c *AnyShareConnector) ExecuteQuery(ctx context.Context, resource *interfac
 	}
 
 	return &interfaces.QueryResult{
-		Rows: files,
+		Entries: files,
 	}, nil
 }
 
