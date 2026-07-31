@@ -78,16 +78,26 @@ type finishAttemptRequest struct {
 }
 
 type terminalInteractionRequest struct {
-	TerminalIdempotencyKey string                        `json:"terminal_idempotency_key" binding:"required"`
-	LeaseToken             string                        `json:"lease_token" binding:"required"`
-	LeaseEpoch             uint64                        `json:"lease_epoch" binding:"required"`
-	ManifestVersion        string                        `json:"completion_manifest_version" binding:"required"`
-	AnswerArtifactRef      string                        `json:"answer_artifact_ref,omitempty"`
-	Claims                 []string                      `json:"claims,omitempty"`
-	ExpectedOperations     []sessionvo.ExpectedOperation `json:"expected_operations,omitempty"`
-	ExpectedReceipts       []sessionvo.ExpectedReceipt   `json:"expected_receipts,omitempty"`
-	AssemblerDeadline      *time.Time                    `json:"assembler_deadline,omitempty"`
-	CompletionReason       string                        `json:"completion_reason" binding:"required"`
+	TerminalIdempotencyKey string                     `json:"terminal_idempotency_key" binding:"required"`
+	LeaseToken             string                     `json:"lease_token" binding:"required"`
+	LeaseEpoch             uint64                     `json:"lease_epoch" binding:"required"`
+	ManifestVersion        string                     `json:"completion_manifest_version" binding:"required"`
+	AnswerArtifactRef      string                     `json:"answer_artifact_ref,omitempty"`
+	Claims                 []string                   `json:"claims,omitempty"`
+	ExpectedOperations     []expectedOperationRequest `json:"expected_operations,omitempty"`
+	ExpectedReceipts       []expectedReceiptRequest   `json:"expected_receipts,omitempty"`
+	AssemblerDeadline      *time.Time                 `json:"assembler_deadline,omitempty"`
+	CompletionReason       string                     `json:"completion_reason" binding:"required"`
+}
+
+type expectedOperationRequest struct {
+	OperationID string `json:"operation_id" binding:"required"`
+	Required    *bool  `json:"required" binding:"required"`
+}
+
+type expectedReceiptRequest struct {
+	ReceiptID string `json:"receipt_id" binding:"required"`
+	Required  *bool  `json:"required" binding:"required"`
 }
 
 type operationResult struct {
@@ -321,6 +331,11 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 		writeLifecycleError(w, r, http.StatusBadRequest, "interaction_required", err.Error())
 		return
 	}
+	expectedOperations, expectedReceipts, err := request.expectedManifestEntries()
+	if err != nil {
+		writeLifecycleError(w, r, http.StatusBadRequest, "interaction_required", err.Error())
+		return
+	}
 	status, valid := terminalStatusForAction(parts[1])
 	if !valid {
 		writeLifecycleError(w, r, http.StatusNotFound, "interaction_required", "terminal action was not found")
@@ -332,12 +347,40 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 		LeaseToken:             request.LeaseToken, LeaseEpoch: request.LeaseEpoch,
 		Manifest: sessionvo.ClosureManifest{
 			Version: request.ManifestVersion, AnswerArtifactRef: request.AnswerArtifactRef,
-			Claims: request.Claims, ExpectedOperations: request.ExpectedOperations,
-			ExpectedReceipts: request.ExpectedReceipts, AssemblerDeadline: request.AssemblerDeadline,
+			Claims: request.Claims, ExpectedOperations: expectedOperations,
+			ExpectedReceipts: expectedReceipts, AssemblerDeadline: request.AssemblerDeadline,
 			CompletionReason: request.CompletionReason,
 		},
 	})
 	h.writeLifecycleResult(w, r, value, err, http.StatusOK)
+}
+
+func (request terminalInteractionRequest) expectedManifestEntries() (
+	[]sessionvo.ExpectedOperation,
+	[]sessionvo.ExpectedReceipt,
+	error,
+) {
+	operations := make([]sessionvo.ExpectedOperation, 0, len(request.ExpectedOperations))
+	for _, entry := range request.ExpectedOperations {
+		if strings.TrimSpace(entry.OperationID) == "" || entry.Required == nil {
+			return nil, nil, errors.New("expected_operations entries require operation_id and required")
+		}
+		operations = append(operations, sessionvo.ExpectedOperation{
+			OperationID: entry.OperationID,
+			Required:    *entry.Required,
+		})
+	}
+	receipts := make([]sessionvo.ExpectedReceipt, 0, len(request.ExpectedReceipts))
+	for _, entry := range request.ExpectedReceipts {
+		if strings.TrimSpace(entry.ReceiptID) == "" || entry.Required == nil {
+			return nil, nil, errors.New("expected_receipts entries require receipt_id and required")
+		}
+		receipts = append(receipts, sessionvo.ExpectedReceipt{
+			ReceiptID: entry.ReceiptID,
+			Required:  *entry.Required,
+		})
+	}
+	return operations, receipts, nil
 }
 
 func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *http.Request) {

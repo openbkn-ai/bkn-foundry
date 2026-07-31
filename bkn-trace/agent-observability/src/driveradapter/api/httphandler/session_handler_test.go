@@ -176,6 +176,14 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 	if retryCompleteResponse.Code != http.StatusOK {
 		t.Fatalf("complete retry attempt: %d %s", retryCompleteResponse.Code, retryCompleteResponse.Body.String())
 	}
+	missingRequiredResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/complete",
+		`{"terminal_idempotency_key":"terminal-invalid","lease_token":"`+interaction.LeaseToken+`","lease_epoch":1,"completion_manifest_version":"1","completion_reason":"answer_returned","expected_operations":[{"operation_id":"`+
+			operationResult.Operation.ID+`"}]}`)
+	if missingRequiredResponse.Code != http.StatusBadRequest {
+		t.Fatalf("missing required manifest flag must be rejected: %d %s",
+			missingRequiredResponse.Code, missingRequiredResponse.Body.String())
+	}
 
 	completeResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/interactions/"+interaction.ID+"/complete",

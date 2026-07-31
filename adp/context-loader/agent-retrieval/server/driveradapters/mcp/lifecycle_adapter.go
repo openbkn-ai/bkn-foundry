@@ -54,7 +54,7 @@ func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandle
 
 func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFunc {
 	return func(ctx context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
-		_, state, _, apiErr, err := bkntrace.NewGuard(client).Begin(ctx, bkntrace.GuardIntent{
+		lifecycleContext, state, _, apiErr, err := bkntrace.NewGuard(client).Begin(ctx, bkntrace.GuardIntent{
 			Context: bkntrace.BusinessContext{
 				ConversationID: intent.Context.ConversationID, InteractionID: intent.Context.InteractionID,
 				OperationKey: intent.Context.OperationKey, ParentOperationID: intent.Context.ParentOperationID,
@@ -72,6 +72,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 		}
 		return &operationResult{
 			Operation: state.Result.Operation, Receipt: state.Result.Receipt, Created: state.Result.Created,
+			LifecycleContext: lifecycleContext,
 		}, nil, nil
 	}
 }

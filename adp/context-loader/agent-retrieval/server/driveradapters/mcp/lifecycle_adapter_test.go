@@ -75,11 +75,6 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID: "req_lifecycle_adapter_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
 	})
-	traceID := trace.TraceID{0x4b, 0x3d, 0x59, 0xda, 0xef, 0xf5, 0xbf, 0xbb, 0x23, 0xd4, 0x6c, 0x47, 0xa5, 0x05, 0x1e, 0xc9}
-	spanID := trace.SpanID{0x00, 0xf0, 0x67, 0xaa, 0x0b, 0xa9, 0x02, 0xb7}
-	ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled,
-	}))
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
@@ -129,8 +124,8 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 		if body.RequestID != "req_lifecycle_adapter_0001" {
 			t.Fatalf("finish request_id mismatch: %#v", body)
 		}
-		if body.TraceID != traceID.String() || len(body.TraceID) != 32 {
-			t.Fatalf("finish trace_id must come from current OTel span: %#v", body)
+		if len(body.TraceID) != 32 || body.TraceID == strings.Repeat("0", 32) {
+			t.Fatalf("finish trace_id must be generated when the caller has no OTel span: %#v", body)
 		}
 		if body.ReceiptID != "receipt-1" || body.PayloadHash == "" {
 			t.Fatalf("finish receipt contract mismatch: %#v", body)

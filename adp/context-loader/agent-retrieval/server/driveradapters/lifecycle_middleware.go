@@ -96,7 +96,18 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		originalWriter := c.Writer
 		buffered := &lifecycleResponseWriter{ResponseWriter: originalWriter, status: http.StatusOK}
 		c.Writer = buffered
-		c.Next()
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					c.Writer = originalWriter
+					_, _, _ = guard.Finish(
+						ctx, state, hashLifecyclePayload(buffered.body.Bytes()), true, true,
+					)
+					panic(recovered)
+				}
+			}()
+			c.Next()
+		}()
 		c.Writer = originalWriter
 
 		payloadHash := hashLifecyclePayload(buffered.body.Bytes())
@@ -202,7 +213,9 @@ func lifecycleHTTPStatus(code string) int {
 	switch code {
 	case "conversation_required", "interaction_required", "operation_required":
 		return http.StatusBadRequest
-	case "permission_denied":
+	case "conversation_not_found", "resource_not_disclosed":
+		return http.StatusNotFound
+	case "conversation_owner_mismatch", "permission_denied", "capability_not_licensed":
 		return http.StatusForbidden
 	case "feature_not_installed":
 		return http.StatusNotImplemented
@@ -261,19 +274,10 @@ func writeBufferedLifecycleResponse(
 	buffered *lifecycleResponseWriter,
 	receipt bkntrace.Receipt,
 ) {
-	var value any
-	if err := json.Unmarshal(buffered.body.Bytes(), &value); err != nil {
-		value = string(buffered.body.Bytes())
-	}
-	if object, ok := value.(map[string]any); ok {
-		object["bkn_receipt"] = receipt
-		value = object
-	} else {
-		value = map[string]any{"result": value, "bkn_receipt": receipt}
-	}
-	c.Header("Content-Type", "application/json")
+	c.Header("BKN-Receipt-ID", receipt.ReceiptID)
+	c.Header("BKN-Operation-ID", receipt.OperationID)
 	c.Status(buffered.status)
-	_ = json.NewEncoder(c.Writer).Encode(value)
+	_, _ = c.Writer.Write(buffered.body.Bytes())
 }
 
 func httpString(value any) string {

@@ -272,7 +272,9 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 
 		engine.ServeHTTP(w, req)
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
-		convey.So(w.Body.String(), convey.ShouldContainSubstring, `"result":"ok"`)
+		convey.So(w.Body.String(), convey.ShouldEqual, "ok")
+		convey.So(w.Header().Get("Content-Type"), convey.ShouldEqual, "text/plain; charset=utf-8")
+		convey.So(w.Header().Get("BKN-Receipt-ID"), convey.ShouldEqual, "receipt-route")
 	})
 }
 

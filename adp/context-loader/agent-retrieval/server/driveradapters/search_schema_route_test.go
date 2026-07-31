@@ -47,7 +47,7 @@ func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 
 		engine.ServeHTTP(w, req)
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
-		convey.So(w.Body.String(), convey.ShouldContainSubstring, `"result":"search_schema"`)
-		convey.So(w.Body.String(), convey.ShouldContainSubstring, `"receipt_status":"completed"`)
+		convey.So(w.Body.String(), convey.ShouldEqual, "search_schema")
+		convey.So(w.Header().Get("BKN-Receipt-ID"), convey.ShouldEqual, "receipt-route")
 	})
 }

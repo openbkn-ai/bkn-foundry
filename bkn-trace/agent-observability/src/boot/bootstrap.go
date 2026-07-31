@@ -278,7 +278,6 @@ func newApp(
 	metrics http.Handler,
 ) *App {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health/ready", coreReady)
 	if metrics != nil {
 		mux.Handle("/metrics", metrics)
 	}
@@ -326,12 +325,6 @@ func newApp(
 	return &App{
 		server: httpserver.New(httpServerConfig.Address, mux),
 	}
-}
-
-func coreReady(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"ready"}`))
 }
 
 func (a *App) Start() error {

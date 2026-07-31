@@ -927,41 +927,17 @@ func validTraceID(value string) bool {
 	return slices.ContainsFunc(decoded, func(value byte) bool { return value != 0 })
 }
 
-var retryableOperationTools = map[string]struct{}{
-	"search_schema":               {},
-	"query_object_instance":       {},
-	"query_instance_subgraph":     {},
-	"get_logic_properties_values": {},
-	"get_action_info":             {},
-	"execute_action":              {},
-	"get_action_execution":        {},
-	"list_action_executions":      {},
-	"find_skills":                 {},
-	"list_knowledge_networks":     {},
-	"get_kn_detail":               {},
-	"get_object_types":            {},
-	"get_relation_types":          {},
-	"run_sql":                     {},
-	"list_resources":              {},
-	"describe_resource":           {},
-	"ontology-query":              {},
-}
-
-// Retryable is an observation from the adapter, not an authorization to retry.
-// Core grants retry eligibility only to registered tools after a failed attempt
-// whose evidence durability confirms that no durable success was recorded.
+// Retryable is a trusted adapter observation. Core remains authoritative by
+// requiring a failed attempt and failed evidence durability before a new
+// attempt can be created; it does not maintain a product-specific tool list.
 func coreRetryableFailure(
-	operation sessionvo.Operation,
+	_ sessionvo.Operation,
 	command FinishAttemptCommand,
 	status sessionvo.ReceiptStatus,
 ) bool {
-	if status != sessionvo.ReceiptFailed ||
-		command.EvidenceDurability != sessionvo.DurabilityFailed ||
-		!command.Retryable {
-		return false
-	}
-	_, registered := retryableOperationTools[operation.ToolName]
-	return registered
+	return status == sessionvo.ReceiptFailed &&
+		command.EvidenceDurability == sessionvo.DurabilityFailed &&
+		command.Retryable
 }
 
 func receiptTerminalMatches(

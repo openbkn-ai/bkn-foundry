@@ -644,11 +644,12 @@ func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
 }
 
 func TestSubmitEventsCarriesCorrelationIDs(t *testing.T) {
-	ctx := common.SetTraceContextToCtx(testTraceContext(), common.TraceContext{
-		RequestID:      "req_context_loader_phase2_0002",
-		ConversationID: "agent:thread_abc",
-		InteractionID:  "itr_2026072701",
-	})
+	ctx := testTraceContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.RequestID = "req_context_loader_phase2_0002"
+	traceContext.ConversationID = "agent:thread_abc"
+	traceContext.InteractionID = "itr_2026072701"
+	ctx = common.SetTraceContextToCtx(ctx, traceContext)
 
 	traceBlock := captureIngestedTrace(t, ctx)
 	if got := traceBlock["bkn.conversation.id"]; got != "agent:thread_abc" {
@@ -659,13 +660,17 @@ func TestSubmitEventsCarriesCorrelationIDs(t *testing.T) {
 	}
 }
 
-func TestSubmitEventsOmitsCorrelationIDsWhenAbsent(t *testing.T) {
-	traceBlock := captureIngestedTrace(t, testTraceContext())
+func TestSubmitEventsOmitsConversationIDWhenAbsent(t *testing.T) {
+	ctx := testTraceContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.ConversationID = ""
+	ctx = common.SetTraceContextToCtx(ctx, traceContext)
+	traceBlock := captureIngestedTrace(t, ctx)
 
 	if _, ok := traceBlock["bkn.conversation.id"]; ok {
 		t.Fatalf("expected no conversation id when the caller sent none")
 	}
-	if _, ok := traceBlock["bkn.interaction.id"]; ok {
-		t.Fatalf("expected no interaction id when the caller sent none")
+	if got := traceBlock["bkn.interaction.id"]; got != traceContext.InteractionID {
+		t.Fatalf("required interaction id was not preserved: %v", got)
 	}
 }

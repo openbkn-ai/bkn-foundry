@@ -7,21 +7,16 @@
 package driveradapters
 
 import (
-	"context"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // 健康检查
-type httpHealthHandler struct {
-	lifecycle *bkntrace.LifecycleClient
-}
+type httpHealthHandler struct{}
 
 var (
 	httpHealthOnce sync.Once
@@ -30,14 +25,10 @@ var (
 
 func NewHTTPHealthHandler() interfaces.HTTPRouterInterface {
 	httpHealthOnce.Do(func() {
-		httpHealthHand = newHTTPHealthHandler(bkntrace.NewLifecycleClientFromEnv())
+		httpHealthHand = &httpHealthHandler{}
 	})
 
 	return httpHealthHand
-}
-
-func newHTTPHealthHandler(client *bkntrace.LifecycleClient) interfaces.HTTPRouterInterface {
-	return &httpHealthHandler{lifecycle: client}
 }
 
 // RegisterRouter 注册路由
@@ -48,12 +39,6 @@ func (h *httpHealthHandler) RegisterRouter(router *gin.RouterGroup) {
 
 func (h *httpHealthHandler) getReady(c *gin.Context) {
 	c.Writer.Header().Set("Content-Type", "application/json")
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-	defer cancel()
-	if h.lifecycle == nil || h.lifecycle.Ready(ctx) != nil {
-		c.String(http.StatusServiceUnavailable, "lifecycle core unavailable")
-		return
-	}
 	c.String(http.StatusOK, "ready")
 }
 

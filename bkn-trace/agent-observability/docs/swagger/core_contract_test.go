@@ -126,6 +126,36 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	}
 }
 
+func TestGeneratedSwaggerContainsEveryManagedLifecycleRoute(t *testing.T) {
+	t.Parallel()
+	document := parseSwagger(t, []byte(generated.SwaggerInfo.ReadDoc()))
+	for _, path := range []string{
+		"/conversations",
+		"/conversations:ensure-current",
+		"/conversations:create-new-generation",
+		"/conversations:resume-by-id",
+		"/conversations/{conversation_id}",
+		"/conversations/{conversation_id}/close",
+		"/conversations/{conversation_id}/interactions",
+		"/conversations/{conversation_id}/interactions/{interaction_id}/operations:ensure",
+		"/interactions/{interaction_id}",
+		"/interactions/{interaction_id}/complete",
+		"/interactions/{interaction_id}/fail",
+		"/interactions/{interaction_id}/cancel",
+		"/interactions/{interaction_id}/handoff",
+		"/operations/{operation_id}",
+		"/operations/{operation_id}/attempts",
+		"/operations/{operation_id}/attempts/{attempt}:complete",
+		"/operations/{operation_id}/attempts/{attempt}:fail",
+		"/receipts/{receipt_id}",
+		"/evidence/events",
+	} {
+		if _, exists := document.Paths[path]; !exists {
+			t.Errorf("generated Swagger is missing %s", path)
+		}
+	}
+}
+
 func TestLifecycleSourceRequiredTagsDriveSwagger(t *testing.T) {
 	t.Parallel()
 

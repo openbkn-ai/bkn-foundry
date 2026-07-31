@@ -830,14 +830,14 @@ func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 	}
 }
 
-func TestUnregisteredToolCannotBecomeRetryableFromCallerBoolean(t *testing.T) {
+func TestTrustedAdapterCanMarkAnyFailedOperationRetryable(t *testing.T) {
 	t.Parallel()
 
 	service := newTestService()
 	owner := testOwner()
-	conversation := mustEnsureConversation(t, service, owner, "untrusted-retryability")
+	conversation := mustEnsureConversation(t, service, owner, "adapter-retryability")
 	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
-		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "untrusted-retryability",
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "adapter-retryability",
 	})
 	if err != nil {
 		t.Fatalf("start interaction: %v", err)
@@ -859,14 +859,14 @@ func TestUnregisteredToolCannotBecomeRetryableFromCallerBoolean(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fail operation: %v", err)
 	}
-	if failed.Retryable {
-		t.Fatal("unregistered tool trusted the caller retryable=true observation")
+	if !failed.Retryable {
+		t.Fatal("Core discarded the trusted adapter retryability observation")
 	}
 	if _, _, err := service.StartOperationAttempt(context.Background(), sessionsvc.StartAttemptCommand{
 		Owner: owner, OperationID: operation.ID,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
-	}); !sessionsvc.IsCode(err, sessionsvc.CodeReceiptPending) {
-		t.Fatalf("Core must reject retry for an unregistered tool, got %v", err)
+	}); err != nil {
+		t.Fatalf("Core rejected retry authorized by the trusted adapter: %v", err)
 	}
 }
 

@@ -8,6 +8,7 @@ package bkntrace
 
 import (
 	"context"
+	"crypto/rand"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -59,6 +60,10 @@ func (g *Guard) Begin(
 	ctx context.Context,
 	intent GuardIntent,
 ) (context.Context, GuardState, GuardDisposition, *APIError, error) {
+	ctx, err := ensureFinishCorrelation(ctx)
+	if err != nil {
+		return ctx, GuardState{}, "", nil, err
+	}
 	result, apiErr, err := g.client.EnsureOperation(ctx, EnsureOperationInput{
 		ConversationID:      intent.Context.ConversationID,
 		InteractionID:       intent.Context.InteractionID,
@@ -86,6 +91,32 @@ func (g *Guard) Begin(
 	traceContext.OperationID = result.Operation.OperationID
 	traceContext.Attempt = int(result.Operation.Attempt)
 	return common.SetTraceContextToCtx(ctx, traceContext), state, GuardExecute, nil, nil
+}
+
+func ensureFinishCorrelation(ctx context.Context) (context.Context, error) {
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	ctx = common.SetTraceContextToCtx(ctx, traceContext)
+	if trace.SpanContextFromContext(ctx).IsValid() {
+		return ctx, nil
+	}
+	var traceID trace.TraceID
+	var spanID trace.SpanID
+	if _, err := rand.Read(traceID[:]); err != nil {
+		return ctx, err
+	}
+	if _, err := rand.Read(spanID[:]); err != nil {
+		return ctx, err
+	}
+	if !traceID.IsValid() {
+		traceID[len(traceID)-1] = 1
+	}
+	if !spanID.IsValid() {
+		spanID[len(spanID)-1] = 1
+	}
+	return trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID,
+		SpanID:  spanID,
+	})), nil
 }
 
 func (g *Guard) Finish(

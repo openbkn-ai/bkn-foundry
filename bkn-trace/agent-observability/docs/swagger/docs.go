@@ -3226,9 +3226,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/sessionvo.Conversation"
                     }
-                },
-                "next_cursor": {
-                    "type": "string"
                 }
             }
         },
@@ -3374,6 +3371,36 @@ const docTemplate = `{
                 },
                 "trace_id": {
                     "type": "string"
+                }
+            }
+        },
+        "httphandler.expectedOperationRequest": {
+            "type": "object",
+            "required": [
+                "operation_id",
+                "required"
+            ],
+            "properties": {
+                "operation_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "httphandler.expectedReceiptRequest": {
+            "type": "object",
+            "required": [
+                "receipt_id",
+                "required"
+            ],
+            "properties": {
+                "receipt_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
                 }
             }
         },
@@ -3592,13 +3619,13 @@ const docTemplate = `{
                 "expected_operations": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.ExpectedOperation"
+                        "$ref": "#/definitions/httphandler.expectedOperationRequest"
                     }
                 },
                 "expected_receipts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.ExpectedReceipt"
+                        "$ref": "#/definitions/httphandler.expectedReceiptRequest"
                     }
                 },
                 "lease_epoch": {

@@ -33,9 +33,10 @@ type operationIntent struct {
 }
 
 type operationResult struct {
-	Operation any  `json:"operation"`
-	Receipt   any  `json:"receipt"`
-	Created   bool `json:"created"`
+	Operation        any             `json:"operation"`
+	Receipt          any             `json:"receipt"`
+	Created          bool            `json:"created"`
+	LifecycleContext context.Context `json:"-"`
 }
 
 type lifecycleError struct {
@@ -130,6 +131,9 @@ func guardBusinessToolCallWithCompletion(
 			return receiptPendingToolError(ensured.Receipt), nil
 		}
 		if ensured != nil {
+			if ensured.LifecycleContext != nil {
+				ctx = ensured.LifecycleContext
+			}
 			operationID, attempt := operationIdentity(ensured.Operation)
 			traceContext, _ := common.GetTraceContextFromCtx(ctx)
 			traceContext.ConversationID = conversationID

@@ -516,8 +516,6 @@ definitions:
         items:
           $ref: '#/definitions/sessionvo.Conversation'
         type: array
-      next_cursor:
-        type: string
     type: object
   httphandler.ensureConversationRequest:
     properties:
@@ -615,6 +613,26 @@ definitions:
         type: string
       trace_id:
         type: string
+    type: object
+  httphandler.expectedOperationRequest:
+    properties:
+      operation_id:
+        type: string
+      required:
+        type: boolean
+    required:
+    - operation_id
+    - required
+    type: object
+  httphandler.expectedReceiptRequest:
+    properties:
+      receipt_id:
+        type: string
+      required:
+        type: boolean
+    required:
+    - receipt_id
+    - required
     type: object
   httphandler.finishAttemptRequest:
     properties:
@@ -761,11 +779,11 @@ definitions:
         type: string
       expected_operations:
         items:
-          $ref: '#/definitions/sessionvo.ExpectedOperation'
+          $ref: '#/definitions/httphandler.expectedOperationRequest'
         type: array
       expected_receipts:
         items:
-          $ref: '#/definitions/sessionvo.ExpectedReceipt'
+          $ref: '#/definitions/httphandler.expectedReceiptRequest'
         type: array
       lease_epoch:
         type: integer

@@ -230,6 +230,9 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 	if ec.conversationID != "" {
 		traceBlock["bkn.conversation.id"] = ec.conversationID
 	}
+	if ec.interactionID != "" {
+		traceBlock["bkn.interaction.id"] = ec.interactionID
+	}
 	payload := batch{
 		ContractVersion: ContractVersion,
 		Trace:           traceBlock,

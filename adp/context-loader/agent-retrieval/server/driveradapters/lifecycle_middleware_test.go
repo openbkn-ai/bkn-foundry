@@ -14,12 +14,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -248,12 +248,11 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			var body map[string]any
-			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-				t.Fatalf("invalid wrapped REST response: %v body=%s", err, response.Body)
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body["answer"] != "ok" {
+				t.Fatalf("downstream REST response was not preserved: %v body=%s", err, response.Body)
 			}
-			receipt := body["bkn_receipt"].(map[string]any)
-			if receipt["receipt_status"] != map[bool]string{true: "failed", false: "completed"}[test.status >= 400] {
-				t.Fatalf("durable receipt missing from REST response: %#v", body)
+			if response.Header().Get("BKN-Receipt-ID") != "receipt-rest-1" {
+				t.Fatalf("durable receipt header missing: %#v", response.Header())
 			}
 			mu.Lock()
 			gotAction := finishActions[len(finishActions)-1]
@@ -315,6 +314,67 @@ func TestLifecycleMiddlewarePendingReplaySkipsOperatorSideEffect(t *testing.T) {
 	}
 }
 
+func TestLifecycleMiddlewareFinalizesPanicsAndLetsRecoveryReturn500(t *testing.T) {
+	var finishCalls atomic.Int32
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/interactions/int-1"):
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1", ExecutionStatus: "active",
+				LeaseToken: "lease-1", LeaseEpoch: 1,
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Created:   true,
+				Operation: bkntrace.Operation{OperationID: "op-panic", Attempt: 1, AttemptStatus: "pending"},
+				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-panic", ReceiptStatus: "pending"},
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attempts/1:fail"):
+			finishCalls.Add(1)
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Operation: bkntrace.Operation{OperationID: "op-panic", Attempt: 1, AttemptStatus: "failed"},
+				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-panic", ReceiptStatus: "failed"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer core.Close()
+
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(trustedLifecycleHTTPContext())
+	router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
+	router.POST("/kn/execute_action", func(*gin.Context) { panic("downstream panic") })
+	request := httptest.NewRequest(http.MethodPost, "/kn/execute_action", bytes.NewBufferString(`{
+		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1","operation_key":"panic-1"}
+	}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusInternalServerError || finishCalls.Load() != 1 {
+		t.Fatalf("panic must return 500 after one failed receipt: status=%d finish_calls=%d", response.Code, finishCalls.Load())
+	}
+}
+
+func TestLifecycleHTTPStatusPreservesProtocolSemantics(t *testing.T) {
+	tests := map[string]int{
+		"conversation_required":       http.StatusBadRequest,
+		"conversation_not_found":      http.StatusNotFound,
+		"resource_not_disclosed":      http.StatusNotFound,
+		"conversation_owner_mismatch": http.StatusForbidden,
+		"permission_denied":           http.StatusForbidden,
+		"feature_not_installed":       http.StatusNotImplemented,
+		"receipt_pending":             http.StatusConflict,
+	}
+	for code, want := range tests {
+		if got := lifecycleHTTPStatus(code); got != want {
+			t.Errorf("lifecycleHTTPStatus(%q) = %d, want %d", code, got, want)
+		}
+	}
+}
+
 func trustedLifecycleHTTPContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := common.SetTraceContextToCtx(c.Request.Context(), common.TraceContext{
@@ -324,11 +384,6 @@ func trustedLifecycleHTTPContext() gin.HandlerFunc {
 			AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 			TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
 		})
-		traceID := trace.TraceID{0x4b, 0x3d, 0x59, 0xda, 0xef, 0xf5, 0xbf, 0xbb, 0x23, 0xd4, 0x6c, 0x47, 0xa5, 0x05, 0x1e, 0xc9}
-		spanID := trace.SpanID{0x00, 0xf0, 0x67, 0xaa, 0x0b, 0xa9, 0x02, 0xb7}
-		ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
-			TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled,
-		}))
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
