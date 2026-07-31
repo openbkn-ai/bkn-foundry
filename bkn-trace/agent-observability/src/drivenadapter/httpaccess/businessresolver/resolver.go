@@ -67,7 +67,7 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 		return resolution, nil
 	}
 	kind, sourceSystem := resolverKind(ref)
-	if kind == "" || parts[0] != kind || (ref.SourceSystem != "" && ref.SourceSystem != sourceSystem) {
+	if kind == "" || parts[0] != kind || !resolverSourceMatches(ref.SourceSystem, sourceSystem) {
 		return resolution, nil
 	}
 
@@ -153,6 +153,9 @@ func resolverKind(ref ibusinessresolver.BusinessRef) (string, string) {
 	if ref.RefType == "data_field" {
 		return "field", "vega"
 	}
+	if ref.RefType == "action" {
+		return "action_type", "bkn"
+	}
 	if kind, source := resolverPrefix(ref.RefType); kind != "" {
 		return kind, source
 	}
@@ -171,6 +174,20 @@ func resolverKind(ref ibusinessresolver.BusinessRef) (string, string) {
 		}
 	}
 	return "", ""
+}
+
+func resolverSourceMatches(provided, authority string) bool {
+	if provided == "" || provided == authority {
+		return true
+	}
+	switch authority {
+	case "bkn":
+		return provided == "bkn-backend" || provided == "context-loader"
+	case "vega":
+		return provided == "vega-data"
+	default:
+		return false
+	}
 }
 
 func resolverPrefix(prefix string) (string, string) {

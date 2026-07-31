@@ -108,6 +108,8 @@ func TestResolverSupportsExistingEvidenceServiceRefTypes(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/bkn-backend/in/v1/knowledge-networks/supplychain":
 			_, _ = w.Write([]byte(`{"id":"supplychain","name":"供应链知识网络"}`))
+		case "/api/bkn-backend/in/v1/knowledge-networks/supplychain/action-types/notify_owner":
+			_, _ = w.Write([]byte(`{"entries":[{"id":"notify_owner","name":"通知负责人"}]}`))
 		case "/api/vega-backend/in/v1/resources/resource-1":
 			_, _ = w.Write([]byte(`{"entries":[{"id":"resource-1","name":"需求预测数据","schema_definition":[{"name":"forecast_month","display_name":"预测月份"}]}]}`))
 		default:
@@ -118,12 +120,13 @@ func TestResolverSupportsExistingEvidenceServiceRefTypes(t *testing.T) {
 
 	result, err := New(server.URL, server.URL, server.Client()).ResolveBusinessRefs(context.Background(), ibusinessresolver.ResolveRequest{
 		Refs: []ibusinessresolver.BusinessRef{
-			{RefID: "kn:supplychain", RefType: "kn"},
-			{RefID: "resource:resource-1", RefType: "resource"},
-			{RefID: "field:resource-1:forecast_month", RefType: "field"},
+			{RefID: "kn:supplychain", RefType: "kn", SourceSystem: "context-loader"},
+			{RefID: "resource:resource-1", RefType: "resource", SourceSystem: "vega-data"},
+			{RefID: "field:resource-1:forecast_month", RefType: "field", SourceSystem: "vega-data"},
+			{RefID: "action_type:supplychain:notify_owner", RefType: "action", SourceSystem: "context-loader"},
 		},
 	})
-	if err != nil || len(result) != 3 {
+	if err != nil || len(result) != 4 {
 		t.Fatalf("resolve existing evidence service refs: result=%+v err=%v", result, err)
 	}
 	for _, resolution := range result {
