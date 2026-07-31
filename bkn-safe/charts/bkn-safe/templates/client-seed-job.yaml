@@ -93,6 +93,9 @@ spec:
               # MCP clients (Claude Code / Cursor) run the browser flow on the
               # user's machine and call back to a loopback port they choose, so
               # the port must be pinned on both sides — see clientSeed.mcpRedirectUris.
-              reg openbkn-mcp '{"client_id":"openbkn-mcp","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":'"$MCP_REDIRECTS_JSON"',"scope":"openid offline all","audience":["bkn-safe"]}'
+              # offline_access is required: MCP clients read hydra's advertised
+              # scopes_supported (which lists it) and request it for the refresh
+              # token, so omitting it here fails the flow with invalid_scope.
+              reg openbkn-mcp '{"client_id":"openbkn-mcp","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":'"$MCP_REDIRECTS_JSON"',"scope":"openid offline offline_access all","audience":["bkn-safe"]}'
               echo "client seed done"
 {{- end }}

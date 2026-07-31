@@ -103,7 +103,7 @@ create "{
     \"http://localhost:${MCP_CALLBACK_PORT}/callback\",
     \"http://127.0.0.1:${MCP_CALLBACK_PORT}/callback\"
   ],
-  \"scope\": \"openid offline all\",
+  \"scope\": \"openid offline offline_access all\",
   \"audience\": [\"bkn-safe\"]
 }" >/dev/null
 echo "  + openbkn-mcp (authorization_code + PKCE, public; callback port=${MCP_CALLBACK_PORT})"
