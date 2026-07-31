@@ -26,6 +26,8 @@ const (
 	DefaultSemanticUnderstandingLanguage            string  = "zh-CN"
 	DefaultSemanticUnderstandingConfidenceThreshold float64 = 0.75
 	MaxSemanticUnderstandingSampleRows              int     = 20
+	MaxSemanticUnderstandingSampleValueRunes        int     = 128
+	MaxSemanticUnderstandingSamplePayloadBytes      int     = 128 * 1024
 )
 
 var (

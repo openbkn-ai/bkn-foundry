@@ -9,7 +9,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -357,6 +359,56 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Query_ConcurrencyLimitExceeded, httpErr.BaseError.ErrorCode)
+	})
+}
+
+func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
+	t.Run("truncates long text, binary, and nested values", func(t *testing.T) {
+		longValue := strings.Repeat("测", interfaces.MaxSemanticUnderstandingSampleValueRunes+1)
+		rows, err := limitSemanticUnderstandingSampleRows([]map[string]any{{
+			"text":   longValue,
+			"binary": []byte{1, 2, 3},
+			"nested": map[string]any{"text": longValue, "values": []any{longValue}},
+		}})
+
+		require.NoError(t, err)
+		expectedText := strings.Repeat("测", interfaces.MaxSemanticUnderstandingSampleValueRunes-1) + "…"
+		assert.Equal(t, expectedText, rows[0]["text"])
+		assert.Equal(t, "【二进制内容已省略，原始长度 3 字节】", rows[0]["binary"])
+		nested := rows[0]["nested"].(map[string]any)
+		assert.Equal(t, expectedText, nested["text"])
+		assert.Equal(t, []any{expectedText}, nested["values"])
+	})
+
+	t.Run("drops trailing rows when the payload exceeds the limit", func(t *testing.T) {
+		rows := make([]map[string]any, interfaces.MaxSemanticUnderstandingSampleRows)
+		for rowIndex := range rows {
+			rows[rowIndex] = make(map[string]any, 60)
+			for fieldIndex := 0; fieldIndex < 60; fieldIndex++ {
+				rows[rowIndex][fmt.Sprintf("field_%d", fieldIndex)] = strings.Repeat("a", interfaces.MaxSemanticUnderstandingSampleValueRunes)
+			}
+		}
+
+		limited, err := limitSemanticUnderstandingSampleRows(rows)
+
+		require.NoError(t, err)
+		assert.NotEmpty(t, limited)
+		assert.Less(t, len(limited), len(rows))
+		payload, err := sonic.ConfigStd.Marshal(limited)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(payload), interfaces.MaxSemanticUnderstandingSamplePayloadBytes)
+	})
+
+	t.Run("keeps no more than the configured row limit", func(t *testing.T) {
+		rows := make([]map[string]any, interfaces.MaxSemanticUnderstandingSampleRows+1)
+		for index := range rows {
+			rows[index] = map[string]any{"id": index}
+		}
+
+		limited, err := limitSemanticUnderstandingSampleRows(rows)
+
+		require.NoError(t, err)
+		assert.Len(t, limited, interfaces.MaxSemanticUnderstandingSampleRows)
 	})
 }
 

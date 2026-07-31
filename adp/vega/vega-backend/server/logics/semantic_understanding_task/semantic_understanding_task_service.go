@@ -525,7 +525,10 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	}
 	input.SampleRows = []map[string]any{}
 	if result != nil && result.Entries != nil {
-		input.SampleRows = result.Entries
+		input.SampleRows, err = limitSemanticUnderstandingSampleRows(result.Entries)
+		if err != nil {
+			return fmt.Errorf("limit sample rows: %w", err)
+		}
 	}
 	inputJSON, _, err := marshalSemanticUnderstandingInput(input)
 	if err != nil {
@@ -533,6 +536,64 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	}
 	task.Input = inputJSON
 	return nil
+}
+
+// limitSemanticUnderstandingSampleRows keeps sample data useful for semantic
+// inference without allowing large text or binary values to exhaust the task
+// input or agent context. It never mutates connector query results.
+func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]any, error) {
+	limited := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if len(limited) >= interfaces.MaxSemanticUnderstandingSampleRows {
+			break
+		}
+		limitedRow := make(map[string]any, len(row))
+		for key, value := range row {
+			limitedRow[key] = limitSemanticUnderstandingSampleValue(value)
+		}
+
+		candidate := append(limited, limitedRow)
+		candidateJSON, err := sonic.ConfigStd.Marshal(candidate)
+		if err != nil {
+			return nil, err
+		}
+		if len(candidateJSON) > interfaces.MaxSemanticUnderstandingSamplePayloadBytes {
+			break
+		}
+		limited = candidate
+	}
+	return limited, nil
+}
+
+func limitSemanticUnderstandingSampleValue(value any) any {
+	switch typedValue := value.(type) {
+	case string:
+		return truncateSemanticUnderstandingSampleString(typedValue)
+	case []byte:
+		return fmt.Sprintf("【二进制内容已省略，原始长度 %d 字节】", len(typedValue))
+	case map[string]any:
+		limited := make(map[string]any, len(typedValue))
+		for key, nestedValue := range typedValue {
+			limited[key] = limitSemanticUnderstandingSampleValue(nestedValue)
+		}
+		return limited
+	case []any:
+		limited := make([]any, len(typedValue))
+		for index, nestedValue := range typedValue {
+			limited[index] = limitSemanticUnderstandingSampleValue(nestedValue)
+		}
+		return limited
+	default:
+		return value
+	}
+}
+
+func truncateSemanticUnderstandingSampleString(value string) string {
+	runes := []rune(value)
+	if len(runes) <= interfaces.MaxSemanticUnderstandingSampleValueRunes {
+		return value
+	}
+	return string(runes[:interfaces.MaxSemanticUnderstandingSampleValueRunes-1]) + "…"
 }
 
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
