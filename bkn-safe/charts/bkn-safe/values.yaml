@@ -68,6 +68,7 @@ ingress:
 #   openbkn-sdk     — device_code (CLI / headless human login)
 #   openbkn-studio  — authorization_code + PKCE (browser / SPA)
 #   openbkn-cli     — authorization_code + PKCE (CLI headless password login)
+#   openbkn-mcp     — authorization_code + PKCE (MCP clients: Claude Code / Cursor)
 # Idempotent (delete+create). The openbkn-studio SPA callback derives from
 # accessAddress (https://host/studio/callback) at install time; webRedirectUri is the
 # dev fallback when no accessAddress is set.
@@ -84,6 +85,16 @@ clientSeed:
   # Loopback redirect for the CLI password flow; must match the SDK's
   # `http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback` (default port 9010).
   cliRedirectUri: "http://127.0.0.1:9010/callback"
+  # Loopback redirects for the openbkn-mcp client. MCP clients pick a RANDOM
+  # ephemeral callback port unless told otherwise, so the user must pin it —
+  # Claude Code: `claude mcp add ... --client-id openbkn-mcp --callback-port 3118`
+  # (or MCP_OAUTH_CALLBACK_PORT=3118). 3118 is Claude Code's own default
+  # constant. Both host spellings are registered because hydra matches
+  # redirect_uri as an exact string and clients differ on localhost vs 127.0.0.1.
+  # Add entries here (or via the admin redirect-uri API) to allow other ports.
+  mcpRedirectUris:
+    - "http://localhost:3118/callback"
+    - "http://127.0.0.1:3118/callback"
   # ci-runner (client_credentials, authz.read/write) is seeded ONLY when this is
   # set — empty means no privileged CI client is created (no weak default ships).
   # Set to a real secret (e.g. via config.yaml / --set) to enable CI automation.

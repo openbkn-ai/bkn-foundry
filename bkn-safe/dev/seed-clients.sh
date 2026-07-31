@@ -12,6 +12,7 @@
 #   openbkn-sdk      — device_code (+ refresh) public client (headless human / CLI login)
 #   openbkn-studio  — authorization_code + PKCE public client (browser / SPA login)
 #   openbkn-cli     — authorization_code + PKCE public client (CLI headless password login)
+#   openbkn-mcp     — authorization_code + PKCE public client (MCP clients: Claude Code / Cursor)
 #
 # Env:
 #   HYDRA_ADMIN       admin endpoint (default dev http://127.0.0.1:4445; in-cluster
@@ -23,12 +24,17 @@
 #   CLI_REDIRECT_URI  CLI loopback callback; must match the SDK's
 #                     http://127.0.0.1:<DEFAULT_REDIRECT_PORT>/callback (port 9010).
 #                     Never dialed — the SDK reads the code off the 302 Location.
+#   MCP_CALLBACK_PORT Loopback port MCP clients call back on (default 3118, Claude
+#                     Code's own default). MCP clients otherwise pick a random
+#                     ephemeral port, so it must be pinned on the client too
+#                     (--callback-port / MCP_OAUTH_CALLBACK_PORT).
 set -euo pipefail
 
 ADMIN="${HYDRA_ADMIN:-http://127.0.0.1:4445}"
 WEB_REDIRECT_URI="${WEB_REDIRECT_URI:-http://localhost:8000/studio/callback}"
 WEB_LOGOUT_URI="${WEB_LOGOUT_URI:-${WEB_REDIRECT_URI%/callback}}"
 CLI_REDIRECT_URI="${CLI_REDIRECT_URI:-http://127.0.0.1:9010/callback}"
+MCP_CALLBACK_PORT="${MCP_CALLBACK_PORT:-3118}"
 
 create() { # $1=json
   curl -fsS -X POST "$ADMIN/admin/clients" \
@@ -84,5 +90,22 @@ create "{
   \"audience\": [\"bkn-safe\"]
 }" >/dev/null
 echo "  + openbkn-cli (authorization_code + PKCE, public; redirect=${CLI_REDIRECT_URI})"
+
+# Both host spellings: hydra matches redirect_uri as an exact string and MCP
+# clients differ on localhost vs 127.0.0.1 (Claude Code uses localhost).
+del openbkn-mcp
+create "{
+  \"client_id\": \"openbkn-mcp\",
+  \"grant_types\": [\"authorization_code\", \"refresh_token\"],
+  \"response_types\": [\"code\"],
+  \"token_endpoint_auth_method\": \"none\",
+  \"redirect_uris\": [
+    \"http://localhost:${MCP_CALLBACK_PORT}/callback\",
+    \"http://127.0.0.1:${MCP_CALLBACK_PORT}/callback\"
+  ],
+  \"scope\": \"openid offline all\",
+  \"audience\": [\"bkn-safe\"]
+}" >/dev/null
+echo "  + openbkn-mcp (authorization_code + PKCE, public; callback port=${MCP_CALLBACK_PORT})"
 
 echo "== done =="

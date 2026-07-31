@@ -33,6 +33,7 @@ var manageableClients = map[string]bool{
 	"openbkn-studio": true,
 	"openbkn-cli":    true,
 	"openbkn-sdk":    true,
+	"openbkn-mcp":    true,
 }
 
 // registerClientAdmin mounts redirect-uri management for the platform's login

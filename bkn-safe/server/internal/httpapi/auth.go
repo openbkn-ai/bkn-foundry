@@ -279,6 +279,7 @@ var firstPartyClients = map[string]bool{
 	"openbkn-studio": true,
 	"openbkn-cli":    true,
 	"openbkn-sdk":    true,
+	"openbkn-mcp":    true,
 }
 
 // showConsent renders the consent screen (requesting client + requested scopes

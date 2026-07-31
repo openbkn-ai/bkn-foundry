@@ -58,6 +58,8 @@ spec:
               value: {{ $logoutUris | toJson | quote }}
             - name: CLI_REDIRECT
               value: {{ .Values.clientSeed.cliRedirectUri | quote }}
+            - name: MCP_REDIRECTS_JSON
+              value: {{ .Values.clientSeed.mcpRedirectUris | toJson | quote }}
             - name: CI_SECRET
               value: {{ .Values.clientSeed.ciRunnerSecret | quote }}
           command: ["/bin/sh", "-c"]
@@ -88,5 +90,9 @@ spec:
               # (gateway callback + clientSeed.extraWebRedirectUris).
               reg openbkn-studio '{"client_id":"openbkn-studio","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":'"$WEB_REDIRECTS_JSON"',"post_logout_redirect_uris":'"$WEB_LOGOUTS_JSON"',"scope":"openid offline","audience":["bkn-safe"]}'
               reg openbkn-cli '{"client_id":"openbkn-cli","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":["'"$CLI_REDIRECT"'"],"scope":"openid offline all","audience":["bkn-safe"]}'
+              # MCP clients (Claude Code / Cursor) run the browser flow on the
+              # user's machine and call back to a loopback port they choose, so
+              # the port must be pinned on both sides — see clientSeed.mcpRedirectUris.
+              reg openbkn-mcp '{"client_id":"openbkn-mcp","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","redirect_uris":'"$MCP_REDIRECTS_JSON"',"scope":"openid offline all","audience":["bkn-safe"]}'
               echo "client seed done"
 {{- end }}
