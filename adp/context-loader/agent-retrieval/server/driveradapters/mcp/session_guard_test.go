@@ -286,6 +286,40 @@ func TestSessionGuardPendingReplayReturnsReceiptPendingWithoutDownstream(t *test
 	}
 }
 
+func TestSessionGuardDoesNotInferExecutionFromCreated(t *testing.T) {
+	downstreamCalls := 0
+	guarded := guardBusinessToolCall(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created: true,
+				Execute: false,
+				Operation: map[string]any{
+					"operation_id": "op-legacy", "attempt_status": "pending",
+				},
+				Receipt: map[string]any{
+					"receipt_id": "receipt-legacy", "receipt_status": "pending",
+				},
+			}, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			downstreamCalls++
+			return mcpsdk.NewToolResultText("unexpected"), nil
+		},
+	)
+
+	result, err := guarded(context.Background(), validBusinessToolRequest())
+	if err != nil {
+		t.Fatalf("missing execute returned protocol error: %v", err)
+	}
+	if downstreamCalls != 0 {
+		t.Fatalf("created without execute must fail closed, downstream calls=%d", downstreamCalls)
+	}
+	errorValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+	if errorValue["code"] != "receipt_pending" {
+		t.Fatalf("missing execute returned wrong lifecycle error: %#v", result.StructuredContent)
+	}
+}
+
 func TestSessionGuardExecutesPreparedRetryAttempt(t *testing.T) {
 	downstreamCalls := 0
 	guarded := guardBusinessToolCall(
@@ -321,6 +355,7 @@ func TestSessionGuardFinishPendingPreservesStableReceipt(t *testing.T) {
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
 			}, nil, nil
@@ -358,6 +393,7 @@ func TestSessionGuardPropagatesStableOperationIDToExecuteAction(t *testing.T) {
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: map[string]any{"operation_id": "op-stable-1", "attempt": float64(1)},
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
 			}, nil, nil
@@ -388,6 +424,7 @@ func TestSessionGuardCompletesAttemptAndReturnsDurableReceipt(t *testing.T) {
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
 			}, nil, nil
@@ -427,6 +464,7 @@ func TestSessionGuardPersistsFailedAttemptAndReturnsReceipt(t *testing.T) {
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
 			}, nil, nil
@@ -470,6 +508,7 @@ func TestSessionGuardConvertsDownstreamGoErrorToFailedReceipt(t *testing.T) {
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
 			}, nil, nil
@@ -508,6 +547,7 @@ func TestSessionGuardConvertsDownstreamPanicToFailedReceipt(t *testing.T) {
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
 			}, nil, nil
@@ -595,6 +635,7 @@ func TestSessionGuardWithoutCompletionAdapterDoesNotInventFinalReceiptOrAnswer(t
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
 				Created:   true,
+				Execute:   true,
 				Operation: map[string]any{"operation_id": "op-observed", "attempt": float64(1)},
 				Receipt:   map[string]any{"receipt_id": "receipt-observed", "receipt_status": "pending"},
 			}, nil, nil

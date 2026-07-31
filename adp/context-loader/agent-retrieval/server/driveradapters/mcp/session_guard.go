@@ -130,7 +130,7 @@ func guardBusinessToolCallWithCompletion(
 			result.IsError = status == "failed"
 			return result, nil
 		}
-		if ensured != nil && !ensured.Execute && !ensured.Created && status == "pending" {
+		if ensured != nil && !ensured.Execute && status == "pending" {
 			return receiptPendingToolError(ensured.Receipt), nil
 		}
 		if ensured != nil {

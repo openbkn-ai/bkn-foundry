@@ -198,9 +198,15 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 		"/api/agent-observability/v1/interactions/"+interaction.ID+"/complete",
 		`{"terminal_idempotency_key":"terminal-invalid","lease_token":"`+interaction.LeaseToken+`","lease_epoch":1,"completion_manifest_version":"1","completion_reason":"answer_returned","expected_operations":[{"operation_id":"`+
 			operationResult.Operation.ID+`"}]}`)
-	if missingRequiredResponse.Code != http.StatusBadRequest {
+	if missingRequiredResponse.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing required manifest flag must be rejected: %d %s",
 			missingRequiredResponse.Code, missingRequiredResponse.Body.String())
+	}
+	var missingRequiredError lifecycleTestErrorEnvelope
+	decodeLifecycleResponse(t, missingRequiredResponse, &missingRequiredError)
+	if missingRequiredError.Error.Code != "closure_manifest_invalid" ||
+		missingRequiredError.Error.RequiredAction != "fix_closure_manifest" {
+		t.Fatalf("missing required flag returned misleading guidance: %#v", missingRequiredError)
 	}
 
 	completeResponse := performLifecycleRequest(t, mux, http.MethodPost,

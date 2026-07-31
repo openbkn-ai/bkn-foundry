@@ -335,7 +335,10 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 	}
 	expectedOperations, expectedReceipts, err := request.expectedManifestEntries()
 	if err != nil {
-		writeLifecycleError(w, r, http.StatusBadRequest, "interaction_required", err.Error())
+		writeLifecycleError(
+			w, r, http.StatusUnprocessableEntity,
+			string(sessionsvc.CodeClosureManifestInvalid), err.Error(),
+		)
 		return
 	}
 	status, valid := terminalStatusForAction(parts[1])
