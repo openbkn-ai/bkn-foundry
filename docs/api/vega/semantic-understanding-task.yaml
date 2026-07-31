@@ -160,7 +160,7 @@ components:
           type: integer
           minimum: 1
           maximum: 20
-          description: 发送至语义理解 Agent 的样例行数量上限。
+          description: 发送至语义理解 Agent 的样例行数量上限。每个文本单元格最多保留 128 个 Unicode 字符；样例行序列化总量最多 128 KiB，超出时仅保留前面的完整行。
     CreateSemanticUnderstandingTaskRequest:
       type: object
       required: [scope]
@@ -172,7 +172,7 @@ components:
         confidence_threshold: { type: number, format: double, default: 0.75 }
         include_sample_rows:
           type: boolean
-          description: 是否读取并发送原始样例行；仅资源语义理解任务支持，调用方须具备资源数据查询权限。
+          description: 是否尝试读取并发送原始样例行；仅资源语义理解任务支持。样例查询不可用时，任务仍会创建并以空样例行继续执行。
         sample_policy: { $ref: "#/components/schemas/SamplePolicy" }
       allOf:
         - if:
