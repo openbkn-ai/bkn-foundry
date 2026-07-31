@@ -36,6 +36,13 @@ paths:
         - DataAccess
       summary: 列出可查询的数据资源
       operationId: listResources
+      x-contract-probe:
+        readonly: true
+        order: 1
+        body:
+          limit: 3
+        provides:
+          cl_resource_id: entries[0].resource_id
       description: |
         列出当前账户有权查看的数据资源，输出精简字段（够用来挑一个 `resource_id`）。
         请求体可选，不传则按 vega 默认分页返回。
@@ -74,6 +81,11 @@ paths:
         - DataAccess
       summary: 查看资源的物理结构
       operationId: describeResource
+      x-contract-probe:
+        readonly: true
+        order: 2
+        body:
+          resource_id: '{cl_resource_id}'
       description: |
         取单个资源的物理列与连接器类型——写 `run_sql` 之前该看的东西。
         `connector_type` 决定该用哪种 SQL 方言心智（虽然 `run_sql` 统一收 Trino 方言）。

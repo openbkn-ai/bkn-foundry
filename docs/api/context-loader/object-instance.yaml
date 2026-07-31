@@ -31,6 +31,14 @@ paths:
         - ObjectInstance
       summary: 查询对象实例
       operationId: queryObjectInstance
+      x-contract-probe:
+        readonly: true
+        order: 3
+        query:
+          kn_id: '{cl_kn_id}'
+          ot_id: '{cl_ot_id}'
+        body:
+          limit: 2
       description: |
         按单个对象类查询实例。`kn_id` / `ot_id` 走 **query 参数**，过滤与分页走请求体。
 

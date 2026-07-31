@@ -20,8 +20,25 @@ api_contract_diff.py —— 对比"服务实际返回"与"OpenAPI 设计文档",
 
 只读保证
 --------
-默认仅发送 GET。带 x-http-method-override:GET 语义的只读 POST 需显式 --include-query-post。
-任何情况下都不会发送 PUT/DELETE,也不会发送不带 override 的 POST。
+默认仅发送 GET。另有两条按需开启的只读 POST 通道,任何情况下都不发送 PUT/DELETE,
+也不发送未被显式标注为只读的 POST:
+
+  --include-query-post   带 x-http-method-override:GET 语义的只读 POST
+  --include-probe-post   文档里用 x-contract-probe 显式标注 readonly:true 的 POST
+
+后者是为「查询即 POST」的服务准备的(context-loader 的对外端点全是 POST,且
+参数在请求体里,没有 override 头,靠前两种方式一条都探测不到)。标注写在
+OpenAPI 操作上,与端点同源、随 PR 一起评审:
+
+  post:
+    x-contract-probe:
+      readonly: true            # 显式承诺无副作用;不写就永远不会被请求
+      order: 1                  # 批次,低的先跑,同批并发
+      body: {limit: 3}          # 请求体模板,值里可用 {kn_id} 引用已发现的参数
+      query: {kn_id: "{kn_id}"} # 可选,额外 query 参数
+      provides: {kn_id: entries[0].id}   # 从本次响应里取值,供后续批次使用
+
+有副作用的端点(execute_action 之类)不写这段标注即可,工具不会碰它们。
 
 退出码:0 无缺口;1 有缺口;2 执行错误。
 """
@@ -222,6 +239,7 @@ class SpecLoader:
                         "params": [self.resolve(x, doc, p) for x in params],
                         "has_body": bool(op.get("requestBody")),
                         "override": self._override_header(op, doc, p),
+                        "probe": op.get("x-contract-probe"),
                     })
         return ops
 
@@ -478,6 +496,122 @@ def discover_ids(execu, host_of, face, headers, seed):
     return found
 
 
+_PLACEHOLDER = re.compile(r"^\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+def lookup_id(found, url, name):
+    """按作用域最长匹配取一个已发现的参数值;取不到返回 None。"""
+    cands = [(len(scope), val) for scope, n, val in found
+             if n == name and url.startswith(scope)]
+    return max(cands)[1] if cands else None
+
+
+def fill_tpl(node, found, url, missing):
+    """递归替换模板里的 {param}。整串就是一个占位符时替换为原值(保留类型),
+    嵌在字符串里时按字符串拼接。解析不到的参数名记进 missing。"""
+    if isinstance(node, dict):
+        return {k: fill_tpl(v, found, url, missing) for k, v in node.items()}
+    if isinstance(node, list):
+        return [fill_tpl(v, found, url, missing) for v in node]
+    if isinstance(node, str):
+        m = _PLACEHOLDER.match(node)
+        if m:
+            val = lookup_id(found, url, m.group(1))
+            if val is None:
+                missing.append(m.group(1))
+            return val
+        def sub(mo):
+            val = lookup_id(found, url, mo.group(1))
+            if val is None:
+                missing.append(mo.group(1))
+                return mo.group(0)
+            return str(val)
+        return re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", sub, node)
+    return node
+
+
+def dig(body, path):
+    """按 `entries[0].id` 这样的路径从响应里取值;取不到返回 None。"""
+    cur = body
+    for seg in path.split("."):
+        m = re.match(r"^([^\[\]]*)((?:\[\d+\])*)$", seg)
+        if not m:
+            return None
+        key, idx = m.group(1), m.group(2)
+        if key:
+            if not isinstance(cur, dict) or key not in cur:
+                return None
+            cur = cur[key]
+        for i in re.findall(r"\[(\d+)\]", idx):
+            if not isinstance(cur, list) or len(cur) <= int(i):
+                return None
+            cur = cur[int(i)]
+    return cur
+
+
+def run_probes(execu, host_of, headers, ops, found, args):
+    """按 order 分批发送标注了 x-contract-probe 的只读 POST。
+
+    每批的响应既参与字段比对,也按 provides 抽出 id 喂给后续批次
+    (list_knowledge_networks 给出 kn_id,get_kn_detail 再给出 ot_id …)。
+    结果直接写回 op:成功写 actual,失败写 skip,与 GET 路径一致。
+    """
+    cand = [o for o in ops
+            if o["method"] == "POST" and isinstance(o.get("probe"), dict)
+            and o["probe"].get("readonly") is True
+            and o["doc_fields"] is not None]
+    if not cand:
+        return found
+    if not args.include_probe_post:
+        for o in cand:
+            o["skip"] = "未开启 --include-probe-post(该端点已标注 readonly probe)"
+        return found
+
+    for order in sorted({int(o["probe"].get("order", 1)) for o in cand}):
+        batch = [o for o in cand if int(o["probe"].get("order", 1)) == order]
+        reqs, index = [], {}
+        for i, op in enumerate(batch):
+            spec = op["probe"]
+            host = host_of(op["url"])
+            if not host:
+                op["skip"] = "无服务地址映射"
+                continue
+            miss = []
+            body = fill_tpl(spec.get("body") or {}, found, op["url"], miss)
+            query = fill_tpl(spec.get("query") or {}, found, op["url"], miss)
+            if miss:
+                op["skip"] = "缺少探测参数 " + ",".join(sorted(set(miss)))
+                continue
+            url = op["url"]
+            if query:
+                url += ("&" if "?" in url else "?") + "&".join(
+                    f"{k}={v}" for k, v in query.items())
+            rid = f"probe{order}:{i}"
+            reqs.append({"id": rid, "method": "POST", "url": host + url,
+                         "headers": dict(headers), "body": body})
+            index[rid] = op
+            op["req_url"] = url
+        if not reqs:
+            continue
+        res = execu.run(reqs)
+        for rid, op in index.items():
+            r = res.get(rid) or {}
+            op["status"] = r.get("status")
+            if r.get("status") != 200:
+                op["skip"] = (f"HTTP {r.get('status')} "
+                              f"{r.get('error') or (r.get('text') or '')[:120]}")
+                continue
+            if "json" not in r:
+                op["skip"] = "响应非 JSON"
+                continue
+            op["actual"] = actual_paths(r["json"])
+            for name, path in (op["probe"].get("provides") or {}).items():
+                val = dig(r["json"], path)
+                if val is not None:
+                    found.append(("/api/", name, str(val)))
+    return found
+
+
 def fill_path(url, found):
     """用作用域最长匹配的值填充 URL 中的 {param};返回 (url, 未解析参数)。"""
     missing = []
@@ -527,6 +661,8 @@ def main():
                     help='JSON,手工指定路径参数,如 \'{"kn_id":"abc"}\'')
     ap.add_argument("--include-query-post", action="store_true",
                     help="额外请求带 x-http-method-override:GET 的只读 POST")
+    ap.add_argument("--include-probe-post", action="store_true",
+                    help="额外请求文档中 x-contract-probe.readonly=true 的只读 POST")
     # bkn-agent 尚无稳定巡检入口；agent-observability 当前发布 Swagger 2.0
     # 且只提供外部路径，没有本工具默认 face=in 所需的 /in/v1 路由。两者的
     # 静态合同分别由自身 CI 校验，待巡检器支持对应调用面后再移出默认跳过项。
@@ -559,11 +695,16 @@ def main():
 
     seed = json.loads(args.ids) if args.ids else {}
     ids = discover_ids(execu, host_of, args.face, headers, seed)
+    # 标注了 readonly probe 的 POST 先跑：它们自己要比对，也顺带产出
+    # 后续 GET 需要的路径参数。
+    ids = run_probes(execu, host_of, headers, ops, ids, args)
 
     # 组装请求:只读
     reqs, index = [], {}
     for i, op in enumerate(ops):
         if op["doc_fields"] is None:
+            continue
+        if "actual" in op or op.get("skip"):   # probe 已处理
             continue
         readonly_post = op["method"] == "POST" and op["override"] and args.include_query_post
         if op["method"] != "GET" and not readonly_post:
@@ -658,9 +799,13 @@ def render(ops, ids, args):
             return k
 
         def known(k):
-            if free and k.startswith(free):
-                return True
+            # free 前缀要拿折叠后的路径再比一次：opaque 的 map 可能嵌在一个
+            # typed 的 additionalProperties 下面（子图的
+            # entries[].objects.<对象ID>.properties.<属性名> 就是这样），
+            # 此时只比原始路径永远匹配不到 entries[].objects.*.properties.。
             for cand in (k, canon(k)):
+                if free and cand.startswith(free):
+                    return True
                 if cand in doc:
                     return True
                 alt = cand[:-2] if cand.endswith("[]") else cand + "[]"
@@ -699,15 +844,32 @@ def render(ops, ids, args):
         checked.append(op)
 
     with_schema = [o for o in ops if o.get("doc_fields") is not None]
-    probeable = [o for o in with_schema
-                 if o["method"] == "GET" or (o["override"] and args.include_query_post)]
+
+    def is_probeable(o):
+        if o["method"] == "GET":
+            return True
+        if o["override"] and args.include_query_post:
+            return True
+        spec = o.get("probe")
+        return bool(args.include_probe_post and isinstance(spec, dict)
+                    and spec.get("readonly") is True)
+
+    probeable = [o for o in with_schema if is_probeable(o)]
     L = []
     L.append("# API 实际返回 vs 设计文档 —— 缺口报告\n")
     L.append(f"- 面:`{args.face}`  执行方式:`{args.exec_mode}`"
              + (f"  经 `{args.ssh}`" if args.ssh else ""))
     L.append(f"- 文档中带 200 响应 schema 的操作:{len(with_schema)}"
              f",其中只读可探测:{len(probeable)}"
-             f"(其余为 POST/PUT/DELETE,本工具不发送)")
+             f"(其余为写操作或未标注只读的 POST/PUT/DELETE,本工具不发送)")
+    unprobed = [o for o in with_schema if o not in probeable]
+    if unprobed:
+        by_mod = {}
+        for o in unprobed:
+            by_mod[o["module"]] = by_mod.get(o["module"], 0) + 1
+        L.append("- 不在探测范围(按模块):`"
+                 + json.dumps(by_mod, ensure_ascii=False) + "`"
+                 + " —— 这些接口的响应结构本次**未经验证**")
     L.append(f"- 实际请求成功并完成比对:**{len(checked)} / {len(probeable)}**")
     L.append(f"- 存在缺口:**{len(gaps)}**   未能比对:{len(skipped)}")
     uniq = sorted({(n, v) for _, n, v in ids})

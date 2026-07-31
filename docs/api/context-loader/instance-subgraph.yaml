@@ -25,6 +25,21 @@ paths:
         - Subgraph
       summary: 按关系路径查询对象子图
       operationId: queryInstanceSubgraph
+      x-contract-probe:
+        readonly: true
+        order: 3
+        query:
+          kn_id: '{cl_kn_id}'
+        body:
+          relation_type_paths:
+            - object_types:
+                - id: '{cl_rt_src}'
+                - id: '{cl_rt_tgt}'
+              relation_types:
+                - relation_type_id: '{cl_rt_id}'
+                  source_object_type_id: '{cl_rt_src}'
+                  target_object_type_id: '{cl_rt_tgt}'
+              limit: 2
       description: |
         `relation_type_paths` 可以放多条路径，每条独立查询、独立返回一个子图，
         顺序与请求一致。
@@ -39,10 +54,10 @@ paths:
         - 边的方向由这组起终点与关系类自身定义的起终点是否一致决定：一致为正向，
           相反为反向。
 
-        **取主键**：子图对象的主键在 `unique_identities` 里（不是
-        `query_object_instance` 的 `_instance_identity`）。要把子图结果喂给
+        **取主键**：子图对象的主键在 `_instance_identity` 里，与
+        `query_object_instance` 同名同义。要把子图结果喂给
         [action.yaml](action.yaml) 或 [logic-property.yaml](logic-property.yaml) 时，
-        从 `unique_identities` 取键值对。
+        从这里取键值对，不要自己拼。
       parameters:
         - name: kn_id
           in: query
@@ -235,43 +250,61 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
           description: |
-            子图中的对象，以对象唯一标识为 key、对象详情为 value 的 map。
+            子图中的对象，以对象唯一标识（`对象类ID-主键生成的对象ID`）为 key、
+            对象详情为 value 的 map。
         relation_paths:
           type: array
           items:
             $ref: '#/components/schemas/RelationPath'
           description: 对象之间的关系路径集合。
+        current_path_number:
+          type: integer
+          description: 本条子图命中的路径条数。
+        overall_ms:
+          type: integer
+          format: int64
+          description: 本条子图的查询耗时（毫秒）。
         total_count:
           type: integer
-          description: 起点对象类的命中总数。
+          description: |
+            起点对象类的命中总数。本字段由下游 ontology-query 决定是否返回，
+            0.1.3 实测的路径查询未返回，不要当作必有字段。
         search_after:
           type: array
           items: {}
-          description: 起点对象的翻页游标，用于下一次 `search_after` 分页。
+          description: |
+            起点对象的翻页游标。同样由下游决定是否返回，0.1.3 实测未返回。
 
     ObjectInfoInSubgraph:
       type: object
-      description: 子图中的单个对象。
+      description: |
+        子图中的单个对象。元字段与 `query_object_instance` 的实例记录同名同义，
+        便于两条链路的结果互相衔接。
       properties:
-        id:
+        _instance_id:
           type: string
-          description: 对象唯一标识，形如「对象类 ID-联合主键生成的对象 ID」。
-        unique_identities:
+          description: 对象唯一标识，与 `objects` map 的 key 相同。
+        _instance_identity:
           type: object
           additionalProperties: true
           description: |
             对象主键，key 为属性名、value 为属性值。**下游接口需要的
             `_instance_identities` 从这里取。**
+        _display:
+          description: 显示属性的值。
         object_type_id:
           type: string
+          description: 所属对象类 ID。
         object_type_name:
           type: string
-        display:
-          description: 显示属性的值。
+          description: 所属对象类名称。
         properties:
           type: object
           additionalProperties: true
-          description: 属性值，key 为属性名、value 为属性值。
+          description: |
+            属性值，key 为属性名、value 为属性值。**注意这里同时重复了
+            `_instance_id` / `_instance_identity` / `_display` 三个元字段**，
+            遍历业务属性时需要把下划线前缀的键排除掉。
 
     RelationPath:
       type: object

@@ -39,6 +39,13 @@ paths:
         - SchemaSearch
       summary: 探索知识网络 Schema
       operationId: searchSchema
+      x-contract-probe:
+        readonly: true
+        order: 2
+        body:
+          kn_id: '{cl_kn_id}'
+          query: 巡检探测
+          max_concepts: 3
       description: |
         统一的 Schema 探索入口。适用于还不确定该继续调用哪个 `query_*` / `find_*` /
         `get_*` 接口时，先探索相关概念。
@@ -100,6 +107,12 @@ paths:
         - SchemaSearch
       summary: 探索知识网络 Schema（兼容接口）
       operationId: knSearch
+      x-contract-probe:
+        readonly: true
+        order: 2
+        body:
+          kn_id: '{cl_kn_id}'
+          query: 巡检探测
       description: |
         兼容历史 `kn_search` 调用方式的接口。底层与 `search_schema` 共用同一套逻辑，
         输出统一收敛为 Schema 结果。

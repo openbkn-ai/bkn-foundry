@@ -29,6 +29,13 @@ paths:
         - KnExplore
       summary: 列出知识网络
       operationId: listKnowledgeNetworks
+      x-contract-probe:
+        readonly: true
+        order: 1
+        body:
+          limit: 3
+        provides:
+          cl_kn_id: entries[0].id
       description: |
         列出当前账户可见的知识网络，用于发现 `kn_id`。请求体可选；不传按默认分页
         （`limit=20`，按更新时间倒序）返回。
@@ -66,6 +73,17 @@ paths:
         - KnExplore
       summary: 获取知识网络详情
       operationId: getKnDetail
+      x-contract-probe:
+        readonly: true
+        order: 2
+        body:
+          kn_id: '{cl_kn_id}'
+        provides:
+          cl_ot_id: object_types[0].id
+          cl_rt_id: relation_types[0].id
+          cl_rt_src: relation_types[0].source_object_type_id
+          cl_rt_tgt: relation_types[0].target_object_type_id
+          cl_at_id: action_types[0].id
       description: |
         返回一张知识网络的概念全景：概念组、对象类、关系类、行动类。
 
@@ -124,6 +142,13 @@ paths:
         - KnExplore
       summary: 按 ID 批量取对象类完整定义
       operationId: getObjectTypes
+      x-contract-probe:
+        readonly: true
+        order: 3
+        body:
+          kn_id: '{cl_kn_id}'
+          ids:
+            - '{cl_ot_id}'
       description: |
         取 `get_kn_detail` 在 summary 级别剥掉的对象类细节：属性的 `mapped_field`
         （写 `run_sql` 要的物理列名）、`condition_operations`（该属性可用的查询算子）、
@@ -175,6 +200,13 @@ paths:
         - KnExplore
       summary: 按 ID 批量取关系类完整定义
       operationId: getRelationTypes
+      x-contract-probe:
+        readonly: true
+        order: 3
+        body:
+          kn_id: '{cl_kn_id}'
+          ids:
+            - '{cl_rt_id}'
       description: |
         `get_object_types` 的关系类版本：取回 summary 级别剥掉的 `mapping_rules`
         与起终点对象类详情。同样支持按名称兜底匹配，未命中的 ID 落 `missing`。
@@ -469,9 +501,16 @@ components:
           type: string
           description: 备注。summary 级别不返回。
         mapped_field:
+          type: object
+          additionalProperties: true
           description: |
-            映射到的物理字段信息，结构随数据源类型而变。summary 级别不返回，
-            用 `get_object_types` 取。
+            映射到的物理字段信息。summary 级别不返回，用 `get_object_types` 取。
+            结构随数据源类型而变，表 / 视图类数据源下至少含 `name`——**这就是写
+            `run_sql` 要用的物理列名**。
+          properties:
+            name:
+              type: string
+              description: 物理列名。
         condition_operations:
           type: array
           items:
@@ -562,13 +601,58 @@ components:
           type: string
           description: 终点对象类 ID。
         source_object_type:
-          description: 起点对象类详情。summary 级别不返回，用 `get_relation_types` 取。
+          $ref: '#/components/schemas/ObjectTypeBrief'
         target_object_type:
-          description: 终点对象类详情。summary 级别不返回，用 `get_relation_types` 取。
+          $ref: '#/components/schemas/ObjectTypeBrief'
         mapping_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MappingRule'
           description: |
-            关系映射规则，结构随 `type` 而变（`direct` 对应一组字段映射）。
+            关系映射规则。`type: direct` 时是一组起点属性到终点属性的映射。
             summary 级别不返回，用 `get_relation_types` 取。
+
+    ObjectTypeBrief:
+      type: object
+      description: |
+        关系两端对象类的展示信息。summary 级别不返回，用 `get_relation_types` 取。
+
+        **注意字段常为空串**：这几个是给图形化界面用的展示属性，建网时不填就落空串
+        （实测 `id` / `name` 也可能是 `""`）。要拿两端对象类的真实标识，用同级的
+        `source_object_type_id` / `target_object_type_id`。
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        branch:
+          type: string
+          description: 分支标识。
+        icon:
+          type: string
+          description: 图标。
+        color:
+          type: string
+          description: 颜色。
+
+    MappingRule:
+      type: object
+      description: 一条属性映射：起点对象类的某个属性对应终点对象类的某个属性。
+      properties:
+        source_property:
+          $ref: '#/components/schemas/MappedProperty'
+        target_property:
+          $ref: '#/components/schemas/MappedProperty'
+
+    MappedProperty:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 属性名。
+        display_name:
+          type: string
+          description: 显示名；未设置时为空串。
 
     ActionType:
       type: object

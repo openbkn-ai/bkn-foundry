@@ -17,8 +17,8 @@ info:
     校验与真正的执行都在下游 ontology-query 完成，本服务只做转发与裁剪。
 
     **实例标识不能自己拼**：所有接口的 `_instance_identities` 必须来自
-    [object-instance.yaml](object-instance.yaml) 的 `_instance_identity` 或
-    [instance-subgraph.yaml](instance-subgraph.yaml) 的 `unique_identities`。
+    [object-instance.yaml](object-instance.yaml) 或
+    [instance-subgraph.yaml](instance-subgraph.yaml) 结果里的 `_instance_identity`。
 
     **响应做过裁剪**：执行详情与历史列表都剥掉了 Agent 决策用不上的重货
     （`action_type_snapshot`、重复的 `executor` / `action_source`、结果集分页元数据
@@ -39,6 +39,12 @@ paths:
         - Action
       summary: 召回行动的可执行定义
       operationId: getActionInfo
+      x-contract-probe:
+        readonly: true
+        order: 3
+        body:
+          kn_id: '{cl_kn_id}'
+          at_id: '{cl_at_id}'
       description: |
         按行动类 ID（可选再加对象实例标识）召回行动，返回符合 Function Call 规范的
         工具定义 `_dynamic_tools`。Agent 可以直接把它塞进自己的工具列表。
@@ -140,6 +146,12 @@ paths:
         - Action
       summary: 查询单次行动执行
       operationId: getActionExecution
+      x-contract-probe:
+        readonly: true
+        order: 3
+        body:
+          kn_id: '{cl_kn_id}'
+          execution_id: '{cl_execution_id}'
       description: |
         按 `execute_action` 返回的 `execution_id` 查这次执行的状态与逐对象结果。
 
@@ -184,6 +196,14 @@ paths:
         - Action
       summary: 列出行动执行历史
       operationId: listActionExecutions
+      x-contract-probe:
+        readonly: true
+        order: 2
+        body:
+          kn_id: '{cl_kn_id}'
+          limit: 3
+        provides:
+          cl_execution_id: entries[0].id
       description: |
         翻某张知识网络下的行动执行记录，支持按行动类、状态、触发方式与时间区间过滤。
 
@@ -274,8 +294,8 @@ components:
       type: object
       description: |
         一个对象实例的主键键值对。**必须从上游查询结果里取**：
-        `query_object_instance` 的 `_instance_identity`，或
-        `query_instance_subgraph` 的 `unique_identities`。
+        `query_object_instance` 或 `query_instance_subgraph` 结果里的
+        `_instance_identity`。
       additionalProperties:
         oneOf:
           - type: string

@@ -21,6 +21,9 @@ CONTRACT_POD        ?= deploy/bkn-agent
 CONTRACT_FACE       ?= in
 CONTRACT_ACCOUNT_ID ?= 266c6a42-6131-4d62-8f39-853e7093701c
 CONTRACT_OUT        ?= $(GEN_DIR)/contract-report.md
+# 额外传给巡检脚本的参数。默认带上 --include-probe-post：探测哪些 POST 是只读的，
+# 由各模块在 OpenAPI 里用 x-contract-probe.readonly 显式声明，脚本不自行判断。
+CONTRACT_ARGS       ?= --include-probe-post
 
 .PHONY: api-docs api-docs-html api-docs-lint api-docs-clean api-contract-diff print-modtitle print-moddesc print-resname
 
@@ -38,14 +41,15 @@ api-docs-lint:
 ## api-contract-diff: 拿运行中的服务真实返回，逐字段比对文档声明的 200 响应 schema。
 ## lint 只能证明文档「自洽」，这个 target 证明文档「与实现一致」——类型写错、
 ## 字段拼错、实际多返回的字段，只有真打接口才能发现。
-## 只发 GET（只读），退出码非 0 表示存在缺口。变量见文件头 CONTRACT_* 。
+## 只发 GET，以及文档中显式标注 x-contract-probe.readonly 的只读 POST（context-loader
+## 这类「查询即 POST」的服务靠它才能覆盖）。退出码非 0 表示存在缺口。变量见文件头 CONTRACT_* 。
 api-contract-diff:
 	@python3 $(API_DIR)/tools/api_contract_diff.py \
 	  --spec-dir $(API_DIR) \
 	  --face $(CONTRACT_FACE) \
 	  --exec-mode kubectl --ssh $(CONTRACT_SSH) \
 	  --namespace $(CONTRACT_NS) --exec-pod $(CONTRACT_POD) \
-	  --account-id $(CONTRACT_ACCOUNT_ID) \
+	  --account-id $(CONTRACT_ACCOUNT_ID) $(CONTRACT_ARGS) \
 	  --out $(CONTRACT_OUT) --json-out $(CONTRACT_OUT:.md=.json)
 
 ## api-docs: 渲染各模块 YAML 为 Markdown，输出到 _generated/<module>.md。

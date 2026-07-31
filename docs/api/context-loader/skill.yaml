@@ -25,6 +25,13 @@ paths:
         - Skill
       summary: 按业务上下文召回 Skill
       operationId: findSkills
+      x-contract-probe:
+        readonly: true
+        order: 3
+        body:
+          kn_id: '{cl_kn_id}'
+          object_type_id: '{cl_ot_id}'
+          top_k: 3
       description: |
         **召回模式由参数自动决定，不用显式指定**：
 
@@ -189,9 +196,9 @@ components:
                 - type: number
                 - type: boolean
           description: |
-            对象实例标识列表，**必须从 `query_object_instance` 的
-            `_instance_identity` 或 `query_instance_subgraph` 的 `unique_identities`
-            取，不可自拼**。传入即切换到实例级召回。
+            对象实例标识列表，**必须从 `query_object_instance` 或
+            `query_instance_subgraph` 结果里的 `_instance_identity` 取，不可自拼**。
+            传入即切换到实例级召回。
           example:
             - contract_id: C-2024-001
         skill_query:

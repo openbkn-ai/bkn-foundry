@@ -160,7 +160,7 @@ components:
           description: |
             对象实例标识数组，**必须从上游取，不可自拼**：先调
             `query_object_instance` 或 `query_instance_subgraph`，从每个对象的
-            `_instance_identity` / `unique_identities` 取值，按原顺序组成数组。
+            `_instance_identity` 取值，按原顺序组成数组。
           example:
             - company_id: company_000001
         properties:
