@@ -295,70 +295,68 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.Empty(t, sampleRows)
 	})
 
-	t.Run("does not create a task when sample query fails", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
-		resource := sampleSemanticResource()
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
-		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(nil, errors.New("query unavailable"))
-
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService}
-		got, err := service.CreateResourceTask(context.Background(), resource.ID, &interfaces.CreateSemanticUnderstandingTaskRequest{
-			IncludeSampleRows: true,
-			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
-		})
-		require.Error(t, err)
-		assert.Nil(t, got)
-		assert.Contains(t, err.Error(), "read sample rows")
-	})
-
-	t.Run("rejects sample rows for a non-queryable resource", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
-		resource := sampleSemanticResource()
-		resource.Status = interfaces.ResourceStatusDisabled
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
-
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService}
-		got, err := service.CreateResourceTask(context.Background(), resource.ID, &interfaces.CreateSemanticUnderstandingTaskRequest{
+	assertTaskCreatedWithoutSamples := func(t *testing.T, service *semanticUnderstandingTaskService, resourceID string) {
+		t.Helper()
+		got, err := service.CreateResourceTask(context.Background(), resourceID, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
 
-		require.Error(t, err)
-		assert.Nil(t, got)
-		var httpErr *rest.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_NotQueryable, httpErr.BaseError.ErrorCode)
-	})
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		var input interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+		assert.Empty(t, input.SampleRows)
+	}
 
-	t.Run("preserves sample query HTTP errors", func(t *testing.T) {
+	t.Run("creates a task when sample query fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		resource := sampleSemanticResource()
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			Return(nil, errors.New("query unavailable"))
+		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
+		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		assertTaskCreatedWithoutSamples(t, service, resource.ID)
+	})
+
+	t.Run("creates a task when sample query returns an HTTP error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
 		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
 			Return(nil, rest.NewHTTPError(context.Background(), http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded))
+		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
+		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService}
-		got, err := service.CreateResourceTask(context.Background(), resource.ID, &interfaces.CreateSemanticUnderstandingTaskRequest{
-			IncludeSampleRows: true,
-			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
-		})
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		assertTaskCreatedWithoutSamples(t, service, resource.ID)
+	})
 
-		require.Error(t, err)
-		assert.Nil(t, got)
-		var httpErr *rest.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Query_ConcurrencyLimitExceeded, httpErr.BaseError.ErrorCode)
+	t.Run("creates a task when the resource is not queryable", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		resource := sampleSemanticResource()
+		resource.Status = interfaces.ResourceStatusDisabled
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
+		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		assertTaskCreatedWithoutSamples(t, service, resource.ID)
 	})
 }
 

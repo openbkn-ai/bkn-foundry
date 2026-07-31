@@ -111,15 +111,9 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 	}
 	if req.IncludeSampleRows {
 		if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
-			return nil, err
-		}
-		if err := suts.attachUnmaskedSampleRows(ctx, resource, task); err != nil {
-			var httpErr *rest.HTTPError
-			if errors.As(err, &httpErr) {
-				return nil, httpErr
-			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
-				WithErrorDetails(err.Error())
+			logger.Warnf("Skipping semantic sample rows because resource is not queryable: resource_id=%s, category=%s, error=%v", resource.ID, resource.Category, err)
+		} else if err := suts.attachUnmaskedSampleRows(ctx, resource, task); err != nil {
+			logger.Warnf("Failed to attach semantic sample rows; continuing without samples: resource_id=%s, category=%s, error=%v", resource.ID, resource.Category, err)
 		}
 	}
 	return suts.createTask(ctx, task)
