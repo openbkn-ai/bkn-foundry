@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	sq "github.com/Masterminds/squirrel"
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/mitchellh/mapstructure"
 
@@ -274,9 +275,135 @@ func (c *SQLServerConnector) ExecuteRawSQL(ctx context.Context, statement string
 	return result, nil
 }
 
-// ExecuteQuery is completed with the common resource-data filter compiler in a follow-up change.
-func (c *SQLServerConnector) ExecuteQuery(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
-	return nil, fmt.Errorf("sqlserver resource-data query is not implemented")
+// ExecuteQuery executes a parameterized table query. Filter-condition translation is
+// deliberately not accepted until the SQL Server-specific operator mapping is complete.
+func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	if params.ActualFilterCond != nil {
+		return nil, fmt.Errorf("sqlserver filter conditions are not implemented")
+	}
+	fields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+	for _, property := range resource.SchemaDefinition {
+		fields[property.Name] = property
+	}
+	selectFields := make([]string, 0, len(resource.SchemaDefinition))
+	if len(params.OutputFields) > 0 {
+		for _, field := range params.OutputFields {
+			property, ok := fields[field]
+			if !ok {
+				return nil, fmt.Errorf("output field is not defined by resource schema: %s", field)
+			}
+			selectFields = append(selectFields, quoteIdentifier(property.OriginalName))
+		}
+	} else {
+		for _, property := range resource.SchemaDefinition {
+			selectFields = append(selectFields, quoteIdentifier(property.OriginalName))
+		}
+	}
+	if len(selectFields) == 0 {
+		return nil, fmt.Errorf("resource schema has no queryable fields")
+	}
+
+	builder := sq.StatementBuilder.PlaceholderFormat(sq.AtP).
+		Select(selectFields...).
+		From(qualifiedTable(resource.SourceIdentifier))
+	if len(params.Sort) > 0 {
+		for _, sort := range params.Sort {
+			property, ok := fields[sort.Field]
+			if !ok {
+				return nil, fmt.Errorf("sort field is not defined by resource schema: %s", sort.Field)
+			}
+			direction := "ASC"
+			if sort.Direction == interfaces.DESC_DIRECTION {
+				direction = "DESC"
+			}
+			builder = builder.OrderBy(quoteIdentifier(property.OriginalName) + " " + direction)
+		}
+	} else {
+		// OFFSET/FETCH requires ORDER BY. This neutral expression avoids using an
+		// untrusted column name; callers requiring stable cursor order provide sort.
+		builder = builder.OrderBy("(SELECT 1)")
+	}
+	limit := params.Limit
+	if limit <= 0 {
+		limit = interfaces.DEFAULT_DATA_LIMIT
+	}
+	builder = builder.Suffix("OFFSET ? ROWS FETCH NEXT ? ROWS ONLY", params.Offset, limit)
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build sqlserver query: %w", err)
+	}
+	rows, err := c.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	result, err := scanQueryRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if params.NeedTotal {
+		countQuery, countArgs, err := sq.StatementBuilder.
+			PlaceholderFormat(sq.AtP).
+			Select("COUNT(1)").
+			From(qualifiedTable(resource.SourceIdentifier)).ToSql()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build count query: %w", err)
+		}
+		if err := c.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&result.Total); err != nil {
+			return nil, fmt.Errorf("failed to query total: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func qualifiedTable(identifier string) string {
+	parts := strings.Split(identifier, ".")
+	quoted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		quoted = append(quoted, quoteIdentifier(strings.TrimSpace(part)))
+	}
+	return strings.Join(quoted, ".")
+}
+
+func quoteIdentifier(identifier string) string {
+	return "[" + strings.ReplaceAll(identifier, "]", "]]") + "]"
+}
+
+func scanQueryRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	result := &interfaces.QueryResult{
+		Columns: columns,
+		Entries: make([]map[string]any, 0),
+	}
+	for rows.Next() {
+		values, pointers := make([]any, len(columns)), make([]any, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, err
+		}
+		entry := make(map[string]any, len(columns))
+		for i, column := range columns {
+			if value, ok := values[i].([]byte); ok {
+				entry[column] = string(value)
+			} else {
+				entry[column] = values[i]
+			}
+		}
+		result.Entries = append(result.Entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result.Total = int64(len(result.Entries))
+	return result, nil
 }
 
 func (c *SQLServerConnector) MapType(nativeType string) string {

@@ -62,3 +62,24 @@ func TestSQLServerConnectorMapType(t *testing.T) {
 	assert.Equal(t, interfaces.DataType_Timestamp, connector.MapType("datetimeoffset"))
 	assert.Equal(t, interfaces.DataType_Other, connector.MapType("geography"))
 }
+
+func TestSQLServerConnectorExecuteQuery(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+	connector := &SQLServerConnector{connected: true, db: db}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "dbo.orders",
+		SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "order_id"}},
+	}
+	mock.ExpectQuery(`SELECT \[order_id\] FROM \[dbo\]\.\[orders\] ORDER BY \[order_id\] DESC OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY`).
+		WithArgs(0, 10).
+		WillReturnRows(sqlmock.NewRows([]string{"order_id"}).AddRow(1))
+
+	result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+		OutputFields: []string{"id"}, Sort: []*interfaces.SortField{{Field: "id", Direction: interfaces.DESC_DIRECTION}}, Limit: 10,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"order_id": int64(1)}}, result.Entries)
+	assert.Equal(t, int64(1), result.Total)
+}
