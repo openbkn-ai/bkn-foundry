@@ -32,11 +32,16 @@ import (
 //
 // The caller is expected to run the returned gate's Run method in a goroutine;
 // GateWithRunner exists so a caller can do that without type-asserting.
+// DefaultGate discards the refresher, so the snapshot it hands back is whatever
+// the one synchronous fetch at construction produced. Prefer GateWithRunner in
+// a service: without the background loop the gate never learns about a
+// certificate installed later, nor about one that expires.
+//
+// It delegates rather than building its own gate — calling both would otherwise
+// produce two HubGates polling the same hub, each with its own snapshot, and
+// two synchronous fetches during boot.
 func DefaultGate() Gate {
-	g, _ := defaultHubGate()
-	if g == nil {
-		return deniedGate{}
-	}
+	g, _ := GateWithRunner()
 	return g
 }
 
