@@ -270,7 +270,7 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		return resultJSON, confidence, confidenceDetailJSON, nil
 	}
 
-	var result resourceSemanticUnderstandingResult
+	var result interfaces.SemanticUnderstandingResourceResult
 	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return "", 0, "", fmt.Errorf("unmarshal resource semantic understanding result quality input failed: %w", err)
 	}
@@ -437,37 +437,12 @@ func skippedApplyResult(detail interfaces.SemanticUnderstandingSkippedApplyDetai
 	}, nil
 }
 
-type resourceSemanticUnderstandingResult struct {
-	Resource resourceSemanticUnderstandingResourceResult `json:"resource"`
-	Fields   []resourceSemanticUnderstandingFieldResult  `json:"fields"`
-}
-
-type resourceSemanticUnderstandingResourceResult struct {
-	DisplayName string   `json:"display_name"`
-	Description string   `json:"description"`
-	Confidence  *float64 `json:"confidence,omitempty"`
-}
-
-type resourceSemanticUnderstandingFieldResult struct {
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name"`
-	Description string   `json:"description"`
-	Confidence  *float64 `json:"confidence,omitempty"`
-}
-
-type resourceSemanticUnderstandingApplyDetail struct {
-	ResourceUpdated bool     `json:"resource_updated"`
-	UpdatedResource []string `json:"updated_resource,omitempty"`
-	UpdatedFields   []string `json:"updated_fields,omitempty"`
-	SkippedFields   []string `json:"skipped_fields,omitempty"`
-}
-
 func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, tx *sql.Tx) (*interfaces.SemanticUnderstandingApplyResult, error) {
 	if task.ResourceID == "" {
 		return nil, fmt.Errorf("resource_id is required for resource semantic understanding task")
 	}
 
-	var result resourceSemanticUnderstandingResult
+	var result interfaces.SemanticUnderstandingResourceResult
 	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal resource semantic understanding result failed: %w", err)
 	}
@@ -496,13 +471,16 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	seenFields := make(map[string]struct{}, len(result.Fields))
 	updatedFields := make([]string, 0)
 	skippedFields := make([]string, 0)
+	fieldDetails := make([]interfaces.SemanticUnderstandingFieldApplyDetail, 0, len(result.Fields))
 	for _, field := range result.Fields {
 		if field.Name == "" {
 			skippedFields = append(skippedFields, "<empty>: missing name")
+			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"missing name"}})
 			continue
 		}
 		if _, ok := seenFields[field.Name]; ok {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: duplicate", field.Name))
+			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"duplicate"}})
 			continue
 		}
 		seenFields[field.Name] = struct{}{}
@@ -510,39 +488,52 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		property, ok := fieldByName[field.Name]
 		if !ok {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: not found", field.Name))
+			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"not found"}})
 			continue
 		}
 		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name exceeds max length", field.Name))
+			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"display_name exceeds max length"}})
 			continue
 		}
 		invalidDisplayName := isTechnicalFieldName(field.Name, field.DisplayName)
+		reasons := make([]string, 0, 1)
 		if invalidDisplayName {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name equals technical field name", field.Name))
+			reasons = append(reasons, "display_name equals technical field name")
 		}
 		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: description exceeds max length", field.Name))
+			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"description exceeds max length"}})
 			continue
 		}
 		if err := validateConfidence(field.Confidence, fmt.Sprintf("fields[%s].confidence", field.Name)); err != nil {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: invalid confidence", field.Name))
+			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"invalid confidence"}})
 			continue
 		}
 		if field.Confidence != nil && *field.Confidence < task.ConfidenceThreshold {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: confidence below threshold", field.Name))
+			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"confidence below threshold"}})
 			continue
 		}
 
-		fieldUpdated := false
+		updated := make([]string, 0, 2)
 		if !invalidDisplayName && applyStringByMode(task.ApplyMode, &property.DisplayName, field.DisplayName, property.DisplayName == property.Name) {
-			fieldUpdated = true
+			updated = append(updated, "display_name")
 		}
 		if applyStringByMode(task.ApplyMode, &property.Description, field.Description, property.Description == property.OriginalDescription) {
-			fieldUpdated = true
+			updated = append(updated, "description")
 		}
-		if fieldUpdated {
+		status := "unchanged"
+		if len(updated) > 0 {
+			status = "updated"
+			if len(reasons) > 0 {
+				status = "partial"
+			}
 			updatedFields = append(updatedFields, field.Name)
 		}
+		fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: status, Updated: updated, Reasons: reasons})
 	}
 
 	updatedResource := make([]string, 0, 2)
@@ -557,7 +548,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	resourceUpdated := len(updatedResource) > 0
 	if !resourceUpdated && len(updatedFields) == 0 {
 		if len(skippedFields) > 0 {
-			detailBytes, err := sonic.Marshal(resourceSemanticUnderstandingApplyDetail{SkippedFields: skippedFields})
+			detailBytes, err := sonic.Marshal(interfaces.SemanticUnderstandingResourceApplyDetail{SkippedFields: skippedFields, FieldDetails: fieldDetails})
 			if err != nil {
 				return nil, fmt.Errorf("marshal resource semantic understanding apply detail failed: %w", err)
 			}
@@ -581,11 +572,12 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		return nil, err
 	}
 
-	detailBytes, err := sonic.Marshal(resourceSemanticUnderstandingApplyDetail{
+	detailBytes, err := sonic.Marshal(interfaces.SemanticUnderstandingResourceApplyDetail{
 		ResourceUpdated: resourceUpdated,
 		UpdatedResource: updatedResource,
 		UpdatedFields:   updatedFields,
 		SkippedFields:   skippedFields,
+		FieldDetails:    fieldDetails,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal resource semantic understanding apply detail failed: %w", err)
@@ -652,40 +644,12 @@ func validateConfidence(confidence *float64, path string) error {
 	return nil
 }
 
-type catalogSemanticUnderstandingResult struct {
-	LogicViews         []catalogSemanticUnderstandingLogicView    `json:"logic_views"`
-	ObsoleteLogicViews []catalogSemanticUnderstandingObsoleteView `json:"obsolete_logic_views"`
-}
-
-type catalogSemanticUnderstandingLogicView struct {
-	Action           string                            `json:"action"`
-	TargetResourceID string                            `json:"target_resource_id"`
-	Name             string                            `json:"name"`
-	SourceIdentifier string                            `json:"source_identifier"`
-	Description      string                            `json:"description"`
-	SourceResources  []string                          `json:"source_resources"`
-	LogicDefinition  []*interfaces.LogicDefinitionNode `json:"logic_definition"`
-	Confidence       *float64                          `json:"confidence,omitempty"`
-}
-
-type catalogSemanticUnderstandingObsoleteView struct {
-	TargetResourceID string   `json:"target_resource_id"`
-	Reason           string   `json:"reason"`
-	Confidence       *float64 `json:"confidence,omitempty"`
-}
-
-type catalogSemanticUnderstandingApplyDetail struct {
-	CreatedResourceIDs []string `json:"created_resource_ids,omitempty"`
-	UpdatedResourceIDs []string `json:"updated_resource_ids,omitempty"`
-	StaledResourceIDs  []string `json:"staled_resource_ids,omitempty"`
-}
-
 func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Context, task *interfaces.SemanticUnderstandingTask, resultJSON string, tx *sql.Tx) (*interfaces.SemanticUnderstandingApplyResult, error) {
 	if task.CatalogID == "" {
 		return nil, fmt.Errorf("catalog_id is required for catalog semantic understanding task")
 	}
 
-	var result catalogSemanticUnderstandingResult
+	var result interfaces.SemanticUnderstandingCatalogResult
 	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal catalog semantic understanding result failed: %w", err)
 	}
@@ -710,7 +674,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		}
 	}
 
-	detail := catalogSemanticUnderstandingApplyDetail{}
+	detail := interfaces.SemanticUnderstandingCatalogApplyDetail{}
 	for i, view := range result.LogicViews {
 		if err := validateConfidence(view.Confidence, fmt.Sprintf("logic_views[%d].confidence", i)); err != nil {
 			return nil, err
@@ -819,7 +783,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 	}, nil
 }
 
-func validateCatalogLogicViewOutput(view catalogSemanticUnderstandingLogicView, resourceByID map[string]*interfaces.Resource, logicViewByID map[string]*interfaces.Resource, sourceIdentifiers map[string]struct{}) error {
+func validateCatalogLogicViewOutput(view interfaces.SemanticUnderstandingCatalogLogicView, resourceByID map[string]*interfaces.Resource, logicViewByID map[string]*interfaces.Resource, sourceIdentifiers map[string]struct{}) error {
 	switch view.Action {
 	case "create":
 		if view.TargetResourceID != "" {

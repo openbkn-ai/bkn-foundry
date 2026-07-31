@@ -203,6 +203,67 @@ type SemanticUnderstandingApplyResult struct {
 	DetailJSON string
 }
 
+type SemanticUnderstandingFieldApplyDetail struct {
+	Name    string   `json:"name"`
+	Status  string   `json:"status"`
+	Updated []string `json:"updated,omitempty"`
+	Reasons []string `json:"reasons,omitempty"`
+}
+
+type SemanticUnderstandingResourceApplyDetail struct {
+	ResourceUpdated bool                                    `json:"resource_updated"`
+	UpdatedResource []string                                `json:"updated_resource,omitempty"`
+	UpdatedFields   []string                                `json:"updated_fields,omitempty"`
+	SkippedFields   []string                                `json:"skipped_fields,omitempty"`
+	FieldDetails    []SemanticUnderstandingFieldApplyDetail `json:"field_details,omitempty"`
+}
+
+type SemanticUnderstandingResourceResult struct {
+	Resource SemanticUnderstandingResourceResultResource `json:"resource"`
+	Fields   []SemanticUnderstandingResourceResultField  `json:"fields"`
+}
+
+type SemanticUnderstandingResourceResultResource struct {
+	DisplayName string   `json:"display_name"`
+	Description string   `json:"description"`
+	Confidence  *float64 `json:"confidence,omitempty"`
+}
+
+type SemanticUnderstandingResourceResultField struct {
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name"`
+	Description string   `json:"description"`
+	Confidence  *float64 `json:"confidence,omitempty"`
+}
+
+type SemanticUnderstandingCatalogResult struct {
+	LogicViews         []SemanticUnderstandingCatalogLogicView    `json:"logic_views"`
+	ObsoleteLogicViews []SemanticUnderstandingCatalogObsoleteView `json:"obsolete_logic_views"`
+}
+
+type SemanticUnderstandingCatalogLogicView struct {
+	Action           string                 `json:"action"`
+	TargetResourceID string                 `json:"target_resource_id"`
+	Name             string                 `json:"name"`
+	SourceIdentifier string                 `json:"source_identifier"`
+	Description      string                 `json:"description"`
+	SourceResources  []string               `json:"source_resources"`
+	LogicDefinition  []*LogicDefinitionNode `json:"logic_definition"`
+	Confidence       *float64               `json:"confidence,omitempty"`
+}
+
+type SemanticUnderstandingCatalogObsoleteView struct {
+	TargetResourceID string   `json:"target_resource_id"`
+	Reason           string   `json:"reason"`
+	Confidence       *float64 `json:"confidence,omitempty"`
+}
+
+type SemanticUnderstandingCatalogApplyDetail struct {
+	CreatedResourceIDs []string `json:"created_resource_ids,omitempty"`
+	UpdatedResourceIDs []string `json:"updated_resource_ids,omitempty"`
+	StaledResourceIDs  []string `json:"staled_resource_ids,omitempty"`
+}
+
 type SemanticUnderstandingSkippedApplyDetail struct {
 	Reason              string  `json:"reason"`
 	Confidence          float64 `json:"confidence,omitempty"`

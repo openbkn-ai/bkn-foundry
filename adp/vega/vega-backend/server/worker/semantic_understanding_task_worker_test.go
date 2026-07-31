@@ -131,7 +131,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			MarkApplied(gomock.Any(), "semantic-task-1", true, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, applied bool, detailJSON string) (bool, error) {
 				assert.True(t, applied)
-				assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name","description"],"updated_fields":["id"]}`, detailJSON)
+				assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name","description"],"updated_fields":["id"],"field_details":[{"name":"id","status":"updated","updated":["display_name","description"]}]}`, detailJSON)
 				return true, nil
 			})
 
@@ -360,7 +360,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
-		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["missing: not found"]}`, got.DetailJSON)
+		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["missing: not found"],"field_details":[{"name":"missing","status":"skipped","reasons":["not found"]}]}`, got.DetailJSON)
 	})
 
 	t.Run("fills display names that still equal the technical field name", func(t *testing.T) {
@@ -395,7 +395,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, got.Applied)
-		assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["product_id"]}`, got.DetailJSON)
+		assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["product_id"],"field_details":[{"name":"product_id","status":"updated","updated":["display_name"]}]}`, got.DetailJSON)
 	})
 
 	t.Run("rejects technical field names in force mode", func(t *testing.T) {
@@ -423,7 +423,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.False(t, got.Applied)
-		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["supplier_id: display_name equals technical field name"]}`, got.DetailJSON)
+		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["supplier_id: display_name equals technical field name"],"field_details":[{"name":"supplier_id","status":"unchanged","reasons":["display_name equals technical field name"]}]}`, got.DetailJSON)
 	})
 
 	t.Run("fills resource name when it still equals the source identifier", func(t *testing.T) {
@@ -497,7 +497,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, got.Applied)
-		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["description"],"updated_fields":["product_id"],"skipped_fields":["product_id: display_name equals technical field name"]}`, got.DetailJSON)
+		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["description"],"updated_fields":["product_id"],"skipped_fields":["product_id: display_name equals technical field name"],"field_details":[{"name":"product_id","status":"partial","updated":["description"],"reasons":["display_name equals technical field name"]}]}`, got.DetailJSON)
 	})
 
 	t.Run("skips apply in dry run", func(t *testing.T) {
