@@ -103,6 +103,22 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	}
 }
 
+func TestLifecycleClientUsesBoundedPooledHTTPClientByDefault(t *testing.T) {
+	client := NewLifecycleClient("http://core.test", nil)
+	if client.client.Timeout != lifecycleClientTimeout {
+		t.Fatalf("lifecycle client timeout=%s, want %s", client.client.Timeout, lifecycleClientTimeout)
+	}
+	transport, ok := client.client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("lifecycle client transport=%T, want *http.Transport", client.client.Transport)
+	}
+	if transport.MaxIdleConns != lifecycleMaxIdleConnections ||
+		transport.MaxIdleConnsPerHost != lifecycleMaxIdleConnections ||
+		transport.IdleConnTimeout != lifecycleIdleConnectionTTL {
+		t.Fatalf("lifecycle connection pool is not bounded for service concurrency: %#v", transport)
+	}
+}
+
 func TestLifecycleClientDoesNotClaimDurableEvidenceWithoutAck(t *testing.T) {
 	var durability string
 	client := NewLifecycleClient("http://core.test", &http.Client{

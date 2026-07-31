@@ -28,6 +28,10 @@ const (
 	CoreSchemaVersion = "3.0.0"
 	coreAPIPath       = "/api/agent-observability/v1"
 	envCoreURL        = "BKN_TRACE_CORE_URL"
+
+	lifecycleClientTimeout      = 10 * time.Second
+	lifecycleMaxIdleConnections = 100
+	lifecycleIdleConnectionTTL  = 90 * time.Second
 )
 
 var (
@@ -198,13 +202,24 @@ type LifecycleClient struct {
 
 func NewLifecycleClient(baseURL string, client *http.Client) *LifecycleClient {
 	if client == nil {
-		client = http.DefaultClient
+		client = newLifecycleHTTPClient()
 	}
 	return &LifecycleClient{baseURL: strings.TrimRight(baseURL, "/"), client: client}
 }
 
 func NewLifecycleClientFromEnv() *LifecycleClient {
-	return NewLifecycleClient(os.Getenv(envCoreURL), http.DefaultClient)
+	return NewLifecycleClient(os.Getenv(envCoreURL), nil)
+}
+
+func newLifecycleHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = lifecycleMaxIdleConnections
+	transport.MaxIdleConnsPerHost = lifecycleMaxIdleConnections
+	transport.IdleConnTimeout = lifecycleIdleConnectionTTL
+	return &http.Client{
+		Transport: transport,
+		Timeout:   lifecycleClientTimeout,
+	}
 }
 
 func (c *LifecycleClient) Enabled() bool {
