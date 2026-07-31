@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -214,6 +215,53 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 		assert.Same(t, active, got)
 		assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeCatalog, findScope)
+	})
+}
+
+func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
+	t.Run("writes queried rows to the task input and honors max rows", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+		require.NoError(t, err)
+		resourceDataService.EXPECT().
+			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				assert.Equal(t, 2, params.Limit)
+				assert.Equal(t, []string{"order_id"}, params.OutputFields)
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"order_id": "o-1"}, {"order_id": "o-2"}}}, nil
+			})
+
+		service := &semanticUnderstandingTaskService{rds: resourceDataService}
+		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
+		var input interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		assert.Equal(t, []map[string]any{{"order_id": "o-1"}, {"order_id": "o-2"}}, input.SampleRows)
+		assert.NotEmpty(t, task.InputHash)
+	})
+
+	t.Run("does not create a task when sample query fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(nil, errors.New("query unavailable"))
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService}
+		got, err := service.CreateResourceTask(context.Background(), resource.ID, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "read sample rows")
 	})
 }
 
