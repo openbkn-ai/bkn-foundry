@@ -121,11 +121,15 @@ func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces
 func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
 	defer cancel()
+
 	prepared, err := rqs.prepareSQLQuery(queryCtx, req)
 	if err != nil {
 		return nil, err
 	}
-	finalSQL := applySingleQueryPaging(prepared.sql, req.Paging.Offset, req.Paging.Limit)
+
+	finalSQL := applySingleQueryPaging(
+		prepared.sql, req.Paging.Offset, req.Paging.Limit, prepared.catalog.ConnectorType,
+	)
 
 	var totalCount int64
 	if req.NeedTotal {
@@ -324,7 +328,9 @@ func trimSQLTerminator(sql string) string {
 }
 
 func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
-	pageSQL := fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_cursor LIMIT %d OFFSET %d", session.CompiledSQL, session.Limit+1, session.Offset)
+	pageSQL := applyCursorQueryPaging(
+		session.CompiledSQL, session.Offset, session.Limit+1, catalog.ConnectorType,
+	)
 	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
 	result, err := rqs.executeSQL(pageCtx, catalog, pageSQL, interfaces.PagingModeCursor)
@@ -698,8 +704,22 @@ func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (
 	}
 }
 
-func applySingleQueryPaging(sql string, offset, size int) string {
-	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_single LIMIT %d OFFSET %d", sql, size, offset)
+func applySingleQueryPaging(sql string, offset, size int, connectorType string) string {
+	return applySQLQueryPaging(sql, "_raw_query_single", offset, size, connectorType)
+}
+
+func applyCursorQueryPaging(sql string, offset, size int, connectorType string) string {
+	return applySQLQueryPaging(sql, "_raw_query_cursor", offset, size, connectorType)
+}
+
+func applySQLQueryPaging(sql, alias string, offset, size int, connectorType string) string {
+	if connectorType == interfaces.ConnectorTypeSQLServer {
+		return fmt.Sprintf(
+			"SELECT * FROM (%s) AS %s ORDER BY (SELECT 1) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+			sql, alias, offset, size,
+		)
+	}
+	return fmt.Sprintf("SELECT * FROM (%s) AS %s LIMIT %d OFFSET %d", sql, alias, size, offset)
 }
 
 func (rqs *rawQueryService) executeSQLTotalCount(ctx context.Context, catalog *interfaces.Catalog, sql string) (int64, error) {
