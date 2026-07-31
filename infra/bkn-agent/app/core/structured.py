@@ -74,6 +74,12 @@ async def structured_extract_with_path(
         # 原生也校验：with_structured_output 未启 strict，可能缺 required/类型不符；
         # 不合法则不当成功返回，落到下面提示词降级重试。
         _jsonschema_validate(obj, schema)
+        # path 只进 bkn-trace evidence 的话，trace 摄取一坏（曾遇 503
+        # INGEST_AUTH_NOT_CONFIGURED）就彻底查不到走的哪条路。本地留一行：
+        # 排「结构化结果质量不对」时，先要知道是原生还是降级、提示词在不在场。
+        logger.info(
+            "[Structured] path=native system_prompt=%s", bool(system_prompt)
+        )
         return obj, "native"
     except SchemaError:
         # schema 本体非法：请求边界已用 check_schema 拦（models.py ResponseFormat），
@@ -90,12 +96,17 @@ async def structured_extract_with_path(
     )
     msgs = list(messages) + [("user", instr)]
     last_err: Any = None
-    for _ in range(2):
+    for attempt in range(1, 3):
         resp = await model.ainvoke(msgs)
         text = resp.content if isinstance(resp.content, str) else str(resp.content)
         try:
             obj = _extract_json(text)
             _jsonschema_validate(obj, schema)
+            logger.info(
+                "[Structured] path=fallback attempt=%d system_prompt=%s",
+                attempt,
+                bool(system_prompt),
+            )
             return obj, "fallback"
         except (json.JSONDecodeError, ValidationError, ValueError) as e:
             last_err = e
