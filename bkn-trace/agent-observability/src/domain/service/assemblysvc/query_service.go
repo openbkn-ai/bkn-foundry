@@ -15,6 +15,8 @@ import (
 
 var ErrNotFound = errors.New("interaction was not found in the authorized scope")
 
+var errBusinessResolverUnavailable = errors.New("business resolver is unavailable")
+
 type QueryService struct {
 	sessions         isessionstore.Store
 	ledger           ievidenceledger.Store
@@ -35,10 +37,16 @@ type ProjectedResult struct {
 	ArtifactRefs           []string                    `json:"artifact_refs"`
 	EvidenceRefs           []sessionvo.EvidenceRef     `json:"evidence_refs"`
 	OperationBusinessEdges []OperationBusinessEdgeView `json:"operation_business_edges"`
-	UnusedEvidenceRefs     []sessionvo.EvidenceRef     `json:"unused_evidence_refs"`
-	IncludedEventIDs       []string                    `json:"included_event_ids"`
-	EventLayers            map[string]int              `json:"event_layers"`
-	PartialReasons         []string                    `json:"partial_reasons"`
+	// UnusedEvidenceRefs are refs neither adopted nor rejected by any Claim in this revision.
+	UnusedEvidenceRefs []sessionvo.EvidenceRef `json:"unused_evidence_refs"`
+	IncludedEventIDs   []string                `json:"included_event_ids"`
+	EventLayers        map[string]int          `json:"event_layers"`
+	// PartialReasons describe objective evidence-assembly gaps and never authorization outcomes.
+	PartialReasons []string `json:"partial_reasons"`
+	// DisclosurePartial is true when the current authorized projection could not classify every business ref.
+	DisclosurePartial bool `json:"disclosure_partial"`
+	// DisclosureReasons describe resolver/projection degradation without changing objective completeness.
+	DisclosureReasons []string `json:"disclosure_reasons"`
 }
 
 type BusinessRefView struct {
@@ -121,8 +129,9 @@ func (s *QueryService) GetInteractionAuthorized(
 }
 
 type priorSupportSource struct {
-	support  sessionvo.ClaimSupport
-	eventIDs []string
+	interactionID string
+	eventIDs      []string
+	supports      []sessionvo.ClaimSupport
 }
 
 func (s *QueryService) loadPriorEvidence(
@@ -135,7 +144,7 @@ func (s *QueryService) loadPriorEvidence(
 	if len(supports) == 0 {
 		return nil, nil
 	}
-	sources := make([]priorSupportSource, 0, len(supports))
+	sourcesByRevision := make(map[string]*priorSupportSource)
 	err := s.sessions.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		for _, support := range supports {
 			source, found := tx.FindInteraction(support.SourceInteractionID)
@@ -148,9 +157,16 @@ func (s *QueryService) loadPriorEvidence(
 			}
 			for _, revision := range tx.ListAssemblyRevisions(source.ID) {
 				if revision.ID == support.SourceRevisionID {
-					sources = append(sources, priorSupportSource{
-						support: support, eventIDs: append([]string(nil), revision.IncludedEventIDs...),
-					})
+					key := source.ID + "\x00" + revision.ID
+					entry := sourcesByRevision[key]
+					if entry == nil {
+						entry = &priorSupportSource{
+							interactionID: source.ID,
+							eventIDs:      append([]string(nil), revision.IncludedEventIDs...),
+						}
+						sourcesByRevision[key] = entry
+					}
+					entry.supports = append(entry.supports, support)
 					break
 				}
 			}
@@ -161,19 +177,32 @@ func (s *QueryService) loadPriorEvidence(
 		return nil, err
 	}
 	resolved := make(map[string]sessionvo.EvidenceRef)
-	for _, source := range sources {
-		sourceEvents, err := s.ledger.ListInteractionEvents(ctx, owner, source.support.SourceInteractionID)
-		if err != nil {
-			return nil, err
+	sourceKeys := make([]string, 0, len(sourcesByRevision))
+	for key := range sourcesByRevision {
+		sourceKeys = append(sourceKeys, key)
+	}
+	sort.Strings(sourceKeys)
+	eventsByInteraction := make(map[string][]ledgervo.Event)
+	for _, key := range sourceKeys {
+		source := sourcesByRevision[key]
+		sourceEvents, found := eventsByInteraction[source.interactionID]
+		if !found {
+			var err error
+			sourceEvents, err = s.ledger.ListInteractionEvents(ctx, owner, source.interactionID)
+			if err != nil {
+				return nil, err
+			}
+			eventsByInteraction[source.interactionID] = sourceEvents
 		}
+		candidates := make(map[string]sessionvo.EvidenceRef)
 		for _, event := range eventsInRevision(sourceEvents, source.eventIDs) {
 			for _, ref := range event.EvidenceRefs {
-				candidate := map[string]sessionvo.EvidenceRef{evidenceRefKey(ref): ref}
-				if ref.Ref == source.support.TargetRef {
-					if matched, found := supportMatchesEvidence(source.support, candidate); found {
-						resolved[evidenceRefKey(matched)] = matched
-					}
-				}
+				candidates[evidenceRefKey(ref)] = ref
+			}
+		}
+		for _, support := range source.supports {
+			for _, matched := range matchingEvidence(support, candidates) {
+				resolved[evidenceRefKey(matched)] = matched
 			}
 		}
 	}
@@ -202,20 +231,21 @@ func (s *QueryService) projectBusinessRefs(ctx context.Context, scope evidencevo
 		IncludedEventIDs:   assembled.IncludedEventIDs, EventLayers: assembled.EventLayers,
 		PartialReasons: assembled.PartialReasons,
 	}
-	resolutions := s.resolveBusinessRefs(ctx, scope, assembled.BusinessRefs)
+	resolutions, resolveErr := s.resolveBusinessRefs(ctx, scope, assembled.BusinessRefs)
+	disclosureReasons := make(map[string]struct{})
+	if resolveErr != nil {
+		disclosureReasons["business_resolver_unavailable"] = struct{}{}
+	}
 	viewsByKey := make(map[string]BusinessRefView, len(assembled.BusinessRefs))
 	for _, ref := range assembled.BusinessRefs {
-		resolution, found := resolutions[ref.RefID]
-		if found && resolution.Visibility == "unauthorized" {
+		resolution, found := resolutions[resolverRefKey(string(ref.RefType), ref.RefID, sourceSystemForBusinessRef(ref))]
+		if !found || (resolution.Visibility != "visible" && resolution.Visibility != "redacted") {
+			if resolveErr == nil && (!found || resolution.Visibility == "unresolved" || resolution.Visibility == "") {
+				disclosureReasons["business_ref_unresolved"] = struct{}{}
+			}
 			continue
 		}
-		view := BusinessRefView{TechnicalRef: ref, DisclosureStatus: "unresolved"}
-		if found && resolution.Visibility == "visible" && resolution.Display != nil {
-			view.DisclosureStatus = "visible"
-			view.Display = resolution.Display
-		} else {
-			view.Display = &evidencevo.BusinessDisplay{Name: ref.RefID, ResolutionStatus: "unresolved"}
-		}
+		view := BusinessRefView{TechnicalRef: ref, DisclosureStatus: resolution.Visibility, Display: resolution.Display}
 		viewsByKey[businessRefKey(ref)] = view
 		projected.BusinessRefs = append(projected.BusinessRefs, view)
 	}
@@ -229,6 +259,8 @@ func (s *QueryService) projectBusinessRefs(ctx context.Context, scope evidencevo
 			ObservedAt: edge.ObservedAt.UTC().Format("2006-01-02T15:04:05.999999999Z07:00"),
 		})
 	}
+	projected.DisclosureReasons = sortedStringSet(disclosureReasons)
+	projected.DisclosurePartial = len(projected.DisclosureReasons) > 0
 	return projected
 }
 
@@ -236,36 +268,51 @@ func (s *QueryService) resolveBusinessRefs(
 	ctx context.Context,
 	scope evidencevo.QueryScope,
 	refs []sessionvo.BusinessRef,
-) map[string]ibusinessresolver.Resolution {
+) (map[string]ibusinessresolver.Resolution, error) {
 	result := make(map[string]ibusinessresolver.Resolution, len(refs))
-	if s.businessResolver == nil || len(refs) == 0 {
-		return result
+	if len(refs) == 0 {
+		return result, nil
+	}
+	if s.businessResolver == nil {
+		return result, errBusinessResolverUnavailable
 	}
 	requestRefs := make([]ibusinessresolver.BusinessRef, 0, len(refs))
 	seen := make(map[string]struct{}, len(refs))
 	for _, ref := range refs {
-		if _, found := seen[ref.RefID]; found {
+		sourceSystem := sourceSystemForBusinessRef(ref)
+		key := resolverRefKey(string(ref.RefType), ref.RefID, sourceSystem)
+		if _, found := seen[key]; found {
 			continue
 		}
-		seen[ref.RefID] = struct{}{}
-		sourceSystem := "bkn"
-		if ref.RefType == sessionvo.BusinessRefDataResource {
-			sourceSystem = "vega"
-		}
+		seen[key] = struct{}{}
 		requestRefs = append(requestRefs, ibusinessresolver.BusinessRef{
 			RefID: ref.RefID, RefType: string(ref.RefType), SourceSystem: sourceSystem,
 			VersionStatus: ref.Version,
 		})
 	}
-	sort.Slice(requestRefs, func(i, j int) bool { return requestRefs[i].RefID < requestRefs[j].RefID })
+	sort.Slice(requestRefs, func(i, j int) bool {
+		return resolverRefKey(requestRefs[i].RefType, requestRefs[i].RefID, requestRefs[i].SourceSystem) <
+			resolverRefKey(requestRefs[j].RefType, requestRefs[j].RefID, requestRefs[j].SourceSystem)
+	})
 	resolved, err := s.businessResolver.ResolveBusinessRefs(ctx, ibusinessresolver.ResolveRequest{Scope: scope, Refs: requestRefs})
 	if err != nil {
-		return result
+		return result, err
 	}
 	for _, resolution := range resolved {
-		result[resolution.RefID] = resolution
+		result[resolverRefKey(resolution.RefType, resolution.RefID, resolution.SourceSystem)] = resolution
 	}
-	return result
+	return result, nil
+}
+
+func sourceSystemForBusinessRef(ref sessionvo.BusinessRef) string {
+	if ref.RefType == sessionvo.BusinessRefDataResource {
+		return "vega"
+	}
+	return "bkn"
+}
+
+func resolverRefKey(refType, refID, sourceSystem string) string {
+	return refType + "\x00" + refID + "\x00" + sourceSystem
 }
 
 func eventsInRevision(events []ledgervo.Event, includedIDs []string) []ledgervo.Event {

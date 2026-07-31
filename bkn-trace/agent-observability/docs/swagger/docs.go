@@ -974,7 +974,7 @@ const docTemplate = `{
         },
         "/interactions/{interaction_id}/business-graph": {
             "get": {
-                "description": "Returns the latest immutable assembly revision with precise Claim supports and causal DAG layers.",
+                "description": "Returns the latest immutable assembly revision with precise Claim supports and causal DAG layers. Objective evidence completeness is separate from current-user disclosure completeness; unresolved or unauthorized business refs and their edges are omitted.",
                 "produces": [
                     "application/json"
                 ],
@@ -2539,6 +2539,7 @@ const docTemplate = `{
                     }
                 },
                 "unused_evidence_refs": {
+                    "description": "UnusedEvidenceRefs are refs neither adopted nor rejected by this Claim.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/sessionvo.EvidenceRef"
@@ -2628,6 +2629,17 @@ const docTemplate = `{
                 "completeness": {
                     "$ref": "#/definitions/sessionvo.EvidenceStatus"
                 },
+                "disclosure_partial": {
+                    "description": "DisclosurePartial is true when the current authorized projection could not classify every business ref.",
+                    "type": "boolean"
+                },
+                "disclosure_reasons": {
+                    "description": "DisclosureReasons describe resolver/projection degradation without changing objective completeness.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "event_layers": {
                     "type": "object",
                     "additionalProperties": {
@@ -2659,12 +2671,14 @@ const docTemplate = `{
                     }
                 },
                 "partial_reasons": {
+                    "description": "PartialReasons describe objective evidence-assembly gaps and never authorization outcomes.",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "unused_evidence_refs": {
+                    "description": "UnusedEvidenceRefs are refs neither adopted nor rejected by any Claim in this revision.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/sessionvo.EvidenceRef"
@@ -4093,7 +4107,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "claim_status": {
-                    "$ref": "#/definitions/sessionvo.ClaimStatus"
+                    "description": "Status withdrawn preserves history but does not participate in current revision completeness.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/sessionvo.ClaimStatus"
+                        }
+                    ]
                 },
                 "claim_type": {
                     "type": "string"

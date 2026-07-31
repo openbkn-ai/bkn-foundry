@@ -121,6 +121,78 @@ func TestAssembleRejectsImpreciseRejectedSupport(t *testing.T) {
 	}
 }
 
+func TestAssembleClassifiesAdoptedRejectedAndUnusedEvidenceAsDisjoint(t *testing.T) {
+	t.Parallel()
+
+	adopted := evidenceRef("evidence:adopted")
+	rejected := evidenceRef("evidence:rejected")
+	unused := evidenceRef("evidence:unused")
+	assertion := claim("claim-a", sessionvo.SupportAdopted, "")
+	assertion.Supports[0].TargetRef = adopted.Ref
+	assertion.Supports[0].ContentHash = adopted.ContentHash
+	rejectedSupport := assertion.Supports[0]
+	rejectedSupport.TargetRef = rejected.Ref
+	rejectedSupport.ContentHash = rejected.ContentHash
+	rejectedSupport.Status = sessionvo.SupportRejected
+	rejectedSupport.Reason = "not applicable"
+	assertion.Supports = append(assertion.Supports, rejectedSupport)
+	event := semanticEvent("evt-data", "op-query", 1)
+	event.EvidenceRefs = []sessionvo.EvidenceRef{adopted, rejected, unused}
+	event.Claims = []sessionvo.Claim{assertion}
+
+	result := assemblysvc.Assemble("int-1", []ledgervo.Event{event}, []string{assertion.ID})
+
+	if len(result.UnusedEvidenceRefs) != 1 || result.UnusedEvidenceRefs[0].Ref != unused.Ref {
+		t.Fatalf("global evidence classes overlap: %#v", result)
+	}
+	if len(result.Claims[0].UnusedEvidenceRefs) != 1 || result.Claims[0].UnusedEvidenceRefs[0].Ref != unused.Ref {
+		t.Fatalf("claim evidence classes overlap: %#v", result.Claims[0])
+	}
+}
+
+func TestAssembleTreatsAmbiguousSupportTargetAsPartialDeterministically(t *testing.T) {
+	t.Parallel()
+
+	first := evidenceRef("evidence:ambiguous")
+	second := first
+	firstTime := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	secondTime := firstTime.Add(time.Hour)
+	first.AsOf = &firstTime
+	second.AsOf = &secondTime
+	assertion := claim("claim-a", sessionvo.SupportAdopted, "")
+	assertion.Supports[0].TargetRef = first.Ref
+	assertion.Supports[0].ContentHash = first.ContentHash
+	event := semanticEvent("evt-data", "op-query", 1)
+	event.EvidenceRefs = []sessionvo.EvidenceRef{second, first}
+	event.Claims = []sessionvo.Claim{assertion}
+
+	for index := 0; index < 20; index++ {
+		result := assemblysvc.Assemble("int-1", []ledgervo.Event{event}, []string{assertion.ID})
+		if result.Completeness != sessionvo.EvidencePartial || len(result.Claims[0].PartialReasons) != 1 ||
+			result.Claims[0].PartialReasons[0] != "support_target_ambiguous:claim-a:evidence:ambiguous" ||
+			len(result.UnusedEvidenceRefs) != 2 {
+			t.Fatalf("ambiguous support was selected nondeterministically: %#v", result)
+		}
+	}
+}
+
+func TestAssembleWithdrawnMaterialClaimDoesNotDegradeCurrentCompleteness(t *testing.T) {
+	t.Parallel()
+
+	assertion := claim("claim-withdrawn", sessionvo.SupportAdopted, "")
+	assertion.Status = sessionvo.ClaimWithdrawn
+	assertion.Supports = nil
+	event := semanticEvent("evt-claim", "op-answer", 1)
+	event.Claims = []sessionvo.Claim{assertion}
+
+	result := assemblysvc.Assemble("int-1", []ledgervo.Event{event}, []string{assertion.ID})
+
+	if result.Completeness != sessionvo.EvidenceComplete || len(result.Claims) != 1 ||
+		result.Claims[0].Completeness != sessionvo.EvidenceNotApplicable {
+		t.Fatalf("withdrawn claim degraded the active revision: %#v", result)
+	}
+}
+
 func TestAssembleTopologicallyLayersParallelOperationsWithoutInventingOrder(t *testing.T) {
 	t.Parallel()
 

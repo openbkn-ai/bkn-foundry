@@ -28,6 +28,8 @@ definitions:
           $ref: '#/definitions/sessionvo.ClaimSupport'
         type: array
       unused_evidence_refs:
+        description: UnusedEvidenceRefs are refs neither adopted nor rejected by this
+          Claim.
         items:
           $ref: '#/definitions/sessionvo.EvidenceRef'
         type: array
@@ -86,6 +88,16 @@ definitions:
         type: array
       completeness:
         $ref: '#/definitions/sessionvo.EvidenceStatus'
+      disclosure_partial:
+        description: DisclosurePartial is true when the current authorized projection
+          could not classify every business ref.
+        type: boolean
+      disclosure_reasons:
+        description: DisclosureReasons describe resolver/projection degradation without
+          changing objective completeness.
+        items:
+          type: string
+        type: array
       event_layers:
         additionalProperties:
           type: integer
@@ -107,10 +119,14 @@ definitions:
           $ref: '#/definitions/assemblysvc.OperationBusinessEdgeView'
         type: array
       partial_reasons:
+        description: PartialReasons describe objective evidence-assembly gaps and
+          never authorization outcomes.
         items:
           type: string
         type: array
       unused_evidence_refs:
+        description: UnusedEvidenceRefs are refs neither adopted nor rejected by any
+          Claim in this revision.
         items:
           $ref: '#/definitions/sessionvo.EvidenceRef'
         type: array
@@ -1075,7 +1091,10 @@ definitions:
       claim_id:
         type: string
       claim_status:
-        $ref: '#/definitions/sessionvo.ClaimStatus'
+        allOf:
+        - $ref: '#/definitions/sessionvo.ClaimStatus'
+        description: Status withdrawn preserves history but does not participate in
+          current revision completeness.
       claim_type:
         type: string
       content_artifact_ref:
@@ -2258,7 +2277,9 @@ paths:
   /interactions/{interaction_id}/business-graph:
     get:
       description: Returns the latest immutable assembly revision with precise Claim
-        supports and causal DAG layers.
+        supports and causal DAG layers. Objective evidence completeness is separate
+        from current-user disclosure completeness; unresolved or unauthorized business
+        refs and their edges are omitted.
       parameters:
       - description: Interaction ID
         in: path

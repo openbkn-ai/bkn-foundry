@@ -28,12 +28,13 @@ func (s *Store) ListInteractionEvents(ctx context.Context, owner sessionvo.Owner
 		SELECT l.envelope
 		FROM bkn_trace_evidence_event_ledger l
 		JOIN bkn_trace_conversations c ON c.conversation_id=l.conversation_id
-		WHERE l.interaction_id=?
+		WHERE l.tenant_id=? AND l.business_domain_id=? AND l.interaction_id=?
 		  AND c.tenant_id=? AND c.business_domain_id=?
 		  AND c.application_principal_id=? AND c.effective_subject_type=?
 		  AND c.effective_subject_id=? AND c.delegation_id=?
 		ORDER BY l.ingest_sequence`,
-		interactionID, owner.TenantID, owner.BusinessDomainID,
+		owner.TenantID, owner.BusinessDomainID, interactionID,
+		owner.TenantID, owner.BusinessDomainID,
 		owner.ApplicationPrincipalID, owner.EffectiveSubjectType,
 		owner.EffectiveSubjectID, owner.DelegationID,
 	)

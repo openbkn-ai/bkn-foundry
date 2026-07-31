@@ -26,7 +26,7 @@ func TestResolverUsesAuthorizedBKNAndVegaAPIs(t *testing.T) {
 		case "/api/bkn-backend/in/v1/knowledge-networks/supplychain":
 			_, _ = w.Write([]byte(`{"id":"supplychain","name":"供应链知识网络","branch":"main"}`))
 		case "/api/bkn-backend/in/v1/knowledge-networks/supplychain/object-types/forecast":
-			_, _ = w.Write([]byte(`{"entries":[{"id":"forecast","name":"产品需求预测单","branch":"main","data_properties":[{"name":"forecast_month","display_name":"预测月份"}]}]}`))
+			_, _ = w.Write([]byte(`{"entries":[{"id":"forecast","name":"产品需求预测单","branch":"main","data_properties":[{"name":"forecast_month","display_name":"预测月份"}],"logic_properties":[{"name":"forecast_total","display_name":"预测总量"}]}]}`))
 		case "/api/vega-backend/in/v1/resources/resource-1":
 			_, _ = w.Write([]byte(`{"entries":[{"id":"resource-1","name":"需求预测数据","schema_definition":[{"name":"forecast_month","display_name":"预测月份"}]}]}`))
 		default:
@@ -40,8 +40,9 @@ func TestResolverUsesAuthorizedBKNAndVegaAPIs(t *testing.T) {
 		Scope: evidencevo.QueryScope{BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user", Authorization: "Bearer user-access-token"},
 		Refs: []ibusinessresolver.BusinessRef{
 			{RefID: "kn:supplychain", RefType: "knowledge_network", SourceSystem: "bkn"},
-			{RefID: "object:supplychain:forecast", RefType: "object", SourceSystem: "bkn"},
+			{RefID: "object:supplychain:forecast", RefType: "object_type", SourceSystem: "bkn"},
 			{RefID: "property:supplychain:forecast:forecast_month", RefType: "property", SourceSystem: "bkn"},
+			{RefID: "logic:supplychain:forecast:forecast_total", RefType: "logic", SourceSystem: "bkn"},
 			{RefID: "resource:resource-1", RefType: "data_resource", SourceSystem: "vega"},
 			{RefID: "field:resource-1:forecast_month", RefType: "data_field", SourceSystem: "vega"},
 		},
@@ -52,7 +53,7 @@ func TestResolverUsesAuthorizedBKNAndVegaAPIs(t *testing.T) {
 	want := map[string]string{
 		"kn:supplychain": "供应链知识网络", "object:supplychain:forecast": "产品需求预测单",
 		"property:supplychain:forecast:forecast_month": "预测月份", "resource:resource-1": "需求预测数据",
-		"field:resource-1:forecast_month": "预测月份",
+		"field:resource-1:forecast_month": "预测月份", "logic:supplychain:forecast:forecast_total": "预测总量",
 	}
 	wantVersion := map[string]string{
 		"kn:supplychain":                               "main",
@@ -70,6 +71,33 @@ func TestResolverUsesAuthorizedBKNAndVegaAPIs(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing resolutions: %+v", want)
+	}
+}
+
+func TestResolverRejectsTypeOrSourceSystemConfusion(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write([]byte(`{"entries":[{"id":"forecast","name":"产品需求预测单"}]}`))
+	}))
+	defer server.Close()
+
+	result, err := New(server.URL, server.URL, server.Client()).ResolveBusinessRefs(context.Background(), ibusinessresolver.ResolveRequest{
+		Refs: []ibusinessresolver.BusinessRef{
+			{RefID: "object:supplychain:forecast", RefType: "data_resource", SourceSystem: "vega"},
+			{RefID: "resource:secret", RefType: "data_resource", SourceSystem: "bkn"},
+			{RefID: "object_instance:supplychain:forecast:row-1", RefType: "object_instance", SourceSystem: "bkn"},
+		},
+	})
+	if err != nil || requests != 0 || len(result) != 3 {
+		t.Fatalf("type-confused refs reached an upstream resolver: requests=%d result=%+v err=%v", requests, result, err)
+	}
+	for _, resolution := range result {
+		if resolution.Visibility != "unresolved" || resolution.Display != nil {
+			t.Fatalf("unsafe ref was disclosed: %+v", resolution)
+		}
 	}
 }
 

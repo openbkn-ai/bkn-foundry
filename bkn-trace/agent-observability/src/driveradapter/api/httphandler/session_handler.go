@@ -382,7 +382,7 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 
 // GetInteractionBusinessGraph returns one authorized immutable business-semantic assembly.
 // @Summary Get an Interaction business semantic graph
-// @Description Returns the latest immutable assembly revision with precise Claim supports and causal DAG layers.
+// @Description Returns the latest immutable assembly revision with precise Claim supports and causal DAG layers. Objective evidence completeness is separate from current-user disclosure completeness; unresolved or unauthorized business refs and their edges are omitted.
 // @Tags evidence
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"

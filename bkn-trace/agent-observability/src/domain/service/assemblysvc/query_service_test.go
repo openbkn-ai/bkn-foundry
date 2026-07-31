@@ -2,6 +2,7 @@ package assemblysvc_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -19,11 +20,26 @@ import (
 type queryResolver struct {
 	resolutions []ibusinessresolver.Resolution
 	requests    []ibusinessresolver.ResolveRequest
+	err         error
+}
+
+type countingLedger struct {
+	*ledgerstore.Store
+	reads map[string]int
+}
+
+func (s *countingLedger) ListInteractionEvents(
+	ctx context.Context,
+	owner sessionvo.Owner,
+	interactionID string,
+) ([]ledgervo.Event, error) {
+	s.reads[interactionID]++
+	return s.Store.ListInteractionEvents(ctx, owner, interactionID)
 }
 
 func (r *queryResolver) ResolveBusinessRefs(_ context.Context, request ibusinessresolver.ResolveRequest) ([]ibusinessresolver.Resolution, error) {
 	r.requests = append(r.requests, request)
-	return r.resolutions, nil
+	return r.resolutions, r.err
 }
 
 func TestQueryUsesLatestImmutableRevisionEventSetAndEnforcesOwner(t *testing.T) {
@@ -92,13 +108,13 @@ func TestQueryProjectsAuthorizedBusinessNamesWithoutChangingAssemblyCompleteness
 	sessions, ledger, owner, interaction := queryFixture(t)
 	resolver := &queryResolver{resolutions: []ibusinessresolver.Resolution{
 		{
-			RefID: "object:supplychain:forecast", Visibility: "visible",
+			RefID: "object:supplychain:forecast", RefType: "object_type", SourceSystem: "bkn", Visibility: "visible",
 			Display: &evidencevo.BusinessDisplay{
 				Name: "需求预测单", BusinessPath: []string{"HD供应链业务知识网络_v3", "需求预测单"},
 				ResolutionStatus: "resolved", SourceVersion: "main",
 			},
 		},
-		{RefID: "property:supplychain:forecast:qty", Visibility: "unauthorized"},
+		{RefID: "property:supplychain:forecast:qty", RefType: "property", SourceSystem: "bkn", Visibility: "unauthorized"},
 	}}
 	service := assemblysvc.NewQueryServiceWithBusinessResolver(sessions, ledger, resolver)
 	view, err := service.GetInteractionAuthorized(context.Background(), owner, interaction.ID, evidencevo.QueryScope{
@@ -125,6 +141,76 @@ func TestQueryProjectsAuthorizedBusinessNamesWithoutChangingAssemblyCompleteness
 	}
 	if len(resolver.requests) != 1 || resolver.requests[0].Scope.Authorization != "Bearer current-user-token" {
 		t.Fatalf("resolver did not receive current authorization scope: %#v", resolver.requests)
+	}
+}
+
+func TestQueryBusinessProjectionFailsClosedWhenResolverCannotAuthorizeRefs(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]func(*sessionstore.Store, *ledgerstore.Store) *assemblysvc.QueryService{
+		"resolver error": func(sessions *sessionstore.Store, ledger *ledgerstore.Store) *assemblysvc.QueryService {
+			return assemblysvc.NewQueryServiceWithBusinessResolver(sessions, ledger, &queryResolver{err: errors.New("resolver unavailable")})
+		},
+		"unresolved refs": func(sessions *sessionstore.Store, ledger *ledgerstore.Store) *assemblysvc.QueryService {
+			return assemblysvc.NewQueryServiceWithBusinessResolver(sessions, ledger, &queryResolver{resolutions: []ibusinessresolver.Resolution{
+				{RefID: "object:supplychain:forecast", RefType: "object_type", SourceSystem: "bkn", Visibility: "unresolved"},
+				{RefID: "property:supplychain:forecast:qty", RefType: "property", SourceSystem: "bkn", Visibility: "unresolved"},
+			}})
+		},
+		"resolver disabled": func(sessions *sessionstore.Store, ledger *ledgerstore.Store) *assemblysvc.QueryService {
+			return assemblysvc.NewQueryService(sessions, ledger)
+		},
+	}
+	for name, newService := range tests {
+		name, newService := name, newService
+		t.Run(name, func(t *testing.T) {
+			sessions, ledger, owner, interaction := queryFixture(t)
+			view, err := newService(sessions, ledger).GetInteractionAuthorized(
+				context.Background(), owner, interaction.ID, evidencevo.QueryScope{Authorization: "Bearer token"},
+			)
+			if err != nil {
+				t.Fatalf("query projected graph: %v", err)
+			}
+			if len(view.Assembly.BusinessRefs) != 0 || len(view.Assembly.OperationBusinessEdges) != 0 {
+				t.Fatalf("unresolved authorization leaked business refs or edges: %#v", view.Assembly)
+			}
+			if !view.Assembly.DisclosurePartial || len(view.Assembly.DisclosureReasons) == 0 {
+				t.Fatalf("resolver degradation was not disclosed separately: %#v", view.Assembly)
+			}
+			if view.Assembly.Completeness != sessionvo.EvidenceNotApplicable {
+				t.Fatalf("authorization degradation changed objective completeness: %s", view.Assembly.Completeness)
+			}
+		})
+	}
+}
+
+func TestQueryDoesNotReuseAuthorizationAcrossBusinessRefTypes(t *testing.T) {
+	t.Parallel()
+
+	sessions, ledger, owner, interaction := queryFixture(t)
+	sharedID := "object:supplychain:forecast"
+	second := semanticEvent("evt-type-confusion", "op-query", 2)
+	second.Owner = owner
+	second.ConversationID = interaction.ConversationID
+	second.InteractionID = interaction.ID
+	second.BusinessRefs = []sessionvo.BusinessRef{{
+		RefType: sessionvo.BusinessRefProperty, RefID: sharedID,
+		BusinessDomainID: owner.BusinessDomainID, Version: "2026.07",
+	}}
+	if _, err := ledger.Commit(context.Background(), second); err != nil {
+		t.Fatalf("commit type-confused ref: %v", err)
+	}
+	resolver := &queryResolver{resolutions: []ibusinessresolver.Resolution{{
+		RefID: sharedID, RefType: "object_type", SourceSystem: "bkn", Visibility: "visible",
+		Display: &evidencevo.BusinessDisplay{Name: "需求预测单", ResolutionStatus: "resolved"},
+	}}}
+	view, err := assemblysvc.NewQueryServiceWithBusinessResolver(sessions, ledger, resolver).
+		GetInteractionAuthorized(context.Background(), owner, interaction.ID, evidencevo.QueryScope{})
+	if err != nil {
+		t.Fatalf("query projected graph: %v", err)
+	}
+	if len(view.Assembly.BusinessRefs) != 1 || view.Assembly.BusinessRefs[0].TechnicalRef.RefType != sessionvo.BusinessRefObjectType {
+		t.Fatalf("authorization was reused across ref types: %#v", view.Assembly.BusinessRefs)
 	}
 }
 
@@ -176,6 +262,10 @@ func TestQueryAllowsOnlyEarlierImmutableClaimSupportFromSameConversation(t *test
 		Role: "comparison_baseline", Status: sessionvo.SupportAdopted,
 	}
 	currentClaim.RequiredSupportRoles = []string{"comparison_baseline"}
+	secondSupport := currentClaim.Supports[0]
+	secondSupport.Role = "comparison_detail"
+	currentClaim.Supports = append(currentClaim.Supports, secondSupport)
+	currentClaim.RequiredSupportRoles = append(currentClaim.RequiredSupportRoles, secondSupport.Role)
 	currentEvent := semanticEvent("evt-current", "op-current", 1)
 	currentEvent.Owner, currentEvent.ConversationID, currentEvent.InteractionID = owner, conversation.ID, current.ID
 	currentEvent.Claims = []sessionvo.Claim{currentClaim}
@@ -184,13 +274,17 @@ func TestQueryAllowsOnlyEarlierImmutableClaimSupportFromSameConversation(t *test
 	}
 	seedRevisionWithID(t, sessions, current, "rev-current", []string{"claim-comparison"}, []string{"evt-current"})
 
-	view, err := assemblysvc.NewQueryService(sessions, ledger).GetInteraction(context.Background(), owner, current.ID)
+	countedLedger := &countingLedger{Store: ledger, reads: make(map[string]int)}
+	view, err := assemblysvc.NewQueryService(sessions, countedLedger).GetInteraction(context.Background(), owner, current.ID)
 	if err != nil {
 		t.Fatalf("query cross-round support: %v", err)
 	}
 	if view.Assembly.Completeness != sessionvo.EvidenceComplete || len(view.Assembly.Claims) != 1 ||
-		len(view.Assembly.Claims[0].AdoptedSupports) != 1 {
+		len(view.Assembly.Claims[0].AdoptedSupports) != 2 {
 		t.Fatalf("valid earlier immutable support was not assembled: %#v", view.Assembly)
+	}
+	if countedLedger.reads[prior.ID] != 1 {
+		t.Fatalf("same source revision was loaded %d times, want once", countedLedger.reads[prior.ID])
 	}
 
 	currentClaim.Supports[0].SourceRevisionID = "rev-does-not-exist"
@@ -203,7 +297,7 @@ func TestQueryAllowsOnlyEarlierImmutableClaimSupportFromSameConversation(t *test
 		t.Fatalf("commit invalid cross-round candidate: %v", err)
 	}
 	seedRevisionWithID(t, sessions, current, "rev-current-2", []string{"claim-comparison"}, []string{"evt-invalid-cross-round"})
-	invalid, err := assemblysvc.NewQueryService(sessions, ledger).GetInteraction(context.Background(), owner, current.ID)
+	invalid, err := assemblysvc.NewQueryService(sessions, countedLedger).GetInteraction(context.Background(), owner, current.ID)
 	if err != nil {
 		t.Fatalf("query invalid cross-round support: %v", err)
 	}

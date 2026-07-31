@@ -77,13 +77,14 @@ type ClaimSupport struct {
 }
 
 type Claim struct {
-	ID                   string           `json:"claim_id" binding:"required"`
-	Type                 string           `json:"claim_type" binding:"required"`
-	Materiality          ClaimMateriality `json:"materiality" binding:"required"`
-	Status               ClaimStatus      `json:"claim_status" binding:"required"`
-	ContentArtifactRef   string           `json:"content_artifact_ref" binding:"required"`
-	RequiredSupportRoles []string         `json:"required_support_roles" binding:"required"`
-	Supports             []ClaimSupport   `json:"supports" binding:"required"`
+	ID          string           `json:"claim_id" binding:"required"`
+	Type        string           `json:"claim_type" binding:"required"`
+	Materiality ClaimMateriality `json:"materiality" binding:"required"`
+	// Status withdrawn preserves history but does not participate in current revision completeness.
+	Status               ClaimStatus    `json:"claim_status" binding:"required"`
+	ContentArtifactRef   string         `json:"content_artifact_ref" binding:"required"`
+	RequiredSupportRoles []string       `json:"required_support_roles" binding:"required"`
+	Supports             []ClaimSupport `json:"supports" binding:"required"`
 }
 
 type OperationBusinessRole string

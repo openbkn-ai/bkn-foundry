@@ -10,12 +10,13 @@ import (
 )
 
 type ClaimAssembly struct {
-	Claim              sessionvo.Claim          `json:"claim"`
-	Completeness       sessionvo.EvidenceStatus `json:"completeness"`
-	AdoptedSupports    []sessionvo.ClaimSupport `json:"adopted_supports"`
-	RejectedSupports   []sessionvo.ClaimSupport `json:"rejected_supports"`
-	UnusedEvidenceRefs []sessionvo.EvidenceRef  `json:"unused_evidence_refs"`
-	PartialReasons     []string                 `json:"partial_reasons"`
+	Claim            sessionvo.Claim          `json:"claim"`
+	Completeness     sessionvo.EvidenceStatus `json:"completeness"`
+	AdoptedSupports  []sessionvo.ClaimSupport `json:"adopted_supports"`
+	RejectedSupports []sessionvo.ClaimSupport `json:"rejected_supports"`
+	// UnusedEvidenceRefs are refs neither adopted nor rejected by this Claim.
+	UnusedEvidenceRefs []sessionvo.EvidenceRef `json:"unused_evidence_refs"`
+	PartialReasons     []string                `json:"partial_reasons"`
 }
 
 type Result struct {
@@ -26,10 +27,11 @@ type Result struct {
 	ArtifactRefs           []string                          `json:"artifact_refs"`
 	EvidenceRefs           []sessionvo.EvidenceRef           `json:"evidence_refs"`
 	OperationBusinessEdges []sessionvo.OperationBusinessEdge `json:"operation_business_edges"`
-	UnusedEvidenceRefs     []sessionvo.EvidenceRef           `json:"unused_evidence_refs"`
-	IncludedEventIDs       []string                          `json:"included_event_ids"`
-	EventLayers            map[string]int                    `json:"event_layers"`
-	PartialReasons         []string                          `json:"partial_reasons"`
+	// UnusedEvidenceRefs are refs neither adopted nor rejected by any Claim in this revision.
+	UnusedEvidenceRefs []sessionvo.EvidenceRef `json:"unused_evidence_refs"`
+	IncludedEventIDs   []string                `json:"included_event_ids"`
+	EventLayers        map[string]int          `json:"event_layers"`
+	PartialReasons     []string                `json:"partial_reasons"`
 }
 
 type EventNode struct {
@@ -118,7 +120,7 @@ func assemble(
 		return result
 	}
 	result.Completeness = sessionvo.EvidenceComplete
-	globallyAdopted := make(map[string]struct{})
+	globallyClassified := make(map[string]struct{})
 	for _, claimID := range expectedClaimIDs {
 		claim, found := claimsByID[claimID]
 		if !found {
@@ -128,12 +130,13 @@ func assemble(
 		}
 		assembled := assembleClaim(claim, evidenceByRef)
 		result.Claims = append(result.Claims, assembled)
-		for _, support := range assembled.AdoptedSupports {
+		for _, support := range append(append([]sessionvo.ClaimSupport(nil), assembled.AdoptedSupports...), assembled.RejectedSupports...) {
 			if ref, found := supportMatchesEvidence(support, evidenceByRef); found {
-				globallyAdopted[evidenceRefKey(ref)] = struct{}{}
+				globallyClassified[evidenceRefKey(ref)] = struct{}{}
 			}
 		}
-		if claim.Materiality == sessionvo.ClaimMaterial && assembled.Completeness != sessionvo.EvidenceComplete {
+		if claim.Status == sessionvo.ClaimAsserted && claim.Materiality == sessionvo.ClaimMaterial &&
+			assembled.Completeness != sessionvo.EvidenceComplete {
 			result.Completeness = sessionvo.EvidencePartial
 			result.PartialReasons = append(result.PartialReasons, assembled.PartialReasons...)
 		}
@@ -141,7 +144,7 @@ func assemble(
 	if len(result.PartialReasons) > 0 {
 		result.Completeness = sessionvo.EvidencePartial
 	}
-	result.UnusedEvidenceRefs = sortedEvidenceRefs(evidenceByRef, globallyAdopted)
+	result.UnusedEvidenceRefs = sortedEvidenceRefs(evidenceByRef, globallyClassified)
 	return result
 }
 
@@ -221,43 +224,84 @@ func evidenceRefKey(ref sessionvo.EvidenceRef) string {
 func assembleClaim(claim sessionvo.Claim, evidence map[string]sessionvo.EvidenceRef) ClaimAssembly {
 	result := ClaimAssembly{Claim: claim, Completeness: sessionvo.EvidenceComplete}
 	adoptedRoles := make(map[string]struct{})
-	adoptedRefs := make(map[string]struct{})
+	classifiedRefs := make(map[string]struct{})
 	for _, support := range claim.Supports {
 		switch support.Status {
 		case sessionvo.SupportAdopted:
-			matched, found := supportMatchesEvidence(support, evidence)
-			if !found {
+			adoptedRoles[support.Role] = struct{}{}
+			matched, status := matchSupportEvidence(support, evidence)
+			if status != supportMatched {
 				result.Completeness = sessionvo.EvidencePartial
-				result.PartialReasons = append(result.PartialReasons, "support_target_unresolved:"+claim.ID+":"+support.TargetRef)
+				result.PartialReasons = append(result.PartialReasons, supportMatchReason(status, claim.ID, support.TargetRef))
 				continue
 			}
 			result.AdoptedSupports = append(result.AdoptedSupports, support)
-			adoptedRoles[support.Role] = struct{}{}
-			adoptedRefs[evidenceRefKey(matched)] = struct{}{}
+			classifiedRefs[evidenceRefKey(matched)] = struct{}{}
 		case sessionvo.SupportRejected:
-			if _, found := supportMatchesEvidence(support, evidence); !found {
+			matched, status := matchSupportEvidence(support, evidence)
+			if status != supportMatched {
 				result.Completeness = sessionvo.EvidencePartial
-				result.PartialReasons = append(result.PartialReasons, "support_target_unresolved:"+claim.ID+":"+support.TargetRef)
+				result.PartialReasons = append(result.PartialReasons, supportMatchReason(status, claim.ID, support.TargetRef))
 				continue
 			}
 			result.RejectedSupports = append(result.RejectedSupports, support)
+			classifiedRefs[evidenceRefKey(matched)] = struct{}{}
 		}
 	}
-	for _, role := range claim.RequiredSupportRoles {
-		if _, found := adoptedRoles[role]; !found {
-			result.Completeness = sessionvo.EvidencePartial
-			result.PartialReasons = append(result.PartialReasons, "required_support_missing:"+claim.ID+":"+role)
+	if claim.Status == sessionvo.ClaimAsserted {
+		for _, role := range claim.RequiredSupportRoles {
+			if _, found := adoptedRoles[role]; !found {
+				result.Completeness = sessionvo.EvidencePartial
+				result.PartialReasons = append(result.PartialReasons, "required_support_missing:"+claim.ID+":"+role)
+			}
 		}
+	} else {
+		result.Completeness = sessionvo.EvidenceNotApplicable
 	}
-	result.UnusedEvidenceRefs = sortedEvidenceRefs(evidence, adoptedRefs)
+	result.UnusedEvidenceRefs = sortedEvidenceRefs(evidence, classifiedRefs)
 	return result
+}
+
+type supportMatchStatus string
+
+const (
+	supportMatched    supportMatchStatus = "matched"
+	supportUnresolved supportMatchStatus = "unresolved"
+	supportAmbiguous  supportMatchStatus = "ambiguous"
+)
+
+func supportMatchReason(status supportMatchStatus, claimID, targetRef string) string {
+	if status == supportAmbiguous {
+		return "support_target_ambiguous:" + claimID + ":" + targetRef
+	}
+	return "support_target_unresolved:" + claimID + ":" + targetRef
 }
 
 func supportMatchesEvidence(
 	support sessionvo.ClaimSupport,
 	evidence map[string]sessionvo.EvidenceRef,
 ) (sessionvo.EvidenceRef, bool) {
-	for _, ref := range evidence {
+	matched, status := matchSupportEvidence(support, evidence)
+	return matched, status == supportMatched
+}
+
+func matchSupportEvidence(
+	support sessionvo.ClaimSupport,
+	evidence map[string]sessionvo.EvidenceRef,
+) (sessionvo.EvidenceRef, supportMatchStatus) {
+	matches := matchingEvidence(support, evidence)
+	if len(matches) == 0 {
+		return sessionvo.EvidenceRef{}, supportUnresolved
+	}
+	if len(matches) > 1 {
+		return sessionvo.EvidenceRef{}, supportAmbiguous
+	}
+	return matches[0], supportMatched
+}
+
+func matchingEvidence(support sessionvo.ClaimSupport, evidence map[string]sessionvo.EvidenceRef) []sessionvo.EvidenceRef {
+	matches := make(map[string]sessionvo.EvidenceRef)
+	for key, ref := range evidence {
 		if ref.Ref != support.TargetRef || ref.SourceInteractionID != support.SourceInteractionID ||
 			ref.SourceRevisionID != support.SourceRevisionID || ref.Version != support.Version ||
 			ref.ContentHash != support.ContentHash {
@@ -281,10 +325,10 @@ func supportMatchesEvidence(
 			matchesType = ref.RefType == sessionvo.EvidenceRefEvent || ref.RefType == sessionvo.EvidenceRefArtifact
 		}
 		if matchesType {
-			return ref, true
+			matches[key] = ref
 		}
 	}
-	return sessionvo.EvidenceRef{}, false
+	return sortedTypedEvidenceRefs(matches)
 }
 
 func sortedEvidenceRefs(evidence map[string]sessionvo.EvidenceRef, used map[string]struct{}) []sessionvo.EvidenceRef {
