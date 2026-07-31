@@ -16,6 +16,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
@@ -156,10 +157,17 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 	b.claimLifecycleNames()
 
 	b.addExtras()
+	b.verifyDecoratorsLanded()
 
 	mcpServer := server.NewMCPServer(serverName, serverVersion,
 		server.WithToolCapabilities(true),
 		server.WithInstructions(localeBundle.ServerInstructions()),
+		// The licence gate goes first. mcp-go applies middlewares in reverse,
+		// so the first one registered is the outermost and runs before the
+		// lifecycle guard — an under-licensed enterprise tool must answer
+		// "no such tool", not "conversation_required", or the paid surface
+		// announces itself to anyone probing.
+		server.WithToolHandlerMiddleware(mcptool.GateMiddleware()),
 		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
 		server.WithToolFilter(b.filter),
 	)

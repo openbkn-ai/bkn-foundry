@@ -47,6 +47,7 @@ import (
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement/socket"
@@ -149,6 +150,12 @@ func Decorate(toolKey string, d Decorator) {
 // not what it may serve — the licence decides that per call.
 func Extras() []ExtraTool { return extras.All() }
 
+// DecoratorCount reports how many decorators are registered. The assembly layer
+// compares it against how many actually landed on a tool it assembled — a
+// decorator on a key nobody assembles is inert in a way that looks like it
+// works.
+func DecoratorCount() int { return decorators.Len() }
+
 // DecoratorFor returns the decorator attached to a tool, if any.
 func DecoratorFor(toolKey string) (Decorator, bool) { return decorators.Get(toolKey) }
 
@@ -168,7 +175,11 @@ func (d Decorator) Patch(input json.RawMessage) json.RawMessage {
 	if d.PatchInput == nil {
 		return input
 	}
-	return d.PatchInput(input)
+	// Hand the hook a copy. PatchInput comes from the enterprise code line and
+	// is handed core's own schema bytes; one in-place edit there would rewrite
+	// what the community tool advertises, and the community parity tests run
+	// with no decorator registered so nothing would catch it.
+	return d.PatchInput(append(json.RawMessage(nil), input...))
 }
 
 // Wrap puts the After hook around core's handler, re-checking the licence on
@@ -210,9 +221,48 @@ func (d Decorator) Wrap(h Handler) Handler {
 func Gated(t ExtraTool) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if !t.Allowed() {
-			return nil, fmt.Errorf("tool %q not found", t.Name)
+			return nil, notFound(t.Name)
 		}
 		return t.Handle(ctx, req)
+	}
+}
+
+// notFound produces the error mcp-go itself returns for a tool it has never
+// heard of, down to the quoting (server.go: `tool '%s' not found`). An
+// under-licensed enterprise tool has to be indistinguishable from one that does
+// not exist, and a client matching on the message is the likeliest way for the
+// difference to leak.
+func notFound(name string) error { return fmt.Errorf("tool '%s' not found", name) }
+
+// GateMiddleware refuses calls to enterprise tools the licence does not cover,
+// before anything else in the chain runs.
+//
+// Gated already refuses at the handler, but the handler is the innermost layer:
+// any middleware the service installs — context-loader's lifecycle guard, for
+// one — runs first and answers with its own error. The caller then sees
+// "conversation_required" where a community binary would have said "no such
+// tool", and the paid surface announces itself.
+//
+// Register this before the service's own middlewares. mcp-go applies them in
+// reverse (server.go: `for i := len(mw) - 1; i >= 0; i--`), so the first one
+// registered ends up outermost and runs first.
+func GateMiddleware() server.ToolHandlerMiddleware {
+	// Index by advertised name, which is what a call carries; the registry is
+	// keyed by tool key and the two need not be equal. Snapshotting here rather
+	// than scanning per call is safe because assembly is frozen by the time
+	// handlers are built — that is the whole point of freezing.
+	byName := map[string]ExtraTool{}
+	for _, t := range extras.All() {
+		byName[t.Name] = t
+	}
+
+	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if t, ok := byName[req.Params.Name]; ok && !t.Allowed() {
+				return nil, notFound(req.Params.Name)
+			}
+			return next(ctx, req)
+		}
 	}
 }
 

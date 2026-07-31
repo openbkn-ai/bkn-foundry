@@ -1,7 +1,15 @@
 name: ci-adp-context-loader
 
-# Compile gate for PRs touching adp/context-loader. Build-only for now; add
-# `go test` once the test harness is CI-ready.
+# Gate for PRs touching adp/context-loader.
+#
+# 编译之外还跑两个自足包的测试。选择性而不是 ./...：这个模块的多数测试要连
+# 真实依赖，在 CI 里跑不起来；而 extension/mcptool 与 driveradapters/mcp 只依赖
+# 内嵌 schema 与仓内配置，是自足的。它们恰好是许可门控与社区面 parity 的守卫
+# ——那类失效不会让编译红，只会让付费能力静默泄漏或社区行为悄悄改变，没有
+# 执行者的测试等于没有。
+#
+# ee_dev 变体单独跑一次：默认构建只编译两个门控实现中的一个，桩件坏掉或不再
+# 拒绝都不会被发现。
 
 on:
   pull_request:
@@ -25,3 +33,7 @@ jobs:
         with:
           go-version-file: adp/context-loader/agent-retrieval/go.mod
       - run: go build ./...
+      - run: go build -tags ee_dev ./...
+      - run: go vet ./server/extension/... ./server/driveradapters/mcp/
+      - run: go test ./server/extension/... ./server/driveradapters/mcp/
+      - run: go test -tags ee_dev ./server/extension/... ./server/driveradapters/mcp/

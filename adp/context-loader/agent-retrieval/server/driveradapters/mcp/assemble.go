@@ -96,10 +96,38 @@ func (b *toolBuilder) addExtras() {
 	for _, t := range mcptool.Extras() {
 		b.claimName(t.Name, t.Key)
 		b.gated[t.Name] = t
+		// An enterprise tool is a business tool by this service's own
+		// definition (isBusinessTool is "not a lifecycle tool"), so the
+		// lifecycle middleware will demand bkn_context from it exactly as it
+		// does from core's tools. Its advertised schema has to say so, or the
+		// tool is unusable by anyone following it — the schema comes from ee,
+		// which has no reason to know this service has a lifecycle guard.
 		b.pending = append(b.pending, pendingTool{
-			newToolWithSchemas(t.Name, t.Desc, t.Input, t.Output),
+			newToolWithSchemas(t.Name, t.Desc, requireBKNContext(t.Input), t.Output),
 			mcptool.Gated(t),
 		})
+	}
+}
+
+// verifyDecoratorsLanded fails assembly if some decorator was registered
+// against a tool this builder never assembled.
+//
+// Such a decorator is inert in a way that looks like it works: /mcp/info walks
+// tools_meta.json and stamps the paid parameter onto the entry, while
+// tools/list only swaps schemas for tools the builder registered — the two
+// descriptions of the same tool disagree, and After never runs. Before the
+// lifecycle tools arrived, every advertised key came through the builder and
+// this could not happen; eleven of them now bypass it.
+//
+// The check is a count rather than a name because the socket registry does not
+// enumerate keys, and adding that API for a startup assertion would mean
+// changing the shared library and bumping every consumer. The count is enough
+// to stop the process; the message says where to look.
+func (b *toolBuilder) verifyDecoratorsLanded() {
+	if registered, landed := mcptool.DecoratorCount(), len(b.patched); registered != landed {
+		panic(fmt.Sprintf(
+			"mcp: %d decorator(s) registered but only %d landed on an assembled tool — a decorator on a tool this builder does not assemble (a lifecycle tool, say) would show up in /mcp/info and nowhere else",
+			registered, landed))
 	}
 }
 
