@@ -149,11 +149,11 @@ func TestSeededRoleGrants(t *testing.T) {
 	}
 }
 
-// TestOwnerRoleCombinationKeepsMenuAndBackendPermissionsAligned verifies the
-// role combination used by the user-management regression: the admin role
-// supplies the system role-catalog read point while business roles retain
-// model display access. It must not gain role-management write permissions.
-func TestOwnerRoleCombinationKeepsMenuAndBackendPermissionsAligned(t *testing.T) {
+// TestAdminRoleCombinationGrantsRoleCatalogRead verifies the role combination
+// used by the user-management regression: the admin role supplies the system
+// role-catalog read point while business roles retain model display access.
+// It must not gain role-management write permissions.
+func TestAdminRoleCombinationGrantsRoleCatalogRead(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
