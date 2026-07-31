@@ -181,14 +181,13 @@ func TestAssembleWithdrawnMaterialClaimDoesNotDegradeCurrentCompleteness(t *test
 
 	assertion := claim("claim-withdrawn", sessionvo.SupportAdopted, "")
 	assertion.Status = sessionvo.ClaimWithdrawn
-	assertion.Supports = nil
 	event := semanticEvent("evt-claim", "op-answer", 1)
 	event.Claims = []sessionvo.Claim{assertion}
 
 	result := assemblysvc.Assemble("int-1", []ledgervo.Event{event}, []string{assertion.ID})
 
 	if result.Completeness != sessionvo.EvidenceComplete || len(result.Claims) != 1 ||
-		result.Claims[0].Completeness != sessionvo.EvidenceNotApplicable {
+		result.Claims[0].Completeness != sessionvo.EvidenceNotApplicable || len(result.Claims[0].PartialReasons) != 0 {
 		t.Fatalf("withdrawn claim degraded the active revision: %#v", result)
 	}
 }

@@ -257,6 +257,7 @@ func assembleClaim(claim sessionvo.Claim, evidence map[string]sessionvo.Evidence
 		}
 	} else {
 		result.Completeness = sessionvo.EvidenceNotApplicable
+		result.PartialReasons = []string{}
 	}
 	result.UnusedEvidenceRefs = sortedEvidenceRefs(evidence, classifiedRefs)
 	return result
