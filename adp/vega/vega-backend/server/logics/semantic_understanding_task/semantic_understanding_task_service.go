@@ -520,9 +520,13 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	}
 	input.SampleRows = []map[string]any{}
 	if result != nil && result.Entries != nil {
-		input.SampleRows, err = limitSemanticUnderstandingSampleRows(result.Entries)
+		var truncated bool
+		input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries)
 		if err != nil {
 			return fmt.Errorf("limit sample rows: %w", err)
+		}
+		if truncated {
+			logger.Warnf("Semantic sample rows truncated by payload cap: resource_id=%s, category=%s, kept %d of %d rows", resource.ID, resource.Category, len(input.SampleRows), len(result.Entries))
 		}
 	}
 	inputJSON, _, err := marshalSemanticUnderstandingInput(input)
@@ -536,7 +540,7 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 // limitSemanticUnderstandingSampleRows keeps sample data useful for semantic
 // inference without allowing large text or binary values to exhaust the task
 // input or agent context. It never mutates connector query results.
-func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]any, error) {
+func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]any, bool, error) {
 	limited := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		if len(limited) >= interfaces.MaxSemanticUnderstandingSampleRows {
@@ -550,15 +554,14 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 		candidate := append(limited, limitedRow)
 		candidateJSON, err := sonic.ConfigStd.Marshal(candidate)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if len(candidateJSON) > interfaces.MaxSemanticUnderstandingSamplePayloadBytes {
-			logger.Warnf("Semantic sample rows truncated by payload cap: kept %d of %d rows", len(limited), len(rows))
-			break
+			return limited, true, nil
 		}
 		limited = candidate
 	}
-	return limited, nil
+	return limited, false, nil
 }
 
 func limitSemanticUnderstandingSampleValue(value any) any {
