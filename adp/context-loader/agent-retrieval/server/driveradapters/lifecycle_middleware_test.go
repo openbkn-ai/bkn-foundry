@@ -317,6 +317,7 @@ func TestLifecycleMiddlewarePendingReplaySkipsOperatorSideEffect(t *testing.T) {
 
 func TestLifecycleMiddlewareFinalizesPanicsAndLetsRecoveryReturn500(t *testing.T) {
 	var finishCalls atomic.Int32
+	var finishRetryable bool
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/interactions/int-1"):
@@ -333,6 +334,11 @@ func TestLifecycleMiddlewareFinalizesPanicsAndLetsRecoveryReturn500(t *testing.T
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attempts/1:fail"):
 			finishCalls.Add(1)
+			var body struct {
+				Retryable bool `json:"retryable"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			finishRetryable = body.Retryable
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Operation: bkntrace.Operation{OperationID: "op-panic", Attempt: 1, AttemptStatus: "failed"},
 				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-panic", ReceiptStatus: "failed"},
@@ -357,6 +363,9 @@ func TestLifecycleMiddlewareFinalizesPanicsAndLetsRecoveryReturn500(t *testing.T
 
 	if response.Code != http.StatusInternalServerError || finishCalls.Load() != 1 {
 		t.Fatalf("panic must return 500 after one failed receipt: status=%d finish_calls=%d", response.Code, finishCalls.Load())
+	}
+	if finishRetryable {
+		t.Fatal("deterministic panic must not be marked retryable")
 	}
 }
 

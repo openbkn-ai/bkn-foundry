@@ -877,6 +877,26 @@ func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 	}
 }
 
+func TestCompleteOperationAttemptDefaultsEvidenceDurabilityToPending(t *testing.T) {
+	t.Parallel()
+
+	service, owner, _, _, operation, receipt := mustCreateOperation(t)
+	_, completed, err := service.CompleteOperationAttempt(
+		context.Background(),
+		sessionsvc.FinishAttemptCommand{
+			Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt,
+			ReceiptID: receipt.ID, PayloadHash: "sha256:completed-without-durable-ack",
+			RequestID: "req-pending-default", TraceID: validTraceIDOne,
+		},
+	)
+	if err != nil {
+		t.Fatalf("complete operation attempt: %v", err)
+	}
+	if completed.EvidenceDurability != sessionvo.DurabilityPending {
+		t.Fatalf("missing durable ACK must fail closed to pending: %#v", completed)
+	}
+}
+
 func TestTrustedAdapterCanMarkAnyFailedOperationRetryable(t *testing.T) {
 	t.Parallel()
 

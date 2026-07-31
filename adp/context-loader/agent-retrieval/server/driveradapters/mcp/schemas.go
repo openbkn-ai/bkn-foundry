@@ -326,16 +326,8 @@ func expectedResourceSchema(idField string) map[string]any {
 }
 
 func isBusinessTool(toolKey string) bool {
-	switch toolKey {
-	case toolKeySearchSchema, toolKeyQueryObjectInstance, toolKeyQueryInstanceSubgraph,
-		toolKeyGetLogicPropertiesValues, toolKeyGetActionInfo, toolKeyExecuteAction,
-		toolKeyGetActionExecution, toolKeyListActionExecutions, toolKeyFindSkills,
-		toolKeyListKnowledgeNetworks, toolKeyGetKnDetail, toolKeyGetObjectTypes,
-		toolKeyGetRelationTypes, toolKeyRunSQL, toolKeyListResources, toolKeyDescribeResource:
-		return true
-	default:
-		return false
-	}
+	_, lifecycle := lifecycleToolNames[toolKey]
+	return !lifecycle
 }
 
 func requireBKNContext(input json.RawMessage) json.RawMessage {

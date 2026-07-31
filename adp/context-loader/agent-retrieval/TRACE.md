@@ -96,3 +96,5 @@ Core 为每次受管业务工具调用分配稳定 `operation_id`、`attempt` �
 
 - 成功 Interaction 如果包含 `evidence_durability=pending` 的 Receipt，必须在终结清单中提供 `assembler_deadline`。到期后由 #544 的 assembler 根据 durable evidence 结果收敛为 complete/partial/failed。
 - #544 落地前没有持续运行的 assembler，未提供 `assembler_deadline` 的 Interaction 会保持 assembling；这是当前实施阶段的已知中间态，不应误判为 Core 卡死，也不得人为改写为 complete。
+- 业务工具领取执行权后如果进程硬崩，受信适配器来不及写入失败终态，Receipt 会保持 pending；第三方 Agent 无权自行终结。当前由交互租约回收将 Interaction 标记为 abandoned，持久恢复与证据收敛由 #533/#544 接续实现。
+- REST 与 MCP 遇到业务代码 panic 时均记录 failed 且默认不可重试。是否重试必须由受信适配器基于明确的临时故障信号判断，不能仅因发生 panic 自动放行。

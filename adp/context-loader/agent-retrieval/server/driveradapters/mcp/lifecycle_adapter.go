@@ -71,7 +71,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 		}
 		return &operationResult{
 			Operation: state.Result.Operation, Receipt: state.Result.Receipt, Created: state.Result.Created,
-			Execute:          state.Result.Execute || state.Result.Created,
+			Execute:          state.Result.Execute,
 			LifecycleContext: lifecycleContext,
 		}, nil, nil
 	}

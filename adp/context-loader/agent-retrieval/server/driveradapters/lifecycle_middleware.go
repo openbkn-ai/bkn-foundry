@@ -102,7 +102,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 				if recovered := recover(); recovered != nil {
 					c.Writer = originalWriter
 					_, _, _ = guard.Finish(
-						ctx, state, hashLifecyclePayload(buffered.body.Bytes()), true, true,
+						ctx, state, hashLifecyclePayload(buffered.body.Bytes()), true, false,
 					)
 					panic(recovered)
 				}

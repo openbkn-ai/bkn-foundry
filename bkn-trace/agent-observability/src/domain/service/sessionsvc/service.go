@@ -797,7 +797,7 @@ func renewInteractionLease(tx isessionstore.Transaction, interaction *sessionvo.
 
 func (s *Service) CompleteOperationAttempt(ctx context.Context, command FinishAttemptCommand) (sessionvo.Operation, sessionvo.Receipt, error) {
 	if command.EvidenceDurability == "" {
-		command.EvidenceDurability = sessionvo.DurabilityDurable
+		command.EvidenceDurability = sessionvo.DurabilityPending
 	}
 	return s.finishOperationAttempt(ctx, command, sessionvo.ReceiptCompleted)
 }
@@ -949,9 +949,8 @@ func validTraceID(value string) bool {
 	return slices.ContainsFunc(decoded, func(value byte) bool { return value != 0 })
 }
 
-// Retryable is a trusted adapter observation. Core remains authoritative by
-// requiring a failed attempt and failed evidence durability before a new
-// attempt can be created; it does not maintain a product-specific tool list.
+// Retryable is a trusted adapter observation. Core validates the failed
+// terminal state and durability but does not independently classify failures.
 func coreRetryableFailure(
 	_ sessionvo.Operation,
 	command FinishAttemptCommand,

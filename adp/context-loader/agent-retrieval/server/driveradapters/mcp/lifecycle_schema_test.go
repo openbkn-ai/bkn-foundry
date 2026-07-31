@@ -19,25 +19,18 @@ import (
 )
 
 func TestBusinessToolSchemasRequireExplicitBKNContext(t *testing.T) {
-	businessTools := []string{
-		toolKeySearchSchema,
-		toolKeyQueryObjectInstance,
-		toolKeyQueryInstanceSubgraph,
-		toolKeyGetLogicPropertiesValues,
-		toolKeyGetActionInfo,
-		toolKeyExecuteAction,
-		toolKeyGetActionExecution,
-		toolKeyListActionExecutions,
-		toolKeyFindSkills,
-		toolKeyListKnowledgeNetworks,
-		toolKeyGetKnDetail,
-		toolKeyGetObjectTypes,
-		toolKeyGetRelationTypes,
-		toolKeyRunSQL,
-		toolKeyListResources,
-		toolKeyDescribeResource,
+	rawMeta, err := schemasFS.ReadFile("schemas/tools_meta.json")
+	if err != nil {
+		t.Fatalf("read registered tool metadata: %v", err)
 	}
-	for _, toolKey := range businessTools {
+	var registeredTools map[string]ToolMeta
+	if err := json.Unmarshal(rawMeta, &registeredTools); err != nil {
+		t.Fatalf("decode registered tool metadata: %v", err)
+	}
+	for toolKey := range registeredTools {
+		if _, lifecycle := lifecycleToolNames[toolKey]; lifecycle {
+			continue
+		}
 		t.Run(toolKey, func(t *testing.T) {
 			input, _ := loadToolSchemas(toolKey)
 			var schema struct {
