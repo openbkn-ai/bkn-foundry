@@ -18,6 +18,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
@@ -558,6 +559,7 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 			return nil, err
 		}
 		if len(candidateJSON) > interfaces.MaxSemanticUnderstandingSamplePayloadBytes {
+			logger.Warnf("Semantic sample rows truncated by payload cap: kept %d of %d rows", len(limited), len(rows))
 			break
 		}
 		limited = candidate
@@ -568,9 +570,14 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 func limitSemanticUnderstandingSampleValue(value any) any {
 	switch typedValue := value.(type) {
 	case string:
+		// Table connectors convert []byte values to string before returning rows.
+		// Invalid UTF-8 therefore represents binary data in the actual query path.
+		if !utf8.ValidString(typedValue) {
+			return semanticUnderstandingBinarySampleValue(len(typedValue))
+		}
 		return truncateSemanticUnderstandingSampleString(typedValue)
 	case []byte:
-		return fmt.Sprintf("【二进制内容已省略，原始长度 %d 字节】", len(typedValue))
+		return semanticUnderstandingBinarySampleValue(len(typedValue))
 	case map[string]any:
 		limited := make(map[string]any, len(typedValue))
 		for key, nestedValue := range typedValue {
@@ -589,11 +596,21 @@ func limitSemanticUnderstandingSampleValue(value any) any {
 }
 
 func truncateSemanticUnderstandingSampleString(value string) string {
-	runes := []rune(value)
-	if len(runes) <= interfaces.MaxSemanticUnderstandingSampleValueRunes {
+	if len(value) <= interfaces.MaxSemanticUnderstandingSampleValueRunes || utf8.RuneCountInString(value) <= interfaces.MaxSemanticUnderstandingSampleValueRunes {
 		return value
 	}
-	return string(runes[:interfaces.MaxSemanticUnderstandingSampleValueRunes-1]) + "…"
+	runeCount := 0
+	for byteIndex := range value {
+		if runeCount == interfaces.MaxSemanticUnderstandingSampleValueRunes-1 {
+			return value[:byteIndex] + "…"
+		}
+		runeCount++
+	}
+	return value
+}
+
+func semanticUnderstandingBinarySampleValue(length int) string {
+	return fmt.Sprintf("【二进制内容已省略，原始长度 %d 字节】", length)
 }
 
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {

@@ -365,9 +365,10 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
 	t.Run("truncates long text, binary, and nested values", func(t *testing.T) {
 		longValue := strings.Repeat("测", interfaces.MaxSemanticUnderstandingSampleValueRunes+1)
+		binaryValue := string([]byte{0xff, 0xfe, 0x01})
 		rows, err := limitSemanticUnderstandingSampleRows([]map[string]any{{
 			"text":   longValue,
-			"binary": []byte{1, 2, 3},
+			"binary": binaryValue,
 			"nested": map[string]any{"text": longValue, "values": []any{longValue}},
 		}})
 
