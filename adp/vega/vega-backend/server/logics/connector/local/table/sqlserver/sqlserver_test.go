@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"vega-backend/interfaces"
+	"vega-backend/logics/filter_condition"
 )
 
 func TestSQLServerConnectorNew(t *testing.T) {
@@ -82,4 +84,24 @@ func TestSQLServerConnectorExecuteQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []map[string]any{{"order_id": int64(1)}}, result.Entries)
 	assert.Equal(t, int64(1), result.Total)
+}
+
+func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
+	property := &interfaces.Property{Name: "status", OriginalName: "order_status"}
+	condition := &filter_condition.EqualCond{
+		Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}},
+		Lfield: property,
+		Value:  "paid",
+	}
+
+	converted, err := (&SQLServerConnector{}).convertFilterCondition(
+		context.Background(), condition, map[string]*interfaces.Property{"status": property},
+	)
+	require.NoError(t, err)
+	query, args, err := sq.StatementBuilder.PlaceholderFormat(sq.AtP).
+		Select("*").From("[dbo].[orders]").Where(converted).ToSql()
+	require.NoError(t, err)
+	assert.Equal(t, "SELECT * FROM [dbo].[orders] WHERE [order_status] = @p1", query)
+	assert.Equal(t, []any{"paid"}, args)
+	assert.NotContains(t, query, "paid")
 }

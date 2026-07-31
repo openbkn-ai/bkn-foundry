@@ -366,9 +366,6 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
-	if params.ActualFilterCond != nil {
-		return nil, fmt.Errorf("sqlserver filter conditions are not implemented")
-	}
 	fields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
 		fields[property.Name] = property
@@ -394,6 +391,15 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 	builder := sq.StatementBuilder.PlaceholderFormat(sq.AtP).
 		Select(selectFields...).
 		From(qualifiedTable(resource.SourceIdentifier))
+	var condition sq.Sqlizer
+	if params.ActualFilterCond != nil {
+		var err error
+		condition, err = c.convertFilterCondition(ctx, params.ActualFilterCond, fields)
+		if err != nil {
+			return nil, err
+		}
+		builder = builder.Where(condition)
+	}
 	if len(params.Sort) > 0 {
 		for _, sort := range params.Sort {
 			property, ok := fields[sort.Field]
@@ -430,10 +436,14 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 		return nil, err
 	}
 	if params.NeedTotal {
-		countQuery, countArgs, err := sq.StatementBuilder.
+		countBuilder := sq.StatementBuilder.
 			PlaceholderFormat(sq.AtP).
 			Select("COUNT(1)").
-			From(qualifiedTable(resource.SourceIdentifier)).ToSql()
+			From(qualifiedTable(resource.SourceIdentifier))
+		if condition != nil {
+			countBuilder = countBuilder.Where(condition)
+		}
+		countQuery, countArgs, err := countBuilder.ToSql()
 		if err != nil {
 			return nil, fmt.Errorf("failed to build count query: %w", err)
 		}
