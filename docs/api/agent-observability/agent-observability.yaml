@@ -516,29 +516,17 @@ definitions:
         items:
           $ref: '#/definitions/sessionvo.Conversation'
         type: array
-      next_cursor:
-        type: string
     type: object
   httphandler.ensureConversationRequest:
     properties:
-      application_principal_id:
-        type: string
-      business_domain_id:
-        type: string
-      delegation_id:
-        type: string
-      effective_subject_id:
-        type: string
-      effective_subject_type:
-        type: string
       external_conversation_key:
         type: string
       idempotency_key:
         type: string
       one_shot:
         type: boolean
-      tenant_id:
-        type: string
+    required:
+    - external_conversation_key
     type: object
   httphandler.ensureOperationRequest:
     properties:
@@ -560,6 +548,12 @@ definitions:
         type: boolean
       tool_name:
         type: string
+    required:
+    - lease_epoch
+    - lease_token
+    - normalized_input_hash
+    - operation_key
+    - tool_name
     type: object
   httphandler.evidenceEventRequest:
     properties:
@@ -620,6 +614,26 @@ definitions:
       trace_id:
         type: string
     type: object
+  httphandler.expectedOperationRequest:
+    properties:
+      operation_id:
+        type: string
+      required:
+        type: boolean
+    required:
+    - operation_id
+    - required
+    type: object
+  httphandler.expectedReceiptRequest:
+    properties:
+      receipt_id:
+        type: string
+      required:
+        type: boolean
+    required:
+    - receipt_id
+    - required
+    type: object
   httphandler.finishAttemptRequest:
     properties:
       artifact_refs:
@@ -650,6 +664,12 @@ definitions:
         type: boolean
       trace_id:
         type: string
+    required:
+    - evidence_durability
+    - payload_hash
+    - receipt_id
+    - request_id
+    - trace_id
     type: object
   httphandler.interactionLeaseRequest:
     properties:
@@ -657,6 +677,9 @@ definitions:
         type: integer
       lease_token:
         type: string
+    required:
+    - lease_epoch
+    - lease_token
     type: object
   httphandler.lifecycleError:
     properties:
@@ -704,10 +727,19 @@ definitions:
     type: object
   httphandler.operationResult:
     properties:
+      created:
+        type: boolean
+      execute:
+        type: boolean
       operation:
         $ref: '#/definitions/sessionvo.Operation'
       receipt:
         $ref: '#/definitions/sessionvo.Receipt'
+    required:
+    - created
+    - execute
+    - operation
+    - receipt
     type: object
   httphandler.requestPage:
     properties:
@@ -722,6 +754,8 @@ definitions:
     properties:
       conversation_id:
         type: string
+    required:
+    - conversation_id
     type: object
   httphandler.startInteractionRequest:
     properties:
@@ -729,6 +763,8 @@ definitions:
         type: string
       lease_seconds:
         type: integer
+    required:
+    - idempotency_key
     type: object
   httphandler.terminalInteractionRequest:
     properties:
@@ -746,11 +782,11 @@ definitions:
         type: string
       expected_operations:
         items:
-          $ref: '#/definitions/sessionvo.ExpectedOperation'
+          $ref: '#/definitions/httphandler.expectedOperationRequest'
         type: array
       expected_receipts:
         items:
-          $ref: '#/definitions/sessionvo.ExpectedReceipt'
+          $ref: '#/definitions/httphandler.expectedReceiptRequest'
         type: array
       lease_epoch:
         type: integer
@@ -758,6 +794,12 @@ definitions:
         type: string
       terminal_idempotency_key:
         type: string
+    required:
+    - completion_manifest_version
+    - completion_reason
+    - lease_epoch
+    - lease_token
+    - terminal_idempotency_key
     type: object
   ledgervo.DurableAck:
     properties:
@@ -786,11 +828,13 @@ definitions:
     type: object
   sessionvo.AttemptStatus:
     enum:
+    - ready
     - pending
     - completed
     - failed
     type: string
     x-enum-varnames:
+    - AttemptReady
     - AttemptPending
     - AttemptCompleted
     - AttemptFailed
@@ -808,6 +852,11 @@ definitions:
         type: string
       version:
         type: string
+    required:
+    - business_domain_id
+    - ref_id
+    - ref_type
+    - version
     type: object
   sessionvo.ClosureManifest:
     properties:
@@ -835,6 +884,9 @@ definitions:
         items:
           type: string
         type: array
+    required:
+    - completion_manifest_version
+    - completion_reason
     type: object
   sessionvo.Conversation:
     properties:
@@ -858,6 +910,16 @@ definitions:
         $ref: '#/definitions/sessionvo.ConversationStatus'
       updated_at:
         type: string
+    required:
+    - conversation_id
+    - created_at
+    - external_conversation_key
+    - generation
+    - one_shot
+    - owner
+    - row_version
+    - status
+    - updated_at
     type: object
   sessionvo.ConversationStatus:
     enum:
@@ -899,6 +961,9 @@ definitions:
         type: string
       required:
         type: boolean
+    required:
+    - operation_id
+    - required
     type: object
   sessionvo.ExpectedReceipt:
     properties:
@@ -906,6 +971,9 @@ definitions:
         type: string
       required:
         type: boolean
+    required:
+    - receipt_id
+    - required
     type: object
   sessionvo.Interaction:
     properties:
@@ -937,6 +1005,19 @@ definitions:
         type: string
       updated_at:
         type: string
+    required:
+    - conversation_id
+    - created_at
+    - evidence_status
+    - execution_status
+    - interaction_id
+    - lease_epoch
+    - lease_expires_at
+    - lease_token
+    - lease_version
+    - ordinal
+    - row_version
+    - updated_at
     type: object
   sessionvo.InteractionStatus:
     enum:
@@ -986,6 +1067,19 @@ definitions:
         type: string
       updated_at:
         type: string
+    required:
+    - attempt
+    - attempt_status
+    - conversation_id
+    - created_at
+    - interaction_id
+    - normalized_input_hash
+    - operation_id
+    - operation_key
+    - retryable
+    - row_version
+    - tool_name
+    - updated_at
     type: object
   sessionvo.Owner:
     properties:
@@ -1001,6 +1095,12 @@ definitions:
         $ref: '#/definitions/sessionvo.SubjectType'
       tenant_id:
         type: string
+    required:
+    - application_principal_id
+    - business_domain_id
+    - effective_subject_id
+    - effective_subject_type
+    - tenant_id
     type: object
   sessionvo.Receipt:
     properties:
@@ -1062,6 +1162,30 @@ definitions:
         type: string
       trace_id:
         type: string
+    required:
+    - artifact_refs
+    - attempt
+    - business_refs
+    - causation_event_ids
+    - conversation_id
+    - evidence_durability
+    - interaction_id
+    - issued_at
+    - normalized_input_hash
+    - observed_evidence_refs
+    - operation_id
+    - operation_key
+    - owner
+    - partial_reasons
+    - payload_hash
+    - receipt_id
+    - receipt_status
+    - request_id
+    - required
+    - row_version
+    - schema_version
+    - tool_name
+    - trace_id
     type: object
   sessionvo.ReceiptStatus:
     enum:
@@ -1106,120 +1230,6 @@ info:
   title: Agent Observability API
   version: "1.0"
 paths:
-  /api/agent-observability/v1/traces/_search:
-    post:
-      consumes:
-      - application/json
-      description: Proxy raw OpenSearch DSL to the configured trace index and return
-        the original OpenSearch response body.
-      parameters:
-      - description: OpenSearch DSL JSON body
-        in: body
-        name: request
-        required: true
-        schema:
-          type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Raw OpenSearch search response
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "504":
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Search traces with raw OpenSearch DSL
-      tags:
-      - traces
-  /api/agent-observability/v1/traces/{trace_id}/trace-graph:
-    get:
-      description: Returns normalized trace tree nodes, parent-child edges, status,
-        duration, and partial reasons for a trace.
-      parameters:
-      - description: Trace ID
-        in: path
-        name: trace_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "504":
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get trace graph by trace ID
-      tags:
-      - traces
-  /api/agent-observability/v1/traces/by-conversation:
-    get:
-      consumes:
-      - application/json
-      description: Build a term filter automatically using attributes.gen_ai.conversation.id.keyword
-        and return the original OpenSearch response body.
-      parameters:
-      - description: Conversation ID
-        in: query
-        name: conversation_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Raw OpenSearch search response
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "504":
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Search traces by conversation ID
-      tags:
-      - traces
   /conversations:
     get:
       parameters:
@@ -2482,6 +2492,41 @@ paths:
       summary: List technical trace executions
       tags:
       - traces
+  /traces/_search:
+    post:
+      consumes:
+      - application/json
+      description: Proxy raw OpenSearch DSL to the configured trace index and return
+        the original OpenSearch response body.
+      parameters:
+      - description: OpenSearch DSL JSON body
+        in: body
+        name: request
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Raw OpenSearch search response
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Search traces with raw OpenSearch DSL
+      tags:
+      - traces
   /traces/{trace_id}/business-graph:
     get:
       description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
@@ -2602,6 +2647,85 @@ paths:
       summary: Get evidence snapshot preview by trace ID
       tags:
       - evidence
+  /traces/{trace_id}/trace-graph:
+    get:
+      description: Returns normalized trace tree nodes, parent-child edges, status,
+        duration, and partial reasons for a trace.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get trace graph by trace ID
+      tags:
+      - traces
+  /traces/by-conversation:
+    get:
+      consumes:
+      - application/json
+      description: Build a term filter automatically using attributes.gen_ai.conversation.id.keyword
+        and return the original OpenSearch response body.
+      parameters:
+      - description: Conversation ID
+        in: query
+        name: conversation_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Raw OpenSearch search response
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Search traces by conversation ID
+      tags:
+      - traces
   /traces/by-request:
     get:
       description: Returns normalized claim, evidence refs, business refs, pagination,

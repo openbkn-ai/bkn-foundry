@@ -87,7 +87,7 @@ func withSocket(t *testing.T, gate entitlement.Gate) {
 
 func listVisible(t *testing.T) map[string]mcp.Tool {
 	t.Helper()
-	srv, b := newMCPServer()
+	srv, b := newMCPServer(nil)
 	all := make([]mcp.Tool, 0)
 	for _, st := range srv.ListTools() {
 		all = append(all, st.Tool)
@@ -284,7 +284,7 @@ func TestEnterpriseToolCannotShadowACoreTool(t *testing.T) {
 			t.Fatalf("panic should name the contested tool, got %q", msg)
 		}
 	}()
-	newMCPServer()
+	newMCPServer(nil)
 }
 
 func textOf(res *mcp.CallToolResult, _ error) string {

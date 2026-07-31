@@ -170,6 +170,7 @@ async def stream_chat(
                                     struct_model,
                                     state.values["messages"],
                                     req.response_format,
+                                    system_prompt,
                                 )
                                 yield _sse("structured", {"content": obj})
                                 await _emit_chat_evidence(

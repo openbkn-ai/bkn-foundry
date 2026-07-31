@@ -22,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -38,6 +39,7 @@ type restPublicHandler struct {
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
 	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
 	Logger                         interfaces.Logger
+	LifecycleClient                *bkntrace.LifecycleClient
 }
 
 // NewRestPublicHandler 创建restHandler实例
@@ -55,13 +57,14 @@ func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterfa
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
 		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
 		Logger:                         logger,
+		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
 	}
 }
 
 // RegisterPublic 注册公共路由
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat())
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
 	engine.Use(mws...)
 
 	engine.POST("/kn/semantic-search", r.KnRetrievalHandler.SemanticSearch)

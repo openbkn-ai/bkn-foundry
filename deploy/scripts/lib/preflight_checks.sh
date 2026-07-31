@@ -18,7 +18,7 @@ declare -a PREFLIGHT_JSON_DECLINED=()
 declare -a PREFLIGHT_FAIL_SNAPSHOT=()
 
 # Node major for openbkn / onboard in this deploy path (default 22: aligns with
-# @openbkn/bkn-sdk@alpha; same bar even if npm lists >=18). Override for experiments.
+# @openbkn/bkn-sdk; same bar even if npm lists >=18). Override for experiments.
 PREFLIGHT_OPENBKN_MIN_NODE_MAJOR="${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR:-22}"
 # Minimum CPython for deploy/scripts/lib/onboard_*.py; enforced when python3 is on PATH.
 PREFLIGHT_MIN_PYTHON_MAJOR="${PREFLIGHT_MIN_PYTHON_MAJOR:-3}"
@@ -1453,7 +1453,7 @@ preflight_check_admin_tools() {
             preflight_warn "openbkn on PATH, but Node is < ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} — prefer upgrading to Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (npm i -g and onboard expect that here). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         fi
     else
-        preflight_warn "openbkn CLI not in PATH (npm i -g @openbkn/bkn-sdk@alpha; or sudo bash ./preflight.sh --fix after Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+). 'openbkn admin' ships with it. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        preflight_warn "openbkn CLI not in PATH (npm i -g @openbkn/bkn-sdk; or sudo bash ./preflight.sh --fix after Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+). 'openbkn admin' ships with it. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
     fi
 }
 
@@ -2673,16 +2673,16 @@ preflight_apply_safe_fixes() {
         local _npmj
         _npmj="$(preflight_node_major)"
         if [[ -z "${_npmj}" || $(( 10#${_npmj} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
-            preflight_warn "Skipping openbkn CLI (@openbkn/bkn-sdk@alpha) global npm install: need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (current: $(node -v 2>/dev/null || echo 'no node')). Run node-22 fix with consent, or upgrade Node manually, then re-run preflight --fix. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+            preflight_warn "Skipping openbkn CLI (@openbkn/bkn-sdk) global npm install: need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (current: $(node -v 2>/dev/null || echo 'no node')). Run node-22 fix with consent, or upgrade Node manually, then re-run preflight --fix. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         else
         if ! command -v openbkn &>/dev/null; then
             if preflight_confirm_fix "bkn-sdk" \
-                "npm install -g @openbkn/bkn-sdk@alpha" \
+                "npm install -g @openbkn/bkn-sdk" \
                 "User accepted: installs the openbkn CLI (provides 'openbkn admin'). Requires working npm and Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ on PATH in this root shell (same as https://www.npmjs.com/package/@openbkn/bkn-sdk)."; then
-                if npm install -g @openbkn/bkn-sdk@alpha; then
-                    preflight_fixed "Installed @openbkn/bkn-sdk@alpha ($(openbkn --version 2>/dev/null | head -n1 || echo ok))"
+                if npm install -g @openbkn/bkn-sdk; then
+                    preflight_fixed "Installed @openbkn/bkn-sdk ($(openbkn --version 2>/dev/null | head -n1 || echo ok))"
                 else
-                    preflight_warn "npm install -g @openbkn/bkn-sdk@alpha failed (check npm registry / proxy)"
+                    preflight_warn "npm install -g @openbkn/bkn-sdk failed (check npm registry / proxy)"
                 fi
             fi
         fi

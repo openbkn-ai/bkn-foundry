@@ -42,7 +42,7 @@ usage() {
     echo "  --list-fixes         Run checks then list fixes that would be offered (no changes; requires root)"
     echo "  --output=json        Emit JSON summary to stdout (human logs to stderr); requires python3"
     echo "  --role=target|admin|both  Target = kubectl/helm only; admin = bkn/node/npm; both = all (default)"
-    echo "                              openbkn CLI needs Node.js ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (per @openbkn/bkn-sdk@alpha on npm; help/zh/install.md)"
+    echo "                              openbkn CLI needs Node.js ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (per @openbkn/bkn-sdk on npm; help/zh/install.md)"
     echo "  --no-recheck         Do not re-run full checks after applying fixes"
     echo "  --lenient            Downgrade install-blocking [FAIL] items (sysctl, ip_forward, kernel modules,"
     echo "                       containerd, kubectl, helm, swap, broken apt sources, missing k8s/containerd"

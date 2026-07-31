@@ -36,6 +36,9 @@ type MCPInfo struct {
 // tryLoadToolSchemas 与 loadToolSchemas 同源，但读不到/解析失败时返回 nil 而非 panic，
 // 供 info 端点容错使用。
 func tryLoadToolSchemas(toolKey string) (input, output json.RawMessage) {
+	if input, output, ok := lifecycleToolSchemas(toolKey); ok {
+		return input, output
+	}
 	data, err := schemasFS.ReadFile(fmt.Sprintf("schemas/%s.json", toolKey))
 	if err != nil {
 		return nil, nil
@@ -43,6 +46,9 @@ func tryLoadToolSchemas(toolKey string) (input, output json.RawMessage) {
 	var wrapper toolSchemaFile
 	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return nil, nil
+	}
+	if isBusinessTool(toolKey) {
+		wrapper.InputSchema = requireBKNContext(wrapper.InputSchema)
 	}
 	return wrapper.InputSchema, wrapper.OutputSchema
 }

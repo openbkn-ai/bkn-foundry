@@ -79,6 +79,8 @@ spec:
               - name: AUTH_ENABLED
                 value: {{ .Values.auth.enabled | quote }}
             {{- end}}
+              - name: BKN_TRACE_CORE_URL
+                value: {{ required "observability.lifecycle.core_url is required" .Values.observability.lifecycle.core_url | quote }}
             {{- if .Values.observability.evidence.ingest_url }}
               - name: BKN_TRACE_EVIDENCE_INGEST_URL
                 value: {{ .Values.observability.evidence.ingest_url | quote }}

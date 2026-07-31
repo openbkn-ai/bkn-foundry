@@ -45,12 +45,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
-	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement/socket"
 	"github.com/openbkn-ai/licverify"
 )
 
@@ -104,10 +103,13 @@ type Decorator struct {
 	After      func(context.Context, mcp.CallToolRequest, *mcp.CallToolResult) (*mcp.CallToolResult, error)
 }
 
+// Both registries come from comm-go: they carry the invariants every socket
+// shares — registration only during assembly, a declared capability and minimum
+// tier, no duplicate keys, stable ordering. What stays here is what is specific
+// to the MCP tool surface: the shapes above, and what refusing looks like below.
 var (
-	mu         sync.RWMutex
-	extras     = map[string]ExtraTool{}
-	decorators = map[string]Decorator{}
+	extras     = socket.New[ExtraTool]("mcptool")
+	decorators = socket.New[Decorator]("mcptool decorator")
 )
 
 // Register plugs in an enterprise tool. Assembly-time only.
@@ -118,17 +120,7 @@ func Register(t ExtraTool) {
 	if t.Capability == "" {
 		panic(fmt.Sprintf("mcptool: tool %q registered without a Capability — several entries share one capability and the registry records it by name", t.Key))
 	}
-	entitlement.MustBeAssembling("mcptool:" + t.Key)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if _, dup := extras[t.Key]; dup {
-		panic(fmt.Sprintf("mcptool: extra tool %q registered twice", t.Key))
-	}
-	// MarkAssembled validates MinEdition — a missing one panics there, with a
-	// message that names the capability.
-	entitlement.MarkAssembled(t.Capability, t.MinEdition)
-	extras[t.Key] = t
+	extras.Add(t.Key, t.Capability, t.MinEdition, t)
 }
 
 // Decorate attaches a decorator to an existing tool. Decorating the same tool
@@ -149,42 +141,16 @@ func Decorate(toolKey string, d Decorator) {
 	if d.After == nil {
 		panic(fmt.Sprintf("mcptool: decorator for %q has no After hook — a schema patch with nothing to consume it advertises a parameter that silently does nothing", toolKey))
 	}
-	entitlement.MustBeAssembling("mcptool:decorate:" + toolKey)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if _, dup := decorators[toolKey]; dup {
-		panic(fmt.Sprintf("mcptool: tool %q decorated twice", toolKey))
-	}
-	entitlement.MarkAssembled(d.Capability, d.MinEdition)
-	decorators[toolKey] = d
+	decorators.Add(toolKey, d.Capability, d.MinEdition, d)
 }
 
 // Extras returns the registered enterprise tools ordered by Key, so tools/list
 // and /mcp/info are stable across restarts. It reports what this binary has,
 // not what it may serve — the licence decides that per call.
-func Extras() []ExtraTool {
-	mu.RLock()
-	defer mu.RUnlock()
-	keys := make([]string, 0, len(extras))
-	for k := range extras {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	out := make([]ExtraTool, 0, len(keys))
-	for _, k := range keys {
-		out = append(out, extras[k])
-	}
-	return out
-}
+func Extras() []ExtraTool { return extras.All() }
 
 // DecoratorFor returns the decorator attached to a tool, if any.
-func DecoratorFor(toolKey string) (Decorator, bool) {
-	mu.RLock()
-	defer mu.RUnlock()
-	d, ok := decorators[toolKey]
-	return d, ok
-}
+func DecoratorFor(toolKey string) (Decorator, bool) { return decorators.Get(toolKey) }
 
 // Allowed reports whether the licence in force covers this tool right now.
 func (t ExtraTool) Allowed() bool { return entitlement.AtLeast(t.MinEdition) }
@@ -252,8 +218,6 @@ func Gated(t ExtraTool) Handler {
 
 // reset empties the socket. Tests only; see testsupport.go.
 func reset() {
-	mu.Lock()
-	defer mu.Unlock()
-	extras = map[string]ExtraTool{}
-	decorators = map[string]Decorator{}
+	extras.ResetForTest()
+	decorators.ResetForTest()
 }

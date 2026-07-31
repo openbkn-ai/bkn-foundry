@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -19,6 +18,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
@@ -33,7 +33,8 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/resource"
+	resourcelogic "vega-backend/logics/resource"
+	"vega-backend/logics/resource_data"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -49,6 +50,7 @@ type semanticUnderstandingTaskService struct {
 	client     *asynq.Client
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
+	rds        interfaces.ResourceDataService
 	suta       interfaces.SemanticUnderstandingTaskAccess
 	ums        interfaces.UserMgmtService
 
@@ -65,7 +67,8 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 			appSetting: appSetting,
 			client:     client,
 			cs:         catalog.NewCatalogService(appSetting),
-			rs:         resource.NewResourceService(appSetting),
+			rs:         resourcelogic.NewResourceService(appSetting),
+			rds:        resource_data.NewResourceDataService(appSetting),
 			suta:       logics.SUTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
@@ -105,6 +108,13 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 		span.SetStatus(codes.Error, "Invalid semantic understanding task request")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails(err.Error())
+	}
+	if req.IncludeSampleRows {
+		if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
+			logger.Warnf("Skipping semantic sample rows because resource is not queryable: resource_id=%s, category=%s, error=%v", resource.ID, resource.Category, err)
+		} else if err := suts.attachUnmaskedSampleRows(ctx, resource, task); err != nil {
+			logger.Warnf("Failed to attach semantic sample rows; continuing without samples: resource_id=%s, category=%s, error=%v", resource.ID, resource.Category, err)
+		}
 	}
 	return suts.createTask(ctx, task)
 }
@@ -460,11 +470,11 @@ func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource
 		if normalized.SamplePolicy == nil {
 			return nil, fmt.Errorf("sample_policy is required when include_sample_rows is true")
 		}
-		if !normalized.SamplePolicy.Masked {
-			return nil, fmt.Errorf("sample_policy.masked must be true")
+		if normalized.SamplePolicy.Masked {
+			return nil, fmt.Errorf("masked sample rows are not supported yet")
 		}
-		if normalized.SamplePolicy.MaxRows <= 0 {
-			return nil, fmt.Errorf("sample_policy.max_rows must be greater than 0")
+		if normalized.SamplePolicy.MaxRows <= 0 || normalized.SamplePolicy.MaxRows > interfaces.MaxSemanticUnderstandingSampleRows {
+			return nil, fmt.Errorf("sample_policy.max_rows must be between 1 and %d", interfaces.MaxSemanticUnderstandingSampleRows)
 		}
 	}
 	input, inputHash, err := buildResourceSemanticUnderstandingInput(resource, normalized)
@@ -481,6 +491,123 @@ func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource
 		ApplyMode:           normalized.ApplyMode,
 		ConfidenceThreshold: *normalized.ConfidenceThreshold,
 	}, nil
+}
+
+func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx context.Context, resource *interfaces.Resource, task *interfaces.SemanticUnderstandingTask) error {
+	if suts.rds == nil {
+		return fmt.Errorf("resource data service is unavailable")
+	}
+	var input interfaces.SemanticUnderstandingResourceAgentInput
+	if err := sonic.Unmarshal([]byte(task.Input), &input); err != nil {
+		return fmt.Errorf("unmarshal semantic understanding input: %w", err)
+	}
+	if input.Options.SamplePolicy == nil || input.Options.SamplePolicy.Masked {
+		return fmt.Errorf("unmasked sample policy is required")
+	}
+	fields := make([]string, 0, len(resource.SchemaDefinition))
+	for _, property := range resource.SchemaDefinition {
+		if property != nil && property.Name != "" {
+			fields = append(fields, property.Name)
+		}
+	}
+	result, err := suts.rds.QueryWithPaging(ctx, resource,
+		&interfaces.ResourceDataQueryParams{
+			Limit:        input.Options.SamplePolicy.MaxRows,
+			OutputFields: fields,
+		})
+	if err != nil {
+		return fmt.Errorf("read sample rows: %w", err)
+	}
+	input.SampleRows = []map[string]any{}
+	if result != nil && result.Entries != nil {
+		var truncated bool
+		input.SampleRows, truncated, err = limitSemanticUnderstandingSampleRows(result.Entries)
+		if err != nil {
+			return fmt.Errorf("limit sample rows: %w", err)
+		}
+		if truncated {
+			logger.Warnf("Semantic sample rows truncated by payload cap: resource_id=%s, category=%s, kept %d of %d rows", resource.ID, resource.Category, len(input.SampleRows), len(result.Entries))
+		}
+	}
+	inputJSON, _, err := marshalSemanticUnderstandingInput(input)
+	if err != nil {
+		return fmt.Errorf("marshal semantic understanding input: %w", err)
+	}
+	task.Input = inputJSON
+	return nil
+}
+
+// limitSemanticUnderstandingSampleRows keeps sample data useful for semantic
+// inference without allowing large text or binary values to exhaust the task
+// input or agent context. It never mutates connector query results.
+func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]any, bool, error) {
+	limited := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if len(limited) >= interfaces.MaxSemanticUnderstandingSampleRows {
+			break
+		}
+		limitedRow := make(map[string]any, len(row))
+		for key, value := range row {
+			limitedRow[key] = limitSemanticUnderstandingSampleValue(value)
+		}
+
+		candidate := append(limited, limitedRow)
+		candidateJSON, err := sonic.ConfigStd.Marshal(candidate)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(candidateJSON) > interfaces.MaxSemanticUnderstandingSamplePayloadBytes {
+			return limited, true, nil
+		}
+		limited = candidate
+	}
+	return limited, false, nil
+}
+
+func limitSemanticUnderstandingSampleValue(value any) any {
+	switch typedValue := value.(type) {
+	case string:
+		// Table connectors convert []byte values to string before returning rows.
+		// Invalid UTF-8 therefore represents binary data in the actual query path.
+		if !utf8.ValidString(typedValue) {
+			return semanticUnderstandingBinarySampleValue(len(typedValue))
+		}
+		return truncateSemanticUnderstandingSampleString(typedValue)
+	case []byte:
+		return semanticUnderstandingBinarySampleValue(len(typedValue))
+	case map[string]any:
+		limited := make(map[string]any, len(typedValue))
+		for key, nestedValue := range typedValue {
+			limited[key] = limitSemanticUnderstandingSampleValue(nestedValue)
+		}
+		return limited
+	case []any:
+		limited := make([]any, len(typedValue))
+		for index, nestedValue := range typedValue {
+			limited[index] = limitSemanticUnderstandingSampleValue(nestedValue)
+		}
+		return limited
+	default:
+		return value
+	}
+}
+
+func truncateSemanticUnderstandingSampleString(value string) string {
+	if len(value) <= interfaces.MaxSemanticUnderstandingSampleValueRunes || utf8.RuneCountInString(value) <= interfaces.MaxSemanticUnderstandingSampleValueRunes {
+		return value
+	}
+	runeCount := 0
+	for byteIndex := range value {
+		if runeCount == interfaces.MaxSemanticUnderstandingSampleValueRunes-1 {
+			return value[:byteIndex] + "…"
+		}
+		runeCount++
+	}
+	return value
+}
+
+func semanticUnderstandingBinarySampleValue(length int) string {
+	return fmt.Sprintf("【二进制内容已省略，原始长度 %d 字节】", length)
 }
 
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
@@ -538,103 +665,17 @@ func defaultSemanticUnderstandingRequest() *interfaces.CreateSemanticUnderstandi
 	}
 }
 
-type resourceAgentInput struct {
-	Resource   resourceAgentInputResource `json:"resource"`
-	SampleRows []map[string]any           `json:"sample_rows,omitempty"`
-	Options    resourceAgentInputOptions  `json:"options"`
-}
-
-type resourceAgentInputResource struct {
-	ID                string                       `json:"id"`
-	Name              string                       `json:"name"`
-	Category          string                       `json:"category"`
-	Schema            string                       `json:"schema,omitempty"`
-	SourceIdentifier  string                       `json:"source_identifier"`
-	SourceDescription string                       `json:"source_description,omitempty"`
-	Description       string                       `json:"description,omitempty"`
-	SchemaDefinition  []resourceAgentInputProperty `json:"schema_definition"`
-}
-
-type resourceAgentInputProperty struct {
-	Name                string `json:"name"`
-	Type                string `json:"type"`
-	OriginalName        string `json:"original_name,omitempty"`
-	OriginalType        string `json:"original_type,omitempty"`
-	OriginalDescription string `json:"original_description,omitempty"`
-	DisplayName         string `json:"display_name,omitempty"`
-	Description         string `json:"description,omitempty"`
-}
-
-type resourceAgentInputOptions struct {
-	Language            string                                        `json:"language"`
-	ApplyMode           string                                        `json:"apply_mode"`
-	ConfidenceThreshold float64                                       `json:"confidence_threshold"`
-	IncludeSampleRows   bool                                          `json:"include_sample_rows"`
-	SamplePolicy        *interfaces.SemanticUnderstandingSamplePolicy `json:"sample_policy,omitempty"`
-}
-
-type catalogAgentInput struct {
-	Catalog            catalogAgentInputCatalog        `json:"catalog"`
-	Resources          []catalogAgentInputResource     `json:"resources"`
-	ExistingLogicViews []catalogAgentInputExistingView `json:"existing_logic_views"`
-	Options            catalogAgentInputOptions        `json:"options"`
-}
-
-type catalogAgentInputCatalog struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
-
-type catalogAgentInputResource struct {
-	ID               string                         `json:"id"`
-	Name             string                         `json:"name"`
-	Description      string                         `json:"description,omitempty"`
-	Schema           string                         `json:"schema,omitempty"`
-	SourceIdentifier string                         `json:"source_identifier"`
-	Keys             *catalogAgentInputResourceKeys `json:"keys,omitempty"`
-	Fields           []catalogAgentInputProperty    `json:"fields"`
-}
-
-type catalogAgentInputResourceKeys struct {
-	Primary []string   `json:"primary,omitempty"`
-	Unique  [][]string `json:"unique,omitempty"`
-}
-
-type catalogAgentInputProperty struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name,omitempty"`
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-}
-
-type catalogAgentInputExistingView struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	SourceIdentifier string `json:"source_identifier"`
-	Description      string `json:"description,omitempty"`
-	Status           string `json:"status"`
-}
-
-type catalogAgentInputOptions struct {
-	Language            string  `json:"language"`
-	ApplyMode           string  `json:"apply_mode"`
-	ConfidenceThreshold float64 `json:"confidence_threshold"`
-}
-
 func buildResourceSemanticUnderstandingInput(resource *interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (string, string, error) {
-	input := resourceAgentInput{
-		Resource: buildResourceAgentInputResource(resource),
-		Options: resourceAgentInputOptions{
+	input := interfaces.SemanticUnderstandingResourceAgentInput{
+		Resource:   buildResourceAgentInputResource(resource),
+		SampleRows: []map[string]any{},
+		Options: interfaces.SemanticUnderstandingResourceAgentInputOptions{
 			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
 			ConfidenceThreshold: *req.ConfidenceThreshold,
 			IncludeSampleRows:   req.IncludeSampleRows,
 			SamplePolicy:        req.SamplePolicy,
 		},
-	}
-	if req.IncludeSampleRows {
-		input.SampleRows = []map[string]any{}
 	}
 	return marshalSemanticUnderstandingInput(input)
 }
@@ -644,15 +685,15 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 		return resources[i].ID < resources[j].ID
 	})
 
-	input := catalogAgentInput{
-		Catalog: catalogAgentInputCatalog{
+	input := interfaces.SemanticUnderstandingCatalogAgentInput{
+		Catalog: interfaces.SemanticUnderstandingCatalogAgentInputCatalog{
 			ID:          catalog.ID,
 			Name:        catalog.Name,
 			Description: catalog.Description,
 		},
-		Resources:          []catalogAgentInputResource{},
-		ExistingLogicViews: []catalogAgentInputExistingView{},
-		Options: catalogAgentInputOptions{
+		Resources:          []interfaces.SemanticUnderstandingCatalogAgentInputResource{},
+		ExistingLogicViews: []interfaces.SemanticUnderstandingCatalogAgentInputExistingView{},
+		Options: interfaces.SemanticUnderstandingCatalogAgentInputOptions{
 			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
 			ConfidenceThreshold: *req.ConfidenceThreshold,
@@ -671,8 +712,8 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 	return marshalSemanticUnderstandingInput(input)
 }
 
-func buildResourceAgentInputResource(resource *interfaces.Resource) resourceAgentInputResource {
-	return resourceAgentInputResource{
+func buildResourceAgentInputResource(resource *interfaces.Resource) interfaces.SemanticUnderstandingResourceAgentInputResource {
+	return interfaces.SemanticUnderstandingResourceAgentInputResource{
 		ID:               resource.ID,
 		Name:             resource.Name,
 		Category:         resource.Category,
@@ -683,8 +724,8 @@ func buildResourceAgentInputResource(resource *interfaces.Resource) resourceAgen
 	}
 }
 
-func buildCatalogAgentInputResource(resource *interfaces.Resource) catalogAgentInputResource {
-	return catalogAgentInputResource{
+func buildCatalogAgentInputResource(resource *interfaces.Resource) interfaces.SemanticUnderstandingCatalogAgentInputResource {
+	return interfaces.SemanticUnderstandingCatalogAgentInputResource{
 		ID:               resource.ID,
 		Name:             resource.Name,
 		Description:      resource.Description,
@@ -695,8 +736,8 @@ func buildCatalogAgentInputResource(resource *interfaces.Resource) catalogAgentI
 	}
 }
 
-func buildCatalogAgentInputExistingView(resource *interfaces.Resource) catalogAgentInputExistingView {
-	return catalogAgentInputExistingView{
+func buildCatalogAgentInputExistingView(resource *interfaces.Resource) interfaces.SemanticUnderstandingCatalogAgentInputExistingView {
+	return interfaces.SemanticUnderstandingCatalogAgentInputExistingView{
 		ID:               resource.ID,
 		Name:             resource.Name,
 		SourceIdentifier: resource.SourceIdentifier,
@@ -705,12 +746,12 @@ func buildCatalogAgentInputExistingView(resource *interfaces.Resource) catalogAg
 	}
 }
 
-func buildCatalogAgentInputResourceKeys(sourceMetadata map[string]any) *catalogAgentInputResourceKeys {
+func buildCatalogAgentInputResourceKeys(sourceMetadata map[string]any) *interfaces.SemanticUnderstandingCatalogAgentInputResourceKeys {
 	if len(sourceMetadata) == 0 {
 		return nil
 	}
 
-	keys := &catalogAgentInputResourceKeys{
+	keys := &interfaces.SemanticUnderstandingCatalogAgentInputResourceKeys{
 		Primary: getCatalogAgentInputStringSlice(sourceMetadata["primary_keys"]),
 	}
 	for _, rawIndex := range getCatalogAgentInputMapSlice(sourceMetadata["indices"]) {
@@ -760,13 +801,13 @@ func getCatalogAgentInputMapSlice(value any) []map[string]any {
 	return result
 }
 
-func buildCatalogAgentInputProperties(properties []*interfaces.Property) []catalogAgentInputProperty {
-	result := make([]catalogAgentInputProperty, 0, len(properties))
+func buildCatalogAgentInputProperties(properties []*interfaces.Property) []interfaces.SemanticUnderstandingCatalogAgentInputProperty {
+	result := make([]interfaces.SemanticUnderstandingCatalogAgentInputProperty, 0, len(properties))
 	for _, property := range properties {
 		if property == nil {
 			continue
 		}
-		result = append(result, catalogAgentInputProperty{
+		result = append(result, interfaces.SemanticUnderstandingCatalogAgentInputProperty{
 			Name:        property.Name,
 			DisplayName: property.DisplayName,
 			Type:        property.Type,
@@ -776,13 +817,13 @@ func buildCatalogAgentInputProperties(properties []*interfaces.Property) []catal
 	return result
 }
 
-func buildResourceAgentInputProperties(properties []*interfaces.Property) []resourceAgentInputProperty {
-	result := make([]resourceAgentInputProperty, 0, len(properties))
+func buildResourceAgentInputProperties(properties []*interfaces.Property) []interfaces.SemanticUnderstandingResourceAgentInputProperty {
+	result := make([]interfaces.SemanticUnderstandingResourceAgentInputProperty, 0, len(properties))
 	for _, property := range properties {
 		if property == nil {
 			continue
 		}
-		result = append(result, resourceAgentInputProperty{
+		result = append(result, interfaces.SemanticUnderstandingResourceAgentInputProperty{
 			Name:                property.Name,
 			Type:                property.Type,
 			OriginalName:        property.OriginalName,
@@ -796,7 +837,7 @@ func buildResourceAgentInputProperties(properties []*interfaces.Property) []reso
 }
 
 func marshalSemanticUnderstandingInput(input any) (string, string, error) {
-	inputBytes, err := json.Marshal(input)
+	inputBytes, err := sonic.ConfigStd.Marshal(input)
 	if err != nil {
 		return "", "", err
 	}

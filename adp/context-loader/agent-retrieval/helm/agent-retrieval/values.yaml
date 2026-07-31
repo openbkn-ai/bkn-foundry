@@ -164,6 +164,10 @@ observability:
   trace:
     enabled: false
     sampling_rate: 1.0
+  lifecycle:
+    # Mandatory 3.0 business-call dependency. Product deployments install
+    # agent-observability before agent-retrieval; standalone releases override this URL.
+    core_url: "http://agent-observability:8080"
   evidence:
     ingest_url: ""
     timeout_ms: 2000

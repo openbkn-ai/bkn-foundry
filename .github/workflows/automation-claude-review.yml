@@ -28,6 +28,7 @@ on:
       - 'adp/**'
       - 'infra/**'
       - 'bkn-safe/**'
+      - 'comm-go/**'
       - 'deploy/scripts/**'
       - '!**/*.md'
   issue_comment:

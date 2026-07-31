@@ -4,7 +4,7 @@ import contextlib
 import json
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app import observability
 from app.core import runner
@@ -57,6 +57,66 @@ def test_native_path_reports_trace_path():
     out, path = asyncio.run(structured_extract_with_path(_NativeOK({"greeting": "pong"}), [], SCHEMA))
     assert out == {"greeting": "pong"}
     assert path == "native"
+
+
+class _CaptureMessages:
+    """记录两条路径实际发给模型的消息，用于断言系统提示词到场。"""
+
+    def __init__(self, native_ok: bool):
+        self.native_ok = native_ok
+        self.seen: list = []
+
+    def with_structured_output(self, schema):
+        if not self.native_ok:
+            raise RuntimeError("model unsupported")
+        outer = self
+
+        class _R:
+            async def ainvoke(self, messages):
+                outer.seen = list(messages)
+                return {"greeting": "pong"}
+
+        return _R()
+
+    async def ainvoke(self, messages):
+        self.seen = list(messages)
+        return AIMessage(content='{"greeting": "hi"}')
+
+
+def test_system_prompt_reaches_native_extraction():
+    """#556：抽取是独立的一次模型调用，agent 系统提示词必须在消息头。"""
+    m = _CaptureMessages(native_ok=True)
+    asyncio.run(structured_extract(m, [HumanMessage(content="快照")], SCHEMA, "领域约束X"))
+    assert isinstance(m.seen[0], SystemMessage)
+    assert m.seen[0].content == "领域约束X"
+    assert isinstance(m.seen[1], HumanMessage)
+
+
+def test_system_prompt_reaches_fallback_extraction():
+    m = _CaptureMessages(native_ok=False)
+    asyncio.run(structured_extract(m, [HumanMessage(content="快照")], SCHEMA, "领域约束X"))
+    assert isinstance(m.seen[0], SystemMessage)
+    assert m.seen[0].content == "领域约束X"
+
+
+def test_no_system_prompt_keeps_messages_untouched():
+    """不传（或空）时行为与本改动前一致，不凭空插消息。"""
+    m = _CaptureMessages(native_ok=True)
+    asyncio.run(structured_extract(m, [HumanMessage(content="快照")], SCHEMA))
+    assert not any(isinstance(x, SystemMessage) for x in m.seen)
+
+    m2 = _CaptureMessages(native_ok=True)
+    asyncio.run(structured_extract(m2, [HumanMessage(content="快照")], SCHEMA, ""))
+    assert not any(isinstance(x, SystemMessage) for x in m2.seen)
+
+
+def test_existing_system_message_not_duplicated():
+    """state 里已带 SystemMessage 就不重复补（langgraph 若改行为，这里自适应）。"""
+    m = _CaptureMessages(native_ok=True)
+    msgs = [SystemMessage(content="已有"), HumanMessage(content="快照")]
+    asyncio.run(structured_extract(m, msgs, SCHEMA, "领域约束X"))
+    assert [type(x).__name__ for x in m.seen] == ["SystemMessage", "HumanMessage"]
+    assert m.seen[0].content == "已有"
 
 
 def test_fallback_valid():
@@ -112,7 +172,9 @@ def _wire(monkeypatch, captured):
         return "sys", "default", 1
 
     async def fake_skills(ids, account_id, account_type):
-        return ""
+        # 非空：抽取拿到的必须是「提示词 + 技能段」拼接后的那一份。返回空串会让
+        # 下面的断言退化成分不清「拼没拼技能」，抽取调用若被挪到拼接之前照样绿。
+        return "\n[技能] demo"
 
     async def fake_tools(agent_tools, account_id, account_type, **kwargs):
         return []
@@ -139,7 +201,8 @@ def test_run_with_response_format_serializes(monkeypatch):
     captured: dict = {}
     _wire(monkeypatch, captured)
 
-    async def fake_extract(model, messages, schema):
+    async def fake_extract(model, messages, schema, system_prompt=None):
+        captured["extract_system_prompt"] = system_prompt
         return {"greeting": "pong"}, "native"
 
     monkeypatch.setattr(runner, "structured_extract_with_path", fake_extract)
@@ -148,6 +211,9 @@ def test_run_with_response_format_serializes(monkeypatch):
     ))
     assert json.loads(out) == {"greeting": "pong"}
     assert False in captured["streaming"]  # 抽结构化用非流式模型
+    # #556 回归：抽取是另起的一次模型调用，agent 系统提示词必须一并传下去，
+    # 否则模型在零约束下填 schema（实测表现为把技术字段名原样抄进 display_name）
+    assert captured["extract_system_prompt"] == "sys\n[技能] demo"
 
 
 def test_run_without_response_format_text_path(monkeypatch):

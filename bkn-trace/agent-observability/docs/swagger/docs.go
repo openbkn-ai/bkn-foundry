@@ -16,174 +16,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/agent-observability/v1/traces/_search": {
-            "post": {
-                "description": "Proxy raw OpenSearch DSL to the configured trace index and return the original OpenSearch response body.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "traces"
-                ],
-                "summary": "Search traces with raw OpenSearch DSL",
-                "parameters": [
-                    {
-                        "description": "OpenSearch DSL JSON body",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Raw OpenSearch search response",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "504": {
-                        "description": "Gateway Timeout",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/agent-observability/v1/traces/by-conversation": {
-            "get": {
-                "description": "Build a term filter automatically using attributes.gen_ai.conversation.id.keyword and return the original OpenSearch response body.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "traces"
-                ],
-                "summary": "Search traces by conversation ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Conversation ID",
-                        "name": "conversation_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Raw OpenSearch search response",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "504": {
-                        "description": "Gateway Timeout",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/agent-observability/v1/traces/{trace_id}/trace-graph": {
-            "get": {
-                "description": "Returns normalized trace tree nodes, parent-child edges, status, duration, and partial reasons for a trace.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "traces"
-                ],
-                "summary": "Get trace graph by trace ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trace ID",
-                        "name": "trace_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "504": {
-                        "description": "Gateway Timeout",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/conversations": {
             "get": {
                 "produces": [
@@ -2094,6 +1926,114 @@ const docTemplate = `{
                 }
             }
         },
+        "/traces/_search": {
+            "post": {
+                "description": "Proxy raw OpenSearch DSL to the configured trace index and return the original OpenSearch response body.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "traces"
+                ],
+                "summary": "Search traces with raw OpenSearch DSL",
+                "parameters": [
+                    {
+                        "description": "OpenSearch DSL JSON body",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Raw OpenSearch search response",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/traces/by-conversation": {
+            "get": {
+                "description": "Build a term filter automatically using attributes.gen_ai.conversation.id.keyword and return the original OpenSearch response body.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "traces"
+                ],
+                "summary": "Search traces by conversation ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation ID",
+                        "name": "conversation_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Raw OpenSearch search response",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/traces/by-request": {
             "get": {
                 "description": "Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a request.",
@@ -2441,6 +2381,66 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/traces/{trace_id}/trace-graph": {
+            "get": {
+                "description": "Returns normalized trace tree nodes, parent-child edges, status, duration, and partial reasons for a trace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "traces"
+                ],
+                "summary": "Get trace graph by trace ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "trace_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }
@@ -3226,30 +3226,15 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/sessionvo.Conversation"
                     }
-                },
-                "next_cursor": {
-                    "type": "string"
                 }
             }
         },
         "httphandler.ensureConversationRequest": {
             "type": "object",
+            "required": [
+                "external_conversation_key"
+            ],
             "properties": {
-                "application_principal_id": {
-                    "type": "string"
-                },
-                "business_domain_id": {
-                    "type": "string"
-                },
-                "delegation_id": {
-                    "type": "string"
-                },
-                "effective_subject_id": {
-                    "type": "string"
-                },
-                "effective_subject_type": {
-                    "type": "string"
-                },
                 "external_conversation_key": {
                     "type": "string"
                 },
@@ -3258,14 +3243,18 @@ const docTemplate = `{
                 },
                 "one_shot": {
                     "type": "boolean"
-                },
-                "tenant_id": {
-                    "type": "string"
                 }
             }
         },
         "httphandler.ensureOperationRequest": {
             "type": "object",
+            "required": [
+                "lease_epoch",
+                "lease_token",
+                "normalized_input_hash",
+                "operation_key",
+                "tool_name"
+            ],
             "properties": {
                 "causation_event_ids": {
                     "type": "array",
@@ -3385,8 +3374,45 @@ const docTemplate = `{
                 }
             }
         },
+        "httphandler.expectedOperationRequest": {
+            "type": "object",
+            "required": [
+                "operation_id",
+                "required"
+            ],
+            "properties": {
+                "operation_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "httphandler.expectedReceiptRequest": {
+            "type": "object",
+            "required": [
+                "receipt_id",
+                "required"
+            ],
+            "properties": {
+                "receipt_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
         "httphandler.finishAttemptRequest": {
             "type": "object",
+            "required": [
+                "evidence_durability",
+                "payload_hash",
+                "receipt_id",
+                "request_id",
+                "trace_id"
+            ],
             "properties": {
                 "artifact_refs": {
                     "type": "array",
@@ -3434,6 +3460,10 @@ const docTemplate = `{
         },
         "httphandler.interactionLeaseRequest": {
             "type": "object",
+            "required": [
+                "lease_epoch",
+                "lease_token"
+            ],
             "properties": {
                 "lease_epoch": {
                     "type": "integer"
@@ -3502,7 +3532,19 @@ const docTemplate = `{
         },
         "httphandler.operationResult": {
             "type": "object",
+            "required": [
+                "created",
+                "execute",
+                "operation",
+                "receipt"
+            ],
             "properties": {
+                "created": {
+                    "type": "boolean"
+                },
+                "execute": {
+                    "type": "boolean"
+                },
                 "operation": {
                     "$ref": "#/definitions/sessionvo.Operation"
                 },
@@ -3527,6 +3569,9 @@ const docTemplate = `{
         },
         "httphandler.resumeConversationRequest": {
             "type": "object",
+            "required": [
+                "conversation_id"
+            ],
             "properties": {
                 "conversation_id": {
                     "type": "string"
@@ -3535,6 +3580,9 @@ const docTemplate = `{
         },
         "httphandler.startInteractionRequest": {
             "type": "object",
+            "required": [
+                "idempotency_key"
+            ],
             "properties": {
                 "idempotency_key": {
                     "type": "string"
@@ -3546,6 +3594,13 @@ const docTemplate = `{
         },
         "httphandler.terminalInteractionRequest": {
             "type": "object",
+            "required": [
+                "completion_manifest_version",
+                "completion_reason",
+                "lease_epoch",
+                "lease_token",
+                "terminal_idempotency_key"
+            ],
             "properties": {
                 "answer_artifact_ref": {
                     "type": "string"
@@ -3568,13 +3623,13 @@ const docTemplate = `{
                 "expected_operations": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.ExpectedOperation"
+                        "$ref": "#/definitions/httphandler.expectedOperationRequest"
                     }
                 },
                 "expected_receipts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.ExpectedReceipt"
+                        "$ref": "#/definitions/httphandler.expectedReceiptRequest"
                     }
                 },
                 "lease_epoch": {
@@ -3629,11 +3684,13 @@ const docTemplate = `{
         "sessionvo.AttemptStatus": {
             "type": "string",
             "enum": [
+                "ready",
                 "pending",
                 "completed",
                 "failed"
             ],
             "x-enum-varnames": [
+                "AttemptReady",
                 "AttemptPending",
                 "AttemptCompleted",
                 "AttemptFailed"
@@ -3641,6 +3698,12 @@ const docTemplate = `{
         },
         "sessionvo.BusinessRef": {
             "type": "object",
+            "required": [
+                "business_domain_id",
+                "ref_id",
+                "ref_type",
+                "version"
+            ],
             "properties": {
                 "as_of": {
                     "type": "string"
@@ -3664,6 +3727,10 @@ const docTemplate = `{
         },
         "sessionvo.ClosureManifest": {
             "type": "object",
+            "required": [
+                "completion_manifest_version",
+                "completion_reason"
+            ],
             "properties": {
                 "answer_artifact_ref": {
                     "type": "string"
@@ -3705,6 +3772,17 @@ const docTemplate = `{
         },
         "sessionvo.Conversation": {
             "type": "object",
+            "required": [
+                "conversation_id",
+                "created_at",
+                "external_conversation_key",
+                "generation",
+                "one_shot",
+                "owner",
+                "row_version",
+                "status",
+                "updated_at"
+            ],
             "properties": {
                 "closed_at": {
                     "type": "string"
@@ -3783,6 +3861,10 @@ const docTemplate = `{
         },
         "sessionvo.ExpectedOperation": {
             "type": "object",
+            "required": [
+                "operation_id",
+                "required"
+            ],
             "properties": {
                 "operation_id": {
                     "type": "string"
@@ -3794,6 +3876,10 @@ const docTemplate = `{
         },
         "sessionvo.ExpectedReceipt": {
             "type": "object",
+            "required": [
+                "receipt_id",
+                "required"
+            ],
             "properties": {
                 "receipt_id": {
                     "type": "string"
@@ -3805,6 +3891,20 @@ const docTemplate = `{
         },
         "sessionvo.Interaction": {
             "type": "object",
+            "required": [
+                "conversation_id",
+                "created_at",
+                "evidence_status",
+                "execution_status",
+                "interaction_id",
+                "lease_epoch",
+                "lease_expires_at",
+                "lease_token",
+                "lease_version",
+                "ordinal",
+                "row_version",
+                "updated_at"
+            ],
             "properties": {
                 "closure_manifest": {
                     "$ref": "#/definitions/sessionvo.ClosureManifest"
@@ -3871,6 +3971,20 @@ const docTemplate = `{
         },
         "sessionvo.Operation": {
             "type": "object",
+            "required": [
+                "attempt",
+                "attempt_status",
+                "conversation_id",
+                "created_at",
+                "interaction_id",
+                "normalized_input_hash",
+                "operation_id",
+                "operation_key",
+                "retryable",
+                "row_version",
+                "tool_name",
+                "updated_at"
+            ],
             "properties": {
                 "attempt": {
                     "type": "integer"
@@ -3921,6 +4035,13 @@ const docTemplate = `{
         },
         "sessionvo.Owner": {
             "type": "object",
+            "required": [
+                "application_principal_id",
+                "business_domain_id",
+                "effective_subject_id",
+                "effective_subject_type",
+                "tenant_id"
+            ],
             "properties": {
                 "application_principal_id": {
                     "type": "string"
@@ -3944,6 +4065,31 @@ const docTemplate = `{
         },
         "sessionvo.Receipt": {
             "type": "object",
+            "required": [
+                "artifact_refs",
+                "attempt",
+                "business_refs",
+                "causation_event_ids",
+                "conversation_id",
+                "evidence_durability",
+                "interaction_id",
+                "issued_at",
+                "normalized_input_hash",
+                "observed_evidence_refs",
+                "operation_id",
+                "operation_key",
+                "owner",
+                "partial_reasons",
+                "payload_hash",
+                "receipt_id",
+                "receipt_status",
+                "request_id",
+                "required",
+                "row_version",
+                "schema_version",
+                "tool_name",
+                "trace_id"
+            ],
             "properties": {
                 "artifact_refs": {
                     "type": "array",

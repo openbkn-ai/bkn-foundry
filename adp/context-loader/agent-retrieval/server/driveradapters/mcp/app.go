@@ -16,6 +16,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
@@ -86,12 +87,18 @@ run_sql 占位符示例（id 必须来自 search_schema / list_resources 的真�
 
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
 // Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
+// NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
+// Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
 //
 // The tool set is fixed here, so this runs after the assembly registry is
 // frozen — app.Run freezes first, then builds handlers. What each caller is
 // shown is decided per request against the licence, not here.
 func NewMCPHandler() http.Handler {
-	srv, _ := newMCPServer()
+	return NewMCPHandlerWithLifecycle(bkntrace.NewLifecycleClientFromEnv())
+}
+
+func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
+	srv, _ := newMCPServer(lifecycleClient)
 	return server.NewStreamableHTTPServer(srv,
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			return r.Context()
@@ -104,7 +111,7 @@ func NewMCPHandler() http.Handler {
 // so /mcp/info can apply the same licence decisions as tools/list. Split out of
 // NewMCPHandler so tests can read the assembled set directly instead of driving
 // a JSON-RPC handshake to find out what was registered.
-func newMCPServer() (*server.MCPServer, *toolBuilder) {
+func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer, *toolBuilder) {
 	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	b := newToolBuilder(localeBundle)
 
@@ -142,13 +149,21 @@ func newMCPServer() (*server.MCPServer, *toolBuilder) {
 	b.add(toolKeyListResources, handleListResources(resourcesService))
 	b.add(toolKeyDescribeResource, handleDescribeResource(resourcesService))
 
+	// The lifecycle tools are registered straight onto the server by the tracing
+	// adapter rather than through the builder. Claim their advertised names all
+	// the same, so an enterprise tool cannot shadow one of them — mcp-go's
+	// AddTool replaces a same-named tool silently, and these are core capability.
+	b.claimLifecycleNames()
+
 	b.addExtras()
 
 	mcpServer := server.NewMCPServer(serverName, serverVersion,
 		server.WithToolCapabilities(true),
 		server.WithInstructions(localeBundle.ServerInstructions()),
+		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
 		server.WithToolFilter(b.filter),
 	)
+	registerLifecycleTools(mcpServer, lifecycleClient)
 	b.attach(mcpServer)
 	return mcpServer, b
 }

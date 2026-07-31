@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'bkn-trace/**'
+      - 'docs/api/agent-observability/**'
       - '.github/workflows/ci-bkn-trace.yml'
 
 concurrency:
@@ -49,6 +50,8 @@ jobs:
           go-version-file: bkn-trace/agent-observability/go.mod
       - name: Unit tests
         run: make test
+      - name: Swagger contract drift
+        run: make check-swag
       - name: Race tests
         run: make test-race
       - name: MariaDB lifecycle, fault and rebuild integration tests

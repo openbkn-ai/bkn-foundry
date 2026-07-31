@@ -41,14 +41,14 @@ releases:
   agent-operator-integration:
     chart: agent-operator-integration
     version: main
+  agent-observability:
+    chart: agent-observability
+    version: main
   agent-retrieval:
     chart: agent-retrieval
     version: main
   bkn-agent:
     chart: bkn-agent
-    version: main
-  agent-observability:
-    chart: agent-observability
     version: main
   otelcol-contrib:
     chart: otelcol-contrib

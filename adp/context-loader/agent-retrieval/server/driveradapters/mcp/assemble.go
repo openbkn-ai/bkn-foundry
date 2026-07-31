@@ -118,6 +118,19 @@ func (b *toolBuilder) claimName(name, key string) {
 	b.names[name] = key
 }
 
+// claimLifecycleNames records the tracing lifecycle tools' advertised names.
+//
+// They are added to the server directly by registerLifecycleTools, not through
+// this builder, so without this they would be invisible to the collision check
+// and an ExtraTool could take one of their names — silently, because mcp-go's
+// AddTool lets the later registration win.
+func (b *toolBuilder) claimLifecycleNames() {
+	for key := range lifecycleToolNames {
+		name, _ := loadToolMeta(key)
+		b.claimName(name, key)
+	}
+}
+
 // filter is mcp-go's ToolFilterFunc: it decides what tools/list shows, per
 // request, against the licence in force at that moment.
 //

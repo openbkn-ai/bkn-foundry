@@ -9,14 +9,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
@@ -94,6 +100,25 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	logicView := logicViews[0].(map[string]any)
 	assert.Equal(t, "order_summary", logicView["source_identifier"])
 	assert.NotContains(t, logicView, "logic_definition")
+}
+
+func TestMarshalSemanticUnderstandingInput(t *testing.T) {
+	first := make(map[string]any)
+	first["resource"] = "orders"
+	first["description"] = "orders < archived"
+
+	second := make(map[string]any)
+	second["description"] = "orders < archived"
+	second["resource"] = "orders"
+
+	firstJSON, firstHash, err := marshalSemanticUnderstandingInput(first)
+	require.NoError(t, err)
+	secondJSON, secondHash, err := marshalSemanticUnderstandingInput(second)
+	require.NoError(t, err)
+
+	assert.Equal(t, firstJSON, secondJSON)
+	assert.Equal(t, firstHash, secondHash)
+	assert.Contains(t, firstJSON, `\u003c`)
 }
 
 func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
@@ -214,6 +239,237 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 		assert.Same(t, active, got)
 		assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeCatalog, findScope)
+	})
+}
+
+func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
+	t.Run("writes queried rows to the task input and honors max rows", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+		require.NoError(t, err)
+		inputHash := task.InputHash
+		resourceDataService.EXPECT().
+			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				assert.Equal(t, 2, params.Limit)
+				assert.Equal(t, []string{"order_id"}, params.OutputFields)
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"order_id": "o-1"}, {"order_id": "o-2"}}}, nil
+			})
+
+		service := &semanticUnderstandingTaskService{rds: resourceDataService}
+		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
+		var input interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		assert.Equal(t, []map[string]any{{"order_id": "o-1"}, {"order_id": "o-2"}}, input.SampleRows)
+		assert.Equal(t, inputHash, task.InputHash)
+	})
+
+	t.Run("writes an empty sample_rows array when the query has no rows", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+		require.NoError(t, err)
+		resourceDataService.EXPECT().
+			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil)
+
+		service := &semanticUnderstandingTaskService{rds: resourceDataService}
+		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
+		var payload map[string]sonic.NoCopyRawMessage
+		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &payload))
+		require.Contains(t, payload, "sample_rows")
+		var sampleRows []map[string]any
+		require.NoError(t, sonic.Unmarshal(payload["sample_rows"], &sampleRows))
+		assert.NotNil(t, sampleRows)
+		assert.Empty(t, sampleRows)
+	})
+
+	assertTaskCreatedWithoutSamples := func(t *testing.T, service *semanticUnderstandingTaskService, resourceID string) {
+		t.Helper()
+		got, err := service.CreateResourceTask(context.Background(), resourceID, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		var input interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+		assert.Empty(t, input.SampleRows)
+	}
+
+	t.Run("creates a task when sample query fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		resource := sampleSemanticResource()
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			Return(nil, errors.New("query unavailable"))
+		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
+		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		assertTaskCreatedWithoutSamples(t, service, resource.ID)
+	})
+
+	t.Run("creates a task when sample query returns an HTTP error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		resource := sampleSemanticResource()
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			Return(nil, rest.NewHTTPError(context.Background(), http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded))
+		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
+		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		assertTaskCreatedWithoutSamples(t, service, resource.ID)
+	})
+
+	t.Run("creates a task when the resource is not queryable", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		resource := sampleSemanticResource()
+		resource.Status = interfaces.ResourceStatusDisabled
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
+		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		assertTaskCreatedWithoutSamples(t, service, resource.ID)
+	})
+
+	t.Run("reuses a degraded task for a later identical request", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		resource := sampleSemanticResource()
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil).Times(2)
+
+		queryCount := 0
+		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			DoAndReturn(func(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				queryCount++
+				if queryCount == 1 {
+					return nil, errors.New("query unavailable")
+				}
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"order_id": "o-1"}}}, nil
+			}).
+			Times(2)
+
+		var createdTask *interfaces.SemanticUnderstandingTask
+		var firstInputHash string
+		findCount := 0
+		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, inputHash string) (*interfaces.SemanticUnderstandingTask, error) {
+				findCount++
+				if findCount == 1 {
+					firstInputHash = inputHash
+					return nil, nil
+				}
+				assert.Equal(t, firstInputHash, inputHash)
+				return createdTask, nil
+			}).
+			Times(2)
+		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, task *interfaces.SemanticUnderstandingTask) error {
+				createdTask = task
+				return nil
+			})
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		req := &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		}
+		firstTask, err := service.CreateResourceTask(context.Background(), resource.ID, req)
+		require.NoError(t, err)
+		var firstInput interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(firstTask.Input), &firstInput))
+		assert.Empty(t, firstInput.SampleRows)
+
+		secondTask, err := service.CreateResourceTask(context.Background(), resource.ID, req)
+		require.NoError(t, err)
+		assert.Same(t, firstTask, secondTask)
+		var secondInput interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(secondTask.Input), &secondInput))
+		assert.Empty(t, secondInput.SampleRows)
+	})
+}
+
+func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
+	t.Run("truncates long text, binary, and nested values", func(t *testing.T) {
+		longValue := strings.Repeat("测", interfaces.MaxSemanticUnderstandingSampleValueRunes+1)
+		binaryValue := string([]byte{0xff, 0xfe, 0x01})
+		rows, truncated, err := limitSemanticUnderstandingSampleRows([]map[string]any{{
+			"text":   longValue,
+			"binary": binaryValue,
+			"nested": map[string]any{"text": longValue, "values": []any{longValue}},
+		}})
+
+		require.NoError(t, err)
+		assert.False(t, truncated)
+		expectedText := strings.Repeat("测", interfaces.MaxSemanticUnderstandingSampleValueRunes-1) + "…"
+		assert.Equal(t, expectedText, rows[0]["text"])
+		assert.Equal(t, "【二进制内容已省略，原始长度 3 字节】", rows[0]["binary"])
+		nested := rows[0]["nested"].(map[string]any)
+		assert.Equal(t, expectedText, nested["text"])
+		assert.Equal(t, []any{expectedText}, nested["values"])
+	})
+
+	t.Run("drops trailing rows when the payload exceeds the limit", func(t *testing.T) {
+		rows := make([]map[string]any, interfaces.MaxSemanticUnderstandingSampleRows)
+		for rowIndex := range rows {
+			rows[rowIndex] = make(map[string]any, 60)
+			for fieldIndex := 0; fieldIndex < 60; fieldIndex++ {
+				rows[rowIndex][fmt.Sprintf("field_%d", fieldIndex)] = strings.Repeat("a", interfaces.MaxSemanticUnderstandingSampleValueRunes)
+			}
+		}
+
+		limited, truncated, err := limitSemanticUnderstandingSampleRows(rows)
+
+		require.NoError(t, err)
+		assert.True(t, truncated)
+		assert.NotEmpty(t, limited)
+		assert.Less(t, len(limited), len(rows))
+		payload, err := sonic.ConfigStd.Marshal(limited)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(payload), interfaces.MaxSemanticUnderstandingSamplePayloadBytes)
+	})
+
+	t.Run("keeps no more than the configured row limit", func(t *testing.T) {
+		rows := make([]map[string]any, interfaces.MaxSemanticUnderstandingSampleRows+1)
+		for index := range rows {
+			rows[index] = map[string]any{"id": index}
+		}
+
+		limited, truncated, err := limitSemanticUnderstandingSampleRows(rows)
+
+		require.NoError(t, err)
+		assert.False(t, truncated)
+		assert.Len(t, limited, interfaces.MaxSemanticUnderstandingSampleRows)
 	})
 }
 
@@ -435,14 +691,28 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 		assert.NotEmpty(t, got.InputHash)
 	})
 
-	t.Run("requires masked sample policy when including samples", func(t *testing.T) {
-		_, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
+	t.Run("accepts unmasked sample policy when including samples", func(t *testing.T) {
+		got, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 20},
 		})
 
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+	})
+
+	t.Run("rejects sample rows beyond the semantic understanding limit", func(t *testing.T) {
+		got, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy: &interfaces.SemanticUnderstandingSamplePolicy{
+				Masked:  false,
+				MaxRows: interfaces.MaxSemanticUnderstandingSampleRows + 1,
+			},
+		})
+
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "masked")
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "sample_policy.max_rows")
 	})
 }
 

@@ -98,7 +98,7 @@ func TestDecorateTwicePanics(t *testing.T) {
 	ResetForTest(enterprise())
 	Decorate("search_schema", sampleDecorator())
 	msg := mustPanic(t, "second Decorate", func() { Decorate("search_schema", sampleDecorator()) })
-	if !strings.Contains(msg, "decorated twice") {
+	if !strings.Contains(msg, "registered twice") {
 		t.Fatalf("panic should name the collision, got %q", msg)
 	}
 }

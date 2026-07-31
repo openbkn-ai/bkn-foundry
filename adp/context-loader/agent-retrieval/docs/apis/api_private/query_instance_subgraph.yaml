@@ -66,6 +66,22 @@ paths:
           description: 对象子图查询响应体
 components:
   schemas:
+    BKNContext:
+      type: object
+      required: [conversation_id, interaction_id, operation_key]
+      properties:
+        conversation_id:
+          type: string
+        interaction_id:
+          type: string
+        operation_key:
+          type: string
+        parent_operation_id:
+          type: string
+        causation_event_ids:
+          type: array
+          items:
+            type: string
     Object:
       description: 对象的json，字段不定，随对象实例动态变化
       type: object
@@ -822,8 +838,11 @@ components:
       description: 查询请求的顶层结构。用于基于关系类路径查询对象子图。relation_type_paths数组中可以包含多条不同的关系路径，系统会同时查询并返回所有路径的结果。每条路径必须符合严格的顺序和方向要求。
       type: object
       required:
+      - bkn_context
       - relation_type_paths
       properties:
+        bkn_context:
+          $ref: '#/components/schemas/BKNContext'
         relation_type_paths:
           description: 关系类路径集合,数组中可以包含多条不同的关系路径，系统会同时查询并返回所有路径的结果。每条路径必须符合严格的顺序和方向要求。
           type: array

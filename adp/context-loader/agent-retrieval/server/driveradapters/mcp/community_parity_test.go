@@ -36,6 +36,19 @@ func TestMain(m *testing.M) {
 // core means adding it here in the same change; a diff that touches only the
 // socket and moves this list is the bug this file exists to catch.
 var communityTools = []string{
+	// 追踪生命周期工具（bkntrace 适配层直接挂到 server 上，不走 toolBuilder）
+	"bkn_cancel_interaction",
+	"bkn_close_conversation",
+	"bkn_complete_interaction",
+	"bkn_create_conversation",
+	"bkn_fail_interaction",
+	"bkn_get_operation",
+	"bkn_get_receipt",
+	"bkn_handoff_interaction",
+	"bkn_resume_conversation",
+	"bkn_retry_operation",
+	"bkn_start_interaction",
+	// 知识网络工具
 	"describe_resource",
 	"execute_action",
 	"find_skills",
@@ -82,8 +95,13 @@ func TestCommunityToolSchemasUnchanged(t *testing.T) {
 	// With nothing registered the decorator path is the identity, byte for
 	// byte, or the community binary is shipping a schema the socket touched.
 	bundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
-	srv, _ := newMCPServer()
+	srv, _ := newMCPServer(nil)
 	for _, key := range communityTools {
+		if _, isLifecycle := lifecycleToolNames[key]; isLifecycle {
+			// 生命周期工具由 bkntrace 适配层直接注册，schema 也来自那边，
+			// 不经过插座的装饰路径——这条断言只管走 toolBuilder 的那些。
+			continue
+		}
 		tool := srv.GetTool(key)
 		if tool == nil {
 			t.Fatalf("tool %q missing from the assembled server", key)
@@ -147,7 +165,7 @@ func TestCommunityMCPInfoSchemasComeFromEmbeddedFiles(t *testing.T) {
 // assembledNames returns the sorted names a client would see from tools/list.
 func assembledNames(t *testing.T) []string {
 	t.Helper()
-	srv, b := newMCPServer()
+	srv, b := newMCPServer(nil)
 
 	all := make([]mcp.Tool, 0, len(srv.ListTools()))
 	for _, st := range srv.ListTools() {

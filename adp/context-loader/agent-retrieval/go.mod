@@ -23,7 +23,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/openbkn-ai/bkn-foundry/comm-go v0.1.0
+require github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260731091058-c598a3e6d616
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect

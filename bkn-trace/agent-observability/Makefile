@@ -1,7 +1,9 @@
 .DEFAULT_GOAL := gen-swag
 
-SWAG ?= swag
+SWAG_VERSION := v1.8.12
+SWAG ?= go run github.com/swaggo/swag/cmd/swag@v1.8.12
 SWAG_OUT := docs/swagger
+PUBLISHED_SWAG := ../../docs/api/agent-observability/agent-observability.yaml
 IMAGE ?= swr.cn-east-3.myhuaweicloud.com/kweaver-ai/agent-observability:local
 CHART_PATH := charts/agent-observability
 GOCACHE ?= /tmp/go-build
@@ -12,7 +14,7 @@ INTEGRATION_PACKAGE := ./src/drivenadapter/dbaccess/mariadb/sessionstore
 OPENSEARCH_INTEGRATION_PACKAGE := ./src/drivenadapter/httpaccess/opensearchprojection
 
 .PHONY: lint test test-cover test-race test-integration test-opensearch-integration test-performance ci build \
-	docker-build helm-lint helm-package gen-swag view-swag clean-swag
+	docker-build helm-lint helm-package check-swag-version gen-swag check-swag view-swag clean-swag
 
 lint:
 	GOCACHE=$(GOCACHE) go vet ./...
@@ -59,13 +61,30 @@ helm-package:
 	mkdir -p dist
 	helm package $(CHART_PATH) --destination dist
 
-gen-swag:
+check-swag-version:
+	@$(SWAG) --version | grep -q "version $(SWAG_VERSION)$$" || \
+		(echo "Swagger CLI must be $(SWAG_VERSION)" >&2; exit 1)
+
+gen-swag: check-swag-version
 	$(SWAG) init -g main.go -o $(SWAG_OUT) --parseDependency --parseInternal
+	@mkdir -p $(dir $(PUBLISHED_SWAG))
+	@mv $(SWAG_OUT)/swagger.yaml $(PUBLISHED_SWAG)
+
+check-swag: check-swag-version
+	@set -e; \
+		tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(SWAG) init -g main.go -o "$$tmp" --packageName swagger --parseDependency --parseInternal; \
+		for file in docs.go swagger.json; do \
+			diff -u $(SWAG_OUT)/$$file $$tmp/$$file; \
+		done; \
+		diff -u $(PUBLISHED_SWAG) $$tmp/swagger.yaml
 
 view-swag:
-	@echo "Swagger JSON: http://localhost:8080/swagger/swagger.json"
-	@echo "Swagger YAML: http://localhost:8080/swagger/swagger.yaml"
+	@echo "Swagger UI: http://localhost:8080/api/agent-observability/v1/swagger/index.html"
+	@echo "Swagger JSON: http://localhost:8080/api/agent-observability/v1/swagger/doc.json"
+	@echo "Swagger YAML: $(PUBLISHED_SWAG)"
 
 clean-swag:
-	rm -rf $(SWAG_OUT)
+	rm -f $(SWAG_OUT)/docs.go $(SWAG_OUT)/swagger.json $(PUBLISHED_SWAG)
 	$(MAKE) gen-swag

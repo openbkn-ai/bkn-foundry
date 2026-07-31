@@ -523,7 +523,11 @@ def main():
                     help='JSON,手工指定路径参数,如 \'{"kn_id":"abc"}\'')
     ap.add_argument("--include-query-post", action="store_true",
                     help="额外请求带 x-http-method-override:GET 的只读 POST")
-    ap.add_argument("--skip-file", action="append", default=["bkn-agent.yaml"])
+    # bkn-agent 尚无稳定巡检入口；agent-observability 当前发布 Swagger 2.0
+    # 且只提供外部路径，没有本工具默认 face=in 所需的 /in/v1 路由。两者的
+    # 静态合同分别由自身 CI 校验，待巡检器支持对应调用面后再移出默认跳过项。
+    ap.add_argument("--skip-file", action="append",
+                    default=["bkn-agent.yaml", "agent-observability.yaml"])
     ap.add_argument("--out", default="api_contract_report.md")
     ap.add_argument("--json-out", default=None)
     args = ap.parse_args()

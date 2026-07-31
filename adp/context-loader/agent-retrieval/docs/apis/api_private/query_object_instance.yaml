@@ -68,6 +68,22 @@ paths:
           description: ok
 components:
   schemas:
+    BKNContext:
+      type: object
+      required: [conversation_id, interaction_id, operation_key]
+      properties:
+        conversation_id:
+          type: string
+        interaction_id:
+          type: string
+        operation_key:
+          type: string
+        parent_operation_id:
+          type: string
+        causation_event_ids:
+          type: array
+          items:
+            type: string
     Object:
       description: 对象的json，字段不定，随对象实例动态变化
       type: object
@@ -212,7 +228,11 @@ components:
     FirstQueryWithSearchAfter:
       description: 分页查询的第一次查询请求
       type: object
+      required:
+        - bkn_context
       properties:
+        bkn_context:
+          $ref: '#/components/schemas/BKNContext'
         condition:
           $ref: '#/components/schemas/Condition'
           description: 过滤条件

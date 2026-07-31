@@ -24,43 +24,43 @@ const (
 )
 
 type ClosureManifest struct {
-	Version              string              `json:"completion_manifest_version"`
+	Version              string              `json:"completion_manifest_version" binding:"required"`
 	AnswerArtifactRef    string              `json:"answer_artifact_ref,omitempty"`
 	Claims               []string            `json:"claims,omitempty"`
 	ExpectedOperations   []ExpectedOperation `json:"expected_operations,omitempty"`
 	ExpectedReceipts     []ExpectedReceipt   `json:"expected_receipts,omitempty"`
 	AssemblerDeadline    *time.Time          `json:"assembler_deadline,omitempty"`
-	CompletionReason     string              `json:"completion_reason"`
+	CompletionReason     string              `json:"completion_reason" binding:"required"`
 	SystemPartialReasons []string            `json:"system_partial_reasons,omitempty"`
 }
 
 type ExpectedOperation struct {
-	OperationID string `json:"operation_id"`
-	Required    bool   `json:"required"`
+	OperationID string `json:"operation_id" binding:"required"`
+	Required    bool   `json:"required" binding:"required"`
 }
 
 type ExpectedReceipt struct {
-	ReceiptID string `json:"receipt_id"`
-	Required  bool   `json:"required"`
+	ReceiptID string `json:"receipt_id" binding:"required"`
+	Required  bool   `json:"required" binding:"required"`
 }
 
 type Interaction struct {
-	ID                     string            `json:"interaction_id"`
-	ConversationID         string            `json:"conversation_id"`
-	Ordinal                uint64            `json:"ordinal"`
-	ExecutionStatus        InteractionStatus `json:"execution_status"`
-	EvidenceStatus         EvidenceStatus    `json:"evidence_status"`
+	ID                     string            `json:"interaction_id" binding:"required"`
+	ConversationID         string            `json:"conversation_id" binding:"required"`
+	Ordinal                uint64            `json:"ordinal" binding:"required"`
+	ExecutionStatus        InteractionStatus `json:"execution_status" binding:"required"`
+	EvidenceStatus         EvidenceStatus    `json:"evidence_status" binding:"required"`
 	StartIdempotencyKey    string            `json:"-"`
 	TerminalIdempotencyKey string            `json:"-"`
 	TerminalPayloadHash    string            `json:"-"`
 	ClosureManifest        *ClosureManifest  `json:"closure_manifest,omitempty"`
-	LeaseToken             string            `json:"lease_token"`
-	LeaseEpoch             uint64            `json:"lease_epoch"`
-	LeaseVersion           uint64            `json:"lease_version"`
-	LeaseExpiresAt         time.Time         `json:"lease_expires_at"`
-	RowVersion             uint64            `json:"row_version"`
-	CreatedAt              time.Time         `json:"created_at"`
-	UpdatedAt              time.Time         `json:"updated_at"`
+	LeaseToken             string            `json:"lease_token" binding:"required"`
+	LeaseEpoch             uint64            `json:"lease_epoch" binding:"required"`
+	LeaseVersion           uint64            `json:"lease_version" binding:"required"`
+	LeaseExpiresAt         time.Time         `json:"lease_expires_at" binding:"required"`
+	RowVersion             uint64            `json:"row_version" binding:"required"`
+	CreatedAt              time.Time         `json:"created_at" binding:"required"`
+	UpdatedAt              time.Time         `json:"updated_at" binding:"required"`
 	TerminalAt             *time.Time        `json:"terminal_at,omitempty"`
 }
 

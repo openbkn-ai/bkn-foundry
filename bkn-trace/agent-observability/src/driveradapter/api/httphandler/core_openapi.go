@@ -3,8 +3,7 @@ package httphandler
 import "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 
 type conversationPage struct {
-	Entries    []sessionvo.Conversation `json:"entries"`
-	NextCursor string                   `json:"next_cursor,omitempty"`
+	Entries []sessionvo.Conversation `json:"entries"`
 }
 
 type requestPage struct {
@@ -272,7 +271,7 @@ func documentGetCoreRequest() {}
 
 //nolint:unused // Swag resolves this request schema from annotation references.
 type resumeConversationRequest struct {
-	ConversationID string `json:"conversation_id"`
+	ConversationID string `json:"conversation_id" binding:"required"`
 }
 
 //nolint:unused // Swag resolves this request schema from annotation references.
