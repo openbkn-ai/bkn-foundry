@@ -1,4 +1,52 @@
 {
+  "bkn_create_conversation": {
+    "name": "bkn_create_conversation",
+    "description": "Create or reuse the current managed BKN Trace 3.0 Conversation."
+  },
+  "bkn_resume_conversation": {
+    "name": "bkn_resume_conversation",
+    "description": "Resume an authorized active Conversation by its Core ID."
+  },
+  "bkn_start_interaction": {
+    "name": "bkn_start_interaction",
+    "description": "Start one managed Interaction in an active Conversation."
+  },
+  "bkn_complete_interaction": {
+    "name": "bkn_complete_interaction",
+    "description": "Explicitly complete an Interaction with its closure manifest."
+  },
+  "bkn_fail_interaction": {
+    "name": "bkn_fail_interaction",
+    "description": "Explicitly fail an Interaction with its closure manifest."
+  },
+  "bkn_cancel_interaction": {
+    "name": "bkn_cancel_interaction",
+    "description": "Explicitly cancel an Interaction with its closure manifest."
+  },
+  "bkn_handoff_interaction": {
+    "name": "bkn_handoff_interaction",
+    "description": "Explicitly hand off an Interaction with its closure manifest."
+  },
+  "bkn_close_conversation": {
+    "name": "bkn_close_conversation",
+    "description": "Close an active Conversation when it has no active Interaction."
+  },
+  "bkn_get_operation": {
+    "name": "bkn_get_operation",
+    "description": "Get the authoritative Operation state and retry eligibility."
+  },
+  "bkn_retry_operation": {
+    "name": "bkn_retry_operation",
+    "description": "Explicitly create the next attempt for a retryable failed Operation."
+  },
+  "bkn_get_receipt": {
+    "name": "bkn_get_receipt",
+    "description": "Poll one authoritative durable Receipt by receipt ID."
+  },
+  "bkn_finalize_operation": {
+    "name": "bkn_finalize_operation",
+    "description": "Explicitly finalize a pending Operation Receipt without re-executing its downstream side effect."
+  },
   "search_schema": {
     "name": "search_schema",
     "description": "统一的 Schema 探索入口。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type/condition_operations，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"

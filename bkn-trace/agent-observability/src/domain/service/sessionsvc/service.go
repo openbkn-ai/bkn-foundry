@@ -111,6 +111,12 @@ type EnsureOperationCommand struct {
 	LeaseEpoch          uint64
 }
 
+type EnsureOperationResult struct {
+	Operation sessionvo.Operation
+	Receipt   sessionvo.Receipt
+	Created   bool
+}
+
 type StartAttemptCommand struct {
 	Owner       sessionvo.Owner
 	OperationID string
@@ -339,7 +345,7 @@ func (s *Service) GetInteraction(ctx context.Context, owner sessionvo.Owner, int
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interaction, found := tx.PeekInteraction(interactionID)
 		if !found {
-			return domainError(CodeInteractionRequired, "interaction was not found")
+			return resourceNotDisclosed()
 		}
 		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
@@ -355,7 +361,7 @@ func (s *Service) GetOperation(ctx context.Context, owner sessionvo.Owner, opera
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operation, found := tx.PeekOperation(operationID)
 		if !found {
-			return domainError(CodeInteractionRequired, "operation was not found")
+			return resourceNotDisclosed()
 		}
 		if _, err := ownedConversation(tx, owner, operation.ConversationID); err != nil {
 			return err
@@ -371,7 +377,7 @@ func (s *Service) GetReceipt(ctx context.Context, owner sessionvo.Owner, receipt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		receipt, found := tx.PeekReceipt(receiptID)
 		if !found {
-			return domainError(CodeInteractionRequired, "receipt was not found")
+			return resourceNotDisclosed()
 		}
 		if _, err := ownedConversation(tx, owner, receipt.ConversationID); err != nil {
 			return err
@@ -491,7 +497,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interactionRef, found := tx.PeekInteraction(command.InteractionID)
 		if !found {
-			return domainError(CodeInteractionRequired, "interaction was not found")
+			return resourceNotDisclosed()
 		}
 		conversation, err := ownedConversation(tx, command.Owner, interactionRef.ConversationID)
 		if err != nil {
@@ -499,7 +505,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		}
 		interaction, found := tx.FindInteraction(command.InteractionID)
 		if !found || interaction.ConversationID != conversation.ID {
-			return domainError(CodeInteractionRequired, "interaction was not found")
+			return resourceNotDisclosed()
 		}
 		if interaction.IsTerminal() {
 			if interaction.TerminalIdempotencyKey == command.TerminalIdempotencyKey &&
@@ -569,16 +575,31 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	return result, err
 }
 
-func (s *Service) EnsureOperation(ctx context.Context, command EnsureOperationCommand) (sessionvo.Operation, sessionvo.Receipt, error) {
+func (s *Service) EnsureOperation(
+	ctx context.Context,
+	command EnsureOperationCommand,
+) (sessionvo.Operation, sessionvo.Receipt, error) {
+	result, err := s.EnsureOperationWithDisposition(ctx, command)
+	return result.Operation, result.Receipt, err
+}
+
+func (s *Service) EnsureOperationWithDisposition(
+	ctx context.Context,
+	command EnsureOperationCommand,
+) (EnsureOperationResult, error) {
 	if command.OperationKey == "" || command.NormalizedInputHash == "" || command.ToolName == "" {
-		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(
+		return EnsureOperationResult{}, domainError(
 			CodeOperationRequired,
 			"operation key, tool name and normalized input hash are required",
 		)
 	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
+	created := false
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		operation = sessionvo.Operation{}
+		receipt = sessionvo.Receipt{}
+		created = false
 		conversation, err := ownedConversation(tx, command.Owner, command.ConversationID)
 		if err != nil {
 			return err
@@ -588,7 +609,7 @@ func (s *Service) EnsureOperation(ctx context.Context, command EnsureOperationCo
 		}
 		interaction, found := tx.FindInteraction(command.InteractionID)
 		if !found || interaction.ConversationID != conversation.ID {
-			return domainError(CodeInteractionRequired, "interaction does not belong to the conversation")
+			return resourceNotDisclosed()
 		}
 		if interaction.ExecutionStatus != sessionvo.InteractionActive ||
 			!interaction.LeaseExpiresAt.After(tx.Now()) {
@@ -601,11 +622,14 @@ func (s *Service) EnsureOperation(ctx context.Context, command EnsureOperationCo
 		}
 		if command.ParentOperationID != "" {
 			parent, found := tx.FindOperation(command.ParentOperationID)
-			if !found || parent.InteractionID != interaction.ID {
-				return domainError(
-					CodeOperationRequired,
-					"parent operation must belong to the same interaction",
-				)
+			if !found {
+				return resourceNotDisclosed()
+			}
+			if _, err := ownedConversation(tx, command.Owner, parent.ConversationID); err != nil {
+				return err
+			}
+			if parent.InteractionID != interaction.ID {
+				return resourceNotDisclosed()
 			}
 		}
 		renewInteractionLease(tx, &interaction)
@@ -648,6 +672,7 @@ func (s *Service) EnsureOperation(ctx context.Context, command EnsureOperationCo
 			RowVersion:           1,
 			IssuedAt:             now,
 		}
+		created = true
 		tx.SaveOperation(operation)
 		tx.SaveReceipt(receipt)
 		if err := s.appendProjection(tx, "operation", operation.ID, "operation.started", operation); err != nil {
@@ -666,7 +691,7 @@ func (s *Service) EnsureOperation(ctx context.Context, command EnsureOperationCo
 		)
 	})
 	s.observeLifecycleError(err)
-	return operation, receipt, err
+	return EnsureOperationResult{Operation: operation, Receipt: receipt, Created: created}, err
 }
 
 func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemptCommand) (sessionvo.Operation, sessionvo.Receipt, error) {
@@ -675,7 +700,7 @@ func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemp
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operationRef, found := tx.PeekOperation(command.OperationID)
 		if !found {
-			return domainError(CodeInteractionRequired, "operation was not found")
+			return resourceNotDisclosed()
 		}
 		conversation, err := ownedConversation(tx, command.Owner, operationRef.ConversationID)
 		if err != nil {
@@ -686,12 +711,12 @@ func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemp
 		}
 		interaction, found := tx.FindInteraction(operationRef.InteractionID)
 		if !found {
-			return domainError(CodeInteractionRequired, "interaction was not found")
+			return resourceNotDisclosed()
 		}
 		current, found := tx.FindOperation(command.OperationID)
 		if !found || current.ConversationID != conversation.ID ||
 			current.InteractionID != interaction.ID {
-			return domainError(CodeInteractionRequired, "operation was not found")
+			return resourceNotDisclosed()
 		}
 		if interaction.ExecutionStatus != sessionvo.InteractionActive ||
 			!interaction.LeaseExpiresAt.After(tx.Now()) {
@@ -769,10 +794,10 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 	if command.PayloadHash == "" {
 		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(CodeOperationRequired, "receipt payload hash is required")
 	}
-	if command.RequestID == "" || command.TraceID == "" {
+	if command.RequestID == "" || !validTraceID(command.TraceID) {
 		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(
 			CodeOperationRequired,
-			"receipt request ID and trace ID are required",
+			"receipt request ID and valid trace ID are required",
 		)
 	}
 	if !validEvidenceDurability(command.EvidenceDurability) {
@@ -786,7 +811,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operationRef, found := tx.PeekOperation(command.OperationID)
 		if !found {
-			return domainError(CodeInteractionRequired, "operation was not found")
+			return resourceNotDisclosed()
 		}
 		conversation, err := ownedConversation(tx, command.Owner, operationRef.ConversationID)
 		if err != nil {
@@ -794,23 +819,42 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		}
 		interaction, found := tx.FindInteraction(operationRef.InteractionID)
 		if !found {
-			return domainError(CodeInteractionRequired, "interaction was not found")
+			return resourceNotDisclosed()
 		}
 		current, found := tx.FindOperation(command.OperationID)
 		if !found || current.ConversationID != conversation.ID ||
 			current.InteractionID != interaction.ID {
-			return domainError(CodeInteractionRequired, "operation was not found")
+			return resourceNotDisclosed()
 		}
 		if interaction.ExecutionStatus == sessionvo.InteractionActive &&
 			!interaction.LeaseExpiresAt.After(tx.Now()) {
 			return domainError(CodeInteractionTerminal, "interaction lease has expired")
 		}
-		currentReceipt, found := tx.FindReceiptByOperationAttempt(current.ID, command.Attempt)
-		if !found || currentReceipt.ID != command.ReceiptID || current.Attempt != command.Attempt {
+		claimedReceipt, found := tx.FindReceipt(command.ReceiptID)
+		if !found {
+			return resourceNotDisclosed()
+		}
+		if _, err := ownedConversation(tx, command.Owner, claimedReceipt.ConversationID); err != nil {
+			return err
+		}
+		if claimedReceipt.ConversationID != conversation.ID ||
+			claimedReceipt.InteractionID != interaction.ID ||
+			claimedReceipt.OperationID != current.ID {
+			return resourceNotDisclosed()
+		}
+		if current.Attempt != command.Attempt {
 			return domainError(CodeIdempotencyConflict, "operation attempt or receipt does not match")
 		}
+		currentReceipt, found := tx.FindReceiptByOperationAttempt(current.ID, command.Attempt)
+		if !found {
+			return resourceNotDisclosed()
+		}
+		if currentReceipt.ID != claimedReceipt.ID {
+			return domainError(CodeIdempotencyConflict, "operation attempt or receipt does not match")
+		}
+		retryable := coreRetryableFailure(current, command, status)
 		if currentReceipt.Status != sessionvo.ReceiptPending {
-			if receiptTerminalMatches(currentReceipt, current, command, status) {
+			if receiptTerminalMatches(currentReceipt, current, command, status, retryable) {
 				operation, receipt = current, currentReceipt
 				return nil
 			}
@@ -835,7 +879,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		current.AttemptStatus = sessionvo.AttemptCompleted
 		if status == sessionvo.ReceiptFailed {
 			current.AttemptStatus = sessionvo.AttemptFailed
-			current.Retryable = command.Retryable
+			current.Retryable = retryable
 		}
 		current.RowVersion++
 		current.UpdatedAt = now
@@ -872,11 +916,60 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 	return operation, receipt, err
 }
 
+func validTraceID(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	if err != nil || len(decoded) != 16 {
+		return false
+	}
+	return slices.ContainsFunc(decoded, func(value byte) bool { return value != 0 })
+}
+
+var retryableOperationTools = map[string]struct{}{
+	"search_schema":               {},
+	"query_object_instance":       {},
+	"query_instance_subgraph":     {},
+	"get_logic_properties_values": {},
+	"get_action_info":             {},
+	"execute_action":              {},
+	"get_action_execution":        {},
+	"list_action_executions":      {},
+	"find_skills":                 {},
+	"list_knowledge_networks":     {},
+	"get_kn_detail":               {},
+	"get_object_types":            {},
+	"get_relation_types":          {},
+	"run_sql":                     {},
+	"list_resources":              {},
+	"describe_resource":           {},
+	"ontology-query":              {},
+}
+
+// Retryable is an observation from the adapter, not an authorization to retry.
+// Core grants retry eligibility only to registered tools after a failed attempt
+// whose evidence durability confirms that no durable success was recorded.
+func coreRetryableFailure(
+	operation sessionvo.Operation,
+	command FinishAttemptCommand,
+	status sessionvo.ReceiptStatus,
+) bool {
+	if status != sessionvo.ReceiptFailed ||
+		command.EvidenceDurability != sessionvo.DurabilityFailed ||
+		!command.Retryable {
+		return false
+	}
+	_, registered := retryableOperationTools[operation.ToolName]
+	return registered
+}
+
 func receiptTerminalMatches(
 	receipt sessionvo.Receipt,
 	operation sessionvo.Operation,
 	command FinishAttemptCommand,
 	status sessionvo.ReceiptStatus,
+	retryable bool,
 ) bool {
 	return receipt.Status == status &&
 		receipt.PayloadHash == command.PayloadHash &&
@@ -887,7 +980,7 @@ func receiptTerminalMatches(
 		slices.Equal(receipt.BusinessRefs, command.BusinessRefs) &&
 		slices.Equal(receipt.ArtifactRefs, command.ArtifactRefs) &&
 		slices.Equal(receipt.PartialReasons, command.PartialReasons) &&
-		(status != sessionvo.ReceiptFailed || operation.Retryable == command.Retryable)
+		(status != sessionvo.ReceiptFailed || operation.Retryable == retryable)
 }
 
 func validEvidenceDurability(value sessionvo.EvidenceDurability) bool {
@@ -1001,7 +1094,7 @@ func (s *Service) ListAssemblyRevisions(ctx context.Context, owner sessionvo.Own
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interaction, found := tx.PeekInteraction(interactionID)
 		if !found {
-			return domainError(CodeInteractionRequired, "interaction was not found")
+			return resourceNotDisclosed()
 		}
 		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
@@ -1151,12 +1244,22 @@ func evidenceReferenceCount(receipts []sessionvo.Receipt, replacingReceiptID str
 func ownedConversation(tx isessionstore.Transaction, owner sessionvo.Owner, conversationID string) (sessionvo.Conversation, error) {
 	conversation, found := tx.FindConversation(conversationID)
 	if !found {
-		return sessionvo.Conversation{}, domainError(CodeConversationNotFound, "conversation was not found")
+		return sessionvo.Conversation{}, domainError(
+			CodeResourceNotDisclosed,
+			"request was not found in the authorized scope",
+		)
 	}
 	if !conversation.Owner.Equal(owner) {
-		return sessionvo.Conversation{}, domainError(CodeConversationOwnerMismatch, "conversation belongs to another trusted owner")
+		return sessionvo.Conversation{}, domainError(
+			CodeResourceNotDisclosed,
+			"request was not found in the authorized scope",
+		)
 	}
 	return conversation, nil
+}
+
+func resourceNotDisclosed() error {
+	return domainError(CodeResourceNotDisclosed, "request was not found in the authorized scope")
 }
 
 func requireActiveConversation(conversation sessionvo.Conversation) error {

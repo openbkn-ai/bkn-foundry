@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := gen-swag
 
-SWAG ?= swag
+SWAG_VERSION := v1.8.12
+SWAG ?= go run github.com/swaggo/swag/cmd/swag@v1.8.12
 SWAG_OUT := docs/swagger
 IMAGE ?= swr.cn-east-3.myhuaweicloud.com/kweaver-ai/agent-observability:local
 CHART_PATH := charts/agent-observability
@@ -12,7 +13,7 @@ INTEGRATION_PACKAGE := ./src/drivenadapter/dbaccess/mariadb/sessionstore
 OPENSEARCH_INTEGRATION_PACKAGE := ./src/drivenadapter/httpaccess/opensearchprojection
 
 .PHONY: lint test test-cover test-race test-integration test-opensearch-integration test-performance ci build \
-	docker-build helm-lint helm-package gen-swag view-swag clean-swag
+	docker-build helm-lint helm-package check-swag-version gen-swag check-swag view-swag clean-swag
 
 lint:
 	GOCACHE=$(GOCACHE) go vet ./...
@@ -59,8 +60,21 @@ helm-package:
 	mkdir -p dist
 	helm package $(CHART_PATH) --destination dist
 
-gen-swag:
+check-swag-version:
+	@$(SWAG) --version | grep -q "version $(SWAG_VERSION)$$" || \
+		(echo "Swagger CLI must be $(SWAG_VERSION)" >&2; exit 1)
+
+gen-swag: check-swag-version
 	$(SWAG) init -g main.go -o $(SWAG_OUT) --parseDependency --parseInternal
+
+check-swag: check-swag-version
+	@set -e; \
+		tmp=$$(mktemp -d); \
+		trap 'rm -rf "$$tmp"' EXIT; \
+		$(SWAG) init -g main.go -o "$$tmp" --packageName swagger --parseDependency --parseInternal; \
+		for file in docs.go swagger.json swagger.yaml; do \
+			diff -u $(SWAG_OUT)/$$file $$tmp/$$file; \
+		done
 
 view-swag:
 	@echo "Swagger JSON: http://localhost:8080/swagger/swagger.json"

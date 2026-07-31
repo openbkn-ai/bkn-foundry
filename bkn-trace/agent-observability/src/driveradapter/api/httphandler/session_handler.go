@@ -38,39 +38,39 @@ type lifecycleError struct {
 }
 
 type ensureConversationRequest struct {
-	ExternalConversationKey string `json:"external_conversation_key"`
+	ExternalConversationKey string `json:"external_conversation_key" binding:"required"`
 	IdempotencyKey          string `json:"idempotency_key"`
 	OneShot                 bool   `json:"one_shot"`
 }
 
 type startInteractionRequest struct {
-	IdempotencyKey string `json:"idempotency_key"`
+	IdempotencyKey string `json:"idempotency_key" binding:"required"`
 	LeaseSeconds   int64  `json:"lease_seconds"`
 }
 
 type ensureOperationRequest struct {
-	OperationKey        string   `json:"operation_key"`
-	ToolName            string   `json:"tool_name"`
-	NormalizedInputHash string   `json:"normalized_input_hash"`
+	OperationKey        string   `json:"operation_key" binding:"required"`
+	ToolName            string   `json:"tool_name" binding:"required"`
+	NormalizedInputHash string   `json:"normalized_input_hash" binding:"required"`
 	ParentOperationID   string   `json:"parent_operation_id,omitempty"`
 	CausationEventIDs   []string `json:"causation_event_ids,omitempty"`
 	Required            bool     `json:"required"`
-	LeaseToken          string   `json:"lease_token"`
-	LeaseEpoch          uint64   `json:"lease_epoch"`
+	LeaseToken          string   `json:"lease_token" binding:"required"`
+	LeaseEpoch          uint64   `json:"lease_epoch" binding:"required"`
 }
 
 type interactionLeaseRequest struct {
-	LeaseToken string `json:"lease_token"`
-	LeaseEpoch uint64 `json:"lease_epoch"`
+	LeaseToken string `json:"lease_token" binding:"required"`
+	LeaseEpoch uint64 `json:"lease_epoch" binding:"required"`
 }
 
 type finishAttemptRequest struct {
-	ReceiptID            string                       `json:"receipt_id"`
-	PayloadHash          string                       `json:"payload_hash"`
-	EvidenceDurability   sessionvo.EvidenceDurability `json:"evidence_durability"`
+	ReceiptID            string                       `json:"receipt_id" binding:"required"`
+	PayloadHash          string                       `json:"payload_hash" binding:"required"`
+	EvidenceDurability   sessionvo.EvidenceDurability `json:"evidence_durability" binding:"required"`
 	Retryable            bool                         `json:"retryable"`
-	RequestID            string                       `json:"request_id,omitempty"`
-	TraceID              string                       `json:"trace_id,omitempty"`
+	RequestID            string                       `json:"request_id" binding:"required"`
+	TraceID              string                       `json:"trace_id" binding:"required"`
 	ObservedEvidenceRefs []string                     `json:"observed_evidence_refs,omitempty"`
 	BusinessRefs         []sessionvo.BusinessRef      `json:"business_refs,omitempty"`
 	ArtifactRefs         []string                     `json:"artifact_refs,omitempty"`
@@ -78,21 +78,22 @@ type finishAttemptRequest struct {
 }
 
 type terminalInteractionRequest struct {
-	TerminalIdempotencyKey string                        `json:"terminal_idempotency_key"`
-	LeaseToken             string                        `json:"lease_token"`
-	LeaseEpoch             uint64                        `json:"lease_epoch"`
-	ManifestVersion        string                        `json:"completion_manifest_version"`
+	TerminalIdempotencyKey string                        `json:"terminal_idempotency_key" binding:"required"`
+	LeaseToken             string                        `json:"lease_token" binding:"required"`
+	LeaseEpoch             uint64                        `json:"lease_epoch" binding:"required"`
+	ManifestVersion        string                        `json:"completion_manifest_version" binding:"required"`
 	AnswerArtifactRef      string                        `json:"answer_artifact_ref,omitempty"`
 	Claims                 []string                      `json:"claims,omitempty"`
 	ExpectedOperations     []sessionvo.ExpectedOperation `json:"expected_operations,omitempty"`
 	ExpectedReceipts       []sessionvo.ExpectedReceipt   `json:"expected_receipts,omitempty"`
 	AssemblerDeadline      *time.Time                    `json:"assembler_deadline,omitempty"`
-	CompletionReason       string                        `json:"completion_reason"`
+	CompletionReason       string                        `json:"completion_reason" binding:"required"`
 }
 
 type operationResult struct {
-	Operation sessionvo.Operation `json:"operation"`
-	Receipt   sessionvo.Receipt   `json:"receipt"`
+	Operation sessionvo.Operation `json:"operation" binding:"required"`
+	Receipt   sessionvo.Receipt   `json:"receipt" binding:"required"`
+	Created   bool                `json:"created" binding:"required"`
 }
 
 func RegisterSessionRoutes(
@@ -282,7 +283,7 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 			writeLifecycleError(w, r, http.StatusBadRequest, "operation_required", err.Error())
 			return
 		}
-		operation, receipt, err := h.service.EnsureOperation(r.Context(), sessionsvc.EnsureOperationCommand{
+		result, err := h.service.EnsureOperationWithDisposition(r.Context(), sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: parts[0], InteractionID: parts[2],
 			OperationKey: request.OperationKey, ToolName: request.ToolName,
 			NormalizedInputHash: request.NormalizedInputHash,
@@ -290,7 +291,9 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 			CausationEventIDs:   request.CausationEventIDs, Required: request.Required,
 			LeaseToken: request.LeaseToken, LeaseEpoch: request.LeaseEpoch,
 		})
-		h.writeLifecycleResult(w, r, operationResult{Operation: operation, Receipt: receipt}, err, http.StatusCreated)
+		h.writeLifecycleResult(w, r, operationResult{
+			Operation: result.Operation, Receipt: result.Receipt, Created: result.Created,
+		}, err, http.StatusCreated)
 	default:
 		writeLifecycleError(w, r, http.StatusNotFound, "conversation_not_found", "lifecycle route was not found")
 	}
@@ -360,7 +363,9 @@ func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *ht
 			Owner: owner, OperationID: parts[0],
 			LeaseToken: request.LeaseToken, LeaseEpoch: request.LeaseEpoch,
 		})
-		h.writeLifecycleResult(w, r, operationResult{Operation: operation, Receipt: receipt}, err, http.StatusCreated)
+		h.writeLifecycleResult(w, r, operationResult{
+			Operation: operation, Receipt: receipt, Created: err == nil,
+		}, err, http.StatusCreated)
 		return
 	}
 	if len(parts) != 3 || parts[1] != "attempts" || r.Method != http.MethodPost {

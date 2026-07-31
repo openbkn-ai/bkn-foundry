@@ -1,6 +1,7 @@
 package driveradapters
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -254,18 +255,24 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 			KnSearchHandler:                stubKnSearchHandler{},
 			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
+			LifecycleClient:                inProcessLifecycleClient(t),
 			Logger:                         logger.DefaultLogger(),
 		}
 		handler.RegisterRouter(routerGroup)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/kn/semantic-search?response_format=toon", http.NoBody)
-		req.Header.Set("Authorization", "Bearer token")
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/agent-retrieval/v1/kn/semantic-search?response_format=toon",
+			bytes.NewBufferString(`{
+				"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route","operation_key":"route-semantic"}
+			}`),
+		)
+		setRouteLifecycleHeaders(req)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
-
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
-		convey.So(w.Body.String(), convey.ShouldEqual, "ok")
+		convey.So(w.Body.String(), convey.ShouldContainSubstring, `"result":"ok"`)
 	})
 }
 

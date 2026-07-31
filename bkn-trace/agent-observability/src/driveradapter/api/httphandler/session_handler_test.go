@@ -126,8 +126,12 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 	var operationResult struct {
 		Operation sessionvo.Operation `json:"operation"`
 		Receipt   sessionvo.Receipt   `json:"receipt"`
+		Created   bool                `json:"created"`
 	}
 	decodeLifecycleResponse(t, operationResponse, &operationResult)
+	if !operationResult.Created {
+		t.Fatal("new operation must report created=true")
+	}
 
 	receiptResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/operations/"+operationResult.Operation.ID+"/attempts/1:complete",
@@ -136,17 +140,57 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 		t.Fatalf("complete receipt: %d %s", receiptResponse.Code, receiptResponse.Body.String())
 	}
 
+	retryOperationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions/"+interaction.ID+"/operations:ensure",
+		`{"operation_key":"retry-orders","tool_name":"ontology-query","normalized_input_hash":"sha256:retry-input","required":true,"lease_token":"`+
+			interaction.LeaseToken+`","lease_epoch":1}`)
+	var retryOperationResult struct {
+		Operation sessionvo.Operation `json:"operation"`
+		Receipt   sessionvo.Receipt   `json:"receipt"`
+	}
+	decodeLifecycleResponse(t, retryOperationResponse, &retryOperationResult)
+	failResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/operations/"+retryOperationResult.Operation.ID+"/attempts/1:fail",
+		`{"receipt_id":"`+retryOperationResult.Receipt.ID+`","payload_hash":"sha256:failure","evidence_durability":"failed","retryable":true,"request_id":"req-retry","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+	if failResponse.Code != http.StatusOK {
+		t.Fatalf("fail retryable attempt: %d %s", failResponse.Code, failResponse.Body.String())
+	}
+	retryResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/operations/"+retryOperationResult.Operation.ID+"/attempts",
+		`{"lease_token":"`+interaction.LeaseToken+`","lease_epoch":1}`)
+	if retryResponse.Code != http.StatusCreated {
+		t.Fatalf("start retry attempt: %d %s", retryResponse.Code, retryResponse.Body.String())
+	}
+	var retryResult struct {
+		Operation sessionvo.Operation `json:"operation"`
+		Receipt   sessionvo.Receipt   `json:"receipt"`
+		Created   bool                `json:"created"`
+	}
+	decodeLifecycleResponse(t, retryResponse, &retryResult)
+	if !retryResult.Created {
+		t.Fatal("new attempt must report created=true")
+	}
+	retryCompleteResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/operations/"+retryResult.Operation.ID+"/attempts/2:complete",
+		`{"receipt_id":"`+retryResult.Receipt.ID+`","payload_hash":"sha256:retry-result","evidence_durability":"durable","request_id":"req-retry-complete","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+	if retryCompleteResponse.Code != http.StatusOK {
+		t.Fatalf("complete retry attempt: %d %s", retryCompleteResponse.Code, retryCompleteResponse.Body.String())
+	}
+
 	completeResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/interactions/"+interaction.ID+"/complete",
 		`{"terminal_idempotency_key":"terminal-1","lease_token":"`+interaction.LeaseToken+`","lease_epoch":1,"completion_manifest_version":"1","completion_reason":"answer_returned","expected_operations":[{"operation_id":"`+
-			operationResult.Operation.ID+`","required":true}],"expected_receipts":[{"receipt_id":"`+
-			operationResult.Receipt.ID+`","required":true}]}`)
+			operationResult.Operation.ID+`","required":true},{"operation_id":"`+
+			retryResult.Operation.ID+`","required":true}],"expected_receipts":[{"receipt_id":"`+
+			operationResult.Receipt.ID+`","required":true},{"receipt_id":"`+
+			retryOperationResult.Receipt.ID+`","required":true},{"receipt_id":"`+
+			retryResult.Receipt.ID+`","required":true}]}`)
 	if completeResponse.Code != http.StatusOK {
 		t.Fatalf("complete interaction: %d %s", completeResponse.Code, completeResponse.Body.String())
 	}
 	var completed sessionvo.Interaction
 	decodeLifecycleResponse(t, completeResponse, &completed)
-	if completed.ExecutionStatus != sessionvo.InteractionCompleted || completed.EvidenceStatus != sessionvo.EvidenceComplete {
+	if completed.ExecutionStatus != sessionvo.InteractionCompleted || completed.EvidenceStatus != sessionvo.EvidencePartial {
 		t.Fatalf("unexpected completed interaction: %#v", completed)
 	}
 
@@ -154,6 +198,48 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 		"/api/agent-observability/v1/interactions/"+interaction.ID, "")
 	if getResponse.Code != http.StatusOK {
 		t.Fatalf("get interaction: %d %s", getResponse.Code, getResponse.Body.String())
+	}
+}
+
+func TestEnsureOperationHTTPReportsCreatedAndReplay(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"created-http","idempotency_key":"conversation-created-http"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+	interactionResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"interaction-created-http","lease_seconds":300}`)
+	var interaction sessionvo.Interaction
+	decodeLifecycleResponse(t, interactionResponse, &interaction)
+	body := `{"operation_key":"logical-http","tool_name":"context-loader","normalized_input_hash":"sha256:http","required":true,"lease_token":"` +
+		interaction.LeaseToken + `","lease_epoch":1}`
+	path := "/api/agent-observability/v1/conversations/" + conversation.ID +
+		"/interactions/" + interaction.ID + "/operations:ensure"
+
+	first := performLifecycleRequest(t, mux, http.MethodPost, path, body)
+	replayed := performLifecycleRequest(t, mux, http.MethodPost, path, body)
+	for label, response := range map[string]*httptest.ResponseRecorder{"first": first, "replayed": replayed} {
+		if response.Code != http.StatusCreated {
+			t.Fatalf("%s ensure: %d %s", label, response.Code, response.Body.String())
+		}
+	}
+	var firstResult, replayedResult struct {
+		Created   bool                `json:"created"`
+		Operation sessionvo.Operation `json:"operation"`
+		Receipt   sessionvo.Receipt   `json:"receipt"`
+	}
+	decodeLifecycleResponse(t, first, &firstResult)
+	decodeLifecycleResponse(t, replayed, &replayedResult)
+	if !firstResult.Created || replayedResult.Created ||
+		firstResult.Operation.ID != replayedResult.Operation.ID ||
+		firstResult.Receipt.ID != replayedResult.Receipt.ID {
+		t.Fatalf("unexpected created/replay contract: first=%#v replay=%#v", firstResult, replayedResult)
 	}
 }
 
@@ -184,9 +270,46 @@ func TestConversationListUsesOwnerTupleAsRealQueryScope(t *testing.T) {
 	}
 }
 
+func TestConversationLookupDoesNotDiscloseMissingVersusAnotherOwner(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+	createdResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"private","idempotency_key":"private-create"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, createdResponse, &conversation)
+
+	lookup := func(id string) lifecycleTestErrorEnvelope {
+		request := httptest.NewRequest(http.MethodGet,
+			"/api/agent-observability/v1/conversations/"+id, http.NoBody)
+		setTrustedOwnerHeaders(request)
+		request.Header.Set("X-BKN-Effective-Subject-ID", "other-user")
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("lookup %q status = %d: %s", id, response.Code, response.Body.String())
+		}
+		var envelope lifecycleTestErrorEnvelope
+		decodeLifecycleResponse(t, response, &envelope)
+		return envelope
+	}
+
+	crossOwner := lookup(conversation.ID)
+	missing := lookup("missing-conversation")
+	if crossOwner.Error.Code != "resource_not_disclosed" ||
+		crossOwner.Error.RequiredAction != "verify_scope_or_identifier" ||
+		crossOwner.Error != missing.Error {
+		t.Fatalf("lookup disclosure differs: cross-owner=%#v missing=%#v", crossOwner, missing)
+	}
+}
+
 type lifecycleTestErrorEnvelope struct {
 	Error struct {
 		Code           string `json:"code"`
+		Message        string `json:"message"`
 		RequiredAction string `json:"required_action"`
 	} `json:"error"`
 }

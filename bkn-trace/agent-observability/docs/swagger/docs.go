@@ -3234,22 +3234,10 @@ const docTemplate = `{
         },
         "httphandler.ensureConversationRequest": {
             "type": "object",
+            "required": [
+                "external_conversation_key"
+            ],
             "properties": {
-                "application_principal_id": {
-                    "type": "string"
-                },
-                "business_domain_id": {
-                    "type": "string"
-                },
-                "delegation_id": {
-                    "type": "string"
-                },
-                "effective_subject_id": {
-                    "type": "string"
-                },
-                "effective_subject_type": {
-                    "type": "string"
-                },
                 "external_conversation_key": {
                     "type": "string"
                 },
@@ -3258,14 +3246,18 @@ const docTemplate = `{
                 },
                 "one_shot": {
                     "type": "boolean"
-                },
-                "tenant_id": {
-                    "type": "string"
                 }
             }
         },
         "httphandler.ensureOperationRequest": {
             "type": "object",
+            "required": [
+                "lease_epoch",
+                "lease_token",
+                "normalized_input_hash",
+                "operation_key",
+                "tool_name"
+            ],
             "properties": {
                 "causation_event_ids": {
                     "type": "array",
@@ -3387,6 +3379,13 @@ const docTemplate = `{
         },
         "httphandler.finishAttemptRequest": {
             "type": "object",
+            "required": [
+                "evidence_durability",
+                "payload_hash",
+                "receipt_id",
+                "request_id",
+                "trace_id"
+            ],
             "properties": {
                 "artifact_refs": {
                     "type": "array",
@@ -3434,6 +3433,10 @@ const docTemplate = `{
         },
         "httphandler.interactionLeaseRequest": {
             "type": "object",
+            "required": [
+                "lease_epoch",
+                "lease_token"
+            ],
             "properties": {
                 "lease_epoch": {
                     "type": "integer"
@@ -3502,7 +3505,15 @@ const docTemplate = `{
         },
         "httphandler.operationResult": {
             "type": "object",
+            "required": [
+                "created",
+                "operation",
+                "receipt"
+            ],
             "properties": {
+                "created": {
+                    "type": "boolean"
+                },
                 "operation": {
                     "$ref": "#/definitions/sessionvo.Operation"
                 },
@@ -3527,6 +3538,9 @@ const docTemplate = `{
         },
         "httphandler.resumeConversationRequest": {
             "type": "object",
+            "required": [
+                "conversation_id"
+            ],
             "properties": {
                 "conversation_id": {
                     "type": "string"
@@ -3535,6 +3549,9 @@ const docTemplate = `{
         },
         "httphandler.startInteractionRequest": {
             "type": "object",
+            "required": [
+                "idempotency_key"
+            ],
             "properties": {
                 "idempotency_key": {
                     "type": "string"
@@ -3546,6 +3563,13 @@ const docTemplate = `{
         },
         "httphandler.terminalInteractionRequest": {
             "type": "object",
+            "required": [
+                "completion_manifest_version",
+                "completion_reason",
+                "lease_epoch",
+                "lease_token",
+                "terminal_idempotency_key"
+            ],
             "properties": {
                 "answer_artifact_ref": {
                     "type": "string"
@@ -3641,6 +3665,12 @@ const docTemplate = `{
         },
         "sessionvo.BusinessRef": {
             "type": "object",
+            "required": [
+                "business_domain_id",
+                "ref_id",
+                "ref_type",
+                "version"
+            ],
             "properties": {
                 "as_of": {
                     "type": "string"
@@ -3664,6 +3694,10 @@ const docTemplate = `{
         },
         "sessionvo.ClosureManifest": {
             "type": "object",
+            "required": [
+                "completion_manifest_version",
+                "completion_reason"
+            ],
             "properties": {
                 "answer_artifact_ref": {
                     "type": "string"
@@ -3705,6 +3739,17 @@ const docTemplate = `{
         },
         "sessionvo.Conversation": {
             "type": "object",
+            "required": [
+                "conversation_id",
+                "created_at",
+                "external_conversation_key",
+                "generation",
+                "one_shot",
+                "owner",
+                "row_version",
+                "status",
+                "updated_at"
+            ],
             "properties": {
                 "closed_at": {
                     "type": "string"
@@ -3783,6 +3828,10 @@ const docTemplate = `{
         },
         "sessionvo.ExpectedOperation": {
             "type": "object",
+            "required": [
+                "operation_id",
+                "required"
+            ],
             "properties": {
                 "operation_id": {
                     "type": "string"
@@ -3794,6 +3843,10 @@ const docTemplate = `{
         },
         "sessionvo.ExpectedReceipt": {
             "type": "object",
+            "required": [
+                "receipt_id",
+                "required"
+            ],
             "properties": {
                 "receipt_id": {
                     "type": "string"
@@ -3805,6 +3858,20 @@ const docTemplate = `{
         },
         "sessionvo.Interaction": {
             "type": "object",
+            "required": [
+                "conversation_id",
+                "created_at",
+                "evidence_status",
+                "execution_status",
+                "interaction_id",
+                "lease_epoch",
+                "lease_expires_at",
+                "lease_token",
+                "lease_version",
+                "ordinal",
+                "row_version",
+                "updated_at"
+            ],
             "properties": {
                 "closure_manifest": {
                     "$ref": "#/definitions/sessionvo.ClosureManifest"
@@ -3871,6 +3938,20 @@ const docTemplate = `{
         },
         "sessionvo.Operation": {
             "type": "object",
+            "required": [
+                "attempt",
+                "attempt_status",
+                "conversation_id",
+                "created_at",
+                "interaction_id",
+                "normalized_input_hash",
+                "operation_id",
+                "operation_key",
+                "retryable",
+                "row_version",
+                "tool_name",
+                "updated_at"
+            ],
             "properties": {
                 "attempt": {
                     "type": "integer"
@@ -3921,6 +4002,13 @@ const docTemplate = `{
         },
         "sessionvo.Owner": {
             "type": "object",
+            "required": [
+                "application_principal_id",
+                "business_domain_id",
+                "effective_subject_id",
+                "effective_subject_type",
+                "tenant_id"
+            ],
             "properties": {
                 "application_principal_id": {
                     "type": "string"
@@ -3944,6 +4032,31 @@ const docTemplate = `{
         },
         "sessionvo.Receipt": {
             "type": "object",
+            "required": [
+                "artifact_refs",
+                "attempt",
+                "business_refs",
+                "causation_event_ids",
+                "conversation_id",
+                "evidence_durability",
+                "interaction_id",
+                "issued_at",
+                "normalized_input_hash",
+                "observed_evidence_refs",
+                "operation_id",
+                "operation_key",
+                "owner",
+                "partial_reasons",
+                "payload_hash",
+                "receipt_id",
+                "receipt_status",
+                "request_id",
+                "required",
+                "row_version",
+                "schema_version",
+                "tool_name",
+                "trace_id"
+            ],
             "properties": {
                 "artifact_refs": {
                     "type": "array",

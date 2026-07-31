@@ -16,6 +16,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
@@ -34,9 +35,9 @@ const (
 	toolKeyQueryInstanceSubgraph    = "query_instance_subgraph"
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
 	toolKeyGetActionInfo            = "get_action_info"
-	toolKeyExecuteAction           = "execute_action"
-	toolKeyGetActionExecution      = "get_action_execution"
-	toolKeyListActionExecutions    = "list_action_executions"
+	toolKeyExecuteAction            = "execute_action"
+	toolKeyGetActionExecution       = "get_action_execution"
+	toolKeyListActionExecutions     = "list_action_executions"
 	toolKeyFindSkills               = "find_skills"
 	toolKeyListKnowledgeNetworks    = "list_knowledge_networks"
 	toolKeyGetKnDetail              = "get_kn_detail"
@@ -87,11 +88,17 @@ run_sql 占位符示例（id 必须来自 search_schema / list_resources 的真�
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
 // Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
 func NewMCPHandler() http.Handler {
+	return NewMCPHandlerWithLifecycle(bkntrace.NewLifecycleClientFromEnv())
+}
+
+func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
 	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	mcpServer := server.NewMCPServer(serverName, serverVersion,
 		server.WithToolCapabilities(true),
 		server.WithInstructions(localeBundle.ServerInstructions()),
+		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
 	)
+	registerLifecycleTools(mcpServer, lifecycleClient)
 
 	knSearchService := knsearch.NewKnSearchService()
 	searchSchemaName, searchSchemaDesc := localeBundle.ToolMeta(toolKeySearchSchema)

@@ -272,7 +272,7 @@ func documentGetCoreRequest() {}
 
 //nolint:unused // Swag resolves this request schema from annotation references.
 type resumeConversationRequest struct {
-	ConversationID string `json:"conversation_id"`
+	ConversationID string `json:"conversation_id" binding:"required"`
 }
 
 //nolint:unused // Swag resolves this request schema from annotation references.

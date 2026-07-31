@@ -521,24 +521,14 @@ definitions:
     type: object
   httphandler.ensureConversationRequest:
     properties:
-      application_principal_id:
-        type: string
-      business_domain_id:
-        type: string
-      delegation_id:
-        type: string
-      effective_subject_id:
-        type: string
-      effective_subject_type:
-        type: string
       external_conversation_key:
         type: string
       idempotency_key:
         type: string
       one_shot:
         type: boolean
-      tenant_id:
-        type: string
+    required:
+    - external_conversation_key
     type: object
   httphandler.ensureOperationRequest:
     properties:
@@ -560,6 +550,12 @@ definitions:
         type: boolean
       tool_name:
         type: string
+    required:
+    - lease_epoch
+    - lease_token
+    - normalized_input_hash
+    - operation_key
+    - tool_name
     type: object
   httphandler.evidenceEventRequest:
     properties:
@@ -650,6 +646,12 @@ definitions:
         type: boolean
       trace_id:
         type: string
+    required:
+    - evidence_durability
+    - payload_hash
+    - receipt_id
+    - request_id
+    - trace_id
     type: object
   httphandler.interactionLeaseRequest:
     properties:
@@ -657,6 +659,9 @@ definitions:
         type: integer
       lease_token:
         type: string
+    required:
+    - lease_epoch
+    - lease_token
     type: object
   httphandler.lifecycleError:
     properties:
@@ -704,10 +709,16 @@ definitions:
     type: object
   httphandler.operationResult:
     properties:
+      created:
+        type: boolean
       operation:
         $ref: '#/definitions/sessionvo.Operation'
       receipt:
         $ref: '#/definitions/sessionvo.Receipt'
+    required:
+    - created
+    - operation
+    - receipt
     type: object
   httphandler.requestPage:
     properties:
@@ -722,6 +733,8 @@ definitions:
     properties:
       conversation_id:
         type: string
+    required:
+    - conversation_id
     type: object
   httphandler.startInteractionRequest:
     properties:
@@ -729,6 +742,8 @@ definitions:
         type: string
       lease_seconds:
         type: integer
+    required:
+    - idempotency_key
     type: object
   httphandler.terminalInteractionRequest:
     properties:
@@ -758,6 +773,12 @@ definitions:
         type: string
       terminal_idempotency_key:
         type: string
+    required:
+    - completion_manifest_version
+    - completion_reason
+    - lease_epoch
+    - lease_token
+    - terminal_idempotency_key
     type: object
   ledgervo.DurableAck:
     properties:
@@ -808,6 +829,11 @@ definitions:
         type: string
       version:
         type: string
+    required:
+    - business_domain_id
+    - ref_id
+    - ref_type
+    - version
     type: object
   sessionvo.ClosureManifest:
     properties:
@@ -835,6 +861,9 @@ definitions:
         items:
           type: string
         type: array
+    required:
+    - completion_manifest_version
+    - completion_reason
     type: object
   sessionvo.Conversation:
     properties:
@@ -858,6 +887,16 @@ definitions:
         $ref: '#/definitions/sessionvo.ConversationStatus'
       updated_at:
         type: string
+    required:
+    - conversation_id
+    - created_at
+    - external_conversation_key
+    - generation
+    - one_shot
+    - owner
+    - row_version
+    - status
+    - updated_at
     type: object
   sessionvo.ConversationStatus:
     enum:
@@ -899,6 +938,9 @@ definitions:
         type: string
       required:
         type: boolean
+    required:
+    - operation_id
+    - required
     type: object
   sessionvo.ExpectedReceipt:
     properties:
@@ -906,6 +948,9 @@ definitions:
         type: string
       required:
         type: boolean
+    required:
+    - receipt_id
+    - required
     type: object
   sessionvo.Interaction:
     properties:
@@ -937,6 +982,19 @@ definitions:
         type: string
       updated_at:
         type: string
+    required:
+    - conversation_id
+    - created_at
+    - evidence_status
+    - execution_status
+    - interaction_id
+    - lease_epoch
+    - lease_expires_at
+    - lease_token
+    - lease_version
+    - ordinal
+    - row_version
+    - updated_at
     type: object
   sessionvo.InteractionStatus:
     enum:
@@ -986,6 +1044,19 @@ definitions:
         type: string
       updated_at:
         type: string
+    required:
+    - attempt
+    - attempt_status
+    - conversation_id
+    - created_at
+    - interaction_id
+    - normalized_input_hash
+    - operation_id
+    - operation_key
+    - retryable
+    - row_version
+    - tool_name
+    - updated_at
     type: object
   sessionvo.Owner:
     properties:
@@ -1001,6 +1072,12 @@ definitions:
         $ref: '#/definitions/sessionvo.SubjectType'
       tenant_id:
         type: string
+    required:
+    - application_principal_id
+    - business_domain_id
+    - effective_subject_id
+    - effective_subject_type
+    - tenant_id
     type: object
   sessionvo.Receipt:
     properties:
@@ -1062,6 +1139,30 @@ definitions:
         type: string
       trace_id:
         type: string
+    required:
+    - artifact_refs
+    - attempt
+    - business_refs
+    - causation_event_ids
+    - conversation_id
+    - evidence_durability
+    - interaction_id
+    - issued_at
+    - normalized_input_hash
+    - observed_evidence_refs
+    - operation_id
+    - operation_key
+    - owner
+    - partial_reasons
+    - payload_hash
+    - receipt_id
+    - receipt_status
+    - request_id
+    - required
+    - row_version
+    - schema_version
+    - tool_name
+    - trace_id
     type: object
   sessionvo.ReceiptStatus:
     enum:

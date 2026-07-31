@@ -1,6 +1,7 @@
 package driveradapters
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,17 +34,20 @@ func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 			KnSearchHandler:                stubKnSearchHandler{},
 			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
+			LifecycleClient:                inProcessLifecycleClient(t),
 			Logger:                         logger.DefaultLogger(),
 		}
 		handler.RegisterRouter(routerGroup)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/kn/search_schema", http.NoBody)
-		req.Header.Set("Authorization", "Bearer token")
+		req := httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/kn/search_schema", bytes.NewBufferString(`{
+			"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route","operation_key":"route-search"}
+		}`))
+		setRouteLifecycleHeaders(req)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
-
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
-		convey.So(w.Body.String(), convey.ShouldEqual, "search_schema")
+		convey.So(w.Body.String(), convey.ShouldContainSubstring, `"result":"search_schema"`)
+		convey.So(w.Body.String(), convey.ShouldContainSubstring, `"receipt_status":"completed"`)
 	})
 }

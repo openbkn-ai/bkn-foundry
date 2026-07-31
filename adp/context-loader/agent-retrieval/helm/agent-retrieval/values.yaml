@@ -164,6 +164,8 @@ observability:
   trace:
     enabled: false
     sampling_rate: 1.0
+  lifecycle:
+    core_url: "http://agent-observability:8080"
   evidence:
     ingest_url: ""
     timeout_ms: 2000

@@ -18,11 +18,11 @@ const (
 )
 
 type Owner struct {
-	TenantID               string      `json:"tenant_id"`
-	BusinessDomainID       string      `json:"business_domain_id"`
-	ApplicationPrincipalID string      `json:"application_principal_id"`
-	EffectiveSubjectType   SubjectType `json:"effective_subject_type"`
-	EffectiveSubjectID     string      `json:"effective_subject_id"`
+	TenantID               string      `json:"tenant_id" binding:"required"`
+	BusinessDomainID       string      `json:"business_domain_id" binding:"required"`
+	ApplicationPrincipalID string      `json:"application_principal_id" binding:"required"`
+	EffectiveSubjectType   SubjectType `json:"effective_subject_type" binding:"required"`
+	EffectiveSubjectID     string      `json:"effective_subject_id" binding:"required"`
 	DelegationID           string      `json:"delegation_id,omitempty"`
 }
 
@@ -37,14 +37,14 @@ func (o Owner) Key() string {
 }
 
 type Conversation struct {
-	ID                      string             `json:"conversation_id"`
-	Owner                   Owner              `json:"owner"`
-	ExternalConversationKey string             `json:"external_conversation_key"`
-	Generation              uint64             `json:"generation"`
-	Status                  ConversationStatus `json:"status"`
-	OneShot                 bool               `json:"one_shot"`
-	RowVersion              uint64             `json:"row_version"`
-	CreatedAt               time.Time          `json:"created_at"`
-	UpdatedAt               time.Time          `json:"updated_at"`
+	ID                      string             `json:"conversation_id" binding:"required"`
+	Owner                   Owner              `json:"owner" binding:"required"`
+	ExternalConversationKey string             `json:"external_conversation_key" binding:"required"`
+	Generation              uint64             `json:"generation" binding:"required"`
+	Status                  ConversationStatus `json:"status" binding:"required"`
+	OneShot                 bool               `json:"one_shot" binding:"required"`
+	RowVersion              uint64             `json:"row_version" binding:"required"`
+	CreatedAt               time.Time          `json:"created_at" binding:"required"`
+	UpdatedAt               time.Time          `json:"updated_at" binding:"required"`
 	ClosedAt                *time.Time         `json:"closed_at,omitempty"`
 }
