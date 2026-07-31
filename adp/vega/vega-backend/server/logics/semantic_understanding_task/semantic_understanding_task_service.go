@@ -586,7 +586,8 @@ func defaultSemanticUnderstandingRequest() *interfaces.CreateSemanticUnderstandi
 
 func buildResourceSemanticUnderstandingInput(resource *interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (string, string, error) {
 	input := interfaces.SemanticUnderstandingResourceAgentInput{
-		Resource: buildResourceAgentInputResource(resource),
+		Resource:   buildResourceAgentInputResource(resource),
+		SampleRows: []map[string]any{},
 		Options: interfaces.SemanticUnderstandingResourceAgentInputOptions{
 			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
 			ApplyMode:           req.ApplyMode,
@@ -594,9 +595,6 @@ func buildResourceSemanticUnderstandingInput(resource *interfaces.Resource, req 
 			IncludeSampleRows:   req.IncludeSampleRows,
 			SamplePolicy:        req.SamplePolicy,
 		},
-	}
-	if req.IncludeSampleRows {
-		input.SampleRows = []map[string]any{}
 	}
 	return marshalSemanticUnderstandingInput(input)
 }

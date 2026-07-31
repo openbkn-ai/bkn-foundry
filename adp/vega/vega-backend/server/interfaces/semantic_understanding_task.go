@@ -92,7 +92,7 @@ type CreateSemanticUnderstandingTaskRequest struct {
 // worker-side result quality evaluation.
 type SemanticUnderstandingResourceAgentInput struct {
 	Resource   SemanticUnderstandingResourceAgentInputResource `json:"resource"`
-	SampleRows []map[string]any                                `json:"sample_rows,omitempty"`
+	SampleRows []map[string]any                                `json:"sample_rows"`
 	Options    SemanticUnderstandingResourceAgentInputOptions  `json:"options"`
 }
 

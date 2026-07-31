@@ -245,6 +245,31 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.NotEmpty(t, task.InputHash)
 	})
 
+	t.Run("writes an empty sample_rows array when the query has no rows", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+		require.NoError(t, err)
+		resourceDataService.EXPECT().
+			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil)
+
+		service := &semanticUnderstandingTaskService{rds: resourceDataService}
+		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
+		var payload map[string]sonic.NoCopyRawMessage
+		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &payload))
+		require.Contains(t, payload, "sample_rows")
+		var sampleRows []map[string]any
+		require.NoError(t, sonic.Unmarshal(payload["sample_rows"], &sampleRows))
+		assert.NotNil(t, sampleRows)
+		assert.Empty(t, sampleRows)
+	})
+
 	t.Run("does not create a task when sample query fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
