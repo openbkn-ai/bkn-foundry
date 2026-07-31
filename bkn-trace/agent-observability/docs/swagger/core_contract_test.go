@@ -78,13 +78,18 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	documents := map[string]swaggerDocument{
 		"docs.go": parseSwagger(t, []byte(generated.SwaggerInfo.ReadDoc())),
 	}
-	for _, name := range []string{"swagger.json", "swagger.yaml"} {
+	for _, name := range []string{"swagger.json"} {
 		content, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
 		documents[name] = parseSwagger(t, content)
 	}
+	published, err := os.ReadFile("../../../../docs/api/agent-observability/agent-observability.yaml")
+	if err != nil {
+		t.Fatalf("read published OpenAPI YAML: %v", err)
+	}
+	documents["published YAML"] = parseSwagger(t, published)
 
 	definitions := []string{
 		"httphandler.finishAttemptRequest",
