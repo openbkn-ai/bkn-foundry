@@ -435,14 +435,14 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 		assert.NotEmpty(t, got.InputHash)
 	})
 
-	t.Run("requires masked sample policy when including samples", func(t *testing.T) {
-		_, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
+	t.Run("accepts unmasked sample policy when including samples", func(t *testing.T) {
+		got, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 20},
 		})
 
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "masked")
+		require.NoError(t, err)
+		assert.NotNil(t, got)
 	})
 }
 

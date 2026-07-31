@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -34,6 +33,7 @@ import (
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/resource"
+	"vega-backend/logics/resource_data"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -49,6 +49,7 @@ type semanticUnderstandingTaskService struct {
 	client     *asynq.Client
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
+	rds        interfaces.ResourceDataService
 	suta       interfaces.SemanticUnderstandingTaskAccess
 	ums        interfaces.UserMgmtService
 
@@ -66,6 +67,7 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 			client:     client,
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resource.NewResourceService(appSetting),
+			rds:        resource_data.NewResourceDataService(appSetting),
 			suta:       logics.SUTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
@@ -105,6 +107,12 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 		span.SetStatus(codes.Error, "Invalid semantic understanding task request")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails(err.Error())
+	}
+	if req.IncludeSampleRows {
+		if err := suts.attachUnmaskedSampleRows(ctx, resource, task); err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+				WithErrorDetails(err.Error())
+		}
 	}
 	return suts.createTask(ctx, task)
 }
@@ -460,8 +468,8 @@ func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource
 		if normalized.SamplePolicy == nil {
 			return nil, fmt.Errorf("sample_policy is required when include_sample_rows is true")
 		}
-		if !normalized.SamplePolicy.Masked {
-			return nil, fmt.Errorf("sample_policy.masked must be true")
+		if normalized.SamplePolicy.Masked {
+			return nil, fmt.Errorf("masked sample rows are not supported yet")
 		}
 		if normalized.SamplePolicy.MaxRows <= 0 {
 			return nil, fmt.Errorf("sample_policy.max_rows must be greater than 0")
@@ -481,6 +489,44 @@ func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource
 		ApplyMode:           normalized.ApplyMode,
 		ConfidenceThreshold: *normalized.ConfidenceThreshold,
 	}, nil
+}
+
+func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx context.Context, resource *interfaces.Resource, task *interfaces.SemanticUnderstandingTask) error {
+	if suts.rds == nil {
+		return fmt.Errorf("resource data service is unavailable")
+	}
+	var input interfaces.SemanticUnderstandingResourceAgentInput
+	if err := sonic.Unmarshal([]byte(task.Input), &input); err != nil {
+		return fmt.Errorf("unmarshal semantic understanding input: %w", err)
+	}
+	if input.Options.SamplePolicy == nil || input.Options.SamplePolicy.Masked {
+		return fmt.Errorf("unmasked sample policy is required")
+	}
+	fields := make([]string, 0, len(resource.SchemaDefinition))
+	for _, property := range resource.SchemaDefinition {
+		if property != nil && property.Name != "" {
+			fields = append(fields, property.Name)
+		}
+	}
+	result, err := suts.rds.QueryWithPaging(ctx, resource,
+		&interfaces.ResourceDataQueryParams{
+			Limit:        input.Options.SamplePolicy.MaxRows,
+			OutputFields: fields,
+		})
+	if err != nil {
+		return fmt.Errorf("read sample rows: %w", err)
+	}
+	input.SampleRows = []map[string]any{}
+	if result != nil && result.Entries != nil {
+		input.SampleRows = result.Entries
+	}
+	inputJSON, hash, err := marshalSemanticUnderstandingInput(input)
+	if err != nil {
+		return fmt.Errorf("marshal semantic understanding input: %w", err)
+	}
+	task.Input = inputJSON
+	task.InputHash = hash
+	return nil
 }
 
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
@@ -712,7 +758,7 @@ func buildResourceAgentInputProperties(properties []*interfaces.Property) []inte
 }
 
 func marshalSemanticUnderstandingInput(input any) (string, string, error) {
-	inputBytes, err := json.Marshal(input)
+	inputBytes, err := sonic.Marshal(input)
 	if err != nil {
 		return "", "", err
 	}
