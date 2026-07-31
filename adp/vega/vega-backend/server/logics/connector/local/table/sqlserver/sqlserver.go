@@ -213,7 +213,89 @@ WHERE s.name=@p1 AND o.name=@p2 ORDER BY c.column_id`, table.Schema, table.Name)
 		}
 		table.Columns = append(table.Columns, interfaces.TableColumnMeta{Name: column, Type: c.MapType(typ), Nullable: nullable, CharMaxLen: maxLen, NumPrecision: precision, NumScale: scale, OrdinalPosition: ordinal})
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := c.loadKeysAndIndexes(ctx, table); err != nil {
+		return err
+	}
+	return c.loadForeignKeys(ctx, table)
+}
+
+func (c *SQLServerConnector) loadKeysAndIndexes(ctx context.Context, table *interfaces.TableMeta) error {
+	rows, err := c.db.QueryContext(ctx, `SELECT i.name, i.is_unique, i.is_primary_key, col.name
+FROM sys.indexes i JOIN sys.index_columns ic ON i.object_id=ic.object_id AND i.index_id=ic.index_id
+JOIN sys.columns col ON ic.object_id=col.object_id AND ic.column_id=col.column_id
+JOIN sys.objects o ON i.object_id=o.object_id JOIN sys.schemas s ON o.schema_id=s.schema_id
+WHERE s.name=@p1 AND o.name=@p2 AND i.name IS NOT NULL AND ic.key_ordinal > 0
+ORDER BY i.is_primary_key DESC, i.name, ic.key_ordinal`, table.Schema, table.Name)
+	if err != nil {
+		return fmt.Errorf("failed to get indexes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	indexes := make(map[string]*interfaces.TableIndexMeta)
+	order := make([]string, 0)
+	for rows.Next() {
+		var name, column string
+		var unique, primary bool
+		if err := rows.Scan(&name, &unique, &primary, &column); err != nil {
+			return err
+		}
+		index := indexes[name]
+		if index == nil {
+			index = &interfaces.TableIndexMeta{Name: name, Unique: unique, Primary: primary}
+			indexes[name] = index
+			order = append(order, name)
+		}
+		index.Columns = append(index.Columns, column)
+		if primary {
+			table.PKs = append(table.PKs, column)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, name := range order {
+		table.Indices = append(table.Indices, *indexes[name])
+	}
+	return nil
+}
+
+func (c *SQLServerConnector) loadForeignKeys(ctx context.Context, table *interfaces.TableMeta) error {
+	rows, err := c.db.QueryContext(ctx, `SELECT fk.name, parent_col.name, ref_schema.name, ref_table.name, ref_col.name, fk.delete_referential_action_desc, fk.update_referential_action_desc
+FROM sys.foreign_keys fk JOIN sys.foreign_key_columns fkc ON fk.object_id=fkc.constraint_object_id
+JOIN sys.tables parent_table ON fk.parent_object_id=parent_table.object_id JOIN sys.schemas parent_schema ON parent_table.schema_id=parent_schema.schema_id
+JOIN sys.columns parent_col ON fkc.parent_object_id=parent_col.object_id AND fkc.parent_column_id=parent_col.column_id
+JOIN sys.tables ref_table ON fk.referenced_object_id=ref_table.object_id JOIN sys.schemas ref_schema ON ref_table.schema_id=ref_schema.schema_id
+JOIN sys.columns ref_col ON fkc.referenced_object_id=ref_col.object_id AND fkc.referenced_column_id=ref_col.column_id
+WHERE parent_schema.name=@p1 AND parent_table.name=@p2 ORDER BY fk.name, fkc.constraint_column_id`, table.Schema, table.Name)
+	if err != nil {
+		return fmt.Errorf("failed to get foreign keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	fks := make(map[string]*interfaces.TableForeignKeyMeta)
+	order := make([]string, 0)
+	for rows.Next() {
+		var name, column, refSchema, refTable, refColumn, onDelete, onUpdate string
+		if err := rows.Scan(&name, &column, &refSchema, &refTable, &refColumn, &onDelete, &onUpdate); err != nil {
+			return err
+		}
+		fk := fks[name]
+		if fk == nil {
+			fk = &interfaces.TableForeignKeyMeta{Name: name, RefTable: refSchema + "." + refTable, OnDelete: onDelete, OnUpdate: onUpdate}
+			fks[name] = fk
+			order = append(order, name)
+		}
+		fk.Columns = append(fk.Columns, column)
+		fk.RefColumns = append(fk.RefColumns, refColumn)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, name := range order {
+		table.ForeignKeys = append(table.ForeignKeys, *fks[name])
+	}
+	return nil
 }
 
 func (c *SQLServerConnector) GetMetadata(ctx context.Context) (map[string]any, error) {
@@ -224,7 +306,10 @@ func (c *SQLServerConnector) GetMetadata(ctx context.Context) (map[string]any, e
 	if err := c.db.QueryRowContext(ctx, "SELECT @@VERSION").Scan(&version); err != nil {
 		return nil, err
 	}
-	return map[string]any{"version": version, "database": c.config.Database}, nil
+	return map[string]any{
+		"version":  version,
+		"database": c.config.Database,
+	}, nil
 }
 
 func (c *SQLServerConnector) ExecuteRawSQL(ctx context.Context, statement string) (*interfaces.RawQueryResponse, error) {
