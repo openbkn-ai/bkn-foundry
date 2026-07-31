@@ -205,6 +205,12 @@ func (g *HubGate) fetch() (text string, changed bool, err error) {
 		// No licence installed in the cluster. That is a legitimate steady
 		// state (community deployment), not a transport failure — but there is
 		// nothing to verify, so the snapshot stays community.
+		//
+		// Drop the cached ETag too: the hub's ETag is a hash of the licence
+		// text, so re-installing the *same* certificate would otherwise be
+		// answered 304 against a validator we no longer have text for, and the
+		// gate could never climb back out of community without a restart.
+		g.remember("", "")
 		g.publish(Snapshot{Edition: licverify.EditionCommunity})
 		return "", false, nil
 	case http.StatusOK:
