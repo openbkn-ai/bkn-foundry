@@ -1,0 +1,1129 @@
+---
+openapi: 3.0.3
+info:
+  title: MCP
+  description: |
+    MCP（Model Context Protocol）Server 的注册、管理与代理调用。这里的 MCP 有**两个
+    方向**，别混：
+
+    - **接入外部 MCP**：把别人的 MCP Server 登记进平台，然后通过
+      `/mcp/proxy/{mcp_id}/...` 代为列工具、调工具。
+    - **对外提供 MCP**：把平台里的工具打包成一个 MCP Server 暴露出去，端点在
+      `/mcp/app/{mcp_id}/...`，MCP 客户端（Cursor / Claude Desktop 等）直接连它。
+
+    `creation_type` 区分这两类：`custom` 是登记的外部服务，`tool_imported` 是由
+    平台工具箱里的工具组装出来的。
+
+    **运行模式 `mode` 在新增与更新时可选范围不同**（服务端 validate 标签不一致）：
+
+    | 接口 | 可选值 |
+    |---|---|
+    | `POST /mcp/` 新增 | `sse`、`stream` |
+    | `PUT /mcp/{mcp_id}` 更新 | `sse`、`stream`、`stdio_uv`、`stdio_npx` |
+
+    也就是说 stdio 类模式没法直接新建，只能建完再改过去。这不像有意设计，接入时
+    留意。
+
+    **时间戳一律是纳秒**：所有 `*_time` 字段用 `time.Now().UnixNano()` 生成，
+    形如 `1784880971306127803`。按毫秒解析会得到 1970 年附近的日期。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-operator-integration/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /mcp/parse/sse:
+    post:
+      tags:
+        - MCP
+      summary: 探测外部 MCP Server
+      operationId: parseMCPServer
+      description: |
+        在登记之前先连一次目标 MCP Server，把它的工具列表与初始化信息取回来，
+        用于前端预览「这个服务里有什么」。**不落库**，纯探测。
+
+        接口名叫 `parse/sse` 是历史原因，`mode` 传 `stream` 同样可用。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseMCPRequest'
+            examples:
+              探测:
+                value:
+                  mode: stream
+                  url: https://example.com/mcp
+                  headers:
+                    Authorization: Bearer xxx
+      responses:
+        '200':
+          description: 目标服务的工具列表与初始化信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseMCPResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: 目标服务不可达或握手失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  /mcp/:
+    post:
+      tags:
+        - MCP
+      summary: 新增 MCP Server
+      operationId: addMCPServer
+      description: |
+        登记一个 MCP Server。
+
+        **路径带尾斜杠**——路由注册的就是 `/mcp/`，不是 `/mcp`。Gin 默认会把
+        `/mcp` 重定向到 `/mcp/`，但重定向会丢 POST body 的客户端不在少数，直接写
+        全路径最稳。
+
+        `mode` 此处只接受 `sse` / `stream`（见文件头说明）。`creation_type`
+        为 `tool_imported` 时用 `tool_configs` 指定要打包哪些工具。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPServerAddRequest'
+            examples:
+              登记外部服务:
+                value:
+                  creation_type: custom
+                  name: 天气服务
+                  description: 提供天气查询
+                  mode: stream
+                  url: https://example.com/mcp
+              打包平台工具:
+                value:
+                  creation_type: tool_imported
+                  name: 我的工具集
+                  mode: stream
+                  tool_configs:
+                    - box_id: ccf29df2-f43d-414a-b644-db7c186cda77
+                      tool_id: 744e7b57-092e-4cd3-9dee-63c113307d9e
+                      tool_name: Get_a_random_cat_fact
+                      use_rule: 需要随机猫咪知识时调用
+      responses:
+        '200':
+          description: 登记结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerAddResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/list:
+    get:
+      tags:
+        - MCP
+      summary: 分页查询 MCP Server
+      operationId: listMCPServers
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+        provides:
+          ef_mcp_id: data[0].mcp_id
+      description: 按业务域分页列出已登记的 MCP Server，支持按名称、来源、分类、状态、运行模式过滤。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按名称过滤。
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按来源过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按状态过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: is_internal
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 只看内置。
+        - name: mode
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MCPMode'
+          description: 按运行模式过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: MCP Server 分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerPage'
+              examples:
+                实测:
+                  value:
+                    total: 2
+                    page: 1
+                    page_size: 2
+                    total_pages: 1
+                    has_next: false
+                    has_prev: false
+                    data:
+                      - mcp_id: 5a09efa5-d315-4450-adb3-5b2799d50b7f
+                        name: aaa
+                        description: aaa
+                        mode: stream
+                        url: http://agent-operator-integration:9000/api/agent-operator-integration/internal-v1/mcp/app/5a09efa5-d315-4450-adb3-5b2799d50b7f/1/stream
+                        business_domain_id: default
+                        version: 1
+                        creation_type: tool_imported
+                        status: published
+                        source: custom
+                        is_internal: false
+                        category: other_category
+                        create_user: Administrator
+                        create_time: 1784880971306127803
+                        update_user: Administrator
+                        update_time: 1784881048211594537
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/{mcp_id}:
+    get:
+      tags:
+        - MCP
+      summary: 查询 MCP Server 详情
+      operationId: getMCPServer
+      description: |
+        取详情。响应分两块：`base_info` 是配置本身，`connection_info` 是**平台为
+        它生成的对外连接地址**（`sse_url` / `stream_url`）——MCP 客户端要连的是
+        这两个地址，不是 `base_info.url`（那是上游服务的地址）。
+
+        `stream_url` 为空表示该服务不支持流式。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      responses:
+        '200':
+          description: MCP Server 详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags:
+        - MCP
+      summary: 更新 MCP Server
+      operationId: updateMCPServer
+      description: |
+        整体更新配置。**这里的 `mode` 接受四个值**（含 `stdio_uv` / `stdio_npx`），
+        比新增时宽——stdio 类模式只能通过更新设置。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPServerUpdateRequest'
+      responses:
+        '200':
+          description: 更新结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+        - MCP
+      summary: 删除 MCP Server
+      operationId: deleteMCPServer
+      description: 删除登记的 MCP Server。已被 Agent 挂载的服务删除后调用方会拿到 404。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/MCPID'
+      responses:
+        '200':
+          description: 删除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/{mcp_id}/status:
+    post:
+      tags:
+        - MCP
+      summary: 更新 MCP Server 状态
+      operationId: updateMCPServerStatus
+      description: |
+        发布 / 下架。改成 `published` 后该服务出现在 MCP 市场，`offline` 则下架。
+        与算子共用同一套生命周期状态。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  $ref: '#/components/schemas/BizStatus'
+      responses:
+        '200':
+          description: 状态更新结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/{mcp_id}/tool/{tool_name}/debug:
+    post:
+      tags:
+        - MCP
+      summary: 调试 MCP 工具
+      operationId: debugMCPTool
+      description: |
+        用给定参数真实调用一次该 MCP Server 上的某个工具，看返回什么。
+
+        **失败不体现在 HTTP 状态码上**：工具报错时接口仍是 200，`is_error` 为
+        `true`，错误内容在 `content` 里。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+        - name: tool_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 工具名。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  additionalProperties: true
+                  description: 工具入参，结构由该工具自己的 input schema 决定。
+      responses:
+        '200':
+          description: 调用结果。工具报错时 `is_error` 为 true，接口仍是 200
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPToolCallResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/market/list:
+    get:
+      tags:
+        - MCP
+      summary: MCP 市场列表
+      operationId: listMCPMarket
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+      description: |
+        已发布的 MCP Server 列表。比 `/mcp/list` 多一个 `release_user` 过滤条件，
+        其余参数一致。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按名称过滤。
+        - name: release_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按发布人过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 市场分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/market/{mcp_id}:
+    get:
+      tags:
+        - MCP
+      summary: MCP 市场详情
+      operationId: getMCPMarketDetail
+      description: 市场视角的 MCP Server 详情，结构与 `GET /mcp/{mcp_id}` 一致。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      responses:
+        '200':
+          description: MCP Server 详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/market/batch/{mcp_ids}/{fields}:
+    get:
+      tags:
+        - MCP
+      summary: 批量取 MCP Server 的指定字段
+      operationId: getMCPMarketBatch
+      description: |
+        一次取多个 MCP Server 的**部分字段**，两个参数都走**路径**且都是逗号分隔
+        的列表——不是 query 参数，别写成 `?mcp_ids=a,b`。
+
+        `fields` 只能从这份白名单里选：`mcp_id`、`name`、`description`、`source`、
+        `category`、`mode`、`is_internal`、`create_user`、`create_time`、
+        `update_user`、`update_time`、`release_time`、`release_user`。
+        不在白名单里的字段名会被静默忽略，不报错。
+
+        响应是**按请求字段投影后的裸 map 数组**，字段随 `fields` 变化，
+        因此这里不给固定 schema。
+      parameters:
+        - name: mcp_ids
+          in: path
+          required: true
+          schema:
+            type: string
+          description: MCP Server ID 列表，逗号分隔。
+          example: 5a09efa5-d315-4450-adb3-5b2799d50b7f,7c9e6679-7425-40de-944b-e07fc1f90ae7
+        - name: fields
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 要取的字段名，逗号分隔。只接受白名单内的字段。
+          example: mcp_id,name,category
+      responses:
+        '200':
+          description: 按字段投影后的对象数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/proxy/{mcp_id}/tools:
+    get:
+      tags:
+        - MCP
+      summary: 代理：列出该 MCP Server 的工具
+      operationId: listMCPProxyTools
+      description: |
+        由平台代为连接目标 MCP Server 并取回工具列表。调用方不必自己实现 MCP
+        握手，也不需要能直连目标服务。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      responses:
+        '200':
+          description: 工具列表（MCP 协议的 Tool 结构）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MCPTool'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: 目标 MCP Server 不可达
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  /mcp/proxy/{mcp_id}/tool/call:
+    post:
+      tags:
+        - MCP
+      summary: 代理：调用该 MCP Server 的工具
+      operationId: callMCPProxyTool
+      description: |
+        由平台代为调用目标 MCP Server 上的工具。与
+        `/mcp/{mcp_id}/tool/{tool_name}/debug` 的差别只在定位方式：那边工具名走
+        路径、语义是「调试」；这边工具名在请求体里、语义是「生产调用」。
+        两者的返回结构一致，同样是**工具报错也返回 200，看 `is_error`**。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tool_name
+                - parameters
+              properties:
+                tool_name:
+                  type: string
+                  description: 工具名。
+                parameters:
+                  type: object
+                  additionalProperties: true
+                  description: 工具入参。
+      responses:
+        '200':
+          description: 调用结果。工具报错时 `is_error` 为 true，接口仍是 200
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPToolCallResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/app/{mcp_id}/mcp:
+    get:
+      tags:
+        - MCP
+      summary: 对外 MCP 端点（Streamable HTTP）
+      operationId: mcpAppStreamableHTTP
+      description: |
+        **这是给 MCP 客户端连的端点，不是给业务代码调的 REST 接口**。平台把该
+        `mcp_id` 对应的服务以标准 MCP Streamable HTTP 暴露出来，Cursor / Claude
+        Desktop 等直接填这个地址即可。
+
+        实际地址以 `GET /mcp/{mcp_id}` 返回的 `connection_info.stream_url` 为准。
+
+        该路由注册为 `Any`，GET / POST / DELETE 都由 MCP 协议语义决定，请求与
+        响应结构见 MCP 规范，本文档不复述。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      responses:
+        '200':
+          description: JSON-RPC 2.0 响应或 SSE 事件流
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /mcp/app/{mcp_id}/sse:
+    get:
+      tags:
+        - MCP
+      summary: 对外 MCP 端点（SSE）
+      operationId: mcpAppSSE
+      description: |
+        SSE 传输的 MCP 端点，给只支持 SSE 的客户端用。实际地址以
+        `GET /mcp/{mcp_id}` 返回的 `connection_info.sse_url` 为准。
+
+        SSE 是**单向下行**通道，客户端的请求要发到配套的
+        `POST /mcp/app/{mcp_id}/message`。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      responses:
+        '200':
+          description: SSE 事件流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /mcp/app/{mcp_id}/message:
+    post:
+      tags:
+        - MCP
+      summary: 对外 MCP 端点（SSE 的上行消息）
+      operationId: mcpAppSSEMessage
+      description: |
+        与 `/mcp/app/{mcp_id}/sse` 配套：SSE 只负责下行，客户端的 JSON-RPC 请求
+        走这里上行。单独调它没有意义，必须先建立 SSE 连接。
+      parameters:
+        - $ref: '#/components/parameters/MCPID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: JSON-RPC 2.0 请求。
+      responses:
+        '202':
+          description: 已受理，结果通过 SSE 通道返回
+        '200':
+          description: JSON-RPC 2.0 响应
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    BusinessDomain:
+      name: x-business-domain
+      in: header
+      required: true
+      schema:
+        type: string
+      description: 业务域 ID。MCP Server 按业务域隔离，缺失返回 400。
+    MCPID:
+      name: mcp_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: MCP Server ID。
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 页码，从 1 开始。
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      description: 每页数量，1–100。
+    SortBy:
+      name: sort_by
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - update_time
+          - create_time
+          - name
+        default: update_time
+      description: 排序字段。
+    SortOrder:
+      name: sort_order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+      description: 排序方向。
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    NotFound:
+      description: MCP Server 或工具不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  schemas:
+    MCPMode:
+      type: string
+      enum:
+        - sse
+        - stream
+        - stdio_uv
+        - stdio_npx
+      description: |
+        运行模式。**新增接口只接受 `sse` / `stream`**，`stdio_*` 只能通过更新接口设置。
+
+    MCPCreationType:
+      type: string
+      enum:
+        - custom
+        - tool_imported
+      description: |
+        创建类型：`custom` 登记的外部 MCP Server；`tool_imported` 由平台工具箱里的
+        工具组装而成。
+
+    BizStatus:
+      type: string
+      enum:
+        - unpublish
+        - published
+        - offline
+        - editing
+      description: 生命周期状态，与算子共用同一套。
+
+    CommonPage:
+      type: object
+      description: 本服务通用的分页信封。
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+
+    MCPServerPage:
+      allOf:
+        - $ref: '#/components/schemas/CommonPage'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/MCPServerConfig'
+
+    MCPCoreConfig:
+      type: object
+      description: 连接目标 MCP Server 所需的配置。
+      properties:
+        mode:
+          $ref: '#/components/schemas/MCPMode'
+        url:
+          type: string
+          format: uri
+          description: 目标服务地址。`sse` / `stream` 模式用。
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: 连接时携带的请求头，如上游的鉴权凭据。
+        command:
+          type: string
+          description: 启动命令。`stdio_*` 模式用。
+        args:
+          type: array
+          items:
+            type: string
+          description: 启动参数。`stdio_*` 模式用。
+        env:
+          type: object
+          additionalProperties:
+            type: string
+          description: 环境变量。`stdio_*` 模式用。
+
+    MCPToolConfig:
+      type: object
+      description: |
+        `creation_type=tool_imported` 时，指定要打包进该 MCP Server 的平台工具。
+      properties:
+        box_id:
+          type: string
+          description: 工具箱 ID。
+        tool_id:
+          type: string
+          description: 工具 ID。
+        box_name:
+          type: string
+          description: 工具箱名称。响应里返回。
+        tool_name:
+          type: string
+          description: 工具名。
+        description:
+          type: string
+          description: 工具描述。
+        use_rule:
+          type: string
+          description: 使用规则，告诉大模型什么时候该调这个工具。
+
+    MCPServerAddRequest:
+      allOf:
+        - $ref: '#/components/schemas/MCPCoreConfig'
+        - type: object
+          required:
+            - name
+            - creation_type
+          properties:
+            name:
+              type: string
+              description: MCP Server 名称。
+            description:
+              type: string
+            creation_type:
+              $ref: '#/components/schemas/MCPCreationType'
+            source:
+              type: string
+              default: custom
+              description: 来源。
+            category:
+              type: string
+              default: other_category
+              description: 分类。
+            is_internal:
+              type: boolean
+              default: false
+              description: 是否内置。
+            tool_configs:
+              type: array
+              items:
+                $ref: '#/components/schemas/MCPToolConfig'
+              description: '`creation_type=tool_imported` 时指定要打包的工具。'
+
+    MCPServerAddResponse:
+      type: object
+      properties:
+        mcp_id:
+          type: string
+        status:
+          type: string
+
+    MCPServerUpdateRequest:
+      type: object
+      description: |
+        整体更新配置。`mode` 在这里可取四个值，比新增时多 `stdio_uv` / `stdio_npx`。
+      required:
+        - creation_type
+      properties:
+        mcp_id:
+          type: string
+          description: MCP Server ID。与路径参数一致即可。
+        name:
+          type: string
+        description:
+          type: string
+        creation_type:
+          $ref: '#/components/schemas/MCPCreationType'
+        mode:
+          $ref: '#/components/schemas/MCPMode'
+        url:
+          type: string
+          format: uri
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        command:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        source:
+          type: string
+        category:
+          type: string
+        tool_configs:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPToolConfig'
+
+    MCPServerStatusResponse:
+      type: object
+      properties:
+        mcp_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/BizStatus'
+
+    MCPServerConfig:
+      allOf:
+        - $ref: '#/components/schemas/MCPCoreConfig'
+        - type: object
+          properties:
+            mcp_id:
+              type: string
+            business_domain_id:
+              type: string
+            version:
+              type: integer
+              description: 配置版本号，每次更新递增。
+            name:
+              type: string
+            description:
+              type: string
+            creation_type:
+              $ref: '#/components/schemas/MCPCreationType'
+            status:
+              type: string
+            source:
+              type: string
+            is_internal:
+              type: boolean
+            category:
+              type: string
+            create_user:
+              type: string
+            create_time:
+              type: integer
+              format: int64
+              description: 创建时间（**纳秒**时间戳）。
+            update_user:
+              type: string
+            update_time:
+              type: integer
+              format: int64
+              description: 更新时间（**纳秒**时间戳）。
+            release_user:
+              type: string
+            release_time:
+              type: integer
+              format: int64
+              description: 发布时间（**纳秒**时间戳）。
+            tool_configs:
+              type: array
+              items:
+                $ref: '#/components/schemas/MCPToolConfig'
+
+    MCPServerDetail:
+      type: object
+      properties:
+        base_info:
+          $ref: '#/components/schemas/MCPServerConfig'
+        connection_info:
+          $ref: '#/components/schemas/MCPConnectionInfo'
+
+    MCPConnectionInfo:
+      type: object
+      description: |
+        **平台为该服务生成的对外连接地址**，MCP 客户端要连的是这里的地址，
+        不是 `base_info.url`（那是上游服务地址）。
+      properties:
+        sse_url:
+          type: string
+          description: SSE 端点地址。
+        stream_url:
+          type: string
+          description: Streamable HTTP 端点地址。为空表示不支持流式。
+
+    ParseMCPRequest:
+      type: object
+      required:
+        - mode
+        - url
+      properties:
+        mode:
+          $ref: '#/components/schemas/MCPMode'
+        url:
+          type: string
+          format: uri
+          description: 目标 MCP Server 地址。
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: 连接时携带的请求头。
+
+    ParseMCPResponse:
+      type: object
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPTool'
+          description: 目标服务提供的工具。
+        init_info:
+          type: object
+          additionalProperties: true
+          description: MCP 握手返回的初始化信息（协议版本、服务端能力等）。
+
+    MCPTool:
+      type: object
+      description: MCP 协议定义的工具结构，字段以 MCP 规范为准。
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        inputSchema:
+          type: object
+          additionalProperties: true
+          description: 入参 JSON Schema。**注意是驼峰 `inputSchema`**，MCP 协议的原始命名。
+
+    MCPToolCallResult:
+      type: object
+      description: |
+        工具调用结果。**`is_error` 才是成败判据**——工具报错时 HTTP 仍是 200。
+      properties:
+        content:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: MCP 协议的 Content 数组（文本 / 图片 / 资源等）。
+        is_error:
+          type: boolean
+          description: 工具是否报错。

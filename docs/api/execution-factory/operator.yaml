@@ -21,6 +21,9 @@ info:
     **业务域**：注册、列表、删除、市场相关接口要求 `x-business-domain` 头，
     算子按业务域隔离。
 
+    **时间戳一律是纳秒**：本服务所有 `*_time` 字段用 `time.Now().UnixNano()` 生成，
+    形如 `1784880971306127803`。按毫秒解析会得到 1970 年附近的日期。
+
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
     AppKey）。
   version: 0.1.3
@@ -1154,20 +1157,22 @@ components:
         create_time:
           type: integer
           format: int64
-          description: 创建时间（毫秒时间戳）。
+          description: |
+            创建时间。**单位是纳秒**（服务端用 `time.Now().UnixNano()`），
+            不是毫秒——按毫秒解析会得到 1970 年附近的日期。
         update_user:
           type: string
         update_time:
           type: integer
           format: int64
-          description: 更新时间（毫秒时间戳）。
+          description: 更新时间（**纳秒**时间戳）。
         release_user:
           type: string
           description: 发布人。未发布时不返回。
         release_time:
           type: integer
           format: int64
-          description: 发布时间（毫秒时间戳）。未发布时不返回。
+          description: 发布时间（**纳秒**时间戳）。未发布时不返回。
 
     MetadataInfo:
       type: object
@@ -1202,9 +1207,11 @@ components:
         create_time:
           type: integer
           format: int64
+          description: 创建时间（**纳秒**时间戳）。
         update_time:
           type: integer
           format: int64
+          description: 更新时间（**纳秒**时间戳）。
         create_user:
           type: string
         update_user:

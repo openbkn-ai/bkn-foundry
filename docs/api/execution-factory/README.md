@@ -11,8 +11,9 @@
 | [sandbox.yaml](sandbox.yaml) | 沙箱观测 | `GET /sandbox/health`、`GET /sandbox/pool`、`GET /sandbox/sessions`、`GET /sandbox/sessions/{id}` |
 | [impex.yaml](impex.yaml) | 导入导出 | `GET /impex/export/{type}/{id}`、`POST /impex/import/{type}` |
 | [operator.yaml](operator.yaml) | 算子 | 注册 / 编辑 / 更新 / 列表 / 详情 / 批量取名 / 状态 / 删除 / 调试 / 历史版本 / 市场 / 分类 / 内置算子，共 15 条 |
+| [mcp.yaml](mcp.yaml) | MCP | 探测 / 增删改查 / 状态 / 工具调试 / 市场 3 条 / 代理列工具与调用 / 对外端点 3 条，共 16 条 |
 
-> 工具箱 / MCP / Skill 三面（62 个端点）尚未收录，见本文末「覆盖边界」。
+> 工具箱 / Skill 两面（47 个端点）尚未收录，见本文末「覆盖边界」。
 
 ## 写一个函数：完整走一遍
 
@@ -102,6 +103,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 - **错误信封**：本服务**不用** `kweaver-go-lib/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorCompact`](../_shared/errors.yaml)（与 context-loader 同源同形）。
 - **内部接口**：`/api/agent-operator-integration/internal-v1` 是内部面，另有 `POST /function/exec/{version}`（按已注册的函数版本执行，`timeout` 单位毫秒）等端点，**本文档不收录**。
 - **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），也挂在 Ingress 上，路径与语义都与 `v1` 不同，**本文档暂不收录**。
+- **时间戳一律是纳秒**：所有 `*_time` 字段由 `time.Now().UnixNano()` 生成，形如 `1784880971306127803`；按毫秒解析会得到 1970 年附近的日期。全服务统一，算子 / MCP / 工具箱 / Skill 都是。
 - **契约巡检**：只读 GET 上标了 `x-contract-probe`，需巡检工具支持该扩展（见 #578）才会生效；在那之前这些标注是惰性的。
 
 ## 收录范围为什么是这些
@@ -114,14 +116,17 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 ## 覆盖边界
 
-已收录**函数 6 + 沙箱观测 4 + 导入导出 2 + 算子 15 = 27 个端点**（公开面共 89）。
-剩余 62 个：
+已收录**函数 6 + 沙箱观测 4 + 导入导出 2 + 算子 15 + MCP 16 = 43 个端点**
+（公开面共 90）。剩余 47 个：
 
 | 面 | 端点数 | 说明 |
 |---|---|---|
 | 工具箱 toolbox | 22 | 工具箱与工具的增删改查、调试、代理调用、市场 |
-| MCP | 15 | MCP 注册、状态、工具列表与代理调用、市场 |
 | Skill | 25 | 注册 / 发布 / 版本 / 内容读取 / 下载 / 索引构建 |
+
+> 端点总数从 89 修正为 90：MCP 的 `Any /mcp/app/{mcp_id}/mcp`（Streamable HTTP
+> 端点）此前统计时被漏掉——抽路由的正则只匹配 GET/POST/PUT/DELETE/PATCH，没算
+> `Any`。
 
 **验证程度分两级**，模块内不同文件不一样：**路由与收录范围**全部从代码的
 `RegisterPublic` 核过；**字段级**只有实机打过的算数——函数 5 条、沙箱 3 条、
