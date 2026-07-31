@@ -236,6 +236,11 @@ func (c *PostgresqlConnector) validateSchemas(ctx context.Context) error {
 	return nil
 }
 
+// BuildPagedSQL applies PostgreSQL paging syntax to a validated query.
+func (c *PostgresqlConnector) BuildPagedSQL(sql string, offset, limit int) string {
+	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_page LIMIT %d OFFSET %d", sql, limit, offset)
+}
+
 // ExecuteRawSQL 执行原始SQL查询
 func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {

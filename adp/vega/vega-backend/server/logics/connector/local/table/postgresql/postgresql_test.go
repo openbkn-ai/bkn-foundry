@@ -41,6 +41,14 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 	})
 }
 
+func TestPostgresqlConnectorBuildPagedSQL(t *testing.T) {
+	connector := &PostgresqlConnector{}
+	assert.Equal(t,
+		"SELECT * FROM (SELECT id FROM orders) AS _raw_query_page LIMIT 10 OFFSET 20",
+		connector.BuildPagedSQL("SELECT id FROM orders", 20, 10),
+	)
+}
+
 func TestPostgresqlConnectorNew(t *testing.T) {
 	builder := &PostgresqlConnector{}
 

@@ -311,6 +311,14 @@ func (c *SQLServerConnector) GetMetadata(ctx context.Context) (map[string]any, e
 	}, nil
 }
 
+// BuildPagedSQL applies SQL Server paging syntax to a validated query.
+func (c *SQLServerConnector) BuildPagedSQL(sql string, offset, limit int) string {
+	return fmt.Sprintf(
+		"SELECT * FROM (%s) AS _raw_query_page ORDER BY (SELECT 1) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+		sql, offset, limit,
+	)
+}
+
 func (c *SQLServerConnector) ExecuteRawSQL(ctx context.Context, statement string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("connect failed: %w", err)

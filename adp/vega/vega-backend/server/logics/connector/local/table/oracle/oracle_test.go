@@ -44,6 +44,14 @@ func TestOracleConnectorMetadata(t *testing.T) {
 	})
 }
 
+func TestOracleConnectorBuildPagedSQL(t *testing.T) {
+	connector := &OracleConnector{}
+	assert.Equal(t,
+		"SELECT * FROM (SELECT id FROM orders) _raw_query_page OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
+		connector.BuildPagedSQL("SELECT id FROM orders", 20, 10),
+	)
+}
+
 func TestOracleConnectorValidateSchemas(t *testing.T) {
 	t.Run("success case insensitive", func(t *testing.T) {
 		connector, mock, cleanup := newOracleConnectorMock(t, []string{"app"})

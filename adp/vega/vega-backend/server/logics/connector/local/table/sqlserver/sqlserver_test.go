@@ -40,6 +40,14 @@ func TestSQLServerConnectorNew(t *testing.T) {
 	}
 }
 
+func TestSQLServerConnectorBuildPagedSQL(t *testing.T) {
+	connector := &SQLServerConnector{}
+	assert.Equal(t,
+		"SELECT * FROM (SELECT id FROM dbo.orders) AS _raw_query_page ORDER BY (SELECT 1) OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
+		connector.BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10),
+	)
+}
+
 func TestSQLServerConnectorListTables(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

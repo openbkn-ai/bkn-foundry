@@ -261,6 +261,20 @@ func (m *MockTableConnector) EXPECT() *MockTableConnectorMockRecorder {
 	return m.recorder
 }
 
+// BuildPagedSQL mocks base method.
+func (m *MockTableConnector) BuildPagedSQL(sql string, offset, limit int) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BuildPagedSQL", sql, offset, limit)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// BuildPagedSQL indicates an expected call of BuildPagedSQL.
+func (mr *MockTableConnectorMockRecorder) BuildPagedSQL(sql, offset, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildPagedSQL", reflect.TypeOf((*MockTableConnector)(nil).BuildPagedSQL), sql, offset, limit)
+}
+
 // Close mocks base method.
 func (m *MockTableConnector) Close(ctx context.Context) error {
 	m.ctrl.T.Helper()

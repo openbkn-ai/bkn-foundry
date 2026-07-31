@@ -238,6 +238,14 @@ func (c *OracleConnector) TestConnection(ctx context.Context) error {
 	return nil
 }
 
+// BuildPagedSQL applies Oracle paging syntax to a validated query.
+func (c *OracleConnector) BuildPagedSQL(sql string, offset, limit int) string {
+	return fmt.Sprintf(
+		"SELECT * FROM (%s) _raw_query_page OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+		sql, offset, limit,
+	)
+}
+
 // ExecuteRawSQL executes a validated read-only SQL statement for Raw Query.
 func (c *OracleConnector) ExecuteRawSQL(ctx context.Context, statement string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {

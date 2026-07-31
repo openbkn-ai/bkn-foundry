@@ -68,6 +68,9 @@ type TableConnector interface {
 	// ExecuteQuery 执行单表查询语句
 	ExecuteQuery(ctx context.Context, resource *Resource,
 		params *ResourceDataQueryParams) (*QueryResult, error)
+	// BuildPagedSQL wraps a validated read-only SQL statement with the
+	// connector-specific offset/limit syntax.
+	BuildPagedSQL(sql string, offset, limit int) string
 	// ExecuteRawSQL 执行统一查询链路已校验的只读 SQL。
 	ExecuteRawSQL(ctx context.Context, sql string) (*RawQueryResponse, error)
 }

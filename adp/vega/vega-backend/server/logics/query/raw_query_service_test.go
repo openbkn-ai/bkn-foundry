@@ -290,17 +290,6 @@ func TestQueryExecutionContextAppliesTimeout(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestApplySQLQueryPagingUsesConnectorDialect(t *testing.T) {
-	assert.Equal(t,
-		"SELECT * FROM (SELECT id FROM dbo.orders) AS _raw_query_single ORDER BY (SELECT 1) OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
-		applySingleQueryPaging("SELECT id FROM dbo.orders", 20, 10, interfaces.ConnectorTypeSQLServer),
-	)
-	assert.Equal(t,
-		"SELECT * FROM (SELECT id FROM orders) AS _raw_query_cursor LIMIT 11 OFFSET 20",
-		applyCursorQueryPaging("SELECT id FROM orders", 20, 11, interfaces.ConnectorTypePostgreSQL),
-	)
-}
-
 func TestInitialSQLQueryAppliesTimeoutBeforePolicyValidation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
