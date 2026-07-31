@@ -264,10 +264,10 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		return resultJSON, confidence, confidenceDetailJSON, nil
 	}
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if err := sonic.Unmarshal([]byte(inputJSON), &input); err != nil {
+	if unmarshalErr := sonic.Unmarshal([]byte(inputJSON), &input); unmarshalErr != nil {
 		// Input is an audit snapshot, not an agent response. A malformed legacy
 		// snapshot must not turn an otherwise successful agent task into failure.
-		return resultJSON, confidence, confidenceDetailJSON, nil
+		return resultJSON, confidence, confidenceDetailJSON, nil //nolint:nilerr // Malformed legacy snapshots must not fail completed tasks.
 	}
 
 	var result interfaces.SemanticUnderstandingResourceResult
