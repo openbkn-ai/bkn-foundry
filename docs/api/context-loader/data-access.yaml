@@ -1,0 +1,376 @@
+---
+openapi: 3.0.3
+info:
+  title: 数据层直查
+  description: |
+    脱离本体、直接查底层数据资源的三个接口：列资源、看资源结构、跑只读 SQL。
+
+    与本体路径（[schema-search.yaml](schema-search.yaml) →
+    [object-instance.yaml](object-instance.yaml)）互补：本体路径回答「这张网里
+    业务概念长什么样」，数据层直查回答「底下的表里到底有什么」。两条路都通向
+    `run_sql`——要么从 `search_schema` 拿对象类的物理列名（`include_columns=true`），
+    要么从 `list_resources` + `describe_resource` 拿资源的物理 schema。
+
+    典型链路：
+
+    ```
+    list_resources    → 找到 resource_id
+    describe_resource → 看有哪些列、什么类型、什么连接器
+    run_sql           → SELECT ... FROM {{.<resource_id>}} ...
+    ```
+
+    **授权**：资源可见性与读取权限由下游 vega 按账户强制（空账户直接拒绝），本服务
+    不做二次放行。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/list_resources:
+    post:
+      tags:
+        - DataAccess
+      summary: 列出可查询的数据资源
+      operationId: listResources
+      description: |
+        列出当前账户有权查看的数据资源，输出精简字段（够用来挑一个 `resource_id`）。
+        请求体可选，不传则按 vega 默认分页返回。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListResourcesRequest'
+            examples:
+              限定目录与类型:
+                value:
+                  catalog_id: cat_prod_mysql
+                  type: table
+                  limit: 50
+      responses:
+        '200':
+          description: 资源列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListResourcesResponse'
+            application/toon:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/describe_resource:
+    post:
+      tags:
+        - DataAccess
+      summary: 查看资源的物理结构
+      operationId: describeResource
+      description: |
+        取单个资源的物理列与连接器类型——写 `run_sql` 之前该看的东西。
+        `connector_type` 决定该用哪种 SQL 方言心智（虽然 `run_sql` 统一收 Trino 方言）。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DescribeResourceRequest'
+            examples:
+              查一张表:
+                value:
+                  resource_id: res_orders
+      responses:
+        '200':
+          description: 资源的物理 schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DescribeResourceResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: 缺少 `resource_id`
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 资源不存在或当前账户无权查看
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/run_sql:
+    post:
+      tags:
+        - DataAccess
+      summary: 对数据资源执行只读 SQL
+      operationId: runSQL
+      description: |
+        以 Trino 方言执行**只读** SQL。表名不写物理表名，写占位符
+        `{{.<resource_id>}}`，由服务端解析到真实数据源。
+
+        **两条硬约束，违反直接 400，SQL 不会下发**：
+
+        1. **必须引用占位符**。SQL 里没有 `{{.resource_id}}` 时报
+           `sql must reference at least one data resource via the {{.resource_id}} placeholder`
+           ——这既是定位数据源的唯一途径，也挡住了绕开权限直接写物理表名。
+        2. **必须是单条只读语句**。守卫会先剥掉注释、字符串字面量与占位符，再判定：
+           不允许多语句（剥离后仍含 `;`）、必须以 `SELECT` 或 `WITH` 开头、不得含
+           写入 / DDL / 权限 / 过程类关键字（INSERT、UPDATE、DELETE、DROP、ALTER、
+           CREATE、TRUNCATE、GRANT、REVOKE、REPLACE、MERGE、UPSERT、CALL、EXEC、
+           EXECUTE、RENAME、LOAD、COPY、INTO、ATTACH、DETACH、USE、VACUUM、ANALYZE、
+           REFRESH、COMMENT、PREPARE、DEALLOCATE）。
+
+           守卫不是完整 SQL 解析器，是纵深防御的一层：下游 vega 的原始查询接口本身
+           **不校验语句类型**，写语句送到就会真执行，所以拦截必须在这里做死。
+
+        **不分页**：固定单次返回，上限 10000 行。要更多数据请在 SQL 里自己收敛
+        （聚合、加条件、加 LIMIT）。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunSQLRequest'
+            examples:
+              单表聚合:
+                value:
+                  sql: >-
+                    SELECT status, count(*) AS cnt FROM {{.res_orders}}
+                    WHERE created_at >= date_add('day', -7, current_date)
+                    GROUP BY status
+              两表关联:
+                value:
+                  sql: >-
+                    SELECT o.id, c.name FROM {{.res_orders}} o
+                    JOIN {{.res_customers}} c ON o.customer_id = c.id
+                    LIMIT 100
+                  query_timeout: 60
+      responses:
+        '200':
+          description: 查询结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunSQLResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: |
+            SQL 为空、未引用资源占位符、含多语句或写 / DDL 关键字，
+            以及下游返回的 SQL 语法 / 权限错误
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  responses:
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    InternalError:
+      description: 服务内部错误；下游 vega 报错时原样透传其响应体
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+  schemas:
+    ListResourcesRequest:
+      type: object
+      properties:
+        catalog_id:
+          type: string
+          description: 限定某个 catalog。
+        type:
+          type: string
+          description: |
+            资源类别，映射 vega 的 category：`table` / `file` / `fileset` / `api` /
+            `metric` / `topic` / `index` / `logicview` / `dataset`。
+        offset:
+          type: integer
+          description: 分页偏移；不传由 vega 取默认值 0。
+        limit:
+          type: integer
+          description: 分页大小；不传由 vega 取默认值 20。
+
+    ListResourcesResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceLite'
+        total_count:
+          type: integer
+          format: int64
+          description: 命中总数。
+
+    ResourceLite:
+      type: object
+      properties:
+        resource_id:
+          type: string
+          description: 资源 ID，即 `run_sql` 占位符里要填的值。
+        name:
+          type: string
+          description: 资源名称。
+        type:
+          type: string
+          description: 资源类别（取自 vega category）。
+        status:
+          type: string
+          description: 资源状态。
+        catalog_id:
+          type: string
+          description: 所属 catalog ID。
+
+    DescribeResourceRequest:
+      type: object
+      required:
+        - resource_id
+      properties:
+        resource_id:
+          type: string
+          description: 资源 ID。
+
+    DescribeResourceResponse:
+      type: object
+      properties:
+        resource_id:
+          type: string
+        connector_type:
+          type: string
+          description: 连接器类型（如 mysql / postgresql / opensearch）。
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnLite'
+          description: 物理列定义。
+
+    ColumnLite:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 物理列名。
+        type:
+          type: string
+          description: 列类型。
+        description:
+          type: string
+          description: 列说明；没有时不返回。
+
+    RunSQLRequest:
+      type: object
+      required:
+        - sql
+      properties:
+        sql:
+          type: string
+          description: |
+            Trino 方言 SQL。表名必须写成 `{{.<resource_id>}}` 占位符，
+            也接受 `{{<resource_id>}}` 形式。只允许单条 `SELECT` / `WITH`。
+          example: SELECT * FROM {{.res_orders}} LIMIT 100
+        query_timeout:
+          type: integer
+          description: 查询超时（秒）。不传走下游默认。
+
+    RunSQLResponse:
+      type: object
+      description: |
+        vega 原始查询的结果。本接口固定用单次返回模式（上限 10000 行），
+        因此 `paging.next_cursor` 恒为空。
+      properties:
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryColumn'
+          description: 结果集列元数据。
+        entries:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: 结果行，key 为列名。
+        total_count:
+          type: integer
+          format: int64
+          description: 总行数；下游未返回时该字段不出现。
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 下游返回的告警。
+        paging:
+          $ref: '#/components/schemas/PagingResponse'
+
+    QueryColumn:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 列名。
+        type:
+          type: string
+          description: 列类型；下游未给出时不返回。
+
+    PagingResponse:
+      type: object
+      properties:
+        next_cursor:
+          type: string
+          nullable: true
+          description: 下一页游标。本接口走单次返回模式，恒为 null。
+        expires_at_sec:
+          type: integer
+          format: int64
+          nullable: true
+          description: 游标过期时间（Unix 秒）。

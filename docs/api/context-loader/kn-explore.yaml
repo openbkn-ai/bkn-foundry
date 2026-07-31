@@ -1,0 +1,631 @@
+---
+openapi: 3.0.3
+info:
+  title: 知识网络浏览
+  description: |
+    Context Loader（服务名 `agent-retrieval`）的知识网络浏览接口：从「有哪些知识网络」
+    到「这张网里有哪些对象类 / 关系类」，再按需下钻取完整定义。
+
+    与 [schema-search.yaml](schema-search.yaml) 的分工：`search_schema` 是**语义入口**
+    （给一句话，猜相关概念）；本文件是**确定性入口**（列全量、按 ID 精确取）。
+
+    **渐进式披露**：`get_kn_detail` 默认 `detail_level=summary`，只返回骨架加属性名，
+    把属性的字段映射、可用算子、关系映射规则等重货剥掉——一张中等规模的网，summary
+    比 full 少四分之一以上的 token。需要这些细节时，再用 `get_object_types` /
+    `get_relation_types` 按 ID 批量下钻。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。所有端点均为 POST，无请求体的也走 POST。
+  version: 0.1.3
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/list_knowledge_networks:
+    post:
+      tags:
+        - KnExplore
+      summary: 列出知识网络
+      operationId: listKnowledgeNetworks
+      description: |
+        列出当前账户可见的知识网络，用于发现 `kn_id`。请求体可选；不传按默认分页
+        （`limit=20`，按更新时间倒序）返回。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListKnRequest'
+            examples:
+              按名称过滤:
+                value:
+                  name_pattern: 医药
+                  limit: 10
+      responses:
+        '200':
+          description: 知识网络列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListKnResponse'
+            application/toon:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/get_kn_detail:
+    post:
+      tags:
+        - KnExplore
+      summary: 获取知识网络详情
+      operationId: getKnDetail
+      description: |
+        返回一张知识网络的概念全景：概念组、对象类、关系类、行动类。
+
+        **`detail_level` 决定返回多少**：
+
+        | 级别 | 保留 | 剥掉 |
+        |---|---|---|
+        | `summary`（默认） | 骨架 + 每个属性的 `name` / `type` | 属性的 `display_name` / `comment` / `mapped_field` / `condition_operations`，逻辑属性的 `data_source` / `parameters`，关系类的 `mapping_rules` 与起终点对象类详情 |
+        | `full` | 全部 | —— |
+
+        两种级别都会**去掉 `concept_groups` 里嵌套的对象类 / 关系类 / 行动类副本**：
+        这些是顶层数组的重复拷贝，概念组只保留 `object_type_ids` 作为分组边界。
+
+        被剥掉的细节按需用 `get_object_types` / `get_relation_types` 取回。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+        - $ref: '#/components/parameters/XKnID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetKnDetailRequest'
+            examples:
+              默认精简:
+                value:
+                  kn_id: kn_medical
+              全量:
+                value:
+                  kn_id: kn_medical
+                  detail_level: full
+      responses:
+        '200':
+          description: 知识网络详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeNetworkDetail'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: 缺少 `kn_id`（请求体与 `x-kn-id` 头均为空）
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/get_object_types:
+    post:
+      tags:
+        - KnExplore
+      summary: 按 ID 批量取对象类完整定义
+      operationId: getObjectTypes
+      description: |
+        取 `get_kn_detail` 在 summary 级别剥掉的对象类细节：属性的 `mapped_field`
+        （写 `run_sql` 要的物理列名）、`condition_operations`（该属性可用的查询算子）、
+        逻辑属性的 `data_source` 与 `parameters`。
+
+        `ids` 里既可以传对象类 ID，也可以传对象类名（ID 优先，名称仅作兜底）；
+        匹配不到的 ID 原样回填在 `missing` 里，不报错。属性的 `display_name`
+        （纯 UI 标签）在本接口也会被去掉。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+        - $ref: '#/components/parameters/XKnID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DrillRequest'
+            examples:
+              下钻两个对象类:
+                value:
+                  kn_id: kn_medical
+                  ids:
+                    - ot_drug
+                    - ot_manufacturer
+      responses:
+        '200':
+          description: 对象类完整定义
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectTypesResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: 缺少 `kn_id` 或 `ids` 为空
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/get_relation_types:
+    post:
+      tags:
+        - KnExplore
+      summary: 按 ID 批量取关系类完整定义
+      operationId: getRelationTypes
+      description: |
+        `get_object_types` 的关系类版本：取回 summary 级别剥掉的 `mapping_rules`
+        与起终点对象类详情。同样支持按名称兜底匹配，未命中的 ID 落 `missing`。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+        - $ref: '#/components/parameters/XKnID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DrillRequest'
+            examples:
+              下钻一条关系:
+                value:
+                  kn_id: kn_medical
+                  ids:
+                    - rt_produced_by
+      responses:
+        '200':
+          description: 关系类完整定义
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationTypesResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: 缺少 `kn_id` 或 `ids` 为空
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+    XKnID:
+      name: x-kn-id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: 知识网络 ID 的 header 形式，与请求体的 `kn_id` 二选一，请求体优先。
+
+  responses:
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    InternalError:
+      description: 服务内部错误；下游 bkn-backend 报错时原样透传其响应体
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+  schemas:
+    ListKnRequest:
+      type: object
+      properties:
+        name_pattern:
+          type: string
+          description: 按名称模糊过滤。
+        limit:
+          type: integer
+          default: 20
+          description: 单页数量。
+        offset:
+          type: integer
+          description: 偏移，用于翻页。
+        sort:
+          type: string
+          default: update_time
+          description: 排序字段。
+        direction:
+          type: string
+          enum:
+            - asc
+            - desc
+          default: desc
+          description: 排序方向。
+
+    ListKnResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnBrief'
+        total_count:
+          type: integer
+          format: int64
+          description: 命中总数。
+
+    KnBrief:
+      type: object
+      properties:
+        id:
+          type: string
+          description: 知识网络 ID。
+        name:
+          type: string
+          description: 知识网络名称。
+        description:
+          type: string
+          description: 描述。
+        module_type:
+          type: string
+          description: 模块类型。
+        business_domain:
+          type: string
+          description: 业务域。
+
+    GetKnDetailRequest:
+      type: object
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。与 `x-kn-id` 头二选一，本字段优先。
+        detail_level:
+          type: string
+          enum:
+            - summary
+            - full
+          default: summary
+          description: 详情级别，见端点说明。
+
+    DrillRequest:
+      type: object
+      required:
+        - ids
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。与 `x-kn-id` 头二选一，本字段优先。
+        ids:
+          type: array
+          items:
+            type: string
+          description: |
+            要下钻的概念 ID 列表（取自 `get_kn_detail`）。也接受概念名称作为兜底匹配。
+            为空时返回 400。
+
+    KnowledgeNetworkDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        comment:
+          type: string
+          description: 描述。
+        concept_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConceptGroup'
+        object_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectType'
+        relation_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationType'
+        action_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionType'
+
+    ObjectTypesResponse:
+      type: object
+      properties:
+        kn_id:
+          type: string
+        object_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectType'
+        missing:
+          type: array
+          items:
+            type: string
+          description: 请求里没匹配到任何对象类的 ID；全部命中时该字段不返回。
+
+    RelationTypesResponse:
+      type: object
+      properties:
+        kn_id:
+          type: string
+        relation_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationType'
+        missing:
+          type: array
+          items:
+            type: string
+          description: 请求里没匹配到任何关系类的 ID；全部命中时该字段不返回。
+
+    ConceptGroup:
+      type: object
+      description: |
+        概念组。`get_kn_detail` 返回时嵌套的 `object_types` / `relation_types` /
+        `action_types` 一律被剥掉（它们是顶层数组的重复拷贝），只留 `object_type_ids`。
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        object_type_ids:
+          type: array
+          items:
+            type: string
+          description: 该分组包含的对象类 ID。
+
+    ObjectType:
+      type: object
+      properties:
+        module_type:
+          type: string
+          description: 模块类型。
+        id:
+          type: string
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        comment:
+          type: string
+        _score:
+          type: number
+          format: float
+          description: 相关度得分；仅检索类接口有意义，浏览类接口恒为 0。
+        data_source:
+          $ref: '#/components/schemas/ResourceInfo'
+        primary_keys:
+          type: array
+          items:
+            type: string
+          description: 主键字段名。
+        data_properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataProperty'
+        logic_properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogicProperty'
+
+    DataProperty:
+      type: object
+      properties:
+        name:
+          type: string
+          description: |
+            属性逻辑名。只含小写字母、数字、下划线与连字符，且不以下划线或连字符开头。
+            **写 SQL 时不要直接用它**——物理列名在 `mapped_field` 里。
+        display_name:
+          type: string
+          description: 显示名。summary 级别与 `get_object_types` 均不返回。
+        type:
+          type: string
+          description: 属性类型。除视图字段类型外，还有 metric / objective / event / trace / log / operator。
+        comment:
+          type: string
+          description: 备注。summary 级别不返回。
+        mapped_field:
+          description: |
+            映射到的物理字段信息，结构随数据源类型而变。summary 级别不返回，
+            用 `get_object_types` 取。
+        condition_operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConditionOperation'
+          description: |
+            该属性支持的查询算子。summary 级别不返回，用 `get_object_types` 取。
+
+            **构造查询条件时以本字段为准**：这是建网时随对象类定义落库的声明，
+            不同对象类可以不同。
+
+    LogicProperty:
+      type: object
+      description: 逻辑属性（指标或算子），值需要计算，不直接存在于数据源里。
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+          description: 显示名。summary 级别与 `get_object_types` 均不返回。
+        type:
+          type: string
+          enum:
+            - metric
+            - operator
+          description: 逻辑属性类型。
+        comment:
+          type: string
+          description: 备注。summary 级别不返回。
+        data_source:
+          type: object
+          additionalProperties: true
+          description: 取数配置。summary 级别不返回。
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyParameter'
+          description: |
+            计算参数。summary 级别不返回。求值走
+            [logic-property.yaml](logic-property.yaml) 的 `logic-property-resolver`。
+
+    PropertyParameter:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        value_from:
+          type: string
+          enum:
+            - input
+            - property
+            - const
+          description: 取值来源：调用方入参 / 对象属性 / 常量。
+        value:
+          description: 取值来源为 `const` 时的常量值。
+        if_system_generate:
+          type: boolean
+          description: 是否由系统自动生成。
+        comment:
+          type: string
+
+    RelationType:
+      type: object
+      properties:
+        module_type:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        comment:
+          type: string
+        _score:
+          type: number
+          format: float
+        type:
+          type: string
+          description: 关系实现方式。
+        source_object_type_id:
+          type: string
+          description: 起点对象类 ID。
+        target_object_type_id:
+          type: string
+          description: 终点对象类 ID。
+        source_object_type:
+          description: 起点对象类详情。summary 级别不返回，用 `get_relation_types` 取。
+        target_object_type:
+          description: 终点对象类详情。summary 级别不返回，用 `get_relation_types` 取。
+        mapping_rules:
+          description: |
+            关系映射规则，结构随 `type` 而变（`direct` 对应一组字段映射）。
+            summary 级别不返回，用 `get_relation_types` 取。
+
+    ActionType:
+      type: object
+      properties:
+        module_type:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        comment:
+          type: string
+        _score:
+          type: number
+          format: float
+        object_type_id:
+          type: string
+          description: 该行动类绑定的对象类 ID。
+
+    ResourceInfo:
+      type: object
+      description: 对象类的数据来源。
+      properties:
+        type:
+          type: string
+          description: 数据源类型。
+        id:
+          type: string
+          description: 资源 ID。
+        name:
+          type: string
+          description: 资源名称。
+
+    ConditionOperation:
+      type: string
+      description: 查询条件算子。
+      enum:
+        - and
+        - or
+        - '=='
+        - '!='
+        - '>'
+        - '<'
+        - '>='
+        - '<='
+        - in
+        - not_in
+        - like
+        - not_like
+        - range
+        - out_range
+        - exist
+        - not_exist
+        - regex
+        - match
+        - knn

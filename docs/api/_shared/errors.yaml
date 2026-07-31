@@ -1,9 +1,13 @@
 # 共享错误响应体 —— 单一来源
 #
-# 由 kweaver-go-lib/rest.BaseError JSON 序列化得到，Go 服务（vega / bkn / dataflow /
-# context-loader / execution-factory / bkn-safe）统一走这套错误信封。各模块 YAML 用
+# `Error` 由 kweaver-go-lib/rest.BaseError JSON 序列化得到，vega / bkn / dataflow /
+# execution-factory / bkn-safe 走这套信封。各模块 YAML 用
 #   $ref: '../_shared/errors.yaml#/components/schemas/Error'
 # 引用，不再各自内嵌。
+#
+# 注意：context-loader（agent-retrieval）没有用 kweaver-go-lib，自带一套字段名不同的
+#       信封（code/description/solution/link/details），见下方 ErrorAgentRetrieval——
+#       不改成 rest.BaseError 是因为其 MCP / Agent 调用方已按现字段名解析。
 #
 # 注意：mf-model 是 FastAPI，错误信封字段不同（code/detail/link），单列
 #       errors-fastapi.yaml，不并入本文件——不假装全平台一套。
@@ -34,3 +38,33 @@ components:
           description: 指向错误详情文档的链接。
         error_details:
           description: 详细内容，类型不固定。
+
+    ErrorAgentRetrieval:
+      description: |
+        context-loader（agent-retrieval）的错误响应体，由该服务的
+        `infra/errors.HTTPError` 序列化得到。字段名与上面的 `Error` **不同**，
+        对接时不要混用。
+
+        另一个易踩的点：当错误来自下游服务（ontology-query / bkn-backend /
+        vega）时，context-loader 原样透传下游响应体，此时字段名是下游的信封
+        （通常是 `error_code` / `error_details`），而不是本 schema。判断错误来源
+        请看 `code` 前缀：`Public.*` 与 `agentRetrieval.*` 是本服务产生的。
+      type: object
+      properties:
+        code:
+          type: string
+          description: |
+            机器可读错误码。通用错误为 `Public.<ErrCode>`（如 `Public.BadRequest`），
+            业务错误为 `agentRetrieval.<ErrCode>.<ExtCode>`。
+          example: Public.BadRequest
+        description:
+          type: string
+          description: 人类可读错误说明（按请求语言本地化）。
+        solution:
+          type: string
+          description: 建议的处理方式。
+        link:
+          type: string
+          description: 指向错误详情文档的链接；无对应文档时为「无」。
+        details:
+          description: 详细内容，类型不固定（字符串或对象）。

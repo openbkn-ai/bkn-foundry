@@ -1,0 +1,368 @@
+---
+openapi: 3.0.3
+info:
+  title: 实例子图查询
+  description: |
+    沿关系路径查询对象子图。给定一条或多条「对象类 → 关系类 → 对象类 …」的路径模板，
+    返回每条路径下命中的对象集合与它们之间的边。
+
+    与 [object-instance.yaml](object-instance.yaml) 的分工：那边是单个对象类的平面
+    查询，这边是跨对象类的关联展开。路径模板里的对象类 ID 与关系类 ID 从
+    [schema-search.yaml](schema-search.yaml) 的 `search_schema` 或
+    [kn-explore.yaml](kn-explore.yaml) 的 `get_kn_detail` 取。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/query_instance_subgraph:
+    post:
+      tags:
+        - Subgraph
+      summary: 按关系路径查询对象子图
+      operationId: queryInstanceSubgraph
+      description: |
+        `relation_type_paths` 可以放多条路径，每条独立查询、独立返回一个子图，
+        顺序与请求一致。
+
+        **路径的顺序和方向是硬约束，写错会静默查出错误结果**：
+
+        - `object_types` 按节点出现顺序排列；n 跳路径长度为 n+1。即使某个节点没有
+          过滤条件，也必须占位保留其 `id`，否则顺序错位。
+        - `relation_types` 按边出现顺序排列，长度为 n；第 i 条边的
+          `source_object_type_id` 必须等于 `object_types[i].id`，
+          `target_object_type_id` 必须等于 `object_types[i+1].id`。
+        - 边的方向由这组起终点与关系类自身定义的起终点是否一致决定：一致为正向，
+          相反为反向。
+
+        **取主键**：子图对象的主键在 `unique_identities` 里（不是
+        `query_object_instance` 的 `_instance_identity`）。要把子图结果喂给
+        [action.yaml](action.yaml) 或 [logic-property.yaml](logic-property.yaml) 时，
+        从 `unique_identities` 取键值对。
+      parameters:
+        - name: kn_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 知识网络 ID。
+        - name: include_logic_params
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: 是否返回逻辑属性的计算参数。默认 false，结果不含逻辑属性字段与值。
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubGraphQueryBaseOnTypePath'
+            examples:
+              一跳路径:
+                summary: 药品 →（生产企业关系）→ 企业
+                value:
+                  relation_type_paths:
+                    - object_types:
+                        - id: ot_drug
+                          condition:
+                            field: status
+                            operation: '=='
+                            value: on_market
+                            value_from: const
+                          limit: 20
+                        - id: ot_manufacturer
+                          limit: 20
+                      relation_types:
+                        - relation_type_id: rt_produced_by
+                          source_object_type_id: ot_drug
+                          target_object_type_id: ot_manufacturer
+                      limit: 50
+      responses:
+        '200':
+          description: 每条路径一个子图，顺序与请求一致
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PathEntries'
+            application/toon:
+              schema:
+                type: string
+                description: TOON 编码的同一结构（`response_format=toon` 时）。
+        '400':
+          description: 参数错误（路径顺序 / 方向不匹配、条件不合法等）
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: 知识网络、对象类或关系类不存在
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误，或下游依赖故障
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  schemas:
+    SubGraphQueryBaseOnTypePath:
+      type: object
+      required:
+        - relation_type_paths
+      properties:
+        relation_type_paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationTypePath'
+          description: 关系路径集合。多条路径同时查询，各自返回独立子图。
+
+    RelationTypePath:
+      type: object
+      description: |
+        一条完整的关系路径模板。`object_types` 与 `relation_types` 的顺序必须严格
+        对应，共同构成路径，详见端点说明。
+      required:
+        - object_types
+        - relation_types
+      properties:
+        object_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectTypeOnPath'
+          description: 路径上的节点，按出现顺序排列；n 跳路径长度为 n+1。
+        relation_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/TypeEdge'
+          description: 路径上的边，按出现顺序排列；n 跳路径长度为 n。
+        limit:
+          type: integer
+          description: 本条路径返回的路径条数上限。
+
+    ObjectTypeOnPath:
+      type: object
+      description: 路径上的一个节点（对象类）及其过滤 / 排序 / 限量。
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: 对象类 ID。即使无过滤条件也必须保留，用于占位保序。
+        condition:
+          $ref: '#/components/schemas/Condition'
+        sort:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sort'
+          description: 该节点的排序字段。
+        limit:
+          type: integer
+          description: 该节点取回的对象数量上限。
+
+    TypeEdge:
+      type: object
+      description: |
+        路径上的一条边。方向由 `source_object_type_id` / `target_object_type_id`
+        与关系类自身定义的起终点是否一致决定。
+      required:
+        - relation_type_id
+        - source_object_type_id
+        - target_object_type_id
+      properties:
+        relation_type_id:
+          type: string
+          description: 关系类 ID。
+        source_object_type_id:
+          type: string
+          description: 该边在路径中的起点对象类 ID。
+        target_object_type_id:
+          type: string
+          description: 该边在路径中的终点对象类 ID。
+
+    PathEntries:
+      type: object
+      required:
+        - entries
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectSubGraphResponse'
+          description: 与请求中 `relation_type_paths` 一一对应的子图列表。
+
+    ObjectSubGraphResponse:
+      type: object
+      description: 一条路径查出的子图。
+      properties:
+        objects:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ObjectInfoInSubgraph'
+          description: |
+            子图中的对象，以对象唯一标识为 key、对象详情为 value 的 map。
+        relation_paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationPath'
+          description: 对象之间的关系路径集合。
+        total_count:
+          type: integer
+          description: 起点对象类的命中总数。
+        search_after:
+          type: array
+          items: {}
+          description: 起点对象的翻页游标，用于下一次 `search_after` 分页。
+
+    ObjectInfoInSubgraph:
+      type: object
+      description: 子图中的单个对象。
+      properties:
+        id:
+          type: string
+          description: 对象唯一标识，形如「对象类 ID-联合主键生成的对象 ID」。
+        unique_identities:
+          type: object
+          additionalProperties: true
+          description: |
+            对象主键，key 为属性名、value 为属性值。**下游接口需要的
+            `_instance_identities` 从这里取。**
+        object_type_id:
+          type: string
+        object_type_name:
+          type: string
+        display:
+          description: 显示属性的值。
+        properties:
+          type: object
+          additionalProperties: true
+          description: 属性值，key 为属性名、value 为属性值。
+
+    RelationPath:
+      type: object
+      properties:
+        relations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Relation'
+          description: 沿路径顺序出现的边。
+        length:
+          type: integer
+          description: 路径长度（跳数）。
+
+    Relation:
+      type: object
+      description: 一度关系（边）。
+      properties:
+        relation_type_id:
+          type: string
+        relation_type_name:
+          type: string
+        source_object_id:
+          type: string
+          description: 起点对象的唯一标识。
+        target_object_id:
+          type: string
+          description: 终点对象的唯一标识。
+
+    Sort:
+      type: object
+      required:
+        - field
+        - direction
+      properties:
+        field:
+          type: string
+          description: 排序字段。
+        direction:
+          type: string
+          enum:
+            - asc
+            - desc
+          description: 排序方向。
+
+    Condition:
+      type: object
+      description: |
+        过滤条件。逻辑算子（`and` / `or`）用 `sub_conditions` 组合；叶子条件用
+        `field` + `operation` + `value` + `value_from`。`value` 与 `value_from`
+        必须成对出现，`value_from` 目前只支持 `const`。
+
+        可用算子以对象类的 `condition_operations` 为准，见
+        [kn-explore.yaml](kn-explore.yaml)。
+      required:
+        - operation
+      properties:
+        field:
+          type: string
+          description: 字段名，即对象类的属性名。
+        operation:
+          type: string
+          description: 查询算子。
+          enum:
+            - and
+            - or
+            - '=='
+            - '!='
+            - '>'
+            - '<'
+            - '>='
+            - '<='
+            - in
+            - not_in
+            - like
+            - not_like
+            - range
+            - out_range
+            - exist
+            - not_exist
+            - regex
+            - match
+            - knn
+        sub_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+          description: 子条件数组，供 `and` / `or` 组合使用。
+        value:
+          description: 字段值，格式随算子而定。
+        value_from:
+          type: string
+          enum:
+            - const
+          description: 值来源，目前只支持 `const`。

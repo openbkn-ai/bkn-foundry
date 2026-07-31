@@ -1,0 +1,629 @@
+---
+openapi: 3.0.3
+info:
+  title: Schema 检索
+  description: |
+    Context Loader（服务名 `agent-retrieval`）的 Schema 探索入口：把一句自然语言
+    映射到知识网络里的**概念**（对象类 / 关系类 / 行动类 / 指标类），供 Agent
+    据此决定下一步调哪个查询接口。
+
+    三个端点的分工：
+
+    | 端点 | 定位 | 建议 |
+    |---|---|---|
+    | `POST /kn/search_schema` | 标准契约，Schema-only | **新接入方用这个** |
+    | `POST /kn/kn_search` | `search_schema` 的兼容壳，吸收旧字段 | 仅存量调用方 |
+    | `POST /kn/semantic-search` | 早期语义检索，带查询理解与实例样本 | 需要 `query_understanding` 时用 |
+
+    `search_schema` / `kn_search` 固定为 Schema-only：不返回实例数据，也不承担实例
+    检索。拿到概念后，实例数据走
+    [object-instance.yaml](object-instance.yaml)、[instance-subgraph.yaml](instance-subgraph.yaml)，
+    或 [data-access.yaml](data-access.yaml) 的 `run_sql`。
+
+    **响应格式**：本模块所有端点都支持 `?response_format=toon`，返回
+    `application/toon`（同构数组压成表格，比 JSON 省 token）；默认 `json`。
+
+    **认证**：`Authorization: Bearer <token>`，token 为 OAuth access token 或用户自助
+    签发的 AppKey（`bak_` 前缀）。账户身份由服务端从凭据解析，调用方**不需要**也
+    不应该自己传 `x-account-id`。
+  version: 0.1.3
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/search_schema:
+    post:
+      tags:
+        - SchemaSearch
+      summary: 探索知识网络 Schema
+      operationId: searchSchema
+      description: |
+        统一的 Schema 探索入口。适用于还不确定该继续调用哪个 `query_*` / `find_*` /
+        `get_*` 接口时，先探索相关概念。
+
+        **写 SQL 时注意 `include_columns`**：`data_properties[].name` 是逻辑名，
+        物理列名在 `mapped_field` 里，二者可以不同（同一份资源可被多个对象类以不同
+        逻辑名映射）。要用 `run_sql` 直查时置 `include_columns=true` 拿物理列名。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+        - name: x-kn-id
+          in: header
+          required: false
+          schema:
+            type: string
+          description: |
+            知识网络 ID 的 header 形式，供无法改请求体的调用方（如 MCP 客户端固定
+            注入 header）使用；与请求体的 `kn_id` 二选一，请求体优先。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchSchemaRequest'
+            examples:
+              基础探索:
+                value:
+                  kn_id: kn_medical
+                  query: 最近半年哪些药品的不良反应上报最多
+              限定概念类型并带物理列名:
+                value:
+                  kn_id: kn_medical
+                  query: 药品与生产企业的关系
+                  search_scope:
+                    include_action_types: false
+                    include_metric_types: false
+                  include_columns: true
+                  max_concepts: 5
+      responses:
+        '200':
+          description: Schema 探索结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchSchemaResponse'
+            application/toon:
+              schema:
+                type: string
+                description: TOON 编码的同一结构（`response_format=toon` 时）。
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/kn_search:
+    post:
+      tags:
+        - SchemaSearch
+      summary: 探索知识网络 Schema（兼容接口）
+      operationId: knSearch
+      description: |
+        兼容历史 `kn_search` 调用方式的接口。底层与 `search_schema` 共用同一套逻辑，
+        输出统一收敛为 Schema 结果。
+
+        兼容边界（传入不报错，但也不恢复旧能力）：
+
+        - `only_schema` 无论传什么都按 `true` 处理；
+        - `retrieval_config` 里只有 `concept_retrieval.top_k`、
+          `concept_retrieval.schema_brief` 会被吸收，其余字段被忽略；
+        - 不再返回 `nodes` / `message`，也不返回实例检索结果。
+
+        新接入方请直接用 `POST /kn/search_schema`。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnSearchCompatRequest'
+            examples:
+              旧字段写法:
+                value:
+                  kn_id: kn_medical
+                  query: 药品不良反应
+                  only_schema: true
+                  retrieval_config:
+                    concept_retrieval:
+                      top_k: 5
+                      schema_brief: true
+      responses:
+        '200':
+          description: Schema 检索结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchSchemaResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/semantic-search:
+    post:
+      tags:
+        - SchemaSearch
+      summary: 语义检索（含查询理解）
+      operationId: semanticSearch
+      description: |
+        基于用户查询意图，返回知识网络中相关的概念。与 `search_schema` 的差别：
+        本接口可返回 `query_understanding`（改写后的查询、识别出的意图与查询策略）
+        和每个概念的 `samples`（实例样本），代价是链路更长。
+
+        只需要「有哪些概念」时用 `search_schema` 更省。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+        - name: mode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - keyword_vector_retrieval
+              - agent_intent_planning
+              - agent_intent_retrieval
+            default: keyword_vector_retrieval
+          description: |
+            检索策略。`keyword_vector_retrieval` 关键词 + 向量召回（默认，最快）；
+            `agent_intent_planning` / `agent_intent_retrieval` 走大模型意图分析，
+            更准但更慢、更贵。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SemanticSearchRequest'
+            examples:
+              带查询理解:
+                value:
+                  kn_id: kn_medical
+                  query: 最近一年哪家药企的产品召回次数最多
+                  return_query_understanding: true
+                  max_concepts: 10
+      responses:
+        '200':
+          description: 相关概念与（可选的）查询理解
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SemanticSearchResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    InternalError:
+      description: 服务内部错误；下游（bkn-backend / ontology-query）报错时原样透传其响应体
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+  schemas:
+    SearchSchemaRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: 用户查询问题或关键词。
+        kn_id:
+          type: string
+          description: 知识网络 ID。与 `x-kn-id` 头二选一，本字段优先。
+        search_scope:
+          $ref: '#/components/schemas/SearchSchemaScope'
+        max_concepts:
+          type: integer
+          minimum: 1
+          default: 10
+          description: 每类概念的候选规模上限。
+        schema_brief:
+          type: boolean
+          default: false
+          description: 是否只返回精简 Schema；默认返回相对完整的 Schema。
+        enable_rerank:
+          type: boolean
+          default: true
+          description: 是否对关系类做精排。
+        rerank_model:
+          type: string
+          description: |
+            覆盖本次请求的精排小模型名。运维 / 高级用户的逃生口，留空走部署级默认
+            （`concept_search_config.rerank_model`）。**不建议由 Agent 自行选择模型名**。
+        include_columns:
+          type: boolean
+          default: false
+          description: |
+            是否在每个对象类的 `data_properties` 上附带物理列名（取自 `mapped_field`）。
+            写 `run_sql` 需要物理列名时置 true；默认 false 以保持响应精简。
+
+    SearchSchemaScope:
+      type: object
+      description: |
+        Schema 探索范围。不传时四类概念全开。四个开关不能同时为 `false`，否则返回 400。
+
+        `search_scope` 只约束**响应输出**，不阻断系统内部用相关线索辅助召回。
+      properties:
+        concept_groups:
+          type: array
+          items:
+            type: string
+          description: |
+            BKN 概念分组 ID 列表，用于限定召回范围；不传或空数组表示不限定。
+            分组语义由 BKN 侧实现（本服务直接透传该列表）。
+
+            **未知分组不会退化成空结果**：BKN 对不存在的分组返回 5xx（如
+            `BknBackend.ObjectType.InternalError`，`error_details` 里写
+            "all concept group not found ..."），本接口原样透传，调用方据此可区分
+            「分组不存在」与「分组合法但范围内无概念」。
+        include_object_types:
+          type: boolean
+          default: true
+          description: 是否包含对象类。
+        include_relation_types:
+          type: boolean
+          default: true
+          description: 是否包含关系类。
+        include_action_types:
+          type: boolean
+          default: true
+          description: 是否包含行动类。
+        include_metric_types:
+          type: boolean
+          default: true
+          description: 是否包含指标类。
+
+    KnSearchCompatRequest:
+      type: object
+      required:
+        - query
+        - kn_id
+      properties:
+        query:
+          type: string
+          description: 用户查询问题或关键词。
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        search_scope:
+          $ref: '#/components/schemas/SearchScope'
+        retrieval_config:
+          type: object
+          nullable: true
+          description: |
+            历史请求结构。仅 `concept_retrieval.top_k` 与
+            `concept_retrieval.schema_brief` 仍被吸收，其余字段传入不报错也不生效。
+          properties:
+            concept_retrieval:
+              type: object
+              properties:
+                top_k:
+                  type: integer
+                  minimum: 1
+                  default: 10
+                  description: 兼容映射到候选规模上限。
+                schema_brief:
+                  type: boolean
+                  default: false
+                  description: 兼容映射到精简 Schema 开关。
+                include_sample_data:
+                  type: boolean
+                  default: false
+                  description: 兼容接收，当前版本不生效。
+            semantic_instance_retrieval:
+              type: object
+              additionalProperties: true
+              description: 兼容接收，当前版本不生效。
+            property_filter:
+              type: object
+              additionalProperties: true
+              description: 兼容接收，当前版本不生效。
+        only_schema:
+          type: boolean
+          description: 兼容接收；接口固定 Schema-only，传任何值均按 `true` 处理。
+        enable_rerank:
+          type: boolean
+          default: true
+          description: 是否对关系类做精排。
+        rerank_model:
+          type: string
+          description: 覆盖精排小模型名；留空走部署级默认。
+        include_columns:
+          type: boolean
+          default: false
+          description: 是否附带物理列名。
+
+    SearchSchemaResponse:
+      type: object
+      description: |
+        Schema 探索结果。各数组元素为对应概念的定义对象，字段随知识网络建模而变，
+        故此处不逐字段约束；对象类 / 关系类 / 行动类的完整字段见
+        [kn-explore.yaml](kn-explore.yaml) 的 `ObjectType` / `RelationType` / `ActionType`。
+
+        `metric_types` 仅 `search_schema` 返回；`kn_search` 兼容口不返回该字段。
+      properties:
+        object_types:
+          type: array
+          description: 对象类列表。
+          items:
+            type: object
+            additionalProperties: true
+        relation_types:
+          type: array
+          description: 关系类列表。
+          items:
+            type: object
+            additionalProperties: true
+        action_types:
+          type: array
+          description: 行动类列表。
+          items:
+            type: object
+            additionalProperties: true
+        metric_types:
+          type: array
+          description: 指标类列表（仅 `search_schema`）。
+          items:
+            type: object
+            additionalProperties: true
+
+    SemanticSearchRequest:
+      type: object
+      required:
+        - query
+        - kn_id
+      properties:
+        query:
+          type: string
+          description: 用户自然语言查询。
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        previous_queries:
+          type: array
+          items:
+            type: string
+          description: 历史查询，用于多轮场景下的查询改写。
+        search_scope:
+          $ref: '#/components/schemas/SearchScope'
+        max_concepts:
+          type: integer
+          default: 10
+          description: 最大返回概念数量。
+        rerank_action:
+          type: string
+          enum:
+            - default
+            - llm
+            - vector
+          default: vector
+          description: 精排方式：`vector` 向量精排（默认），`llm` 走大模型精排。
+        rerank_llm_model:
+          type: string
+          description: 仅 `rerank_action=llm` 时生效；留空走系统默认大模型。
+        rerank_vector_model:
+          type: string
+          description: 仅 `rerank_action=vector` 时生效；留空走系统默认小模型。
+        return_query_understanding:
+          type: boolean
+          default: false
+          description: 是否返回查询理解信息。
+
+    SearchScope:
+      type: object
+      description: 语义检索范围（不含指标类开关）。
+      properties:
+        concept_groups:
+          type: array
+          items:
+            type: string
+          description: 限定的概念分组 ID 列表。
+        include_object_types:
+          type: boolean
+          default: true
+          description: 是否包含对象类。
+        include_relation_types:
+          type: boolean
+          default: true
+          description: 是否包含关系类。
+        include_action_types:
+          type: boolean
+          default: true
+          description: 是否包含行动类。
+
+    SemanticSearchResponse:
+      type: object
+      properties:
+        query_understanding:
+          $ref: '#/components/schemas/QueryUnderstanding'
+        concepts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Concept'
+        hits_total:
+          type: integer
+          description: 命中总数。
+
+    QueryUnderstanding:
+      type: object
+      description: 查询理解结果，仅 `return_query_understanding=true` 时返回。
+      properties:
+        origin_query:
+          type: string
+          description: 用户原始查询。
+        processed_query:
+          type: string
+          description: 大模型改写后的标准化查询。
+        intent:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryIntent'
+        query_strategy:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryStrategy'
+
+    QueryIntent:
+      type: object
+      properties:
+        query_segment:
+          type: string
+          description: 对应的查询片段。
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: 置信度。
+        reasoning:
+          type: string
+          description: 识别推理过程。
+        requires_reasoning:
+          type: boolean
+          default: false
+          description: 是否需要进一步推理。
+        related_concepts:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedConcept'
+
+    QueryStrategy:
+      type: object
+      properties:
+        strategy_type:
+          type: string
+          enum:
+            - concept_get
+            - concept_discovery
+            - object_instance_discovery
+          description: 策略类型。
+        filter:
+          $ref: '#/components/schemas/ConceptFilter'
+
+    ConceptFilter:
+      type: object
+      properties:
+        concept_type:
+          type: string
+          enum:
+            - object_type
+            - relation_type
+            - action_type
+          description: 概念类型。
+        conditions:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                description: 字段名。
+              operation:
+                type: string
+                description: 操作符。
+              value:
+                type: string
+                description: 值。
+
+    RelatedConcept:
+      type: object
+      properties:
+        concept_type:
+          type: string
+          enum:
+            - object_type
+            - relation_type
+            - action_type
+        concept_id:
+          type: string
+        concept_name:
+          type: string
+
+    Concept:
+      type: object
+      properties:
+        concept_type:
+          type: string
+          enum:
+            - object_type
+            - relation_type
+            - action_type
+          description: 概念类型。
+        concept_id:
+          type: string
+          description: 概念 ID。
+        concept_name:
+          type: string
+          description: 概念名称。
+        concept_detail:
+          type: object
+          additionalProperties: true
+          description: |
+            概念详情，结构随 `concept_type` 变化：对象类含数据属性 / 逻辑属性 /
+            主键 / 数据源，关系类含起终点对象类 ID，行动类含所绑定的对象类 ID。
+            完整字段见 [kn-explore.yaml](kn-explore.yaml)。
+        intent_score:
+          type: number
+          format: float
+          description: 意图得分。
+        match_score:
+          type: number
+          format: float
+          description: 匹配得分。
+        rerank_score:
+          type: number
+          format: float
+          description: 精排得分。
+        samples:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: 实例样本。

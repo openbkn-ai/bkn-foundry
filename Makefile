@@ -74,6 +74,7 @@ api-docs:
 MODTITLE_bkn               := BKN
 MODTITLE_bkn-agent         := BKN 专属 Agent
 MODTITLE_agent-observability := BKN Trace
+MODTITLE_context-loader    := 上下文加载
 MODTITLE_mf-model-manager  := 模型管理
 MODTITLE_ontology-query    := Ontology 查询
 MODTITLE_vega              := VEGA 引擎
@@ -82,6 +83,7 @@ MODTITLE_vega              := VEGA 引擎
 MODDESC_bkn               := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
 MODDESC_bkn-agent         := Agent 运行时：Agent 增删改查 / 对话与调用 / 任务 / 提示词版本 / 会话 / 导入导出
 MODDESC_agent-observability := BKN Trace：受管会话生命周期 / 业务证据 / 技术链路 / 快照
+MODDESC_context-loader    := Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP
 MODDESC_mf-model-manager  := 模型工厂：大模型连通性测试 / 默认模型设置 / 调用监控
 MODDESC_ontology-query    := 本体查询与语义检索
 MODDESC_vega              := 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询
@@ -111,6 +113,15 @@ RESNAME_raw-query                 := 原生查询
 RESNAME_resource-data             := 资源数据
 RESNAME_resource                  := 资源
 RESNAME_ontology-query            := 本体查询
+RESNAME_schema-search             := Schema 检索
+RESNAME_kn-explore                := 知识网络浏览
+RESNAME_object-instance           := 对象实例查询
+RESNAME_instance-subgraph         := 实例子图查询
+RESNAME_logic-property            := 逻辑属性求值
+RESNAME_action                    := 行动召回与执行
+RESNAME_skill                     := Skill 召回
+RESNAME_data-access               := 数据层直查
+RESNAME_mcp                       := MCP 服务
 
 ## api-docs-html: 用 redocly 为每个 YAML 渲染交互式 HTML 文档（带搜索/折叠/示例），
 ## 输出到 _generated/html/<module>/<resource>.html，并生成一个卡片式 index.html 汇总入口。

@@ -1,0 +1,343 @@
+---
+openapi: 3.0.3
+info:
+  title: 对象实例查询
+  description: |
+    按对象类查询实例数据。Context Loader（服务名 `agent-retrieval`）在这里做的是
+    **面向 Agent 的收口**：接受结构化条件，转发给 ontology-query，再把结果按 Agent
+    能直接消费的形态返回。
+
+    典型链路：`search_schema` 拿到对象类与可用算子 → 本接口取实例 → 从每条记录的
+    `_instance_identity` 取标识 → 喂给 [action.yaml](action.yaml) 的 `get_action_info`
+    或 [logic-property.yaml](logic-property.yaml) 的 `logic-property-resolver`。
+
+    **翻页两条路，互斥**：
+
+    - `search_after` 游标翻页：适用于对象索引 / 数据视图路径，只能顺翻，不能跳页；
+      把上一页响应里的 `search_after` 原样回传即可，响应里没有该字段就是没有下一页。
+    - `offset` 偏移翻页：适用于资源（vega 表源）路径，可跳任意页。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/query_object_instance:
+    post:
+      tags:
+        - ObjectInstance
+      summary: 查询对象实例
+      operationId: queryObjectInstance
+      description: |
+        按单个对象类查询实例。`kn_id` / `ot_id` 走 **query 参数**，过滤与分页走请求体。
+
+        **条件两种写法**：
+
+        - `filters`：扁平简写，多个条件按 AND 组合，`value_from` 自动取 `const`。
+          覆盖「字段 op 值 [AND ...]」这类绝大多数场景。
+        - `condition`：完整嵌套结构，需要 OR / 多层嵌套时用。
+
+        两者同传时 `condition` 优先，`filters` 被忽略。
+
+        **算子白名单以对象类为准**：可用算子看 `get_object_types` 返回的
+        `condition_operations`，不要照抄本文档的枚举全集。这份声明是建网时由客户端
+        写入并原样落库的，未经服务端校验——标了 `knn` 的字段未必真有向量映射。真正
+        的判定在下游：字段不支持时 ontology-query 返回 400，错误详情会原样透传出来
+        （如 `OntologyQuery.InvalidParameter.Condition: left field is not a vector field`）。
+
+        **`_score` 的取舍**：纯结构化过滤在底层落成常量打分查询，每条命中分数相同，
+        没有相关度语义，因此响应里的 `_score` 会被剥掉，避免调用方误以为结果按相关度
+        排序。只有查询里含 `knn` 或 `match` 这类真正打分的算子时才保留 `_score`。
+
+        **不生效的字段**：请求体里的 `sort` 与 `need_total` 不被本接口接受（服务端
+        请求结构体没有这两个字段，绑定时即丢弃），排序与总数行为按下游默认。
+      parameters:
+        - name: kn_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 知识网络 ID。
+        - name: ot_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 对象类 ID。
+        - name: include_logic_params
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            是否返回逻辑属性的计算参数。默认 false，结果不含逻辑属性字段与值；
+            逻辑属性求值请用 [logic-property.yaml](logic-property.yaml)。
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryObjectInstanceRequest'
+            examples:
+              扁平过滤:
+                summary: filters 简写（等价于 status == Running AND replicas > 1）
+                value:
+                  filters:
+                    - field: status
+                      op: '=='
+                      value: Running
+                    - field: replicas
+                      op: '>'
+                      value: 1
+                  limit: 20
+                  properties:
+                    - pod_name
+                    - status
+              嵌套条件:
+                summary: condition 完整写法（OR 组合）
+                value:
+                  condition:
+                    operation: or
+                    sub_conditions:
+                      - field: status
+                        operation: '=='
+                        value: Failed
+                        value_from: const
+                      - field: status
+                        operation: '=='
+                        value: Unknown
+                        value_from: const
+                  limit: 10
+              游标翻下一页:
+                value:
+                  search_after:
+                    - '20250922_020907_00027_qe7sf'
+                    - 'xdb6f0e5f5ba7449ab94822da9f008386'
+                  limit: 20
+      responses:
+        '200':
+          description: 对象实例数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectDataResponse'
+            application/toon:
+              schema:
+                type: string
+                description: TOON 编码的同一结构（`response_format=toon` 时）。
+        '400':
+          description: 参数错误；条件不合法时携带下游 ontology-query 的具体原因
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: 知识网络或对象类不存在（下游状态码原样保留，不塌陷成 400）
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误，或下游依赖故障
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  schemas:
+    QueryObjectInstanceRequest:
+      type: object
+      properties:
+        condition:
+          $ref: '#/components/schemas/Condition'
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlatFilter'
+          description: |
+            扁平过滤简写，多个条件按 AND 组合。与 `condition` 互斥，同传时
+            `condition` 优先。需要 OR 或嵌套时改用 `condition`。
+        limit:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 10000
+          description: 返回条数。
+        properties:
+          type: array
+          items:
+            type: string
+          description: 指定返回的属性字段；不传返回全部属性。
+        search_after:
+          type: array
+          items: {}
+          description: |
+            游标翻页：上一页响应返回的 `search_after` 原样回传。首次查询留空。
+            与 `offset` 互斥。
+        offset:
+          type: integer
+          description: |
+            偏移翻页：适用于资源（vega 表源）路径，可跳页。与 `search_after` 互斥。
+
+    FlatFilter:
+      type: object
+      description: 单个「字段 算子 值」比较。多个之间按 AND 组合，`value_from` 固定为 `const`。
+      required:
+        - field
+        - op
+        - value
+      properties:
+        field:
+          type: string
+          description: 对象类属性名。
+        op:
+          $ref: '#/components/schemas/ConditionOperation'
+        value:
+          description: |
+            字段值。`in` / `not_in` 传数组，`range` / `out_range` 传 `[min, max]`，
+            其余传单值。
+
+    Condition:
+      type: object
+      description: |
+        过滤条件。逻辑算子（`and` / `or`）用 `sub_conditions` 组合子条件；
+        叶子条件用 `field` + `operation` + `value` + `value_from`。
+
+        **`value` 与 `value_from` 必须成对出现**，且 `value_from` 目前只支持 `const`。
+      required:
+        - operation
+      properties:
+        field:
+          type: string
+          description: 字段名，即对象类的属性名。逻辑算子节点不需要。
+        operation:
+          $ref: '#/components/schemas/ConditionOperation'
+        sub_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+          description: 子条件数组，供 `and` / `or` 组合使用。
+        value:
+          description: |
+            字段值，格式随算子而定：比较类传单值；`range` / `out_range` 传
+            `[min, max]`；`in` / `not_in` 传值数组；`knn` 传向量或待向量化的文本。
+        value_from:
+          type: string
+          enum:
+            - const
+          description: 值来源。目前只支持 `const`，且必须与 `value` 同时出现。
+        limit_key:
+          type: string
+          enum:
+            - k
+            - min_score
+            - min_distance
+          description: |
+            向量检索（`knn`）的限定维度：`k` 取回条数，`min_score` 最低相似度，
+            `min_distance` 最大距离。
+        limit_value:
+          description: 与 `limit_key` 配套的取值。
+
+    ObjectDataResponse:
+      type: object
+      description: |
+        对象实例查询结果。本接口固定不返回对象类定义（`object_type`）——需要定义
+        请走 [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types`。
+      properties:
+        datas:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectInstance'
+          description: 对象实例列表。
+        total_count:
+          type: integer
+          format: int64
+          description: 命中总数；下游未返回时该字段不出现。
+        search_after:
+          type: array
+          items: {}
+          description: |
+            下一页游标。非空时把它作为下次请求的 `search_after` 传入；字段不存在
+            或为空表示没有更多数据。
+
+    ObjectInstance:
+      type: object
+      additionalProperties: true
+      description: |
+        单条对象实例。业务字段随对象类建模动态变化，此外固定含若干下划线前缀的
+        元字段。
+      properties:
+        _instance_id:
+          type: string
+          description: 该实例的唯一标识字符串。
+        _instance_identity:
+          type: object
+          additionalProperties: true
+          description: |
+            该实例的主键键值对。**下游接口要求的 `_instance_identities` 必须从这里
+            原样取，不能自己拼**。
+        _display:
+          description: 展示用的摘要字段。
+        _score:
+          type: number
+          format: float
+          description: |
+            相关度得分。仅当查询含 `knn` / `match` 等真正打分的算子时返回；
+            纯结构化过滤下该字段被剥除。
+
+    ConditionOperation:
+      type: string
+      description: |
+        查询算子全集。**实际可用范围以对象类的 `condition_operations` 为准**
+        （见 [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types`）。
+      enum:
+        - and
+        - or
+        - '=='
+        - '!='
+        - '>'
+        - '<'
+        - '>='
+        - '<='
+        - in
+        - not_in
+        - like
+        - not_like
+        - range
+        - out_range
+        - exist
+        - not_exist
+        - regex
+        - match
+        - knn

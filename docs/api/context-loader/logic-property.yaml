@@ -1,0 +1,238 @@
+---
+openapi: 3.0.3
+info:
+  title: 逻辑属性求值
+  description: |
+    批量求一批对象实例的**逻辑属性**（指标 `metric` 或算子 `operator`）值。
+
+    逻辑属性不直接存在于数据源里，需要带参数计算，而参数往往藏在用户的自然语言里
+    （「最近一年」→ 时间窗、「按省份」→ 分析维度）。本接口先用大模型把 `query`
+    翻译成各属性的 `dynamic_params`，再批量取值，省掉调用方自己拼参数的工作。
+
+    对象类有哪些逻辑属性、各自需要什么参数，看
+    [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types` 返回的
+    `logic_properties[].parameters`。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/logic-property-resolver:
+    post:
+      tags:
+        - LogicProperty
+      summary: 批量求逻辑属性值
+      operationId: resolveLogicProperties
+      description: |
+        **`query` 的质量决定成败**：参数由大模型从 `query`（必要时加
+        `additional_context`）里推断。查询里要含时间范围、统计维度等业务上下文，
+        否则会因缺参失败。
+
+        **缺参返回 400，不是空结果**：模型判定必需的 input 参数无法从查询推出时，
+        返回 400，`details` 里是 `MISSING_INPUT_PARAMS` 及逐属性的缺失说明。补上
+        上下文重试即可。
+
+        与之区分的是 500 `DYNAMIC_PARAMS_GENERATION_FAILED`：那是大模型或依赖服务
+        故障，不是调用方少给信息，重试或查服务状态。
+
+        **结果与入参对齐**：`datas` 与 `_instance_identities` 顺序一一对应，每项含
+        主键和本次请求的 `properties`。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveLogicPropertiesRequest'
+            examples:
+              指标求值:
+                value:
+                  kn_id: kn_medical
+                  ot_id: ot_company
+                  query: 最近一年这些药企的药品上市数量和经营健康度
+                  _instance_identities:
+                    - company_id: company_000001
+                    - company_id: company_000002
+                  properties:
+                    - approved_drug_count
+                    - business_health_score
+              带调试信息:
+                value:
+                  kn_id: kn_medical
+                  ot_id: ot_company
+                  query: 最近一年这些药企的药品上市数量
+                  additional_context: 'timezone=Asia/Shanghai; step=1d'
+                  _instance_identities:
+                    - company_id: company_000001
+                  properties:
+                    - approved_drug_count
+                  options:
+                    return_debug: true
+      responses:
+        '200':
+          description: 逻辑属性值
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveLogicPropertiesResponse'
+            application/toon:
+              schema:
+                type: string
+                description: TOON 编码的同一结构（`response_format=toon` 时）。
+        '400':
+          description: |
+            参数错误，或动态参数缺失（`details` 含 `MISSING_INPUT_PARAMS`
+            与逐属性的缺失说明）
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: |
+            服务内部错误。动态参数生成失败（大模型或依赖服务异常）时
+            `details` 含 `DYNAMIC_PARAMS_GENERATION_FAILED`
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  schemas:
+    ResolveLogicPropertiesRequest:
+      type: object
+      required:
+        - kn_id
+        - ot_id
+        - query
+        - _instance_identities
+        - properties
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        ot_id:
+          type: string
+          description: 对象类 ID。
+        query:
+          type: string
+          description: |
+            用户查询。需要包含时间范围、统计维度、业务上下文，用于生成
+            `dynamic_params`。信息不足会导致 400 缺参。
+        _instance_identities:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              oneOf:
+                - type: string
+                - type: number
+                - type: boolean
+          description: |
+            对象实例标识数组，**必须从上游取，不可自拼**：先调
+            `query_object_instance` 或 `query_instance_subgraph`，从每个对象的
+            `_instance_identity` / `unique_identities` 取值，按原顺序组成数组。
+          example:
+            - company_id: company_000001
+        properties:
+          type: array
+          items:
+            type: string
+          description: 要求值的逻辑属性名列表（`metric` 或 `operator`）。
+        additional_context:
+          type: string
+          description: |
+            补充上下文，如 timezone、instant、step 或对象属性，帮助模型生成更准的
+            `dynamic_params`。
+        llm_model:
+          type: string
+          description: 覆盖用于生成动态参数的大模型；留空走系统默认大模型。
+        options:
+          $ref: '#/components/schemas/ResolveOptions'
+
+    ResolveOptions:
+      type: object
+      description: 高级选项。
+      properties:
+        return_debug:
+          type: boolean
+          default: false
+          description: 是否返回 `debug`（生成的 dynamic_params、告警等）。
+        max_repair_rounds:
+          type: integer
+          default: 1
+          description: 参数生成失败时的重试修复轮数。
+        max_concurrency:
+          type: integer
+          default: 4
+          description: 多属性并发求值的并发上限。
+
+    ResolveLogicPropertiesResponse:
+      type: object
+      required:
+        - datas
+      properties:
+        datas:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: |
+            与 `_instance_identities` 顺序一一对应，每项含主键与本次请求的
+            `properties` 取值。
+        debug:
+          $ref: '#/components/schemas/ResolveDebugInfo'
+
+    ResolveDebugInfo:
+      type: object
+      description: 仅 `options.return_debug=true` 时返回。
+      properties:
+        dynamic_params:
+          type: object
+          additionalProperties: true
+          description: 模型生成的全部动态参数。
+        agent_info:
+          type: object
+          additionalProperties: true
+          description: 按属性分组的模型调用信息。
+        now_ms:
+          type: integer
+          format: int64
+          description: 服务端时间戳（Unix 毫秒），时间类参数以它为基准。
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 告警信息。
+        trace_id:
+          type: string
+          description: 链路追踪 ID。

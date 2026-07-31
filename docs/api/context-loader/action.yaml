@@ -1,0 +1,558 @@
+---
+openapi: 3.0.3
+info:
+  title: 行动召回与执行
+  description: |
+    知识网络里的「行动」（Action）是绑定在对象类上的可执行能力。本文件是 Agent 侧的
+    完整闭环：
+
+    ```
+    get_action_info      → 拿到行动的可执行定义与动态参数 schema
+    execute_action       → 填入真实参数触发执行，拿到 execution_id
+    get_action_execution → 按 execution_id 查这次执行的状态与逐对象结果
+    list_action_executions → 翻历史执行记录
+    ```
+
+    执行是**异步**的：`execute_action` 立刻返回 `execution_id`，不等结果。参数完整性
+    校验与真正的执行都在下游 ontology-query 完成，本服务只做转发与裁剪。
+
+    **实例标识不能自己拼**：所有接口的 `_instance_identities` 必须来自
+    [object-instance.yaml](object-instance.yaml) 的 `_instance_identity` 或
+    [instance-subgraph.yaml](instance-subgraph.yaml) 的 `unique_identities`。
+
+    **响应做过裁剪**：执行详情与历史列表都剥掉了 Agent 决策用不上的重货
+    （`action_type_snapshot`、重复的 `executor` / `action_source`、结果集分页元数据
+    等），只留状态、计数与逐对象结果，以压低 token 占用。需要完整记录时直接查
+    ontology-query 的 `action-executions` / `action-logs` 端点。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-retrieval/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /kn/get_action_info:
+    post:
+      tags:
+        - Action
+      summary: 召回行动的可执行定义
+      operationId: getActionInfo
+      description: |
+        按行动类 ID（可选再加对象实例标识）召回行动，返回符合 Function Call 规范的
+        工具定义 `_dynamic_tools`。Agent 可以直接把它塞进自己的工具列表。
+
+        不传 `_instance_identities` 时召回的是行动类级别的定义；传了则返回已就该批
+        实例实例化过的参数。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetActionInfoRequest'
+            examples:
+              多实例:
+                value:
+                  kn_id: kn_medical
+                  at_id: at_generate_treatment_plan
+                  _instance_identities:
+                    - disease_id: disease_000001
+                    - disease_id: disease_000002
+              仅行动类:
+                value:
+                  kn_id: kn_medical
+                  at_id: at_generate_treatment_plan
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      responses:
+        '200':
+          description: Function Call 形态的行动定义
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetActionInfoResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/execute_action:
+    post:
+      tags:
+        - Action
+      summary: 触发行动执行（异步）
+      operationId: executeAction
+      description: |
+        对一批对象实例执行某个行动类。**异步**：返回 `execution_id` 即代表已受理，
+        执行结果用 `get_action_execution` 轮询。
+
+        `dynamic_params` 填 `get_action_info` 返回的 schema 里 `value_from=input`
+        的那些参数。`_instance_identities` 留空表示按行动类自身的条件扫描目标实例
+        （由下游决定命中范围），不是「不执行」。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteActionRequest'
+            examples:
+              指定实例执行:
+                value:
+                  kn_id: kn_ops
+                  at_id: at_restart_pod
+                  _instance_identities:
+                    - pod_ip: 192.168.1.1
+                      id: 1
+                  dynamic_params:
+                    grace_period_seconds: 30
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      responses:
+        '200':
+          description: 已受理，返回执行 ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteActionResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/get_action_execution:
+    post:
+      tags:
+        - Action
+      summary: 查询单次行动执行
+      operationId: getActionExecution
+      description: |
+        按 `execute_action` 返回的 `execution_id` 查这次执行的状态与逐对象结果。
+
+        `status` 为 `pending` / `running` 时结果尚未齐全；`completed` 表示执行流程
+        结束，**不代表全部成功**——逐对象成败看 `success_count` / `failed_count`
+        与 `results[].status`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetActionExecutionRequest'
+            examples:
+              查一次执行:
+                value:
+                  kn_id: kn_ops
+                  execution_id: cqq2g8h4d2fg00fvm8dg
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      responses:
+        '200':
+          description: 执行详情（已裁剪）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionExecution'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /kn/list_action_executions:
+    post:
+      tags:
+        - Action
+      summary: 列出行动执行历史
+      operationId: listActionExecutions
+      description: |
+        翻某张知识网络下的行动执行记录，支持按行动类、状态、触发方式与时间区间过滤。
+
+        分页两条路互斥：`offset` 偏移翻页，或把上一页响应的 `search_after` 原样回传
+        做游标翻页（传了 `search_after` 后 `offset` 失效）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListActionExecutionsRequest'
+            examples:
+              查失败记录:
+                value:
+                  kn_id: kn_ops
+                  status: failed
+                  start_time_from: 1704067200000
+                  limit: 50
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      responses:
+        '200':
+          description: 执行历史（每条已裁剪）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionExecutionList'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    ResponseFormat:
+      name: response_format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - json
+          - toon
+        default: json
+      description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    NotFound:
+      description: 知识网络、行动类或执行记录不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+    InternalError:
+      description: 服务内部错误；下游 ontology-query 报错时原样透传其响应体
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+  schemas:
+    InstanceIdentity:
+      type: object
+      description: |
+        一个对象实例的主键键值对。**必须从上游查询结果里取**：
+        `query_object_instance` 的 `_instance_identity`，或
+        `query_instance_subgraph` 的 `unique_identities`。
+      additionalProperties:
+        oneOf:
+          - type: string
+          - type: number
+          - type: boolean
+      example:
+        disease_id: disease_000001
+
+    GetActionInfoRequest:
+      type: object
+      required:
+        - kn_id
+        - at_id
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        at_id:
+          type: string
+          description: 行动类 ID（从 Schema 检索结果里取）。
+        _instance_identities:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstanceIdentity'
+          description: 目标对象实例标识列表。不传则返回行动类级别的定义。
+        _instance_identity:
+          $ref: '#/components/schemas/InstanceIdentity'
+
+    GetActionInfoResponse:
+      type: object
+      properties:
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: 调用工具时需要一并带上的 HTTP 头。
+        _dynamic_tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/DynamicTool'
+          description: Function Call 形态的工具定义列表。
+
+    DynamicTool:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 工具名。
+        description:
+          type: string
+          description: 工具描述。
+        parameters:
+          type: object
+          additionalProperties: true
+          description: OpenAI Function Call 参数 schema。
+        api_url:
+          type: string
+          description: 工具执行代理地址。
+        original_schema:
+          type: object
+          additionalProperties: true
+          description: 原始 OpenAPI 定义。
+        fixed_params:
+          description: |
+            已确定的固定参数。含 `dynamic_params`（行动实例化后确定的参数）与
+            `_instance_identities`（当次召回带入的实例标识）。
+        api_call_strategy:
+          type: string
+          description: 结果处理策略，固定为 `kn_action_recall`。
+          example: kn_action_recall
+
+    ExecuteActionRequest:
+      type: object
+      required:
+        - kn_id
+        - at_id
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        at_id:
+          type: string
+          description: 行动类 ID。
+        _instance_identities:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstanceIdentity'
+          description: |
+            目标对象实例。留空表示按行动类自身的条件扫描目标实例。
+        dynamic_params:
+          type: object
+          additionalProperties: true
+          description: |
+            动态参数取值，对应行动定义中 `value_from=input` 的参数。完整性校验在
+            下游 ontology-query 完成。
+
+    ExecuteActionResponse:
+      type: object
+      properties:
+        execution_id:
+          type: string
+          description: 本次执行的 ID，用于 `get_action_execution` 查询结果。
+        status:
+          type: string
+          description: 受理时的状态。
+        message:
+          type: string
+          description: 附加说明。
+        created_at:
+          type: integer
+          format: int64
+          description: 受理时间（Unix 毫秒）。
+
+    GetActionExecutionRequest:
+      type: object
+      required:
+        - kn_id
+        - execution_id
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        execution_id:
+          type: string
+          description: '`execute_action` 返回的执行 ID。'
+
+    ListActionExecutionsRequest:
+      type: object
+      required:
+        - kn_id
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        action_type_id:
+          type: string
+          description: 按行动类过滤。
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
+          description: 按状态过滤。
+        trigger_type:
+          type: string
+          enum:
+            - manual
+            - scheduled
+          description: 按触发方式过滤。
+        start_time_from:
+          type: integer
+          format: int64
+          description: 起始时间下界（Unix 毫秒）。
+        start_time_to:
+          type: integer
+          format: int64
+          description: 起始时间上界（Unix 毫秒）。
+        offset:
+          type: integer
+          description: 偏移翻页。传了 `search_after` 后本字段失效。
+        limit:
+          type: integer
+          default: 20
+          maximum: 1000
+          description: 分页条数。
+        search_after:
+          type: array
+          items: {}
+          description: 游标翻页：上一页响应返回的 `search_after` 原样回传。
+
+    ActionExecution:
+      type: object
+      description: |
+        单次行动执行。**这是裁剪后的投影**，只保留下列字段；完整记录（含
+        `action_type_snapshot` / `executor` / `action_source` 等）见 ontology-query 的
+        `action-executions` 端点。
+      properties:
+        id:
+          type: string
+          description: 执行 ID。
+        kn_id:
+          type: string
+        action_type_id:
+          type: string
+        action_type_name:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
+          description: |
+            执行状态。`completed` 只表示流程走完，不代表全部对象成功——看
+            `failed_count` 与 `results[].status`。
+        trigger_type:
+          type: string
+          enum:
+            - manual
+            - scheduled
+          description: 触发方式。
+        total_count:
+          type: integer
+          description: 目标对象总数。
+        success_count:
+          type: integer
+          description: 成功对象数。
+        failed_count:
+          type: integer
+          description: 失败对象数。
+        start_time:
+          type: integer
+          format: int64
+          description: 开始时间（Unix 毫秒）。
+        end_time:
+          type: integer
+          format: int64
+          description: 结束时间（Unix 毫秒）。
+        duration_ms:
+          type: integer
+          format: int64
+          description: 总耗时（毫秒）。
+        dynamic_params:
+          type: object
+          additionalProperties: true
+          description: 本次执行使用的动态参数。
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionExecutionResult'
+          description: 逐对象执行结果。
+
+    ActionExecutionResult:
+      type: object
+      description: 单个对象的执行结果（同样是裁剪后的投影）。
+      properties:
+        _instance_id:
+          type: string
+          description: 对象唯一标识。
+        _instance_identity:
+          $ref: '#/components/schemas/InstanceIdentity'
+        _display:
+          description: 对象的显示值。
+        status:
+          type: string
+          description: 该对象的执行结果状态（如 `success` / `failed`）。
+        parameters:
+          type: object
+          additionalProperties: true
+          description: 该对象实际使用的参数。
+        duration_ms:
+          type: integer
+          format: int64
+          description: 该对象的执行耗时（毫秒）。
+        error_message:
+          type: string
+          description: 失败原因；成功时不返回。
+        result:
+          description: 工具返回的原始结果；失败时可能不返回。
+
+    ActionExecutionList:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionExecution'
+          description: 执行记录列表，每条与单次查询同样做过裁剪。
+        total_count:
+          type: integer
+          description: 命中总数。
+        search_after:
+          type: array
+          items: {}
+          description: 下一页游标；为空表示没有更多数据。

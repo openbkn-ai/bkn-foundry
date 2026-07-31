@@ -501,6 +501,10 @@ DEFAULT_HOSTS = {
     "/api/vega-backend/": "http://vega-backend-svc:13014",
     "/api/mf-model-manager/": "http://mf-model-manager:9898",
     "/api/bkn-agent/": "http://bkn-agent:30800",
+    # context-loader。注意：该服务对外端点全是 POST 且不带 x-http-method-override，
+    # 本工具只发 GET，因此实际会全部跳过；这条映射是为 GET /mcp/info 及后续可能新增的
+    # GET 端点预留，不代表 context-loader 已被覆盖。
+    "/api/agent-retrieval/": "http://agent-retrieval:30779",
 }
 
 
