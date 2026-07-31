@@ -8,8 +8,10 @@
 | 文件 | 主题 | 包含的端点（`/api/agent-operator-integration/v1` 下） |
 |---|---|---|
 | [function.yaml](function.yaml) | 函数 | `POST /function/execute`、`GET /function/dependencies`、`GET /function/dependency-versions/{package_name}`、`GET /template/{template_type}`、`POST /ai_generate/function/{type}`、`GET /ai_generate/prompt/{type}` |
+| [sandbox.yaml](sandbox.yaml) | 沙箱观测 | `GET /sandbox/health`、`GET /sandbox/pool`、`GET /sandbox/sessions`、`GET /sandbox/sessions/{id}` |
+| [impex.yaml](impex.yaml) | 导入导出 | `GET /impex/export/{type}/{id}`、`POST /impex/import/{type}` |
 
-> 其余接口面（算子 / 工具箱 / MCP / Skill / 沙箱 / 导入导出，约 80 个端点）尚未收录，见本文末「覆盖边界」。
+> 算子 / 工具箱 / MCP / Skill 四面（约 77 个端点）尚未收录，见本文末「覆盖边界」。
 
 ## 写一个函数：完整走一遍
 
@@ -98,11 +100,21 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 - **权限**：函数执行要求算子的 `execute` 权限，AI 生成要求 `create` 权限，返回 403 时先查角色授权。
 - **错误信封**：本服务**不用** `kweaver-go-lib/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorCompact`](../_shared/errors.yaml)（与 context-loader 同源同形）。
 - **内部接口**：`/api/agent-operator-integration/internal-v1` 是内部面，另有 `POST /function/exec/{version}`（按已注册的函数版本执行，`timeout` 单位毫秒）等端点，**本文档不收录**。
-- **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），路径与语义都与 `v1` 不同，**本文档同样不收录**。
+- **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），也挂在 Ingress 上，路径与语义都与 `v1` 不同，**本文档暂不收录**。
+- **契约巡检**：只读 GET 上标了 `x-contract-probe`，需巡检工具支持该扩展（见 #578）才会生效；在那之前这些标注是惰性的。
+
+## 收录范围为什么是这些
+
+只收 **Ingress 暴露的公开面** `/api/agent-operator-integration/v1`——那是浏览器
+（Studio）能够到达的面。内部面 `internal-v1` **刻意不挂 Ingress**：它不校验令牌，
+身份取自调用方自填的 `X-Account-ID` 头，该头缺失时调用者会被降级为硬编码管理员，
+一旦暴露，其下约 40 条写接口即可从集群外无凭据调用（见 chart values 注释与 #326）。
+因此本文档不描述内部面，也请不要把它写进任何对外文档。
 
 ## 覆盖边界
 
-本批次只收录**函数面 6 个端点**。同一服务的公开面还有约 80 个端点未文档化：
+本批次收录**函数 6 + 沙箱观测 4 + 导入导出 2 = 12 个端点**。同一公开面还有 77 个
+端点未文档化：
 
 | 面 | 端点数 | 说明 |
 |---|---|---|
@@ -110,8 +122,6 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 | 工具箱 toolbox | 22 | 工具箱与工具的增删改查、调试、代理调用、市场 |
 | MCP | 15 | MCP 注册、状态、工具列表与代理调用、市场 |
 | Skill | 25 | 注册 / 发布 / 版本 / 内容读取 / 下载 / 索引构建 |
-| 沙箱 sandbox | 4 | 只读观测：健康、池状态、会话列表与详情（限超管） |
-| 导入导出 impex | 2 | `.adp` 包的导出与导入 |
 
 这些接口的**响应结构未经本批次验证**，改动时请人工核对。服务目录下
 `adp/execution-factory/operator-integration/docs/apis/` 里有一份历史草稿可作参照，

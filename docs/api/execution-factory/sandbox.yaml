@@ -1,0 +1,490 @@
+---
+openapi: 3.0.3
+info:
+  title: 沙箱观测
+  description: |
+    沙箱运行时的**只读**观测面：健康、会话池、会话列表与详情。Studio 的沙箱运行时页
+    就是靠这四个接口渲染的。
+
+    只读——这里没有创建、终止、清理会话的接口。会话由函数执行按需申请与释放，
+    见 [function.yaml](function.yaml)。
+
+    **仅超管可见**。这四条接口原本只在内部面 `internal-v1` 上，而内部面不校验令牌、
+    身份取自调用方自填的 `X-Account-ID` 头；为了让 Studio 能访问才开到公开面，
+    公开面走令牌校验拿到真实身份后，再叠一道超管判定收口（见 #326）。非超管调用
+    返回 403。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-operator-integration/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /sandbox/health:
+    get:
+      tags:
+        - Sandbox
+      summary: 沙箱健康状态
+      operationId: getSandboxHealth
+      x-contract-probe:
+        readonly: true
+        order: 1
+      description: |
+        一眼看清沙箱能不能用：控制面是否可达、会话上限与当前占用、失败会话数。
+
+        `status` 不健康时 `message` 会带原因；控制面不可达（`control_plane_reachable`
+        为 `false`）意味着所有函数执行都会失败，先查沙箱控制面而不是查调用方代码。
+      responses:
+        '200':
+          description: 健康状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxHealth'
+              examples:
+                健康:
+                  value:
+                    status: healthy
+                    control_plane_reachable: true
+                    checked_at: '2026-07-31T08:56:33Z'
+                    max_sessions: 3
+                    current_active_sessions: 1
+                    current_running_tasks: 0
+                    failed_sessions: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sandbox/pool:
+    get:
+      tags:
+        - Sandbox
+      summary: 会话池状态
+      operationId: getSandboxPool
+      x-contract-probe:
+        readonly: true
+        order: 1
+      description: |
+        会话池的容量、当前占用、所用模板与单会话资源规格，以及池内每个会话的简况。
+
+        `max_concurrent_tasks` 是全池并发任务上限，`max_sessions` 是会话数上限，
+        两者不是一回事：一个会话可以同时跑多个任务。
+      responses:
+        '200':
+          description: 会话池状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxPool'
+              examples:
+                示例:
+                  value:
+                    max_sessions: 3
+                    active_sessions: 1
+                    max_concurrent_tasks: 100
+                    current_active_sessions: 1
+                    current_running_tasks: 0
+                    template_id: python-basic
+                    session_resources:
+                      CPU: '1'
+                      Memory: 512Mi
+                      Disk: 1Gi
+                      Timeout: 3600
+                    sessions:
+                      - id: sess_aoi_0
+                        running_tasks: 0
+                        last_used_at: '2026-07-31T08:36:42Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sandbox/sessions:
+    get:
+      tags:
+        - Sandbox
+      summary: 会话列表
+      operationId: listSandboxSessions
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          limit: 5
+        provides:
+          ef_session_id: items[0].id
+      description: |
+        列出沙箱会话，支持按状态、来源、运行时过滤。排障时先用
+        `abnormal_only=true` 收敛到异常会话，再用 `GET /sandbox/sessions/{id}` 看详情。
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 分页大小。
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 分页偏移。
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SessionStatus'
+          description: 按会话状态过滤。
+        - name: source
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            按来源过滤。来源即执行时写进沙箱环境的 `source`，如 `function_debug`
+            （调试执行）、`function_proxy`（按版本执行）；取不到时记为 `unknown`。
+        - name: runtime
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按语言运行时过滤，如 `python3.11`。
+        - name: abnormal_only
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 只看异常会话。
+      responses:
+        '200':
+          description: 会话列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sandbox/sessions/{id}:
+    get:
+      tags:
+        - Sandbox
+      summary: 会话详情
+      operationId: getSandboxSessionDetail
+      description: |
+        单个会话的完整诊断信息：列表里的全部字段，外加工作空间路径、运行节点、
+        Pod 名、依赖安装的请求与实际结果及其起止时间。
+
+        三个 `*_available` / `*_redacted` 布尔位说明**这套接口的能力边界**：
+        完整 stdout/stderr 与治理动作（终止 / 清理会话）当前不由本接口提供，
+        敏感诊断信息是否已脱敏也在这里标明。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 会话 ID。
+      responses:
+        '200':
+          description: 会话详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 会话不存在
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  responses:
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Forbidden:
+      description: 非超管调用
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    InternalError:
+      description: 服务内部错误，或沙箱控制面不可达
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  schemas:
+    SessionStatus:
+      type: string
+      enum:
+        - creating
+        - running
+        - terminated
+        - failed
+      description: 会话状态。
+
+    SandboxHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          description: 总体状态，如 `healthy`。
+        control_plane_reachable:
+          type: boolean
+          description: |
+            沙箱控制面是否可达。为 `false` 时所有函数执行都会失败，
+            先查控制面而不是查调用方代码。
+        checked_at:
+          type: string
+          description: 本次检查时间（RFC3339）。
+        max_sessions:
+          type: integer
+          description: 会话数上限。
+        current_active_sessions:
+          type: integer
+          description: 当前活跃会话数。
+        current_running_tasks:
+          type: integer
+          description: 当前运行中的任务数。
+        failed_sessions:
+          type: integer
+          description: 失败会话数。
+        message:
+          type: string
+          description: 不健康时的原因说明；健康时不返回。
+
+    SandboxPool:
+      type: object
+      properties:
+        max_sessions:
+          type: integer
+          description: 会话数上限。
+        active_sessions:
+          type: integer
+          description: 池内已建立的会话数。
+        max_concurrent_tasks:
+          type: integer
+          description: 全池并发任务上限。与 `max_sessions` 不是一回事——单会话可并发多任务。
+        current_active_sessions:
+          type: integer
+          description: 当前活跃会话数。
+        current_running_tasks:
+          type: integer
+          description: 当前运行中的任务数。
+        template_id:
+          type: string
+          description: 会话所用的沙箱模板 ID。
+        session_resources:
+          $ref: '#/components/schemas/SessionResources'
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PoolSessionSnapshot'
+          description: 池内会话简况。
+
+    SessionResources:
+      type: object
+      description: |
+        单会话的资源规格。**注意这里的 key 是首字母大写的**（`CPU` / `Memory` /
+        `Disk` / `Timeout`）——该结构直接来自服务端配置对象，只带 yaml 标签没有 json
+        标签，序列化时用的是 Go 字段名。与会话对象里小写的 `resource_limit` 不是
+        同一套命名，解析时别混。
+      properties:
+        CPU:
+          type: string
+          description: CPU 核数。
+        Memory:
+          type: string
+          description: 内存，如 `512Mi`。
+        Disk:
+          type: string
+          description: 磁盘，如 `1Gi`。
+        Timeout:
+          type: integer
+          description: 会话超时（秒）。
+
+    PoolSessionSnapshot:
+      type: object
+      properties:
+        id:
+          type: string
+          description: 会话 ID。
+        running_tasks:
+          type: integer
+          description: 该会话上运行中的任务数。
+        last_used_at:
+          type: string
+          description: 最近一次使用时间。从未使用时不返回。
+
+    SessionList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionSummary'
+        total:
+          type: integer
+          description: 命中总数。
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_more:
+          type: boolean
+          description: 是否还有下一页。
+
+    SessionSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          $ref: '#/components/schemas/SessionStatus'
+        source:
+          type: string
+          description: |
+            会话来源，取自执行时写入沙箱环境的 `source`；取不到时为 `unknown`。
+        task_id:
+          type: string
+          description: 关联任务 ID。无则不返回。
+        capability_id:
+          type: string
+          description: 关联能力 ID。无则不返回。
+        capability_name:
+          type: string
+          description: 关联能力名称。无则不返回。
+        user_id:
+          type: string
+          description: |
+            发起方用户 ID。**这是执行请求自带的追踪标记，不是经校验的身份**，
+            不要拿它做审计结论。无则不返回。
+        user_name:
+          type: string
+          description: 发起方用户名。同样只是追踪标记。无则不返回。
+        template_id:
+          type: string
+          description: 沙箱模板 ID。
+        runtime_type:
+          type: string
+          description: 运行时类型，如 `python3.11`。
+        language_runtime:
+          type: string
+          description: 语言运行时。无则不返回。
+        resource_limit:
+          type: object
+          additionalProperties: true
+          description: |
+            该会话的资源限制，key 为小写（`cpu` / `memory` / `disk` /
+            `max_processes`）。注意与 `/sandbox/pool` 里首字母大写的
+            `session_resources` 区分。
+        dependency_install_status:
+          type: string
+          description: 依赖安装状态，如 `completed`。无则不返回。
+        recent_error_summary:
+          type: string
+          description: 最近一次错误摘要。无则不返回。
+        created_at:
+          type: string
+          description: 创建时间。
+        updated_at:
+          type: string
+          description: 更新时间。
+        last_activity_at:
+          type: string
+          description: 最近活动时间。
+
+    SessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/SessionSummary'
+        - type: object
+          properties:
+            workspace_path:
+              type: string
+              description: 工作空间路径。
+            runtime_node:
+              type: string
+              description: 运行节点。
+            pod_name:
+              type: string
+              description: 承载该会话的 Pod 名。
+            timeout:
+              type: integer
+              description: 会话超时（秒）。
+            python_package_index_url:
+              type: string
+              description: 该会话使用的 PyPI 源。
+            requested_dependencies:
+              type: array
+              items:
+                $ref: '#/components/schemas/DependencyInfo'
+              description: 执行时**声明**的依赖。
+            installed_dependencies:
+              type: array
+              items:
+                $ref: '#/components/schemas/DependencyInfo'
+              description: 实际**装成**的依赖。与上一项对不上就是装包出了问题。
+            dependency_install_started_at:
+              type: string
+              description: 依赖安装开始时间。
+            dependency_install_completed_at:
+              type: string
+              description: 依赖安装完成时间。
+            full_stdout_stderr_available:
+              type: boolean
+              description: 本接口是否能提供完整的 stdout/stderr。当前为能力边界标记。
+            governance_actions_available:
+              type: boolean
+              description: 是否提供终止 / 清理会话等治理动作。当前观测面只读。
+            sensitive_diagnostics_redacted:
+              type: boolean
+              description: 敏感诊断信息是否已脱敏。
+
+    DependencyInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          description: 库名。
+        version:
+          type: string
+          description: 版本号。
+        install_location:
+          type: string
+          description: 安装位置。
+        install_time:
+          type: string
+          description: 安装时间。
+        is_from_template:
+          type: boolean
+          description: 是否随基础镜像 / 模板预装。
