@@ -100,7 +100,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.BknAgentTask{
 				TaskID: "agent-task-1",
 				Status: interfaces.BknAgentTaskStatusSucceeded,
-				Result: []byte(`{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`),
+				Result: []byte(`{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`),
 			}, nil)
 		resourceService.EXPECT().
 			GetByID(gomock.Any(), "resource-1").
@@ -111,14 +111,14 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 				assert.Equal(t, "Business Resource", got.Name)
 				assert.Equal(t, "business resource", got.Description)
 				require.Len(t, got.SchemaDefinition, 1)
-				assert.Equal(t, "ID", got.SchemaDefinition[0].DisplayName)
+				assert.Equal(t, "标识", got.SchemaDefinition[0].DisplayName)
 				assert.Equal(t, "identifier", got.SchemaDefinition[0].Description)
 				assert.Equal(t, "account-1", got.Updater.ID)
 				assert.NotZero(t, got.UpdateTime)
 				return nil
 			})
 		taskService.EXPECT().
-			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"ID","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
+			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, _ string, _ float64, detailJSON string) (bool, error) {
 				var detail map[string]sonic.NoCopyRawMessage
 				require.NoError(t, sonic.Unmarshal([]byte(detailJSON), &detail))
@@ -398,6 +398,34 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 		assert.JSONEq(t, `{"resource_updated":false,"updated_fields":["product_id"]}`, got.DetailJSON)
 	})
 
+	t.Run("rejects technical field names in force mode", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+		task := &interfaces.SemanticUnderstandingTask{
+			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID:          "resource-1",
+			ApplyMode:           interfaces.SemanticUnderstandingApplyModeForce,
+			ConfidenceThreshold: 0.75,
+		}
+		resourceService.EXPECT().
+			GetByID(gomock.Any(), "resource-1").
+			Return(&interfaces.Resource{
+				ID: "resource-1",
+				SchemaDefinition: []*interfaces.Property{
+					{Name: "supplier_id", DisplayName: "供应商ID", Type: interfaces.DataType_String},
+				},
+			}, nil)
+
+		got, err := worker.applyResult(context.Background(), task, `{"confidence":0.9,"fields":[{"name":"supplier_id","display_name":"Supplier ID","confidence":0.9}]}`, 0.9, nil)
+
+		require.NoError(t, err)
+		assert.False(t, got.Applied)
+		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["supplier_id: display_name equals technical field name"]}`, got.DetailJSON)
+	})
+
 	t.Run("fills resource name when it still equals the source identifier", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -469,7 +497,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, got.Applied)
-		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["description"],"updated_fields":["product_id"]}`, got.DetailJSON)
+		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["description"],"updated_fields":["product_id"],"skipped_fields":["product_id: display_name equals technical field name"]}`, got.DetailJSON)
 	})
 
 	t.Run("skips apply in dry run", func(t *testing.T) {

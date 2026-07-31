@@ -11,7 +11,9 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
@@ -405,6 +407,10 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name exceeds max length", field.Name))
 			continue
 		}
+		invalidDisplayName := isTechnicalFieldName(field.Name, field.DisplayName)
+		if invalidDisplayName {
+			skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name equals technical field name", field.Name))
+		}
 		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: description exceeds max length", field.Name))
 			continue
@@ -419,7 +425,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		}
 
 		fieldUpdated := false
-		if applyStringByMode(task.ApplyMode, &property.DisplayName, field.DisplayName, property.DisplayName == property.Name) {
+		if !invalidDisplayName && applyStringByMode(task.ApplyMode, &property.DisplayName, field.DisplayName, property.DisplayName == property.Name) {
 			fieldUpdated = true
 		}
 		if applyStringByMode(task.ApplyMode, &property.Description, field.Description, property.Description == property.OriginalDescription) {
@@ -500,6 +506,23 @@ func applyStringByMode(mode string, current *string, next string, treatCurrentAs
 	}
 	*current = next
 	return true
+}
+
+// isTechnicalFieldName reports whether displayName is empty or merely a formatting
+// variation of the technical field name. Such a value is not a semantic enhancement
+// and must never overwrite a business display name, including in force mode.
+func isTechnicalFieldName(name, displayName string) bool {
+	normalizedDisplayName := normalizeSemanticFieldName(displayName)
+	return normalizedDisplayName == "" || normalizedDisplayName == normalizeSemanticFieldName(name)
+}
+
+func normalizeSemanticFieldName(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, value)
 }
 
 func sourceOriginalDescription(metadata map[string]any) string {
