@@ -52,7 +52,12 @@ func (value BusinessRefType) CanonicalRefPrefix() string {
 }
 
 func (value BusinessRefType) MatchesCanonicalRefID(refID string) bool {
-	parts := strings.Split(refID, ":")
+	var parts []string
+	if value == BusinessRefObjectInstance || value == BusinessRefActionInstance {
+		parts = strings.SplitN(refID, ":", value.canonicalRefSegmentCount())
+	} else {
+		parts = strings.Split(refID, ":")
+	}
 	if len(parts) != value.canonicalRefSegmentCount() || parts[0] != value.CanonicalRefPrefix() {
 		return false
 	}

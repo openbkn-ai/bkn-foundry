@@ -825,14 +825,6 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 			"receipt evidence durability is invalid",
 		)
 	}
-	for _, ref := range command.BusinessRefs {
-		if !ref.IsCanonicalForBusinessDomain(command.Owner.BusinessDomainID) {
-			return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(
-				CodeOperationRequired,
-				"receipt business_refs contains an invalid typed business reference",
-			)
-		}
-	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
@@ -889,6 +881,14 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 				return nil
 			}
 			return domainError(CodeIdempotencyConflict, "receipt terminal payload conflicts with the durable result")
+		}
+		for _, ref := range command.BusinessRefs {
+			if !ref.IsCanonicalForBusinessDomain(command.Owner.BusinessDomainID) {
+				return domainError(
+					CodeOperationRequired,
+					"receipt business_refs contains an invalid typed business reference",
+				)
+			}
 		}
 		if evidenceReferenceCount(tx.ListReceipts(interaction.ID), currentReceipt.ID, command.ObservedEvidenceRefs) >
 			maxEvidenceRefsPerInteraction {

@@ -1314,6 +1314,44 @@ func TestOperationReceiptRejectsInvalidTypedBusinessReference(t *testing.T) {
 	}
 }
 
+func TestOperationReceiptReplaysLegacyTerminalBusinessReferenceIdempotently(t *testing.T) {
+	t.Parallel()
+
+	store, service, owner, _, _, operation, receipt := mustCreateOperationWithStore(t)
+	command := sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+		ReceiptID: receipt.ID, PayloadHash: "sha256:legacy-business-ref",
+		EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID:          "req-legacy-business-ref", TraceID: validTraceIDOne,
+		BusinessRefs: []sessionvo.BusinessRef{{
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
+			BusinessDomainID: owner.BusinessDomainID, Version: "1",
+		}},
+	}
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("complete canonical receipt: %v", err)
+	}
+	legacyRef := command.BusinessRefs[0]
+	legacyRef.RefID = "object:forecast"
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		stored, found := tx.FindReceipt(receipt.ID)
+		if !found {
+			t.Fatal("completed receipt missing")
+		}
+		stored.BusinessRefs = []sessionvo.BusinessRef{legacyRef}
+		tx.SaveReceipt(stored)
+		return nil
+	}); err != nil {
+		t.Fatalf("seed legacy receipt: %v", err)
+	}
+	command.BusinessRefs = []sessionvo.BusinessRef{legacyRef}
+
+	_, replayed, err := service.CompleteOperationAttempt(context.Background(), command)
+	if err != nil || len(replayed.BusinessRefs) != 1 || replayed.BusinessRefs[0] != legacyRef {
+		t.Fatalf("legacy terminal receipt replay must remain idempotent: receipt=%#v err=%v", replayed, err)
+	}
+}
+
 func TestOptionalPendingReceiptDoesNotBlockEvidenceCompletion(t *testing.T) {
 	t.Parallel()
 
@@ -1683,7 +1721,14 @@ func mustEnsureConversation(t *testing.T, service *sessionsvc.Service, owner ses
 
 func mustCreateOperation(t *testing.T) (*sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
 	t.Helper()
-	service := newTestService()
+	_, service, owner, conversation, interaction, operation, receipt := mustCreateOperationWithStore(t)
+	return service, owner, conversation, interaction, operation, receipt
+}
+
+func mustCreateOperationWithStore(t *testing.T) (*sessionstore.Store, *sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
+	t.Helper()
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{})
 	owner := testOwner()
 	conversation := mustEnsureConversation(t, service, owner, "thread-operation")
 	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
@@ -1701,7 +1746,7 @@ func mustCreateOperation(t *testing.T) (*sessionsvc.Service, sessionvo.Owner, se
 	if err != nil {
 		t.Fatalf("ensure operation: %v", err)
 	}
-	return service, owner, conversation, interaction, operation, receipt
+	return store, service, owner, conversation, interaction, operation, receipt
 }
 
 func mustCreateOptionalOperation(t *testing.T) (*sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {

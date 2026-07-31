@@ -1,9 +1,6 @@
 package sessionvo
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestBusinessRefTypeCanonicalRefPrefix(t *testing.T) {
 	t.Parallel()
@@ -54,13 +51,18 @@ func TestBusinessRefTypeRequiresCanonicalRefIDShape(t *testing.T) {
 		if !test.refType.MatchesCanonicalRefID(test.valid) {
 			t.Fatalf("%s rejected canonical ref ID %q", test.refType, test.valid)
 		}
-		if len(strings.Split(test.valid, ":")) > 2 &&
+		if test.refType != BusinessRefKnowledgeNetwork && test.refType != BusinessRefDataResource &&
 			test.refType.MatchesCanonicalRefID(test.refType.CanonicalRefPrefix()+":short") {
 			t.Fatalf("%s accepted underspecified ref ID", test.refType)
 		}
-		if test.refType.MatchesCanonicalRefID(test.valid + ":extra") {
+		if test.refType != BusinessRefObjectInstance && test.refType != BusinessRefActionInstance &&
+			test.refType.MatchesCanonicalRefID(test.valid+":extra") {
 			t.Fatalf("%s accepted over-specified ref ID", test.refType)
 		}
+	}
+	if !BusinessRefObjectInstance.MatchesCanonicalRefID("object_instance:supplychain:forecast:bkn://object/row-1") ||
+		!BusinessRefActionInstance.MatchesCanonicalRefID("action_instance:supplychain:approve:workflow:run:1") {
+		t.Fatal("opaque instance ID tails must allow URI and composite identifiers")
 	}
 	if BusinessRefType("unknown").MatchesCanonicalRefID("unknown:value") {
 		t.Fatal("unknown business reference type accepted a ref ID")

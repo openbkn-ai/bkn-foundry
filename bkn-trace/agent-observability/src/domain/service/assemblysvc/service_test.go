@@ -289,10 +289,18 @@ func TestAssembleRichInteractionKeepsAllBusinessDimensionsAndClaimSpecificSuppor
 		sessionvo.OperationRoleAggregate, sessionvo.OperationRoleInput, sessionvo.OperationRoleOutput,
 		sessionvo.OperationRoleModify, sessionvo.OperationRoleRecommend, sessionvo.OperationRoleExecute,
 	}
+	refIDs := []string{
+		"kn:supplychain", "object:supplychain:forecast",
+		"object_instance:supplychain:forecast:row-1", "property:supplychain:forecast:qty",
+		"relation:supplychain:contains", "resource:forecast-resource",
+		"metric:supplychain:forecast-total", "logic:supplychain:forecast:aggregate",
+		"function:supplychain:calculate", "action_type:supplychain:approve",
+		"action_instance:supplychain:approve:run-1",
+	}
 	query := semanticEvent("evt-query", "op-query", 1)
 	for index, refType := range refTypes {
 		ref := sessionvo.BusinessRef{
-			RefType: refType, RefID: refType.CanonicalRefPrefix() + ":supplychain:" + string(rune('a'+index)),
+			RefType: refType, RefID: refIDs[index],
 			BusinessDomainID: "domain-1", Version: "2026.07",
 		}
 		query.BusinessRefs = append(query.BusinessRefs, ref)

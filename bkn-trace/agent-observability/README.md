@@ -78,7 +78,7 @@ Interaction 业务语义图遵循以下口径：
 |---|---|
 | `knowledge_network` | `kn:<kn_id>` |
 | `object_type` | `object:<kn_id>:<object_type_id>` |
-| `object_instance` | `object_instance:<kn_id>:<object_type_id>:<opaque_instance_id>` |
+| `object_instance` | `object_instance:<kn_id>:<object_type_id>:<opaque_instance_id>`（不透明尾段可包含 `:`） |
 | `property` | `property:<kn_id>:<object_type_id>:<property_id>` |
 | `relation_type` | `relation:<kn_id>:<relation_type_id>` |
 | `data_resource` | `resource:<resource_id>` |
@@ -86,7 +86,7 @@ Interaction 业务语义图遵循以下口径：
 | `logic` | `logic:<kn_id>:<object_type_id>:<logic_id>` |
 | `function` | `function:<kn_id>:<function_id>` |
 | `action_type` | `action_type:<kn_id>:<action_type_id>` |
-| `action_instance` | `action_instance:<kn_id>:<action_type_id>:<opaque_instance_id>` |
+| `action_instance` | `action_instance:<kn_id>:<action_type_id>:<opaque_instance_id>`（不透明尾段可包含 `:`） |
 
 业务名称和授权可见性解析默认关闭，因为 BKN 与 Vega 的内部服务地址因部署环境而异。关闭时业务语义图仍返回技术事件、Claim 和证据结构，但 `business_refs` 与 `operation_business_edges` 会安全返回空数组，并通过 `disclosure_partial` 标记解析能力未启用。生产环境应显式配置：
 
