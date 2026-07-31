@@ -527,12 +527,11 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 	if result != nil && result.Entries != nil {
 		input.SampleRows = result.Entries
 	}
-	inputJSON, hash, err := marshalSemanticUnderstandingInput(input)
+	inputJSON, _, err := marshalSemanticUnderstandingInput(input)
 	if err != nil {
 		return fmt.Errorf("marshal semantic understanding input: %w", err)
 	}
 	task.Input = inputJSON
-	task.InputHash = hash
 	return nil
 }
 
@@ -763,7 +762,7 @@ func buildResourceAgentInputProperties(properties []*interfaces.Property) []inte
 }
 
 func marshalSemanticUnderstandingInput(input any) (string, string, error) {
-	inputBytes, err := sonic.Marshal(input)
+	inputBytes, err := sonic.ConfigStd.Marshal(input)
 	if err != nil {
 		return "", "", err
 	}

@@ -100,6 +100,25 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	assert.NotContains(t, logicView, "logic_definition")
 }
 
+func TestMarshalSemanticUnderstandingInput(t *testing.T) {
+	first := make(map[string]any)
+	first["resource"] = "orders"
+	first["description"] = "orders < archived"
+
+	second := make(map[string]any)
+	second["description"] = "orders < archived"
+	second["resource"] = "orders"
+
+	firstJSON, firstHash, err := marshalSemanticUnderstandingInput(first)
+	require.NoError(t, err)
+	secondJSON, secondHash, err := marshalSemanticUnderstandingInput(second)
+	require.NoError(t, err)
+
+	assert.Equal(t, firstJSON, secondJSON)
+	assert.Equal(t, firstHash, secondHash)
+	assert.Contains(t, firstJSON, `\u003c`)
+}
+
 func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 	t.Run("creates pending resource task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -232,6 +251,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
 		require.NoError(t, err)
+		inputHash := task.InputHash
 		resourceDataService.EXPECT().
 			QueryWithPaging(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
@@ -245,7 +265,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		var input interfaces.SemanticUnderstandingResourceAgentInput
 		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
 		assert.Equal(t, []map[string]any{{"order_id": "o-1"}, {"order_id": "o-2"}}, input.SampleRows)
-		assert.NotEmpty(t, task.InputHash)
+		assert.Equal(t, inputHash, task.InputHash)
 	})
 
 	t.Run("writes an empty sample_rows array when the query has no rows", func(t *testing.T) {
