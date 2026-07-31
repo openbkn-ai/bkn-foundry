@@ -4052,7 +4052,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ref_id": {
-                    "description": "RefID starts with the canonical prefix defined by RefType, followed by a colon and its typed identifier.",
+                    "description": "RefID uses the complete canonical shape defined by RefType, including every required scope segment.",
                     "type": "string"
                 },
                 "ref_type": {

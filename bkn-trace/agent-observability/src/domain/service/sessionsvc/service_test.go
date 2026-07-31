@@ -1202,7 +1202,7 @@ func TestDurableReceiptFreezesEvidenceBusinessAndArtifactReferences(t *testing.T
 
 	service, owner, _, interaction, operation, receipt := mustCreateOperation(t)
 	businessRef := sessionvo.BusinessRef{
-		RefType: "object_type", RefID: "supplychain_hd0202_forecast",
+		RefType: "object_type", RefID: "object:supplychain_hd0202:forecast",
 		BusinessDomainID: owner.BusinessDomainID, Version: "v3",
 		DisplayHint: "需求预测单",
 	}
@@ -1273,6 +1273,44 @@ func TestDurableReceiptFreezesEvidenceBusinessAndArtifactReferences(t *testing.T
 	)
 	if !sessionsvc.IsCode(err, sessionsvc.CodeIdempotencyConflict) {
 		t.Fatalf("receipt replay changed immutable evidence refs: %v", err)
+	}
+}
+
+func TestOperationReceiptRejectsInvalidTypedBusinessReference(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]sessionvo.BusinessRef{
+		"unknown type": {
+			RefType: "result", RefID: "result:forecast", BusinessDomainID: "domain-1", Version: "1",
+		},
+		"short ref id": {
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast", BusinessDomainID: "domain-1", Version: "1",
+		},
+		"foreign business domain": {
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-2", Version: "1",
+		},
+		"missing version": {
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-1",
+		},
+	}
+	for name, businessRef := range tests {
+		name, businessRef := name, businessRef
+		t.Run(name, func(t *testing.T) {
+			service, owner, _, _, operation, receipt := mustCreateOperation(t)
+			if name != "foreign business domain" {
+				businessRef.BusinessDomainID = owner.BusinessDomainID
+			}
+			_, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+				Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+				ReceiptID: receipt.ID, PayloadHash: "sha256:invalid-business-ref",
+				EvidenceDurability: sessionvo.DurabilityDurable,
+				RequestID:          "req-invalid-business-ref", TraceID: validTraceIDOne,
+				BusinessRefs: []sessionvo.BusinessRef{businessRef},
+			})
+			if !sessionsvc.IsCode(err, sessionsvc.CodeOperationRequired) {
+				t.Fatalf("invalid receipt business ref must be rejected, got %v", err)
+			}
+		})
 	}
 }
 

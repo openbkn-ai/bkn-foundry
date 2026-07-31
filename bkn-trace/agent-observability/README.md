@@ -72,21 +72,21 @@ Interaction 业务语义图遵循以下口径：
 - `completeness` / `partial_reasons` 描述客观证据组装；`disclosure_partial` / `disclosure_reasons` 描述当前用户授权投影。resolver 不可用、未配置或无法确认权限时，业务节点及其操作边默认不披露。
 - resolver 按 `ref_type + ref_id + source_system` 判定，不使用不匹配的 RefID 前缀推断权限。暂时没有安全实例级授权接口的类型保持 `unresolved`，不能由父类型权限推断实例权限。
 
-`ref_type` 与 `ref_id` 的规范前缀是一一对应的写入合同。写入端必须使用下表前缀；不匹配的事件会以 `invalid_evidence_event` 拒绝，避免业务节点在查询时静默消失。
+`ref_type` 与 `ref_id` 的规范结构是一一对应的写入合同。事件与 operation receipt 两条写入路径都必须使用完整限定格式；前缀、段数、业务域或版本不合法时会拒绝写入，避免业务节点在查询时静默消失。
 
-| `ref_type` | `ref_id` 规范前缀 |
+| `ref_type` | `ref_id` 规范结构 |
 |---|---|
-| `knowledge_network` | `kn:` |
-| `object_type` | `object:` |
-| `object_instance` | `object_instance:` |
-| `property` | `property:` |
-| `relation_type` | `relation:` |
-| `data_resource` | `resource:` |
-| `metric` | `metric:` |
-| `logic` | `logic:` |
-| `function` | `function:` |
-| `action_type` | `action_type:` |
-| `action_instance` | `action_instance:` |
+| `knowledge_network` | `kn:<kn_id>` |
+| `object_type` | `object:<kn_id>:<object_type_id>` |
+| `object_instance` | `object_instance:<kn_id>:<object_type_id>:<opaque_instance_id>` |
+| `property` | `property:<kn_id>:<object_type_id>:<property_id>` |
+| `relation_type` | `relation:<kn_id>:<relation_type_id>` |
+| `data_resource` | `resource:<resource_id>` |
+| `metric` | `metric:<kn_id>:<metric_id>` |
+| `logic` | `logic:<kn_id>:<object_type_id>:<logic_id>` |
+| `function` | `function:<kn_id>:<function_id>` |
+| `action_type` | `action_type:<kn_id>:<action_type_id>` |
+| `action_instance` | `action_instance:<kn_id>:<action_type_id>:<opaque_instance_id>` |
 
 业务名称和授权可见性解析默认关闭，因为 BKN 与 Vega 的内部服务地址因部署环境而异。关闭时业务语义图仍返回技术事件、Claim 和证据结构，但 `business_refs` 与 `operation_business_edges` 会安全返回空数组，并通过 `disclosure_partial` 标记解析能力未启用。生产环境应显式配置：
 

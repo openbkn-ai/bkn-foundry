@@ -258,7 +258,7 @@ func TestEvidenceLedgerRejectsUnknownBusinessRefAndOperationRole(t *testing.T) {
 	unknownRole.OperationBusinessEdges = []sessionvo.OperationBusinessEdge{{
 		OperationID: unknownRole.OperationID,
 		BusinessRef: sessionvo.BusinessRef{
-			RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast",
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
 			BusinessDomainID: "domain-1", Version: "1",
 		},
 		Role: "guess", ObservedAt: unknownRole.ObservedAt,
@@ -307,7 +307,7 @@ func TestEvidenceLedgerRejectsInvalidExecutionTimesAndForeignOperationEdges(t *t
 	foreignOperation.OperationBusinessEdges = []sessionvo.OperationBusinessEdge{{
 		OperationID: "op-from-another-event",
 		BusinessRef: sessionvo.BusinessRef{
-			RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast",
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
 			BusinessDomainID: "domain-1", Version: "1",
 		},
 		Role: sessionvo.OperationRoleRead, ObservedAt: foreignOperation.ObservedAt,
@@ -320,7 +320,7 @@ func TestEvidenceLedgerRejectsInvalidExecutionTimesAndForeignOperationEdges(t *t
 	edgeOutsideEvent.OperationBusinessEdges = []sessionvo.OperationBusinessEdge{{
 		OperationID: edgeOutsideEvent.OperationID,
 		BusinessRef: sessionvo.BusinessRef{
-			RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast",
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
 			BusinessDomainID: "domain-1", Version: "1",
 		},
 		Role: sessionvo.OperationRoleRead, ObservedAt: edgeOutsideEvent.EmittedAt.Add(time.Second),

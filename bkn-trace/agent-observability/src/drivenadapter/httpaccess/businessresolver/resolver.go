@@ -177,6 +177,7 @@ func resolverKind(ref ibusinessresolver.BusinessRef) (string, string) {
 }
 
 func resolverSourceMatches(provided, authority string) bool {
+	// Keep this controlled alias list aligned with TestResolverRecognizesRegisteredProducerSourceAliases.
 	if provided == "" || provided == authority {
 		return true
 	}

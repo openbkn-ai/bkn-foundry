@@ -825,6 +825,14 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 			"receipt evidence durability is invalid",
 		)
 	}
+	for _, ref := range command.BusinessRefs {
+		if !ref.IsCanonicalForBusinessDomain(command.Owner.BusinessDomainID) {
+			return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(
+				CodeOperationRequired,
+				"receipt business_refs contains an invalid typed business reference",
+			)
+		}
+	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {

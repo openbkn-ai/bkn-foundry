@@ -52,8 +52,31 @@ func (value BusinessRefType) CanonicalRefPrefix() string {
 }
 
 func (value BusinessRefType) MatchesCanonicalRefID(refID string) bool {
-	prefix, remainder, found := strings.Cut(refID, ":")
-	return found && remainder != "" && prefix == value.CanonicalRefPrefix()
+	parts := strings.Split(refID, ":")
+	if len(parts) != value.canonicalRefSegmentCount() || parts[0] != value.CanonicalRefPrefix() {
+		return false
+	}
+	for _, part := range parts[1:] {
+		if part == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func (value BusinessRefType) canonicalRefSegmentCount() int {
+	switch value {
+	case BusinessRefKnowledgeNetwork, BusinessRefDataResource:
+		return 2
+	case BusinessRefObjectType, BusinessRefRelationType, BusinessRefMetric,
+		BusinessRefFunction, BusinessRefActionType:
+		return 3
+	case BusinessRefObjectInstance, BusinessRefProperty, BusinessRefLogic,
+		BusinessRefActionInstance:
+		return 4
+	default:
+		return 0
+	}
 }
 
 type EvidenceRefType string

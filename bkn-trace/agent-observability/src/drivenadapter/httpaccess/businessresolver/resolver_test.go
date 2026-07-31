@@ -136,6 +136,29 @@ func TestResolverSupportsExistingEvidenceServiceRefTypes(t *testing.T) {
 	}
 }
 
+func TestResolverRecognizesRegisteredProducerSourceAliases(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		provided  string
+		authority string
+		matches   bool
+	}{
+		{"bkn", "bkn", true},
+		{"bkn-backend", "bkn", true},
+		{"context-loader", "bkn", true},
+		{"vega", "vega", true},
+		{"vega-data", "vega", true},
+		{"bkn", "vega", false},
+		{"vega-data", "bkn", false},
+	}
+	for _, test := range tests {
+		if got := resolverSourceMatches(test.provided, test.authority); got != test.matches {
+			t.Fatalf("source alias %q -> %q matched=%t, want %t", test.provided, test.authority, got, test.matches)
+		}
+	}
+}
+
 func TestResolverKindFallsBackToSupportedPrefixWhenRefTypeIsMissing(t *testing.T) {
 	t.Parallel()
 

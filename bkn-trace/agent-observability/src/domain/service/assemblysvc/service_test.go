@@ -34,6 +34,23 @@ func TestAssembleRequiresDurableAdoptedSupportsForEveryMaterialClaimRole(t *test
 	if len(result.Claims[0].AdoptedSupports) != 1 || len(result.Claims[1].RejectedSupports) != 1 {
 		t.Fatalf("support decisions were not preserved on edges: %#v", result.Claims)
 	}
+	if result.Claims[0].RejectedSupports == nil || result.Claims[0].PartialReasons == nil ||
+		result.Claims[1].AdoptedSupports == nil {
+		t.Fatalf("empty claim collections must be arrays: %#v", result.Claims)
+	}
+}
+
+func TestAssembleReturnsArraysWhenInteractionHasNoClaims(t *testing.T) {
+	t.Parallel()
+
+	result := assemblysvc.Assemble("int-1", nil, nil)
+
+	if result.Claims == nil || result.Events == nil || result.BusinessRefs == nil ||
+		result.ArtifactRefs == nil || result.EvidenceRefs == nil ||
+		result.OperationBusinessEdges == nil || result.UnusedEvidenceRefs == nil ||
+		result.IncludedEventIDs == nil || result.PartialReasons == nil {
+		t.Fatalf("empty assembly collections must be arrays: %#v", result)
+	}
 }
 
 func TestAssembleReportsObservedButUnusedEvidenceWithoutIncreasingCompleteness(t *testing.T) {
@@ -229,9 +246,9 @@ func TestAssembleReturnsTypedBusinessDimensionsAndKeepsVersionsDistinct(t *testi
 	asOf := time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC)
 	event := semanticEvent("evt-query", "op-query", 1)
 	event.BusinessRefs = []sessionvo.BusinessRef{
-		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast", BusinessDomainID: "domain-1", Version: "1", AsOf: &asOf},
-		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast", BusinessDomainID: "domain-1", Version: "2", AsOf: &asOf},
-		{RefType: sessionvo.BusinessRefProperty, RefID: "property:forecast:qty", BusinessDomainID: "domain-1", Version: "1"},
+		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-1", Version: "1", AsOf: &asOf},
+		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-1", Version: "2", AsOf: &asOf},
+		{RefType: sessionvo.BusinessRefProperty, RefID: "property:supplychain:forecast:qty", BusinessDomainID: "domain-1", Version: "1"},
 	}
 	event.EvidenceRefs = []sessionvo.EvidenceRef{evidenceRef("evidence:june")}
 	event.ArtifactRefs = []string{"artifact:query-result", "artifact:answer"}

@@ -67,7 +67,18 @@ func assemble(
 	expectedClaimIDs []string,
 	externalEvidence []sessionvo.EvidenceRef,
 ) Result {
-	result := Result{EventLayers: make(map[string]int)}
+	result := Result{
+		Claims:                 []ClaimAssembly{},
+		Events:                 []EventNode{},
+		BusinessRefs:           []sessionvo.BusinessRef{},
+		ArtifactRefs:           []string{},
+		EvidenceRefs:           []sessionvo.EvidenceRef{},
+		OperationBusinessEdges: []sessionvo.OperationBusinessEdge{},
+		UnusedEvidenceRefs:     []sessionvo.EvidenceRef{},
+		IncludedEventIDs:       []string{},
+		EventLayers:            make(map[string]int),
+		PartialReasons:         []string{},
+	}
 	eventsByID := make(map[string]ledgervo.Event, len(events))
 	claimsByID := make(map[string]sessionvo.Claim)
 	evidenceByRef := make(map[string]sessionvo.EvidenceRef, len(externalEvidence))
@@ -222,7 +233,14 @@ func evidenceRefKey(ref sessionvo.EvidenceRef) string {
 }
 
 func assembleClaim(claim sessionvo.Claim, evidence map[string]sessionvo.EvidenceRef) ClaimAssembly {
-	result := ClaimAssembly{Claim: claim, Completeness: sessionvo.EvidenceComplete}
+	result := ClaimAssembly{
+		Claim:              claim,
+		Completeness:       sessionvo.EvidenceComplete,
+		AdoptedSupports:    []sessionvo.ClaimSupport{},
+		RejectedSupports:   []sessionvo.ClaimSupport{},
+		UnusedEvidenceRefs: []sessionvo.EvidenceRef{},
+		PartialReasons:     []string{},
+	}
 	adoptedRoles := make(map[string]struct{})
 	classifiedRefs := make(map[string]struct{})
 	for _, support := range claim.Supports {
