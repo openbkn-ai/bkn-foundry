@@ -40,6 +40,11 @@ func (s *Server) Start() {
 		routerHealth := engine.Group("/health")
 		s.httpHealthHandler.RegisterRouter(routerHealth)
 
+		// MCP 客户端的 OAuth 发现入口（RFC 9728）。挂在根上而非服务前缀下，
+		// 因为规范规定的推导路径是把 /.well-known/oauth-protected-resource
+		// 插在资源路径之前。免鉴权。
+		driveradapters.RegisterOAuthMetadataRoutes(engine)
+
 		// Register internal interface router - operator related interfaces
 		routerInternalGroup := engine.Group("/api/agent-retrieval/in/v1")
 		routerInternalGroup.Use(gin.Recovery())

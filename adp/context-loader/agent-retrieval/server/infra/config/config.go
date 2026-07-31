@@ -87,11 +87,15 @@ func (conf *Config) GetLogger() interfaces.Logger {
 // OAuthConfig OAuth connection info
 type OAuthConfig struct {
 	PublicBaseConfig `yaml:",inline"`
-	AdminHost        string `yaml:"admin_host"`
-	AdminPort        int    `yaml:"admin_port"`
-	AdminProtocol    string `yaml:"admin_protocol"`
-	AdminPrefix      string `yaml:"admin_prefix"`
-	AdminBasePath    string `yaml:"admin_base_path"`
+	// IssuerURL 是授权服务器对外的 issuer 地址，用于 MCP 客户端的 OAuth 发现
+	// （RFC 9728 受保护资源元数据）。留空时按请求推导——hydra 与本服务同在一个
+	// 网关后面，issuer 即网关地址；授权服务器另挂域名时在此覆盖。
+	IssuerURL     string `yaml:"issuer_url"`
+	AdminHost     string `yaml:"admin_host"`
+	AdminPort     int    `yaml:"admin_port"`
+	AdminProtocol string `yaml:"admin_protocol"`
+	AdminPrefix   string `yaml:"admin_prefix"`
+	AdminBasePath string `yaml:"admin_base_path"`
 }
 
 // PublicBaseConfig public base configuration

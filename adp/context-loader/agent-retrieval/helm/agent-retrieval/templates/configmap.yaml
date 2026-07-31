@@ -26,6 +26,7 @@ data:
       admin_port: {{ .Values.depServices.hydra.administrativePort }}
       admin_protocol: {{ .Values.depServices.hydra.administrativeProtocol | quote }}
       admin_prefix: {{ .Values.depServices.hydra.administrativePrefix | quote }}
+      issuer_url: {{ .Values.depServices.hydra.issuerURL | default "" | quote }}
     bkn_backend:
       private_protocol: {{ index .Values "depServices" "bkn-backend" "privateProtocol" | quote }}
       private_host: {{ index .Values "depServices" "bkn-backend" "privateHost" | quote }}

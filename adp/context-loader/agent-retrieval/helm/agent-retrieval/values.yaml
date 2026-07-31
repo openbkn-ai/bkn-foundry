@@ -32,6 +32,9 @@ service:
       interface:
         path:
           - /api/agent-retrieval/v1
+          # RFC 9728 推导路径：客户端在没拿到 WWW-Authenticate 时会直接猜这个
+          # 地址。它落在网关根下，不在上面的服务前缀里，所以要单独放行。
+          - /.well-known/oauth-protected-resource/api/agent-retrieval/v1/mcp
   type: ClusterIP
   enableDualStack: false
   port: 30779
@@ -95,6 +98,9 @@ depServices:
     administrativePort: 4445
     administrativeProtocol: http
     administrativePrefix: /admin
+    # 授权服务器对外 issuer，供 MCP 客户端 OAuth 发现使用。留空按请求推导
+    # （hydra 与本服务同在一个网关后面，issuer 即网关地址）。
+    issuerURL: ""
   bkn-backend:
     privateHost: bkn-backend-svc
     privatePort: 13014

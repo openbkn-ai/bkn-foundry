@@ -60,8 +60,14 @@ func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterfa
 
 // RegisterPublic 注册公共路由
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
+	// 受保护资源元数据必须免鉴权：客户端正是因为还没有令牌才来读它。
+	// 注册在 engine.Use 之前，才不会被下面的鉴权中间件罩住。
+	engine.GET("/.well-known/oauth-protected-resource", handleProtectedResourceMetadata)
+
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat())
+	// middlewareMCPAuthChallenge 必须排在鉴权中间件之前，才能包住它写出的 401。
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareMCPAuthChallenge(),
+		middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat())
 	engine.Use(mws...)
 
 	engine.POST("/kn/semantic-search", r.KnRetrievalHandler.SemanticSearch)
@@ -106,13 +112,5 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 
 // mcpEndpointURL 依据请求推导本服务对外的 MCP 端点（去掉末尾的 /info）。
 func mcpEndpointURL(req *http.Request) string {
-	scheme := "http"
-	if req.TLS != nil {
-		scheme = "https"
-	}
-	if p := req.Header.Get("X-Forwarded-Proto"); p != "" {
-		scheme = p
-	}
-	base := strings.TrimSuffix(req.URL.Path, "/info")
-	return scheme + "://" + req.Host + base
+	return publicOrigin(req) + strings.TrimSuffix(req.URL.Path, "/info")
 }
