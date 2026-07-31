@@ -1,0 +1,177 @@
+name: automation-bump-comm-go
+
+# comm-go 落 main 之后，自动给仓内消费者提一个 bump PR。
+#
+# 为什么需要这个：comm-go 与九个服务是各自独立的 Go module，跨 module 依赖只能
+# 通过 require 一个版本来表达。所以「改公共库」永远是两步——先合库，再让消费者
+# 指过去。这一步机械、无脑、但漏掉就会出现「main 上的库已经改了，服务还在用旧的」，
+# 而且没有任何东西会报错，只会在下一个人纳闷「我明明改了啊」的时候才发现。
+#
+# 钉的是 main 上的 commit（pseudo-version），不是 tag。tag 对仓外消费者才有意义，
+# 而 comm-go 目前只被仓内引用（openbkn-ee 引的是 context-loader，comm-go 对它是
+# 传递依赖，版本由 context-loader 的 go.sum 定死）。省掉打 tag 那套仪式，坐标同样
+# 诚实——commit 在 main 上，永久可达。
+#
+# 消费者是扫出来的而不是写死的：往后哪个服务接了公共库，这里自动跟上。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'comm-go/**'
+  workflow_dispatch:
+
+concurrency:
+  # 连续两次 comm-go 改动只需要最后那次的 bump PR。
+  group: bump-comm-go
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: 'off'
+      GOFLAGS: '-mod=mod'
+      MODULE: github.com/openbkn-ai/bkn-foundry/comm-go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: comm-go/go.mod
+          cache: true
+
+      - name: Bump consumers and verify they still build
+        id: bump
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          SHORT="$(git rev-parse --short=7 HEAD)"
+
+          # 谁在用它，扫出来。排除 comm-go 自己——按目录名排除，不按路径前缀：
+          # 不同 grep 实现对 -r 的输出加不加 ./ 前缀并不一致，按前缀过滤会在
+          # 某些环境静默失效，让 comm-go 试图 go get 自己。
+          mapfile -t MODS < <(
+            grep -rl "$MODULE" --include=go.mod . \
+              | xargs -r -n1 dirname \
+              | sed 's|^\./||' \
+              | grep -vx 'comm-go' \
+              | sort -u
+          )
+          if [ ${#MODS[@]} -eq 0 ]; then
+            echo "没有仓内消费者，跳过"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          for dir in "${MODS[@]}"; do
+            echo "::group::$dir"
+            (
+              cd "$dir"
+              # 代理可能还没索引到这个 commit，direct 兜底（GOPROXY 默认已含 direct）。
+              go get "$MODULE@$SHA"
+              go mod tidy
+              # 只验编译。跑测试会把服务既有的不稳定用例拖进来，让 bump 这件
+              # 机械事情看起来像是它弄坏的；真正的回归由 PR 上的常规 CI 负责。
+              go build ./...
+            )
+            echo "::endgroup::"
+          done
+
+          if git diff --quiet; then
+            echo "消费者已经指向这个 commit，无需 bump"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          {
+            echo "mods<<EOF"
+            printf '%s\n' "${MODS[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open the bump PR
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.bump.outputs.sha }}
+          SHORT: ${{ steps.bump.outputs.short }}
+          MODS: ${{ steps.bump.outputs.mods }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/bump-comm-go-$SHORT"
+          SUBJECT="$(git log -1 --format=%s "$SHA")"
+
+          cat > /tmp/commit.txt <<MSG
+          chore(deps): 仓内消费者指向 comm-go $SHORT
+
+          由 automation-bump-comm-go 自动生成。
+
+          comm-go 与各服务是独立 module,跨 module 依赖只能钉版本,所以改公共库永远
+          是两步:先合库,再让消费者指过去。漏掉第二步不会报错,只会让服务继续用旧
+          代码,直到有人纳闷「我明明改了啊」。
+
+          对应的 comm-go 改动:$SUBJECT ($SHORT)
+
+          钉 main 上的 commit 而不是 tag:comm-go 目前只有仓内消费者,pseudo-version
+          指向的 commit 在 main 上永久可达,坐标同样诚实。
+
+          已验证受影响模块 go build ./... 通过。
+          MSG
+          sed -i 's/^          //' /tmp/commit.txt
+
+          cat > /tmp/body.md <<BODY
+          自动生成：\`comm-go\` 刚落 main，把仓内消费者的 \`require\` 指过去。
+
+          **对应改动**：$SUBJECT （\`$SHORT\`）
+
+          **受影响模块**：
+          \`\`\`
+          $MODS
+          \`\`\`
+
+          ## 为什么需要这个 PR
+
+          comm-go 与各服务是各自独立的 Go module，跨 module 依赖只能通过 require 一个版本表达。所以改公共库永远是两步：先合库，再让消费者指过去。**漏掉第二步不会报任何错**，只会让服务继续用旧代码，直到有人纳闷「我明明改了啊」。
+
+          ## 为什么钉 commit 而不是 tag
+
+          comm-go 目前只有仓内消费者 —— openbkn-ee 引的是 context-loader，comm-go 对它是传递依赖，版本由 context-loader 的 go.sum 定死。pseudo-version 指向的 commit 在 main 上永久可达，坐标一样诚实，省掉打 tag 那套仪式。哪天 comm-go 真的被仓外直接引用，再改回打 tag。
+
+          ## 验证
+
+          bump 作业里对每个受影响模块跑了 \`go build ./...\`。**没跑测试**：那会把服务既有的不稳定用例拖进来，让「换一行 require」看起来像是它弄坏的；真正的回归由这个 PR 上的常规 CI 负责。
+
+          > 由 \`GITHUB_TOKEN\` 开的 PR 不会触发其它 workflow，所以这里可能看不到 checks。要让常规 CI 也跑，改用 PAT 开 PR，或在这个分支上推一个空 commit。
+          BODY
+          sed -i 's/^          //' /tmp/body.md
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # -B 与 force-with-lease:同一个 commit 被重跑(workflow_dispatch、
+          # 或 re-run)时分支已经存在,重建它比失败有用。
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -F /tmp/commit.txt
+          git push --force-with-lease -u origin "$BRANCH"
+
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            echo "PR 已存在,分支已更新,不重复开"
+            exit 0
+          fi
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore(deps): 仓内消费者指向 comm-go $SHORT" \
+            --body-file /tmp/body.md
+
+      - name: Nothing to do
+        if: steps.bump.outputs.changed != 'true'
+        run: echo "消费者已经是最新的，没开 PR。"
