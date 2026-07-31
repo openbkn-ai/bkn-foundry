@@ -227,12 +227,13 @@ OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi \
 
 ### 系统要求
 
-| 项目 | 最低配置 | 推荐配置 |
+| 项目 | 最低配置（测试、学习使用） | 推荐配置（生产环境最低配置） |
 | --- | --- | --- |
-| OS | CentOS 8+, OpenEuler 23+ | CentOS 8+ |
-| CPU | 16 核 | 16 核 |
-| 内存 | 48 GB | 64 GB |
-| 磁盘 | 200 GB | 500 GB |
+| 操作系统 | CentOS 8+、OpenEuler 23+ 或兼容 Linux | CentOS 8+ |
+| CPU | 4 核 | 16 核及以上 |
+| 内存 | 8 GB | 32 GB 及以上 |
+| 磁盘 | 200 GB | 500 GB 及以上 |
+| 权限 | root 或可使用 sudo 的用户 | root 或可使用 sudo 的用户 |
 
 ### 网络要求
 
