@@ -280,8 +280,15 @@ func closureManifestOutputSchema() map[string]any {
 }
 
 func businessRefOutputSchema() map[string]any {
+	// ref_type 的取值集合与 bkn-trace 的 sessionvo.BusinessRef 对齐（#587 起它是
+	// 一个具名枚举类型）。TestLifecycleSchemaUsesRegisteredIssue541ErrorsAndCoreTypes
+	// 会逐项递归比对这两侧，漏一个值就红。
 	return closedSchema(map[string]any{
-		"ref_type":           stringSchema(),
+		"ref_type": enumSchema(
+			"action_instance", "action_type", "data_resource", "function",
+			"knowledge_network", "logic", "metric", "object_instance",
+			"object_type", "property", "relation_type",
+		),
 		"ref_id":             stringSchema(),
 		"business_domain_id": stringSchema(),
 		"version":            stringSchema(),
