@@ -77,7 +77,11 @@ async def structured_extract_with_path(
         # path 只进 bkn-trace evidence 的话，trace 摄取一坏（曾遇 503
         # INGEST_AUTH_NOT_CONFIGURED）就彻底查不到走的哪条路。本地留一行：
         # 排「结构化结果质量不对」时，先要知道是原生还是降级、提示词在不在场。
-        logger.info(
+        # 用 warning 而非 info：main.py 直接 uvicorn.run，没配 log_config，
+        # 全仓也没有 basicConfig/dictConfig——root 停在 WARNING 且 handlers 为空，
+        # 应用侧 logger.info 会被整条丢弃（Pod 实测 3000 行日志里 [Toolbox] 零命中）。
+        # 每次带 response_format 的调用才一条，量可控。
+        logger.warning(
             "[Structured] path=native system_prompt=%s", bool(system_prompt)
         )
         return obj, "native"
@@ -89,8 +93,13 @@ async def structured_extract_with_path(
         logger.warning("[Structured] 原生结构化失败/不合法，降级到提示词模式：%s", e)
 
     # 2. 提示词强制 JSON + 校验 + 重试一次
+    # 「本次调用不提供任何工具」是必要的一句：system_prompt 里可能含技能段，
+    # 而 load_skills 注入的正文固定写着「需要时调用 read_skill_file 按需读取」。
+    # 抽取用的是没 bind 任何工具的裸模型，模型若照着去要工具就会回一句自然语言
+    # 而不是 JSON，白烧一次重试；两次都这样整个任务 failed。
     instr = (
         "请只输出一个 JSON 对象，严格符合下面的 JSON Schema。"
+        "本次调用不提供任何工具，请仅基于以上对话内容作答，不要请求调用工具。"
         "不要 markdown 代码块，不要任何多余文字或解释：\n"
         + json.dumps(schema, ensure_ascii=False)
     )
@@ -102,7 +111,7 @@ async def structured_extract_with_path(
         try:
             obj = _extract_json(text)
             _jsonschema_validate(obj, schema)
-            logger.info(
+            logger.warning(
                 "[Structured] path=fallback attempt=%d system_prompt=%s",
                 attempt,
                 bool(system_prompt),

@@ -172,7 +172,9 @@ def _wire(monkeypatch, captured):
         return "sys", "default", 1
 
     async def fake_skills(ids, account_id, account_type):
-        return ""
+        # 非空：抽取拿到的必须是「提示词 + 技能段」拼接后的那一份。返回空串会让
+        # 下面的断言退化成分不清「拼没拼技能」，抽取调用若被挪到拼接之前照样绿。
+        return "\n[技能] demo"
 
     async def fake_tools(agent_tools, account_id, account_type, **kwargs):
         return []
@@ -211,7 +213,7 @@ def test_run_with_response_format_serializes(monkeypatch):
     assert False in captured["streaming"]  # 抽结构化用非流式模型
     # #556 回归：抽取是另起的一次模型调用，agent 系统提示词必须一并传下去，
     # 否则模型在零约束下填 schema（实测表现为把技术字段名原样抄进 display_name）
-    assert captured["extract_system_prompt"] == "sys"
+    assert captured["extract_system_prompt"] == "sys\n[技能] demo"
 
 
 def test_run_without_response_format_text_path(monkeypatch):
