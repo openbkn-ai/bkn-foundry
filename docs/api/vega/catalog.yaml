@@ -188,14 +188,26 @@ paths:
         创建一个新的 catalog。`name` 全局唯一，已存在时返回 409。
         `connector_type` 必须是已注册且 enabled 的连接器类型。
 
+        物理 Catalog 会在持久化前执行一次连接测试。默认连接失败返回 400，且不会创建 Catalog；
+        可传 `allow_unhealthy=true` 保存该 Catalog，并将其健康状态记为 `unhealthy`。
+
         可选 **`extensions`**：与 `t_catalog` 插入 **同一事务**内写入 `t_entity_extension`。
         响应体 `CatalogRef` 返回 `extensions`，与持久化一致。
+      parameters:
+        - name: allow_unhealthy
+          in: query
+          description: |
+            是否在物理 Catalog 的连接测试失败时仍继续创建。默认 `false`；为 `true` 时创建成功，
+            但初始健康状态为 `unhealthy`。配置校验、敏感字段解密或连接器创建失败仍返回 400。
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CatalogRequest"
+              $ref: "#/components/schemas/CatalogCreateRequest"
       responses:
         "201":
           description: 创建成功
@@ -277,8 +289,20 @@ paths:
         `connector_config` 可修改；修改影响发现范围的字段后，旧 Resource 会在下一次
         discover 对齐时标记为 `stale`。
 
+        修改物理 Catalog 配置时会先执行连接测试。默认连接失败返回 400，且不会持久化更新；
+        可传 `allow_unhealthy=true` 保存更新，并将健康状态记为 `unhealthy`。
+
         **extensions**：请求体若包含 **`extensions` 键**（含空对象 `{}`），则对该 catalog **整包替换**
         `t_entity_extension` 中 `f_entity_id = id` 的全部行；**键未出现**则不修改副表。
+      parameters:
+        - name: allow_unhealthy
+          in: query
+          description: |
+            是否在物理 Catalog 的连接测试失败时仍继续更新。默认 `false`；为 `true` 时更新成功，
+            但健康状态为 `unhealthy`。配置校验、敏感字段解密或连接器创建失败仍返回 400。
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:
@@ -352,6 +376,40 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /catalogs/test-connection:
+    post:
+      summary: 预检未保存的 Catalog 连接配置
+      description: |
+        使用请求中的 `connector_type` 与 `connector_config` 执行一次同步连接测试。
+        本接口不创建或更新 Catalog，也不持久化健康状态；适用于创建或编辑表单保存前的“测试连接”。
+
+        探测结果通过响应体 `success` 字段返回；目标不可达不视为 HTTP 错误：
+        - 连通 → 200 `{ success: true, message }`
+        - 连不通 → 200 `{ success: false, message }`
+        - 非 2xx 仅用于请求、鉴权、参数校验或服务内部错误。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogConnectionTestRequest"
+      responses:
+        "200":
+          description: 探测完成（成功或失败均返回，业务结果看 `success` 字段）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestConnectionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "406":
+          $ref: "#/components/responses/NotAcceptable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /catalogs/{id}/health-status:
     parameters:
       - name: id
@@ -372,6 +430,10 @@ paths:
                 $ref: "#/components/schemas/CatalogHealthStatusEntry"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /catalogs/{id}/test-connection:
@@ -387,6 +449,7 @@ paths:
       description: |
         以当前持久化的 `connector_config` 真实建立一次到数据源的连接，验证连通性。
         与 `health-status`（异步定时检查的最近结果）不同，本端点是**同步实时探测**。
+        调用者必须拥有目标 Catalog 的 `modify` 权限。
 
         探测结果通过响应体 `success` 字段返回；连不通**不**视为 HTTP 错误：
         - 连通 → 200 `{ success: true, message }`
@@ -401,8 +464,69 @@ paths:
                 $ref: "#/components/schemas/TestConnectionResult"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /catalogs/{id}/health-check-schedule:
+    parameters:
+      - name: id
+        description: physical Catalog ID
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: 获取 Catalog 健康检查计划
+      description: |
+        仅 physical Catalog 支持；需要该 Catalog 的 `view_detail` 权限。Catalog 的详情与列表响应不会内嵌该对象。
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogHealthCheckSchedule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    put:
+      summary: 修改 Catalog 健康检查计划
+      description: |
+        仅 physical Catalog 支持，需要该 Catalog 的 `modify` 权限。不支持 DELETE 或单独的启停接口：
+        使用 `mode=inherit`、`enabled`、`disabled` 完成全量状态切换。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogHealthCheckScheduleRequest"
+      responses:
+        "200":
+          description: 更新后的计划
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogHealthCheckSchedule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "406":
+          $ref: "#/components/responses/NotAcceptable"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -425,6 +549,12 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Unauthorized:
       description: 未授权（OAuth Token 校验失败）
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: 权限不足
       content:
         application/json:
           schema:
@@ -532,14 +662,17 @@ components:
           type: object
           additionalProperties: true
         metadata:
-          description: 扩展元信息
+          description: 扩展元信息；关系型 Catalog 探查后可包含 schemas 快照
           type: object
+          properties:
+            schemas:
+              description: 探查发现的 schema 名称列表
+              type: array
+              items:
+                type: string
           additionalProperties: true
         extensions:
           $ref: "#/components/schemas/EntityExtensions"
-        health_check_enabled:
-          description: 是否开启周期健康检查
-          type: boolean
         health_check_status:
           description: 最近一次健康检查状态
           type: string
@@ -619,10 +752,71 @@ components:
           type: object
           additionalProperties: true
         internal:
-          description: 是否创建为内部 Catalog；省略时为 `false`
+          description: 仅 POST 创建 logical Catalog 时可设为 `true`；与非空 `connector_type` 同时提供返回 400。省略时为 `false`，PUT 时忽略。
           type: boolean
         extensions:
           $ref: "#/components/schemas/EntityExtensions"
+    CatalogCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/CatalogRequest"
+        - type: object
+          properties:
+            health_check_schedule:
+              description: |
+                可选的健康检查计划组合创建参数。仅 physical Catalog 支持；缺失或 `null` 时创建
+                `mode=inherit` 的计划。提供对象时 `mode` 必填；仅 `mode=enabled` 时 `cron_expr` 必填；
+                创建失败时整个 Catalog 创建请求回滚。
+              oneOf:
+                - $ref: "#/components/schemas/CatalogHealthCheckScheduleRequest"
+                - type: "null"
+    CatalogHealthCheckScheduleRequest:
+      description: Catalog 健康检查计划配置；可在创建 physical Catalog 时组合提交，或通过 PUT 独立修改
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          description: "`inherit` 使用 ConfigMap 的平台默认 Cron 并清空自定义 Cron，`enabled` 使用本请求的 Cron，`disabled` 停用。PUT 设置为 `disabled` 时保留已有自定义 Cron。"
+          type: string
+          enum: [inherit, enabled, disabled]
+        cron_expr:
+          description: 仅当 `mode=enabled` 时必填的健康检查 Cron 表达式；相邻两次执行的间隔不得短于 1 小时。PUT 的 `mode=disabled` 忽略该字段并保留已有自定义 Cron
+          type: string
+          minLength: 1
+    CatalogHealthCheckSchedule:
+      description: physical Catalog 的独立健康检查计划及最近调度元数据
+      type: object
+      required:
+        - catalog_id
+        - mode
+        - last_run
+        - next_run
+      properties:
+        catalog_id:
+          type: string
+        mode:
+          type: string
+          enum: [inherit, enabled, disabled]
+        cron_expr:
+          type: string
+        last_run:
+          description: 最近一次计划执行时间，Unix 毫秒时间戳；健康检查结果存放于 Catalog，而非本对象
+          type: integer
+          format: int64
+        next_run:
+          description: 下次计划执行时间，Unix 毫秒时间戳；`disabled` 时为 0，创建或切换为 `inherit` 时按平台全局 Cron 计算为未来时间
+          type: integer
+          format: int64
+        creator:
+          $ref: "#/components/schemas/AccountInfo"
+        create_time:
+          type: integer
+          format: int64
+        updater:
+          $ref: "#/components/schemas/AccountInfo"
+        update_time:
+          type: integer
+          format: int64
     ListCatalogs:
       description: catalog 列表
       type: object
@@ -647,6 +841,20 @@ components:
           type: string
         extensions:
           $ref: "#/components/schemas/EntityExtensions"
+    CatalogConnectionTestRequest:
+      description: 未保存的物理 Catalog 连接测试请求
+      type: object
+      required:
+        - connector_type
+        - connector_config
+      properties:
+        connector_type:
+          description: 已注册且 enabled 的连接器类型标识
+          type: string
+        connector_config:
+          description: 用于本次探测的连接器配置；字段由 ConnectorType.field_config 决定
+          type: object
+          additionalProperties: true
     CatalogHealthStatusEntry:
       description: catalog 健康状态条目
       type: object

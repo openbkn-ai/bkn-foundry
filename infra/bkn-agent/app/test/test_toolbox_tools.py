@@ -14,6 +14,7 @@ from app.core.tools import (
     _mcp_connections,
     _toolbox_tools,
     _trace_mcp_call,
+    load_tools,
 )
 from app.errors import bad_request  # noqa: F401  (确认导出仍存在)
 
@@ -255,7 +256,7 @@ def test_external_tool_with_context_loader_path_does_not_declare_fact_event():
         "path": "/api/agent-retrieval/in/v1/kn/search_schema",
     }
 
-    assert toolbox._expected_fact_event_type("external-box", metadata) is None
+    assert toolbox._expected_fact_event_type(metadata) is None
 
 
 def test_execute_splits_query_and_body_by_declared_location(monkeypatch):
@@ -682,22 +683,57 @@ def test_args_model_accepts_wire_parameters_with_leading_underscores():
     ]
 
 
-def test_default_toolbox_degrades_but_explicit_ref_fails(monkeypatch):
-    """默认 box 拉不到 → 降级空工具；显式 type=toolbox 拉不到 → 抛错。"""
+def test_explicit_toolbox_ref_failure_is_not_swallowed(monkeypatch):
+    """显式 type=toolbox 拉不到 → 抛错。工具是定义方点名要的，静默降级等于
+    让 agent 带着残缺工具面跑，比直接失败更难查。"""
 
     async def boom(box_id, account_id, account_type):
         raise RuntimeError("factory down")
 
     monkeypatch.setattr("app.core.tools.load_toolbox_tools", boom)
-    monkeypatch.setattr("app.core.tools.config.DEFAULT_TOOLBOXES", "box-default")
-
-    tools = asyncio.run(_toolbox_tools([], "u", "user"))
-    assert tools == []
 
     with pytest.raises(RuntimeError):
         asyncio.run(
             _toolbox_tools([{"type": "toolbox", "box_id": "box-x"}], "u", "user")
         )
+
+
+def test_no_declared_tools_yields_no_tools(monkeypatch):
+    """零声明 = 零工具，且一次装载请求都不发。图因此不长 tools 节点，模型没有
+    可空转的对象（#447）。read_skill_file 也不挂——此时它没有读取对象。
+
+    这条锁的是产品语义：agent.tools 是工具全集，没有任何隐式挂载可言。"""
+
+    async def boom(box_id, account_id, account_type):
+        raise AssertionError("零声明时不应发起任何 toolbox 装载")
+
+    monkeypatch.setattr("app.core.tools.load_toolbox_tools", boom)
+
+    assert asyncio.run(load_tools([], "u", "user")) == []
+    assert asyncio.run(_toolbox_tools([], "u", "user")) == []
+
+
+def test_skill_reader_rides_along_but_never_alone(monkeypatch):
+    """read_skill_file 三态：有技能则挂；无技能但已有其他工具则搭车挂；
+    两者都无则不挂（不为它一个撑出 tools 节点）。"""
+
+    async def one_tool(box_id, account_id, account_type):
+        return [toolbox._build_tool(box_id, _TOOL_INFO, account_id, account_type)]
+
+    monkeypatch.setattr("app.core.tools.load_toolbox_tools", one_tool)
+
+    def names(ts):
+        return [getattr(t, "name", None) for t in ts]
+
+    with_skill = asyncio.run(load_tools([], "u", "user", skill_ids=["sk-1"]))
+    assert names(with_skill) == ["read_skill_file"]
+
+    with_box = asyncio.run(
+        load_tools([{"type": "toolbox", "box_id": "box-x"}], "u", "user")
+    )
+    assert names(with_box) == ["list_knowledge_networks", "read_skill_file"]
+
+    assert asyncio.run(load_tools([], "u", "user", skill_ids=[])) == []
 
 
 def test_mcp_connections_propagate_trace_context():

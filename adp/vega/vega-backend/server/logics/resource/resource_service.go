@@ -53,6 +53,7 @@ var activeResourceBuildTaskStatuses = []string{
 
 type resourceService struct {
 	appSetting *common.AppSetting
+	db         *sql.DB
 	cs         interfaces.CatalogService
 	ds         interfaces.DatasetService
 	ps         interfaces.PermissionService
@@ -68,6 +69,7 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 	rServiceOnce.Do(func() {
 		rService = &resourceService{
 			appSetting: appSetting,
+			db:         logics.DB,
 			cs:         catalog.NewCatalogService(appSetting),
 			ds:         dataset.NewDatasetService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
@@ -251,7 +253,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		Description:      req.Description,
 		Category:         req.Category,
 		Status:           req.Status,
-		Database:         req.Database,
+		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
@@ -264,21 +266,35 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		UpdateTime:       now,
 	}
 
-	err = rs.ra.Create(ctx, resource)
+	tx, err := rs.db.BeginTx(ctx, nil)
+	if err != nil {
+		otellog.LogError(ctx, "Create resource transaction failed", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).
+			WithErrorDetails("failed to create resource")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	err = rs.ra.Create(ctx, tx, resource)
 	if err != nil {
 		otellog.LogError(ctx, "Create resource failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("failed to create resource")
 	}
 
 	if req.Extensions != nil {
-		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
-			_ = rs.ra.DeleteByIDs(ctx, []string{resource.ID})
-			logger.Errorf("Replace resource extensions failed: %v", err)
+		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
+			otellog.LogError(ctx, "Replace resource extensions failed", err)
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-				WithErrorDetails(err.Error())
+				WithErrorDetails("failed to create resource")
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).
+			WithErrorDetails("failed to create resource")
 	}
 
 	switch resource.Category {
@@ -734,18 +750,37 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Updater = accountInfo
 	resource.UpdateTime = now
 
-	if err := rs.ra.Update(ctx, nil, resource); err != nil {
+	tx, err := rs.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update resource transaction failed")
+		otellog.LogError(ctx, "Update resource transaction failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update resource")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := rs.ra.Update(ctx, tx, resource); err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
+		otellog.LogError(ctx, "Update resource failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("failed to update resource")
 	}
 
 	if req.Extensions != nil {
-		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
+		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
+			otellog.LogError(ctx, "Replace resource extensions failed", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-				WithErrorDetails(err.Error())
+				WithErrorDetails("failed to update resource")
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit resource update transaction failed")
+		otellog.LogError(ctx, "Commit resource update transaction failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update resource")
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -954,7 +989,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		Description:      req.Description,
 		Category:         req.Category,
 		Status:           req.Status,
-		Database:         req.Database,
+		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
@@ -966,7 +1001,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		Updater:          accountInfo,
 		UpdateTime:       now,
 	}
-	if err := rs.ra.CreateWithTx(ctx, tx, resource); err != nil {
+	if err := rs.ra.Create(ctx, tx, resource); err != nil {
 		return nil, err
 	}
 	return resource, nil
@@ -1001,8 +1036,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
 	}
-	if req.Database != "" && resource.Database != req.Database {
-		return false, unsupportedResourceUpdateError(ctx, "database is managed by discover and cannot be updated directly")
+	if req.Schema != "" && resource.Schema != req.Schema {
+		return false, unsupportedResourceUpdateError(ctx, "schema is managed by discover and cannot be updated directly")
 	}
 	if req.SourceIdentifier != "" && resource.SourceIdentifier != req.SourceIdentifier {
 		return false, unsupportedResourceUpdateError(ctx, "source_identifier is managed by discover and cannot be updated directly")

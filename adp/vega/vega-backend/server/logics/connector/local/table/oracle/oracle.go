@@ -191,7 +191,7 @@ func (c *OracleConnector) Connect(ctx context.Context) error {
 		return err
 	}
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return err
 	}
@@ -219,7 +219,7 @@ func (c *OracleConnector) Ping(ctx context.Context) error {
 		return err
 	}
 
-	return c.db.Ping()
+	return c.db.PingContext(ctx)
 }
 
 // TestConnection tests the connection to Oracle database.

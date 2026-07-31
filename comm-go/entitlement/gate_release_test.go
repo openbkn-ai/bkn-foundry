@@ -18,6 +18,12 @@ func TestReleaseGateIgnoresTheEnvironment(t *testing.T) {
 	// development variable must do nothing at all here.
 	t.Setenv("OPENBKN_EDITION", "enterprise")
 	t.Setenv("OPENBKN_FEATURES", "audit")
+	// DefaultGate resolves the hub from the environment, so clear it: this test
+	// is about the build tag, not about whatever a developer's shell exports.
+	// Left unset it would fire a real 10s-timeout request at their cluster, and
+	// pass or fail depending on whether that bkn-safe happens to hold a licence.
+	t.Setenv("BKN_SAFE_URL", "")
+	t.Setenv("BKN_SAFE_APPKEY", "")
 
 	snap := DefaultGate().Snapshot()
 	if snap.Licensed || snap.Edition != licverify.EditionCommunity {

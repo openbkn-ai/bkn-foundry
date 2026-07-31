@@ -26,6 +26,7 @@ import (
 	"vega-backend/logics/auth"
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
+	"vega-backend/logics/catalog_health_check_schedule"
 	"vega-backend/logics/connector_type"
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/discover_schedule"
@@ -52,6 +53,7 @@ type restHandler struct {
 	cts        interfaces.ConnectorTypeService
 	dts        interfaces.DiscoverTaskService
 	dss        interfaces.DiscoverScheduleService
+	hcss       interfaces.CatalogHealthCheckScheduleService
 	rds        interfaces.ResourceDataService
 	suts       interfaces.SemanticUnderstandingTaskService
 
@@ -68,6 +70,7 @@ func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) Re
 	ds := dataset.NewDatasetService(appSetting)
 	dts := discover_task.NewDiscoverTaskService(appSetting)
 	dss := discover_schedule.NewDiscoverScheduleService(appSetting, dts)
+	hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 	rds := resource_data.NewResourceDataService(appSetting)
 
@@ -79,6 +82,7 @@ func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) Re
 		cts:        cts,
 		ds:         ds,
 		dss:        dss,
+		hcss:       hcss,
 		dts:        dts,
 		rds:        rds,
 		rs:         rs,
@@ -105,13 +109,18 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.GET("", r.ListCatalogsByEx)
 			catalogs.POST("", r.verifyJsonContentType(), r.CreateCatalogByEx)
 			catalogs.PUT("/:id", r.verifyJsonContentType(), r.UpdateCatalogByEx)
-			catalogs.POST("/:id/enable", r.EnableCatalogByEx)
-			catalogs.POST("/:id/disable", r.DisableCatalogByEx)
-			catalogs.GET("/:id/health-status", r.GetCatalogHealthStatusByEx)
-			catalogs.POST("/:id/test-connection", r.TestConnectionByEx)
-			catalogs.POST("/:id/discover", r.DiscoverCatalogResourcesByEx)
 			catalogs.GET("/:id", r.GetCatalogsByEx)
 			catalogs.DELETE("/:id", r.DeleteCatalogsByEx)
+			catalogs.POST("/:id/enable", r.EnableCatalogByEx)
+			catalogs.POST("/:id/disable", r.DisableCatalogByEx)
+
+			catalogs.GET("/:id/health-status", r.GetCatalogHealthStatusByEx)
+			catalogs.GET("/:id/health-check-schedule", r.GetCatalogHealthCheckScheduleByEx)
+			catalogs.PUT("/:id/health-check-schedule", r.verifyJsonContentType(), r.UpdateCatalogHealthCheckScheduleByEx)
+			catalogs.POST("/:id/test-connection", r.TestConnectionByEx)
+			catalogs.POST("/:id/discover", r.DiscoverCatalogResourcesByEx)
+
+			catalogs.POST("/test-connection", r.verifyJsonContentType(), r.TestConnectionConfigByEx)
 		}
 
 		// Resource APIs - External
@@ -194,13 +203,18 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.GET("", r.ListCatalogsByIn)
 			catalogs.POST("", r.verifyJsonContentType(), r.CreateCatalogByIn)
 			catalogs.PUT("/:id", r.verifyJsonContentType(), r.UpdateCatalogByIn)
-			catalogs.POST("/:id/enable", r.EnableCatalogByIn)
-			catalogs.POST("/:id/disable", r.DisableCatalogByIn)
-			catalogs.GET("/:id/health-status", r.GetCatalogHealthStatusByIn)
-			catalogs.POST("/:id/test-connection", r.TestConnectionByIn)
-			catalogs.POST("/:id/discover", r.DiscoverCatalogResourcesByIn)
 			catalogs.GET("/:id", r.GetCatalogsByIn)
 			catalogs.DELETE("/:id", r.DeleteCatalogsByIn)
+			catalogs.POST("/:id/enable", r.EnableCatalogByIn)
+			catalogs.POST("/:id/disable", r.DisableCatalogByIn)
+
+			catalogs.GET("/:id/health-status", r.GetCatalogHealthStatusByIn)
+			catalogs.GET("/:id/health-check-schedule", r.GetCatalogHealthCheckScheduleByIn)
+			catalogs.PUT("/:id/health-check-schedule", r.verifyJsonContentType(), r.UpdateCatalogHealthCheckScheduleByIn)
+			catalogs.POST("/:id/test-connection", r.TestConnectionByIn)
+			catalogs.POST("/:id/discover", r.DiscoverCatalogResourcesByIn)
+
+			catalogs.POST("/test-connection", r.verifyJsonContentType(), r.TestConnectionConfigByIn)
 		}
 
 		// Resource APIs - Internal

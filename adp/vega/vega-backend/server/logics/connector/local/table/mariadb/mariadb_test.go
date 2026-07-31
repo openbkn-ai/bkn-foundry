@@ -11,6 +11,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
@@ -156,6 +157,27 @@ func TestMariaDBConnectorClose(t *testing.T) {
 		require.NoError(t, connector.Close(context.Background()))
 		assert.False(t, connector.connected)
 		assert.Nil(t, connector.db)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestMariaDBConnectorPing(t *testing.T) {
+	t.Run("honors context deadline", func(t *testing.T) {
+		db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		connector := &MariaDBConnector{db: db, connected: true}
+		mock.ExpectPing().WillDelayFor(time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		startedAt := time.Now()
+		err = connector.Ping(ctx)
+
+		require.Error(t, err)
+		require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+		assert.Less(t, time.Since(startedAt), 500*time.Millisecond)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

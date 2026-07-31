@@ -70,8 +70,6 @@ spec:
               value: {{ .Values.depServices.rds.password | quote }}
             - name: MF_MODEL_API_PRIVATE_BASE
               value: {{ .Values.runtime.mfModelApiPrivateBase | quote }}
-            - name: BKN_AGENT_DEFAULT_TOOLBOXES
-              value: {{ .Values.runtime.defaultToolboxes | quote }}
             - name: OPERATOR_INTEGRATION_BASE
               value: {{ .Values.runtime.operatorIntegrationBase | quote }}
             - name: BKN_AGENT_TOOLBOX_SYNC

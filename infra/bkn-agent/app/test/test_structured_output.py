@@ -114,7 +114,7 @@ def _wire(monkeypatch, captured):
     async def fake_skills(ids, account_id, account_type):
         return ""
 
-    async def fake_tools(agent_tools, account_id, account_type, depth=0, parent_thread_id=None):
+    async def fake_tools(agent_tools, account_id, account_type, **kwargs):
         return []
 
     monkeypatch.setattr(runner, "resolve_prompt", fake_prompt)

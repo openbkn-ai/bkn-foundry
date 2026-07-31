@@ -30,7 +30,7 @@ func TestCatalogAccessCreate(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_catalog (f_id,f_name,f_tags,f_description,f_type,f_enabled,f_internal,f_connector_type,f_connector_config,f_metadata,f_health_check_enabled,f_health_check_status,f_last_check_time,f_health_check_result,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_catalog (f_id,f_name,f_tags,f_description,f_type,f_enabled,f_internal,f_connector_type,f_connector_config,f_metadata,f_health_check_status,f_last_check_time,f_health_check_result,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
 			WithArgs(
 				"catalog-1",
 				"Catalog One",
@@ -42,7 +42,6 @@ func TestCatalogAccessCreate(t *testing.T) {
 				interfaces.ConnectorTypePostgreSQL,
 				`{"host":"127.0.0.1"}`,
 				`{"region":"cn"}`,
-				true,
 				interfaces.CatalogHealthStatusHealthy,
 				int64(100),
 				"ok",
@@ -55,7 +54,21 @@ func TestCatalogAccessCreate(t *testing.T) {
 			).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
-		require.NoError(t, access.Create(context.Background(), sampleCatalog()))
+		require.NoError(t, access.Create(context.Background(), nil, sampleCatalog()))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("creates catalog with transaction", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+
+		mock.ExpectExec("INSERT INTO t_catalog").WillReturnResult(sqlmock.NewResult(1, 1))
+		require.NoError(t, access.Create(context.Background(), tx, sampleCatalog()))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -138,7 +151,7 @@ func TestCatalogAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
 			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_enabled, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
 			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(catalogRows().AddRow(catalogRowValues(sampleCatalog())...))
 
@@ -386,11 +399,27 @@ func TestCatalogAccessUpdate(t *testing.T) {
 		catalog := sampleCatalog()
 		catalog.Name = "Updated Catalog"
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_enabled = ?, f_connector_type = ?, f_connector_config = ?, f_metadata = ?, f_health_check_enabled = ?, f_health_check_status = ?, f_last_check_time = ?, f_health_check_result = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
-			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, catalog.Enabled, catalog.ConnectorType, `{"host":"127.0.0.1"}`, `{"region":"cn"}`, catalog.HealthCheckEnabled, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_enabled = ?, f_connector_type = ?, f_connector_config = ?, f_metadata = ?, f_health_check_status = ?, f_last_check_time = ?, f_health_check_result = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
+			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, catalog.Enabled, catalog.ConnectorType, `{"host":"127.0.0.1"}`, `{"region":"cn"}`, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), catalog))
+		require.NoError(t, access.Update(context.Background(), nil, catalog))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("updates catalog with transaction", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET")).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.Update(context.Background(), tx, sampleCatalog()))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -455,7 +484,7 @@ func TestCatalogAccessDeleteByIDs(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
-		require.NoError(t, access.DeleteByIDs(context.Background(), nil))
+		require.NoError(t, access.DeleteByIDs(context.Background(), nil, nil))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -470,7 +499,7 @@ func TestCatalogAccessDeleteByIDs(t *testing.T) {
 			WithArgs("catalog-1", "catalog-2").
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		err := access.DeleteByIDs(context.Background(), []string{"catalog-1", "catalog-2"})
+		err := access.DeleteByIDs(context.Background(), nil, []string{"catalog-1", "catalog-2"})
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"catalog-1", "catalog-2"}, store.deletedIDs)
@@ -483,7 +512,7 @@ func TestCatalogAccessDeleteByIDs(t *testing.T) {
 		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{err: errors.New("store down")})
 		defer restore()
 
-		err := access.DeleteByIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "store down")
@@ -598,7 +627,7 @@ func replaceCatalogExtensionStore(store *fakeCatalogExtensionStore) func() {
 		return &entityextension.Store{}
 	})
 	patches.ApplyMethod(&entityextension.Store{}, "DeleteByEntityIDs",
-		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) error {
+		func(_ *entityextension.Store, ctx context.Context, _ *sql.Tx, kind string, entityIDs []string) error {
 			return store.DeleteByEntityIDs(ctx, kind, entityIDs)
 		})
 	patches.ApplyMethod(&entityextension.Store{}, "GetByEntityID",
@@ -624,7 +653,6 @@ func sampleCatalog() *interfaces.Catalog {
 		ConnectorType:            interfaces.ConnectorTypePostgreSQL,
 		ConnectorCfg:             interfaces.ConnectorConfig{"host": "127.0.0.1"},
 		Metadata:                 map[string]any{"region": "cn"},
-		HealthCheckEnabled:       true,
 		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{HealthCheckStatus: interfaces.CatalogHealthStatusHealthy, LastCheckTime: 100, HealthCheckResult: "ok"},
 		Creator:                  interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
 		CreateTime:               1,
@@ -640,7 +668,7 @@ func sampleCatalogWithID(id string) *interfaces.Catalog {
 }
 
 func catalogSelectSQL(where string) string {
-	return "SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_enabled, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE " + where
+	return "SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE " + where
 }
 
 func catalogRows() *sqlmock.Rows {
@@ -655,7 +683,6 @@ func catalogRows() *sqlmock.Rows {
 		"f_connector_type",
 		"f_connector_config",
 		"f_metadata",
-		"f_health_check_enabled",
 		"f_health_check_status",
 		"f_last_check_time",
 		"f_health_check_result",
@@ -680,7 +707,6 @@ func catalogRowValues(catalog *interfaces.Catalog) []driver.Value {
 		catalog.ConnectorType,
 		`{"host":"127.0.0.1"}`,
 		`{"region":"cn"}`,
-		catalog.HealthCheckEnabled,
 		catalog.HealthCheckStatus,
 		catalog.LastCheckTime,
 		catalog.HealthCheckResult,

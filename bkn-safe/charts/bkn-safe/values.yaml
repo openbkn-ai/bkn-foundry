@@ -118,6 +118,23 @@ config:
     serverURL: "https://license.openbkn.ai"
     caFile: ""
     insecureSkipVerify: false
+    # Instance identity the license activation binds to (OPENBKN_INSTANCE_ID,
+    # read by licverify). Empty = resolved per install by the chart
+    # (bkn-safe.instanceID): deploy.sh derives it from the node's hardware
+    # (status.nodeInfo.systemUUID, i.e. the host's DMI product_uuid, falling
+    # back to nodeInfo.machineID where kubelet cannot read DMI) and an existing
+    # value is carried forward unchanged on every upgrade. The resolved value
+    # lives in its own ConfigMap (templates/instance-id.yaml), annotated
+    # helm.sh/resource-policy: keep so `helm uninstall` cannot take the
+    # activated license down with it.
+    #
+    # It MUST be host-derived and re-derivable, NEVER randomly generated: an
+    # invented identity drifts the moment its storage is lost and travels along
+    # when this file is copied to another machine. Nothing inside the Pod is
+    # stable enough to fall back to — a Pod's eth0 MAC is minted per Pod, which
+    # is what made every Helm upgrade invalidate an activated license
+    # (openbkn-ai/bkn-foundry#508).
+    instanceId: ""
 
 resources:
   requests:

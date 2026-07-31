@@ -8,15 +8,27 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"vega-backend/common"
+	"vega-backend/drivenadapters/entityextension"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
+	"vega-backend/logics/connector/factory"
 )
 
 // mockCipher 实现 kwcrypto.Cipher 接口用于测试
@@ -35,6 +47,34 @@ func (m *mockCipher) Decrypt(ciphertext string) (string, error) {
 
 func (m *mockCipher) Signature(data string) (string, error) {
 	return "", nil
+}
+
+func patchConnectorInitializationError(t *testing.T, connectorErr error) {
+	t.Helper()
+
+	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+		return &factory.ConnectorFactory{}
+	})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+		func(*factory.ConnectorFactory, string) []string {
+			return nil
+		})
+	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			return nil, connectorErr
+		})
+	t.Cleanup(patches.Reset)
+}
+
+func requireRedactedConnectorInitializationError(t *testing.T, err error, sensitiveError string) {
+	t.Helper()
+
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
+	assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+	assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), connectorInitializationFailedResult)
 }
 
 func TestValidateAndDecryptSensitiveFields(t *testing.T) {
@@ -262,14 +302,93 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 }
 
 func TestCatalogServiceCreate(t *testing.T) {
-	t.Run("create missing enabled defaults to disabled and unchecked", func(t *testing.T) {
+	t.Run("does not expose connector initialization error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "invalid endpoint db.internal with token secret"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		patchConnectorInitializationError(t, errors.New(sensitiveError))
+
+		cs := &catalogService{ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		requireRedactedConnectorInitializationError(t, err, sensitiveError)
+	})
+
+	t.Run("rejects physical internal catalog before permission check", func(t *testing.T) {
+		cs := &catalogService{}
+
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:          "internal-physical-catalog",
+			Internal:      true,
+			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "internal catalogs must be logical")
+	})
+
+	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+
+		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+			return &factory.ConnectorFactory{}
+		})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+			func(*factory.ConnectorFactory, string) []string {
+				return nil
+			})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				return connector, nil
+			})
+		t.Cleanup(patches.Reset)
+
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			ps:         mockPS,
+		}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
+	})
+
+	t.Run("create logical catalog defaults to disabled and unchecked", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, catalog *interfaces.Catalog) error {
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
+				require.NotNil(t, tx)
 				if catalog.Enabled {
 					t.Fatal("expected catalog to be disabled by default")
 				}
@@ -281,22 +400,75 @@ func TestCatalogServiceCreate(t *testing.T) {
 		)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS}
-		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name: "catalog",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		}, false)
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
+
+	t.Run("rolls back transaction when catalog creation fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sensitiveError := "insert into t_catalog failed at db.internal"
+		createErr := errors.New(sensitiveError)
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Return(createErr)
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "catalog"}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to create catalog")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("rejects health check schedule for logical catalog before persistence", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		cs := &catalogService{ps: mockPS}
+		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+			Name: "logical-catalog",
+			HealthCheckSchedule: &interfaces.CatalogHealthCheckScheduleRequest{
+				Mode:     interfaces.CatalogHealthCheckScheduleModeEnabled,
+				CronExpr: "0 * * * *",
+			},
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "only supported for physical catalogs")
+	})
+
 	t.Run("create enabled true", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, catalog *interfaces.Catalog) error {
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog) error {
 				if !catalog.Enabled {
 					t.Fatal("expected catalog to be enabled")
 				}
@@ -308,26 +480,32 @@ func TestCatalogServiceCreate(t *testing.T) {
 		)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS}
-		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:    "catalog",
 			Enabled: true,
-		})
+		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 	t.Run("create internal uses internal auth type", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
 			ID:   interfaces.RESOURCE_ID_ALL,
 		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
-		mockCA.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, catalog *interfaces.Catalog) error {
+		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog) error {
 				if !catalog.Internal {
 					t.Fatal("expected catalog.Internal=true")
 				}
@@ -343,40 +521,383 @@ func TestCatalogServiceCreate(t *testing.T) {
 			},
 		)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS}
-		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:     "internal-catalog",
 			Internal: true,
-		})
+		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+	t.Run("physical catalog creates default inherit schedule", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		mockHCSS.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Catalog{}), nil).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
+
+		cs := &catalogService{hcss: mockHCSS}
+		err := cs.createHealthCheckSchedule(context.Background(), nil, &interfaces.Catalog{
+			ID:   "catalog-1",
+			Type: interfaces.CatalogTypePhysical,
+		}, nil)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("logical catalog without schedule does not create one", func(t *testing.T) {
+		cs := &catalogService{}
+
+		err := cs.createHealthCheckSchedule(context.Background(), nil, &interfaces.Catalog{
+			ID:   "catalog-1",
+			Type: interfaces.CatalogTypeLogical,
+		}, nil)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("returns schedule creation error without compensating delete", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		createErr := errors.New("schedule insert failed")
+		catalog := &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}
+
+		mockHCSS.EXPECT().Create(gomock.Any(), gomock.Any(), catalog, gomock.Any()).Return(nil, createErr)
+
+		cs := &catalogService{hcss: mockHCSS}
+		err := cs.createHealthCheckSchedule(context.Background(), nil, catalog, &interfaces.CatalogHealthCheckScheduleRequest{
+			Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "0 * * * *",
+		})
+
+		require.ErrorIs(t, err, createErr)
 	})
 }
 
 func TestCatalogServiceTestConnection(t *testing.T) {
-	t.Run("test connection nil catalog", func(t *testing.T) {
-		cs := &catalogService{}
-		_, err := cs.TestConnection(context.Background(), nil)
-		if err == nil {
-			t.Fatal("expected error for nil catalog")
-		}
+	t.Run("does not expose connector initialization error during preflight", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "invalid endpoint db.internal with token secret"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		patchConnectorInitializationError(t, errors.New(sensitiveError))
+
+		cs := &catalogService{ps: mockPS}
+		result, err := cs.TestConnectionConfig(context.Background(), &interfaces.CatalogConnectionTestRequest{
+			ConnectorType: "mariadb",
+		})
+
+		assert.Nil(t, result)
+		requireRedactedConnectorInitializationError(t, err, sensitiveError)
 	})
-	t.Run("test connection valid", func(t *testing.T) {
-		cs := &catalogService{}
+
+	t.Run("returns not found for missing catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "missing",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
+
+		cs := &catalogService{ca: ca, ps: ps}
+		result, err := cs.TestConnection(context.Background(), "missing")
+
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+		assert.Nil(t, result)
+	})
+	t.Run("redacts catalog query error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "select t_catalog failed at db.internal"
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(nil, errors.New(sensitiveError))
+
+		cs := &catalogService{ca: ca, ps: ps}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to get catalog for connection test")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Nil(t, result)
+	})
+	t.Run("redacts health status update error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		sensitiveError := "update t_catalog health status failed at db.internal"
+
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
+			ID:            "catalog-1",
+			Type:          interfaces.CatalogTypePhysical,
+			ConnectorType: "mariadb",
+		}, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).
+			Return(errors.New(sensitiveError))
+
+		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+			return &factory.ConnectorFactory{}
+		})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+			func(*factory.ConnectorFactory, string) []string {
+				return nil
+			})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				return connector, nil
+			})
+		t.Cleanup(patches.Reset)
+
+		cs := &catalogService{appSetting: &common.AppSetting{}, ca: ca, ps: ps}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update catalog health check status")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Nil(t, result)
+	})
+	t.Run("test connection logical catalog returns an explicit failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		catalog := &interfaces.Catalog{
+			ID: "catalog-1",
 			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
 				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
 				LastCheckTime:     1234567890,
 			},
 		}
-		result, err := cs.TestConnection(context.Background(), catalog)
+		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(catalog, nil)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "catalog-1",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+
+		cs := &catalogService{ca: mockCA, ps: mockPS}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.HealthCheckStatus != interfaces.CatalogHealthStatusHealthy {
-			t.Errorf("expected healthy status, got %s", result.HealthCheckStatus)
+		if result.HealthCheckStatus != interfaces.CatalogHealthStatusUnhealthy {
+			t.Errorf("expected unhealthy status, got %s", result.HealthCheckStatus)
 		}
+		if result.HealthCheckResult == "" {
+			t.Fatal("expected an explicit logical catalog failure message")
+		}
+	})
+
+	t.Run("rejects manual connection test without modify permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		permissionErr := errors.New("modify permission denied")
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "catalog-1",
+		}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(permissionErr)
+
+		cs := &catalogService{ps: mockPS}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
+
+		require.ErrorIs(t, err, permissionErr)
+		assert.Nil(t, result)
+	})
+
+	t.Run("internal connection test bypasses user permission checks", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1"}, nil)
+
+		cs := &catalogService{ca: mockCA}
+		result, err := cs.InternalTestConnection(context.Background(), "catalog-1")
+
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
+	})
+}
+
+func TestCatalogServiceTestConnectorConnection(t *testing.T) {
+	t.Run("passes configured timeout to connector", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		cs := &catalogService{appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{Timeout: 2 * time.Second}}}
+
+		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok)
+			assert.WithinDuration(t, time.Now().Add(2*time.Second), deadline, 100*time.Millisecond)
+			return nil
+		})
+
+		require.NoError(t, cs.testConnectorConnection(context.Background(), connector))
+	})
+
+	t.Run("uses default timeout when configuration is absent", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		cs := &catalogService{appSetting: &common.AppSetting{}}
+
+		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok)
+			assert.WithinDuration(t, time.Now().Add(defaultConnectionTestTimeout), deadline, 100*time.Millisecond)
+			return nil
+		})
+
+		require.NoError(t, cs.testConnectorConnection(context.Background(), connector))
+	})
+}
+
+func TestCatalogServiceUpdate(t *testing.T) {
+	t.Run("does not expose connector initialization error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		sensitiveError := "invalid endpoint db.internal with token secret"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		patchConnectorInitializationError(t, errors.New(sensitiveError))
+
+		cs := &catalogService{ps: mockPS}
+		err := cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "physical-catalog",
+		}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		requireRedactedConnectorInitializationError(t, err, sensitiveError)
+	})
+
+	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
+
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+
+		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
+			return &factory.ConnectorFactory{}
+		})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
+			func(*factory.ConnectorFactory, string) []string {
+				return nil
+			})
+		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
+			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				return connector, nil
+			})
+		t.Cleanup(patches.Reset)
+
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			ps:         mockPS,
+		}
+		err := cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "physical-catalog",
+		}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
+	})
+
+	t.Run("uses transaction when extensions are omitted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		err = cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "catalog",
+		}, &interfaces.CatalogRequest{Name: "catalog"}, false)
+
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("rolls back catalog and extensions when extension replacement fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sensitiveError := "replace t_entity_extension failed at db.internal"
+		replaceErr := errors.New(sensitiveError)
+		patches := gomonkey.NewPatches()
+		t.Cleanup(patches.Reset)
+		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
+			return &entityextension.Store{}
+		})
+		patches.ApplyMethod(&entityextension.Store{}, "Replace",
+			func(_ *entityextension.Store, _ context.Context, tx *sql.Tx, kind, entityID string, _ map[string]string) error {
+				require.NotNil(t, tx)
+				assert.Equal(t, entityextension.KindCatalog, kind)
+				assert.Equal(t, "catalog-1", entityID)
+				return replaceErr
+			})
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+
+		extensionValues := map[string]string{"owner": "team-a"}
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			db:         db,
+			ca:         mockCA,
+			ps:         mockPS,
+		}
+		err = cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "catalog",
+		}, &interfaces.CatalogRequest{
+			Name:       "catalog",
+			Extensions: &extensionValues,
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update catalog")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 }
 
@@ -634,9 +1155,15 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		mockRA := mock_interfaces.NewMockResourceAccess(ctrl)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
 
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
 		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
@@ -646,14 +1173,51 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
-		mockCA.EXPECT().DeleteByIDs(gomock.Any(), []string{"c1"}).Return(nil)
-		mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), []string{"c1"}).Return(nil)
+		mockCA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
+		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
+		mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
 
-		cs := &catalogService{ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM}
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM, hcss: mockHCSS}
 		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+	t.Run("redacts schedule deletion error and rolls back transaction", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sensitiveError := "delete from t_catalog_health_check_schedule failed at db.internal"
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
+		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Not(nil), []string{"c1"}).
+			Return(errors.New(sensitiveError))
+
+		cs := &catalogService{
+			db: db, ca: mockCA, ps: mockPS, bta: mockBTA, lim: mockLIM, hcss: mockHCSS,
+		}
+		err = cs.DeleteByIDs(context.Background(), []string{"c1"})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_DeleteFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to delete catalog")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 	t.Run("delete by ids refuses when task running", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

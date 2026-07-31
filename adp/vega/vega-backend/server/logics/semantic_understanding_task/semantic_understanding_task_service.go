@@ -548,7 +548,7 @@ type resourceAgentInputResource struct {
 	ID                string                       `json:"id"`
 	Name              string                       `json:"name"`
 	Category          string                       `json:"category"`
-	Database          string                       `json:"database,omitempty"`
+	Schema            string                       `json:"schema,omitempty"`
 	SourceIdentifier  string                       `json:"source_identifier"`
 	SourceDescription string                       `json:"source_description,omitempty"`
 	Description       string                       `json:"description,omitempty"`
@@ -590,7 +590,7 @@ type catalogAgentInputResource struct {
 	ID               string                         `json:"id"`
 	Name             string                         `json:"name"`
 	Description      string                         `json:"description,omitempty"`
-	Database         string                         `json:"database,omitempty"`
+	Schema           string                         `json:"schema,omitempty"`
 	SourceIdentifier string                         `json:"source_identifier"`
 	Keys             *catalogAgentInputResourceKeys `json:"keys,omitempty"`
 	Fields           []catalogAgentInputProperty    `json:"fields"`
@@ -676,7 +676,7 @@ func buildResourceAgentInputResource(resource *interfaces.Resource) resourceAgen
 		ID:               resource.ID,
 		Name:             resource.Name,
 		Category:         resource.Category,
-		Database:         resource.Database,
+		Schema:           resource.Schema,
 		SourceIdentifier: resource.SourceIdentifier,
 		Description:      resource.Description,
 		SchemaDefinition: buildResourceAgentInputProperties(resource.SchemaDefinition),
@@ -688,7 +688,7 @@ func buildCatalogAgentInputResource(resource *interfaces.Resource) catalogAgentI
 		ID:               resource.ID,
 		Name:             resource.Name,
 		Description:      resource.Description,
-		Database:         resource.Database,
+		Schema:           resource.Schema,
 		SourceIdentifier: resource.SourceIdentifier,
 		Keys:             buildCatalogAgentInputResourceKeys(resource.SourceMetadata),
 		Fields:           buildCatalogAgentInputProperties(resource.SchemaDefinition),

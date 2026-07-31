@@ -14,21 +14,22 @@ import (
 )
 
 var (
-	DB   *sql.DB
-	AA   interfaces.AuthAccess
-	AQA  interfaces.AsynqAccess
-	BAA  interfaces.BknAgentAccess
-	BTA  interfaces.BuildTaskAccess
-	CA   interfaces.CatalogAccess
-	CTA  interfaces.ConnectorTypeAccess
-	DSA  interfaces.DiscoverScheduleAccess
-	DTA  interfaces.DiscoverTaskAccess
-	KA   interfaces.KafkaAccess
-	MFA  interfaces.ModelFactoryAccess
-	PA   interfaces.PermissionAccess
-	RA   interfaces.ResourceAccess
-	SUTA interfaces.SemanticUnderstandingTaskAccess
-	UMA  interfaces.UserMgmtAccess
+	DB    *sql.DB
+	AA    interfaces.AuthAccess
+	AQA   interfaces.AsynqAccess
+	BAA   interfaces.BknAgentAccess
+	BTA   interfaces.BuildTaskAccess
+	CA    interfaces.CatalogAccess
+	CHCSA interfaces.CatalogHealthCheckScheduleAccess
+	CTA   interfaces.ConnectorTypeAccess
+	DSA   interfaces.DiscoverScheduleAccess
+	DTA   interfaces.DiscoverTaskAccess
+	KA    interfaces.KafkaAccess
+	MFA   interfaces.ModelFactoryAccess
+	PA    interfaces.PermissionAccess
+	RA    interfaces.ResourceAccess
+	SUTA  interfaces.SemanticUnderstandingTaskAccess
+	UMA   interfaces.UserMgmtAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -49,6 +50,10 @@ func SetBuildTaskAccess(bta interfaces.BuildTaskAccess) {
 
 func SetCatalogAccess(ca interfaces.CatalogAccess) {
 	CA = ca
+}
+
+func SetCatalogHealthCheckScheduleAccess(chcsa interfaces.CatalogHealthCheckScheduleAccess) {
+	CHCSA = chcsa
 }
 
 func SetConnectorTypeAccess(cta interfaces.ConnectorTypeAccess) {

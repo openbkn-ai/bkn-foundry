@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os/signal"
 	"syscall"
@@ -15,24 +16,40 @@ import (
 // @description APIs for querying agent traces from OpenSearch.
 // @BasePath /api/agent-observability/v1
 func main() {
-	app := boot.NewApp()
+	app, err := boot.NewApp()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go func() {
-		<-ctx.Done()
-
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := app.Shutdown(shutdownCtx); err != nil {
-			log.Printf("shutdown app: %v", err)
-		}
-	}()
-
 	log.Printf("agent-observability listening on :8080")
-	if err := app.Start(); err != nil {
+	if err := run(ctx, app); err != nil {
 		log.Fatal(err)
 	}
+}
+
+type application interface {
+	Start() error
+	Shutdown(context.Context) error
+}
+
+func run(ctx context.Context, app application) error {
+	startResult := make(chan error, 1)
+	go func() {
+		startResult <- app.Start()
+	}()
+
+	select {
+	case err := <-startResult:
+		return err
+	case <-ctx.Done():
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	shutdownErr := app.Shutdown(shutdownCtx)
+	startErr := <-startResult
+	return errors.Join(shutdownErr, startErr)
 }

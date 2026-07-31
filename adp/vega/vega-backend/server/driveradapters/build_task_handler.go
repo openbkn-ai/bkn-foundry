@@ -77,11 +77,7 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler Create Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
-	rest.ReplyOK(c, http.StatusCreated, map[string]any{
-		"id":          taskID,
-		"resource_id": req.ResourceID,
-		"status":      interfaces.BuildTaskStatusInit,
-	})
+	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": taskID})
 }
 
 // =========================== GET /build-tasks/:id ===========================

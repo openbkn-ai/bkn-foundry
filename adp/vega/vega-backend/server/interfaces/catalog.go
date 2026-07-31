@@ -44,7 +44,6 @@ type Catalog struct {
 	// Extensions 业务域外扁平 KV（t_entity_extension）；列表默认省略，详情或非省略时返回
 	Extensions map[string]string `json:"extensions,omitempty"`
 
-	HealthCheckEnabled bool `json:"health_check_enabled"`
 	CatalogHealthCheckStatus
 
 	Creator    AccountInfo `json:"creator"`
@@ -95,4 +94,13 @@ type CatalogRequest struct {
 
 	// Extensions 根对象出现该键（含 null 需客户端避免）时整包替换；指针为 nil 表示请求体未携带该字段
 	Extensions *map[string]string `json:"extensions,omitempty"`
+
+	// HealthCheckSchedule 仅在创建物理目录时生效；nil 时创建 inherit 模式的默认 Schedule。
+	HealthCheckSchedule *CatalogHealthCheckScheduleRequest `json:"health_check_schedule,omitempty"`
+}
+
+// CatalogConnectionTestRequest represents an unpersisted physical catalog connection test.
+type CatalogConnectionTestRequest struct {
+	ConnectorType string          `json:"connector_type"`
+	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 }

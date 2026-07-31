@@ -102,7 +102,6 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /evidence/events [post]
 func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -833,6 +832,42 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 	}
 }
 
+func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		gatewayTrusted := h.queryGatewayToken != "" &&
+			secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken)
+		if !gatewayTrusted {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted gateway identity with authorized tenant and business domain is required",
+			)
+			return
+		}
+		scope, ok := h.queryScopeFromRequest(w, r)
+		if !ok {
+			return
+		}
+		if scope.TenantID == "" || scope.BusinessDomain == "" {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted tenant and business domain context is required",
+			)
+			return
+		}
+		r.Header.Set("X-BKN-Tenant-ID", scope.TenantID)
+		r.Header.Set("X-Business-Domain-ID", scope.BusinessDomain)
+		if _, ok := trustedOwnerFromRequest(r); !ok {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted gateway must provide the complete lifecycle owner identity",
+			)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
 func (h *EvidenceHandler) authorizeQueryGateway(w http.ResponseWriter, r *http.Request) bool {
 	if h.queryGatewayToken != "" && secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken) {
 		return true
@@ -920,6 +955,7 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 	}
 	r.Header.Set("x-account-id", accountID)
 	r.Header.Set("x-account-type", accountType)
+	r.Header.Set("X-BKN-Authenticated-Client-ID", strings.TrimSpace(introspection.ClientID))
 	return true
 }
 

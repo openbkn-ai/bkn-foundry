@@ -182,11 +182,10 @@ func (btr *buildTaskReconciler) queuedBuildTaskIDs() (map[string]struct{}, error
 }
 
 // enqueueBuildTaskMessage 重新投递构建消息，与 build_task_service.enqueueTask 对齐。
-// 执行类型用增量：从未跑过的任务游标为空，增量等效全量；跑过一半的任务沿游标续跑。
+// 执行类型由 worker 从持久化任务读取，恢复入队不携带本次 reset 覆盖。
 func enqueueBuildTaskMessage(client *asynq.Client, task *interfaces.BuildTask) error {
 	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
-		TaskID:      task.ID,
-		ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+		TaskID: task.ID,
 	})
 	if err != nil {
 		return err

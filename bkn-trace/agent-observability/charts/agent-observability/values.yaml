@@ -65,6 +65,23 @@ businessResolver:
   vegaBaseURL: ""
   timeout: 3s
 
+core:
+  # Keep existing trace/evidence reads available after an upgrade. Enable
+  # MariaDB explicitly only after its Secret and database are ready.
+  store: memory
+  autoMigrate: true
+  abandonInterval: 30s
+  oneShotIdleTTL: 15m
+  evidenceCollectionState: enabled
+  projection:
+    enabled: false
+    index: bkn-trace-core
+    interval: 1s
+    rebuildVersion: bkn-trace-core-v013
+  mariadb:
+    existingSecret: bkn-trace-core-mariadb
+    dsnKey: dsn
+
 resources:
   limits:
     cpu: 500m

@@ -63,7 +63,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 	catalogID := c.Query("catalog_id")
 	category := c.Query("category")
 	status := c.Query("status")
-	database := c.Query("database")
+	schema := c.Query("schema")
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
 	sort := common.GetQueryOrDefault(c, "sort", "update_time")
@@ -93,7 +93,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 		CatalogID:             catalogID,
 		Category:              category,
 		Status:                status,
-		Database:              database,
+		Schema:                schema,
 		ExtensionKeys:         extKeys,
 		ExtensionValues:       extVals,
 		IncludeExtensions:     includeExt,
