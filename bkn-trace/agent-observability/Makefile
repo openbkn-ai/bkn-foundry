@@ -3,6 +3,7 @@
 SWAG_VERSION := v1.8.12
 SWAG ?= go run github.com/swaggo/swag/cmd/swag@v1.8.12
 SWAG_OUT := docs/swagger
+PUBLISHED_SWAG := ../../docs/api/agent-observability/agent-observability.yaml
 IMAGE ?= swr.cn-east-3.myhuaweicloud.com/kweaver-ai/agent-observability:local
 CHART_PATH := charts/agent-observability
 GOCACHE ?= /tmp/go-build
@@ -66,20 +67,23 @@ check-swag-version:
 
 gen-swag: check-swag-version
 	$(SWAG) init -g main.go -o $(SWAG_OUT) --parseDependency --parseInternal
+	@mkdir -p $(dir $(PUBLISHED_SWAG))
+	@mv $(SWAG_OUT)/swagger.yaml $(PUBLISHED_SWAG)
 
 check-swag: check-swag-version
 	@set -e; \
 		tmp=$$(mktemp -d); \
 		trap 'rm -rf "$$tmp"' EXIT; \
 		$(SWAG) init -g main.go -o "$$tmp" --packageName swagger --parseDependency --parseInternal; \
-		for file in docs.go swagger.json swagger.yaml; do \
+		for file in docs.go swagger.json; do \
 			diff -u $(SWAG_OUT)/$$file $$tmp/$$file; \
-		done
+		done; \
+		diff -u $(PUBLISHED_SWAG) $$tmp/swagger.yaml
 
 view-swag:
 	@echo "Swagger JSON: http://localhost:8080/swagger/swagger.json"
 	@echo "Swagger YAML: http://localhost:8080/swagger/swagger.yaml"
 
 clean-swag:
-	rm -rf $(SWAG_OUT)
+	rm -f $(SWAG_OUT)/docs.go $(SWAG_OUT)/swagger.json $(PUBLISHED_SWAG)
 	$(MAKE) gen-swag
