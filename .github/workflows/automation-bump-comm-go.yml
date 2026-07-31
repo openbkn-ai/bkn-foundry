@@ -2,19 +2,24 @@ name: automation-bump-comm-go
 
 # comm-go 落 main 之后，自动给仓内消费者提一个 bump PR。
 #
-# 为什么需要这个：comm-go 与九个服务是各自独立的 Go module，跨 module 依赖只能
-# 通过 require 一个版本来表达。所以「改公共库」永远是两步——先合库，再让消费者
-# 指过去。这一步机械、无脑、但漏掉就会出现「main 上的库已经改了，服务还在用旧的」，
-# 而且没有任何东西会报错，只会在下一个人纳闷「我明明改了啊」的时候才发现。
+# 为什么需要：comm-go 与各服务是各自独立的 Go module，跨 module 依赖只能通过
+# require 一个版本表达。所以改公共库永远是两步——先合库，再让消费者指过去。
+# 第二步机械、无脑，但漏掉不会报任何错：服务照常编译、照常跑，用的是旧代码，
+# 直到有人纳闷「我明明改了啊」。这类沉默失效比编译错误贵得多。
 #
-# 自动打下一个 patch tag，消费者钉 tag 而不是 pseudo-version。补丁位自动递增没有
-# 判断余地——「main 上有了新提交」与「patch +1」是同一件事——所以交给机器是安全的。
-# minor 与 major 仍然手工：那两位表达的是「这次改动有多大」，机器判断不了。人手工
-# 打了 comm-go/v0.2.0 之后，下一次自动递增就从 v0.2.1 接着走。
+# 两档，对应两种场合：
 #
-# tag 不可撤回（proxy 缓存是永久的），所以这里只在 main 上跑，且只递增补丁位。
+#   日常（push 到 main）          钉 commit（pseudo-version），不打 tag
+#   正式发布（手工触发 + 版本号）   打 comm-go/vX.Y.Z，钉这个 tag
 #
-# 消费者是扫出来的而不是写死的：往后哪个服务接了公共库，这里自动跟上。
+# 日常不打 tag，是因为 tag 不可撤回——proxy 一旦缓存就是永久的，源仓删掉 ref 也
+# 照样发。给每次合并都发一个版本号，等于把版本序变成提交日志。pseudo-version
+# 指向的 commit 在 main 上同样永久可达，坐标一样诚实，只是读不出语义；而日常
+# 开发要的正是「指到最新那次」，不是「这次改动有多大」。
+#
+# 版本号由人给，不自动递增：那个数字表达的是改动幅度与兼容性承诺，机器判断不了。
+#
+# 消费者是扫出来的而不是写死的，往后哪个服务接了公共库这里自动跟上。
 
 on:
   push:
@@ -22,6 +27,11 @@ on:
     paths:
       - 'comm-go/**'
   workflow_dispatch:
+    inputs:
+      version:
+        description: '正式发布填 vX.Y.Z（打 comm-go/vX.Y.Z 并钉它）；留空则钉当前 commit'
+        required: false
+        type: string
 
 concurrency:
   # 连续两次 comm-go 改动只需要最后那次的 bump PR。
@@ -40,6 +50,7 @@ jobs:
       GOWORK: 'off'
       GOFLAGS: '-mod=mod'
       MODULE: github.com/openbkn-ai/bkn-foundry/comm-go
+      RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,62 +61,64 @@ jobs:
           go-version-file: comm-go/go.mod
           cache: true
 
-      - name: Resolve or cut the version tag
-        id: tag
+      - name: Resolve the version to pin
+        id: ver
         run: |
           set -euo pipefail
           git fetch --tags --quiet
+          SHORT="$(git rev-parse --short=7 HEAD)"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
 
-          # 这个 commit 已经被人手工打过 tag(比如有意发的 minor)就沿用它,
-          # 不再叠一个补丁位上去。
-          EXISTING="$(git tag --points-at HEAD -l 'comm-go/v*' | sort -V | tail -1 || true)"
-          if [ -n "$EXISTING" ]; then
-            echo "沿用已有 tag $EXISTING"
-            echo "version=${EXISTING#comm-go/}" >> "$GITHUB_OUTPUT"
-            echo "tag=$EXISTING" >> "$GITHUB_OUTPUT"
-            echo "cut=false" >> "$GITHUB_OUTPUT"
+          if [ -z "${RELEASE_VERSION:-}" ]; then
+            # 日常：钉当前 commit，go get 会把它解析成 pseudo-version。
+            echo "version=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            echo "label=$SHORT" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          LATEST="$(git tag -l 'comm-go/v*' | sort -V | tail -1 || true)"
-          if [ -z "$LATEST" ]; then
-            NEXT="v0.1.0"
+          case "$RELEASE_VERSION" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "版本号要形如 v0.1.1，收到 $RELEASE_VERSION"; exit 1 ;;
+          esac
+
+          TAG="comm-go/$RELEASE_VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            # 已存在就只核对它指的是不是当前 commit。tag 不可撤回，指错了必须让人
+            # 来处理，不能悄悄换个号继续。
+            if [ "$(git rev-list -n1 "$TAG")" != "$(git rev-parse HEAD)" ]; then
+              echo "$TAG 已存在且指向别的 commit，拒绝继续"
+              exit 1
+            fi
+            echo "$TAG 已存在且指向当前 commit，沿用"
           else
-            V="${LATEST#comm-go/v}"
-            MAJOR="${V%%.*}"; REST="${V#*.}"; MINOR="${REST%%.*}"; PATCH="${REST#*.}"
-            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            cat > /tmp/tag.txt <<TAGMSG
+            comm-go $RELEASE_VERSION
+
+            对应改动：$(git log -1 --format=%s HEAD)
+            TAGMSG
+            sed -i 's/^            //' /tmp/tag.txt
+
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -F /tmp/tag.txt
+            git push origin "$TAG"
           fi
-          TAG="comm-go/$NEXT"
-          echo "上一个 ${LATEST:-（无）} → 新 $TAG"
 
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cat > /tmp/tag.txt <<TAGMSG
-          comm-go $NEXT
-
-          由 automation-bump-comm-go 自动递增补丁位。
-          对应改动:$(git log -1 --format=%s HEAD)
-          TAGMSG
-          sed -i 's/^          //' /tmp/tag.txt
-
-          git tag -a "$TAG" -F /tmp/tag.txt
-          git push origin "$TAG"
-
-          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "cut=true" >> "$GITHUB_OUTPUT"
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "label=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "release=true" >> "$GITHUB_OUTPUT"
 
       - name: Bump consumers and verify they still build
         id: bump
         env:
-          VERSION: ${{ steps.tag.outputs.version }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          SHORT="$(git rev-parse --short=7 HEAD)"
 
-          # 谁在用它，扫出来。排除 comm-go 自己——按目录名排除，不按路径前缀：
-          # 不同 grep 实现对 -r 的输出加不加 ./ 前缀并不一致，按前缀过滤会在
-          # 某些环境静默失效，让 comm-go 试图 go get 自己。
+          # 谁在用它，扫出来。排除 comm-go 自己——按目录名而不是路径前缀：不同
+          # grep 实现对 -r 的输出加不加 ./ 前缀并不一致，按前缀过滤会在某些环境
+          # 静默失效，让 comm-go 试图 go get 它自己。
           mapfile -t MODS < <(
             grep -rl "$MODULE" --include=go.mod . \
               | xargs -r -n1 dirname \
@@ -123,24 +136,23 @@ jobs:
             echo "::group::$dir"
             (
               cd "$dir"
-              # 代理可能还没索引到这个 tag，direct 兜底（GOPROXY 默认已含 direct）。
+              # 代理可能还没索引到这个 commit / tag，direct 兜底（GOPROXY 默认已含）。
               # 版本号不带目录前缀——前缀由 go 按 module path 自己拼。
               go get "$MODULE@$VERSION"
               go mod tidy
-              # 只验编译。跑测试会把服务既有的不稳定用例拖进来，让 bump 这件
-              # 机械事情看起来像是它弄坏的；真正的回归由 PR 上的常规 CI 负责。
+              # 只验编译。跑测试会把服务既有的不稳定用例拖进来，让「换一行 require」
+              # 看起来像是它弄坏的；真正的回归由 PR 上的常规 CI 负责。
               go build ./...
             )
             echo "::endgroup::"
           done
 
           if git diff --quiet; then
-            echo "消费者已经指向这个 commit，无需 bump"
+            echo "消费者已经指向这个版本，无需 bump"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
           {
             echo "mods<<EOF"
             printf '%s\n' "${MODS[@]}"
@@ -151,34 +163,40 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.tag.outputs.version }}
-          SHORT: ${{ steps.bump.outputs.short }}
+          LABEL: ${{ steps.ver.outputs.label }}
+          SHORT: ${{ steps.ver.outputs.short }}
+          RELEASE: ${{ steps.ver.outputs.release }}
           MODS: ${{ steps.bump.outputs.mods }}
         run: |
           set -euo pipefail
-          BRANCH="chore/bump-comm-go-$VERSION"
+          BRANCH="chore/bump-comm-go-$LABEL"
           SUBJECT="$(git log -1 --format=%s HEAD)"
 
+          if [ "$RELEASE" = "true" ]; then
+            WHY="正式发布：已打 comm-go/$LABEL，消费者钉这个 tag。"
+          else
+            WHY="日常：钉当前 commit（pseudo-version），tag 留到正式发布再打。"
+          fi
+
           cat > /tmp/commit.txt <<MSG
-          chore(deps): 仓内消费者升到 comm-go $VERSION
+          chore(deps): 仓内消费者指向 comm-go $LABEL
 
-          由 automation-bump-comm-go 自动生成。
+          由 automation-bump-comm-go 自动生成。$WHY
 
-          comm-go 与各服务是独立 module,跨 module 依赖只能钉版本,所以改公共库永远
-          是两步:先合库,再让消费者指过去。漏掉第二步不会报错,只会让服务继续用旧
-          代码,直到有人纳闷「我明明改了啊」。
+          comm-go 与各服务是独立 module，跨 module 依赖只能钉版本，所以改公共库
+          永远是两步：先合库，再让消费者指过去。漏掉第二步不会报错，只会让服务
+          继续用旧代码。
 
-          对应的 comm-go 改动:$SUBJECT ($SHORT)
-
-          tag 由同一个 workflow 自动递增补丁位。minor/major 仍是手工——那两位表达
-          「这次改动有多大」,机器判断不了;人手工打过之后自动递增从那里接着走。
+          对应的 comm-go 改动：$SUBJECT （$SHORT）
 
           已验证受影响模块 go build ./... 通过。
           MSG
           sed -i 's/^          //' /tmp/commit.txt
 
           cat > /tmp/body.md <<BODY
-          自动生成：\`comm-go\` 刚落 main，已打 \`comm-go/$VERSION\`，把仓内消费者的 \`require\` 升过去。
+          自动生成：\`comm-go\` 刚落 main，把仓内消费者的 \`require\` 指过去。
+
+          **版本**：\`$LABEL\` — $WHY
 
           **对应改动**：$SUBJECT （\`$SHORT\`）
 
@@ -191,11 +209,11 @@ jobs:
 
           comm-go 与各服务是各自独立的 Go module，跨 module 依赖只能通过 require 一个版本表达。所以改公共库永远是两步：先合库，再让消费者指过去。**漏掉第二步不会报任何错**，只会让服务继续用旧代码，直到有人纳闷「我明明改了啊」。
 
-          ## 版本号怎么来的
+          ## 日常钉 commit，发布钉 tag
 
-          同一个 workflow 在打完 \`comm-go/$VERSION\` 之后才生成这个 PR。**只自动递增补丁位** —— 「main 上有了新提交」与「patch +1」是同一件事，没有判断余地。minor 与 major 仍然手工：那两位表达的是「这次改动有多大」，机器判断不了。人手工打过 \`comm-go/v0.2.0\` 之后，下一次自动递增从 \`v0.2.1\` 接着走。
+          日常不打 tag：tag 不可撤回（proxy 缓存永久，源仓删掉 ref 也照样发），给每次合并都发一个版本号等于把版本序变成提交日志。pseudo-version 指向的 commit 在 main 上同样永久可达，坐标一样诚实。
 
-          tag 不可撤回（proxy 缓存是永久的），所以只在 main 上打、只动补丁位。
+          正式发布时手工触发这个 workflow 并填 \`vX.Y.Z\`：它会打 \`comm-go/vX.Y.Z\` 并让消费者钉那个 tag。版本号由人给 —— 那个数字表达的是改动幅度与兼容性承诺，机器判断不了。
 
           ## 验证
 
@@ -207,19 +225,19 @@ jobs:
 
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # -B 与 force-with-lease:同一个 commit 被重跑(workflow_dispatch、
-          # 或 re-run)时分支已经存在,重建它比失败有用。
+          # -B 与 force-with-lease：同一版本被重跑（手工触发、re-run）时分支已存在，
+          # 重建它比失败有用。
           git checkout -B "$BRANCH"
           git add -A
           git commit -F /tmp/commit.txt
           git push --force-with-lease -u origin "$BRANCH"
 
           if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
-            echo "PR 已存在,分支已更新,不重复开"
+            echo "PR 已存在，分支已更新，不重复开"
             exit 0
           fi
           gh pr create --base main --head "$BRANCH" \
-            --title "chore(deps): 仓内消费者升到 comm-go $VERSION" \
+            --title "chore(deps): 仓内消费者指向 comm-go $LABEL" \
             --body-file /tmp/body.md
 
       - name: Nothing to do
