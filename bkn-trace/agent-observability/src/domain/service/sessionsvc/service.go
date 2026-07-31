@@ -982,10 +982,24 @@ func receiptTerminalMatches(
 		receipt.RequestID == command.RequestID &&
 		receipt.TraceID == command.TraceID &&
 		slices.Equal(receipt.ObservedEvidenceRefs, command.ObservedEvidenceRefs) &&
-		slices.Equal(receipt.BusinessRefs, command.BusinessRefs) &&
+		businessRefsEqual(receipt.BusinessRefs, command.BusinessRefs) &&
 		slices.Equal(receipt.ArtifactRefs, command.ArtifactRefs) &&
 		slices.Equal(receipt.PartialReasons, command.PartialReasons) &&
 		(status != sessionvo.ReceiptFailed || operation.Retryable == retryable)
+}
+
+func businessRefsEqual(left, right []sessionvo.BusinessRef) bool {
+	return slices.EqualFunc(left, right, func(a, b sessionvo.BusinessRef) bool {
+		if a.RefType != b.RefType || a.RefID != b.RefID ||
+			a.BusinessDomainID != b.BusinessDomainID || a.Version != b.Version ||
+			a.DisplayHint != b.DisplayHint {
+			return false
+		}
+		if a.AsOf == nil || b.AsOf == nil {
+			return a.AsOf == nil && b.AsOf == nil
+		}
+		return a.AsOf.Equal(*b.AsOf)
+	})
 }
 
 func validEvidenceDurability(value sessionvo.EvidenceDurability) bool {

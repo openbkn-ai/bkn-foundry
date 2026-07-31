@@ -1352,6 +1352,33 @@ func TestOperationReceiptReplaysLegacyTerminalBusinessReferenceIdempotently(t *t
 	}
 }
 
+func TestOperationReceiptComparesBusinessReferenceAsOfByValue(t *testing.T) {
+	t.Parallel()
+
+	service, owner, _, _, operation, receipt := mustCreateOperation(t)
+	firstAsOf := time.Date(2026, 7, 1, 0, 0, 0, 123, time.UTC)
+	command := sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+		ReceiptID: receipt.ID, PayloadHash: "sha256:business-ref-as-of",
+		EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID:          "req-business-ref-as-of", TraceID: validTraceIDOne,
+		BusinessRefs: []sessionvo.BusinessRef{{
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
+			BusinessDomainID: owner.BusinessDomainID, Version: "1", AsOf: &firstAsOf,
+		}},
+	}
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("complete receipt with as_of: %v", err)
+	}
+	replayedAsOf := firstAsOf.In(time.FixedZone("UTC+8", 8*60*60))
+	command.BusinessRefs[0].AsOf = &replayedAsOf
+
+	_, _, err := service.CompleteOperationAttempt(context.Background(), command)
+	if err != nil {
+		t.Fatalf("equal as_of instants must replay idempotently: %v", err)
+	}
+}
+
 func TestOptionalPendingReceiptDoesNotBlockEvidenceCompletion(t *testing.T) {
 	t.Parallel()
 
