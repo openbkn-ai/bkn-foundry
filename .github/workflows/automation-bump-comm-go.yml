@@ -7,10 +7,12 @@ name: automation-bump-comm-go
 # 指过去。这一步机械、无脑、但漏掉就会出现「main 上的库已经改了，服务还在用旧的」，
 # 而且没有任何东西会报错，只会在下一个人纳闷「我明明改了啊」的时候才发现。
 #
-# 钉的是 main 上的 commit（pseudo-version），不是 tag。tag 对仓外消费者才有意义，
-# 而 comm-go 目前只被仓内引用（openbkn-ee 引的是 context-loader，comm-go 对它是
-# 传递依赖，版本由 context-loader 的 go.sum 定死）。省掉打 tag 那套仪式，坐标同样
-# 诚实——commit 在 main 上，永久可达。
+# 自动打下一个 patch tag，消费者钉 tag 而不是 pseudo-version。补丁位自动递增没有
+# 判断余地——「main 上有了新提交」与「patch +1」是同一件事——所以交给机器是安全的。
+# minor 与 major 仍然手工：那两位表达的是「这次改动有多大」，机器判断不了。人手工
+# 打了 comm-go/v0.2.0 之后，下一次自动递增就从 v0.2.1 接着走。
+#
+# tag 不可撤回（proxy 缓存是永久的），所以这里只在 main 上跑，且只递增补丁位。
 #
 # 消费者是扫出来的而不是写死的：往后哪个服务接了公共库，这里自动跟上。
 
@@ -48,11 +50,57 @@ jobs:
           go-version-file: comm-go/go.mod
           cache: true
 
-      - name: Bump consumers and verify they still build
-        id: bump
+      - name: Resolve or cut the version tag
+        id: tag
         run: |
           set -euo pipefail
-          SHA="$(git rev-parse HEAD)"
+          git fetch --tags --quiet
+
+          # 这个 commit 已经被人手工打过 tag(比如有意发的 minor)就沿用它,
+          # 不再叠一个补丁位上去。
+          EXISTING="$(git tag --points-at HEAD -l 'comm-go/v*' | sort -V | tail -1 || true)"
+          if [ -n "$EXISTING" ]; then
+            echo "沿用已有 tag $EXISTING"
+            echo "version=${EXISTING#comm-go/}" >> "$GITHUB_OUTPUT"
+            echo "tag=$EXISTING" >> "$GITHUB_OUTPUT"
+            echo "cut=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LATEST="$(git tag -l 'comm-go/v*' | sort -V | tail -1 || true)"
+          if [ -z "$LATEST" ]; then
+            NEXT="v0.1.0"
+          else
+            V="${LATEST#comm-go/v}"
+            MAJOR="${V%%.*}"; REST="${V#*.}"; MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          TAG="comm-go/$NEXT"
+          echo "上一个 ${LATEST:-（无）} → 新 $TAG"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cat > /tmp/tag.txt <<TAGMSG
+          comm-go $NEXT
+
+          由 automation-bump-comm-go 自动递增补丁位。
+          对应改动:$(git log -1 --format=%s HEAD)
+          TAGMSG
+          sed -i 's/^          //' /tmp/tag.txt
+
+          git tag -a "$TAG" -F /tmp/tag.txt
+          git push origin "$TAG"
+
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "cut=true" >> "$GITHUB_OUTPUT"
+
+      - name: Bump consumers and verify they still build
+        id: bump
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
           SHORT="$(git rev-parse --short=7 HEAD)"
 
           # 谁在用它，扫出来。排除 comm-go 自己——按目录名排除，不按路径前缀：
@@ -75,8 +123,9 @@ jobs:
             echo "::group::$dir"
             (
               cd "$dir"
-              # 代理可能还没索引到这个 commit，direct 兜底（GOPROXY 默认已含 direct）。
-              go get "$MODULE@$SHA"
+              # 代理可能还没索引到这个 tag，direct 兜底（GOPROXY 默认已含 direct）。
+              # 版本号不带目录前缀——前缀由 go 按 module path 自己拼。
+              go get "$MODULE@$VERSION"
               go mod tidy
               # 只验编译。跑测试会把服务既有的不稳定用例拖进来，让 bump 这件
               # 机械事情看起来像是它弄坏的；真正的回归由 PR 上的常规 CI 负责。
@@ -91,7 +140,6 @@ jobs:
             exit 0
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
           {
             echo "mods<<EOF"
@@ -103,16 +151,16 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ steps.bump.outputs.sha }}
+          VERSION: ${{ steps.tag.outputs.version }}
           SHORT: ${{ steps.bump.outputs.short }}
           MODS: ${{ steps.bump.outputs.mods }}
         run: |
           set -euo pipefail
-          BRANCH="chore/bump-comm-go-$SHORT"
-          SUBJECT="$(git log -1 --format=%s "$SHA")"
+          BRANCH="chore/bump-comm-go-$VERSION"
+          SUBJECT="$(git log -1 --format=%s HEAD)"
 
           cat > /tmp/commit.txt <<MSG
-          chore(deps): 仓内消费者指向 comm-go $SHORT
+          chore(deps): 仓内消费者升到 comm-go $VERSION
 
           由 automation-bump-comm-go 自动生成。
 
@@ -122,15 +170,15 @@ jobs:
 
           对应的 comm-go 改动:$SUBJECT ($SHORT)
 
-          钉 main 上的 commit 而不是 tag:comm-go 目前只有仓内消费者,pseudo-version
-          指向的 commit 在 main 上永久可达,坐标同样诚实。
+          tag 由同一个 workflow 自动递增补丁位。minor/major 仍是手工——那两位表达
+          「这次改动有多大」,机器判断不了;人手工打过之后自动递增从那里接着走。
 
           已验证受影响模块 go build ./... 通过。
           MSG
           sed -i 's/^          //' /tmp/commit.txt
 
           cat > /tmp/body.md <<BODY
-          自动生成：\`comm-go\` 刚落 main，把仓内消费者的 \`require\` 指过去。
+          自动生成：\`comm-go\` 刚落 main，已打 \`comm-go/$VERSION\`，把仓内消费者的 \`require\` 升过去。
 
           **对应改动**：$SUBJECT （\`$SHORT\`）
 
@@ -143,9 +191,11 @@ jobs:
 
           comm-go 与各服务是各自独立的 Go module，跨 module 依赖只能通过 require 一个版本表达。所以改公共库永远是两步：先合库，再让消费者指过去。**漏掉第二步不会报任何错**，只会让服务继续用旧代码，直到有人纳闷「我明明改了啊」。
 
-          ## 为什么钉 commit 而不是 tag
+          ## 版本号怎么来的
 
-          comm-go 目前只有仓内消费者 —— openbkn-ee 引的是 context-loader，comm-go 对它是传递依赖，版本由 context-loader 的 go.sum 定死。pseudo-version 指向的 commit 在 main 上永久可达，坐标一样诚实，省掉打 tag 那套仪式。哪天 comm-go 真的被仓外直接引用，再改回打 tag。
+          同一个 workflow 在打完 \`comm-go/$VERSION\` 之后才生成这个 PR。**只自动递增补丁位** —— 「main 上有了新提交」与「patch +1」是同一件事，没有判断余地。minor 与 major 仍然手工：那两位表达的是「这次改动有多大」，机器判断不了。人手工打过 \`comm-go/v0.2.0\` 之后，下一次自动递增从 \`v0.2.1\` 接着走。
+
+          tag 不可撤回（proxy 缓存是永久的），所以只在 main 上打、只动补丁位。
 
           ## 验证
 
@@ -169,7 +219,7 @@ jobs:
             exit 0
           fi
           gh pr create --base main --head "$BRANCH" \
-            --title "chore(deps): 仓内消费者指向 comm-go $SHORT" \
+            --title "chore(deps): 仓内消费者升到 comm-go $VERSION" \
             --body-file /tmp/body.md
 
       - name: Nothing to do
