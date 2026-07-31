@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // ErrResourceIDRequired describe_resource 的 resource_id 入参为空。

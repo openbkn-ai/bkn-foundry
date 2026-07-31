@@ -434,6 +434,43 @@ WHERE name IN ('server_version','server_version_num','TimeZone','max_connections
 		return nil, err
 	}
 
+	schemas, err := c.listSchemas(ctx)
+	if err != nil {
+		return nil, err
+	}
+	meta["schemas"] = schemas
+
 	meta["cluster_mode"] = "standalone"
 	return meta, nil
+}
+
+func (c *PostgresqlConnector) listSchemas(ctx context.Context) ([]string, error) {
+	schemaBuilder := pgSq.Select("n.nspname").From("pg_catalog.pg_namespace n").
+		Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
+		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)"))
+	if len(c.config.Schemas) > 0 {
+		schemaBuilder = schemaBuilder.Where(sq.Eq{"n.nspname": c.config.Schemas})
+	}
+	schemaQuery, schemaArgs, err := schemaBuilder.OrderBy("n.nspname").ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build list schemas query: %w", err)
+	}
+	schemaRows, err := c.db.QueryContext(ctx, schemaQuery, schemaArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("list schemas: %w", err)
+	}
+	defer func() { _ = schemaRows.Close() }()
+
+	schemas := make([]string, 0)
+	for schemaRows.Next() {
+		var schema string
+		if err := schemaRows.Scan(&schema); err != nil {
+			return nil, fmt.Errorf("scan schema: %w", err)
+		}
+		schemas = append(schemas, schema)
+	}
+	if err := schemaRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate schemas: %w", err)
+	}
+	return schemas, nil
 }

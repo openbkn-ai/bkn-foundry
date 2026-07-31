@@ -41,7 +41,7 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 				SourceIdentifier: "public.orders",
 				Description:      "销售订单资源",
 				Category:         interfaces.ResourceCategoryTable,
-				Database:         "ecommerce",
+				Schema:           "ecommerce",
 				SourceMetadata: map[string]any{
 					"primary_keys": []any{"order_id"},
 					"indices": []any{
@@ -74,6 +74,8 @@ func TestBuildCatalogSemanticUnderstandingInput(t *testing.T) {
 	resources := got["resources"].([]any)
 	require.Len(t, resources, 1)
 	resource := resources[0].(map[string]any)
+	assert.Equal(t, "ecommerce", resource["schema"])
+	assert.NotContains(t, resource, "database")
 	assert.NotContains(t, resource, "schema_definition")
 	fields := resource["fields"].([]any)
 	require.Len(t, fields, 1)
@@ -450,7 +452,7 @@ func sampleSemanticResource() *interfaces.Resource {
 		CatalogID:        "catalog-1",
 		Name:             "orders",
 		Category:         interfaces.ResourceCategoryTable,
-		Database:         "sales",
+		Schema:           "sales",
 		SourceIdentifier: "orders",
 		Description:      "order table",
 		SchemaDefinition: []*interfaces.Property{

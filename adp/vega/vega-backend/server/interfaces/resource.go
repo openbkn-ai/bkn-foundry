@@ -57,7 +57,7 @@ type Resource struct {
 	LastDiscoverStatus string `json:"last_discover_status"` // 最近一次扫描观察状态
 
 	// 新增字段：支持自动发现
-	Database         string         `json:"database,omitempty"`          // 所属数据库（实例级 Catalog 时填充）
+	Schema           string         `json:"schema,omitempty"`            // 所属 schema，由发现流程写入
 	SourceIdentifier string         `json:"source_identifier"`           // 源端标识（原始表名/路径）
 	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // 源端配置（JSON）
 	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema定义
@@ -135,7 +135,7 @@ type ResourcesQueryParams struct {
 	CatalogID            string
 	Category             string
 	Status               string
-	Database             string
+	Schema               string
 	ExtensionKeys        []string
 	ExtensionValues      []string
 	IncludeExtensions    bool
@@ -154,7 +154,7 @@ type ResourceRequest struct {
 
 	Status string `json:"status"`
 
-	Database         string         `json:"database,omitempty"`          // 所属数据库（实例级 Catalog 时填充）
+	Schema           string         `json:"schema,omitempty"`            // 所属 schema，由发现流程写入
 	SourceIdentifier string         `json:"source_identifier"`           // 源端标识（原始表名/路径）
 	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // 源端配置（JSON）
 	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema定义

@@ -10,7 +10,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 // rerankByConceptType 收集不同概念类集合，并进行排序，每个概念集取前limit个

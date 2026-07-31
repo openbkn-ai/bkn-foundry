@@ -1,4 +1,4 @@
-module github.com/openbkn-ai/adp/context-loader/agent-retrieval
+module github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval
 
 go 1.25.0
 

@@ -251,7 +251,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		Description:      req.Description,
 		Category:         req.Category,
 		Status:           req.Status,
-		Database:         req.Database,
+		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
@@ -954,7 +954,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		Description:      req.Description,
 		Category:         req.Category,
 		Status:           req.Status,
-		Database:         req.Database,
+		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
@@ -1001,8 +1001,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
 	}
-	if req.Database != "" && resource.Database != req.Database {
-		return false, unsupportedResourceUpdateError(ctx, "database is managed by discover and cannot be updated directly")
+	if req.Schema != "" && resource.Schema != req.Schema {
+		return false, unsupportedResourceUpdateError(ctx, "schema is managed by discover and cannot be updated directly")
 	}
 	if req.SourceIdentifier != "" && resource.SourceIdentifier != req.SourceIdentifier {
 		return false, unsupportedResourceUpdateError(ctx, "source_identifier is managed by discover and cannot be updated directly")

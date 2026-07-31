@@ -25,6 +25,40 @@ type Document struct {
 	PrimaryTerm int64
 }
 
+type MultiGetDocument struct {
+	ID     string
+	Found  bool
+	Source []byte
+}
+
+type StatusError struct {
+	Operation  string
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf(
+		"opensearch %s failed with status %d: %s",
+		e.Operation, e.StatusCode, e.Body,
+	)
+}
+
+func IsPermanentStatusError(err error) bool {
+	var statusError *StatusError
+	if !errors.As(err, &statusError) {
+		return false
+	}
+	switch statusError.StatusCode {
+	case http.StatusRequestTimeout, http.StatusConflict, http.StatusTooEarly,
+		http.StatusTooManyRequests:
+		return false
+	default:
+		return statusError.StatusCode >= http.StatusBadRequest &&
+			statusError.StatusCode < http.StatusInternalServerError
+	}
+}
+
 type Client struct {
 	baseURL    string
 	auth       AuthConfig
@@ -88,8 +122,81 @@ func (c *Client) Search(ctx context.Context, index string, query []byte) ([]byte
 }
 
 func (c *Client) IndexDocument(ctx context.Context, index string, documentID string, body []byte) ([]byte, error) {
-	requestURL := fmt.Sprintf("%s/%s/_doc/%s", c.baseURL, strings.TrimLeft(index, "/"), strings.TrimLeft(documentID, "/"))
+	requestURL := fmt.Sprintf("%s/%s/_doc/%s", c.baseURL, strings.TrimLeft(index, "/"), url.PathEscape(strings.TrimLeft(documentID, "/")))
 	return c.putDocument(ctx, requestURL, body)
+}
+
+func (c *Client) IndexDocumentVersion(
+	ctx context.Context,
+	index string,
+	documentID string,
+	version uint64,
+	body []byte,
+) ([]byte, error) {
+	requestURL := fmt.Sprintf(
+		"%s/%s/_doc/%s?version=%d&version_type=external",
+		c.baseURL,
+		strings.TrimLeft(index, "/"),
+		url.PathEscape(strings.TrimLeft(documentID, "/")),
+		version,
+	)
+	return c.putDocument(ctx, requestURL, body)
+}
+
+func (c *Client) MultiGetDocuments(
+	ctx context.Context,
+	index string,
+	documentIDs []string,
+) ([]MultiGetDocument, error) {
+	body, err := json.Marshal(map[string]any{"ids": documentIDs})
+	if err != nil {
+		return nil, fmt.Errorf("encode opensearch multi-get request: %w", err)
+	}
+	requestURL := fmt.Sprintf(
+		"%s/%s/_mget", c.baseURL, strings.TrimLeft(index, "/"),
+	)
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodPost, requestURL, bytes.NewReader(body),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create opensearch multi-get request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute opensearch multi-get request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read opensearch multi-get response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf(
+			"opensearch multi-get failed with status %d: %s",
+			resp.StatusCode, string(responseBody),
+		)
+	}
+	var response struct {
+		Documents []struct {
+			ID     string          `json:"_id"`
+			Found  bool            `json:"found"`
+			Source json.RawMessage `json:"_source"`
+		} `json:"docs"`
+	}
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, fmt.Errorf("decode opensearch multi-get response: %w", err)
+	}
+	documents := make([]MultiGetDocument, 0, len(response.Documents))
+	for _, document := range response.Documents {
+		documents = append(documents, MultiGetDocument{
+			ID: document.ID, Found: document.Found, Source: document.Source,
+		})
+	}
+	return documents, nil
 }
 
 func (c *Client) CreateDocument(ctx context.Context, index string, documentID string, body []byte) ([]byte, error) {
@@ -166,7 +273,9 @@ func (c *Client) putDocument(ctx context.Context, requestURL string, body []byte
 		return nil, ErrVersionConflict
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("opensearch index failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, &StatusError{
+			Operation: "index", StatusCode: resp.StatusCode, Body: string(respBody),
+		}
 	}
 
 	return respBody, nil
@@ -206,6 +315,87 @@ func (c *Client) EnsureIndex(ctx context.Context, index string, mapping []byte) 
 	}
 
 	return fmt.Errorf("opensearch create-index failed with status %d: %s", resp.StatusCode, string(body))
+}
+
+func (c *Client) CountDocuments(ctx context.Context, index string) (uint64, error) {
+	body, err := c.Search(ctx, index, []byte(`{"size":0,"track_total_hits":true}`))
+	if err != nil {
+		return 0, err
+	}
+	var response struct {
+		Hits struct {
+			Total struct {
+				Value uint64 `json:"value"`
+			} `json:"total"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return 0, fmt.Errorf("decode opensearch count response: %w", err)
+	}
+	return response.Hits.Total.Value, nil
+}
+
+func (c *Client) RefreshIndex(ctx context.Context, index string) error {
+	requestURL := fmt.Sprintf(
+		"%s/%s/_refresh", c.baseURL, strings.TrimLeft(index, "/"),
+	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, nil)
+	if err != nil {
+		return fmt.Errorf("create opensearch refresh request: %w", err)
+	}
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute opensearch refresh request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read opensearch refresh response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf(
+			"opensearch refresh failed with status %d: %s",
+			resp.StatusCode, string(body),
+		)
+	}
+	return nil
+}
+
+func (c *Client) SwitchAlias(ctx context.Context, alias, index string) error {
+	body, err := json.Marshal(map[string]any{
+		"actions": []map[string]any{
+			{"remove": map[string]any{"index": "*", "alias": alias, "must_exist": false}},
+			{"add": map[string]any{"index": index, "alias": alias}},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	requestURL := c.baseURL + "/_aliases"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create opensearch alias request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute opensearch alias request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read opensearch alias response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("opensearch alias switch failed with status %d: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
 }
 
 func (c *Client) ensureMapping(ctx context.Context, index string, indexDefinition []byte) error {

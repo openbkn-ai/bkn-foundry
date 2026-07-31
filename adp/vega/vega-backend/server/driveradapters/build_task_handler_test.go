@@ -63,7 +63,8 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 
 		require.Equal(t, http.StatusCreated, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
-		assert.Contains(t, w.Body.String(), `"status":"init"`)
+		assert.NotContains(t, w.Body.String(), `"resource_id"`)
+		assert.NotContains(t, w.Body.String(), `"status"`)
 	})
 
 	t.Run("ignores legacy index config fields", func(t *testing.T) {

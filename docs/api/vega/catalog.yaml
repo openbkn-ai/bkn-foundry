@@ -532,8 +532,14 @@ components:
           type: object
           additionalProperties: true
         metadata:
-          description: 扩展元信息
+          description: 扩展元信息；关系型 Catalog 探查后可包含 schemas 快照
           type: object
+          properties:
+            schemas:
+              description: 探查发现的 schema 名称列表
+              type: array
+              items:
+                type: string
           additionalProperties: true
         extensions:
           $ref: "#/components/schemas/EntityExtensions"

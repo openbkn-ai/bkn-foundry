@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
@@ -388,6 +389,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, captured)
 		require.NotNil(t, captured.IndexConfig)
+		assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, captured.ExecuteType)
 		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
 		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["family_name"].Vector)
 		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["given_name"].Vector)
@@ -648,14 +650,27 @@ func TestBuildTaskServiceEnqueueBuildTaskDebugMode(t *testing.T) {
 	require.NoError(t, service.enqueueTask(context.Background(), &interfaces.BuildTask{
 		ID:   "build-task-1",
 		Mode: interfaces.BuildTaskModeBatch,
-	}, interfaces.BuildTaskExecuteTypeIncremental))
+	}, false))
 
 	select {
 	case task := <-service.DebugTaskQueue():
 		assert.Equal(t, interfaces.BuildTaskTypeBatch, task.Type())
+		var message interfaces.BatchBuildTaskMessage
+		require.NoError(t, sonic.Unmarshal(task.Payload(), &message))
+		assert.Equal(t, "build-task-1", message.TaskID)
+		assert.False(t, message.Reset)
 	default:
 		t.Fatal("expected debug build task to be enqueued")
 	}
+
+	require.NoError(t, service.enqueueTask(context.Background(), &interfaces.BuildTask{
+		ID:   "build-task-reset",
+		Mode: interfaces.BuildTaskModeBatch,
+	}, true))
+	messageTask := <-service.DebugTaskQueue()
+	var resetMessage interfaces.BatchBuildTaskMessage
+	require.NoError(t, sonic.Unmarshal(messageTask.Payload(), &resetMessage))
+	assert.True(t, resetMessage.Reset)
 }
 
 func TestNormalizeCreateBuildTaskExecuteType(t *testing.T) {
@@ -666,6 +681,14 @@ func TestNormalizeCreateBuildTaskExecuteType(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, interfaces.BuildTaskExecuteTypeFull, executeType)
+	})
+	t.Run("returns empty for streaming", func(t *testing.T) {
+		executeType, err := normalizeCreateBuildTaskExecuteType(context.Background(), &interfaces.CreateBuildTaskRequest{
+			Mode: interfaces.BuildTaskModeStreaming,
+		})
+
+		require.NoError(t, err)
+		require.Empty(t, executeType)
 	})
 }
 
@@ -859,11 +882,12 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
 
 		task := &interfaces.BuildTask{
-			ID:         "task-1",
-			ResourceID: "resource-1",
-			CatalogID:  "catalog-1",
-			Mode:       interfaces.BuildTaskModeBatch,
-			Status:     interfaces.BuildTaskStatusInit,
+			ID:          "task-1",
+			ResourceID:  "resource-1",
+			CatalogID:   "catalog-1",
+			Mode:        interfaces.BuildTaskModeBatch,
+			ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+			Status:      interfaces.BuildTaskStatusInit,
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -881,6 +905,10 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		}, nil)
 
 		require.NoError(t, service.Start(context.Background(), "task-1", false))
+		queued := <-service.DebugTaskQueue()
+		var message interfaces.BatchBuildTaskMessage
+		require.NoError(t, sonic.Unmarshal(queued.Payload(), &message))
+		assert.False(t, message.Reset)
 	})
 	t.Run("rejects unavailable analyzer before updating status or enqueueing", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

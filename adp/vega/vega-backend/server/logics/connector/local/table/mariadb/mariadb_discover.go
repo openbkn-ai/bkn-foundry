@@ -519,6 +519,12 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 		return nil, err
 	}
 
+	schemas, err := c.listSchemas(ctx)
+	if err != nil {
+		return nil, err
+	}
+	metadata["schemas"] = schemas
+
 	// 3. Infer Cluster Mode
 	metadata["cluster_mode"] = "standalone" // Default
 	if val, ok := metadata["wsrep_on"]; ok && strings.EqualFold(fmt.Sprint(val), "ON") {
@@ -528,4 +534,35 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 	}
 
 	return metadata, nil
+}
+
+func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
+	schemaBuilder := sq.Select("SCHEMA_NAME").From("information_schema.SCHEMATA")
+	if len(c.config.Databases) > 0 {
+		schemaBuilder = schemaBuilder.Where(sq.Eq{"SCHEMA_NAME": c.config.Databases})
+	} else {
+		schemaBuilder = schemaBuilder.Where(sq.NotEq{"SCHEMA_NAME": SYSTEM_DBS})
+	}
+	schemaQuery, schemaArgs, err := schemaBuilder.OrderBy("SCHEMA_NAME").ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build list schemas query: %w", err)
+	}
+	schemaRows, err := c.db.QueryContext(ctx, schemaQuery, schemaArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("list schemas: %w", err)
+	}
+	defer func() { _ = schemaRows.Close() }()
+
+	schemas := make([]string, 0)
+	for schemaRows.Next() {
+		var schema string
+		if err := schemaRows.Scan(&schema); err != nil {
+			return nil, fmt.Errorf("scan schema: %w", err)
+		}
+		schemas = append(schemas, schema)
+	}
+	if err := schemaRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate schemas: %w", err)
+	}
+	return schemas, nil
 }

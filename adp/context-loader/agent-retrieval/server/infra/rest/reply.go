@@ -20,11 +20,11 @@ import (
 	validator "github.com/go-playground/validator/v10"
 	errorwrap "github.com/pkg/errors"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	myErr "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/localize"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/logger"
-	validatorv "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/validator"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	myErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
+	validatorv "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/validator"
 )
 
 const (
