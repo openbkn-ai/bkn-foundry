@@ -31,6 +31,13 @@
       "id_pattern": "*",
       "operations": ["view", "create", "edit", "delete", "members"]
     },
+    {
+      "role_id": "d2bd2082-ad03-11e8-aa06-000c29358ad6",
+      "role_name": "admin",
+      "resource_type": "admin-role",
+      "id_pattern": "*",
+      "operations": ["view"]
+    },
 
     {
       "role_id": "d8998f72-ad03-11e8-aa06-000c29358ad6",

@@ -112,6 +112,7 @@ func TestSeededRoleGrants(t *testing.T) {
 		want                    bool
 	}{
 		{"admin manages users", admin, "admin-user", "x", "create", true},
+		{"admin views role catalog for user management", admin, "admin-role", "x", "view", true},
 		{"admin not role grant", admin, "admin-authz", "x", "grant", false},
 		{"security manages roles", security, "admin-role", "x", "create", true},
 		{"security configures role permissions", security, "admin-role", "x", "permissions", true},
@@ -144,6 +145,52 @@ func TestSeededRoleGrants(t *testing.T) {
 		}
 		if got != c.want {
 			t.Errorf("%s: Check(%s, %s:%s, %s) = %v, want %v", c.name, c.role, c.typ, c.id, c.op, got, c.want)
+		}
+	}
+}
+
+// TestOwnerRoleCombinationKeepsMenuAndBackendPermissionsAligned verifies the
+// role combination used by the user-management regression: the admin role
+// supplies the system role-catalog read point while business roles retain
+// model display access. It must not gain role-management write permissions.
+func TestOwnerRoleCombinationKeepsMenuAndBackendPermissionsAligned(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const owner = "owner-regression"
+	for _, roleID := range []string{
+		"d2bd2082-ad03-11e8-aa06-000c29358ad6", // admin
+		"1572fb82-526f-11f0-bde6-e674ec8dde71", // network_builder
+		"b5f9ac3e-992c-4bbd-8126-95e87e51c46e", // normal_user
+	} {
+		if err := e.AssignRole(owner, roleID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	checks := []struct {
+		name, resourceType, operation string
+		want                          bool
+	}{
+		{"role catalog read", "admin-role", "view", true},
+		{"user list read", "admin-user", "view", true},
+		{"large model display", "large_model", "display", true},
+		{"role creation remains restricted", "admin-role", "create", false},
+		{"role permission changes remain restricted", "admin-role", "permissions", false},
+	}
+	for _, tc := range checks {
+		got, err := e.Check(owner, tc.resourceType, "*", tc.operation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Errorf("%s: Check(%s, %s:*, %s) = %v, want %v", tc.name, owner, tc.resourceType, tc.operation, got, tc.want)
 		}
 	}
 }
