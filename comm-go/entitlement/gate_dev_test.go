@@ -7,6 +7,7 @@
 package entitlement
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/licverify"
@@ -52,5 +53,20 @@ func TestDevGateTreatsCommunityAsUnlicensed(t *testing.T) {
 	}
 	if snap.State != licverify.StateUnlicensed {
 		t.Fatalf("State = %q, want unlicensed", snap.State)
+	}
+}
+
+func TestDevGateRejectsAMisspelledEdition(t *testing.T) {
+	t.Setenv("OPENBKN_EDITION", "enterprsie")
+
+	// Edition is a plain string conversion, so a typo would otherwise sail
+	// through as Licensed: true on a tier that satisfies no bar at all — "it
+	// says licensed and nothing works", with nothing pointing at the
+	// misspelling. This is also the half of the ee_dev CI job's reason for
+	// existing that compilation alone does not cover: the stub could stop
+	// refusing and the build would stay green.
+	msg := mustPanic(t, "misspelled edition", func() { DefaultGate().Snapshot() })
+	if !strings.Contains(msg, "not a known edition") {
+		t.Fatalf("panic should name the bad value, got %q", msg)
 	}
 }

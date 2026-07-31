@@ -268,3 +268,45 @@ func TestHubGateNeedsVerificationKeys(t *testing.T) {
 		t.Fatal("expected a refusal when no verification keys are configured")
 	}
 }
+
+func TestUnreachableHubStillLetsTheClockRun(t *testing.T) {
+	// The bypass this test exists for: the snapshot is a one-shot product of
+	// evaluate(), and licverify's verdict depends on time. If the only paths to
+	// evaluate() required a successful fetch, an unreachable hub would freeze
+	// the last verdict — and the service runs on the customer's machine, on the
+	// customer's network, so blocking egress to bkn-safe would make a paid
+	// licence permanent.
+	//
+	// A certificate that expires a second from now lets the transition be
+	// observed without waiting out a grace window: valid → grace has to happen
+	// while every fetch is failing.
+	now := time.Now()
+	text, keys := mintLicence(t, licverify.Payload{
+		LicID:     "expiring",
+		Edition:   licverify.EditionEnterprise,
+		IssuedAt:  now.Add(-time.Hour).Unix(),
+		ExpiresAt: now.Add(time.Second).Unix(),
+	})
+	hub := &fakeHub{licence: text}
+	g, _ := newTestGate(t, hub, keys)
+
+	if snap := g.Snapshot(); snap.State != licverify.StateValid {
+		t.Fatalf("setup: State = %q, want valid", snap.State)
+	}
+
+	hub.fail(http.StatusServiceUnavailable) // egress dies, or bkn-safe does
+	// 2.5s, not 1.2s: ExpiresAt has second granularity, so a sub-second start
+	// offset can leave now.Unix() == ExpiresAt after a 1.2s sleep and the
+	// licence still reads as valid — the test would pass or fail on where in
+	// the second it happened to start.
+	time.Sleep(2500 * time.Millisecond)
+
+	if err := g.refresh(); err == nil {
+		t.Fatal("the failure should still be reported, it drives the retry cadence")
+	}
+	// Grace keeps the capability on — that is deliberate — but the verdict has
+	// to have moved. Frozen at "valid" is what would never expire.
+	if snap := g.Snapshot(); snap.State != licverify.StateGrace {
+		t.Fatalf("State = %q, want grace: an unreachable hub must not freeze the clock", snap.State)
+	}
+}

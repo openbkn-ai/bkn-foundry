@@ -90,6 +90,23 @@ func TestFeaturesAreCopiedNotShared(t *testing.T) {
 	}
 }
 
+func TestSnapCopiesFeaturesToo(t *testing.T) {
+	reset()
+	SetGate(GateFunc(func() Snapshot {
+		return Snapshot{Licensed: true, Edition: licverify.EditionEnterprise, Features: []string{"audit"}}
+	}))
+
+	// A Snapshot is a value, but its Features field would otherwise share the
+	// published snapshot's backing array — an operator endpoint sorting the
+	// list in place would rewrite what every other reader sees. Features() has
+	// this guarantee under test; without the same here, the copy in Snap looks
+	// like removable duplication.
+	Snap().Features[0] = "tampered"
+	if again := Snap(); again.Features[0] != "audit" {
+		t.Fatal("Snap must copy Features; a caller mutated the published snapshot")
+	}
+}
+
 func TestSetGateAfterFreezePanics(t *testing.T) {
 	reset()
 	SetGate(fixed(licverify.EditionEnterprise))

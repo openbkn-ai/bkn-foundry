@@ -46,12 +46,12 @@ import (
 //
 // # Two-stage polling
 //
-// Cold start retries in seconds, steady state in hours. Both are needed: during
-// a rolling restart bkn-safe and the business services come up together, so a
-// service will normally fail its first few fetches. With only the hourly
-// cadence, bkn-safe being thirty seconds late would leave a service in
-// community behaviour until the next hour — a licensed deployment quietly
-// serving unlicensed behaviour for most of an hour.
+// Cold start retries in seconds, steady state in minutes. Both are needed:
+// during a rolling restart bkn-safe and the business services come up together,
+// so a service will normally fail its first few fetches. With only the
+// steady-state cadence, bkn-safe being thirty seconds late would leave a
+// service in community behaviour until the next tick — a licensed deployment
+// quietly serving unlicensed behaviour for minutes on end.
 
 // HubConfig configures the production gate.
 type HubConfig struct {
@@ -171,6 +171,22 @@ func (g *HubGate) Run(stop <-chan struct{}) {
 func (g *HubGate) refresh() error {
 	r, err := g.fetch()
 	if err != nil {
+		// Re-evaluate what we already hold before giving up on this round.
+		//
+		// The snapshot is a one-shot product of evaluate(), and licverify's
+		// verdict is a function of time: valid → grace → past grace only
+		// advances when evaluate() runs again. If the only paths to evaluate()
+		// required a successful fetch, an unreachable hub would freeze the
+		// snapshot at whatever the last successful poll decided — and since the
+		// service runs on the customer's machine, on the customer's network,
+		// blocking egress to bkn-safe would make a paid licence permanent.
+		//
+		// So the grace window gets its say whether or not the hub answers,
+		// which is what the contract above actually promises. The error is
+		// still returned, because it is what drives the retry cadence.
+		if text := g.currentText(); text != "" {
+			g.publish(evaluate(text, g.keys))
+		}
 		return err
 	}
 	if r.absent {
