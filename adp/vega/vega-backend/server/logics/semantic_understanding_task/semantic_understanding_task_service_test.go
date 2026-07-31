@@ -9,15 +9,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
@@ -288,6 +291,53 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "read sample rows")
 	})
+
+	t.Run("rejects sample rows for a non-queryable resource", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		resource.Status = interfaces.ResourceStatusDisabled
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService}
+		got, err := service.CreateResourceTask(context.Background(), resource.ID, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_NotQueryable, httpErr.BaseError.ErrorCode)
+	})
+
+	t.Run("preserves sample query HTTP errors", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
+		resource := sampleSemanticResource()
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+			Return(nil, rest.NewHTTPError(context.Background(), http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded))
+
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService}
+		got, err := service.CreateResourceTask(context.Background(), resource.ID, &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Query_ConcurrencyLimitExceeded, httpErr.BaseError.ErrorCode)
+	})
 }
 
 func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
@@ -516,6 +566,20 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.NotNil(t, got)
+	})
+
+	t.Run("rejects sample rows beyond the semantic understanding limit", func(t *testing.T) {
+		got, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
+			IncludeSampleRows: true,
+			SamplePolicy: &interfaces.SemanticUnderstandingSamplePolicy{
+				Masked:  false,
+				MaxRows: interfaces.MaxSemanticUnderstandingSampleRows + 1,
+			},
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "sample_policy.max_rows")
 	})
 }
 

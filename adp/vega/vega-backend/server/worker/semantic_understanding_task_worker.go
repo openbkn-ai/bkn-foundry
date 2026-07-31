@@ -308,11 +308,7 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 	}
 
 	warning := "no effective field semantic enhancements: all field display names/descriptions are unchanged or invalid"
-	resultJSON, err := appendResourceSemanticQuality(resultJSON, quality, warning)
-	if err != nil {
-		return "", 0, "", err
-	}
-	confidenceDetailJSON, err = appendResourceSemanticQuality(confidenceDetailJSON, quality, warning)
+	confidenceDetailJSON, err := appendResourceSemanticQuality(confidenceDetailJSON, quality, warning)
 	if err != nil {
 		return "", 0, "", err
 	}
@@ -496,7 +492,8 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"display_name exceeds max length"}})
 			continue
 		}
-		invalidDisplayName := isTechnicalFieldName(field.Name, field.DisplayName)
+		missingDisplayName := normalizeSemanticFieldName(field.DisplayName) == ""
+		invalidDisplayName := !missingDisplayName && isTechnicalFieldName(field.Name, field.DisplayName)
 		reasons := make([]string, 0, 1)
 		if invalidDisplayName {
 			skippedFields = append(skippedFields, fmt.Sprintf("%s: display_name equals technical field name", field.Name))

@@ -497,7 +497,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, got.Applied)
-		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["description"],"updated_fields":["product_id"],"skipped_fields":["product_id: display_name equals technical field name"],"field_details":[{"name":"product_id","status":"partial","updated":["description"],"reasons":["display_name equals technical field name"]}]}`, got.DetailJSON)
+		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["description"],"updated_fields":["product_id"],"field_details":[{"name":"product_id","status":"updated","updated":["description"]}]}`, got.DetailJSON)
 	})
 
 	t.Run("skips apply in dry run", func(t *testing.T) {
@@ -635,8 +635,7 @@ func TestAssessResourceSemanticResultQuality(t *testing.T) {
             "confidence": 1,
             "resource": {"display_name": "supply_chain.supplier_entity", "description": "供应商主数据"},
             "fields": [{"name": "supplier_id", "display_name": "Supplier ID", "description": "供应商ID"}],
-            "warnings": ["no effective field semantic enhancements: all field display names/descriptions are unchanged or invalid"],
-            "quality": {"resource_effective": false, "field_total": 1, "field_effective": 0}
+			"warnings": []
         }`, result)
 		assert.JSONEq(t, `{
             "resource": {"display_name": "supply_chain.supplier_entity", "description": "供应商主数据"},
@@ -644,6 +643,18 @@ func TestAssessResourceSemanticResultQuality(t *testing.T) {
             "warnings": ["no effective field semantic enhancements: all field display names/descriptions are unchanged or invalid"],
             "quality": {"resource_effective": false, "field_total": 1, "field_effective": 0}
         }`, detail)
+	})
+
+	t.Run("preserves completed task semantics when the input snapshot is missing or invalid", func(t *testing.T) {
+		resultJSON := `{"confidence":0.9,"resource":{},"fields":[]}`
+		for _, inputJSON := range []string{"", "not-json"} {
+			result, confidence, detail, err := assessResourceSemanticResultQuality(resultJSON, inputJSON, `{"fields":[]}`, 0.9)
+
+			require.NoError(t, err)
+			assert.Equal(t, resultJSON, result)
+			assert.Equal(t, 0.9, confidence)
+			assert.Equal(t, `{"fields":[]}`, detail)
+		}
 	})
 
 	t.Run("keeps agent confidence for valid resource-only update", func(t *testing.T) {

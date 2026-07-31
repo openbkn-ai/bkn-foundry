@@ -32,7 +32,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
-	"vega-backend/logics/resource"
+	resourcelogic "vega-backend/logics/resource"
 	"vega-backend/logics/resource_data"
 	"vega-backend/logics/user_mgmt"
 )
@@ -66,7 +66,7 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 			appSetting: appSetting,
 			client:     client,
 			cs:         catalog.NewCatalogService(appSetting),
-			rs:         resource.NewResourceService(appSetting),
+			rs:         resourcelogic.NewResourceService(appSetting),
 			rds:        resource_data.NewResourceDataService(appSetting),
 			suta:       logics.SUTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
@@ -109,7 +109,14 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 			WithErrorDetails(err.Error())
 	}
 	if req.IncludeSampleRows {
+		if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
+			return nil, err
+		}
 		if err := suts.attachUnmaskedSampleRows(ctx, resource, task); err != nil {
+			var httpErr *rest.HTTPError
+			if errors.As(err, &httpErr) {
+				return nil, httpErr
+			}
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 				WithErrorDetails(err.Error())
 		}
@@ -471,8 +478,8 @@ func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource
 		if normalized.SamplePolicy.Masked {
 			return nil, fmt.Errorf("masked sample rows are not supported yet")
 		}
-		if normalized.SamplePolicy.MaxRows <= 0 {
-			return nil, fmt.Errorf("sample_policy.max_rows must be greater than 0")
+		if normalized.SamplePolicy.MaxRows <= 0 || normalized.SamplePolicy.MaxRows > interfaces.MaxSemanticUnderstandingSampleRows {
+			return nil, fmt.Errorf("sample_policy.max_rows must be between 1 and %d", interfaces.MaxSemanticUnderstandingSampleRows)
 		}
 	}
 	input, inputHash, err := buildResourceSemanticUnderstandingInput(resource, normalized)
