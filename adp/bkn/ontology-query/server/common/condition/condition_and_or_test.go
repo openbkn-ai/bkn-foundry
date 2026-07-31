@@ -60,7 +60,7 @@ func Test_newAndCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("失败 - 子条件为空", func() {
+		Convey("success - empty AND rewrites to nil", func() {
 			cfg := &CondCfg{
 				Operation: OperationAnd,
 				SubConds:  []*CondCfg{},
@@ -270,8 +270,32 @@ func Test_rewriteAndCondition(t *testing.T) {
 				SubConds:  []*CondCfg{},
 			}
 			result, err := rewriteAndCondition(ctx, cfg, fieldsMap, vectorizer)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			So(result, ShouldBeNil)
+		})
+
+		Convey("success - empty nested AND is skipped during rewrite", func() {
+			cfg := &CondCfg{
+				Operation: OperationAnd,
+				SubConds: []*CondCfg{
+					{
+						Operation: OperationAnd,
+						SubConds:  []*CondCfg{},
+					},
+					{
+						Name:      "name",
+						Operation: OperationEq,
+						ValueOptCfg: ValueOptCfg{
+							Value: "test",
+						},
+					},
+				},
+			}
+			result, err := rewriteAndCondition(ctx, cfg, fieldsMap, vectorizer)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(len(result.SubConds), ShouldEqual, 1)
+			So(result.SubConds[0].Name, ShouldEqual, "mapped_name")
 		})
 
 		Convey("失败 - 子条件超过限制", func() {
@@ -428,6 +452,58 @@ func Test_OrCond_Convert2SQL(t *testing.T) {
 			result, err := cond.Convert2SQL(ctx)
 			So(err, ShouldBeNil)
 			So(result, ShouldContainSubstring, `OR`)
+		})
+	})
+}
+
+func Test_rewriteOrCondition(t *testing.T) {
+	Convey("Test rewriteOrCondition", t, func() {
+		ctx := context.Background()
+		fieldsMap := map[string]*DataProperty{
+			"name": {
+				Name: "name",
+				Type: dtype.DATATYPE_STRING,
+				MappedField: Field{
+					Name: "mapped_name",
+				},
+			},
+		}
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			return []VectorResp{}, nil
+		}
+
+		Convey("success - empty OR rewrites to nil", func() {
+			cfg := &CondCfg{
+				Operation: OperationOr,
+				SubConds:  []*CondCfg{},
+			}
+			result, err := rewriteOrCondition(ctx, cfg, fieldsMap, vectorizer)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeNil)
+		})
+
+		Convey("success - empty nested OR is skipped during rewrite", func() {
+			cfg := &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					{
+						Operation: OperationOr,
+						SubConds:  []*CondCfg{},
+					},
+					{
+						Name:      "name",
+						Operation: OperationEq,
+						ValueOptCfg: ValueOptCfg{
+							Value: "test",
+						},
+					},
+				},
+			}
+			result, err := rewriteOrCondition(ctx, cfg, fieldsMap, vectorizer)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(len(result.SubConds), ShouldEqual, 1)
+			So(result.SubConds[0].Name, ShouldEqual, "mapped_name")
 		})
 	})
 }
