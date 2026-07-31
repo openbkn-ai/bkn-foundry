@@ -319,6 +319,9 @@ components:
         `Disk` / `Timeout`）——该结构直接来自服务端配置对象，只带 yaml 标签没有 json
         标签，序列化时用的是 Go 字段名。与会话对象里小写的 `resource_limit` 不是
         同一套命名，解析时别混。
+
+        这是漏标签而非设计，已记在 **#585**：修好后键会变成 snake_case，
+        属破坏性改动，接入时请留意该 issue 的进展。
       properties:
         CPU:
           type: string
