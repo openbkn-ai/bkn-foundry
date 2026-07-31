@@ -607,3 +607,60 @@ func TestParseBknAgentResult(t *testing.T) {
 		assert.JSONEq(t, `{"logic_views":[],"warnings":["keep {braces} in string"],"obsolete_logic_views":[]}`, gotDetail)
 	})
 }
+
+func TestAssessResourceSemanticResultQuality(t *testing.T) {
+	input := `{
+        "resource": {
+            "name": "supply_chain.supplier_entity",
+            "description": "供应商主数据",
+            "schema_definition": [{
+                "name": "supplier_id",
+                "display_name": "supplier_id",
+                "description": "供应商ID"
+            }]
+        }
+    }`
+
+	t.Run("marks no-op field output as low quality", func(t *testing.T) {
+		result, confidence, detail, err := assessResourceSemanticResultQuality(
+			`{"confidence":1,"resource":{"display_name":"supply_chain.supplier_entity","description":"供应商主数据"},"fields":[{"name":"supplier_id","display_name":"Supplier ID","description":"供应商ID"}],"warnings":[]}`,
+			input,
+			`{"resource":{"display_name":"supply_chain.supplier_entity","description":"供应商主数据"},"fields":[{"name":"supplier_id","display_name":"Supplier ID","description":"供应商ID"}],"warnings":[]}`,
+			1,
+		)
+
+		require.NoError(t, err)
+		assert.Zero(t, confidence)
+		assert.JSONEq(t, `{
+            "confidence": 1,
+            "resource": {"display_name": "supply_chain.supplier_entity", "description": "供应商主数据"},
+            "fields": [{"name": "supplier_id", "display_name": "Supplier ID", "description": "供应商ID"}],
+            "warnings": ["no effective field semantic enhancements: all field display names/descriptions are unchanged or invalid"],
+            "quality": {"resource_effective": false, "field_total": 1, "field_effective": 0}
+        }`, result)
+		assert.JSONEq(t, `{
+            "resource": {"display_name": "supply_chain.supplier_entity", "description": "供应商主数据"},
+            "fields": [{"name": "supplier_id", "display_name": "Supplier ID", "description": "供应商ID"}],
+            "warnings": ["no effective field semantic enhancements: all field display names/descriptions are unchanged or invalid"],
+            "quality": {"resource_effective": false, "field_total": 1, "field_effective": 0}
+        }`, detail)
+	})
+
+	t.Run("keeps agent confidence for valid resource-only update", func(t *testing.T) {
+		_, confidence, detail, err := assessResourceSemanticResultQuality(
+			`{"confidence":1,"resource":{"display_name":"供应商主数据","description":"供应商业务主数据"},"fields":[{"name":"supplier_id","display_name":"supplier_id","description":"供应商ID"}],"warnings":[]}`,
+			input,
+			`{"resource":{"display_name":"供应商主数据","description":"供应商业务主数据"},"fields":[{"name":"supplier_id","display_name":"supplier_id","description":"供应商ID"}],"warnings":[]}`,
+			1,
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, 1.0, confidence)
+		assert.JSONEq(t, `{
+            "resource": {"display_name": "供应商主数据", "description": "供应商业务主数据"},
+            "fields": [{"name": "supplier_id", "display_name": "supplier_id", "description": "供应商ID"}],
+            "warnings": ["no effective field semantic enhancements: all field display names/descriptions are unchanged or invalid"],
+            "quality": {"resource_effective": true, "field_total": 1, "field_effective": 0}
+        }`, detail)
+	})
+}

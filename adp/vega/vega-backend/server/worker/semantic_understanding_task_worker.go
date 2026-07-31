@@ -122,6 +122,15 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
 		return nil
 	}
+	if taskInfo.Scope == interfaces.SemanticUnderstandingTaskScopeResource {
+		resultJSON, confidence, confidenceDetailJSON, err = assessResourceSemanticResultQuality(
+			resultJSON, taskInfo.Input, confidenceDetailJSON, confidence,
+		)
+		if err != nil {
+			_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+			return nil
+		}
+	}
 
 	succeeded, err := sutw.suts.MarkSucceeded(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	if err != nil {
@@ -241,6 +250,106 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	}
 
 	return string(result), confidence, string(detailJSON), nil
+}
+
+// assessResourceSemanticResultQuality records when an otherwise valid agent
+// response has no usable field-level enhancement. It only lowers confidence
+// when neither the resource nor any field contains an effective change; this
+// preserves valid resource-only updates while making no-op output ineligible
+// for automatic application.
+func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetailJSON string, confidence float64) (string, float64, string, error) {
+	if strings.TrimSpace(inputJSON) == "" {
+		// Tasks created before input snapshots were persisted cannot be assessed
+		// reliably. Preserve their existing execution semantics.
+		return resultJSON, confidence, confidenceDetailJSON, nil
+	}
+	var input interfaces.SemanticUnderstandingResourceAgentInput
+	if err := sonic.Unmarshal([]byte(inputJSON), &input); err != nil {
+		// Input is an audit snapshot, not an agent response. A malformed legacy
+		// snapshot must not turn an otherwise successful agent task into failure.
+		return resultJSON, confidence, confidenceDetailJSON, nil
+	}
+
+	var result resourceSemanticUnderstandingResult
+	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
+		return "", 0, "", fmt.Errorf("unmarshal resource semantic understanding result quality input failed: %w", err)
+	}
+
+	inputFields := make(map[string]struct {
+		DisplayName string
+		Description string
+	}, len(input.Resource.SchemaDefinition))
+	for _, field := range input.Resource.SchemaDefinition {
+		inputFields[field.Name] = struct {
+			DisplayName string
+			Description string
+		}{DisplayName: field.DisplayName, Description: field.Description}
+	}
+
+	quality := interfaces.SemanticUnderstandingResourceQuality{
+		ResourceEffective: strings.TrimSpace(result.Resource.DisplayName) != "" && result.Resource.DisplayName != input.Resource.Name ||
+			strings.TrimSpace(result.Resource.Description) != "" && result.Resource.Description != input.Resource.Description,
+		FieldTotal: len(inputFields),
+	}
+	for _, field := range result.Fields {
+		inputField, ok := inputFields[field.Name]
+		if !ok {
+			continue
+		}
+		displayNameEffective := !isTechnicalFieldName(field.Name, field.DisplayName) && field.DisplayName != inputField.DisplayName
+		descriptionEffective := strings.TrimSpace(field.Description) != "" && field.Description != inputField.Description
+		if displayNameEffective || descriptionEffective {
+			quality.FieldEffective++
+		}
+	}
+
+	if quality.FieldTotal == 0 || quality.FieldEffective > 0 {
+		return resultJSON, confidence, confidenceDetailJSON, nil
+	}
+
+	warning := "no effective field semantic enhancements: all field display names/descriptions are unchanged or invalid"
+	resultJSON, err := appendResourceSemanticQuality(resultJSON, quality, warning)
+	if err != nil {
+		return "", 0, "", err
+	}
+	confidenceDetailJSON, err = appendResourceSemanticQuality(confidenceDetailJSON, quality, warning)
+	if err != nil {
+		return "", 0, "", err
+	}
+	if !quality.ResourceEffective {
+		confidence = 0
+	}
+	return resultJSON, confidence, confidenceDetailJSON, nil
+}
+
+func appendResourceSemanticQuality(payload string, quality interfaces.SemanticUnderstandingResourceQuality, warning string) (string, error) {
+	object := map[string]sonic.NoCopyRawMessage{}
+	if err := sonic.Unmarshal([]byte(payload), &object); err != nil {
+		return "", fmt.Errorf("unmarshal resource semantic understanding quality payload failed: %w", err)
+	}
+
+	warnings := []string{}
+	if rawWarnings, ok := object["warnings"]; ok {
+		if err := sonic.Unmarshal(rawWarnings, &warnings); err != nil {
+			return "", fmt.Errorf("unmarshal resource semantic understanding warnings failed: %w", err)
+		}
+	}
+	warnings = append(warnings, warning)
+	warningsJSON, err := sonic.Marshal(warnings)
+	if err != nil {
+		return "", fmt.Errorf("marshal resource semantic understanding warnings failed: %w", err)
+	}
+	qualityJSON, err := sonic.Marshal(quality)
+	if err != nil {
+		return "", fmt.Errorf("marshal resource semantic understanding quality failed: %w", err)
+	}
+	object["warnings"] = warningsJSON
+	object["quality"] = qualityJSON
+	result, err := sonic.Marshal(object)
+	if err != nil {
+		return "", fmt.Errorf("marshal resource semantic understanding quality payload failed: %w", err)
+	}
+	return string(result), nil
 }
 
 func extractBknAgentResultJSON(result []byte) ([]byte, error) {
