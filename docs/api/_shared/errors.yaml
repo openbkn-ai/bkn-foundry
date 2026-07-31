@@ -5,9 +5,13 @@
 #   $ref: '../_shared/errors.yaml#/components/schemas/Error'
 # 引用，不再各自内嵌。
 #
-# 注意：context-loader（agent-retrieval）没有用 kweaver-go-lib，自带一套字段名不同的
-#       信封（code/description/solution/link/details），见下方 ErrorAgentRetrieval——
-#       不改成 rest.BaseError 是因为其 MCP / Agent 调用方已按现字段名解析。
+# 注意：adp 下的 context-loader（agent-retrieval）与 execution-factory
+#       （agent-operator-integration）没有用 kweaver-go-lib，各自带了一份同源的
+#       infra/errors.HTTPError，字段名与 rest.BaseError 不同（code/description/
+#       solution/link/details），见下方 ErrorCompact——不改成 BaseError 是因为其
+#       调用方（MCP 客户端、Studio）已按现字段名解析。
+#       ErrorAgentRetrieval 是 ErrorCompact 的别名，保留是因为 context-loader 的
+#       9 份 YAML 已按该名引用（#578 已合入）。
 #
 # 注意：mf-model 是 FastAPI，错误信封字段不同（code/detail/link），单列
 #       errors-fastapi.yaml，不并入本文件——不假装全平台一套。
@@ -39,23 +43,26 @@ components:
         error_details:
           description: 详细内容，类型不固定。
 
-    ErrorAgentRetrieval:
+    ErrorCompact:
       description: |
-        context-loader（agent-retrieval）的错误响应体，由该服务的
+        adp 下 context-loader（`agent-retrieval`）与 execution-factory
+        （`agent-operator-integration`）共用的错误响应体，由各自的
         `infra/errors.HTTPError` 序列化得到。字段名与上面的 `Error` **不同**，
         对接时不要混用。
 
-        另一个易踩的点：当错误来自下游服务（ontology-query / bkn-backend /
-        vega）时，context-loader 原样透传下游响应体，此时字段名是下游的信封
-        （通常是 `error_code` / `error_details`），而不是本 schema。判断错误来源
-        请看 `code` 前缀：`Public.*` 与 `agentRetrieval.*` 是本服务产生的。
+        另一个易踩的点：错误来自下游服务时，这两个服务会原样透传下游响应体，
+        此时字段名是下游的信封（通常是 `error_code` / `error_details`）。
+        判断来源看 `code` 前缀：`Public.*` 与服务自己的前缀
+        （`agentRetrieval.*` / `AgentOperatorIntegration.*`，注意后者首字母大写）
+        是本服务产生的。
       type: object
       properties:
         code:
           type: string
           description: |
             机器可读错误码。通用错误为 `Public.<ErrCode>`（如 `Public.BadRequest`），
-            业务错误为 `agentRetrieval.<ErrCode>.<ExtCode>`。
+            业务错误为 `<服务名>.<ErrCode>.<ExtCode>`，如
+            `AgentOperatorIntegration.BadRequest.ValidationRequired`。
           example: Public.BadRequest
         description:
           type: string
@@ -68,3 +75,11 @@ components:
           description: 指向错误详情文档的链接；无对应文档时为「无」。
         details:
           description: 详细内容，类型不固定（字符串或对象）。
+
+    ErrorAgentRetrieval:
+      description: |
+        `ErrorCompact` 的别名，供 context-loader 的 YAML 引用（#578 合入时用的是
+        这个名字，9 份文件都按它写的，故保留）。**结构完全等同 `ErrorCompact`**，
+        新写文档请直接引 `ErrorCompact`。
+      allOf:
+        - $ref: '#/components/schemas/ErrorCompact'

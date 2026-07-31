@@ -1,0 +1,741 @@
+---
+openapi: 3.0.3
+info:
+  title: 函数
+  description: |
+    执行工厂（服务名 `agent-operator-integration`）的**函数面**：写一段 Python、
+    在沙箱里跑起来、看输出。围绕它还有依赖查询、代码模板与 AI 生成三组辅助接口。
+
+    函数是执行工厂里最基础的能力形态——算子（operator）、工具箱里的工具、Skill
+    最终都可能落到一次沙箱内的函数执行。本文件只描述**直接执行任意代码**这条路径；
+    把函数注册成可复用的算子见 [operator.yaml](operator.yaml)。
+
+    **执行是隔离的、无状态的**：每次调用从会话池取一个沙箱会话，跑完即释放，
+    不保证同一会话被复用，也不要依赖上次执行留下的文件或全局变量。
+
+    **函数怎么写**（三条硬约定，写错就跑不起来）：
+
+    1. 每份代码必须导出一个名为 **`handler`** 的函数，它是唯一入口，改名无效。
+    2. 平台把请求里的 `event` 作为**唯一入参**传给它，取值用 `event.get("key", 默认值)`。
+    3. `handler` 的返回值出现在响应的 `result` 里，`print` 出来的内容进 `stdout`。
+
+    ```python
+    from typing import Dict, Any
+
+    def handler(event: Dict[str, Any]) -> Any:
+        name = event.get("name", "default")
+        return {"message": f"Hello, {name}"}
+    ```
+
+    完整骨架（含注释）随 `GET /template/{template_type}` 返回，文案会按请求语言本地化。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。执行类接口要求调用方具备算子的 execute 权限，AI 生成类要求 create 权限。
+  version: 0.1.3
+servers:
+  - url: /api/agent-operator-integration/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /function/execute:
+    post:
+      tags:
+        - Function
+      summary: 在沙箱中执行函数代码
+      operationId: functionExecute
+      description: |
+        把 `code` 送进沙箱执行，`event` 作为入参传给入口函数。用于调试期直接跑代码，
+        不需要先把它注册成算子。
+
+        **`timeout` 的单位是秒**（注意：内部面的
+        `POST /internal-v1/function/exec/{version}` 用的是毫秒，两者不一致）。
+
+        **`dependencies` 会触发装包**：声明的第三方库在执行前于沙箱内安装，
+        因此首次调用会明显变慢。可用 `dependencies_url` 换安装源（默认
+        `https://pypi.org/simple/`），内网环境建议指向私有镜像。已经预装在沙箱基础
+        镜像里的库不用声明——用 `GET /function/dependencies` 看有哪些。
+
+        **响应永远是 200**：代码自身抛异常不算接口失败，异常栈在 `stderr` 里，
+        `exit_code` 非 0，`result` 为 `null`。只有参数不合法、无权限、沙箱不可用
+        才返回 4xx/5xx——**判断执行成败看 `exit_code`，不要看 HTTP 状态码**。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionExecuteRequest'
+            examples:
+              最小示例:
+                summary: 入口函数必须叫 handler
+                value:
+                  code: |
+                    from typing import Dict, Any
+
+                    def handler(event: Dict[str, Any]) -> Any:
+                        a = event.get("a", 0)
+                        b = event.get("b", 0)
+                        return {"sum": a + b}
+                  event:
+                    a: 1
+                    b: 2
+              读取入参并打日志:
+                summary: print 的内容进 stdout，返回值进 result
+                value:
+                  code: |
+                    from typing import Dict, Any
+
+                    def handler(event: Dict[str, Any]) -> Any:
+                        name = event.get("name", "world")
+                        print(f"greeting {name}")
+                        return {"message": f"Hello, {name}"}
+                  event:
+                    name: BKN
+              带第三方依赖:
+                summary: dependencies 里的库执行前在沙箱内安装
+                value:
+                  code: |
+                    from typing import Dict, Any
+                    import requests
+
+                    def handler(event: Dict[str, Any]) -> Any:
+                        r = requests.get(event["url"], timeout=5)
+                        return {"status": r.status_code}
+                  event:
+                    url: https://example.com
+                  timeout: 30
+                  dependencies:
+                    - name: requests
+                      version: 2.32.3
+                  dependencies_url: https://pypi.tuna.tsinghua.edu.cn/simple/
+      responses:
+        '200':
+          description: 执行完成（代码自身报错也走这里，看 `stderr`）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionExecuteResponse'
+              examples:
+                成功:
+                  value:
+                    stdout: "greeting BKN\n"
+                    stderr: ''
+                    result:
+                      message: Hello, BKN
+                    metrics:
+                      duration_ms: 71.97115616872907
+                      cpu_time_ms: 3.9721400000019003
+                      peak_memory_mb: null
+                      io_read_bytes: null
+                      io_write_bytes: null
+                    exit_code: 0
+                    execution_time_ms: 0
+                    artifacts: []
+                    session_id: sess_aoi_0
+                代码抛异常:
+                  summary: 接口仍是 200，看 exit_code 与 stderr
+                  value:
+                    stdout: ''
+                    stderr: "Traceback (most recent call last):\n  ...\nKeyError: 'a'\n"
+                    result: null
+                    exit_code: 1
+                    session_id: sess_aoi_0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前账户没有算子的 execute 权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /function/dependencies:
+    get:
+      tags:
+        - Function
+      summary: 列出沙箱中已安装的依赖库
+      operationId: getFunctionDependencies
+      description: |
+        返回当前沙箱环境里已装好的第三方库。写函数前先看这里——列表里有的直接
+        `import` 即可，不必在 `dependencies` 里再声明一遍（声明了会触发一次无谓的
+        装包检查）。
+
+        本接口会从池里取一个会话来查询，响应里的 `session_id` 就是被查询的那个会话。
+      responses:
+        '200':
+          description: 依赖库列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependenciesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: 沙箱不可用或取不到会话
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  /function/dependency-versions/{package_name}:
+    get:
+      tags:
+        - Function
+      summary: 查询某个包的可用版本
+      operationId: getFunctionDependencyVersions
+      description: |
+        向 PyPI 源查询指定包的可用版本，供前端做版本选择。**这是实时向上游源发请求**，
+        源不可达时会失败——内网环境记得用 `pypi_repo_url` 指向可达的私有镜像。
+
+        `python_version` 用于过滤与该 Python 版本兼容的发行版。
+      parameters:
+        - name: package_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 包名，如 `requests`。
+          example: requests
+        - name: pypi_repo_url
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+            default: https://pypi.org/simple
+          description: PyPI 源地址。内网环境改成私有镜像。
+        - name: python_version
+          in: query
+          required: false
+          schema:
+            type: string
+            default: '3.10'
+          description: 目标 Python 版本，用于过滤兼容的发行版。
+      responses:
+        '200':
+          description: 版本列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageVersionsResponse'
+              examples:
+                示例:
+                  value:
+                    package_name: requests
+                    versions:
+                      - 2.32.3
+                      - 2.32.2
+                      - 2.31.0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: PyPI 源不可达或返回异常
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  /template/{template_type}:
+    get:
+      tags:
+        - Function
+      summary: 获取函数代码模板
+      operationId: getFunctionTemplate
+      description: |
+        返回可直接填空的入口函数骨架，说明 `event` 怎么进、返回值怎么出。
+        模板文案随请求语言本地化（`X-Language` 头）。
+
+        目前只支持 `python`。
+      parameters:
+        - name: template_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - python
+            default: python
+          description: 模板类型。目前只有 `python`，传其他值返回 400。
+      responses:
+        '200':
+          description: 代码模板
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+              examples:
+                python:
+                  value:
+                    template_type: python
+                    code_template: |
+                      from typing import Dict, Any
+
+                      def handler(event: Dict[str, Any]) -> Any:
+                          """
+                          通用Python工具处理函数。
+
+                          每个文件都需要导出一个名为 `handler` 的函数。这个函数是工具的入口点。
+
+                          Parameters:
+                          event: dict
+                              表示函数执行的主要输入参数。
+                              可以通过 event.get("key", default_value) 获取具体的输入值。
+
+                          Return:
+                          Any data object
+                              函数的返回数据，应根据用户需求定义具体的输出格式。
+                              返回的数据应与声明的输出参数匹配。
+
+                          请记得在元数据中填写input/output，这有助于LLM识别和使用工具。
+                          """
+
+                          # TODO: 根据需求插入实际逻辑
+                          # 示例：
+                          # name = event.get("name", "default")
+                          # return {"message": f"Hello, {name}"}
+
+                          result = {}
+                          return result
+        '400':
+          description: 不支持的模板类型
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ai_generate/function/{type}:
+    post:
+      tags:
+        - Function
+      summary: 用大模型生成函数代码或参数定义
+      operationId: aiGenerateFunction
+      description: |
+        两种生成方向，由路径上的 `type` 决定，**必填字段也随之不同**：
+
+        | `type` | 做什么 | 必填 |
+        |---|---|---|
+        | `python_function_generator` | 由自然语言描述生成 Python 函数代码 | `query` |
+        | `metadata_param_generator` | 由已有代码反推出入参 / 出参定义 | `code` |
+
+        必填字段缺失时返回 400，报文里直接写明缺的是 `query` 还是 `code`。
+
+        **`stream=true` 走 SSE**：响应变成 `text/event-stream` 而不是 JSON，
+        按事件流逐段读取生成内容。默认非流式，一次性返回完整结果。
+
+        用的是系统默认大模型，不在本接口指定模型名。
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - python_function_generator
+              - metadata_param_generator
+          description: 生成方向。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionAIGenerateRequest'
+            examples:
+              由描述生成代码:
+                value:
+                  query: 写一个函数，接收一个订单列表，返回总金额和订单数
+                  inputs:
+                    - name: orders
+                      type: array
+                      required: true
+                      description: 订单列表
+              由代码反推参数定义:
+                value:
+                  code: |
+                    from typing import Dict, Any
+
+                    def handler(event: Dict[str, Any]) -> Any:
+                        orders = event.get("orders", [])
+                        return {"total": sum(o["amount"] for o in orders)}
+              流式生成:
+                value:
+                  query: 写一个函数，把 CSV 文本解析成对象数组
+                  stream: true
+      responses:
+        '200':
+          description: |
+            生成结果。`stream=false` 时是 JSON；`stream=true` 时是 SSE 事件流。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionAIGenerateResponse'
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 事件流，逐段返回生成内容。
+        '400':
+          description: |
+            参数错误。常见：`type=python_function_generator` 缺 `query`，
+            或 `type=metadata_param_generator` 缺 `code`
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前账户没有算子的 create 权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '500':
+          description: 大模型调用失败
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  /ai_generate/prompt/{type}:
+    get:
+      tags:
+        - Function
+      summary: 查看 AI 生成使用的提示词模板
+      operationId: getFunctionPromptTemplate
+      description: |
+        返回 `/ai_generate/function/{type}` 内部使用的提示词模板（system prompt 与
+        user prompt 模板）。用于排查生成效果不佳的原因，或在外部复现同一套生成逻辑。
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - python_function_generator
+              - metadata_param_generator
+          description: 提示词模板类型，与生成接口的 `type` 一致。
+      responses:
+        '200':
+          description: 提示词模板
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptTemplate'
+        '400':
+          description: 不支持的模板类型
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前账户没有算子的 create 权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    InternalError:
+      description: 服务内部错误，或沙箱不可用
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  schemas:
+    FunctionExecuteRequest:
+      type: object
+      required:
+        - code
+        - event
+      properties:
+        code:
+          type: string
+          description: |
+            要执行的代码。**必须导出一个名为 `handler` 的函数**，签名
+            `handler(event: Dict[str, Any]) -> Any`；`event` 是请求里的同名字段，
+            返回值出现在响应的 `result` 里。骨架见 `GET /template/{template_type}`。
+        event:
+          type: object
+          additionalProperties: true
+          description: 传给入口函数的事件对象。无入参时传 `{}`，**不能省略**。
+        language:
+          type: string
+          default: python
+          description: 执行语言。目前只支持 `python`。
+        timeout:
+          type: integer
+          description: |
+            执行超时，**单位秒**。不传走沙箱默认值。
+            注意与内部面 `function/exec/{version}` 的毫秒单位区分。
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyInfo'
+          description: |
+            执行前需要在沙箱内安装的第三方库。会显著拉长首次执行耗时；
+            已预装的库（见 `GET /function/dependencies`）不用声明。
+        dependencies_url:
+          type: string
+          format: uri
+          default: https://pypi.org/simple/
+          description: 安装源地址。内网环境改成私有镜像。
+        source:
+          type: string
+          description: |
+            执行来源标记，写进沙箱环境变量供追踪用。不传则记为 `function_debug`。
+        task_id:
+          type: string
+          description: 任务 ID，写进沙箱环境变量，用于把本次执行关联到上游任务。
+        capability_id:
+          type: string
+          description: 能力 ID，写进沙箱环境变量。
+        capability_name:
+          type: string
+          description: 能力名称，写进沙箱环境变量。
+        user_id:
+          type: string
+          description: 用户 ID，写进沙箱环境变量。**仅作追踪标记，不参与鉴权**。
+        user_name:
+          type: string
+          description: 用户名，写进沙箱环境变量。同样只作追踪标记。
+
+    FunctionExecuteResponse:
+      type: object
+      description: |
+        沙箱执行结果。退出码、耗时、制品这些和 stdout/stderr 一样是调试函数时要看的，
+        因此整体透出，而不是只留输出流。
+      properties:
+        stdout:
+          type: string
+          description: 标准输出，`print` 的内容在这里。
+        stderr:
+          type: string
+          description: |
+            标准错误。**代码抛异常时栈信息在这里，而接口仍返回 200**——
+            判断执行是否成功看 `exit_code` 与本字段，不能只看 HTTP 状态码。
+        result:
+          description: '`handler` 的返回值。执行失败时为 `null`。'
+        exit_code:
+          type: integer
+          description: 退出码，`0` 表示成功。
+        error_message:
+          type: string
+          description: 沙箱侧的错误信息（区别于代码自身的异常栈）。无错误时不返回。
+        execution_time_ms:
+          type: integer
+          format: int64
+          description: 执行耗时（毫秒）。
+        session_id:
+          type: string
+          description: 本次执行所用的沙箱会话 ID，排障时用。
+        artifacts:
+          description: 执行产生的文件制品。没有时不返回。
+        metrics:
+          $ref: '#/components/schemas/ExecutionMetrics'
+
+    ExecutionMetrics:
+      type: object
+      description: |
+        沙箱侧采集的执行指标。**部分字段依赖沙箱运行时能力，取不到时为 `null`**
+        （实测独立沙箱下 `peak_memory_mb` 与 IO 计数即为 `null`）。
+      properties:
+        duration_ms:
+          type: number
+          description: 执行墙钟耗时（毫秒）。
+        cpu_time_ms:
+          type: number
+          description: CPU 时间（毫秒）。
+        peak_memory_mb:
+          type: number
+          nullable: true
+          description: 峰值内存（MB）。取不到时为 `null`。
+        io_read_bytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: 读取字节数。取不到时为 `null`。
+        io_write_bytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: 写入字节数。取不到时为 `null`。
+
+    DependencyInfo:
+      type: object
+      description: 一个第三方库依赖。
+      properties:
+        name:
+          type: string
+          description: 库名。
+        version:
+          type: string
+          description: 版本号。
+        install_location:
+          type: string
+          description: 安装位置。查询已装依赖时返回。
+        install_time:
+          type: string
+          description: 安装时间。查询已装依赖时返回。
+        is_from_template:
+          type: boolean
+          description: 是否随基础镜像 / 模板预装。查询已装依赖时返回。
+
+    DependenciesResponse:
+      type: object
+      properties:
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyInfo'
+          description: 沙箱中已安装的第三方库。
+        session_id:
+          type: string
+          description: 本次查询所用的沙箱会话 ID。
+
+    PackageVersionsResponse:
+      type: object
+      properties:
+        package_name:
+          type: string
+          description: 包名。
+        versions:
+          type: array
+          items:
+            type: string
+          description: 可用版本列表。
+
+    TemplateResponse:
+      type: object
+      properties:
+        template_type:
+          type: string
+          description: 模板类型。
+        code_template:
+          type: string
+          description: 代码模板正文，随请求语言本地化。
+
+    FunctionAIGenerateRequest:
+      type: object
+      description: |
+        必填字段随路径上的 `type` 变化：`python_function_generator` 要 `query`，
+        `metadata_param_generator` 要 `code`。
+      properties:
+        query:
+          type: string
+          description: |
+            自然语言需求描述。`type=python_function_generator` 时**必填**。
+        code:
+          type: string
+          description: |
+            已有的函数代码。`type=metadata_param_generator` 时**必填**，
+            用于反推参数定义。
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+          description: 已知的入参定义，作为生成时的约束。
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+          description: 已知的出参定义，作为生成时的约束。
+        stream:
+          type: boolean
+          default: false
+          description: |
+            是否流式返回。为 `true` 时响应是 `text/event-stream`，不是 JSON。
+
+    FunctionAIGenerateResponse:
+      type: object
+      properties:
+        content:
+          description: |
+            生成内容。`python_function_generator` 返回代码文本；
+            `metadata_param_generator` 返回参数定义结构。
+
+    ParameterDef:
+      type: object
+      description: |
+        参数定义。`object` 用 `sub_parameters` 列出属性；`array` 的
+        `sub_parameters` 只放一个元素来描述数组元素结构（元素名建议写 `items`）。
+      properties:
+        name:
+          type: string
+          description: 参数名。
+        description:
+          type: string
+          description: 参数说明。
+        required:
+          type: boolean
+          description: 是否必填。
+        type:
+          type: string
+          enum:
+            - string
+            - number
+            - boolean
+            - array
+            - object
+          description: 参数类型。
+        default:
+          description: 默认值。
+        enum:
+          type: array
+          items: {}
+          description: 可选值枚举。
+        example:
+          description: 示例值。
+        sub_parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+          description: 子参数，用于 `object` 与 `array`。
+
+    PromptTemplate:
+      type: object
+      properties:
+        prompt_id:
+          type: string
+          description: 提示词 ID。
+        name:
+          type: string
+          description: 提示词名称。
+        description:
+          type: string
+          description: 用途说明。
+        system_prompt:
+          type: string
+          description: system 提示词。
+        user_prompt_template:
+          type: string
+          description: user 提示词模板，含占位符。

@@ -1,0 +1,118 @@
+# 执行工厂 API 文档
+
+> 执行工厂（服务名 `agent-operator-integration`）HTTP API 的 OpenAPI 3.0.3 定义。
+> 平台的「能力」都在这里落地：一段代码、一个算子、一箱工具、一个 MCP、一个 Skill，最终都通过它注册、调试、发布与执行。
+
+## 文件索引
+
+| 文件 | 主题 | 包含的端点（`/api/agent-operator-integration/v1` 下） |
+|---|---|---|
+| [function.yaml](function.yaml) | 函数 | `POST /function/execute`、`GET /function/dependencies`、`GET /function/dependency-versions/{package_name}`、`GET /template/{template_type}`、`POST /ai_generate/function/{type}`、`GET /ai_generate/prompt/{type}` |
+
+> 其余接口面（算子 / 工具箱 / MCP / Skill / 沙箱 / 导入导出，约 80 个端点）尚未收录，见本文末「覆盖边界」。
+
+## 写一个函数：完整走一遍
+
+**1. 看骨架**——入口函数必须叫 `handler`，这是硬约定。
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/agent-operator-integration/v1/template/python"
+```
+
+**2. 看沙箱里已经有什么库**——列表里有的直接 `import`，不用在 `dependencies` 里再声明。
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/agent-operator-integration/v1/function/dependencies"
+```
+
+**3. 跑起来**。`event` 是唯一入参，`handler` 的返回值进 `result`，`print` 进 `stdout`。
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/agent-operator-integration/v1/function/execute" -d '{
+    "code": "from typing import Dict, Any\n\ndef handler(event: Dict[str, Any]) -> Any:\n    name = event.get(\"name\", \"world\")\n    print(f\"greeting {name}\")\n    return {\"message\": f\"Hello, {name}\"}\n",
+    "event": {"name": "BKN"}
+  }'
+```
+
+```json
+{
+  "stdout": "greeting BKN\n",
+  "stderr": "",
+  "result": { "message": "Hello, BKN" },
+  "metrics": {
+    "duration_ms": 71.97115616872907,
+    "cpu_time_ms": 3.9721400000019003,
+    "peak_memory_mb": null,
+    "io_read_bytes": null,
+    "io_write_bytes": null
+  },
+  "exit_code": 0,
+  "execution_time_ms": 0,
+  "artifacts": [],
+  "session_id": "sess_aoi_0"
+}
+```
+
+> 上面这段是测试服的真实返回。`peak_memory_mb` 与 IO 计数依赖沙箱运行时能力，取不到就是 `null`。
+
+**4. 要用第三方库**——先查版本，再声明依赖。首次执行会因装包变慢。
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/agent-operator-integration/v1/function/dependency-versions/requests?python_version=3.10"
+```
+
+```jsonc
+// 然后在 execute 请求体里加：
+"dependencies": [{ "name": "requests", "version": "2.32.3" }],
+"dependencies_url": "https://pypi.tuna.tsinghua.edu.cn/simple/"   // 内网换私有源
+```
+
+**5. 不想自己写**——用大模型生成，或反过来由代码推出参数定义。
+
+```bash
+# 由描述生成代码
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/agent-operator-integration/v1/ai_generate/function/python_function_generator" \
+  -d '{"query": "写一个函数，接收订单列表，返回总金额和订单数"}'
+
+# 由代码反推入参 / 出参定义
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/agent-operator-integration/v1/ai_generate/function/metadata_param_generator" \
+  -d '{"code": "def handler(event):\n    return {}\n"}'
+```
+
+## 三个最容易踩的点
+
+- **入口函数名固定是 `handler`**，签名 `handler(event: Dict[str, Any]) -> Any`。改名不会报「找不到入口」，而是行为不符合预期。
+- **代码抛异常时接口仍返回 200**。判断成败看 `exit_code`（0 才是成功）与 `stderr`，不能只看 HTTP 状态码。
+- **`timeout` 单位是秒**。内部面的 `POST /internal-v1/function/exec/{version}` 用的是毫秒，两者不一致，别照搬。
+
+## 约定
+
+- **OpenAPI 版本**：3.0.3。
+- **认证**：`Authorization: Bearer <token>`，OAuth access token 或用户自助签发的 AppKey（`bak_` 前缀）。
+- **权限**：函数执行要求算子的 `execute` 权限，AI 生成要求 `create` 权限，返回 403 时先查角色授权。
+- **错误信封**：本服务**不用** `kweaver-go-lib/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorCompact`](../_shared/errors.yaml)（与 context-loader 同源同形）。
+- **内部接口**：`/api/agent-operator-integration/internal-v1` 是内部面，另有 `POST /function/exec/{version}`（按已注册的函数版本执行，`timeout` 单位毫秒）等端点，**本文档不收录**。
+- **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），路径与语义都与 `v1` 不同，**本文档同样不收录**。
+
+## 覆盖边界
+
+本批次只收录**函数面 6 个端点**。同一服务的公开面还有约 80 个端点未文档化：
+
+| 面 | 端点数 | 说明 |
+|---|---|---|
+| 算子 operator | 15 | 注册 / 编辑 / 列表 / 调试 / 版本历史 / 市场 |
+| 工具箱 toolbox | 22 | 工具箱与工具的增删改查、调试、代理调用、市场 |
+| MCP | 15 | MCP 注册、状态、工具列表与代理调用、市场 |
+| Skill | 25 | 注册 / 发布 / 版本 / 内容读取 / 下载 / 索引构建 |
+| 沙箱 sandbox | 4 | 只读观测：健康、池状态、会话列表与详情（限超管） |
+| 导入导出 impex | 2 | `.adp` 包的导出与导入 |
+
+这些接口的**响应结构未经本批次验证**，改动时请人工核对。服务目录下
+`adp/execution-factory/operator-integration/docs/apis/` 里有一份历史草稿可作参照，
+但它与实现存在漂移（context-loader 的同类草稿实测就有三处写错），不要直接当作真相源。
