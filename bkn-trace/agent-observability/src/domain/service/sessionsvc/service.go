@@ -1173,8 +1173,9 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 		IncludedReceiptIDs: receiptIDs, IncludedEventIDs: eventIDs,
 		ArtifactManifestHash: hashValue(struct {
 			Claims       []string
+			EventIDs     []string
 			ArtifactRefs []string
-		}{manifest.Claims, artifactRefs}),
+		}{manifest.Claims, eventIDs, artifactRefs}),
 		Completeness: interaction.EvidenceStatus, PartialReasons: partialReasons,
 		Trigger: trigger, CreatedAt: tx.Now(),
 	}

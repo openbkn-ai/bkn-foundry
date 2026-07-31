@@ -972,6 +972,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/interactions/{interaction_id}/business-graph": {
+            "get": {
+                "description": "Returns the latest immutable assembly revision with precise Claim supports and causal DAG layers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get an Interaction business semantic graph",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.interactionBusinessGraphResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/interactions/{interaction_id}/cancel": {
             "post": {
                 "consumes": [
@@ -2450,6 +2497,181 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "assemblysvc.BusinessRefView": {
+            "type": "object",
+            "properties": {
+                "disclosure_status": {
+                    "type": "string"
+                },
+                "display": {
+                    "$ref": "#/definitions/evidencevo.BusinessDisplay"
+                },
+                "technical_ref": {
+                    "$ref": "#/definitions/sessionvo.BusinessRef"
+                }
+            }
+        },
+        "assemblysvc.ClaimAssembly": {
+            "type": "object",
+            "properties": {
+                "adopted_supports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ClaimSupport"
+                    }
+                },
+                "claim": {
+                    "$ref": "#/definitions/sessionvo.Claim"
+                },
+                "completeness": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "rejected_supports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ClaimSupport"
+                    }
+                },
+                "unused_evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                }
+            }
+        },
+        "assemblysvc.EventNode": {
+            "type": "object",
+            "properties": {
+                "causation_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "emitted_at": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "layer": {
+                    "type": "integer"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "producer_epoch": {
+                    "type": "integer"
+                },
+                "producer_sequence": {
+                    "type": "integer"
+                },
+                "producer_stream_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "assemblysvc.OperationBusinessEdgeView": {
+            "type": "object",
+            "properties": {
+                "business_ref": {
+                    "$ref": "#/definitions/assemblysvc.BusinessRefView"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
+                }
+            }
+        },
+        "assemblysvc.ProjectedResult": {
+            "type": "object",
+            "properties": {
+                "artifact_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.BusinessRefView"
+                    }
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.ClaimAssembly"
+                    }
+                },
+                "completeness": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "event_layers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.EventNode"
+                    }
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                },
+                "included_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "operation_business_edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.OperationBusinessEdgeView"
+                    }
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "unused_evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                }
+            }
+        },
         "evidencevo.ActionSummary": {
             "type": "object",
             "properties": {
@@ -3287,6 +3509,22 @@ const docTemplate = `{
         },
         "httphandler.evidenceEventRequest": {
             "type": "object",
+            "required": [
+                "bkn.trace.schema.version",
+                "conversation_id",
+                "emitted_at",
+                "envelope",
+                "event_id",
+                "event_type",
+                "interaction_id",
+                "observed_at",
+                "payload_hash",
+                "producer_epoch",
+                "producer_id",
+                "producer_sequence",
+                "producer_stream_id",
+                "started_at"
+            ],
             "properties": {
                 "artifact_refs": {
                     "type": "array",
@@ -3297,7 +3535,7 @@ const docTemplate = `{
                 "attempt": {
                     "type": "integer"
                 },
-                "business_domain_id": {
+                "bkn.trace.schema.version": {
                     "type": "string"
                 },
                 "business_refs": {
@@ -3310,6 +3548,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.Claim"
                     }
                 },
                 "conversation_id": {
@@ -3330,11 +3574,23 @@ const docTemplate = `{
                 "event_type": {
                     "type": "string"
                 },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                },
                 "interaction_id": {
                     "type": "string"
                 },
                 "observed_at": {
                     "type": "string"
+                },
+                "operation_business_edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.OperationBusinessEdge"
+                    }
                 },
                 "operation_id": {
                     "type": "string"
@@ -3357,16 +3613,10 @@ const docTemplate = `{
                 "request_id": {
                     "type": "string"
                 },
-                "schema_version": {
-                    "type": "string"
-                },
                 "span_id": {
                     "type": "string"
                 },
                 "started_at": {
-                    "type": "string"
-                },
-                "tenant_id": {
                     "type": "string"
                 },
                 "trace_id": {
@@ -3454,6 +3704,29 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.interactionBusinessGraphResponse": {
+            "type": "object",
+            "properties": {
+                "assembly": {
+                    "$ref": "#/definitions/assemblysvc.ProjectedResult"
+                },
+                "assembly_revision": {
+                    "$ref": "#/definitions/sessionvo.AssemblyRevision"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "evidence_status": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "execution_status": {
+                    "$ref": "#/definitions/sessionvo.InteractionStatus"
+                },
+                "interaction_id": {
                     "type": "string"
                 }
             }
@@ -3681,6 +3954,56 @@ const docTemplate = `{
                 }
             }
         },
+        "sessionvo.AssemblyRevision": {
+            "type": "object",
+            "properties": {
+                "artifact_manifest_hash": {
+                    "type": "string"
+                },
+                "assembly_completeness": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "completion_manifest_version": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "included_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "included_receipt_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "parent_revision_id": {
+                    "type": "string"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "revision_id": {
+                    "type": "string"
+                },
+                "revision_no": {
+                    "type": "integer"
+                },
+                "trigger": {
+                    "type": "string"
+                }
+            }
+        },
         "sessionvo.AttemptStatus": {
             "type": "string",
             "enum": [
@@ -3718,7 +4041,147 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ref_type": {
+                    "$ref": "#/definitions/sessionvo.BusinessRefType"
+                },
+                "version": {
                     "type": "string"
+                }
+            }
+        },
+        "sessionvo.BusinessRefType": {
+            "type": "string",
+            "enum": [
+                "knowledge_network",
+                "object_type",
+                "object_instance",
+                "property",
+                "relation_type",
+                "data_resource",
+                "metric",
+                "logic",
+                "function",
+                "action_type",
+                "action_instance"
+            ],
+            "x-enum-varnames": [
+                "BusinessRefKnowledgeNetwork",
+                "BusinessRefObjectType",
+                "BusinessRefObjectInstance",
+                "BusinessRefProperty",
+                "BusinessRefRelationType",
+                "BusinessRefDataResource",
+                "BusinessRefMetric",
+                "BusinessRefLogic",
+                "BusinessRefFunction",
+                "BusinessRefActionType",
+                "BusinessRefActionInstance"
+            ]
+        },
+        "sessionvo.Claim": {
+            "type": "object",
+            "required": [
+                "claim_id",
+                "claim_status",
+                "claim_type",
+                "content_artifact_ref",
+                "materiality",
+                "required_support_roles",
+                "supports"
+            ],
+            "properties": {
+                "claim_id": {
+                    "type": "string"
+                },
+                "claim_status": {
+                    "$ref": "#/definitions/sessionvo.ClaimStatus"
+                },
+                "claim_type": {
+                    "type": "string"
+                },
+                "content_artifact_ref": {
+                    "type": "string"
+                },
+                "materiality": {
+                    "$ref": "#/definitions/sessionvo.ClaimMateriality"
+                },
+                "required_support_roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "supports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ClaimSupport"
+                    }
+                }
+            }
+        },
+        "sessionvo.ClaimMateriality": {
+            "type": "string",
+            "enum": [
+                "material",
+                "supporting"
+            ],
+            "x-enum-varnames": [
+                "ClaimMaterial",
+                "ClaimSupporting"
+            ]
+        },
+        "sessionvo.ClaimStatus": {
+            "type": "string",
+            "enum": [
+                "asserted",
+                "withdrawn"
+            ],
+            "x-enum-varnames": [
+                "ClaimAsserted",
+                "ClaimWithdrawn"
+            ]
+        },
+        "sessionvo.ClaimSupport": {
+            "type": "object",
+            "required": [
+                "content_hash",
+                "role",
+                "source_interaction_id",
+                "source_revision_id",
+                "status",
+                "target_ref",
+                "target_type",
+                "version"
+            ],
+            "properties": {
+                "content_hash": {
+                    "type": "string"
+                },
+                "fragment_selector": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "source_interaction_id": {
+                    "type": "string"
+                },
+                "source_operation_id": {
+                    "type": "string"
+                },
+                "source_revision_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/sessionvo.SupportStatus"
+                },
+                "target_ref": {
+                    "type": "string"
+                },
+                "target_type": {
+                    "$ref": "#/definitions/sessionvo.SupportTargetType"
                 },
                 "version": {
                     "type": "string"
@@ -3840,6 +4303,66 @@ const docTemplate = `{
                 "DurabilityPending",
                 "DurabilityDurable",
                 "DurabilityFailed"
+            ]
+        },
+        "sessionvo.EvidenceRef": {
+            "type": "object",
+            "required": [
+                "content_hash",
+                "evidence_ref",
+                "ref_type",
+                "source_interaction_id",
+                "source_revision_id",
+                "version"
+            ],
+            "properties": {
+                "artifact_ref": {
+                    "type": "string"
+                },
+                "as_of": {
+                    "type": "string"
+                },
+                "content_hash": {
+                    "type": "string"
+                },
+                "evidence_ref": {
+                    "type": "string"
+                },
+                "fragment_selector": {
+                    "type": "string"
+                },
+                "ref_type": {
+                    "$ref": "#/definitions/sessionvo.EvidenceRefType"
+                },
+                "source_interaction_id": {
+                    "type": "string"
+                },
+                "source_operation_id": {
+                    "type": "string"
+                },
+                "source_revision_id": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.EvidenceRefType": {
+            "type": "string",
+            "enum": [
+                "event",
+                "artifact",
+                "artifact_fragment",
+                "operation_output",
+                "claim"
+            ],
+            "x-enum-varnames": [
+                "EvidenceRefEvent",
+                "EvidenceRefArtifact",
+                "EvidenceRefArtifactFragment",
+                "EvidenceRefOperationOutput",
+                "EvidenceRefClaim"
             ]
         },
         "sessionvo.EvidenceStatus": {
@@ -4032,6 +4555,54 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "sessionvo.OperationBusinessEdge": {
+            "type": "object",
+            "required": [
+                "business_ref",
+                "observed_at",
+                "operation_id",
+                "role"
+            ],
+            "properties": {
+                "business_ref": {
+                    "$ref": "#/definitions/sessionvo.BusinessRef"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
+                }
+            }
+        },
+        "sessionvo.OperationBusinessRole": {
+            "type": "string",
+            "enum": [
+                "read",
+                "filter",
+                "group",
+                "aggregate",
+                "input",
+                "output",
+                "modify",
+                "recommend",
+                "execute"
+            ],
+            "x-enum-varnames": [
+                "OperationRoleRead",
+                "OperationRoleFilter",
+                "OperationRoleGroup",
+                "OperationRoleAggregate",
+                "OperationRoleInput",
+                "OperationRoleOutput",
+                "OperationRoleModify",
+                "OperationRoleRecommend",
+                "OperationRoleExecute"
+            ]
         },
         "sessionvo.Owner": {
             "type": "object",
@@ -4231,6 +4802,32 @@ const docTemplate = `{
             "x-enum-varnames": [
                 "SubjectUser",
                 "SubjectService"
+            ]
+        },
+        "sessionvo.SupportStatus": {
+            "type": "string",
+            "enum": [
+                "adopted",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "SupportAdopted",
+                "SupportRejected"
+            ]
+        },
+        "sessionvo.SupportTargetType": {
+            "type": "string",
+            "enum": [
+                "evidence",
+                "claim",
+                "artifact_fragment",
+                "operation_output"
+            ],
+            "x-enum-varnames": [
+                "SupportEvidence",
+                "SupportClaim",
+                "SupportArtifactFragment",
+                "SupportOperationOutput"
             ]
         }
     }

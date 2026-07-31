@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 )
@@ -75,7 +76,7 @@ func (s *Service) Ingest(ctx context.Context, event ledgervo.Event) (ledgervo.Du
 
 func validateEvent(event ledgervo.Event) error {
 	if event.SchemaVersion != "3.0.0" {
-		return &DomainError{Code: CodeInvalidEvent, Message: "schema_version must be 3.0.0"}
+		return &DomainError{Code: CodeInvalidEvent, Message: "bkn.trace.schema.version must be 3.0.0"}
 	}
 	if event.EventID == "" || event.EventType == "" || event.ConversationID == "" ||
 		event.InteractionID == "" || event.ProducerID == "" || event.ProducerStreamID == "" ||
@@ -94,8 +95,113 @@ func validateEvent(event ledgervo.Event) error {
 	if event.StartedAt.IsZero() || event.ObservedAt.IsZero() || event.EmittedAt.IsZero() {
 		return &DomainError{Code: CodeInvalidEvent, Message: "started_at, observed_at and emitted_at are required"}
 	}
+	if event.ObservedAt.Before(event.StartedAt) || event.EmittedAt.Before(event.ObservedAt) {
+		return &DomainError{Code: CodeInvalidEvent, Message: "event timestamps must satisfy started_at <= observed_at <= emitted_at"}
+	}
 	if !json.Valid(event.Envelope) {
 		return &DomainError{Code: CodeInvalidEvent, Message: "event envelope is not valid JSON"}
 	}
+	if err := validateSemanticEvidence(event); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateSemanticEvidence(event ledgervo.Event) error {
+	for _, ref := range event.ArtifactRefs {
+		if ref == "" {
+			return &DomainError{Code: CodeInvalidEvent, Message: "artifact_refs contains an empty artifact reference"}
+		}
+	}
+	for _, ref := range event.BusinessRefs {
+		if ref.RefID == "" || ref.BusinessDomainID != event.Owner.BusinessDomainID || ref.Version == "" || !validBusinessRefType(ref.RefType) {
+			return &DomainError{Code: CodeInvalidEvent, Message: "business_refs contains an invalid typed business reference"}
+		}
+	}
+	for _, ref := range event.EvidenceRefs {
+		if ref.Ref == "" || ref.SourceInteractionID == "" || ref.SourceRevisionID == "" ||
+			ref.Version == "" || ref.ContentHash == "" || !validEvidenceRefType(ref.RefType) {
+			return &DomainError{Code: CodeInvalidEvent, Message: "evidence_refs contains an imprecise evidence reference"}
+		}
+	}
+	for _, claim := range event.Claims {
+		if claim.ID == "" || claim.Type == "" || claim.ContentArtifactRef == "" ||
+			!validClaimMateriality(claim.Materiality) || !validClaimStatus(claim.Status) {
+			return &DomainError{Code: CodeInvalidEvent, Message: "claims contains an invalid claim"}
+		}
+		for _, support := range claim.Supports {
+			if support.TargetRef == "" || support.SourceInteractionID == "" || support.SourceRevisionID == "" ||
+				support.Version == "" || support.ContentHash == "" || support.Role == "" ||
+				!validSupportTargetType(support.TargetType) || !validSupportStatus(support.Status) ||
+				(support.Status == sessionvo.SupportRejected && support.Reason == "") {
+				return &DomainError{Code: CodeInvalidEvent, Message: "claim supports contains an imprecise or unexplained support"}
+			}
+		}
+	}
+	for _, edge := range event.OperationBusinessEdges {
+		if edge.OperationID == "" || edge.OperationID != event.OperationID || edge.ObservedAt.IsZero() ||
+			edge.ObservedAt.Before(event.StartedAt) || edge.ObservedAt.After(event.EmittedAt) || !validOperationRole(edge.Role) ||
+			edge.BusinessRef.RefID == "" || edge.BusinessRef.BusinessDomainID != event.Owner.BusinessDomainID ||
+			edge.BusinessRef.Version == "" || !validBusinessRefType(edge.BusinessRef.RefType) {
+			return &DomainError{Code: CodeInvalidEvent, Message: "operation_business_edges contains an invalid typed edge"}
+		}
+	}
+	return nil
+}
+
+func validBusinessRefType(value sessionvo.BusinessRefType) bool {
+	switch value {
+	case sessionvo.BusinessRefKnowledgeNetwork, sessionvo.BusinessRefObjectType,
+		sessionvo.BusinessRefObjectInstance, sessionvo.BusinessRefProperty,
+		sessionvo.BusinessRefRelationType, sessionvo.BusinessRefDataResource,
+		sessionvo.BusinessRefMetric, sessionvo.BusinessRefLogic, sessionvo.BusinessRefFunction,
+		sessionvo.BusinessRefActionType, sessionvo.BusinessRefActionInstance:
+		return true
+	default:
+		return false
+	}
+}
+
+func validEvidenceRefType(value sessionvo.EvidenceRefType) bool {
+	switch value {
+	case sessionvo.EvidenceRefEvent, sessionvo.EvidenceRefArtifact,
+		sessionvo.EvidenceRefArtifactFragment, sessionvo.EvidenceRefOperationOutput,
+		sessionvo.EvidenceRefClaim:
+		return true
+	default:
+		return false
+	}
+}
+
+func validClaimMateriality(value sessionvo.ClaimMateriality) bool {
+	return value == sessionvo.ClaimMaterial || value == sessionvo.ClaimSupporting
+}
+
+func validClaimStatus(value sessionvo.ClaimStatus) bool {
+	return value == sessionvo.ClaimAsserted || value == sessionvo.ClaimWithdrawn
+}
+
+func validSupportTargetType(value sessionvo.SupportTargetType) bool {
+	switch value {
+	case sessionvo.SupportEvidence, sessionvo.SupportClaim,
+		sessionvo.SupportArtifactFragment, sessionvo.SupportOperationOutput:
+		return true
+	default:
+		return false
+	}
+}
+
+func validSupportStatus(value sessionvo.SupportStatus) bool {
+	return value == sessionvo.SupportAdopted || value == sessionvo.SupportRejected
+}
+
+func validOperationRole(value sessionvo.OperationBusinessRole) bool {
+	switch value {
+	case sessionvo.OperationRoleRead, sessionvo.OperationRoleFilter, sessionvo.OperationRoleGroup,
+		sessionvo.OperationRoleAggregate, sessionvo.OperationRoleInput, sessionvo.OperationRoleOutput,
+		sessionvo.OperationRoleModify, sessionvo.OperationRoleRecommend, sessionvo.OperationRoleExecute:
+		return true
+	default:
+		return false
+	}
 }

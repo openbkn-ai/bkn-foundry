@@ -1100,6 +1100,7 @@ func TestLateDurableReceiptCreatesNewImmutableAssemblyRevision(t *testing.T) {
 		ReceiptID: receipt.ID, PayloadHash: "sha256:late-result",
 		EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID:          "req-late", TraceID: validTraceIDOne,
+		ObservedEvidenceRefs: []string{"evt-late-evidence"},
 	})
 	if err != nil {
 		t.Fatalf("complete late receipt: %v", err)
@@ -1110,7 +1111,8 @@ func TestLateDurableReceiptCreatesNewImmutableAssemblyRevision(t *testing.T) {
 	}
 	if len(revisions) != 2 || revisions[0].Completeness != sessionvo.EvidencePartial ||
 		revisions[1].Completeness != sessionvo.EvidenceComplete ||
-		revisions[1].ParentRevisionID != revisions[0].ID || revisions[1].Trigger != "late_receipt" {
+		revisions[1].ParentRevisionID != revisions[0].ID || revisions[1].Trigger != "late_receipt" ||
+		revisions[0].ArtifactManifestHash == revisions[1].ArtifactManifestHash {
 		t.Fatalf("unexpected immutable revision chain: %#v", revisions)
 	}
 }

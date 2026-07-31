@@ -9,18 +9,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
 const maxLifecycleBodyBytes = 1 << 20
 
 type SessionHandler struct {
-	service *sessionsvc.Service
+	service  *sessionsvc.Service
+	assembly *assemblysvc.QueryService
 }
 
 func NewSessionHandler(service *sessionsvc.Service) *SessionHandler {
 	return &SessionHandler{service: service}
+}
+
+func NewSessionHandlerWithAssembly(service *sessionsvc.Service, assembly *assemblysvc.QueryService) *SessionHandler {
+	return &SessionHandler{service: service, assembly: assembly}
+}
+
+type interactionBusinessGraphResponse struct {
+	InteractionID   string                      `json:"interaction_id"`
+	ConversationID  string                      `json:"conversation_id"`
+	ExecutionStatus sessionvo.InteractionStatus `json:"execution_status"`
+	EvidenceStatus  sessionvo.EvidenceStatus    `json:"evidence_status"`
+	Revision        *sessionvo.AssemblyRevision `json:"assembly_revision,omitempty"`
+	Assembly        assemblysvc.ProjectedResult `json:"assembly"`
 }
 
 type lifecycleErrorEnvelope struct {
@@ -319,6 +335,10 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 	}
 	path := pathAfterResource(r.URL.Path, "interactions")
 	parts := splitLifecyclePath(path)
+	if len(parts) == 2 && parts[1] == "business-graph" && r.Method == http.MethodGet {
+		h.GetInteractionBusinessGraph(w, r)
+		return
+	}
 	if len(parts) == 1 && r.Method == http.MethodGet {
 		value, err := h.service.GetInteraction(r.Context(), owner, parts[0])
 		h.writeLifecycleResult(w, r, value, err, http.StatusOK)
@@ -358,6 +378,50 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 		},
 	})
 	h.writeLifecycleResult(w, r, value, err, http.StatusOK)
+}
+
+// GetInteractionBusinessGraph returns one authorized immutable business-semantic assembly.
+// @Summary Get an Interaction business semantic graph
+// @Description Returns the latest immutable assembly revision with precise Claim supports and causal DAG layers.
+// @Tags evidence
+// @Produce json
+// @Param interaction_id path string true "Interaction ID"
+// @Success 200 {object} interactionBusinessGraphResponse
+// @Failure 401,404,500 {object} lifecycleErrorEnvelope
+// @Router /interactions/{interaction_id}/business-graph [get]
+func (h *SessionHandler) GetInteractionBusinessGraph(w http.ResponseWriter, r *http.Request) {
+	owner, ok := trustedOwnerFromRequest(r)
+	if !ok {
+		writeLifecycleError(w, r, http.StatusUnauthorized, "permission_denied", "trusted lifecycle identity is required")
+		return
+	}
+	parts := splitLifecyclePath(pathAfterResource(r.URL.Path, "interactions"))
+	if len(parts) != 2 || parts[1] != "business-graph" || r.Method != http.MethodGet || h.assembly == nil {
+		writeLifecycleError(w, r, http.StatusNotFound, "resource_not_disclosed", "request was not found in the authorized scope")
+		return
+	}
+	view, err := h.assembly.GetInteractionAuthorized(r.Context(), owner, parts[0], trustedQueryScope(r, owner))
+	if errors.Is(err, assemblysvc.ErrNotFound) {
+		writeLifecycleError(w, r, http.StatusNotFound, "resource_not_disclosed", "request was not found in the authorized scope")
+		return
+	}
+	if err != nil {
+		writeLifecycleError(w, r, http.StatusInternalServerError, "internal_error", "business graph query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, interactionBusinessGraphResponse{
+		InteractionID: view.Interaction.ID, ConversationID: view.Interaction.ConversationID,
+		ExecutionStatus: view.Interaction.ExecutionStatus, EvidenceStatus: view.Interaction.EvidenceStatus,
+		Revision: view.Revision, Assembly: view.Assembly,
+	})
+}
+
+func trustedQueryScope(r *http.Request, owner sessionvo.Owner) evidencevo.QueryScope {
+	return evidencevo.QueryScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		AccountID: owner.EffectiveSubjectID, AccountType: string(owner.EffectiveSubjectType),
+		Authorization: strings.TrimSpace(r.Header.Get("Authorization")),
+	}
 }
 
 func (request terminalInteractionRequest) expectedManifestEntries() (

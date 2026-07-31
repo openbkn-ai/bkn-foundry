@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
 var (
@@ -15,4 +16,5 @@ var (
 
 type Store interface {
 	Commit(ctx context.Context, event ledgervo.Event) (ledgervo.DurableAck, error)
+	ListInteractionEvents(ctx context.Context, owner sessionvo.Owner, interactionID string) ([]ledgervo.Event, error)
 }

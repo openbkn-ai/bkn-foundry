@@ -2,16 +2,72 @@ package httphandler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
 )
+
+func TestInteractionBusinessGraphReturnsAuthorizedSemanticViewWithoutLeaseSecrets(t *testing.T) {
+	t.Parallel()
+
+	sessions := sessionstore.New()
+	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
+	ledger := ledgerstore.New()
+	owner := sessionvo.Owner{
+		TenantID: "tenant-1", BusinessDomainID: "domain-1", ApplicationPrincipalID: "app-1",
+		EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user-1",
+	}
+	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
+		Owner: owner, ExternalConversationKey: "thread", IdempotencyKey: "conv",
+	})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	interaction, err := lifecycle.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "int",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	envelope := json.RawMessage(`{"result":"ok"}`)
+	now := time.Date(2026, 7, 31, 9, 0, 0, 0, time.UTC)
+	_, err = ledger.Commit(context.Background(), ledgervo.Event{
+		EventID: "evt-http-graph", EventType: "operation.output.observed", SchemaVersion: "3.0.0",
+		PayloadHash: ledgervo.CanonicalPayloadHash(envelope), Owner: owner,
+		ConversationID: conversation.ID, InteractionID: interaction.ID,
+		ProducerID: "agent", ProducerStreamID: "stream", ProducerEpoch: 1, ProducerSequence: 1,
+		StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: envelope,
+	})
+	if err != nil {
+		t.Fatalf("commit event: %v", err)
+	}
+	handler := httphandler.NewSessionHandlerWithAssembly(lifecycle, assemblysvc.NewQueryService(sessions, ledger))
+	request := httptest.NewRequest(http.MethodGet,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/business-graph", nil)
+	setTrustedOwnerHeaders(request)
+	response := httptest.NewRecorder()
+
+	handler.GetInteractionBusinessGraph(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "evt-http-graph") {
+		t.Fatalf("unexpected business graph response %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "lease_token") {
+		t.Fatalf("business graph leaked lifecycle lease secret: %s", response.Body.String())
+	}
+}
 
 func TestEnsureConversationRejectsBodyIdentityFields(t *testing.T) {
 	t.Parallel()
