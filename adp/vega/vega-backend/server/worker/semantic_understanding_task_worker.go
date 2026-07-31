@@ -492,7 +492,11 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 			fieldDetails = append(fieldDetails, interfaces.SemanticUnderstandingFieldApplyDetail{Name: field.Name, Status: "skipped", Reasons: []string{"display_name exceeds max length"}})
 			continue
 		}
-		missingDisplayName := normalizeSemanticFieldName(field.DisplayName) == ""
+		// A whitespace-only display name is absent and is handled by
+		// applyStringByMode. Punctuation-only values, however, are present but
+		// not meaningful semantic names, so they must be rejected even in force
+		// mode rather than being allowed to overwrite an existing display name.
+		missingDisplayName := strings.TrimSpace(field.DisplayName) == ""
 		invalidDisplayName := !missingDisplayName && isTechnicalFieldName(field.Name, field.DisplayName)
 		reasons := make([]string, 0, 1)
 		if invalidDisplayName {
