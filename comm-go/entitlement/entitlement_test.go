@@ -162,6 +162,23 @@ func TestMarkAssembledRequiresMinEdition(t *testing.T) {
 	}
 }
 
+func TestMarkAssembledRejectsAnUnknownEdition(t *testing.T) {
+	reset()
+	// A misspelt tier fails in the worse direction than a missing one: an
+	// unrecognised edition ranks with community (licverify Edition.rank falls
+	// through to 0), so AtLeast(min) is true for every licence and the paid
+	// capability silently becomes free.
+	msg := mustPanic(t, "misspelt MinEdition", func() {
+		MarkAssembled("audit", licverify.Edition("enterprize"))
+	})
+	if !strings.Contains(msg, "unknown edition") {
+		t.Fatalf("panic should name the bad value, got %q", msg)
+	}
+	if len(Assembled()) != 0 {
+		t.Fatal("nothing should have been recorded")
+	}
+}
+
 func TestRegistrationDoesNotDependOnTheLicence(t *testing.T) {
 	reset()
 	SetGate(fixed(licverify.EditionCommunity))

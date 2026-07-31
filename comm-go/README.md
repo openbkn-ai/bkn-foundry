@@ -31,7 +31,8 @@ go mod tidy && go build ./... && go test ./...
 找出所有消费者：
 
 ```bash
-grep -rl 'openbkn-ai/bkn-foundry/comm-go' --include=go.mod . | xargs -n1 dirname
+# 要求路径后面跟着版本号，否则 comm-go/go.mod 的 module 行也会命中
+grep -rlE 'openbkn-ai/bkn-foundry/comm-go v[0-9]' --include=go.mod . | xargs -n1 dirname
 ```
 
 ## 版本

@@ -96,6 +96,22 @@ func TestZeroMinEditionPanics(t *testing.T) {
 	}
 }
 
+func TestUnknownMinEditionPanics(t *testing.T) {
+	r := enterprise(t)
+	// Same class of mistake as the zero value, worse consequences: an
+	// unrecognised tier ranks with community, so every licence clears it and the
+	// paid entry is free. Caught in MarkAssembled, one place for every socket.
+	msg := mustPanic(t, "misspelt MinEdition", func() {
+		r.Add("probe", "context_probe", licverify.Edition("enterprize"), entry{"probe"})
+	})
+	if !strings.Contains(msg, "unknown edition") {
+		t.Fatalf("panic should name the bad value, got %q", msg)
+	}
+	if r.Len() != 0 {
+		t.Fatal("nothing should have been registered")
+	}
+}
+
 func TestAddAfterFreezePanics(t *testing.T) {
 	r := enterprise(t)
 	entitlement.Freeze()

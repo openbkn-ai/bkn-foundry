@@ -60,7 +60,6 @@ type Registry[T any] struct {
 
 	mu    sync.RWMutex
 	items map[string]T
-	order []string
 }
 
 // New creates a registry for a socket. kind is the socket's name, used in panic
@@ -74,8 +73,8 @@ func New[T any](kind string) *Registry[T] {
 //
 // It panics on every condition that would otherwise fail silently at runtime:
 // registering after the assembly window closed, a duplicate key, a missing
-// capability name, or a zero MinEdition — the last one being how a paid entry
-// would accidentally register as free.
+// capability name, or a MinEdition that is zero or unrecognised — those last two
+// being how a paid entry accidentally registers as free.
 func (r *Registry[T]) Add(key, capability string, min licverify.Edition, item T) {
 	if key == "" {
 		panic(r.kind + ": registration with an empty key")
@@ -93,12 +92,13 @@ func (r *Registry[T]) Add(key, capability string, min licverify.Edition, item T)
 	if _, dup := r.items[key]; dup {
 		panic(fmt.Sprintf("%s: %q registered twice — the second registration would silently replace the first", r.kind, key))
 	}
-	// MarkAssembled rejects a zero MinEdition, so the check lives in one place
-	// for every socket rather than being repeated (and eventually forgotten).
+	// MarkAssembled rejects a zero or misspelt MinEdition, so those checks live
+	// in one place for every socket rather than being repeated (and eventually
+	// forgotten). An unrecognised tier is the dangerous one: it ranks with
+	// community, so AtLeast is true for every licence.
 	entitlement.MarkAssembled(capability, min)
 
 	r.items[key] = item
-	r.order = append(r.order, key)
 }
 
 // Get returns the entry registered under key.
@@ -115,7 +115,10 @@ func (r *Registry[T]) Get(key string) (T, bool) {
 func (r *Registry[T]) All() []T {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	keys := append([]string(nil), r.order...)
+	keys := make([]string, 0, len(r.items))
+	for k := range r.items {
+		keys = append(keys, k)
+	}
 	sort.Strings(keys)
 	out := make([]T, 0, len(keys))
 	for _, k := range keys {
@@ -132,10 +135,24 @@ func (r *Registry[T]) Len() int {
 	return len(r.items)
 }
 
-// ResetForTest empties the registry. It is exported because socket tests live
-// in other packages, and guarded because it is linked into production binaries:
-// clearing a live registry is exactly what Add's assembly-window panic exists
-// to prevent.
+// ResetForTest empties this registry — and only this registry.
+//
+// It deliberately does not touch entitlement's assembly table, and
+// entitlement.ResetForTest does not touch this one. A socket commonly owns
+// several registries (mcptool has one for tools and one for decorators), so
+// coupling them would mean resetting the first wipes the capability claims that
+// the second's entries still depend on — trading one kind of skew for another.
+//
+// So a socket's own reset helper has to clear both halves. mcptool.ResetForTest
+// is the reference shape: reset every registry it owns, then call
+// entitlement.SetGateForTest, which resets the assembly table on its way in.
+//
+// Getting this wrong is not a production risk — both resets refuse to run
+// outside a test binary — but it makes a test lie: "a community build assembled
+// nothing" passes while the socket registry is still full.
+//
+// Guarded because it is linked into production binaries: clearing a live
+// registry is exactly what Add's assembly-window panic exists to prevent.
 func (r *Registry[T]) ResetForTest() {
 	if !testing.Testing() {
 		panic(r.kind + ": ResetForTest is test-only and must never run in a production binary")
@@ -143,5 +160,4 @@ func (r *Registry[T]) ResetForTest() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.items = map[string]T{}
-	r.order = nil
 }

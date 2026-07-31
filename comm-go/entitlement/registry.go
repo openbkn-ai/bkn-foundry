@@ -85,6 +85,15 @@ func MarkAssembled(name string, min licverify.Edition) {
 	if min == "" {
 		panic(fmt.Sprintf("entitlement: capability %q registered without a MinEdition — declare the lowest tier that may use it (licverify.EditionEnterprise and friends)", name))
 	}
+	if !min.Known() {
+		// A misspelt tier is the same class of mistake as a missing one, and it
+		// fails in the worse direction: an unrecognised edition ranks with
+		// community, so AtLeast(min) is true for *every* licence — the paid
+		// entry silently becomes free. Both checks live here rather than in each
+		// socket, because this is the one place a paid capability can register
+		// itself as something it is not.
+		panic(fmt.Sprintf("entitlement: capability %q registered with an unknown edition %q — must be one of community, professional, enterprise, industry", name, min))
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	if frozen {
