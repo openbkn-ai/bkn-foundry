@@ -608,8 +608,18 @@ def run_probes(execu, host_of, headers, ops, found, args):
             for name, path in (op["probe"].get("provides") or {}).items():
                 val = dig(r["json"], path)
                 if val is not None:
-                    found.append(("/api/", name, str(val)))
+                    found.append((service_scope(op["url"]), name, val))
     return found
+
+
+def service_scope(url):
+    """取 URL 的服务前缀作为参数作用域,如 /api/agent-retrieval/。
+
+    probe 的 provides 曾统一挂在全局 /api/ 下,只靠 `cl_` 之类的命名前缀规避
+    跨模块串味——约定没有强制力,哪个模块写了 provides: {kn_id: ...} 就会串进
+    bkn 的同名路径参数。改成按服务前缀隔离,命名前缀退化为额外保险。"""
+    parts = url.split("/")
+    return "/".join(parts[:3]) + "/" if len(parts) > 3 else "/api/"
 
 
 def fill_path(url, found):
@@ -621,7 +631,7 @@ def fill_path(url, found):
         if not cands:
             missing.append(name)
             continue
-        url = url.replace("{" + name + "}", max(cands)[1])
+        url = url.replace("{" + name + "}", str(max(cands)[1]))
     return url, missing
 
 

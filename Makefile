@@ -21,8 +21,12 @@ CONTRACT_POD        ?= deploy/bkn-agent
 CONTRACT_FACE       ?= in
 CONTRACT_ACCOUNT_ID ?= 266c6a42-6131-4d62-8f39-853e7093701c
 CONTRACT_OUT        ?= $(GEN_DIR)/contract-report.md
-# 额外传给巡检脚本的参数。默认带上 --include-probe-post：探测哪些 POST 是只读的，
-# 由各模块在 OpenAPI 里用 x-contract-probe.readonly 显式声明，脚本不自行判断。
+# 额外传给巡检脚本的参数。默认带上 --include-probe-post，含义比 flag 名字重：
+# 默认行为从「只发 GET」变成「GET + 所有标了 x-contract-probe.readonly 的 POST」。
+# 之所以设成默认，是因为 context-loader 这类服务的查询端点全是 POST，不开就等于
+# 零覆盖。安全边界在标注本身：脚本不自行推断哪个 POST 安全，只认 OpenAPI 里显式
+# 写的 readonly: true —— 因此**新增该标注等同于授权真打这个接口，评审时按写操作对待**。
+# 想退回纯 GET：make api-contract-diff CONTRACT_ARGS=
 CONTRACT_ARGS       ?= --include-probe-post
 
 .PHONY: api-docs api-docs-html api-docs-lint api-docs-clean api-contract-diff print-modtitle print-moddesc print-resname
