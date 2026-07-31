@@ -1,12 +1,12 @@
 name: ci-docs-api
 
 # API 文档流水线：
-#  - PR 触碰 docs/api 时：校验 OpenAPI YAML（$ref 可解析等）。
+#  - PR 触碰 docs/api 时：校验 OpenAPI YAML 并试渲染交互式 HTML。
 #  - push 到 main 后：渲染交互式 HTML（redocly）并发布到 GitHub Pages，供开发者
 #    在线查看（_generated/ 产物一律不进 git，见 .gitignore）。
 #  - 手动 workflow_dispatch（从 main 分发，填 ref=v0.1.2）：补发某个历史版本。
 #
-# 真相源永远是 YAML。
+# docs/api 的统一发布格式是 YAML；生成型模块由各自源码注解生成并做漂移校验。
 #
 # 前置：GitHub Pages 发布需在仓库 Settings → Pages 里把 Source 设为
 # "GitHub Actions"（一次性设置）。
@@ -69,6 +69,9 @@ jobs:
 
       - name: Lint OpenAPI YAML
         run: make api-docs-lint
+
+      - name: Render interactive HTML
+        run: make api-docs-html
 
   pages:
     # push 到 main（发布 main 开发版文档）、打 v* tag（归档该版本）或手动补发后：渲染

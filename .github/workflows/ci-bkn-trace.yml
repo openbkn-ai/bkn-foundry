@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'bkn-trace/**'
+      - 'docs/api/agent-observability/**'
       - '.github/workflows/ci-bkn-trace.yml'
 
 concurrency:

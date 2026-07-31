@@ -1,6 +1,6 @@
 # 📚 API 文档
 
-本目录统一收纳 bkn-foundry 各服务的 **OpenAPI 文档**。YAML 是唯一真相源，交互式 HTML 由工具从 YAML 自动渲染。
+本目录统一收纳 bkn-foundry 各服务的 **OpenAPI 文档**。YAML 是统一发布格式；手写模块以 YAML 为真相源，生成型模块以源码注解为真相源。交互式 HTML 由工具从 YAML 自动渲染。
 
 ## 👀 如何查看
 
@@ -24,7 +24,7 @@
 | 🟩 ontology-query | [`ontology-query/`](ontology-query/) | 本体查询 / 语义检索 / 行动执行与日志。**全量** |
 | 🟨 vega-backend | [`vega/`](vega/) | 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询。**全量** |
 | 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent 运行时：agent CRUD / 对话 / 任务 / 提示词 / 导入导出。**全量** |
-| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。**全量** |
+| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。由 Go 注解生成，**禁止手改 YAML**。**全量** |
 | 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
 
 > 未文档化的服务：`context-loader`、`execution-factory`、`bkn-safe`。
@@ -71,5 +71,6 @@ make api-docs          # （可选）YAML → Markdown，输出到 _generated/*.
 > 编写规则见 [`rules/CONTRIBUTING.zh.md`](../../rules/CONTRIBUTING.zh.md) 的「文档放置规范」一节。下面是要点：
 
 - 新增 / 修改 API 文档 → 改对应模块的 `*.yaml`，一资源一 YAML。
+- `agent-observability` 是生成型例外：修改 Go 注解后执行 `make -C bkn-trace/agent-observability gen-swag`，不得直接编辑发布 YAML；`check-swag` 会校验运行时 JSON、Go 文档与发布 YAML 一致。
 - 跨模块复用的错误 / 认证 → 引 `_shared/`，不复制。
 - 旧位置 `adp/docs/api/` 只留 [`MOVED.md`](../../adp/docs/api/MOVED.md) 指针，不再放文件。

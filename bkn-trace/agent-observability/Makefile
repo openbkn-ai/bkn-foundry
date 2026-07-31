@@ -81,8 +81,9 @@ check-swag: check-swag-version
 		diff -u $(PUBLISHED_SWAG) $$tmp/swagger.yaml
 
 view-swag:
-	@echo "Swagger JSON: http://localhost:8080/swagger/swagger.json"
-	@echo "Swagger YAML: http://localhost:8080/swagger/swagger.yaml"
+	@echo "Swagger UI: http://localhost:8080/api/agent-observability/v1/swagger/index.html"
+	@echo "Swagger JSON: http://localhost:8080/api/agent-observability/v1/swagger/doc.json"
+	@echo "Swagger YAML: $(PUBLISHED_SWAG)"
 
 clean-swag:
 	rm -f $(SWAG_OUT)/docs.go $(SWAG_OUT)/swagger.json $(PUBLISHED_SWAG)

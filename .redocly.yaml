@@ -1,4 +1,4 @@
-# redocly lint 配置 —— 仅约束 docs/api 下的手写 OpenAPI 文档。
+# redocly lint 配置 —— 约束 docs/api 下的手写及生成型 OpenAPI 文档。
 #
 # 目的：守住「结构合法 + $ref（含 _shared 共享 schema）可解析」这条底线，
 # 不因既存的 example/描述类内容瑕疵阻断 CI。内容级修复留给各模块补写批次。

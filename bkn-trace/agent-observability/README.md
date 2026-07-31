@@ -325,9 +325,11 @@ make view-swag
 服务启动后可访问：
 
 ```text
-http://localhost:8080/api/agent-observability/v1/swagger/swagger.json
-http://localhost:8080/api/agent-observability/v1/swagger/swagger.yaml
+http://localhost:8080/api/agent-observability/v1/swagger/index.html
+http://localhost:8080/api/agent-observability/v1/swagger/doc.json
 ```
+
+统一发布的 OpenAPI YAML 位于 `../../docs/api/agent-observability/agent-observability.yaml`。
 
 ## Docker
 

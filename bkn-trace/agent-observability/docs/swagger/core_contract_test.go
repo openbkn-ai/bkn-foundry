@@ -30,6 +30,8 @@ func TestSwaggerGenerationUsesPinnedCLIAndDriftTarget(t *testing.T) {
 		"set -e;",
 		"--packageName swagger",
 		"diff -u $(SWAG_OUT)/",
+		"PUBLISHED_SWAG :=",
+		"diff -u $(PUBLISHED_SWAG)",
 	} {
 		if !strings.Contains(makefile, required) {
 			t.Fatalf("Makefile does not freeze Swagger generation with %q", required)
@@ -157,6 +159,25 @@ func TestGeneratedSwaggerContainsEveryManagedLifecycleRoute(t *testing.T) {
 	} {
 		if _, exists := document.Paths[path]; !exists {
 			t.Errorf("generated Swagger is missing %s", path)
+		}
+	}
+}
+
+func TestGeneratedSwaggerUsesBasePathRelativeTraceRoutes(t *testing.T) {
+	t.Parallel()
+	document := parseSwagger(t, []byte(generated.SwaggerInfo.ReadDoc()))
+	for _, path := range []string{
+		"/traces/_search",
+		"/traces/by-conversation",
+		"/traces/{trace_id}/trace-graph",
+	} {
+		if _, exists := document.Paths[path]; !exists {
+			t.Errorf("generated Swagger is missing relative trace route %s", path)
+		}
+	}
+	for path := range document.Paths {
+		if strings.HasPrefix(path, "/api/agent-observability/v1/") {
+			t.Errorf("generated Swagger route repeats base path: %s", path)
 		}
 	}
 }
