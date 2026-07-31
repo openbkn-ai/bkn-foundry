@@ -277,7 +277,7 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
     if name != raw_name:  # LLM 见到的名字与注册名不同，日志留映射便于排障
         logger.info("[Toolbox] tool name sanitized: %r -> %s (id=%s)", raw_name, name, tool_id)
     description = info.get("description") or metadata.get("summary") or name
-    expected_fact_event_type = _expected_fact_event_type(box_id, metadata)
+    expected_fact_event_type = _expected_fact_event_type(metadata)
 
     # 单个工具元数据坏（非法参数名、schema 畸形）不应连累整箱工具装载
     try:
@@ -308,7 +308,7 @@ def _build_tool(box_id: str, info: dict, account_id: str, account_type: str) -> 
     )
 
 
-def _expected_fact_event_type(box_id: str, metadata: dict[str, Any]) -> str | None:
+def _expected_fact_event_type(metadata: dict[str, Any]) -> str | None:
     path = str(metadata.get("path") or "").rstrip("/")
     if path not in _CONTEXT_LOADER_RETRIEVAL_PATHS:
         return None

@@ -256,7 +256,7 @@ def test_external_tool_with_context_loader_path_does_not_declare_fact_event():
         "path": "/api/agent-retrieval/in/v1/kn/search_schema",
     }
 
-    assert toolbox._expected_fact_event_type("external-box", metadata) is None
+    assert toolbox._expected_fact_event_type(metadata) is None
 
 
 def test_execute_splits_query_and_body_by_declared_location(monkeypatch):

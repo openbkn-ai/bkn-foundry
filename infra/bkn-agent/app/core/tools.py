@@ -195,7 +195,7 @@ async def load_tools(
     # 长出一个 tools 节点，模型仍可能空转一轮工具调用——这正是 #447 的形状。
     mount_skill_reader = bool(tools) or bool(skill_ids)
 
-    # 名字冲突去重（保留先到：显式 toolbox > 默认 box > mcp > agent）。
+    # 名字冲突去重（保留先到：toolbox > mcp > agent）。
     # 挂载时 read_skill_file 预占名字：它是技能加载的一等能力（设计不变量），
     # 不能被同名的用户工具挤掉——反过来挤掉那个用户工具并告警。
     builtin = _read_skill_file_tool(account_id, account_type) if mount_skill_reader else None
