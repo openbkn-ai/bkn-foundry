@@ -29,6 +29,10 @@ type toolBuilder struct {
 	// names maps an advertised tool name to whatever claimed it, so a
 	// collision fails at assembly instead of silently dropping a tool.
 	names map[string]string
+	// keys is the same guard for the ordering key. /mcp/info sorts by key, so
+	// two entries sharing one — an ExtraTool keyed after a core tool but
+	// advertised under another name — would order unpredictably between runs.
+	keys map[string]string
 	// patched holds the decorated variant of a core tool, advertised only
 	// while the licence covers the decorator.
 	patched map[string]mcp.Tool
@@ -46,6 +50,7 @@ func newToolBuilder(locale *mcpLocaleBundle) *toolBuilder {
 	return &toolBuilder{
 		locale:  locale,
 		names:   map[string]string{},
+		keys:    map[string]string{},
 		patched: map[string]mcp.Tool{},
 		gated:   map[string]mcptool.ExtraTool{},
 	}
@@ -143,7 +148,11 @@ func (b *toolBuilder) claimName(name, key string) {
 	if prev, dup := b.names[name]; dup {
 		panic(fmt.Sprintf("mcp: tool name %q is claimed by both %q and %q — registering both would silently drop one", name, prev, key))
 	}
+	if prev, dup := b.keys[key]; dup {
+		panic(fmt.Sprintf("mcp: tool key %q is claimed by both %q and %q — /mcp/info orders by key, so the two would swap places between runs", key, prev, name))
+	}
 	b.names[name] = key
+	b.keys[key] = name
 }
 
 // claimLifecycleNames records the tracing lifecycle tools' advertised names.

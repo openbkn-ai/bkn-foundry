@@ -136,10 +136,19 @@ func TestCommunityMCPInfoUnchanged(t *testing.T) {
 
 	// /mcp/info and tools/list have to agree: the endpoint exists so an
 	// integrator can read the surface without a handshake.
-	assembled := assembledNames(t)
-	for i, name := range assembled {
-		if info.Tools[i].Name != name {
-			t.Fatalf("/mcp/info and tools/list disagree at %d: %q vs %q", i, info.Tools[i].Name, name)
+	// tools/list 的顺序来自 map 遍历，本身不确定，所以那一侧只能比集合；
+	// /mcp/info 的顺序是按 key 稳定排出来的，逐位比才有意义——上面那段循环
+	// 已经做了。这里补的是集合相等，两个方向都要。
+	assembled := map[string]bool{}
+	for _, name := range assembledNames(t) {
+		assembled[name] = true
+	}
+	if len(assembled) != len(info.Tools) {
+		t.Fatalf("/mcp/info 有 %d 个工具，tools/list 有 %d 个", len(info.Tools), len(assembled))
+	}
+	for _, tool := range info.Tools {
+		if !assembled[tool.Name] {
+			t.Fatalf("/mcp/info advertises %q, which tools/list does not have", tool.Name)
 		}
 	}
 }

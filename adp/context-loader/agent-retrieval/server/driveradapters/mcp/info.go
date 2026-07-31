@@ -100,7 +100,9 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 	// 按工具 key 排，不是按对外 name 排。目前 tools_meta.json 与 locales/en-US
 	// 里 name 恒等于 key，两种排法结果一样——但那是巧合，locale 里改个 name
 	// 社区侧的顺序就跟着变了。
-	sort.Slice(all, func(i, j int) bool { return all[i].key < all[j].key })
+	// 稳定排序：装配期已保证 key 互不重复(toolBuilder.claimName)，稳定排序是
+	// 第二道保险——真出现重复时顺序至少不会在两次进程之间抖动。
+	sort.SliceStable(all, func(i, j int) bool { return all[i].key < all[j].key })
 
 	tools := make([]MCPToolInfo, 0, len(all))
 	for _, e := range all {
