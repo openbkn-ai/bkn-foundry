@@ -99,6 +99,12 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 				return nil, errors.New("downstream unavailable")
 			},
 		},
+		{
+			name: "panic",
+			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+				panic("deterministic business defect")
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
