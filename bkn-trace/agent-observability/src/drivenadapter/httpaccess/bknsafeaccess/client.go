@@ -121,7 +121,7 @@ func (c *Client) get(ctx context.Context, path, authorization string, target any
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxSafeResponseBytes))
 		return fmt.Errorf("BKN Safe returned status %d", response.StatusCode)
