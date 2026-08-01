@@ -13,6 +13,83 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
+// ListBusinessProvenanceConversations godoc
+// @Summary List observable business conversations
+// @Description Returns one authorized business-provenance row per conversation, aggregated from real interactions and requests.
+// @Tags business-provenance
+// @Produce json
+// @Param limit query int false "Page size, 1..200"
+// @Param cursor query string false "Opaque pagination cursor"
+// @Param from query string false "Started at or after this RFC3339 timestamp"
+// @Param to query string false "Started at or before this RFC3339 timestamp"
+// @Param status query string false "Execution status"
+// @Param agent_or_app query string false "Agent or application"
+// @Param business_domain query string false "Business domain"
+// @Param knowledge_network query string false "Knowledge network"
+// @Param evidence_completeness query string false "Evidence completeness"
+// @Param keyword query string false "Question, result, ID, business ref, or error keyword"
+// @Success 200 {object} evidencevo.ConversationSummaryPage
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 401 {object} rdto.ErrorResponse
+// @Failure 500 {object} rdto.ErrorResponse
+// @Router /business-provenance/conversations [get]
+func (h *EvidenceHandler) ListBusinessProvenanceConversations(w http.ResponseWriter, r *http.Request) {
+	ensureResponseTraceID(w, r)
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		return
+	}
+	options, ok := h.summaryQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.evidenceService.ListConversations(r.Context(), options)
+	if err != nil {
+		writeSummaryQueryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// ListBusinessProvenanceInteractions godoc
+// @Summary List observable business interactions
+// @Description Returns one authorized business-provenance row per interaction, aggregated from real requests.
+// @Tags business-provenance
+// @Produce json
+// @Param limit query int false "Page size, 1..200"
+// @Param cursor query string false "Opaque pagination cursor"
+// @Param conversation_id query string false "Conversation ID"
+// @Param from query string false "Started at or after this RFC3339 timestamp"
+// @Param to query string false "Started at or before this RFC3339 timestamp"
+// @Param status query string false "Execution status"
+// @Param agent_or_app query string false "Agent or application"
+// @Param business_domain query string false "Business domain"
+// @Param knowledge_network query string false "Knowledge network"
+// @Param evidence_completeness query string false "Evidence completeness"
+// @Param keyword query string false "Question, result, ID, business ref, or error keyword"
+// @Success 200 {object} evidencevo.InteractionSummaryPage
+// @Failure 400 {object} rdto.ErrorResponse
+// @Failure 401 {object} rdto.ErrorResponse
+// @Failure 500 {object} rdto.ErrorResponse
+// @Router /business-provenance/interactions [get]
+func (h *EvidenceHandler) ListBusinessProvenanceInteractions(w http.ResponseWriter, r *http.Request) {
+	ensureResponseTraceID(w, r)
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		return
+	}
+	options, ok := h.summaryQueryOptionsFromRequest(w, r)
+	if !ok {
+		return
+	}
+	page, err := h.evidenceService.ListInteractions(r.Context(), options)
+	if err != nil {
+		writeSummaryQueryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
 // ListRequests godoc
 // @Summary List observable business requests
 // @Description Returns stable request summaries generated from authorized evidence and artifacts.

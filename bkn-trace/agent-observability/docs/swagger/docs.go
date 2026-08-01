@@ -54,6 +54,212 @@ const docTemplate = `{
                 }
             }
         },
+        "/business-provenance/conversations": {
+            "get": {
+                "description": "Returns one authorized business-provenance row per conversation, aggregated from real interactions and requests.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "business-provenance"
+                ],
+                "summary": "List observable business conversations",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or after this RFC3339 timestamp",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or before this RFC3339 timestamp",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Execution status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent or application",
+                        "name": "agent_or_app",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Business domain",
+                        "name": "business_domain",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Knowledge network",
+                        "name": "knowledge_network",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Evidence completeness",
+                        "name": "evidence_completeness",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question, result, ID, business ref, or error keyword",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.ConversationSummaryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/interactions": {
+            "get": {
+                "description": "Returns one authorized business-provenance row per interaction, aggregated from real requests.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "business-provenance"
+                ],
+                "summary": "List observable business interactions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Conversation ID",
+                        "name": "conversation_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or after this RFC3339 timestamp",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or before this RFC3339 timestamp",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Execution status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent or application",
+                        "name": "agent_or_app",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Business domain",
+                        "name": "business_domain",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Knowledge network",
+                        "name": "knowledge_network",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Evidence completeness",
+                        "name": "evidence_completeness",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question, result, ID, business ref, or error keyword",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.InteractionSummaryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/conversations": {
             "get": {
                 "produces": [
@@ -2948,6 +3154,97 @@ const docTemplate = `{
                 }
             }
         },
+        "evidencevo.ConversationSummary": {
+            "type": "object",
+            "properties": {
+                "agent_or_app": {
+                    "type": "string"
+                },
+                "business_domain": {
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "error_summary": {
+                    "type": "string"
+                },
+                "evidence_completeness": {
+                    "type": "string"
+                },
+                "initiator": {
+                    "type": "string"
+                },
+                "interaction_count": {
+                    "type": "integer"
+                },
+                "knowledge_networks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "question_preview": {
+                    "type": "string"
+                },
+                "request_count": {
+                    "type": "integer"
+                },
+                "result_preview": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "trace_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "evidencevo.ConversationSummaryPage": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.ConversationSummary"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
         "evidencevo.EvidenceArtifact": {
             "type": "object",
             "properties": {
@@ -3169,6 +3466,68 @@ const docTemplate = `{
                 }
             }
         },
+        "evidencevo.InteractionListSummary": {
+            "type": "object",
+            "properties": {
+                "agent_or_app": {
+                    "type": "string"
+                },
+                "business_domain": {
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "error_summary": {
+                    "type": "string"
+                },
+                "evidence_completeness": {
+                    "type": "string"
+                },
+                "initiator": {
+                    "type": "string"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "knowledge_networks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "question_preview": {
+                    "type": "string"
+                },
+                "request_count": {
+                    "type": "integer"
+                },
+                "result_preview": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "trace_count": {
+                    "type": "integer"
+                }
+            }
+        },
         "evidencevo.InteractionSummary": {
             "type": "object",
             "properties": {
@@ -3201,6 +3560,35 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/evidencevo.TraceSummary"
                     }
+                }
+            }
+        },
+        "evidencevo.InteractionSummaryPage": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.InteractionListSummary"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
                 }
             }
         },

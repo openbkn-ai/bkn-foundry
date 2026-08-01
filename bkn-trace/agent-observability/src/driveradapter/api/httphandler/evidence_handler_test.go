@@ -914,6 +914,40 @@ func TestEvidenceHandlerListsBusinessRequestsAndRequestDetail(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerListsBusinessProvenanceConversationsAndInteractions(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	artifactReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(validHandlerArtifact()))
+	artifactRec := httptest.NewRecorder()
+	handler.IngestEvidenceArtifact(artifactRec, artifactReq)
+	if artifactRec.Code != http.StatusCreated {
+		t.Fatalf("seed artifact: %d %s", artifactRec.Code, artifactRec.Body.String())
+	}
+	eventReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerArtifactEventBatch()))
+	eventRec := httptest.NewRecorder()
+	handler.IngestEvidenceEvents(eventRec, eventReq)
+	if eventRec.Code != http.StatusAccepted {
+		t.Fatalf("seed event: %d %s", eventRec.Code, eventRec.Body.String())
+	}
+
+	conversationReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/business-provenance/conversations?limit=10", nil)
+	conversationReq.Header.Set("x-tenant-id", "tenant_demo")
+	conversationRec := httptest.NewRecorder()
+	handler.ListBusinessProvenanceConversations(conversationRec, conversationReq)
+	if conversationRec.Code != http.StatusOK || !strings.Contains(conversationRec.Body.String(), `"conversation_id":"conversation_handler"`) ||
+		!strings.Contains(conversationRec.Body.String(), `"interaction_count":1`) || !strings.Contains(conversationRec.Body.String(), `"request_count":1`) {
+		t.Fatalf("expected conversation projection, got %d: %s", conversationRec.Code, conversationRec.Body.String())
+	}
+
+	interactionReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/business-provenance/interactions?conversation_id=conversation_handler&limit=10", nil)
+	interactionReq.Header.Set("x-tenant-id", "tenant_demo")
+	interactionRec := httptest.NewRecorder()
+	handler.ListBusinessProvenanceInteractions(interactionRec, interactionReq)
+	if interactionRec.Code != http.StatusOK || !strings.Contains(interactionRec.Body.String(), `"interaction_id":"interaction_handler"`) ||
+		!strings.Contains(interactionRec.Body.String(), `"request_count":1`) {
+		t.Fatalf("expected interaction projection, got %d: %s", interactionRec.Code, interactionRec.Body.String())
+	}
+}
+
 func TestEvidenceHandlerListsRequestTracesAndTechnicalExecutions(t *testing.T) {
 	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
@@ -1098,6 +1132,7 @@ func validHandlerArtifactEventBatch() string {
 	    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
 	    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-2f12000000000003-01",
 	    "bkn.request.id": "req_artifact_handler",
+	    "bkn.conversation.id": "conversation_handler",
 	    "bkn.tenant.id": "tenant_demo",
 	    "business_domain": "bd_demo",
 	    "bkn.account.id": "acct_demo",

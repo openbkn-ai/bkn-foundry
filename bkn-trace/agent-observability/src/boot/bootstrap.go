@@ -326,6 +326,8 @@ func newApp(
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
+	mux.HandleFunc(APIBasePath+"/business-provenance/conversations", readAuth(evidenceHandler.ListBusinessProvenanceConversations))
+	mux.HandleFunc(APIBasePath+"/business-provenance/interactions", readAuth(evidenceHandler.ListBusinessProvenanceInteractions))
 	mux.HandleFunc(APIBasePath+"/trace-executions", readAuth(evidenceHandler.ListTraceExecutions))
 	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
 	httphandler.RegisterSessionRoutes(

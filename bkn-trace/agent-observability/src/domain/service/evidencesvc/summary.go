@@ -80,6 +80,264 @@ func (s *Service) ListRequests(ctx context.Context, options evidencevo.SummaryQu
 	return page, nil
 }
 
+func (s *Service) ListConversations(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.ConversationSummaryPage, error) {
+	requests, _, metadata, err := s.loadExecutionSummaries(ctx, options)
+	if err != nil {
+		return evidencevo.ConversationSummaryPage{}, err
+	}
+	grouped := map[string][]evidencevo.RequestSummary{}
+	for _, request := range requests {
+		if request.ConversationID != "" && matchesRequestFilters(request, options) {
+			grouped[request.ConversationID] = append(grouped[request.ConversationID], request)
+		}
+	}
+	entries := make([]evidencevo.ConversationSummary, 0, len(grouped))
+	for conversationID, group := range grouped {
+		entries = append(entries, buildConversationSummary(conversationID, group))
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].StartedAt == entries[j].StartedAt {
+			return entries[i].ConversationID < entries[j].ConversationID
+		}
+		return entries[i].StartedAt > entries[j].StartedAt
+	})
+	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
+	if err != nil {
+		return evidencevo.ConversationSummaryPage{}, err
+	}
+	start := summaryPageStart(len(entries), hasCursor, func(index int) bool {
+		return afterSummaryCursor(entries[index].StartedAt, entries[index].ConversationID, cursor)
+	})
+	end := summaryPageEnd(start, len(entries), options.Limit)
+	page := evidencevo.ConversationSummaryPage{
+		Entries: append([]evidencevo.ConversationSummary{}, entries[start:end]...),
+		Total:   len(entries), Truncated: metadata.Truncated, Partial: metadata.Truncated,
+		PartialReasons: append([]string{}, metadata.PartialReasons...),
+	}
+	if end < len(entries) && len(page.Entries) > 0 {
+		last := page.Entries[len(page.Entries)-1]
+		next := encodeSummaryCursor(summaryCursor{StartedAt: last.StartedAt, ID: last.ConversationID})
+		page.NextCursor = &next
+	}
+	return page, nil
+}
+
+func (s *Service) ListInteractions(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.InteractionSummaryPage, error) {
+	requests, _, metadata, err := s.loadExecutionSummaries(ctx, options)
+	if err != nil {
+		return evidencevo.InteractionSummaryPage{}, err
+	}
+	grouped := map[string][]evidencevo.RequestSummary{}
+	for _, request := range requests {
+		if request.InteractionID != "" && matchesRequestFilters(request, options) {
+			grouped[request.InteractionID] = append(grouped[request.InteractionID], request)
+		}
+	}
+	entries := make([]evidencevo.InteractionListSummary, 0, len(grouped))
+	for interactionID, group := range grouped {
+		entries = append(entries, buildInteractionListSummary(interactionID, group))
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].StartedAt == entries[j].StartedAt {
+			return entries[i].InteractionID < entries[j].InteractionID
+		}
+		return entries[i].StartedAt > entries[j].StartedAt
+	})
+	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
+	if err != nil {
+		return evidencevo.InteractionSummaryPage{}, err
+	}
+	start := summaryPageStart(len(entries), hasCursor, func(index int) bool {
+		return afterSummaryCursor(entries[index].StartedAt, entries[index].InteractionID, cursor)
+	})
+	end := summaryPageEnd(start, len(entries), options.Limit)
+	page := evidencevo.InteractionSummaryPage{
+		Entries: append([]evidencevo.InteractionListSummary{}, entries[start:end]...),
+		Total:   len(entries), Truncated: metadata.Truncated, Partial: metadata.Truncated,
+		PartialReasons: append([]string{}, metadata.PartialReasons...),
+	}
+	if end < len(entries) && len(page.Entries) > 0 {
+		last := page.Entries[len(page.Entries)-1]
+		next := encodeSummaryCursor(summaryCursor{StartedAt: last.StartedAt, ID: last.InteractionID})
+		page.NextCursor = &next
+	}
+	return page, nil
+}
+
+func buildConversationSummary(conversationID string, requests []evidencevo.RequestSummary) evidencevo.ConversationSummary {
+	base, interactionCount := aggregateRequestGroup(requests)
+	return evidencevo.ConversationSummary{
+		ConversationID: conversationID,
+		StartedAt:      base.StartedAt, CompletedAt: base.CompletedAt,
+		Initiator: base.Initiator, AgentOrApp: base.AgentOrApp, BusinessDomain: base.BusinessDomain,
+		KnowledgeNetworks: base.KnowledgeNetworks, QuestionPreview: base.QuestionPreview, ResultPreview: base.ResultPreview,
+		Status: base.Status, EvidenceCompleteness: base.EvidenceCompleteness, PartialReasons: base.PartialReasons,
+		InteractionCount: interactionCount, RequestCount: len(requests), TraceCount: base.TraceCount,
+		DurationMS: base.DurationMS, ErrorSummary: base.ErrorSummary,
+	}
+}
+
+func buildInteractionListSummary(interactionID string, requests []evidencevo.RequestSummary) evidencevo.InteractionListSummary {
+	base, _ := aggregateRequestGroup(requests)
+	conversationID := ""
+	conversationConflict := false
+	for _, request := range requests {
+		if request.ConversationID == "" {
+			continue
+		}
+		if conversationID == "" && !conversationConflict {
+			conversationID = request.ConversationID
+		} else if conversationID != request.ConversationID {
+			conversationID = ""
+			conversationConflict = true
+		}
+	}
+	return evidencevo.InteractionListSummary{
+		InteractionID: interactionID, ConversationID: conversationID,
+		StartedAt: base.StartedAt, CompletedAt: base.CompletedAt,
+		Initiator: base.Initiator, AgentOrApp: base.AgentOrApp, BusinessDomain: base.BusinessDomain,
+		KnowledgeNetworks: base.KnowledgeNetworks, QuestionPreview: base.QuestionPreview, ResultPreview: base.ResultPreview,
+		Status: base.Status, EvidenceCompleteness: base.EvidenceCompleteness, PartialReasons: base.PartialReasons,
+		RequestCount: len(requests), TraceCount: base.TraceCount, DurationMS: base.DurationMS, ErrorSummary: base.ErrorSummary,
+	}
+}
+
+func aggregateRequestGroup(requests []evidencevo.RequestSummary) (evidencevo.RequestSummary, int) {
+	result := evidencevo.RequestSummary{Status: "unknown"}
+	interactions := map[string]struct{}{}
+	knowledgeNetworks := map[string]struct{}{}
+	partialReasons := map[string]struct{}{}
+	var started, completed time.Time
+	questionAt := ""
+	resultAt := ""
+	allCompleted := len(requests) > 0
+	hasError := false
+	hasRunning := false
+	for _, request := range requests {
+		mergeSummaryTime(&started, request.StartedAt, true)
+		mergeSummaryTime(&completed, request.CompletedAt, false)
+		if request.QuestionPreview != "" && (result.QuestionPreview == "" || summaryTimeBefore(request.StartedAt, questionAt)) {
+			result.QuestionPreview = request.QuestionPreview
+			questionAt = request.StartedAt
+		}
+		if request.ResultPreview != "" && (result.ResultPreview == "" || summaryTimeAfter(request.CompletedAt, resultAt)) {
+			result.ResultPreview = request.ResultPreview
+			resultAt = request.CompletedAt
+		}
+		firstNonEmptySummary(&result.Initiator, request.Initiator)
+		firstNonEmptySummary(&result.AgentOrApp, request.AgentOrApp)
+		firstNonEmptySummary(&result.BusinessDomain, request.BusinessDomain)
+		firstNonEmptySummary(&result.ErrorSummary, request.ErrorSummary)
+		result.TraceCount += request.TraceCount
+		if request.InteractionID != "" {
+			interactions[request.InteractionID] = struct{}{}
+		}
+		for _, network := range request.KnowledgeNetworks {
+			knowledgeNetworks[network] = struct{}{}
+		}
+		for _, reason := range request.PartialReasons {
+			partialReasons[reason] = struct{}{}
+		}
+		if evidenceCompletenessRank(request.EvidenceCompleteness) > evidenceCompletenessRank(result.EvidenceCompleteness) {
+			result.EvidenceCompleteness = request.EvidenceCompleteness
+		}
+		switch request.Status {
+		case "error":
+			hasError = true
+			allCompleted = false
+		case "running":
+			hasRunning = true
+			allCompleted = false
+		case "completed":
+		default:
+			allCompleted = false
+		}
+	}
+	switch {
+	case hasError:
+		result.Status = "error"
+	case hasRunning:
+		result.Status = "running"
+	case allCompleted:
+		result.Status = "completed"
+	}
+	if !started.IsZero() {
+		result.StartedAt = started.Format(time.RFC3339Nano)
+	}
+	if !completed.IsZero() {
+		result.CompletedAt = completed.Format(time.RFC3339Nano)
+	}
+	if !started.IsZero() && !completed.IsZero() && !completed.Before(started) {
+		result.DurationMS = completed.Sub(started).Milliseconds()
+	}
+	result.KnowledgeNetworks = sortedSummarySet(knowledgeNetworks)
+	result.PartialReasons = sortedSummarySet(partialReasons)
+	if result.EvidenceCompleteness == "" {
+		result.EvidenceCompleteness = "content_unavailable"
+	}
+	return result, len(interactions)
+}
+
+func evidenceCompletenessRank(value string) int {
+	switch value {
+	case "partial":
+		return 3
+	case "content_unavailable":
+		return 2
+	case "complete":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func sortedSummarySet(values map[string]struct{}) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func firstNonEmptySummary(target *string, value string) {
+	if *target == "" && value != "" {
+		*target = value
+	}
+}
+
+func summaryTimeBefore(value, other string) bool {
+	if other == "" {
+		return true
+	}
+	return value != "" && value < other
+}
+
+func summaryTimeAfter(value, other string) bool {
+	if other == "" {
+		return true
+	}
+	return value != "" && value > other
+}
+
+func summaryPageStart(length int, hasCursor bool, after func(int) bool) int {
+	start := 0
+	if hasCursor {
+		for start < length && !after(start) {
+			start++
+		}
+	}
+	return start
+}
+
+func summaryPageEnd(start, length, limit int) int {
+	end := start + normalizeSummaryLimit(limit)
+	if end > length {
+		return length
+	}
+	return end
+}
+
 func (s *Service) GetRequestSummary(ctx context.Context, requestID string, scope evidencevo.QueryScope) (evidencevo.RequestSummary, bool, error) {
 	requests, _, metadata, err := s.loadRequestExecutionSummaries(ctx, strings.TrimSpace(requestID), scope)
 	if err != nil {

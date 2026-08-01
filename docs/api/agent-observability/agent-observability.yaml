@@ -282,6 +282,66 @@ definitions:
       visibility_summary:
         $ref: '#/definitions/evidencevo.VisibilitySummary'
     type: object
+  evidencevo.ConversationSummary:
+    properties:
+      agent_or_app:
+        type: string
+      business_domain:
+        type: string
+      completed_at:
+        type: string
+      conversation_id:
+        type: string
+      duration_ms:
+        type: integer
+      error_summary:
+        type: string
+      evidence_completeness:
+        type: string
+      initiator:
+        type: string
+      interaction_count:
+        type: integer
+      knowledge_networks:
+        items:
+          type: string
+        type: array
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      question_preview:
+        type: string
+      request_count:
+        type: integer
+      result_preview:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      trace_count:
+        type: integer
+    type: object
+  evidencevo.ConversationSummaryPage:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/evidencevo.ConversationSummary'
+        type: array
+      next_cursor:
+        type: string
+      partial:
+        type: boolean
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      total:
+        type: integer
+      truncated:
+        type: boolean
+    type: object
   evidencevo.EvidenceArtifact:
     properties:
       agent_or_app:
@@ -429,6 +489,47 @@ definitions:
       trace_id:
         type: string
     type: object
+  evidencevo.InteractionListSummary:
+    properties:
+      agent_or_app:
+        type: string
+      business_domain:
+        type: string
+      completed_at:
+        type: string
+      conversation_id:
+        type: string
+      duration_ms:
+        type: integer
+      error_summary:
+        type: string
+      evidence_completeness:
+        type: string
+      initiator:
+        type: string
+      interaction_id:
+        type: string
+      knowledge_networks:
+        items:
+          type: string
+        type: array
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      question_preview:
+        type: string
+      request_count:
+        type: integer
+      result_preview:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      trace_count:
+        type: integer
+    type: object
   evidencevo.InteractionSummary:
     properties:
       completed_at:
@@ -451,6 +552,25 @@ definitions:
         items:
           $ref: '#/definitions/evidencevo.TraceSummary'
         type: array
+    type: object
+  evidencevo.InteractionSummaryPage:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/evidencevo.InteractionListSummary'
+        type: array
+      next_cursor:
+        type: string
+      partial:
+        type: boolean
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      total:
+        type: integer
+      truncated:
+        type: boolean
     type: object
   evidencevo.RequestSummary:
     properties:
@@ -1696,6 +1816,144 @@ paths:
       summary: Get the current BKN Trace access profile
       tags:
       - access
+  /business-provenance/conversations:
+    get:
+      description: Returns one authorized business-provenance row per conversation,
+        aggregated from real interactions and requests.
+      parameters:
+      - description: Page size, 1..200
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Started at or after this RFC3339 timestamp
+        in: query
+        name: from
+        type: string
+      - description: Started at or before this RFC3339 timestamp
+        in: query
+        name: to
+        type: string
+      - description: Execution status
+        in: query
+        name: status
+        type: string
+      - description: Agent or application
+        in: query
+        name: agent_or_app
+        type: string
+      - description: Business domain
+        in: query
+        name: business_domain
+        type: string
+      - description: Knowledge network
+        in: query
+        name: knowledge_network
+        type: string
+      - description: Evidence completeness
+        in: query
+        name: evidence_completeness
+        type: string
+      - description: Question, result, ID, business ref, or error keyword
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.ConversationSummaryPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: List observable business conversations
+      tags:
+      - business-provenance
+  /business-provenance/interactions:
+    get:
+      description: Returns one authorized business-provenance row per interaction,
+        aggregated from real requests.
+      parameters:
+      - description: Page size, 1..200
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Conversation ID
+        in: query
+        name: conversation_id
+        type: string
+      - description: Started at or after this RFC3339 timestamp
+        in: query
+        name: from
+        type: string
+      - description: Started at or before this RFC3339 timestamp
+        in: query
+        name: to
+        type: string
+      - description: Execution status
+        in: query
+        name: status
+        type: string
+      - description: Agent or application
+        in: query
+        name: agent_or_app
+        type: string
+      - description: Business domain
+        in: query
+        name: business_domain
+        type: string
+      - description: Knowledge network
+        in: query
+        name: knowledge_network
+        type: string
+      - description: Evidence completeness
+        in: query
+        name: evidence_completeness
+        type: string
+      - description: Question, result, ID, business ref, or error keyword
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.InteractionSummaryPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: List observable business interactions
+      tags:
+      - business-provenance
   /conversations:
     get:
       parameters:

@@ -170,6 +170,73 @@ func TestGetInteractionSummaryAggregatesMultipleRequestsAndTraces(t *testing.T) 
 	}
 }
 
+func TestBusinessProvenanceListsUseTrueConversationInteractionAndRequestCardinality(t *testing.T) {
+	store := evidencestore.New()
+	seedBusinessProvenanceRequest(t, store, "req_plan", "trace_plan", "conversation_supply", "interaction_june", "2026-07-27T08:00:00Z", "查询六月预测", "六月共 63 条", "acct_demo")
+	seedBusinessProvenanceRequest(t, store, "req_data", "trace_data", "conversation_supply", "interaction_june", "2026-07-27T08:00:01Z", "读取预测数据", "合计 11594", "acct_demo")
+	seedBusinessProvenanceRequest(t, store, "req_compare", "trace_compare", "conversation_supply", "interaction_july", "2026-07-27T09:00:00Z", "对比七月预测", "七月下降 60%", "acct_demo")
+	seedBusinessProvenanceRequest(t, store, "req_secret", "trace_secret", "conversation_secret", "interaction_secret", "2026-07-27T10:00:00Z", "不可见问题", "不可见结果", "other-account")
+	service := NewWithProjectionSource(store, store)
+	options := evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20}
+
+	conversations, err := service.ListConversations(context.Background(), options)
+	if err != nil {
+		t.Fatalf("list conversations: %v", err)
+	}
+	interactions, err := service.ListInteractions(context.Background(), options)
+	if err != nil {
+		t.Fatalf("list interactions: %v", err)
+	}
+	requests, err := service.ListRequests(context.Background(), options)
+	if err != nil {
+		t.Fatalf("list requests: %v", err)
+	}
+
+	if conversations.Total != 1 || len(conversations.Entries) != 1 {
+		t.Fatalf("expected one authorized conversation, got %+v", conversations)
+	}
+	conversation := conversations.Entries[0]
+	if conversation.ConversationID != "conversation_supply" || conversation.InteractionCount != 2 || conversation.RequestCount != 3 ||
+		conversation.QuestionPreview == "不可见问题" || conversation.ResultPreview == "不可见结果" {
+		t.Fatalf("unexpected conversation projection: %+v", conversation)
+	}
+	if interactions.Total != 2 || len(interactions.Entries) != 2 {
+		t.Fatalf("expected two authorized interactions, got %+v", interactions)
+	}
+	if requests.Total != 3 || len(requests.Entries) != 3 {
+		t.Fatalf("expected three authorized requests, got %+v", requests)
+	}
+}
+
+func TestBusinessProvenanceConversationAndInteractionListsUseStablePagination(t *testing.T) {
+	store := evidencestore.New()
+	seedBusinessProvenanceRequest(t, store, "req_old", "trace_old", "conversation_old", "interaction_old", "2026-07-27T08:00:00Z", "旧问题", "旧结果", "acct_demo")
+	seedBusinessProvenanceRequest(t, store, "req_new", "trace_new", "conversation_new", "interaction_new", "2026-07-27T09:00:00Z", "新问题", "新结果", "acct_demo")
+	service := NewWithProjectionSource(store, store)
+	options := evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 1}
+
+	firstConversations, err := service.ListConversations(context.Background(), options)
+	if err != nil || len(firstConversations.Entries) != 1 || firstConversations.Entries[0].ConversationID != "conversation_new" || firstConversations.NextCursor == nil {
+		t.Fatalf("unexpected first conversation page: %+v err=%v", firstConversations, err)
+	}
+	options.Cursor = *firstConversations.NextCursor
+	secondConversations, err := service.ListConversations(context.Background(), options)
+	if err != nil || len(secondConversations.Entries) != 1 || secondConversations.Entries[0].ConversationID != "conversation_old" || secondConversations.NextCursor != nil {
+		t.Fatalf("unexpected second conversation page: %+v err=%v", secondConversations, err)
+	}
+
+	options.Cursor = ""
+	firstInteractions, err := service.ListInteractions(context.Background(), options)
+	if err != nil || len(firstInteractions.Entries) != 1 || firstInteractions.Entries[0].InteractionID != "interaction_new" || firstInteractions.NextCursor == nil {
+		t.Fatalf("unexpected first interaction page: %+v err=%v", firstInteractions, err)
+	}
+	options.Cursor = *firstInteractions.NextCursor
+	secondInteractions, err := service.ListInteractions(context.Background(), options)
+	if err != nil || len(secondInteractions.Entries) != 1 || secondInteractions.Entries[0].InteractionID != "interaction_old" || secondInteractions.NextCursor != nil {
+		t.Fatalf("unexpected second interaction page: %+v err=%v", secondInteractions, err)
+	}
+}
+
 func TestRequestAndTraceSummarySupportMultipleTracesAndReverseLookup(t *testing.T) {
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_multi", "trace_multi_a", "2026-07-26T08:00:00Z", "多阶段问题", "最终结果", "agent-a", "bd_demo", "acct_demo")
@@ -570,6 +637,64 @@ func seedSummaryTrace(t *testing.T, store *evidencestore.Store, requestID, trace
 	}
 	if err := store.StoreEvidence(context.Background(), evidencevo.WithEvents(trace, trace.Events)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func seedBusinessProvenanceRequest(
+	t *testing.T,
+	store *evidencestore.Store,
+	requestID, traceID, conversationID, interactionID, at, question, result, account string,
+) {
+	t.Helper()
+	trace := evidencevo.NormalizedTrace{
+		TraceID: traceID, RequestID: requestID, ConversationID: conversationID,
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: account, AccountType: "app",
+		SchemaVersion: evidencevo.ArtifactContractVersion,
+		Events: []evidencevo.EvidenceEvent{
+			{
+				EventID: "question_event_" + traceID, EventType: "agent.interaction.started",
+				SchemaVersion: evidencevo.ArtifactContractVersion,
+				ObservedAt:    at, EmittedAt: at, Producer: "third-party-agent", TraceID: traceID,
+				SpanID: "span_" + traceID, RequestID: requestID, InteractionID: interactionID, OperationName: "agent.run",
+				Payload: map[string]any{"app_ref": "supply-chain-agent", "question_artifact_ref": "artifact:question_" + requestID},
+			},
+			{
+				EventID: "result_event_" + traceID, EventType: "claim.created",
+				SchemaVersion: evidencevo.ArtifactContractVersion,
+				ObservedAt:    at, EmittedAt: at, Producer: "third-party-agent", TraceID: traceID,
+				SpanID: "span_" + traceID, RequestID: requestID, InteractionID: interactionID, OperationName: "claim.create",
+				Payload: map[string]any{
+					"claim_id": "claim_" + traceID, "visibility": "visible",
+					"result_artifact_ref": "artifact:result_" + requestID,
+					"business_refs":       []any{map[string]any{"ref_id": "object:kn_demo:item", "visibility": "visible"}},
+				},
+			},
+		},
+	}
+	if err := store.StoreEvidence(context.Background(), evidencevo.WithEvents(trace, trace.Events)); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		id           string
+		artifactType evidencevo.ArtifactType
+		text         string
+	}{
+		{"question_" + requestID, evidencevo.ArtifactTypeQuestion, question},
+		{"result_" + requestID, evidencevo.ArtifactTypeResult, result},
+	} {
+		artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
+			ArtifactID: item.id, ArtifactType: item.artifactType,
+			RequestID: requestID, TraceID: traceID, InteractionID: interactionID,
+			ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion, ObservedAt: at,
+			Content: map[string]any{"text": item.text}, AgentOrApp: "supply-chain-agent",
+			TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: account, AccountType: "app",
+		})
+		if len(validationErrors) != 0 {
+			t.Fatalf("normalize artifact: %+v", validationErrors)
+		}
+		if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

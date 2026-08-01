@@ -89,6 +89,64 @@ type TraceSummaryPage struct {
 	PartialReasons []string       `json:"partial_reasons,omitempty"`
 }
 
+type ConversationSummary struct {
+	ConversationID       string   `json:"conversation_id"`
+	StartedAt            string   `json:"started_at,omitempty"`
+	CompletedAt          string   `json:"completed_at,omitempty"`
+	Initiator            string   `json:"initiator,omitempty"`
+	AgentOrApp           string   `json:"agent_or_app,omitempty"`
+	BusinessDomain       string   `json:"business_domain,omitempty"`
+	KnowledgeNetworks    []string `json:"knowledge_networks,omitempty"`
+	QuestionPreview      string   `json:"question_preview,omitempty"`
+	ResultPreview        string   `json:"result_preview,omitempty"`
+	Status               string   `json:"status"`
+	EvidenceCompleteness string   `json:"evidence_completeness"`
+	PartialReasons       []string `json:"partial_reasons,omitempty"`
+	InteractionCount     int      `json:"interaction_count"`
+	RequestCount         int      `json:"request_count"`
+	TraceCount           int      `json:"trace_count"`
+	DurationMS           int64    `json:"duration_ms,omitempty"`
+	ErrorSummary         string   `json:"error_summary,omitempty"`
+}
+
+type InteractionListSummary struct {
+	InteractionID        string   `json:"interaction_id"`
+	ConversationID       string   `json:"conversation_id,omitempty"`
+	StartedAt            string   `json:"started_at,omitempty"`
+	CompletedAt          string   `json:"completed_at,omitempty"`
+	Initiator            string   `json:"initiator,omitempty"`
+	AgentOrApp           string   `json:"agent_or_app,omitempty"`
+	BusinessDomain       string   `json:"business_domain,omitempty"`
+	KnowledgeNetworks    []string `json:"knowledge_networks,omitempty"`
+	QuestionPreview      string   `json:"question_preview,omitempty"`
+	ResultPreview        string   `json:"result_preview,omitempty"`
+	Status               string   `json:"status"`
+	EvidenceCompleteness string   `json:"evidence_completeness"`
+	PartialReasons       []string `json:"partial_reasons,omitempty"`
+	RequestCount         int      `json:"request_count"`
+	TraceCount           int      `json:"trace_count"`
+	DurationMS           int64    `json:"duration_ms,omitempty"`
+	ErrorSummary         string   `json:"error_summary,omitempty"`
+}
+
+type ConversationSummaryPage struct {
+	Entries        []ConversationSummary `json:"entries"`
+	Total          int                   `json:"total"`
+	NextCursor     *string               `json:"next_cursor"`
+	Truncated      bool                  `json:"truncated"`
+	Partial        bool                  `json:"partial"`
+	PartialReasons []string              `json:"partial_reasons,omitempty"`
+}
+
+type InteractionSummaryPage struct {
+	Entries        []InteractionListSummary `json:"entries"`
+	Total          int                      `json:"total"`
+	NextCursor     *string                  `json:"next_cursor"`
+	Truncated      bool                     `json:"truncated"`
+	Partial        bool                     `json:"partial"`
+	PartialReasons []string                 `json:"partial_reasons,omitempty"`
+}
+
 type InteractionSummary struct {
 	InteractionID  string           `json:"interaction_id"`
 	ConversationID string           `json:"conversation_id,omitempty"`
