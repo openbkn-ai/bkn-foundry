@@ -44,6 +44,8 @@ type LogRecord struct {
 
 type LogQuery struct {
 	Query            string
+	TimeFrom         *time.Time
+	TimeTo           *time.Time
 	Categories       []string
 	SeverityMinimum  int
 	Services         []string
@@ -64,6 +66,14 @@ type LogQuery struct {
 	Limit            int
 	Cursor           string
 	ScopeFingerprint string
+
+	// Trusted authorization scope is derived server-side from the Access Profile.
+	// Source adapters use it to push isolation filters into their native query.
+	AuthorizedTenantID            string
+	AuthorizedBusinessDomain      string
+	AuthorizedSubjectID           string
+	AuthorizedCategories          []string
+	AuthorizedKnowledgeNetworkIDs []string
 }
 
 func (query LogQuery) IsAssociatedDrilldown() bool {
@@ -93,6 +103,7 @@ type SourceStatus struct {
 	SamplingRate     *float64   `json:"sampling_rate,omitempty"`
 	SampledRecords   *int64     `json:"sampled_records,omitempty"`
 	CountAccuracy    string     `json:"count_accuracy,omitempty"`
+	Categories       []string   `json:"-"`
 }
 
 type ListResult struct {
@@ -102,4 +113,25 @@ type ListResult struct {
 	Count        int64
 	CountExact   bool
 	SourceStatus []SourceStatus
+}
+
+type FacetValue struct {
+	Value string `json:"value"`
+	Count int64  `json:"count"`
+}
+
+type FacetResult struct {
+	Values       []FacetValue
+	Partial      bool
+	SourceStatus []SourceStatus
+}
+
+type LogPolicy struct {
+	Scope            map[string]string `json:"scope"`
+	PolicyRevision   string            `json:"policy_revision"`
+	Category         string            `json:"category"`
+	RetentionDays    int               `json:"retention_days"`
+	PolicyKind       string            `json:"policy_kind"`
+	LegalHold        bool              `json:"legal_hold"`
+	StorageTargetRef string            `json:"storage_target_ref,omitempty"`
 }

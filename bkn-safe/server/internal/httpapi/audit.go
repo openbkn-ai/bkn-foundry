@@ -287,12 +287,13 @@ func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforce
 	// from/to are RFC3339 timestamps. -> { logs:[...], total }
 	g.GET("/audit-logs", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
 		f := audit.Filter{
-			ActorID:  c.Query("actor_id"),
-			Resource: c.Query("resource"),
-			Action:   c.Query("action"),
-			TargetID: c.Query("target_id"),
-			Offset:   atoiDefault(c.Query("offset"), 0),
-			Limit:    atoiDefault(c.Query("limit"), 0),
+			ActorID:    c.Query("actor_id"),
+			Resource:   c.Query("resource"),
+			Action:     c.Query("action"),
+			TargetID:   c.Query("target_id"),
+			Offset:     atoiDefault(c.Query("offset"), 0),
+			Limit:      atoiDefault(c.Query("limit"), 0),
+			FailedOnly: strings.EqualFold(c.Query("failed_only"), "true"),
 		}
 		if v := c.Query("from"); v != "" {
 			t, err := time.Parse(time.RFC3339, v)
@@ -316,5 +317,17 @@ func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforce
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"logs": logs, "total": total})
+	})
+	g.GET("/audit-logs/:id", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
+		entry, found, err := store.Get(c.Request.Context(), c.Param("id"))
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if !found {
+			c.JSON(http.StatusNotFound, gin.H{"error": "audit log not found"})
+			return
+		}
+		c.JSON(http.StatusOK, entry)
 	})
 }

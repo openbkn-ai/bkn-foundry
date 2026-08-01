@@ -9,6 +9,7 @@ type OpenSearchConfig struct {
 	Endpoint      string
 	TraceIndex    string
 	EvidenceIndex string
+	LogIndex      string
 	Timeout       time.Duration
 	Auth          OpenSearchAuthConfig
 }
@@ -35,10 +36,16 @@ func NewOpenSearchConfig() OpenSearchConfig {
 		evidenceIndex = "bkn-trace-evidence-v2"
 	}
 
+	logIndex := os.Getenv("OPENSEARCH_LOG_INDEX")
+	if logIndex == "" {
+		logIndex = "ss4o_logs-default-namespace"
+	}
+
 	return OpenSearchConfig{
 		Endpoint:      endpoint,
 		TraceIndex:    traceIndex,
 		EvidenceIndex: evidenceIndex,
+		LogIndex:      logIndex,
 		Timeout:       3 * time.Second,
 		Auth: OpenSearchAuthConfig{
 			Enabled:  os.Getenv("OPENSEARCH_AUTH_ENABLED") == "true",

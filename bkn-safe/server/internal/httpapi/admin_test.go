@@ -835,6 +835,7 @@ func TestAuditTrail(t *testing.T) {
 	}
 
 	type logRow struct {
+		ID         string `json:"id"`
 		ActorID    string `json:"actor_id"`
 		Method     string `json:"method"`
 		Resource   string `json:"resource"`
@@ -864,6 +865,21 @@ func TestAuditTrail(t *testing.T) {
 		t.Errorf("ghost-delete entry = %+v", got)
 	}
 
+	// Detail lookup uses the same audit permission and returns exactly one source row.
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs/"+got.ID, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get audit detail: %d (%s)", w.Code, w.Body.String())
+	}
+	var detail logRow
+	_ = json.Unmarshal(w.Body.Bytes(), &detail)
+	if detail.ID != got.ID || detail.TargetID != "ghost" {
+		t.Fatalf("unexpected audit detail: %+v", detail)
+	}
+	missing := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs/missing", nil)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing audit detail: want 404, got %d (%s)", missing.Code, missing.Body.String())
+	}
+
 	// filter by resource=departments -> the create + rename + delete
 	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?resource=departments", nil)
 	var depts listResp
@@ -880,6 +896,14 @@ func TestAuditTrail(t *testing.T) {
 	}
 	if deleteDept == nil || deleteDept.TargetName != "Renamed" {
 		t.Errorf("delete department target snapshot = %+v, want target_name Renamed", deleteDept)
+	}
+
+	// Source adapters must filter failures before pagination, not after reading one page.
+	w = adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/audit-logs?failed_only=true", nil)
+	var failed listResp
+	_ = json.Unmarshal(w.Body.Bytes(), &failed)
+	if failed.Total != 1 || len(failed.Logs) != 1 || failed.Logs[0].Status < http.StatusBadRequest {
+		t.Errorf("failed_only: total=%d logs=%+v", failed.Total, failed.Logs)
 	}
 }
 

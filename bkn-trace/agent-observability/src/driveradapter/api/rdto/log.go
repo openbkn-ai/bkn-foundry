@@ -21,3 +21,29 @@ type LogListResponse struct {
 	SourceStatus        []observabilityvo.SourceStatus `json:"source_status"`
 	RequestTraceContext RequestTraceContext            `json:"request_trace_context"`
 }
+
+type LogFieldProjection struct {
+	PolicyRevision string   `json:"policy_revision"`
+	RedactedFields []string `json:"redacted_fields"`
+}
+
+type LogDetailResponse struct {
+	Data                observabilityvo.LogRecord `json:"data"`
+	FieldProjection     LogFieldProjection        `json:"field_projection"`
+	RequestTraceContext RequestTraceContext       `json:"request_trace_context"`
+}
+
+type LogFacetResponse struct {
+	Data         []observabilityvo.FacetValue   `json:"data"`
+	Partial      bool                           `json:"partial"`
+	SourceStatus []observabilityvo.SourceStatus `json:"source_status"`
+	NextCursor   *string                        `json:"next_cursor"`
+}
+
+type LogSourcesResponse struct {
+	Data []observabilityvo.SourceStatus `json:"data"`
+}
+
+type LogPoliciesResponse struct {
+	Data []observabilityvo.LogPolicy `json:"data"`
+}

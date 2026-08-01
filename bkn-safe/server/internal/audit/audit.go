@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"net/http"
 	"time"
 
 	"gorm.io/gorm"
@@ -62,14 +63,15 @@ func (s *Store) Record(ctx context.Context, e Entry) error {
 // Filter narrows a List query. Zero-value fields are not applied. From/To bound
 // CreatedAt (inclusive lower, exclusive upper).
 type Filter struct {
-	ActorID  string
-	Resource string
-	Action   string
-	TargetID string
-	From     time.Time
-	To       time.Time
-	Offset   int
-	Limit    int
+	ActorID    string
+	Resource   string
+	Action     string
+	TargetID   string
+	FailedOnly bool
+	From       time.Time
+	To         time.Time
+	Offset     int
+	Limit      int
 }
 
 // List returns a page of audit entries (newest first) matching the filter, plus
@@ -99,6 +101,9 @@ func (s *Store) List(ctx context.Context, f Filter) ([]model.AuditLog, int64, er
 	if f.TargetID != "" {
 		q = q.Where("target_id = ?", f.TargetID)
 	}
+	if f.FailedOnly {
+		q = q.Where("status >= ?", http.StatusBadRequest)
+	}
 	if !f.From.IsZero() {
 		q = q.Where("created_at >= ?", f.From)
 	}
@@ -114,6 +119,19 @@ func (s *Store) List(ctx context.Context, f Filter) ([]model.AuditLog, int64, er
 		return nil, 0, err
 	}
 	return logs, total, nil
+}
+
+// Get returns one audit entry by its immutable source id.
+func (s *Store) Get(ctx context.Context, id string) (model.AuditLog, bool, error) {
+	var entry model.AuditLog
+	err := s.db.WithContext(ctx).First(&entry, "id = ?", id).Error
+	if err == gorm.ErrRecordNotFound {
+		return model.AuditLog{}, false, nil
+	}
+	if err != nil {
+		return model.AuditLog{}, false, err
+	}
+	return entry, true, nil
 }
 
 // newID returns a random 128-bit hex id (same scheme as auth.NewID, duplicated

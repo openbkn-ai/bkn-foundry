@@ -16,6 +16,34 @@ type fakeSource struct {
 	err     error
 }
 
+type capturingSource struct {
+	query observabilityvo.LogQuery
+}
+
+func (source *capturingSource) ID() string { return "capturing" }
+
+func (source *capturingSource) Search(_ context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
+	source.query = query
+	return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
+}
+
+type fakeDetailSource struct {
+	fakeSource
+	record observabilityvo.LogRecord
+}
+
+func (source fakeDetailSource) Get(context.Context, string) (observabilityvo.LogRecord, bool, error) {
+	return source.record, source.record.LogID != "", nil
+}
+
+func (source fakeDetailSource) Metadata() observabilityvo.SourceStatus {
+	return observabilityvo.SourceStatus{
+		SourceID: source.id, Status: "available", Reliability: "best_effort",
+		CollectionMethod: "direct_otlp", CoveredModules: []string{"context-loader"}, CountAccuracy: "exact",
+		Categories: []string{observabilityvo.CategoryRuntimeSystem},
+	}
+}
+
 func (source fakeSource) ID() string { return source.id }
 
 func (source fakeSource) Search(
@@ -82,6 +110,62 @@ func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) 
 	_, err = New([]Source{unavailable}).List(context.Background(), profile, observabilityvo.LogQuery{})
 	if !errors.Is(err, ErrSourcesUnavailable) {
 		t.Fatalf("all failed sources must return sources unavailable, got %v", err)
+	}
+}
+
+func TestDetailAndFacetsUseTheSameRecordAuthorization(t *testing.T) {
+	owned := ownedBusinessLog("owned", "owner-a", "trace-a")
+	other := ownedBusinessLog("other", "owner-b", "trace-a")
+	owned.EventName = "forecast.completed"
+	other.EventName = "forecast.completed"
+	service := New([]Source{
+		fakeDetailSource{fakeSource: fakeSource{id: "owned-source", records: []observabilityvo.LogRecord{owned, other}}, record: other},
+	})
+	profile := activeProfile("owner-a", "normal_user")
+
+	if _, err := service.Get(context.Background(), profile, "other"); !errors.Is(err, ErrNotDisclosed) {
+		t.Fatalf("unauthorized detail must be hidden as not disclosed, got %v", err)
+	}
+	facets, err := service.Facets(context.Background(), profile, observabilityvo.LogQuery{TraceID: "trace-a"}, "event_name")
+	if err != nil {
+		t.Fatalf("authorized facet failed: %v", err)
+	}
+	if len(facets.Values) != 1 || facets.Values[0].Count != 1 {
+		t.Fatalf("facet leaked an unauthorized record: %+v", facets)
+	}
+}
+
+func TestSourcesAndPoliciesFollowTheAccessProfile(t *testing.T) {
+	service := New([]Source{fakeDetailSource{fakeSource: fakeSource{id: "otel"}}})
+	admin := activeProfile("admin-a", "admin")
+
+	sources, err := service.Sources(admin)
+	if err != nil || len(sources) != 1 || sources[0].CollectionMethod != "direct_otlp" {
+		t.Fatalf("source coverage missing: sources=%+v err=%v", sources, err)
+	}
+	policies, err := service.Policies(admin)
+	if err != nil || len(policies) != 3 {
+		t.Fatalf("admin runtime policies missing: policies=%+v err=%v", policies, err)
+	}
+	if _, err := service.Policies(activeProfile("user-a", "normal_user")); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("normal user policy read must be denied, got %v", err)
+	}
+}
+
+func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
+	source := &capturingSource{}
+	service := New([]Source{source})
+	profile := activeProfile("builder-a", "network_builder")
+	profile.ManagedKnowledgeNetworkIDs = []string{"kn-a", "kn-b"}
+
+	if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{}); err != nil {
+		t.Fatalf("builder list failed: %v", err)
+	}
+	if source.query.AuthorizedTenantID != "tenant-a" || source.query.AuthorizedBusinessDomain != "domain-a" {
+		t.Fatalf("trusted isolation scope was not pushed down: %+v", source.query)
+	}
+	if len(source.query.AuthorizedCategories) != 3 || len(source.query.AuthorizedKnowledgeNetworkIDs) != 2 {
+		t.Fatalf("role and managed-network scope was not pushed down: %+v", source.query)
 	}
 }
 
