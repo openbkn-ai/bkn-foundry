@@ -20,7 +20,7 @@ func newAndCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap m
 	subConds := []Condition{}
 
 	if len(cfg.SubConds) == 0 {
-		return nil, fmt.Errorf("sub condition size is 0")
+		return nil, nil
 	}
 
 	if len(cfg.SubConds) > MaxSubCondition {

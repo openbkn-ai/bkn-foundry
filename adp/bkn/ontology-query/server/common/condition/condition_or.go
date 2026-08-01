@@ -105,7 +105,7 @@ func rewriteOrCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]
 	subConds := []*CondCfg{}
 
 	if len(cfg.SubConds) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("sub condition size is 0")
 	}
 
 	if len(cfg.SubConds) > MaxSubCondition {
@@ -123,7 +123,7 @@ func rewriteOrCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]
 		}
 	}
 	if len(subConds) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("sub condition size is 0")
 	}
 	viewCondi := *cfg
 	viewCondi.SubConds = subConds
