@@ -1,0 +1,1756 @@
+---
+openapi: 3.0.3
+info:
+  title: 工具箱
+  description: |
+    工具箱（tool box）是**一组工具的容器**，也是权限与发布的单位。Agent 挂载的是
+    工具箱，不是单个工具。
+
+    **两层结构**：工具箱有自己的生命周期（`unpublish` / `published` / `offline`）
+    与分类；箱内每个工具有独立的启停开关（`enabled` / `disabled`）。两者是两套状态，
+    别混——工具箱已发布不代表箱内工具都启用。
+
+    **工具从哪来**，三条路：
+
+    | 方式 | 接口 |
+    |---|---|
+    | 直接建（写 OpenAPI 或函数代码） | `POST /tool-box/{box_id}/tool` |
+    | 由已有算子转换 | `POST /operator/convert/tool` |
+    | 一份 OpenAPI 文档批量建算子 + 工具 | `POST /capabilities/openapi-bundle` |
+
+    **时间戳一律是纳秒**：所有 `*_time` 字段由 `time.Now().UnixNano()` 生成，
+    按毫秒解析会得到 1970 年附近的日期。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-operator-integration/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /tool-box:
+    post:
+      tags:
+        - ToolBox
+      summary: 新建工具箱
+      operationId: createToolBox
+      description: |
+        建一个空工具箱。`metadata_type` 决定这个箱子装哪类工具，**建成后不可更改**
+        （编辑接口的 `metadata_type` 是可选的，传了才校验）。
+
+        `openapi` 类型的箱子必须给 `box_svc_url`——箱内工具的请求都发往这个地址。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateToolBoxRequest'
+            examples:
+              OpenAPI 工具箱:
+                value:
+                  box_name: 天气服务
+                  box_desc: 对接第三方天气 API
+                  box_svc_url: https://api.example.com
+                  box_category: data_query
+                  metadata_type: openapi
+              函数工具箱:
+                value:
+                  box_name: 数据处理
+                  box_desc: 一组 Python 小工具
+                  metadata_type: function
+      responses:
+        '200':
+          description: 新建结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  box_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/list:
+    get:
+      tags:
+        - ToolBox
+      summary: 分页查询工具箱
+      operationId: listToolBoxes
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+        provides:
+          ef_box_id: data[0].box_id
+      description: |
+        按业务域分页列出工具箱。`metadata_type` 过滤用于「函数工具工作台只列函数
+        工具箱」这类场景。
+
+        条目里的 `tools` 是**工具名字符串数组**，不是工具对象也不是 ID——要工具详情
+        得再调 `GET /tool-box/{box_id}/tools/list`。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按工具箱名称过滤。
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/BizStatus'
+          description: 按工具箱状态过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: release_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按发布人过滤。
+        - name: metadata_type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MetadataType'
+          description: 按元数据类型过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 工具箱分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolBoxPage'
+              examples:
+                实测:
+                  value:
+                    total: 45
+                    page: 1
+                    page_size: 2
+                    total_pages: 23
+                    has_next: true
+                    has_prev: false
+                    data:
+                      - box_id: e521d454-4a0b-4dc9-8a28-d0986de1cef9
+                        box_name: contextloader工具集
+                        box_desc: 'ContextLoader 标准内置工具集；契约版本: 0.9.0'
+                        box_svc_url: http://agent-retrieval:30779
+                        metadata_type: openapi
+                        business_domain_id: default
+                        status: published
+                        category_type: data_query
+                        category_name: 数据查询
+                        is_internal: true
+                        source: custom
+                        tools:
+                          - search_schema
+                          - query_object_instance
+                          - run_sql
+                        create_time: 1784431697368964901
+                        update_time: 1785399402189683812
+                        create_user: Administrator
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/names:
+    post:
+      tags:
+        - ToolBox
+      summary: 按 ID 批量取工具箱名
+      operationId: getToolBoxNames
+      description: |
+        与 `/operator/names`、`/skills/names` 同契约：不存在的 ID 静默略过、不占位，
+        调用方自己比对哪些没回来。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchNamesRequest'
+      responses:
+        '200':
+          description: ID 到名称的映射
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchNamesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}:
+    get:
+      tags:
+        - ToolBox
+      summary: 查询工具箱详情
+      operationId: getToolBox
+      description: 取工具箱详情，含箱内工具的完整定义。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+      responses:
+        '200':
+          description: 工具箱详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolBoxDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - ToolBox
+      summary: 更新工具箱
+      operationId: updateToolBox
+      description: |
+        **更新走 POST 不是 PUT**。`box_name` / `box_desc` / `box_category` 都是必填
+        ——这是整体覆盖，不是部分更新，不传就报必填错误。
+
+        `metadata_type` 反而是可选的：工具箱建成后类型不会变，带了才校验取值。
+
+        响应里的 `edit_tools` 列出因本次更新而受影响的工具及其新状态。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateToolBoxRequest'
+      responses:
+        '200':
+          description: 更新结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateToolBoxResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+        - ToolBox
+      summary: 删除工具箱
+      operationId: deleteToolBox
+      description: 删除工具箱及其下全部工具。已被 Agent 挂载的工具箱删除后调用方会拿到 404。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/BoxID'
+      responses:
+        '200':
+          description: 删除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/status:
+    post:
+      tags:
+        - ToolBox
+      summary: 更新工具箱状态
+      operationId: updateToolBoxStatus
+      description: |
+        发布 / 下架工具箱。**工具箱只有三个状态**（`unpublish` / `published` /
+        `offline`），没有算子那边的 `editing`。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  $ref: '#/components/schemas/BizStatus'
+      responses:
+        '200':
+          description: 状态更新结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  box_id:
+                    type: string
+                  status:
+                    $ref: '#/components/schemas/BizStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/tool:
+    post:
+      tags:
+        - ToolBox
+      summary: 在工具箱中新建工具
+      operationId: createTool
+      description: |
+        往箱子里加工具。`metadata_type` 决定必填字段：`function` 走
+        `function_input`（代码约定见 [function.yaml](function.yaml)，入口函数必须叫
+        `handler`），`openapi` 走 `data`（OpenAPI 原文）。
+
+        **一次可以建出多个工具**：一份 OpenAPI 文档里有几个操作就建几个工具，
+        所以响应是 `success_count` / `failure_count` 的批量结果，**部分成功是常态**
+        ——`failure_count` 非 0 时接口仍返回 200，失败明细在 `failures` 里。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateToolRequest'
+      responses:
+        '200':
+          description: |
+            批量创建结果。**部分失败也返回 200**，看 `failure_count` 与 `failures`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateToolResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/tool/{tool_id}:
+    get:
+      tags:
+        - ToolBox
+      summary: 查询工具详情
+      operationId: getTool
+      description: 取单个工具的完整定义，含元数据、全局参数与使用规则。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+        - $ref: '#/components/parameters/ToolID'
+      responses:
+        '200':
+          description: 工具详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - ToolBox
+      summary: 更新工具
+      operationId: updateTool
+      description: |
+        **更新走 POST 不是 PUT。** `name`、`description`、`metadata_type` 都是必填
+        ——整体覆盖，不是部分更新。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+        - $ref: '#/components/parameters/ToolID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateToolRequest'
+      responses:
+        '200':
+          description: 更新结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  box_id:
+                    type: string
+                  tool_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/tools/list:
+    get:
+      tags:
+        - ToolBox
+      summary: 分页查询箱内工具
+      operationId: listBoxTools
+      description: |
+        列出工具箱里的工具。
+
+        **响应的数据字段叫 `tools` 不是 `data`**，还多一个 `box_id`——与本服务其他
+        分页接口（含同模块的 `/tool-box/market/tools`）不一致，解析时注意。
+
+        排序字段这里可选 `create_time` / `update_time` / `tool_name`，默认
+        `create_time`（工具箱列表默认的是 `update_time`）。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - create_time
+              - update_time
+              - tool_name
+            default: create_time
+          description: 排序字段。
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按工具名过滤。
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ToolStatus'
+          description: 按工具启停状态过滤。
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建者过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 箱内工具分页列表（数据字段是 `tools`）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoxToolPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/tools/batch-delete:
+    post:
+      tags:
+        - ToolBox
+      summary: 批量删除箱内工具
+      operationId: batchDeleteTools
+      description: 按 ID 批量删除工具箱里的工具。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tool_ids
+              properties:
+                tool_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: 要删除的工具 ID 列表。
+      responses:
+        '200':
+          description: 删除结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  box_id:
+                    type: string
+                  tool_ids:
+                    type: array
+                    items:
+                      type: string
+                    description: 已删除的工具 ID。
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/tools/status:
+    post:
+      tags:
+        - ToolBox
+      summary: 批量启停箱内工具
+      operationId: updateToolStatus
+      description: |
+        **请求体是数组**，一次改多个工具的启停。工具的状态只有 `enabled` /
+        `disabled` 两个值——与工具箱的发布状态是两套，别混。
+
+        禁用的工具不会出现在 Agent 可用的工具列表里，但仍留在箱子中。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/ToolStatusItem'
+            examples:
+              批量启停:
+                value:
+                  - tool_id: 744e7b57-092e-4cd3-9dee-63c113307d9e
+                    status: enabled
+                  - tool_id: 8a1c3f21-0b6e-4a55-9d33-2f0d1b7c4e88
+                    status: disabled
+      responses:
+        '200':
+          description: 更新后的工具状态列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolStatusItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/tool/{tool_id}/debug:
+    post:
+      tags:
+        - ToolBox
+      summary: 调试工具
+      operationId: debugTool
+      description: |
+        用给定参数真实调用一次工具。与 `/proxy/{tool_id}` 的差别只在语义与审计
+        ——调试面向开发期，代理面向生产调用。请求与响应结构一致。
+
+        参数按 HTTP 的四个位置分开传：`header` / `query` / `path` / `body`。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+        - $ref: '#/components/parameters/ToolID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolCallRequest'
+      responses:
+        '200':
+          description: 工具实际发出的 HTTP 调用的响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/{box_id}/proxy/{tool_id}:
+    post:
+      tags:
+        - ToolBox
+      summary: 代理调用工具
+      operationId: executeTool
+      description: |
+        生产调用入口：由平台代为执行工具并返回结果，调用方不必知道工具背后打的是
+        哪个地址。与调试接口的差别在于会走权限校验与审计日志。
+
+        **返回的是被调服务的原始响应**（`status_code` / `headers` / `body`），
+        不是平台自己的信封——上游返 500 时本接口仍是 200，`status_code` 里才是 500。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+        - $ref: '#/components/parameters/ToolID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolCallRequest'
+      responses:
+        '200':
+          description: 被调服务的响应。**上游报错也是 200，看 `status_code`**
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /operator/convert/tool:
+    post:
+      tags:
+        - ToolBox
+      summary: 把算子转换成工具
+      operationId: convertOperatorToTool
+      description: |
+        拿一个已注册的算子，在指定工具箱里生成对应的工具。算子与工具之间保留血缘，
+        算子更新后工具可随之更新。
+
+        路径挂在 `/operator/` 下但归工具箱模块管——它产出的是工具。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertOperatorRequest'
+      responses:
+        '200':
+          description: 转换结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  box_id:
+                    type: string
+                  tool_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /capabilities/openapi-bundle:
+    post:
+      tags:
+        - ToolBox
+      summary: 一份 OpenAPI 文档批量建算子与工具
+      operationId: registerOpenApiBundle
+      description: |
+        「能力包」注册：给一份 OpenAPI 3.0 文档，一次性把里面每个操作注册成算子，
+        再转换成工具放进工具箱，两者血缘打通。省掉逐个注册再逐个转换。
+
+        `box_id` 与 `box_name` **二选一**：给 `box_id` 就往已有箱子里加，
+        给 `box_name` 就新建一个箱子。
+
+        **部分失败是常态**：接口返回 200，`failure_count` 与 `failures` 说明哪些
+        操作没建成。`links` 给出算子与工具的对应关系。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenApiBundleRequest'
+      responses:
+        '200':
+          description: |
+            注册结果。**部分失败也返回 200**，看 `failure_count` 与 `failures`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenApiBundleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/intcomp:
+    post:
+      tags:
+        - ToolBox
+      summary: 注册内置工具箱
+      operationId: createInternalToolBox
+      description: |
+        注册平台内置工具箱。与普通新建的差别：`box_id` **由调用方指定**（业务方
+        自己保证唯一），并要求带配置版本与配置来源，用于内置能力的版本管理。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalToolBoxRequest'
+      responses:
+        '200':
+          description: 注册结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  box_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/market:
+    get:
+      tags:
+        - ToolBox
+      summary: 工具箱市场列表
+      operationId: listToolBoxMarket
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+      description: 已发布工具箱的列表。过滤条件比工作区列表少了 `status` 与 `metadata_type`。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按名称过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: release_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按发布人过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 市场工具箱分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolBoxPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/market/tools:
+    get:
+      tags:
+        - ToolBox
+      summary: 市场工具搜索
+      operationId: listMarketTools
+      description: |
+        跨工具箱按名称搜工具。
+
+        **`tool_name` 是必填的**——不传直接 400
+        （`AgentOperatorIntegration.BadRequest.ValidationRequired`）。这不是「列出
+        全部市场工具」的接口，是「按名字找工具」。
+
+        响应的数据字段是 `data`（与同模块 `/tool-box/{box_id}/tools/list` 的 `tools`
+        不同）。
+      parameters:
+        - $ref: '#/components/parameters/BusinessDomain'
+        - name: tool_name
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 工具名称。**必填**，不传返回 400。
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - create_time
+              - update_time
+              - tool_name
+            default: update_time
+          description: 排序字段。
+        - $ref: '#/components/parameters/SortOrder'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ToolStatus'
+          description: 按工具启停状态过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 命中的工具（含所属工具箱信息）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketToolPage'
+        '400':
+          description: 缺少必填的 `tool_name`
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+              examples:
+                缺 tool_name:
+                  value:
+                    code: AgentOperatorIntegration.BadRequest.ValidationRequired
+                    description: 必填信息不能为空
+                    solution: 请填写完整信息后重试
+                    link: 无
+                    details: "Key: 'QueryMarketToolListReq.ToolName' Error:Field validation for 'ToolName' failed on the 'required' tag"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/market/{box_id}:
+    get:
+      tags:
+        - ToolBox
+      summary: 工具箱市场详情
+      operationId: getToolBoxMarketDetail
+      description: 市场视角的工具箱详情，结构与 `GET /tool-box/{box_id}` 一致。
+      parameters:
+        - $ref: '#/components/parameters/BoxID'
+      responses:
+        '200':
+          description: 工具箱详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolBoxDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /tool-box/market/{box_id}/{fields}:
+    get:
+      tags:
+        - ToolBox
+      summary: 批量取已发布工具箱的指定字段
+      operationId: getReleaseToolBoxInfo
+      description: |
+        与 MCP 的 `/mcp/market/batch/{mcp_ids}/{fields}` 同一套路子：两个参数都走
+        **路径**、都是逗号分隔。注意这里的路径段名叫 `box_id`，但**接受的是 ID
+        列表**（服务端字段就叫 `BoxIDs`）。
+
+        响应是按 `fields` 投影后的对象数组，未选中的字段不出现。
+      parameters:
+        - name: box_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 工具箱 ID 列表，逗号分隔。参数名是单数，实际收列表。
+          example: e521d454-4a0b-4dc9-8a28-d0986de1cef9,ccf29df2-f43d-414a-b644-db7c186cda77
+        - name: fields
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 要取的字段名，逗号分隔。
+          example: box_id,box_name,status
+      responses:
+        '200':
+          description: 按字段投影后的工具箱数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReleaseToolBoxInfo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    BusinessDomain:
+      name: x-business-domain
+      in: header
+      required: true
+      schema:
+        type: string
+      description: 业务域 ID。工具箱按业务域隔离，缺失返回 400。
+    BoxID:
+      name: box_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 工具箱 ID。
+    ToolID:
+      name: tool_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 工具 ID。
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 页码，从 1 开始。
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      description: 每页数量，1–100。
+    SortBy:
+      name: sort_by
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - create_time
+          - update_time
+          - name
+        default: update_time
+      description: 排序字段。
+    SortOrder:
+      name: sort_order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+      description: 排序方向。
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    NotFound:
+      description: 工具箱或工具不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  schemas:
+    BizStatus:
+      type: string
+      enum:
+        - unpublish
+        - published
+        - offline
+      description: |
+        工具箱的生命周期状态。**只有三个值**，没有算子那边的 `editing`。
+
+    ToolStatus:
+      type: string
+      enum:
+        - enabled
+        - disabled
+      description: |
+        单个工具的启停状态。与工具箱的 `BizStatus` 是两套，别混——工具箱已发布不
+        代表箱内工具都启用。
+
+    MetadataType:
+      type: string
+      enum:
+        - openapi
+        - function
+      description: |
+        元数据类型。工具箱建成后不可更改；决定箱内工具怎么定义
+        （`function` 走 `function_input`，`openapi` 走 `data`）。
+
+    CommonPage:
+      type: object
+      description: 本服务通用的分页信封。
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+
+    ToolBoxPage:
+      allOf:
+        - $ref: '#/components/schemas/CommonPage'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/ToolBoxInfo'
+
+    BoxToolPage:
+      allOf:
+        - $ref: '#/components/schemas/CommonPage'
+        - type: object
+          description: |
+            **数据字段叫 `tools` 不是 `data`**，还多一个 `box_id`——与本服务其他
+            分页接口不一致。
+          properties:
+            box_id:
+              type: string
+              description: 所属工具箱 ID。
+            tools:
+              type: array
+              items:
+                $ref: '#/components/schemas/ToolInfo'
+
+    MarketToolPage:
+      allOf:
+        - $ref: '#/components/schemas/CommonPage'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/ToolBoxDetail'
+              description: 命中工具所在的工具箱（含工具详情）。
+
+    CreateToolBoxRequest:
+      type: object
+      required:
+        - metadata_type
+      properties:
+        box_name:
+          type: string
+          description: 工具箱名称。
+        box_desc:
+          type: string
+          description: 工具箱描述。
+        box_svc_url:
+          type: string
+          description: 工具箱服务地址。**`metadata_type=openapi` 时必填**，箱内工具的请求都发往这里。
+        box_category:
+          type: string
+          default: other_category
+          description: 分类。
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        source:
+          type: string
+          default: custom
+          description: 来源。
+        data:
+          type: string
+          description: OpenAPI 原文，建箱同时导入工具时用。
+
+    UpdateToolBoxRequest:
+      type: object
+      description: 整体覆盖，不是部分更新——三个必填字段不传就报错。
+      required:
+        - box_name
+        - box_desc
+        - box_category
+      properties:
+        box_name:
+          type: string
+        box_desc:
+          type: string
+        box_svc_url:
+          type: string
+          description: '`metadata_type=openapi` 时必填。'
+        box_category:
+          type: string
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        data:
+          type: string
+          description: OpenAPI 原文。
+
+    UpdateToolBoxResponse:
+      type: object
+      properties:
+        box_id:
+          type: string
+        edit_tools:
+          type: array
+          items:
+            type: object
+            properties:
+              tool_id:
+                type: string
+              status:
+                $ref: '#/components/schemas/ToolStatus'
+          description: 因本次更新而受影响的工具及其新状态。
+
+    ToolBoxInfo:
+      type: object
+      description: 工具箱概要（列表用）。
+      properties:
+        box_id:
+          type: string
+        box_name:
+          type: string
+        box_desc:
+          type: string
+        box_svc_url:
+          type: string
+        business_domain_id:
+          type: string
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        category_type:
+          type: string
+          description: 分类机器值。
+        category_name:
+          type: string
+          description: 分类显示名（本地化）。
+        is_internal:
+          type: boolean
+          description: 是否内置工具箱。
+        source:
+          type: string
+          enum:
+            - custom
+            - internal
+          description: 来源。
+        tools:
+          type: array
+          items:
+            type: string
+          description: |
+            **箱内工具的名称列表**（字符串），不是工具对象也不是 ID。
+            要详情用 `GET /tool-box/{box_id}/tools/list`。
+        create_user:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+          description: 创建时间（**纳秒**时间戳）。
+        update_user:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+          description: 更新时间（**纳秒**时间戳）。
+        release_user:
+          type: string
+          description: 发布人。未发布时不返回。
+        release_time:
+          type: integer
+          format: int64
+          description: 发布时间（**纳秒**时间戳）。未发布时不返回。
+
+    ToolBoxDetail:
+      type: object
+      description: |
+        工具箱详情。与列表用的 `ToolBoxInfo` 只差一处：这里的 `tools` 是**工具对象
+        数组**，列表那边是名称字符串数组。
+      properties:
+        box_id:
+          type: string
+        box_name:
+          type: string
+        box_desc:
+          type: string
+        box_svc_url:
+          type: string
+        business_domain_id:
+          type: string
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        category_type:
+          type: string
+        category_name:
+          type: string
+        is_internal:
+          type: boolean
+        source:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolInfo'
+          description: 箱内工具的完整定义。
+        create_user:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_user:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+        release_user:
+          type: string
+        release_time:
+          type: integer
+          format: int64
+
+    ToolInfo:
+      type: object
+      properties:
+        tool_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/ToolStatus'
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            工具元数据。`openapi` 类的接口定义在 `api_spec`，`function` 类的代码在
+            `function_content`。
+        use_rule:
+          type: string
+          description: 使用规则，告诉大模型什么时候该调这个工具。
+        global_parameters:
+          $ref: '#/components/schemas/GlobalParameter'
+        resource_object:
+          type: string
+          enum:
+            - tool
+            - operator
+          description: 资源类型。由算子转换而来的工具会标 `operator`。
+        extend_info:
+          type: object
+          additionalProperties: true
+        create_user:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+          description: 创建时间（**纳秒**时间戳）。
+        update_user:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+          description: 更新时间（**纳秒**时间戳）。
+
+    GlobalParameter:
+      type: object
+      description: |
+        全局参数：调用该工具时固定附加的一个参数（如统一的 API Key）。
+        **是单个对象不是数组。**
+      required:
+        - name
+        - description
+        - in
+        - type
+      properties:
+        name:
+          type: string
+          description: 参数名。
+        description:
+          type: string
+          description: 参数说明。
+        required:
+          type: boolean
+          description: 是否必填。
+        in:
+          type: string
+          enum:
+            - query
+            - path
+            - header
+            - cookie
+            - body
+          description: 参数位置。
+        type:
+          type: string
+          enum:
+            - string
+            - integer
+            - boolean
+            - array
+            - object
+          description: 参数类型。
+        value:
+          description: 参数值。
+
+    CreateToolRequest:
+      type: object
+      required:
+        - metadata_type
+      properties:
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        use_rule:
+          type: string
+          description: 使用规则。
+        global_parameters:
+          $ref: '#/components/schemas/GlobalParameter'
+        function_input:
+          type: object
+          additionalProperties: true
+          description: |
+            函数定义。**`metadata_type=function` 时必填**，结构见
+            [operator.yaml](operator.yaml) 的 `FunctionInput`：入口函数必须叫 `handler`。
+        data:
+          type: string
+          description: |
+            OpenAPI 原文。**`metadata_type=openapi` 时必填**。文档里有几个操作就建
+            几个工具。
+        extend_info:
+          type: object
+          additionalProperties: true
+
+    CreateToolResponse:
+      type: object
+      description: 批量创建结果。**部分失败也返回 200。**
+      properties:
+        box_id:
+          type: string
+        success_count:
+          type: integer
+          format: int64
+          description: 成功数量。
+        success_ids:
+          type: array
+          items:
+            type: string
+          description: 成功创建的工具 ID。全失败时不返回。
+        failure_count:
+          type: integer
+          format: int64
+          description: 失败数量。
+        failures:
+          type: array
+          items:
+            type: object
+            properties:
+              tool_name:
+                type: string
+                description: 失败的工具名。
+              error_msg:
+                description: 失败原因。
+          description: 失败明细。无失败时不返回。
+
+    UpdateToolRequest:
+      type: object
+      description: 整体覆盖，三个必填字段不传就报错。
+      required:
+        - name
+        - description
+        - metadata_type
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        use_rule:
+          type: string
+        global_parameters:
+          $ref: '#/components/schemas/GlobalParameter'
+        function_input:
+          type: object
+          additionalProperties: true
+          description: 函数定义（编辑形态，无 name / description）。
+        data:
+          type: string
+          description: OpenAPI 原文。
+        extend_info:
+          type: object
+          additionalProperties: true
+
+    ToolStatusItem:
+      type: object
+      required:
+        - tool_id
+        - status
+      properties:
+        tool_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/ToolStatus'
+
+    ToolCallRequest:
+      type: object
+      description: 调试与代理调用共用。参数按 HTTP 的四个位置分开传。
+      properties:
+        timeout:
+          type: integer
+          description: 超时（秒）。
+        header:
+          type: object
+          additionalProperties: true
+          description: 请求头参数。
+        query:
+          type: object
+          additionalProperties: true
+          description: 查询参数。
+        path:
+          type: object
+          additionalProperties:
+            type: string
+          description: 路径参数。
+        body:
+          description: 请求体。函数类工具只用这个。
+
+    HTTPResponse:
+      type: object
+      description: |
+        被调服务的原始响应。**上游报错时本接口仍是 200**，实际状态在
+        `status_code` 里。
+      properties:
+        status_code:
+          type: integer
+          description: 被调服务返回的 HTTP 状态码。
+        headers:
+          type: object
+          additionalProperties: true
+          description: 响应头。
+        body:
+          description: 响应体。
+        error:
+          type: string
+          description: 调用过程中的错误信息。
+
+    ConvertOperatorRequest:
+      type: object
+      required:
+        - operator_id
+        - box_id
+      properties:
+        operator_id:
+          type: string
+          description: 要转换的算子 ID。
+        box_id:
+          type: string
+          description: 目标工具箱 ID。
+        use_rule:
+          type: string
+          description: 使用规则。
+        global_parameters:
+          $ref: '#/components/schemas/GlobalParameter'
+        extend_info:
+          type: object
+          additionalProperties:
+            type: string
+
+    OpenApiBundleRequest:
+      type: object
+      required:
+        - box_svc_url
+        - data
+      properties:
+        box_id:
+          type: string
+          description: 已有工具箱 ID。**与 `box_name` 二选一。**
+        box_name:
+          type: string
+          description: 新建工具箱的名称。**与 `box_id` 二选一。**
+        box_desc:
+          type: string
+          description: 工具箱描述。
+        box_svc_url:
+          type: string
+          description: 工具箱服务地址。**必填。**
+        box_category:
+          type: string
+          default: other_category
+        use_rule:
+          type: string
+          description: 生成的工具的使用规则。
+        data:
+          type: string
+          description: OpenAPI 3.0 文档原文。**必填。**
+        description:
+          type: string
+          description: 生成的算子的描述。
+        direct_publish:
+          type: boolean
+          description: 注册后直接发布算子。
+        operator_info:
+          type: object
+          additionalProperties: true
+          description: 算子信息，结构见 [operator.yaml](operator.yaml) 的 `OperatorInfo`。
+        operator_execute_control:
+          type: object
+          additionalProperties: true
+          description: 算子执行控制，结构见 [operator.yaml](operator.yaml)。
+        extend_info:
+          type: object
+          additionalProperties: true
+
+    OpenApiBundleResponse:
+      type: object
+      description: 批量注册结果。**部分失败也返回 200。**
+      properties:
+        box_id:
+          type: string
+          description: 工具所在的工具箱 ID。
+        tool_ids:
+          type: array
+          items:
+            type: string
+          description: 生成的工具 ID。
+        operator_ids:
+          type: array
+          items:
+            type: string
+          description: 注册的算子 ID。
+        links:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: 算子与工具的对应关系（血缘）。
+        failure_count:
+          type: integer
+          description: 失败数量。无失败时不返回。
+        failures:
+          type: array
+          items:
+            type: string
+          description: 失败明细。无失败时不返回。
+
+    InternalToolBoxRequest:
+      type: object
+      required:
+        - box_id
+        - box_name
+        - box_desc
+        - source
+        - config_version
+        - config_source
+      properties:
+        box_id:
+          type: string
+          description: 工具箱 ID。**由调用方指定**，业务方自己保证唯一。
+        box_name:
+          type: string
+        box_desc:
+          type: string
+        source:
+          type: string
+          description: 来源。
+        config_version:
+          type: string
+          description: 配置版本，用于内置能力的版本管理。
+        config_source:
+          type: string
+          enum:
+            - auto
+            - manual
+          description: 配置来源。
+
+    ReleaseToolBoxInfo:
+      type: object
+      description: 按 `fields` 投影后的工具箱信息，未选中的字段不出现。
+      properties:
+        box_id:
+          type: string
+        box_name:
+          type: string
+        box_desc:
+          type: string
+        box_svc_url:
+          type: string
+        metadata_type:
+          $ref: '#/components/schemas/MetadataType'
+        status:
+          type: string
+        category_type:
+          type: string
+        category_name:
+          type: string
+        is_internal:
+          type: boolean
+        source:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolInfo'
+        create_user:
+          type: string
+        update_user:
+          type: string
+        release_user:
+          type: string
+
+    BatchNamesRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+          description: 待取名的工具箱 ID 列表。空列表返回空 `entries`。
+
+    BatchNamesResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+          description: ID 到名称的映射。**不存在的 ID 被静默略过**。

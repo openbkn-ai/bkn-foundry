@@ -12,8 +12,9 @@
 | [impex.yaml](impex.yaml) | 导入导出 | `GET /impex/export/{type}/{id}`、`POST /impex/import/{type}` |
 | [operator.yaml](operator.yaml) | 算子 | 注册 / 编辑 / 更新 / 列表 / 详情 / 批量取名 / 状态 / 删除 / 调试 / 历史版本 / 市场 / 分类 / 内置算子，共 15 条 |
 | [mcp.yaml](mcp.yaml) | MCP | 探测 / 增删改查 / 状态 / 工具调试 / 市场 3 条 / 代理列工具与调用 / 对外端点 3 条，共 16 条 |
+| [toolbox.yaml](toolbox.yaml) | 工具箱 | 工具箱 CRUD 与状态 / 箱内工具增删改查与启停 / 调试与代理调用 / 算子转工具 / OpenAPI 能力包 / 市场 4 条，共 22 条 |
 
-> 工具箱 / Skill 两面（47 个端点）尚未收录，见本文末「覆盖边界」。
+> Skill 面（25 个端点）尚未收录，见本文末「覆盖边界」。
 
 ## 写一个函数：完整走一遍
 
@@ -116,12 +117,11 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 ## 覆盖边界
 
-已收录**函数 6 + 沙箱观测 4 + 导入导出 2 + 算子 15 + MCP 16 = 43 个端点**
-（公开面共 90）。剩余 47 个：
+已收录**函数 6 + 沙箱观测 4 + 导入导出 2 + 算子 15 + MCP 16 + 工具箱 22 = 65 个
+端点**（公开面共 90）。剩余 25 个：
 
 | 面 | 端点数 | 说明 |
 |---|---|---|
-| 工具箱 toolbox | 22 | 工具箱与工具的增删改查、调试、代理调用、市场 |
 | Skill | 25 | 注册 / 发布 / 版本 / 内容读取 / 下载 / 索引构建 |
 
 > 端点总数从 89 修正为 90：MCP 的 `Any /mcp/app/{mcp_id}/mcp`（Streamable HTTP
