@@ -91,9 +91,13 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 			continue
 		}
 		all = append(all, entry{t.Key, MCPToolInfo{
-			Name:         t.Name,
-			Description:  t.Desc,
-			InputSchema:  t.Input,
+			Name:        t.Name,
+			Description: t.Desc,
+			// 与 tools/list 同样施加（assemble.go 的 addExtras）：企业工具按本服务
+			// 自己的定义就是业务工具，生命周期守卫会向它要 bkn_context。这个端点
+			// 存在的理由是「不握手就看清能力面」，广播一份调不通的 schema 比不广播
+			// 更糟——照它集成会直接拿到 conversation_required。
+			InputSchema:  requireBKNContext(t.Input),
 			OutputSchema: t.Output,
 		}})
 	}

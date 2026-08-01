@@ -16,6 +16,11 @@ on:
     paths:
       - 'adp/context-loader/**'
       - '.github/workflows/ci-adp-context-loader.yml'
+      # lifecycle_schema_test.go 逐项比对本模块内嵌 schema 与 bkn-trace 的 swagger，
+      # 而这四步是仓内唯一执行它的地方。只盯 adp/context-loader/** 的话，改 bkn-trace
+      # 契约的 PR 命中不了这条流水线——#587 就是这么把一处漂移合进 main 的，六小时后
+      # 炸在一个无关的 PR 上。消费方 CI 盯着自己读的契约文件，是目前最短的兜底。
+      - 'bkn-trace/agent-observability/docs/swagger/**'
 
 concurrency:
   group: ci-adp-context-loader-${{ github.ref }}

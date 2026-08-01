@@ -117,3 +117,51 @@ func TestCoreToolCallIsUnaffectedByTheGate(t *testing.T) {
 		t.Fatalf("a core tool must not be refused as unknown: %s", got)
 	}
 }
+
+func TestInfoAndToolsListAgreeOnEnterpriseSchemas(t *testing.T) {
+	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
+	mcptool.Register(extraTool("probe_context", "probe_context"))
+	mcptool.Decorate(toolKeySearchSchema, searchSchemaDecorator())
+
+	// 两侧是两份实现：tools/list 走 toolBuilder，/mcp/info 遍历 tools_meta。
+	// 合并成一份的代价过高（BuildMCPInfo 每请求调用、拿不到 builder），所以改用
+	// 一条把它们钉在一起的用例——有扩展且已授权时，每个工具的 input schema 必须
+	// 逐字相等。少了这条，两边只要有一侧漏施加什么，就会长期无声分叉。
+	listed := listVisible(t)
+	info, err := BuildMCPInfo("https://example.invalid/mcp")
+	if err != nil {
+		t.Fatalf("BuildMCPInfo: %v", err)
+	}
+	if len(info.Tools) != len(listed) {
+		t.Fatalf("/mcp/info 有 %d 个工具，tools/list 有 %d 个", len(info.Tools), len(listed))
+	}
+	for _, entry := range info.Tools {
+		tool, ok := listed[entry.Name]
+		if !ok {
+			t.Fatalf("/mcp/info advertises %q, which tools/list does not have", entry.Name)
+		}
+		if string(entry.InputSchema) != string(tool.RawInputSchema) {
+			t.Fatalf("工具 %q 的 input schema 两侧不一致：\n/mcp/info : %s\ntools/list: %s",
+				entry.Name, entry.InputSchema, tool.RawInputSchema)
+		}
+	}
+}
+
+func TestEnterpriseToolCannotShadowACoreToolKey(t *testing.T) {
+	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
+	// Name 不撞、Key 撞。/mcp/info 按 key 排序，两个条目共用一个 key 会在两次
+	// 进程之间换位置——claimName 的第二道查重就是为这个，之前没有用例走过它。
+	shadow := extraTool(toolKeyRunSQL, "ee_run_sql")
+	mcptool.Register(shadow)
+
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("撞 key 必须在装配期 panic")
+		}
+		if msg, _ := got.(string); !strings.Contains(msg, "tool key") {
+			t.Fatalf("panic should name the contested key, got %q", msg)
+		}
+	}()
+	newMCPServer(nil)
+}
