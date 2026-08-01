@@ -5,9 +5,9 @@ import (
 	"context"
 	"net/http"
 
-	oerrors "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 const (

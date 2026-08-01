@@ -1,6 +1,6 @@
 # Release lockfile for bkn-foundry 0.1.2 — pins the chart version of every
 # component that makes up the product. Consumed by:
-#     deploy.sh bkn-foundry install --version=0.1.2
+#     deploy.sh openbkn install --version=0.1.2
 # All charts are published at 0.1.2 by the v0.1.2 tag build.
 apiVersion: deploy.openbkn.ai/v0.1.2
 kind: VersionSet
@@ -12,50 +12,50 @@ source:
 releases:
   core-data-migrator:
     chart: core-data-migrator
-    version: 0.1.2-release
+    version: 0.1.2
     stage: pre
   mf-model-manager:
     chart: mf-model-manager
-    version: 0.1.2-release
+    version: 0.1.2
   mf-model-api:
     chart: mf-model-api
-    version: 0.1.2-release
+    version: 0.1.2
   oss-gateway-backend:
     chart: oss-gateway-backend
-    version: 0.1.2-release
+    version: 0.1.2
   sandbox:
     chart: sandbox
-    version: 0.1.2-release
+    version: 0.1.2
   bkn-backend:
     chart: bkn-backend
-    version: 0.1.2-release
+    version: 0.1.2
   ontology-query:
     chart: ontology-query
-    version: 0.1.2-release
+    version: 0.1.2
   vega-backend:
     chart: vega-backend
-    version: 0.1.2-release
+    version: 0.1.2
   kafka-connect:
     chart: kafka-connect
-    version: 0.1.2-release
+    version: 0.1.2
   agent-operator-integration:
     chart: agent-operator-integration
-    version: 0.1.2-release
+    version: 0.1.2
   agent-retrieval:
     chart: agent-retrieval
-    version: 0.1.2-release
+    version: 0.1.2
   bkn-agent:
     chart: bkn-agent
-    version: 0.1.2-release
+    version: 0.1.2
   agent-observability:
     chart: agent-observability
-    version: 0.1.2-release
+    version: 0.1.2
   otelcol-contrib:
     chart: otelcol-contrib
-    version: 0.1.2-release
+    version: 0.1.2
   bkn-safe:
     chart: bkn-safe
-    version: 0.1.2-release
+    version: 0.1.2
   bkn-studio:
     chart: bkn-studio
-    version: 0.1.2-release
+    version: 0.1.2

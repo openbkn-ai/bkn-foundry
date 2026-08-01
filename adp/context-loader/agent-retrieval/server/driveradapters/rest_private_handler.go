@@ -12,16 +12,17 @@ package driveradapters
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knactionrecall"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knfindskills"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knactionrecall"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knfindskills"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knlogicpropertyresolver"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 type restPrivateHandler struct {
@@ -35,6 +36,7 @@ type restPrivateHandler struct {
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
 	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
 	Logger                         interfaces.Logger
+	LifecycleClient                *bkntrace.LifecycleClient
 }
 
 // NewRestPrivateHandler 创建restHandler实例
@@ -50,13 +52,14 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
 		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
 		Logger:                         logger,
+		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
 	}
 }
 
 // RegisterRouter 注册路由
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareHeaderAuthContext(), middlewareResponseFormat())
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareHeaderAuthContext(), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
 	engine.Use(mws...)
 
 	engine.POST("/kn/semantic-search", r.KnRetrievalHandler.SemanticSearch)

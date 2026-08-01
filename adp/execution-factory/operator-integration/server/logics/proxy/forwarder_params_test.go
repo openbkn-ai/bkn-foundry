@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	myErr "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/logger"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

@@ -10,14 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/metadata"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/sandbox"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/sandbox"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 // UnifiedProxyHandler 统一代理处理接口

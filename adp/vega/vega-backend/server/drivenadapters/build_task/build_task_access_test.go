@@ -401,6 +401,7 @@ func sampleBuildTask() *interfaces.BuildTask {
 		CatalogID:       "catalog-1",
 		Status:          interfaces.BuildTaskStatusInit,
 		Mode:            interfaces.BuildTaskModeBatch,
+		ExecuteType:     interfaces.BuildTaskExecuteTypeIncremental,
 		TotalCount:      100,
 		SyncedCount:     80,
 		VectorizedCount: 70,
@@ -437,6 +438,7 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 		task.ResourceID,
 		task.CatalogID,
 		task.Mode,
+		task.ExecuteType,
 		mustMarshalJSON(task.IndexConfig),
 		task.Status,
 		task.TotalCount,
@@ -454,7 +456,7 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 
 func buildTaskInsertArgs(task *interfaces.BuildTask) []driver.Value {
 	args := buildTaskRowValues(task)
-	args[4] = sqlmock.AnyArg()
+	args[5] = sqlmock.AnyArg()
 	return args
 }
 

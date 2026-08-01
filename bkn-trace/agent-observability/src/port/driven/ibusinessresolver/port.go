@@ -19,9 +19,11 @@ type ResolveRequest struct {
 }
 
 type Resolution struct {
-	RefID      string
-	Visibility string
-	Display    *evidencevo.BusinessDisplay
+	RefID        string
+	RefType      string
+	SourceSystem string
+	Visibility   string
+	Display      *evidencevo.BusinessDisplay
 }
 
 type BusinessResolverPort interface {

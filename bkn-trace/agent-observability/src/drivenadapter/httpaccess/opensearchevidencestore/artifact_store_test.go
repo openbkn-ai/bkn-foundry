@@ -141,6 +141,44 @@ func TestOpenSearchArtifactStoreFailsClosedByOwnership(t *testing.T) {
 	}
 }
 
+func TestOpenSearchArtifactStorePersistsRecordScopeForNetworkBuilder(t *testing.T) {
+	backend := newArtifactBackend()
+	store := New(newFakeOpenSearchClient(backend.roundTrip), "bkn-trace-evidence-test")
+	artifact := normalizedOpenSearchArtifact(t)
+	artifact.AccountID = "other-user"
+	artifact.AccountType = "user"
+	artifact.EffectiveSubjectID = "other-user"
+	artifact.ApplicationPrincipalID = "app-a"
+	artifact.BusinessRefs = []string{"object:kn-a:forecast", "property:kn-b:forecast:qty"}
+	artifact, validationErrors := evidencevo.NormalizeArtifact(artifact)
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize artifact: %+v", validationErrors)
+	}
+	if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	scope := evidencevo.QueryScope{View: evidencevo.AccessViewBusiness, AccessProfile: &evidencevo.AccessProfile{
+		TenantID: artifact.TenantID, BusinessDomain: artifact.BusinessDomain,
+		EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
+		ManagedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"}, AccountActive: true, TenantActive: true,
+	}}
+
+	restored, found, err := store.GetArtifact(context.Background(), artifact.ArtifactID, scope)
+
+	if err != nil || !found {
+		t.Fatalf("network builder must read a fully managed record: found=%v err=%v", found, err)
+	}
+	if restored.EffectiveSubjectID != "other-user" || restored.ApplicationPrincipalID != "app-a" ||
+		!reflect.DeepEqual(restored.KnowledgeNetworkIDs, []string{"kn-a", "kn-b"}) {
+		t.Fatalf("record scope was not preserved: %+v", restored)
+	}
+	for _, field := range []string{"effective_subject_id", "application_principal_id", "knowledge_network_ids"} {
+		if !strings.Contains(backend.mapping, `"`+field+`":{"type":"keyword"}`) {
+			t.Fatalf("artifact index must map %s: %s", field, backend.mapping)
+		}
+	}
+}
+
 func TestOpenSearchArtifactListUsesOwnershipFiltersAndReturnFilter(t *testing.T) {
 	backend := newArtifactBackend()
 	store := New(newFakeOpenSearchClient(backend.roundTrip), "bkn-trace-evidence-test")

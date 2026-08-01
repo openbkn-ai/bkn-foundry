@@ -140,7 +140,7 @@ name: Deployment
 
 | Type | ID | Name |
 |------|-----|------|
-| data_view | dv_deployments | Deployment View |
+| resource | res_deployments | Deployment Resource |
 
 ### Data Properties
 
@@ -151,9 +151,9 @@ name: Deployment
 	ot, err := ParseObjectTypeFile(text, "/test/deployment.bkn")
 	require.NoError(t, err)
 	require.NotNil(t, ot.DataSource)
-	assert.Equal(t, "data_view", ot.DataSource.Type)
-	assert.Equal(t, "dv_deployments", ot.DataSource.ID)
-	assert.Equal(t, "Deployment View", ot.DataSource.Name)
+	assert.Equal(t, "resource", ot.DataSource.Type)
+	assert.Equal(t, "res_deployments", ot.DataSource.ID)
+	assert.Equal(t, "Deployment Resource", ot.DataSource.Name)
 }
 
 func TestParseObjectType_WithLogicProperties(t *testing.T) {
@@ -1027,7 +1027,7 @@ Pod runs on Node via data view
 
 | Type | ID |
 |------|-----|
-| data_view | view_pod_node |
+| resource | res_pod_node |
 
 ### Source Mapping
 
@@ -1048,8 +1048,8 @@ Pod runs on Node via data view
 	rules, ok := rt.MappingRules.(*InDirectMappingRule)
 	require.True(t, ok, "MappingRules should be InDirectMappingRule for data_view")
 	require.NotNil(t, rules.BackingDataSource)
-	assert.Equal(t, "data_view", rules.BackingDataSource.Type)
-	assert.Equal(t, "view_pod_node", rules.BackingDataSource.ID)
+	assert.Equal(t, "resource", rules.BackingDataSource.Type)
+	assert.Equal(t, "res_pod_node", rules.BackingDataSource.ID)
 	require.Len(t, rules.SourceMappingRules, 1)
 	assert.Equal(t, "node_name", rules.SourceMappingRules[0].SourceProperty)
 	assert.Equal(t, "view_node_name", rules.SourceMappingRules[0].TargetProperty)

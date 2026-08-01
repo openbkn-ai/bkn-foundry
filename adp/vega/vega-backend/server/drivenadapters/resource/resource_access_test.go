@@ -30,7 +30,7 @@ func TestResourceAccessCreate(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_status,f_status_message,f_last_discover_status,f_database,f_source_identifier,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_enabled,f_local_storage_engine,f_local_storage_config,f_local_index_name,f_sync_strategy,f_sync_config,f_sync_status,f_last_sync_time,f_sync_error_message,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_status,f_status_message,f_last_discover_status,f_schema,f_source_identifier,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_enabled,f_local_storage_engine,f_local_storage_config,f_local_index_name,f_sync_strategy,f_sync_config,f_sync_status,f_last_sync_time,f_sync_error_message,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
 			WithArgs(
 				"resource-1",
 				"catalog-1",
@@ -66,7 +66,23 @@ func TestResourceAccessCreate(t *testing.T) {
 			).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
-		require.NoError(t, access.Create(context.Background(), sampleResource()))
+		require.NoError(t, access.Create(context.Background(), nil, sampleResource()))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("creates resource with transaction", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource")).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		require.NoError(t, access.Create(context.Background(), tx, sampleResource()))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -189,11 +205,11 @@ func TestResourceAccessGetByIDsBasic(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_database, f_source_identifier, f_source_metadata, f_schema_definition, f_logic_type, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_id IN (?,?)")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_logic_type, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_id IN (?,?)")).
 			WithArgs("resource-1", "resource-2").
 			WillReturnRows(sqlmock.NewRows([]string{
 				"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_status", "f_status_message", "f_last_discover_status",
-				"f_database", "f_source_identifier", "f_source_metadata", "f_schema_definition", "f_logic_type",
+				"f_schema", "f_source_identifier", "f_source_metadata", "f_schema_definition", "f_logic_type",
 				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"resource-1", "catalog-1", "orders", "pii,core", "desc", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "ready", interfaces.DiscoverStatusNew,
@@ -219,7 +235,7 @@ func TestResourceAccessGetByName(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_database, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ? AND f_name = ?")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ? AND f_name = ?")).
 			WithArgs("catalog-1", "orders").
 			WillReturnRows(resourceNameRows().AddRow(resourceNameRowValues(sampleResource())...))
 
@@ -229,7 +245,7 @@ func TestResourceAccessGetByName(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Equal(t, "resource-1", got.ID)
 		assert.Equal(t, []string{"pii", "core"}, got.Tags)
-		assert.Equal(t, "db1", got.Database)
+		assert.Equal(t, "db1", got.Schema)
 		assert.Equal(t, "public.orders", got.SourceIdentifier)
 		require.Len(t, got.SchemaDefinition, 1)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -239,7 +255,7 @@ func TestResourceAccessGetByName(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_database, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ? AND f_name = ?")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ? AND f_name = ?")).
 			WithArgs("catalog-1", "missing").
 			WillReturnError(sql.ErrNoRows)
 
@@ -256,7 +272,7 @@ func TestResourceAccessGetByCatalogID(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_database, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ?")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").
 			WillReturnRows(resourceNameRows().
 				AddRow(resourceNameRowValues(sampleResource())...).
@@ -282,13 +298,13 @@ func TestResourceAccessList(t *testing.T) {
 			CatalogID:             "catalog-1",
 			Category:              interfaces.ResourceCategoryTable,
 			Status:                interfaces.ResourceStatusActive,
-			Database:              "db1",
+			Schema:                "db1",
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_database = ?")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_schema = ?")).
 			WithArgs("%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "db1").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_database, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_database = ? ORDER BY f_name ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_schema = ? ORDER BY f_name ASC")).
 			WithArgs("%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "db1").
 			WillReturnRows(resourceNameRows().AddRow(resourceNameRowValues(sampleResource())...))
 
@@ -542,7 +558,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil))
+		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, nil))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -554,7 +570,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnError(errors.New("db down"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -568,7 +584,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "extra"}).AddRow("resource-1", "unexpected"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -588,7 +604,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"resource-1", "resource-2"}, store.deletedIDs)
@@ -605,7 +621,7 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 			WithArgs("catalog-1").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("resource-1"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), []string{"catalog-1"})
+		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "store down")
@@ -720,7 +736,7 @@ func replaceResourceExtensionStore(store *fakeResourceExtensionStore) func() {
 		return &entityextension.Store{}
 	})
 	patches.ApplyMethod(&entityextension.Store{}, "DeleteByEntityIDs",
-		func(_ *entityextension.Store, ctx context.Context, kind string, entityIDs []string) error {
+		func(_ *entityextension.Store, ctx context.Context, _ *sql.Tx, kind string, entityIDs []string) error {
 			return store.DeleteByEntityIDs(ctx, kind, entityIDs)
 		})
 	patches.ApplyMethod(&entityextension.Store{}, "GetByEntityID",
@@ -745,7 +761,7 @@ func sampleResource() *interfaces.Resource {
 		Status:             interfaces.ResourceStatusActive,
 		StatusMessage:      "ready",
 		LastDiscoverStatus: interfaces.DiscoverStatusNew,
-		Database:           "db1",
+		Schema:             "db1",
 		SourceIdentifier:   "public.orders",
 		SourceMetadata:     map[string]any{"properties": map[string]any{"row_count": 42}},
 		SchemaDefinition:   []*interfaces.Property{{Name: "id", Type: "integer"}},
@@ -778,7 +794,7 @@ func resourceNameRows() *sqlmock.Rows {
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
-		"f_database",
+		"f_schema",
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
@@ -803,7 +819,7 @@ func resourceNameRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.Status,
 		resource.StatusMessage,
 		resource.LastDiscoverStatus,
-		resource.Database,
+		resource.Schema,
 		resource.SourceIdentifier,
 		`{"properties":{"row_count":42}}`,
 		`[{"name":"id","type":"integer"}]`,
@@ -818,7 +834,7 @@ func resourceNameRowValues(resource *interfaces.Resource) []driver.Value {
 }
 
 func resourceSelectSQL(where string) string {
-	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_database, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_logic_type, f_logic_definition, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_local_index_name FROM t_resource WHERE " + where
+	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_logic_type, f_logic_definition, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_local_index_name FROM t_resource WHERE " + where
 }
 
 func resourceRows() *sqlmock.Rows {
@@ -832,7 +848,7 @@ func resourceRows() *sqlmock.Rows {
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
-		"f_database",
+		"f_schema",
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
@@ -860,7 +876,7 @@ func resourceRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.Status,
 		resource.StatusMessage,
 		resource.LastDiscoverStatus,
-		resource.Database,
+		resource.Schema,
 		resource.SourceIdentifier,
 		`{"properties":{"row_count":42}}`,
 		`[{"name":"id","type":"integer"}]`,

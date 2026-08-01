@@ -1295,7 +1295,7 @@ REDIS_CPU_LIMIT="${REDIS_CPU_LIMIT:-}"
 # BKN Foundry Core Resource Configuration
 # These environment variables allow setting resources.requests/limits for all Core releases uniformly.
 # Empty by default means chart defaults are used (most app charts ship limits=4-8Gi which is over-provisioned for dev).
-# Apply via environment: OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi deploy.sh bkn-foundry install
+# Apply via environment: OPENBKN_CORE_REQ_CPU=200m OPENBKN_CORE_REQ_MEM=512Mi deploy.sh openbkn install
 OPENBKN_CORE_REQ_CPU="${OPENBKN_CORE_REQ_CPU:-}"
 OPENBKN_CORE_REQ_MEM="${OPENBKN_CORE_REQ_MEM:-}"
 OPENBKN_CORE_LIM_CPU="${OPENBKN_CORE_LIM_CPU:-}"

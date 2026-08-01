@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 )
 
@@ -58,15 +59,21 @@ func (r *Resolver) ResolveBusinessRefs(ctx context.Context, request ibusinessres
 }
 
 func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, ref ibusinessresolver.BusinessRef, cache map[string]any) (ibusinessresolver.Resolution, error) {
-	resolution := ibusinessresolver.Resolution{RefID: ref.RefID, Visibility: "unresolved"}
+	resolution := ibusinessresolver.Resolution{
+		RefID: ref.RefID, RefType: ref.RefType, SourceSystem: ref.SourceSystem, Visibility: "unresolved",
+	}
 	parts := strings.Split(ref.RefID, ":")
 	if len(parts) < 2 {
+		return resolution, nil
+	}
+	kind, sourceSystem := resolverKind(ref)
+	if kind == "" || parts[0] != kind || !resolverSourceMatches(ref.SourceSystem, sourceSystem) {
 		return resolution, nil
 	}
 
 	var entity namedEntity
 	var path []string
-	switch parts[0] {
+	switch kind {
 	case "kn":
 		if len(parts) != 2 || r.bknBaseURL == "" {
 			return resolution, nil
@@ -78,7 +85,7 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 		if len(parts) != 3 || r.bknBaseURL == "" {
 			return resolution, nil
 		}
-		segment := map[string]string{"object": "object-types", "relation": "relation-types", "action_type": "action-types", "metric": "metrics"}[parts[0]]
+		segment := map[string]string{"object": "object-types", "relation": "relation-types", "action_type": "action-types", "metric": "metrics"}[kind]
 		path = []string{"api", "bkn-backend", "in", "v1", "knowledge-networks", parts[1], segment, parts[2]}
 		var response entriesResponse
 		status, err := r.getJSON(ctx, scope, r.bknBaseURL, path, &response, cache)
@@ -86,7 +93,7 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 			entity = response.Entries[0]
 		}
 		return entityResolution(resolution, status, err, entity, []string{entity.Name})
-	case "property":
+	case "property", "logic":
 		if len(parts) != 4 || r.bknBaseURL == "" {
 			return resolution, nil
 		}
@@ -97,7 +104,13 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 			return entityResolution(resolution, status, err, namedEntity{}, nil)
 		}
 		entity = response.Entries[0]
-		for _, property := range append(entity.DataProperties, entity.LogicProperties...) {
+		properties := entity.DataProperties
+		if kind == "logic" {
+			properties = entity.LogicProperties
+		} else {
+			properties = append(properties, entity.LogicProperties...)
+		}
+		for _, property := range properties {
 			if property.Name == parts[3] {
 				name := property.DisplayName
 				if name == "" {
@@ -108,7 +121,7 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 		}
 		return resolution, nil
 	case "resource", "field":
-		if r.vegaBaseURL == "" || (parts[0] == "resource" && len(parts) != 2) || (parts[0] == "field" && len(parts) != 3) {
+		if r.vegaBaseURL == "" || (kind == "resource" && len(parts) != 2) || (kind == "field" && len(parts) != 3) {
 			return resolution, nil
 		}
 		resourceID := parts[1]
@@ -119,7 +132,7 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 			return entityResolution(resolution, status, err, namedEntity{}, nil)
 		}
 		entity = response.Entries[0]
-		if parts[0] == "resource" {
+		if kind == "resource" {
 			return resolved(resolution, entity.Name, []string{entity.Name}, entitySourceVersion(entity)), nil
 		}
 		for _, property := range entity.SchemaDefinition {
@@ -133,6 +146,60 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 		}
 	}
 	return resolution, nil
+}
+
+func resolverKind(ref ibusinessresolver.BusinessRef) (string, string) {
+	// Evidence APIs historically identify these references by their RefID prefix.
+	if ref.RefType == "data_field" {
+		return "field", "vega"
+	}
+	if ref.RefType == "action" {
+		return "action_type", "bkn"
+	}
+	if kind, source := resolverPrefix(ref.RefType); kind != "" {
+		return kind, source
+	}
+	refType := sessionvo.BusinessRefType(ref.RefType)
+	if kind := refType.CanonicalRefPrefix(); kind != "" {
+		source := "bkn"
+		if refType == sessionvo.BusinessRefDataResource {
+			source = "vega"
+		}
+		return kind, source
+	}
+	if ref.RefType == "" {
+		prefix, _, found := strings.Cut(ref.RefID, ":")
+		if found {
+			return resolverPrefix(prefix)
+		}
+	}
+	return "", ""
+}
+
+func resolverSourceMatches(provided, authority string) bool {
+	// Keep this controlled alias list aligned with TestResolverRecognizesRegisteredProducerSourceAliases.
+	if provided == "" || provided == authority {
+		return true
+	}
+	switch authority {
+	case "bkn":
+		return provided == "bkn-backend" || provided == "context-loader"
+	case "vega":
+		return provided == "vega-data"
+	default:
+		return false
+	}
+}
+
+func resolverPrefix(prefix string) (string, string) {
+	switch prefix {
+	case "resource", "field":
+		return prefix, "vega"
+	case "kn", "object", "object_instance", "property", "relation", "metric", "logic", "function", "action_type", "action_instance":
+		return prefix, "bkn"
+	default:
+		return "", ""
+	}
 }
 
 func entityResolution(base ibusinessresolver.Resolution, status int, err error, entity namedEntity, businessPath []string) (ibusinessresolver.Resolution, error) {

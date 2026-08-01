@@ -11,7 +11,7 @@ tags: []
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | fec29f03-97fa-4f06-bffa-3605ae1b3ae0 | 员工部门关系表 |
+| resource | fec29f03-97fa-4f06-bffa-3605ae1b3ae0 | 员工部门关系表 |
 
 ### Data Properties
 

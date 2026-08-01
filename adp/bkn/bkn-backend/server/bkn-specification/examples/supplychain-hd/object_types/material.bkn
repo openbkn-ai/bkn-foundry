@@ -15,7 +15,7 @@ tags: [供应链, 物料, 已审核]
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | d607dm08ubbiutnq84mg | HD_物料 |
+| resource | d607dm08ubbiutnq84mg | HD_物料 |
 
 ### Data Properties
 

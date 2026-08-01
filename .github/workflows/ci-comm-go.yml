@@ -1,0 +1,63 @@
+name: ci-comm-go
+
+# Compile + test gate for the shared Go library. It has no image and no chart,
+# so it does not go through reusable-test/reusable-build — those resolve a
+# version and publish artefacts, neither of which applies to a library.
+#
+# Two exclusions carried over from the library's own CI before it moved into
+# this repository:
+#   - db/driver/kingbase/gokb is vendor-supplied KingbaseES source with
+#     pre-existing unreachable-code findings; vet skips it until cleaned up.
+#   - the driver tests need live databases (MYSQL_TEST_PORT and friends), so
+#     they are skipped here rather than failing on an absent environment.
+
+on:
+  pull_request:
+    paths:
+      - 'comm-go/**'
+      - '.github/workflows/ci-comm-go.yml'
+
+concurrency:
+  group: ci-comm-go-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: comm-go build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: comm-go
+    env:
+      # The repo-root go.work is gitignored, but a developer's local copy must
+      # never change what CI resolves: the pinned requires are what consumers
+      # build against.
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: comm-go/go.mod
+          cache: true
+
+      - run: go build ./...
+
+      - name: Vet
+        run: go vet $(go list ./... | grep -v '/db/driver/kingbase/gokb$')
+
+      - name: Test
+        run: go test $(go list ./... | grep -Ev '/db/driver($|/(mysql|dmdb|kingbase)$)')
+
+      # entitlement ships two mutually exclusive gates behind build tags, and
+      # the default job only ever compiles one of them. Without this step the
+      # development stub could stop building — or stop denying — and nothing
+      # would notice until someone tried to run a validation build.
+      - name: Build and test the ee_dev variant
+        run: |
+          go build -tags ee_dev ./...
+          go test -tags ee_dev ./entitlement/...

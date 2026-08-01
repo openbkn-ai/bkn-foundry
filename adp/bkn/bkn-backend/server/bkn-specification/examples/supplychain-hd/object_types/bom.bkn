@@ -18,7 +18,7 @@ BOM结构：4层(成品→半成品→PCBA→元器件)；含自制、委外、�
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | 2017573348757762050 | erp_material_bom |
+| resource | 2017573348757762050 | erp_material_bom |
 
 ### Data Properties
 

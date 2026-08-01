@@ -11,9 +11,9 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"gopkg.in/yaml.v3"
 )
 

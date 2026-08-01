@@ -121,8 +121,10 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 		return nil
 	}
 
-	// Execute build
-	err = bbw.executeBuild(ctx, resource, buildTaskInfo, msg.ExecuteType)
+	// Execute type belongs to the persisted task. reset is only a one-off
+	// override for this run, forcing a full rebuild.
+	executeType := batchBuildExecuteType(buildTaskInfo, msg.Reset)
+	err = bbw.executeBuild(ctx, resource, buildTaskInfo, executeType)
 	if err != nil {
 		// Update task status to failed
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
@@ -138,6 +140,20 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 
 	logger.Infof("Build completed for task: %s, resource: %s", taskID, resourceID)
 	return nil
+}
+
+func batchBuildExecuteType(buildTask *interfaces.BuildTask, reset bool) string {
+	// Incremental tasks keep using their existing index and checkpoint. They
+	// cannot be reset into a full rebuild because that index is not disposable.
+	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		return interfaces.BuildTaskExecuteTypeIncremental
+	}
+	// A full task normally resumes from its checkpoint after a failure. reset is
+	// meaningful only for it and starts the same task from the beginning.
+	if reset {
+		return interfaces.BuildTaskExecuteTypeFull
+	}
+	return interfaces.BuildTaskExecuteTypeIncremental
 }
 
 // advanceCursor 把批读游标推进到本批最后一行的键值。

@@ -46,8 +46,6 @@ type objectTypeService struct {
 	db         *sql.DB
 	aoa        interfaces.AgentOperatorAccess
 	cga        interfaces.ConceptGroupAccess
-	dda        interfaces.DataModelAccess
-	dva        interfaces.DataViewAccess
 	ma         interfaces.MetricAccess
 	mfa        interfaces.ModelFactoryAccess
 	ota        interfaces.ObjectTypeAccess
@@ -63,8 +61,6 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			db:         logics.DB,
 			aoa:        logics.AOA,
 			cga:        logics.CGA,
-			dda:        logics.DDA,
-			dva:        logics.DVA,
 			ma:         logics.MA,
 			mfa:        logics.MFA,
 			ota:        logics.OTA,
@@ -79,11 +75,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 // validateObjectTypeStrictExternalDeps checks backing data view or vega resource, vector embedding models, and logic property references.
 func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.Context, objectType *interfaces.ObjectType) error {
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
-		dsType := objectType.DataSource.Type
-		if dsType == "" {
-			dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-		}
-		switch dsType {
+		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 			res, err := ots.vba.GetResourceByID(ctx, objectType.DataSource.ID)
 			if err != nil {
@@ -97,17 +89,7 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 					WithErrorDetails(fmt.Sprintf("对象类[%s]的资源[%s]不存在", objectType.OTName, objectType.DataSource.ID))
 			}
 		default:
-			dataView, err := ots.dva.GetDataViewByID(ctx, objectType.DataSource.ID)
-			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]的数据视图[%s]获取失败: %s", objectType.OTName, objectType.DataSource.ID, err.Error()))
-			}
-			if dataView == nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]的数据视图[%s]不存在", objectType.OTName, objectType.DataSource.ID))
-			}
+			return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
 		}
 	}
 	if objectType.DataProperties != nil {
@@ -714,9 +696,6 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	}
 
 	dsType := objectType.DataSource.Type
-	if dsType == "" {
-		dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-	}
 
 	var datasetResp *interfaces.DatasetQueryResponse
 	switch dsType {
@@ -731,26 +710,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 			OutputFields: outputFields,
 		})
 	default:
-		if query.Offset > 0 {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-				berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails("data_view sample data uses search_after pagination and does not support offset")
-		}
-		var viewResp *interfaces.ViewQueryResult
-		var viewErr error
-		if len(query.SearchAfter) > 0 {
-			viewResp, viewErr = ots.dva.GetDataNext(ctx, objectType.DataSource.ID, query.SearchAfter, query.Limit)
-		} else {
-			viewResp, viewErr = ots.dva.GetDataStart(ctx, objectType.DataSource.ID, "", nil, query.Limit)
-		}
-		if viewErr != nil {
-			err = viewErr
-		} else if viewResp != nil {
-			datasetResp = &interfaces.DatasetQueryResponse{
-				Entries:    viewResp.Entries,
-				TotalCount: viewResp.TotalCount,
-			}
-			result.SearchAfter = viewResp.SearchAfter
-		}
+		return nil, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, dsType)
 	}
 	if err != nil {
 		logger.Errorf("Query object type sample data error: %s", err.Error())
@@ -1825,11 +1785,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 
 	// 查视图或 vega Resource 组装 ops. 不需要组装,因为保存的时候会保存进去
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
-		dsType := objectType.DataSource.Type
-		if dsType == "" {
-			dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-		}
-		switch dsType {
+		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 			res, err := ots.vba.GetResourceByID(ctx, objectType.DataSource.ID)
 			if err != nil || res == nil {
@@ -1849,26 +1805,6 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 					objectType.DataProperties[j].ConditionOperations = ots.processConditionOperations(objectType, prop, dslView)
 				}
 			}
-		default:
-			dataView, err := ots.dva.GetDataViewByID(ctx, objectType.DataSource.ID)
-			if err != nil || dataView == nil {
-				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s Data view %s not found, error: %v",
-					objectType.OTID, objectType.DataSource.ID, err))
-			} else {
-				objectType.DataSource.Name = dataView.ViewName
-				// 视图不为空，则把支持的操作符返回
-				for j, prop := range objectType.DataProperties {
-					// 不为空时，才翻译字段显示名。为空则不翻译
-					if prop.MappedField != nil {
-						if field, exists := dataView.FieldsMap[prop.MappedField.Name]; exists {
-							objectType.DataProperties[j].MappedField.DisplayName = field.DisplayName
-							objectType.DataProperties[j].MappedField.Type = field.Type
-						}
-					}
-					// 字符串类型的属性支持的操作符返回
-					objectType.DataProperties[j].ConditionOperations = ots.processConditionOperations(objectType, prop, dataView)
-				}
-			}
 		}
 
 		// 逻辑属性，资源id转名称
@@ -1884,6 +1820,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 			}
 		}
 	}
+
 	return nil
 }
 

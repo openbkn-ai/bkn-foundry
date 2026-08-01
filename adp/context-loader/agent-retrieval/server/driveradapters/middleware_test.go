@@ -1,6 +1,7 @@
 package driveradapters
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -9,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/smartystreets/goconvey/convey"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/logger"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 func TestMiddlewareResponseFormat_DefaultAndValid(t *testing.T) {
@@ -254,18 +255,26 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 			KnSearchHandler:                stubKnSearchHandler{},
 			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
+			LifecycleClient:                inProcessLifecycleClient(t),
 			Logger:                         logger.DefaultLogger(),
 		}
 		handler.RegisterRouter(routerGroup)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/kn/semantic-search?response_format=toon", http.NoBody)
-		req.Header.Set("Authorization", "Bearer token")
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/agent-retrieval/v1/kn/semantic-search?response_format=toon",
+			bytes.NewBufferString(`{
+				"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route","operation_key":"route-semantic"}
+			}`),
+		)
+		setRouteLifecycleHeaders(req)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
-
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
 		convey.So(w.Body.String(), convey.ShouldEqual, "ok")
+		convey.So(w.Header().Get("Content-Type"), convey.ShouldEqual, "text/plain; charset=utf-8")
+		convey.So(w.Header().Get(common.HeaderBKNReceiptID), convey.ShouldEqual, "receipt-route")
 	})
 }
 

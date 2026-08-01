@@ -15,7 +15,7 @@ import (
 
 	gin "github.com/gin-gonic/gin"
 	mcp "github.com/mark3labs/mcp-go/mcp"
-	interfaces "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 

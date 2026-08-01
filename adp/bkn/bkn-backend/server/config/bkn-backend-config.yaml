@@ -78,14 +78,6 @@ depServices:
     host: mf-model-api
     port: 9898
     protocol: http
-  data-model:
-    host: mdl-data-model-svc
-    port: 13020
-    protocol: http
-  uniquery:
-    host: mdl-uniquery-svc
-    port: 13011
-    protocol: http
   business-system:
     host: business-system-service
     port: 80

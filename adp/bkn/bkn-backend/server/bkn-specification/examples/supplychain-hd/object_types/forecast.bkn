@@ -13,7 +13,7 @@ tags: [供应链, 预测, 已审核, 模拟数据]
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | 41aec56e-bcdb-4976-b947-257f6975c851 | 需求预测 |
+| resource | 41aec56e-bcdb-4976-b947-257f6975c851 | 需求预测 |
 
 ### Data Properties
 

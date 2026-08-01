@@ -11,11 +11,11 @@ import (
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	infraErr "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 var (

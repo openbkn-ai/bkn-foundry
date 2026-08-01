@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/db"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-comm-go/db/sqlx"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 )
 
 type skillIndexBuildTaskDB struct {

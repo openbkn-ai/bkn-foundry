@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -31,6 +31,7 @@ const (
 	HeaderBKNConversationID   = "bkn-conversation-id"
 	HeaderBKNInteractionID    = "bkn-interaction-id"
 	HeaderBKNOperationID      = "bkn-operation-id"
+	HeaderBKNReceiptID        = "bkn-receipt-id"
 	HeaderBKNCausationEventID = "bkn-causation-event-id"
 	HeaderBKNClaimID          = "bkn-claim-id"
 	HeaderBKNAttempt          = "bkn-attempt"

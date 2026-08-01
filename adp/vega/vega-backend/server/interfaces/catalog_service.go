@@ -13,7 +13,7 @@ import "context"
 //go:generate mockgen -source ../interfaces/catalog_service.go -destination ../interfaces/mock/mock_catalog_service.go
 type CatalogService interface {
 	// Create creates a new Catalog.
-	Create(ctx context.Context, req *CatalogRequest) (string, error)
+	Create(ctx context.Context, req *CatalogRequest, allowUnhealthy bool) (string, error)
 	// Get retrieves a Catalog by ID.
 	GetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
 	// Get retrieves a Catalog by IDs.
@@ -21,7 +21,7 @@ type CatalogService interface {
 	// List lists Catalogs with filters.
 	List(ctx context.Context, params CatalogsQueryParams) ([]*Catalog, int64, error)
 	// Update updates a Catalog.
-	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest) error
+	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest, allowUnhealthy bool) error
 	// SetEnabled updates Catalog enabled state.
 	SetEnabled(ctx context.Context, catalog *Catalog, enabled bool) error
 	// DeleteByIDs deletes Catalogs by IDs.
@@ -33,7 +33,9 @@ type CatalogService interface {
 	// CheckExistByName checks if a Catalog exists by name.
 	CheckExistByName(ctx context.Context, name string) (bool, error)
 	// TestConnection tests catalog connection.
-	TestConnection(ctx context.Context, catalog *Catalog) (*CatalogHealthCheckStatus, error)
+	TestConnection(ctx context.Context, catalogID string) (*CatalogHealthCheckStatus, error)
+	// TestConnectionConfig tests an unpersisted physical catalog connection configuration.
+	TestConnectionConfig(ctx context.Context, req *CatalogConnectionTestRequest) (*CatalogHealthCheckStatus, error)
 
 	// UpdateMetadata updates a Catalog metadata.
 	UpdateMetadata(ctx context.Context, id string, metadata map[string]any) error
@@ -45,4 +47,6 @@ type CatalogService interface {
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
 	// InternalGetByIDs retrieves Catalogs for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
+	// InternalTestConnection tests catalog connection without user permission checks.
+	InternalTestConnection(ctx context.Context, catalogID string) (*CatalogHealthCheckStatus, error)
 }

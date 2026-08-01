@@ -71,29 +71,32 @@ var artifactLinkRoles = map[string][]ArtifactLinkRole{
 }
 
 type EvidenceArtifact struct {
-	ArtifactID     string       `json:"artifact_id"`
-	ArtifactType   ArtifactType `json:"artifact_type"`
-	RequestID      string       `json:"bkn.request.id"`
-	TraceID        string       `json:"trace_id,omitempty"`
-	InteractionID  string       `json:"interaction_id,omitempty"`
-	OperationID    string       `json:"operation_id,omitempty"`
-	ClaimID        string       `json:"claim_id,omitempty"`
-	SourceRef      string       `json:"source_ref,omitempty"`
-	BusinessRefs   []string     `json:"business_refs,omitempty"`
-	ContentType    string       `json:"content_type"`
-	SchemaVersion  string       `json:"schema_version"`
-	ObservedAt     string       `json:"observed_at"`
-	AsOf           string       `json:"as_of,omitempty"`
-	SourceVersion  string       `json:"source_version,omitempty"`
-	ContentHash    string       `json:"content_hash"`
-	Content        any          `json:"content,omitempty"`
-	SnapshotRef    string       `json:"snapshot_ref,omitempty"`
-	TenantID       string       `json:"bkn.tenant.id,omitempty"`
-	BusinessDomain string       `json:"business_domain,omitempty"`
-	AccountID      string       `json:"bkn.account.id"`
-	AccountType    string       `json:"bkn.account.type"`
-	Initiator      string       `json:"initiator,omitempty"`
-	AgentOrApp     string       `json:"agent_or_app,omitempty"`
+	ArtifactID             string       `json:"artifact_id"`
+	ArtifactType           ArtifactType `json:"artifact_type"`
+	RequestID              string       `json:"bkn.request.id"`
+	TraceID                string       `json:"trace_id,omitempty"`
+	InteractionID          string       `json:"interaction_id,omitempty"`
+	OperationID            string       `json:"operation_id,omitempty"`
+	ClaimID                string       `json:"claim_id,omitempty"`
+	SourceRef              string       `json:"source_ref,omitempty"`
+	BusinessRefs           []string     `json:"business_refs,omitempty"`
+	ContentType            string       `json:"content_type"`
+	SchemaVersion          string       `json:"schema_version"`
+	ObservedAt             string       `json:"observed_at"`
+	AsOf                   string       `json:"as_of,omitempty"`
+	SourceVersion          string       `json:"source_version,omitempty"`
+	ContentHash            string       `json:"content_hash"`
+	Content                any          `json:"content,omitempty"`
+	SnapshotRef            string       `json:"snapshot_ref,omitempty"`
+	TenantID               string       `json:"bkn.tenant.id,omitempty"`
+	BusinessDomain         string       `json:"business_domain,omitempty"`
+	AccountID              string       `json:"bkn.account.id"`
+	AccountType            string       `json:"bkn.account.type"`
+	EffectiveSubjectID     string       `json:"effective_subject_id,omitempty"`
+	ApplicationPrincipalID string       `json:"application_principal_id,omitempty"`
+	KnowledgeNetworkIDs    []string     `json:"knowledge_network_ids,omitempty"`
+	Initiator              string       `json:"initiator,omitempty"`
+	AgentOrApp             string       `json:"agent_or_app,omitempty"`
 }
 
 type ArtifactIngestResponse struct {
@@ -127,6 +130,7 @@ func NormalizeArtifact(artifact EvidenceArtifact) (EvidenceArtifact, ValidationE
 	artifact.AccountType = strings.TrimSpace(artifact.AccountType)
 	artifact.Initiator = strings.TrimSpace(artifact.Initiator)
 	artifact.AgentOrApp = strings.TrimSpace(artifact.AgentOrApp)
+	artifact.KnowledgeNetworkIDs = KnowledgeNetworkIDsFromRefs(append(append([]string(nil), artifact.BusinessRefs...), artifact.SourceRef))
 
 	var validationErrors ValidationErrors
 	requireArtifactValue(artifact.ArtifactID, "artifact_id", &validationErrors)
@@ -257,10 +261,13 @@ func marshalCanonicalArtifactContent(content any) ([]byte, error) {
 }
 
 func MatchesArtifactScope(artifact EvidenceArtifact, scope QueryScope) bool {
+	if scope.AccessProfile != nil {
+		return CanReadRecord(*scope.AccessProfile, artifact.RecordScope(), AccessViewBusiness)
+	}
 	if artifact.AccountID == "" || artifact.AccountType == "" || artifact.TenantID == "" && artifact.BusinessDomain == "" {
 		return false
 	}
-	if !scope.CrossAccountRead && (artifact.AccountID != scope.AccountID || artifact.AccountType != scope.AccountType) {
+	if artifact.AccountID != scope.AccountID || artifact.AccountType != scope.AccountType {
 		return false
 	}
 	if artifact.TenantID != "" && artifact.TenantID != scope.TenantID {
@@ -272,7 +279,26 @@ func MatchesArtifactScope(artifact EvidenceArtifact, scope QueryScope) bool {
 	return true
 }
 
+func (artifact EvidenceArtifact) RecordScope() RecordScope {
+	effectiveSubjectID := artifact.EffectiveSubjectID
+	applicationPrincipalID := artifact.ApplicationPrincipalID
+	if effectiveSubjectID == "" && artifact.AccountType != "app" && artifact.AccountType != "service" {
+		effectiveSubjectID = artifact.AccountID
+	}
+	if applicationPrincipalID == "" && (artifact.AccountType == "app" || artifact.AccountType == "service") {
+		applicationPrincipalID = artifact.AccountID
+	}
+	return RecordScope{
+		TenantID: artifact.TenantID, BusinessDomain: artifact.BusinessDomain,
+		EffectiveSubjectID: effectiveSubjectID, ApplicationPrincipalID: applicationPrincipalID,
+		KnowledgeNetworkIDs: artifact.KnowledgeNetworkIDs,
+	}
+}
+
 func ArtifactFingerprint(artifact EvidenceArtifact) (string, error) {
+	artifact.EffectiveSubjectID = ""
+	artifact.ApplicationPrincipalID = ""
+	artifact.KnowledgeNetworkIDs = nil
 	body, err := json.Marshal(artifact)
 	if err != nil {
 		return "", err

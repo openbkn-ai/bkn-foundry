@@ -6,8 +6,8 @@ package parsers
 import (
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 // 函数工具的参数定义在落库时被展开成 OpenAPI 规格,存进单列 f_api_spec。

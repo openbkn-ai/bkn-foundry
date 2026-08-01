@@ -49,13 +49,11 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		osa := omock.NewMockOpenSearchAccess(mockCtrl)
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
 
 		logics.OMA = omAccess
 		logics.OSA = osa
-		logics.UA = uAccess
 		logics.MFA = mfa
 		logics.AOA = aoAccess
 
@@ -63,7 +61,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			appSetting: appSetting,
 			omAccess:   omAccess,
 			osa:        osa,
-			uAccess:    uAccess,
 			mfa:        mfa,
 			aoAccess:   aoAccess,
 		}
@@ -397,7 +394,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(len(result.Datas), ShouldEqual, 1)
 		})
 
-		Convey("成功 - 从视图查询", func() {
+		Convey("成功 - resource 数据源查询（原视图路径）", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: objectTypeID,
@@ -411,7 +408,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					},
 					PrimaryKeys: []string{"id"},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
@@ -425,13 +423,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -453,7 +454,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					},
 					PrimaryKeys: []string{"id"},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
@@ -471,6 +473,15 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 				PageQuery: interfaces.PageQuery{
 					Limit: 10,
+				},
+			}
+
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
 			}
 
@@ -497,7 +508,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 					PrimaryKeys: []string{"id"},
 					LogicProperties: []*interfaces.LogicProperty{
@@ -532,13 +544,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -601,6 +616,15 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
+				},
+			}
+
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
@@ -611,7 +635,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(result.Datas, ShouldBeNil)
 		})
 
-		Convey("成功 - IgnoringStore=true时从视图查询", func() {
+		Convey("成功 - IgnoringStore=true 时走 resource 数据源", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: objectTypeID,
@@ -625,7 +649,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					},
 					PrimaryKeys: []string{"id"},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 				Status: &interfaces.ObjectTypeStatus{
@@ -646,13 +671,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -724,6 +752,15 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
+				},
+			}
+
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
@@ -734,7 +771,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(result.Datas, ShouldBeNil)
 		})
 
-		Convey("失败 - 获取视图数据失败", func() {
+		Convey("失败 - 废弃 data_view 绑定", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: objectTypeID,
@@ -763,10 +800,12 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			}
 
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
-
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 			So(result.Datas, ShouldBeNil)
 		})
 
@@ -794,6 +833,15 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
+				},
+			}
+
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 			osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
@@ -816,7 +864,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					},
 					PrimaryKeys: []string{"id"},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
@@ -833,13 +882,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -860,7 +912,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 					PrimaryKeys: []string{"id"},
 					LogicProperties: []*interfaces.LogicProperty{
@@ -894,13 +947,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -921,7 +977,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 					PrimaryKeys: []string{"id"},
 					LogicProperties: []*interfaces.LogicProperty{
@@ -954,13 +1011,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -981,7 +1041,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 					PrimaryKeys: []string{"id"},
 					LogicProperties: []*interfaces.LogicProperty{
@@ -1016,13 +1077,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -1043,7 +1107,8 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 					PrimaryKeys: []string{"id"},
 					LogicProperties: []*interfaces.LogicProperty{
@@ -1070,13 +1135,16 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"field1": "value1"},
+			service.vba = &vegaStubForOTQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					TotalCount: 1,
+					Entries: []map[string]any{
+						{"field1": "value1", "id": "123", "prop1": "value1"},
+					},
 				},
-				TotalCount: 1,
-			}, nil)
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
@@ -1161,7 +1229,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		osa := omock.NewMockOpenSearchAccess(mockCtrl)
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 		vba := omock.NewMockVegaBackendAccess(mockCtrl)
 		mqs := omock.NewMockMetricQueryService(mockCtrl)
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
@@ -1169,7 +1236,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 
 		logics.OMA = omAccess
 		logics.OSA = osa
-		logics.UA = uAccess
 		logics.VBA = vba
 		logics.MFA = mfa
 		logics.AOA = aoAccess
@@ -1178,7 +1244,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			appSetting: appSetting,
 			omAccess:   omAccess,
 			osa:        osa,
-			uAccess:    uAccess,
 			vba:        vba,
 			mqs:        mqs,
 			mfa:        mfa,
@@ -1301,7 +1366,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 					},
 					PrimaryKeys: []string{"id"},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
@@ -1309,11 +1375,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			// GetObjectPropertyValue 内部会调用 GetObjectsByObjectTypeID
 			// GetObjectsByObjectTypeID 需要这些依赖
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{"id": "123", "prop1": "value1"},
-				},
-				TotalCount: 1,
+			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{{"id": "123", "prop1": "value1"}},
 			}, nil)
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
@@ -1549,26 +1612,15 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
 
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"id": "123",
-						"logic_prop1": interfaces.ToolProperty{
-							PropertyType: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
-							Parameters:   map[string]any{},
-							DynamicParams: map[string]any{
-								"param1": "value1",
-							},
-						},
-					},
-				},
-				TotalCount: 1,
+			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{{"id": "123"}},
 			}, nil)
 			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).Return(map[string]any{"result": "success"}, nil)
 
@@ -1618,26 +1670,15 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
 
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"id": "123",
-						"logic_prop1": interfaces.ToolProperty{
-							PropertyType: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
-							Parameters:   map[string]any{},
-							DynamicParams: map[string]any{
-								"param1": "value1",
-							},
-						},
-					},
-				},
-				TotalCount: 1,
+			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{{"id": "123"}},
 			}, nil)
 			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).Return(nil, fmt.Errorf("tool failed"))
 
@@ -1683,26 +1724,15 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 						},
 					},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
 			}
 
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"id": "123",
-						"logic_prop1": interfaces.ToolProperty{
-							PropertyType: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
-							Parameters:   map[string]any{},
-							DynamicParams: map[string]any{
-								"param1": "value1", // 需要动态参数
-							},
-						},
-					},
-				},
-				TotalCount: 1,
+			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{{"id": "123"}},
 			}, nil)
 
 			result, err := service.GetObjectPropertyValue(ctx, query)

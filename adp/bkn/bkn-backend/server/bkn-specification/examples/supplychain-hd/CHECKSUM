@@ -1,23 +1,23 @@
 # BKN Directory Checksum
-# generated: 2026-05-14T15:11:40+08:00
+# generated: 2026-08-01T14:39:48+08:00
 SKILL.md  sha256:d88bd5ba972bca41
 metric:hd_forecast_consensus_by_product  sha256:e73c7a7840428dec
 metric:hd_inventory_available_qty_by_org  sha256:3484ca0e822dbac2
 metric:hd_mrp_net_demand_by_product  sha256:98aa90f7093a3e29
 metric:hd_purchase_order_count_by_supplier  sha256:4295021d7a92bd3c
 metric:hd_salesorder_signing_qty_by_product  sha256:9f7ed2b1b0f33aba
-object_type:bom  sha256:f4f550e8d816d5e6
-object_type:forecast  sha256:e7f99dc1bfe45d96
-object_type:inventory  sha256:424ff21908128a18
-object_type:material  sha256:1f85b7a1a17630d0
-object_type:mps  sha256:fe4eb77f18ecb589
-object_type:mrp  sha256:d5738f6d73c93899
-object_type:po  sha256:77dd28bb3710a2a6
-object_type:pp  sha256:9863a94178966233
-object_type:pr  sha256:e018fbba0479780b
-object_type:product  sha256:28335660864d67b6
-object_type:salesorder  sha256:dcf50a31f7bfa408
-object_type:supplier  sha256:985c51fb0e83aa1b
+object_type:bom  sha256:a1ca3e1c837c58d2
+object_type:forecast  sha256:9ebbf8bba6690ed7
+object_type:inventory  sha256:5abe1d2acf52b8ca
+object_type:material  sha256:4474f01fbc527d82
+object_type:mps  sha256:73d29553dd80dc96
+object_type:mrp  sha256:ff045ecd70af8186
+object_type:po  sha256:32507522a29d8f23
+object_type:pp  sha256:c95526a8805856e3
+object_type:pr  sha256:f75e062a72d0ef0e
+object_type:product  sha256:52bc6cc1719b3013
+object_type:salesorder  sha256:36c7a116bce54740
+object_type:supplier  sha256:0daba1967b544f33
 relation_type:bom2material  sha256:9345e1e23d3fd017
 relation_type:demand2pp  sha256:ef0696fc0fcf9222
 relation_type:material2inventory  sha256:a8207f7fcdb2d415

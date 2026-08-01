@@ -197,7 +197,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			WithErrorDetails("间接关联的 mapping_rules 格式不正确，应为 InDirectMapping 对象")
 	}
 
-	// 校验关联的数据来源类型非空，且为 data_view 或 resource
+	// Validate indirect relation backing data source. Only vega resource is supported.
 	if mapping.BackingDataSource == nil {
 		if strictMode {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
@@ -208,11 +208,10 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails("间接关联的 backing_data_source.type 不能为空")
 		}
-		if mapping.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_DATA_VIEW &&
-			mapping.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		if mapping.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("间接关联的 backing_data_source.type 必须为 %s 或 %s，当前为: %s",
-					interfaces.DATA_SOURCE_TYPE_DATA_VIEW, interfaces.DATA_SOURCE_TYPE_RESOURCE, mapping.BackingDataSource.Type))
+				WithErrorDetails(fmt.Sprintf("间接关联的 backing_data_source.type 必须为 %s，当前为: %s",
+					interfaces.DATA_SOURCE_TYPE_RESOURCE, mapping.BackingDataSource.Type))
 		}
 		// 校验关联的数据视图id非空（数据视图存在性校验在logics层）
 		if mapping.BackingDataSource.ID == "" {

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -73,5 +74,102 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 
 		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
 		require.NoError(t, sh.HandleTask(context.Background(), task))
+	})
+
+	t.Run("marks task failed for invalid streaming connector configuration", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		sh := &streamingBuildWorker{bts: bts, rs: rs, cs: cs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+		}, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusRunning).
+				WithErrorMsg(""),
+			interfaces.BuildTaskStatusInit).
+			Return(true, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{
+			ID:            "c1",
+			Enabled:       true,
+			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorCfg:  interfaces.ConnectorConfig{},
+		}, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusFailed).
+				WithErrorMsg("PostgreSQL streaming build requires connector_config.database")).
+			Return(true, nil)
+
+		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, sh.HandleTask(context.Background(), task))
+	})
+}
+
+func TestStreamingDatabase(t *testing.T) {
+	t.Run("returns PostgreSQL connection database", func(t *testing.T) {
+		database, err := streamingDatabase(&interfaces.Catalog{
+			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorCfg:  interfaces.ConnectorConfig{"database": "app"},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "app", database)
+	})
+
+	t.Run("rejects PostgreSQL without connection database", func(t *testing.T) {
+		_, err := streamingDatabase(&interfaces.Catalog{
+			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorCfg:  interfaces.ConnectorConfig{},
+		})
+
+		require.ErrorContains(t, err, "connector_config.database")
+	})
+
+	t.Run("returns MySQL database include list from databases", func(t *testing.T) {
+		database, err := streamingDatabase(&interfaces.Catalog{
+			ConnectorType: interfaces.ConnectorTypeMySQL,
+			ConnectorCfg:  interfaces.ConnectorConfig{"databases": []any{"app", "analytics"}},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "app,analytics", database)
+	})
+
+	t.Run("rejects MySQL instance-level catalog", func(t *testing.T) {
+		_, err := streamingDatabase(&interfaces.Catalog{
+			ConnectorType: interfaces.ConnectorTypeMySQL,
+			ConnectorCfg:  interfaces.ConnectorConfig{"databases": []any{}},
+		})
+
+		require.ErrorContains(t, err, "non-empty connector_config.databases")
+	})
+}
+
+func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
+	worker := &streamingBuildWorker{appSetting: &common.AppSetting{}}
+
+	t.Run("uses database include list for MySQL", func(t *testing.T) {
+		config := worker.buildConnectorConfig("build-c1", &interfaces.Catalog{
+			ID:            "c1",
+			ConnectorType: interfaces.ConnectorTypeMySQL,
+			ConnectorCfg:  interfaces.ConnectorConfig{},
+		}, "app,analytics", "")
+
+		assert.Equal(t, "app,analytics", config["config"].(map[string]any)["database.include.list"])
+	})
+
+	t.Run("uses connection database for PostgreSQL", func(t *testing.T) {
+		config := worker.buildConnectorConfig("build-c1", &interfaces.Catalog{
+			ID:            "c1",
+			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorCfg:  interfaces.ConnectorConfig{},
+		}, "app", "")
+
+		assert.Equal(t, "app", config["config"].(map[string]any)["database.dbname"])
 	})
 }

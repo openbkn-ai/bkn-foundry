@@ -3,10 +3,10 @@ package driveradapters
 import (
 	"sync"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/mq"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/toolbox"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/mq"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/toolbox"
 )
 
 type mqHandler struct {

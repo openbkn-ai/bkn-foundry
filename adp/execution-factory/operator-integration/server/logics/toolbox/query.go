@@ -4,13 +4,13 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 // GetToolBoxNamesByIDs 按工具箱ID批量取名(轻量只读，复用 SelectListByBoxIDs；不存在的ID略过)

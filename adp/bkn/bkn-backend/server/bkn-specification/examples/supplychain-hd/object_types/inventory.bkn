@@ -13,7 +13,7 @@ tags: [供应链, 库存, 已审核]
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | 2017573348090867713 | erp_real_time_inventory |
+| resource | 2017573348090867713 | erp_real_time_inventory |
 
 ### Data Properties
 

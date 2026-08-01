@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 )
 
 // MCPToolInfo 单个工具的对外说明（名称 / 描述 / 输入输出 schema）。
@@ -34,6 +36,9 @@ type MCPInfo struct {
 // tryLoadToolSchemas 与 loadToolSchemas 同源，但读不到/解析失败时返回 nil 而非 panic，
 // 供 info 端点容错使用。
 func tryLoadToolSchemas(toolKey string) (input, output json.RawMessage) {
+	if input, output, ok := lifecycleToolSchemas(toolKey); ok {
+		return input, output
+	}
 	data, err := schemasFS.ReadFile(fmt.Sprintf("schemas/%s.json", toolKey))
 	if err != nil {
 		return nil, nil
@@ -41,6 +46,9 @@ func tryLoadToolSchemas(toolKey string) (input, output json.RawMessage) {
 	var wrapper toolSchemaFile
 	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return nil, nil
+	}
+	if isBusinessTool(toolKey) {
+		wrapper.InputSchema = requireBKNContext(wrapper.InputSchema)
 	}
 	return wrapper.InputSchema, wrapper.OutputSchema
 }
@@ -57,22 +65,52 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 		return nil, fmt.Errorf("parse tools_meta.json: %w", err)
 	}
 
-	keys := make([]string, 0, len(meta))
-	for k := range meta {
-		keys = append(keys, k)
+	// 与 tools/list 用同一套按当前档位的判定：装饰过的工具带上付费参数、
+	// 未授权的企业工具不出现。两处若不一致，这个端点就比不存在更糟——它的
+	// 用途正是让人不握手就看清能力面。
+	type entry struct {
+		key  string
+		info MCPToolInfo
 	}
-	sort.Strings(keys)
-
-	tools := make([]MCPToolInfo, 0, len(keys))
-	for _, key := range keys {
-		m := meta[key]
+	all := make([]entry, 0, len(meta))
+	for key, m := range meta {
 		in, out := tryLoadToolSchemas(key)
-		tools = append(tools, MCPToolInfo{
+		if d, ok := mcptool.DecoratorFor(key); ok && d.Allowed() {
+			in = d.Patch(in)
+		}
+		all = append(all, entry{key, MCPToolInfo{
 			Name:         m.Name,
 			Description:  m.Description,
 			InputSchema:  in,
 			OutputSchema: out,
-		})
+		}})
+	}
+	// 社区二进制这里是空循环。
+	for _, t := range mcptool.Extras() {
+		if !t.Allowed() {
+			continue
+		}
+		all = append(all, entry{t.Key, MCPToolInfo{
+			Name:        t.Name,
+			Description: t.Desc,
+			// 与 tools/list 同样施加（assemble.go 的 addExtras）：企业工具按本服务
+			// 自己的定义就是业务工具，生命周期守卫会向它要 bkn_context。这个端点
+			// 存在的理由是「不握手就看清能力面」，广播一份调不通的 schema 比不广播
+			// 更糟——照它集成会直接拿到 conversation_required。
+			InputSchema:  requireBKNContext(t.Input),
+			OutputSchema: t.Output,
+		}})
+	}
+	// 按工具 key 排，不是按对外 name 排。目前 tools_meta.json 与 locales/en-US
+	// 里 name 恒等于 key，两种排法结果一样——但那是巧合，locale 里改个 name
+	// 社区侧的顺序就跟着变了。
+	// 稳定排序：装配期已保证 key 互不重复(toolBuilder.claimName)，稳定排序是
+	// 第二道保险——真出现重复时顺序至少不会在两次进程之间抖动。
+	sort.SliceStable(all, func(i, j int) bool { return all[i].key < all[j].key })
+
+	tools := make([]MCPToolInfo, 0, len(all))
+	for _, e := range all {
+		tools = append(tools, e.info)
 	}
 
 	cfg, _ := json.Marshal(map[string]any{

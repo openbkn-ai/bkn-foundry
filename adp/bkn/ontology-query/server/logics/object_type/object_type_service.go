@@ -44,7 +44,6 @@ type objectTypeService struct {
 	mfa        interfaces.ModelFactoryAccess
 	omAccess   interfaces.OntologyManagerAccess
 	osa        interfaces.OpenSearchAccess
-	uAccess    interfaces.UniqueryAccess
 	vba        interfaces.VegaBackendAccess
 	mqs        interfaces.MetricQueryService
 }
@@ -57,7 +56,6 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			mfa:        logics.MFA,
 			omAccess:   logics.OMA,
 			osa:        logics.OSA,
-			uAccess:    logics.UA,
 			vba:        logics.VBA,
 			mqs:        metric.NewMetricQueryService(appSetting),
 		}
@@ -164,8 +162,8 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		}
 	}
 
-	dataSourceType := interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-	if objectType.DataSource != nil && objectType.DataSource.Type != "" {
+	dataSourceType := ""
+	if objectType.DataSource != nil {
 		dataSourceType = objectType.DataSource.Type
 	}
 	useIndex := !query.IgnoringStore && objectType.Status != nil && objectType.Status.IndexAvailable &&
@@ -191,18 +189,14 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 			// 给默认值, 默认按 _score desc，主键 asc
 			query.Sort = logics.BuildViewSort(objectType)
 		}
-		// 3. 请求视图或 vega Resource 获取数据
-		dsType := ""
-		if objectType.DataSource != nil {
-			dsType = objectType.DataSource.Type
+		// 3. 请求 vega Resource 获取数据
+		if objectType.DataSource == nil || objectType.DataSource.ID == "" {
+			return resps, logics.MissingObjectTypeDataSourceError(ctx, objectType.OTID)
 		}
-		if dsType == "" {
-			dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-		}
-		if dsType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		if objectType.DataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
 		} else {
-			err = ots.getObjectsFromDataView(ctx, query, objectType, &resps, viewFieldPropMap)
+			return resps, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
 		}
 		if err != nil {
 			return resps, err
@@ -332,97 +326,6 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 			}
 		}
 	}
-	return nil
-}
-
-// 从视图中获取对象数据
-func (ots *objectTypeService) getObjectsFromDataView(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string) error {
-
-	objects := []map[string]any{}
-	viewSort, err := logics.MapSortFieldsForDataView(query.Sort, objectType)
-	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(err.Error())
-	}
-	// 构造视图的查询请求
-	viewQuery := interfaces.ViewQuery{
-		NeedTotal:         query.NeedTotal,
-		Limit:             query.Limit,
-		UseSearchAfter:    interfaces.USE_SEARCH_AFTER_TRUE,
-		Sort:              viewSort,
-		SearchAfterParams: query.SearchAfterParams,
-	}
-
-	// 构造视图的过滤条件时,需要看请求的有没有knn,如果有knn,则需要对knn向量化后再请求视图
-	// 重写过滤条件
-	if query.ActualCondition != nil {
-		rewriteCondition, err := cond.RewriteCondition(ctx, query.ActualCondition,
-			logics.TransferPropsToPropMap(objectType.DataProperties),
-			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
-
-				return ots.handlerVector(ctx, property, word)
-			})
-		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails(fmt.Sprintf("将过滤条件从对象类数据属性映射为数据视图列失败：%s", err.Error()))
-		}
-		viewQuery.Filters = rewriteCondition
-	}
-
-	if objectType.DataSource == nil || objectType.DataSource.ID == "" {
-		// 视图为空，返回异常，不请求
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]绑定的视图为空", objectType.OTID))
-	}
-
-	viewData, err := ots.uAccess.GetViewDataByID(ctx, objectType.DataSource.ID, viewQuery)
-	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
-	}
-
-	// 3. 组装数据属性，处理视图数据到数据属性的映射
-	// 3.2 loop view datas
-	for _, col := range viewData.Datas {
-		// 一行是一个对象
-		object := map[string]any{}
-		for k, v := range col {
-			// k 是视图的字段名，v是此字段的字段值
-			if propName, exists := fieldPropMap[k]; exists {
-				// 字段属于请求的properties才set
-				// 存在映射，则组装到对象属性中
-				object[propName] = v
-			}
-		}
-
-		// 为对象添加 _instance_id, _instance_identity, _display 字段
-		instanceID, instanceIdentity := logics.GetObjectID(object, &objectType)
-		displayValue := object[objectType.DisplayKey]
-
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_ID, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_INSTANCE_ID] = instanceID
-		}
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY] = instanceIdentity
-		}
-		if !logics.ShouldExcludeSystemProperty(interfaces.SYSTEM_PROPERTY_DISPLAY, query.ExcludeSystemProperties) {
-			object[interfaces.SYSTEM_PROPERTY_DISPLAY] = displayValue
-		}
-
-		if len(object) > 0 {
-			objects = append(objects, object)
-		} else {
-			logger.Warnf("将视图行数据转成对象时，对象类属性映射的字段没有一个属性能正确映射到视图上，配置的字段属性映射关系为: %v", fieldPropMap)
-		}
-	}
-
-	resps.TotalCount = viewData.TotalCount
-	resps.SearchAfter = viewData.SearchAfter
-	resps.Datas = objects
-
 	return nil
 }
 

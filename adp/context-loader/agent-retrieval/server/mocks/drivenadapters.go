@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	interfaces "github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/interfaces"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -195,21 +195,21 @@ func resourceDataEvidenceTruncated(result *interfaces.ResourceDataQueryResult) b
 
 func safeResourceListQueryShape(params interfaces.ResourcesQueryParams) map[string]any {
 	return map[string]any{
-		"catalog_id":              params.CatalogID,
-		"category":                params.Category,
-		"status":                  params.Status,
-		"database":                params.Database,
-		"offset":                  params.Offset,
-		"limit":                   params.Limit,
-		"sort":                    params.Sort,
-		"direction":               params.Direction,
-		"extension_keys_hash":     bkntrace.HashValue(params.ExtensionKeys),
-		"extension_values_hash":   bkntrace.HashValue(params.ExtensionValues),
-		"include_extensions":      params.IncludeExtensions,
-		"include_extension_keys":  params.IncludeExtensionKeys,
-		"name_filter_present":     strings.TrimSpace(params.Name) != "",
-		"catalog_filter_present":  strings.TrimSpace(params.CatalogID) != "",
-		"database_filter_present": strings.TrimSpace(params.Database) != "",
+		"catalog_id":             params.CatalogID,
+		"category":               params.Category,
+		"status":                 params.Status,
+		"schema":                 params.Schema,
+		"offset":                 params.Offset,
+		"limit":                  params.Limit,
+		"sort":                   params.Sort,
+		"direction":              params.Direction,
+		"extension_keys_hash":    bkntrace.HashValue(params.ExtensionKeys),
+		"extension_values_hash":  bkntrace.HashValue(params.ExtensionValues),
+		"include_extensions":     params.IncludeExtensions,
+		"include_extension_keys": params.IncludeExtensionKeys,
+		"name_filter_present":    strings.TrimSpace(params.Name) != "",
+		"catalog_filter_present": strings.TrimSpace(params.CatalogID) != "",
+		"schema_filter_present":  strings.TrimSpace(params.Schema) != "",
 	}
 }
 

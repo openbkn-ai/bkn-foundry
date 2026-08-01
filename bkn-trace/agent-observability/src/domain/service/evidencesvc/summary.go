@@ -11,7 +11,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
@@ -286,10 +285,6 @@ func (s *Service) loadTraceExecutionSummaries(ctx context.Context, traceID strin
 			artifacts = append(artifacts, requestArtifacts.Entries...)
 		}
 	}
-	traces, artifacts, resolverUnavailable := s.authorizeSummaryInputs(ctx, traces, artifacts, scope)
-	if resolverUnavailable {
-		metadata.addReason("business_resolver_unavailable")
-	}
 	requestSummaries, traceSummaries := evidencevo.BuildExecutionSummaries(traces, artifacts)
 	return requestSummaries, traceSummaries, metadata, nil
 }
@@ -330,14 +325,7 @@ func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo
 	if result.Truncated {
 		metadata.addReason("projection_scan_cap_reached")
 	}
-	traces, artifacts, resolverUnavailable := s.authorizeSummaryInputs(ctx, result.Traces, result.Artifacts, options.Scope)
-	if resolverUnavailable {
-		metadata.addReason("business_resolver_unavailable")
-	}
-	requests, traceSummaries := evidencevo.BuildExecutionSummaries(traces, artifacts)
-	if resolverUnavailable {
-		markRequestSummariesPartial(requests, "business_resolver_unavailable")
-	}
+	requests, traceSummaries := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
 	return requests, traceSummaries, metadata, nil
 }
 
@@ -373,203 +361,8 @@ func (s *Service) loadRequestExecutionSummaries(ctx context.Context, requestID s
 		}
 		artifacts = artifactResult.Entries
 	}
-	traces, artifacts, resolverUnavailable := s.authorizeSummaryInputs(ctx, traces, artifacts, scope)
-	if resolverUnavailable {
-		metadata.addReason("business_resolver_unavailable")
-	}
 	requests, traceSummaries := evidencevo.BuildExecutionSummaries(traces, artifacts)
 	return requests, traceSummaries, metadata, nil
-}
-
-func (s *Service) authorizeSummaryInputs(
-	ctx context.Context,
-	traces []evidencevo.NormalizedTrace,
-	artifacts []evidencevo.EvidenceArtifact,
-	scope evidencevo.QueryScope,
-) ([]evidencevo.NormalizedTrace, []evidencevo.EvidenceArtifact, bool) {
-	candidates := map[string]ibusinessresolver.BusinessRef{}
-	for _, trace := range traces {
-		for _, event := range trace.Events {
-			if !visible(event.Payload) {
-				continue
-			}
-			collectVisibleSummaryRefCandidates(event.Payload, candidates)
-		}
-	}
-	for _, artifact := range artifacts {
-		if resolverSupportsArtifactRef(artifact.SourceRef) {
-			addSummaryResolverRef(candidates, artifact.SourceRef, "", "", "")
-		}
-		for _, refID := range artifact.BusinessRefs {
-			addSummaryResolverRef(candidates, refID, "", "", "")
-		}
-	}
-
-	authorized := map[string]struct{}{}
-	resolverUnavailable := false
-	if len(candidates) > 0 && s.businessResolver != nil {
-		refs := make([]ibusinessresolver.BusinessRef, 0, len(candidates))
-		for _, ref := range candidates {
-			refs = append(refs, ref)
-		}
-		sort.Slice(refs, func(i, j int) bool { return refs[i].RefID < refs[j].RefID })
-		resolutions, err := s.businessResolver.ResolveBusinessRefs(ctx, ibusinessresolver.ResolveRequest{
-			Scope: scope,
-			Refs:  refs,
-		})
-		if err != nil {
-			resolverUnavailable = true
-		} else {
-			for _, resolution := range resolutions {
-				if visibleResolution(resolution) {
-					authorized[resolution.RefID] = struct{}{}
-				}
-			}
-		}
-	}
-
-	filtered := make([]evidencevo.NormalizedTrace, 0, len(traces))
-	for _, trace := range traces {
-		events := make([]evidencevo.EvidenceEvent, 0, len(trace.Events))
-		for _, event := range trace.Events {
-			payload := cloneSummaryPayloadWithoutUnauthorizedRefs(event.Payload, authorized, visible(event.Payload))
-			event.Payload = payload
-			events = append(events, event)
-		}
-		filtered = append(filtered, evidencevo.WithEvents(trace, events))
-	}
-	filteredArtifacts := make([]evidencevo.EvidenceArtifact, 0, len(artifacts))
-	for _, artifact := range artifacts {
-		if summaryArtifactRefsAuthorized(artifact, authorized) {
-			filteredArtifacts = append(filteredArtifacts, artifact)
-		}
-	}
-	return filtered, filteredArtifacts, resolverUnavailable
-}
-
-func markRequestSummariesPartial(requests []evidencevo.RequestSummary, reason string) {
-	for index := range requests {
-		requests[index].EvidenceCompleteness = "partial"
-		requests[index].PartialReasons = appendUniqueSummaryReason(requests[index].PartialReasons, reason)
-	}
-}
-
-func collectVisibleSummaryRefCandidates(value any, candidates map[string]ibusinessresolver.BusinessRef) {
-	switch item := value.(type) {
-	case map[string]any:
-		if refID, ok := item["ref_id"].(string); ok && strings.TrimSpace(refID) != "" {
-			if visible(item) {
-				addSummaryResolverRef(
-					candidates,
-					refID,
-					stringSummaryField(item, "ref_type"),
-					stringSummaryField(item, "source_system"),
-					stringSummaryField(item, "version_status"),
-				)
-			}
-			return
-		}
-		for _, nested := range item {
-			collectVisibleSummaryRefCandidates(nested, candidates)
-		}
-	case []any:
-		for _, nested := range item {
-			collectVisibleSummaryRefCandidates(nested, candidates)
-		}
-	}
-}
-
-func addSummaryResolverRef(
-	candidates map[string]ibusinessresolver.BusinessRef,
-	refID string,
-	refType string,
-	sourceSystem string,
-	versionStatus string,
-) {
-	refID = strings.TrimSpace(refID)
-	if refID == "" {
-		return
-	}
-	if _, exists := candidates[refID]; exists {
-		return
-	}
-	if refType == "" {
-		refType, _, _ = strings.Cut(refID, ":")
-	}
-	candidates[refID] = ibusinessresolver.BusinessRef{
-		RefID:         refID,
-		RefType:       refType,
-		SourceSystem:  sourceSystem,
-		VersionStatus: versionStatus,
-	}
-}
-
-func summaryArtifactRefsAuthorized(artifact evidencevo.EvidenceArtifact, authorized map[string]struct{}) bool {
-	if len(authorized) == 0 {
-		return true
-	}
-	refs := make([]string, 0, len(artifact.BusinessRefs)+1)
-	if resolverSupportsArtifactRef(artifact.SourceRef) {
-		refs = append(refs, strings.TrimSpace(artifact.SourceRef))
-	}
-	refs = append(refs, artifact.BusinessRefs...)
-	for _, refID := range refs {
-		if _, ok := authorized[strings.TrimSpace(refID)]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func cloneSummaryPayloadWithoutUnauthorizedRefs(
-	payload map[string]any,
-	authorized map[string]struct{},
-	allowRefs bool,
-) map[string]any {
-	cloned, _ := cloneSummaryValueWithoutUnauthorizedRefs(payload, authorized, allowRefs)
-	result, _ := cloned.(map[string]any)
-	if result == nil {
-		return map[string]any{}
-	}
-	return result
-}
-
-func cloneSummaryValueWithoutUnauthorizedRefs(value any, authorized map[string]struct{}, allowRefs bool) (any, bool) {
-	switch item := value.(type) {
-	case map[string]any:
-		if refID, ok := item["ref_id"].(string); ok && strings.TrimSpace(refID) != "" {
-			if !allowRefs || !visible(item) {
-				return nil, false
-			}
-			if _, ok := authorized[strings.TrimSpace(refID)]; !ok {
-				return nil, false
-			}
-		}
-		cloned := make(map[string]any, len(item))
-		for key, nested := range item {
-			value, keep := cloneSummaryValueWithoutUnauthorizedRefs(nested, authorized, allowRefs)
-			if keep {
-				cloned[key] = value
-			}
-		}
-		return cloned, true
-	case []any:
-		cloned := make([]any, 0, len(item))
-		for _, nested := range item {
-			value, keep := cloneSummaryValueWithoutUnauthorizedRefs(nested, authorized, allowRefs)
-			if keep {
-				cloned = append(cloned, value)
-			}
-		}
-		return cloned, true
-	default:
-		return value, true
-	}
-}
-
-func stringSummaryField(value map[string]any, key string) string {
-	text, _ := value[key].(string)
-	return text
 }
 
 func appendUniqueSummaryReason(reasons []string, reason string) []string {

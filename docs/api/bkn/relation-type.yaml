@@ -464,7 +464,7 @@ paths:
                         - id: comment
                           name: comment
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615886381058"
                             name: 评论表
                           data_properties:
@@ -570,7 +570,7 @@ paths:
                         - id: comment
                           name: comment
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615886381058"
                             name: ""
                           data_properties:
@@ -623,7 +623,7 @@ paths:
                             type: data_view
                             mapping_rules:
                               backing_data_source:
-                                type: data_view
+                                type: resource
                                 id: "1995407615768940546"
                               source_mapping_rules:
                                 - source_property:
@@ -643,7 +643,7 @@ paths:
                         - id: comment
                           name: comment
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615886381058"
                             name: 评论表
                           data_properties:
@@ -749,7 +749,7 @@ paths:
                         - id: person
                           name: person
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615877992449"
                             name: ""
                           data_properties:
@@ -860,7 +860,7 @@ paths:
                                   target_property:
                                     name: c_commentid
                               backing_data_source:
-                                type: data_view
+                                type: resource
                                 id: "1995407615873798146"
                           source_object_type_id: comment
                           target_object_type_id: person
@@ -1021,12 +1021,12 @@ components:
       type: object
       properties:
         type:
-          description: 数据来源类型为数据视图
+          description: 间接关系 backing 数据来源类型。当前仅支持 vega resource；legacy `data_view` 已废弃。
           enum:
-            - data_view
+            - resource
           type: string
         id:
-          description: 数据视图ID
+          description: vega resource ID
           type: string
         name:
           description: 数据视图名称。查看详情时返回。
@@ -1041,7 +1041,7 @@ components:
       properties:
         backing_data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源视图
+          description: 间接关系 backing 数据来源（vega resource）
         source_mapping_rules:
           description: 起点对象类与数据集的匹配规则
           type: array

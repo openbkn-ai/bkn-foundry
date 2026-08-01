@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	infraCommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
+	infraCommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/smartystreets/goconvey/convey"
 )
 

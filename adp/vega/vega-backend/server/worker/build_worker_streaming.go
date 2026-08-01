@@ -182,19 +182,15 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		return nil
 	}
 
-	database := catalog.ConnectorCfg["database"]
-	if database == nil || database == "" {
-		database = resource.Database
-	}
-	sourceId, err := sbw.formatTableName(resource.SourceIdentifier, catalog.ConnectorType, database)
+	sourceIdentifier := resource.SourceIdentifier
+	database, err := streamingDatabase(catalog)
 	if err != nil {
-		logger.Errorf("Failed to format table name: %v", err)
+		logger.Errorf("Invalid streaming connector configuration for task %s: %v", taskID, err)
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg(err.Error())
-		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
-		if err != nil {
-			return fmt.Errorf("update build task status failed: %w", err)
+		if _, updateErr := sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update); updateErr != nil {
+			return fmt.Errorf("update build task status failed: %w", updateErr)
 		}
 		return nil
 	}
@@ -213,7 +209,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 
 	// Execute build
-	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceId)
+	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceIdentifier)
 	if err != nil {
 		update := interfaces.NewBuildTaskUpdate().WithErrorMsg(err.Error())
 		if isAsynqFinalRetry(ctx) {
@@ -228,9 +224,9 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 }
 
 // executeBuild executes the build logic
-func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database any, sourceId string) error {
+func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, indexName string, database string, sourceIdentifier string) error {
 	// Use the connector name as the Kafka topic prefix
-	topic := fmt.Sprintf("%s-%s.%s", interfaces.BUILD_PREFIX, catalog.ID, sourceId)
+	topic := fmt.Sprintf("%s-%s.%s", interfaces.BUILD_PREFIX, catalog.ID, sourceIdentifier)
 	groupID := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, resource.ID)
 
 	// Create Kafka topic if it doesn't exist
@@ -268,7 +264,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 		defer sbw.kafkaAccess.CloseWriter(writer)
 	}
 
-	err = sbw.createKafkaConnector(ctx, catalog, resource, database, sourceId)
+	err = sbw.createKafkaConnector(ctx, catalog, resource, database, sourceIdentifier)
 	if err != nil {
 		return fmt.Errorf("create kafka connector failed: %w", err)
 	}
@@ -437,7 +433,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 }
 
 // createKafkaConnector creates a Kafka connector for the build task
-func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database any, sourceId string) error {
+func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database string, sourceIdentifier string) error {
 	// get connector
 	kafkaConnectSetting := sbw.appSetting.KafkaConnectSetting
 	// connector name 和 catalog 绑定，catalog 下多个 resource 公有一个 connector，各自订阅自己的表的 topic
@@ -453,7 +449,7 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 	}
 	switch respCode {
 	case http.StatusNotFound:
-		connectorBody := sbw.buildConnectorConfig(connectorName, catalog, database, sourceId)
+		connectorBody := sbw.buildConnectorConfig(connectorName, catalog, database, sourceIdentifier)
 		respCode, respBody, err := sbw.httpClient.Post(ctx, connectorUrl, headers, connectorBody)
 		if err != nil {
 			return fmt.Errorf("failed to create kafka connector: %w", err)
@@ -473,7 +469,7 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 		table_lists := strings.Split(tableIncludeList, ",")
 		tableExist := false
 		for _, table := range table_lists {
-			if strings.TrimSpace(table) == sourceId {
+			if strings.TrimSpace(table) == sourceIdentifier {
 				tableExist = true
 				break
 			}
@@ -484,13 +480,13 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 			if newTableList != "" {
 				newTableList += ","
 			}
-			newTableList += sourceId
+			newTableList += sourceIdentifier
 			config["table.include.list"] = newTableList
 			_, _, err = sbw.httpClient.Put(ctx, fmt.Sprintf("%s/%s/config", connectorUrl, connectorName), headers, config)
 			if err != nil {
 				return fmt.Errorf("Failed to update kafka connector config: %w", err)
 			}
-			logger.Infof("Updated kafka connector config to include table: %s", sourceId)
+			logger.Infof("Updated kafka connector config to include table: %s", sourceIdentifier)
 		}*/
 		// check kafka connector status
 		_, respBody, err := sbw.httpClient.Get(ctx, fmt.Sprintf("%s/%s/status", connectorUrl, connectorName), nil, headers)
@@ -514,7 +510,7 @@ func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catal
 }
 
 // buildConnectorConfig builds the connector configuration
-func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database any, _ string) map[string]any {
+func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, catalog *interfaces.Catalog, database string, _ string) map[string]any {
 	// Connector not found, create connector
 	mqSetting := sbw.appSetting.MQSetting
 	connectorBody := map[string]any{
@@ -531,7 +527,7 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 			"schema.history.internal.kafka.topic":             fmt.Sprintf("%s-schema-changes", interfaces.BUILD_PREFIX),
 			"include.schema.changes":                          "true",
 			"topic.prefix":                                    fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID),
-			//"table.include.list":                              sourceId, // 同-catalog下多resource构建，公用一个connector，但是如果加了table.include.list，其他resource就没有全量快照，除非一开始就设置到table.include.list中
+			//"table.include.list":                              sourceIdentifier, // 同-catalog下多resource构建，公用一个connector，但是如果加了table.include.list，其他resource就没有全量快照，除非一开始就设置到table.include.list中
 			//"snapshot.mode":                                   "when_needed",
 		},
 	}
@@ -559,6 +555,52 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 	}
 
 	return connectorBody
+}
+
+// streamingDatabase returns the Debezium capture database configuration for a catalog.
+func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
+	switch catalog.ConnectorType {
+	case interfaces.ConnectorTypePostgreSQL:
+		database, ok := catalog.ConnectorCfg["database"].(string)
+		if !ok || strings.TrimSpace(database) == "" {
+			return "", fmt.Errorf("PostgreSQL streaming build requires connector_config.database")
+		}
+		return database, nil
+	case interfaces.ConnectorTypeMySQL:
+		value, ok := catalog.ConnectorCfg["databases"]
+		if !ok {
+			return "", fmt.Errorf("MySQL streaming build requires a non-empty connector_config.databases")
+		}
+
+		var databases []string
+		switch configuredDatabases := value.(type) {
+		case []string:
+			databases = configuredDatabases
+		case []any:
+			databases = make([]string, 0, len(configuredDatabases))
+			for _, configuredDatabase := range configuredDatabases {
+				database, ok := configuredDatabase.(string)
+				if !ok {
+					return "", fmt.Errorf("MySQL streaming build requires connector_config.databases to contain only strings")
+				}
+				databases = append(databases, database)
+			}
+		default:
+			return "", fmt.Errorf("MySQL streaming build requires connector_config.databases to be an array")
+		}
+
+		if len(databases) == 0 {
+			return "", fmt.Errorf("MySQL streaming build requires a non-empty connector_config.databases")
+		}
+		for _, database := range databases {
+			if strings.TrimSpace(database) == "" {
+				return "", fmt.Errorf("MySQL streaming build requires connector_config.databases without empty values")
+			}
+		}
+		return strings.Join(databases, ","), nil
+	default:
+		return "", fmt.Errorf("unsupported streaming connector type: %s", catalog.ConnectorType)
+	}
 }
 
 // handleUpdateOperation 处理更新操作
@@ -611,32 +653,6 @@ func (sbw *streamingBuildWorker) handleDeleteOperation(ctx context.Context, keyM
 	}
 
 	return nil
-}
-
-// 格式化table名称
-func (sbw *streamingBuildWorker) formatTableName(sourceIdentifier string, connectorType string, database any) (string, error) {
-	if database == nil || database == "" {
-		return "", fmt.Errorf("database is empty or nil")
-	}
-	sourceId := sourceIdentifier
-	switch connectorType {
-	case interfaces.ConnectorTypeMySQL:
-		// 如果不是 db.table 格式，前面加上 dbname.
-		if !strings.Contains(sourceIdentifier, ".") {
-			sourceId = fmt.Sprintf("%v", database) + "." + sourceIdentifier
-		}
-	case interfaces.ConnectorTypePostgreSQL:
-		// 如果是 db.schema.table 格式，去掉 db.
-		if strings.Count(sourceIdentifier, ".") >= 2 {
-			parts := strings.Split(sourceIdentifier, ".")
-			sourceId = strings.Join(parts[1:], ".")
-		} else if !strings.Contains(sourceIdentifier, ".") {
-			return "", fmt.Errorf("sourceIdentifier %s is not contain database name or schema name", sourceIdentifier)
-		}
-	default:
-		return "", fmt.Errorf("connector type %s is not supported", connectorType)
-	}
-	return sourceId, nil
 }
 
 // check connector need to be stop

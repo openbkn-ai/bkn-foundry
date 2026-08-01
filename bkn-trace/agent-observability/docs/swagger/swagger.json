@@ -8,6 +8,632 @@
     },
     "basePath": "/api/agent-observability/v1",
     "paths": {
+        "/access-profile": {
+            "get": {
+                "description": "Returns server-derived page capabilities and a scope fingerprint. Roles and managed resource identifiers are never accepted from or disclosed to the client.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Get the current BKN Trace access profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.AccessProfileResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "List managed Conversations in the authorized owner scope",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.conversationPage"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Create or return the current managed Conversation",
+                "parameters": [
+                    {
+                        "description": "Managed Conversation request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.ensureConversationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Conversation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{conversation_id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Get one managed Conversation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation ID",
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Conversation"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{conversation_id}/close": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Close one managed Conversation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation ID",
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Idempotent close request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.closeConversationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Conversation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{conversation_id}/interactions": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Start one managed Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation ID",
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Interaction start request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.startInteractionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{conversation_id}/interactions/{interaction_id}/operations:ensure": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Ensure an idempotent Operation intent and durable Receipt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation ID",
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Operation intent",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.ensureOperationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.operationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations:create-new-generation": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Create a new managed Conversation generation",
+                "parameters": [
+                    {
+                        "description": "New generation request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.ensureConversationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Conversation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations:ensure-current": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Ensure the current managed Conversation",
+                "parameters": [
+                    {
+                        "description": "Managed Conversation request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.ensureConversationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Conversation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations:resume-by-id": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Resume an active managed Conversation by Core ID",
+                "parameters": [
+                    {
+                        "description": "Conversation resume request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.resumeConversationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Conversation"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/evidence-nodes/{node_id}": {
             "get": {
                 "description": "Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.",
@@ -262,7 +888,7 @@
         },
         "/evidence/events": {
             "post": {
-                "description": "Accepts claim.created, evidence.refs.created, and business.refs.resolved events and stores the normalized evidence model.",
+                "description": "Commits the immutable Evidence Ledger record and Projection Outbox in one transaction before returning durable_ack.",
                 "consumes": [
                     "application/json"
                 ],
@@ -272,15 +898,15 @@
                 "tags": [
                     "evidence"
                 ],
-                "summary": "Ingest BKN Trace phase-two evidence events",
+                "summary": "Durably ingest one BKN Trace 3.0 evidence event",
                 "parameters": [
                     {
-                        "description": "BKN Trace phase-two evidence event batch",
+                        "description": "BKN Trace 3.0 evidence event",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/httphandler.evidenceEventRequest"
                         }
                     }
                 ],
@@ -288,25 +914,816 @@
                     "202": {
                         "description": "Accepted",
                         "schema": {
-                            "$ref": "#/definitions/evidencevo.IngestResponse"
+                            "$ref": "#/definitions/ledgervo.DurableAck"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     },
-                    "405": {
-                        "description": "Method Not Allowed",
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Get one managed Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}/business-graph": {
+            "get": {
+                "description": "Returns the latest immutable assembly revision with precise Claim supports and causal DAG layers. Objective evidence completeness is separate from current-user disclosure completeness; unresolved or unauthorized business refs and their edges are omitted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get an Interaction business semantic graph",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.interactionBusinessGraphResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}/cancel": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Cancel one managed Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Terminal closure manifest",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.terminalInteractionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}/complete": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Complete one managed Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Terminal closure manifest",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.terminalInteractionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}/fail": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Fail one managed Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Terminal closure manifest",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.terminalInteractionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}/handoff": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Hand off one managed Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Terminal closure manifest",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.terminalInteractionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/operations/{operation_id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Get one Operation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Operation"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/operations/{operation_id}/attempts": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Start the next retry attempt for an Operation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Current Interaction lease",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.interactionLeaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.operationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/operations/{operation_id}/attempts/{attempt}:complete": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Complete one Operation attempt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attempt number",
+                        "name": "attempt",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Durable operation result",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.finishAttemptRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.operationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/operations/{operation_id}/attempts/{attempt}:fail": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Fail one Operation attempt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attempt number",
+                        "name": "attempt",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Durable operation failure",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.finishAttemptRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.operationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/receipts/{receipt_id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Get one durable Receipt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Receipt ID",
+                        "name": "receipt_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Receipt"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     }
                 }
@@ -314,85 +1731,18 @@
         },
         "/requests": {
             "get": {
-                "description": "Returns stable request summaries generated from authorized evidence and artifacts.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "requests"
+                    "lifecycle"
                 ],
-                "summary": "List observable business requests",
+                "summary": "List request projections from durable Receipts",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Page size, 1..200",
+                        "description": "Page size, 1..100",
                         "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Opaque pagination cursor",
-                        "name": "cursor",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "One user interaction ID",
-                        "name": "interaction_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Caller-owned conversation ID",
-                        "name": "conversation_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Started at or after this RFC3339 timestamp",
-                        "name": "from",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Started at or before this RFC3339 timestamp",
-                        "name": "to",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Execution status",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Agent or application",
-                        "name": "agent_or_app",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Business domain",
-                        "name": "business_domain",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Knowledge network",
-                        "name": "knowledge_network",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Evidence completeness",
-                        "name": "evidence_completeness",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Question, result, ID, business ref, or error keyword",
-                        "name": "keyword",
                         "in": "query"
                     }
                 ],
@@ -400,25 +1750,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/evidencevo.RequestSummaryPage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.requestPage"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     }
                 }
@@ -426,18 +1776,17 @@
         },
         "/requests/{request_id}": {
             "get": {
-                "description": "Returns an authorized request summary and its business-content availability.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "requests"
+                    "lifecycle"
                 ],
-                "summary": "Get one observable business request",
+                "summary": "Get one request projection from durable Receipts",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "BKN request ID",
+                        "description": "Request ID",
                         "name": "request_id",
                         "in": "path",
                         "required": true
@@ -447,31 +1796,31 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/evidencevo.RequestSummary"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/sessionvo.RequestSummary"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
                     }
                 }
@@ -509,14 +1858,14 @@
                     },
                     {
                         "type": "string",
-                        "description": "One user interaction ID",
-                        "name": "interaction_id",
+                        "description": "Caller-owned conversation ID",
+                        "name": "conversation_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Caller-owned conversation ID",
-                        "name": "conversation_id",
+                        "description": "One user interaction ID",
+                        "name": "interaction_id",
                         "in": "query"
                     }
                 ],
@@ -573,8 +1922,8 @@
                     },
                     {
                         "type": "string",
-                        "description": "One user interaction ID",
-                        "name": "interaction_id",
+                        "description": "Exact trace ID; bypasses list projection scan",
+                        "name": "trace_id",
                         "in": "query"
                     },
                     {
@@ -585,8 +1934,8 @@
                     },
                     {
                         "type": "string",
-                        "description": "Exact trace ID; bypasses list projection scan",
-                        "name": "trace_id",
+                        "description": "One user interaction ID",
+                        "name": "interaction_id",
                         "in": "query"
                     },
                     {
@@ -1175,62 +2524,198 @@
                     }
                 }
             }
-        },
-        "/interactions/{interaction_id}": {
-            "get": {
-                "description": "Aggregates every authorized request and trace in one caller-owned interaction.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "interactions"
-                ],
-                "summary": "Get one observable business interaction",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "BKN interaction ID",
-                        "name": "interaction_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.InteractionSummary"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
+        "assemblysvc.BusinessRefView": {
+            "type": "object",
+            "properties": {
+                "disclosure_status": {
+                    "type": "string"
+                },
+                "display": {
+                    "$ref": "#/definitions/evidencevo.BusinessDisplay"
+                },
+                "technical_ref": {
+                    "$ref": "#/definitions/sessionvo.BusinessRef"
+                }
+            }
+        },
+        "assemblysvc.ClaimAssembly": {
+            "type": "object",
+            "properties": {
+                "adopted_supports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ClaimSupport"
+                    }
+                },
+                "claim": {
+                    "$ref": "#/definitions/sessionvo.Claim"
+                },
+                "completeness": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "rejected_supports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ClaimSupport"
+                    }
+                },
+                "unused_evidence_refs": {
+                    "description": "UnusedEvidenceRefs are refs neither adopted nor rejected by this Claim.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                }
+            }
+        },
+        "assemblysvc.EventNode": {
+            "type": "object",
+            "properties": {
+                "causation_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "emitted_at": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "layer": {
+                    "type": "integer"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "producer_epoch": {
+                    "type": "integer"
+                },
+                "producer_sequence": {
+                    "type": "integer"
+                },
+                "producer_stream_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "assemblysvc.OperationBusinessEdgeView": {
+            "type": "object",
+            "properties": {
+                "business_ref": {
+                    "$ref": "#/definitions/assemblysvc.BusinessRefView"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
+                }
+            }
+        },
+        "assemblysvc.ProjectedResult": {
+            "type": "object",
+            "properties": {
+                "artifact_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.BusinessRefView"
+                    }
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.ClaimAssembly"
+                    }
+                },
+                "completeness": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "disclosure_partial": {
+                    "description": "DisclosurePartial is true when the current authorized projection could not classify every business ref.",
+                    "type": "boolean"
+                },
+                "disclosure_reasons": {
+                    "description": "DisclosureReasons describe resolver/projection degradation without changing objective completeness.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "event_layers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.EventNode"
+                    }
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                },
+                "included_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "operation_business_edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/assemblysvc.OperationBusinessEdgeView"
+                    }
+                },
+                "partial_reasons": {
+                    "description": "PartialReasons describe objective evidence-assembly gaps and never authorization outcomes.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "unused_evidence_refs": {
+                    "description": "UnusedEvidenceRefs are refs neither adopted nor rejected by any Claim in this revision.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                }
+            }
+        },
         "evidencevo.ActionSummary": {
             "type": "object",
             "properties": {
@@ -1461,6 +2946,9 @@
                 "agent_or_app": {
                     "type": "string"
                 },
+                "application_principal_id": {
+                    "type": "string"
+                },
                 "artifact_id": {
                     "type": "string"
                 },
@@ -1501,11 +2989,20 @@
                 "content_type": {
                     "type": "string"
                 },
+                "effective_subject_id": {
+                    "type": "string"
+                },
                 "initiator": {
                     "type": "string"
                 },
                 "interaction_id": {
                     "type": "string"
+                },
+                "knowledge_network_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "observed_at": {
                     "type": "string"
@@ -1664,6 +3161,41 @@
                 }
             }
         },
+        "evidencevo.InteractionSummary": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "requests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.RequestSummary"
+                    }
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "traces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evidencevo.TraceSummary"
+                    }
+                }
+            }
+        },
         "evidencevo.RequestSummary": {
             "type": "object",
             "properties": {
@@ -1694,13 +3226,13 @@
                 "error_summary": {
                     "type": "string"
                 },
-                "interaction_id": {
-                    "type": "string"
-                },
                 "evidence_completeness": {
                     "type": "string"
                 },
                 "initiator": {
+                    "type": "string"
+                },
+                "interaction_id": {
                     "type": "string"
                 },
                 "knowledge_networks": {
@@ -1956,6 +3488,536 @@
                 }
             }
         },
+        "httphandler.closeConversationRequest": {
+            "type": "object",
+            "properties": {
+                "idempotency_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.conversationPage": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.Conversation"
+                    }
+                }
+            }
+        },
+        "httphandler.ensureConversationRequest": {
+            "type": "object",
+            "required": [
+                "external_conversation_key"
+            ],
+            "properties": {
+                "external_conversation_key": {
+                    "type": "string"
+                },
+                "idempotency_key": {
+                    "type": "string"
+                },
+                "one_shot": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "httphandler.ensureOperationRequest": {
+            "type": "object",
+            "required": [
+                "lease_epoch",
+                "lease_token",
+                "normalized_input_hash",
+                "operation_key",
+                "tool_name"
+            ],
+            "properties": {
+                "causation_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "lease_epoch": {
+                    "type": "integer"
+                },
+                "lease_token": {
+                    "type": "string"
+                },
+                "normalized_input_hash": {
+                    "type": "string"
+                },
+                "operation_key": {
+                    "type": "string"
+                },
+                "parent_operation_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "tool_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.evidenceEventRequest": {
+            "type": "object",
+            "required": [
+                "bkn.trace.schema.version",
+                "conversation_id",
+                "emitted_at",
+                "envelope",
+                "event_id",
+                "event_type",
+                "interaction_id",
+                "observed_at",
+                "payload_hash",
+                "producer_epoch",
+                "producer_id",
+                "producer_sequence",
+                "producer_stream_id",
+                "started_at"
+            ],
+            "properties": {
+                "artifact_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "attempt": {
+                    "type": "integer"
+                },
+                "bkn.trace.schema.version": {
+                    "type": "string"
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.BusinessRef"
+                    }
+                },
+                "causation_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.Claim"
+                    }
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "emitted_at": {
+                    "type": "string"
+                },
+                "envelope": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.EvidenceRef"
+                    }
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_business_edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.OperationBusinessEdge"
+                    }
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "payload_hash": {
+                    "type": "string"
+                },
+                "producer_epoch": {
+                    "type": "integer"
+                },
+                "producer_id": {
+                    "type": "string"
+                },
+                "producer_sequence": {
+                    "type": "integer"
+                },
+                "producer_stream_id": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "span_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.expectedOperationRequest": {
+            "type": "object",
+            "required": [
+                "operation_id",
+                "required"
+            ],
+            "properties": {
+                "operation_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "httphandler.expectedReceiptRequest": {
+            "type": "object",
+            "required": [
+                "receipt_id",
+                "required"
+            ],
+            "properties": {
+                "receipt_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "httphandler.finishAttemptRequest": {
+            "type": "object",
+            "required": [
+                "evidence_durability",
+                "payload_hash",
+                "receipt_id",
+                "request_id",
+                "trace_id"
+            ],
+            "properties": {
+                "artifact_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.BusinessRef"
+                    }
+                },
+                "evidence_durability": {
+                    "$ref": "#/definitions/sessionvo.EvidenceDurability"
+                },
+                "observed_evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "payload_hash": {
+                    "type": "string"
+                },
+                "receipt_id": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "retryable": {
+                    "type": "boolean"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.interactionBusinessGraphResponse": {
+            "type": "object",
+            "properties": {
+                "assembly": {
+                    "$ref": "#/definitions/assemblysvc.ProjectedResult"
+                },
+                "assembly_revision": {
+                    "$ref": "#/definitions/sessionvo.AssemblyRevision"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "evidence_status": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "execution_status": {
+                    "$ref": "#/definitions/sessionvo.InteractionStatus"
+                },
+                "interaction_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.interactionLeaseRequest": {
+            "type": "object",
+            "required": [
+                "lease_epoch",
+                "lease_token"
+            ],
+            "properties": {
+                "lease_epoch": {
+                    "type": "integer"
+                },
+                "lease_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.lifecycleError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "enum": [
+                        "conversation_required",
+                        "conversation_not_found",
+                        "conversation_closed",
+                        "conversation_expired",
+                        "conversation_owner_mismatch",
+                        "interaction_required",
+                        "interaction_in_progress",
+                        "interaction_terminal",
+                        "operation_required",
+                        "idempotency_conflict",
+                        "event_payload_conflict",
+                        "producer_sequence_conflict",
+                        "invalid_evidence_event",
+                        "receipt_pending",
+                        "terminal_conflict",
+                        "closure_manifest_invalid",
+                        "feature_not_installed",
+                        "capability_not_licensed",
+                        "permission_denied",
+                        "resource_not_disclosed",
+                        "internal_error"
+                    ]
+                },
+                "current_status": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "required_action": {
+                    "type": "string"
+                },
+                "retry_after_ms": {
+                    "type": "integer"
+                },
+                "retryable": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "httphandler.lifecycleErrorEnvelope": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/httphandler.lifecycleError"
+                }
+            }
+        },
+        "httphandler.operationResult": {
+            "type": "object",
+            "required": [
+                "created",
+                "execute",
+                "operation",
+                "receipt"
+            ],
+            "properties": {
+                "created": {
+                    "type": "boolean"
+                },
+                "execute": {
+                    "type": "boolean"
+                },
+                "operation": {
+                    "$ref": "#/definitions/sessionvo.Operation"
+                },
+                "receipt": {
+                    "$ref": "#/definitions/sessionvo.Receipt"
+                }
+            }
+        },
+        "httphandler.requestPage": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.RequestSummary"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.resumeConversationRequest": {
+            "type": "object",
+            "required": [
+                "conversation_id"
+            ],
+            "properties": {
+                "conversation_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "httphandler.startInteractionRequest": {
+            "type": "object",
+            "required": [
+                "idempotency_key"
+            ],
+            "properties": {
+                "idempotency_key": {
+                    "type": "string"
+                },
+                "lease_seconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httphandler.terminalInteractionRequest": {
+            "type": "object",
+            "required": [
+                "completion_manifest_version",
+                "completion_reason",
+                "lease_epoch",
+                "lease_token",
+                "terminal_idempotency_key"
+            ],
+            "properties": {
+                "answer_artifact_ref": {
+                    "type": "string"
+                },
+                "assembler_deadline": {
+                    "type": "string"
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "completion_manifest_version": {
+                    "type": "string"
+                },
+                "completion_reason": {
+                    "type": "string"
+                },
+                "expected_operations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/httphandler.expectedOperationRequest"
+                    }
+                },
+                "expected_receipts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/httphandler.expectedReceiptRequest"
+                    }
+                },
+                "lease_epoch": {
+                    "type": "integer"
+                },
+                "lease_token": {
+                    "type": "string"
+                },
+                "terminal_idempotency_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "ledgervo.DurableAck": {
+            "type": "object",
+            "properties": {
+                "durable_ack": {
+                    "type": "boolean"
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "ingest_sequence": {
+                    "type": "integer"
+                },
+                "ingested_at": {
+                    "type": "string"
+                },
+                "replayed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "rdto.AccessProfileResponse": {
+            "type": "object",
+            "properties": {
+                "access_scope_fingerprint": {
+                    "type": "string"
+                },
+                "business_provenance_managed_networks": {
+                    "type": "boolean"
+                },
+                "business_provenance_own": {
+                    "type": "boolean"
+                },
+                "global_log_search": {
+                    "type": "boolean"
+                },
+                "management_audit": {
+                    "type": "boolean"
+                },
+                "security_audit": {
+                    "type": "boolean"
+                },
+                "technical_trace": {
+                    "type": "boolean"
+                }
+            }
+        },
         "rdto.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -1974,40 +4036,887 @@
                 }
             }
         },
-        "evidencevo.InteractionSummary": {
+        "sessionvo.AssemblyRevision": {
             "type": "object",
             "properties": {
-                "completed_at": {
+                "artifact_manifest_hash": {
+                    "type": "string"
+                },
+                "assembly_completeness": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "completion_manifest_version": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "included_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "included_receipt_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "parent_revision_id": {
+                    "type": "string"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "revision_id": {
+                    "type": "string"
+                },
+                "revision_no": {
+                    "type": "integer"
+                },
+                "trigger": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.AttemptStatus": {
+            "type": "string",
+            "enum": [
+                "ready",
+                "pending",
+                "completed",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "AttemptReady",
+                "AttemptPending",
+                "AttemptCompleted",
+                "AttemptFailed"
+            ]
+        },
+        "sessionvo.BusinessRef": {
+            "type": "object",
+            "required": [
+                "business_domain_id",
+                "ref_id",
+                "ref_type",
+                "version"
+            ],
+            "properties": {
+                "as_of": {
+                    "type": "string"
+                },
+                "business_domain_id": {
+                    "type": "string"
+                },
+                "display_hint": {
+                    "type": "string"
+                },
+                "ref_id": {
+                    "description": "RefID uses the complete canonical shape defined by RefType, including every required scope segment.",
+                    "type": "string"
+                },
+                "ref_type": {
+                    "$ref": "#/definitions/sessionvo.BusinessRefType"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.BusinessRefType": {
+            "type": "string",
+            "enum": [
+                "knowledge_network",
+                "object_type",
+                "object_instance",
+                "property",
+                "relation_type",
+                "data_resource",
+                "metric",
+                "logic",
+                "function",
+                "action_type",
+                "action_instance"
+            ],
+            "x-enum-varnames": [
+                "BusinessRefKnowledgeNetwork",
+                "BusinessRefObjectType",
+                "BusinessRefObjectInstance",
+                "BusinessRefProperty",
+                "BusinessRefRelationType",
+                "BusinessRefDataResource",
+                "BusinessRefMetric",
+                "BusinessRefLogic",
+                "BusinessRefFunction",
+                "BusinessRefActionType",
+                "BusinessRefActionInstance"
+            ]
+        },
+        "sessionvo.Claim": {
+            "type": "object",
+            "required": [
+                "claim_id",
+                "claim_status",
+                "claim_type",
+                "content_artifact_ref",
+                "materiality",
+                "required_support_roles",
+                "supports"
+            ],
+            "properties": {
+                "claim_id": {
+                    "type": "string"
+                },
+                "claim_status": {
+                    "description": "Status withdrawn preserves history but does not participate in current revision completeness.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/sessionvo.ClaimStatus"
+                        }
+                    ]
+                },
+                "claim_type": {
+                    "type": "string"
+                },
+                "content_artifact_ref": {
+                    "type": "string"
+                },
+                "materiality": {
+                    "$ref": "#/definitions/sessionvo.ClaimMateriality"
+                },
+                "required_support_roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "supports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ClaimSupport"
+                    }
+                }
+            }
+        },
+        "sessionvo.ClaimMateriality": {
+            "type": "string",
+            "enum": [
+                "material",
+                "supporting"
+            ],
+            "x-enum-varnames": [
+                "ClaimMaterial",
+                "ClaimSupporting"
+            ]
+        },
+        "sessionvo.ClaimStatus": {
+            "type": "string",
+            "enum": [
+                "asserted",
+                "withdrawn"
+            ],
+            "x-enum-varnames": [
+                "ClaimAsserted",
+                "ClaimWithdrawn"
+            ]
+        },
+        "sessionvo.ClaimSupport": {
+            "type": "object",
+            "required": [
+                "content_hash",
+                "role",
+                "source_interaction_id",
+                "source_revision_id",
+                "status",
+                "target_ref",
+                "target_type",
+                "version"
+            ],
+            "properties": {
+                "content_hash": {
+                    "type": "string"
+                },
+                "fragment_selector": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "source_interaction_id": {
+                    "type": "string"
+                },
+                "source_operation_id": {
+                    "type": "string"
+                },
+                "source_revision_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/sessionvo.SupportStatus"
+                },
+                "target_ref": {
+                    "type": "string"
+                },
+                "target_type": {
+                    "$ref": "#/definitions/sessionvo.SupportTargetType"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.ClosureManifest": {
+            "type": "object",
+            "required": [
+                "completion_manifest_version",
+                "completion_reason"
+            ],
+            "properties": {
+                "answer_artifact_ref": {
+                    "type": "string"
+                },
+                "assembler_deadline": {
+                    "type": "string"
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "completion_manifest_version": {
+                    "type": "string"
+                },
+                "completion_reason": {
+                    "type": "string"
+                },
+                "expected_operations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ExpectedOperation"
+                    }
+                },
+                "expected_receipts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.ExpectedReceipt"
+                    }
+                },
+                "system_partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "sessionvo.Conversation": {
+            "type": "object",
+            "required": [
+                "conversation_id",
+                "created_at",
+                "external_conversation_key",
+                "generation",
+                "one_shot",
+                "owner",
+                "row_version",
+                "status",
+                "updated_at"
+            ],
+            "properties": {
+                "closed_at": {
                     "type": "string"
                 },
                 "conversation_id": {
                     "type": "string"
                 },
-                "duration_ms": {
+                "created_at": {
+                    "type": "string"
+                },
+                "external_conversation_key": {
+                    "type": "string"
+                },
+                "generation": {
                     "type": "integer"
+                },
+                "one_shot": {
+                    "type": "boolean"
+                },
+                "owner": {
+                    "$ref": "#/definitions/sessionvo.Owner"
+                },
+                "row_version": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/sessionvo.ConversationStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.ConversationStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "closed",
+                "expired"
+            ],
+            "x-enum-varnames": [
+                "ConversationActive",
+                "ConversationClosed",
+                "ConversationExpired"
+            ]
+        },
+        "sessionvo.EvidenceDurability": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "durable",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "DurabilityPending",
+                "DurabilityDurable",
+                "DurabilityFailed"
+            ]
+        },
+        "sessionvo.EvidenceRef": {
+            "type": "object",
+            "required": [
+                "content_hash",
+                "evidence_ref",
+                "ref_type",
+                "source_interaction_id",
+                "source_revision_id",
+                "version"
+            ],
+            "properties": {
+                "artifact_ref": {
+                    "type": "string"
+                },
+                "as_of": {
+                    "type": "string"
+                },
+                "content_hash": {
+                    "type": "string"
+                },
+                "evidence_ref": {
+                    "type": "string"
+                },
+                "fragment_selector": {
+                    "type": "string"
+                },
+                "ref_type": {
+                    "$ref": "#/definitions/sessionvo.EvidenceRefType"
+                },
+                "source_interaction_id": {
+                    "type": "string"
+                },
+                "source_operation_id": {
+                    "type": "string"
+                },
+                "source_revision_id": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.EvidenceRefType": {
+            "type": "string",
+            "enum": [
+                "event",
+                "artifact",
+                "artifact_fragment",
+                "operation_output",
+                "claim"
+            ],
+            "x-enum-varnames": [
+                "EvidenceRefEvent",
+                "EvidenceRefArtifact",
+                "EvidenceRefArtifactFragment",
+                "EvidenceRefOperationOutput",
+                "EvidenceRefClaim"
+            ]
+        },
+        "sessionvo.EvidenceStatus": {
+            "type": "string",
+            "enum": [
+                "not_applicable",
+                "assembling",
+                "complete",
+                "partial",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "EvidenceNotApplicable",
+                "EvidenceAssembling",
+                "EvidenceComplete",
+                "EvidencePartial",
+                "EvidenceFailed"
+            ]
+        },
+        "sessionvo.ExpectedOperation": {
+            "type": "object",
+            "required": [
+                "operation_id",
+                "required"
+            ],
+            "properties": {
+                "operation_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "sessionvo.ExpectedReceipt": {
+            "type": "object",
+            "required": [
+                "receipt_id",
+                "required"
+            ],
+            "properties": {
+                "receipt_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "sessionvo.Interaction": {
+            "type": "object",
+            "required": [
+                "conversation_id",
+                "created_at",
+                "evidence_status",
+                "execution_status",
+                "interaction_id",
+                "lease_epoch",
+                "lease_expires_at",
+                "lease_token",
+                "lease_version",
+                "ordinal",
+                "row_version",
+                "updated_at"
+            ],
+            "properties": {
+                "closure_manifest": {
+                    "$ref": "#/definitions/sessionvo.ClosureManifest"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "evidence_status": {
+                    "$ref": "#/definitions/sessionvo.EvidenceStatus"
+                },
+                "execution_status": {
+                    "$ref": "#/definitions/sessionvo.InteractionStatus"
                 },
                 "interaction_id": {
                     "type": "string"
                 },
-                "requests": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/evidencevo.RequestSummary"
-                    }
+                "lease_epoch": {
+                    "type": "integer"
                 },
-                "started_at": {
+                "lease_expires_at": {
                     "type": "string"
                 },
-                "status": {
+                "lease_token": {
                     "type": "string"
                 },
-                "traces": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/evidencevo.TraceSummary"
-                    }
+                "lease_version": {
+                    "type": "integer"
+                },
+                "ordinal": {
+                    "type": "integer"
+                },
+                "row_version": {
+                    "type": "integer"
+                },
+                "terminal_at": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
+        },
+        "sessionvo.InteractionStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "completed",
+                "failed",
+                "canceled",
+                "handed_off",
+                "abandoned"
+            ],
+            "x-enum-varnames": [
+                "InteractionActive",
+                "InteractionCompleted",
+                "InteractionFailed",
+                "InteractionCanceled",
+                "InteractionHandedOff",
+                "InteractionAbandoned"
+            ]
+        },
+        "sessionvo.Operation": {
+            "type": "object",
+            "required": [
+                "attempt",
+                "attempt_status",
+                "conversation_id",
+                "created_at",
+                "interaction_id",
+                "normalized_input_hash",
+                "operation_id",
+                "operation_key",
+                "retryable",
+                "row_version",
+                "tool_name",
+                "updated_at"
+            ],
+            "properties": {
+                "attempt": {
+                    "type": "integer"
+                },
+                "attempt_status": {
+                    "$ref": "#/definitions/sessionvo.AttemptStatus"
+                },
+                "causation_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "normalized_input_hash": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "operation_key": {
+                    "type": "string"
+                },
+                "parent_operation_id": {
+                    "type": "string"
+                },
+                "retryable": {
+                    "type": "boolean"
+                },
+                "row_version": {
+                    "type": "integer"
+                },
+                "tool_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.OperationBusinessEdge": {
+            "type": "object",
+            "required": [
+                "business_ref",
+                "observed_at",
+                "operation_id",
+                "role"
+            ],
+            "properties": {
+                "business_ref": {
+                    "$ref": "#/definitions/sessionvo.BusinessRef"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
+                }
+            }
+        },
+        "sessionvo.OperationBusinessRole": {
+            "type": "string",
+            "enum": [
+                "read",
+                "filter",
+                "group",
+                "aggregate",
+                "input",
+                "output",
+                "modify",
+                "recommend",
+                "execute"
+            ],
+            "x-enum-varnames": [
+                "OperationRoleRead",
+                "OperationRoleFilter",
+                "OperationRoleGroup",
+                "OperationRoleAggregate",
+                "OperationRoleInput",
+                "OperationRoleOutput",
+                "OperationRoleModify",
+                "OperationRoleRecommend",
+                "OperationRoleExecute"
+            ]
+        },
+        "sessionvo.Owner": {
+            "type": "object",
+            "required": [
+                "application_principal_id",
+                "business_domain_id",
+                "effective_subject_id",
+                "effective_subject_type",
+                "tenant_id"
+            ],
+            "properties": {
+                "application_principal_id": {
+                    "type": "string"
+                },
+                "business_domain_id": {
+                    "type": "string"
+                },
+                "delegation_id": {
+                    "type": "string"
+                },
+                "effective_subject_id": {
+                    "type": "string"
+                },
+                "effective_subject_type": {
+                    "$ref": "#/definitions/sessionvo.SubjectType"
+                },
+                "tenant_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.Receipt": {
+            "type": "object",
+            "required": [
+                "artifact_refs",
+                "attempt",
+                "business_refs",
+                "causation_event_ids",
+                "conversation_id",
+                "evidence_durability",
+                "interaction_id",
+                "issued_at",
+                "normalized_input_hash",
+                "observed_evidence_refs",
+                "operation_id",
+                "operation_key",
+                "owner",
+                "partial_reasons",
+                "payload_hash",
+                "receipt_id",
+                "receipt_status",
+                "request_id",
+                "required",
+                "row_version",
+                "schema_version",
+                "tool_name",
+                "trace_id"
+            ],
+            "properties": {
+                "artifact_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "attempt": {
+                    "type": "integer"
+                },
+                "business_refs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.BusinessRef"
+                    }
+                },
+                "causation_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "evidence_durability": {
+                    "$ref": "#/definitions/sessionvo.EvidenceDurability"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "issued_at": {
+                    "type": "string"
+                },
+                "normalized_input_hash": {
+                    "type": "string"
+                },
+                "observed_evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "operation_key": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/sessionvo.Owner"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "payload_hash": {
+                    "type": "string"
+                },
+                "receipt_id": {
+                    "type": "string"
+                },
+                "receipt_status": {
+                    "$ref": "#/definitions/sessionvo.ReceiptStatus"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "row_version": {
+                    "type": "integer"
+                },
+                "schema_version": {
+                    "type": "string"
+                },
+                "terminal_at": {
+                    "type": "string"
+                },
+                "tool_name": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.ReceiptStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "completed",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "ReceiptPending",
+                "ReceiptCompleted",
+                "ReceiptFailed"
+            ]
+        },
+        "sessionvo.RequestSummary": {
+            "type": "object",
+            "properties": {
+                "conversation_id": {
+                    "type": "string"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "operation_count": {
+                    "type": "integer"
+                },
+                "receipt_count": {
+                    "type": "integer"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "trace_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.SubjectType": {
+            "type": "string",
+            "enum": [
+                "user",
+                "service"
+            ],
+            "x-enum-varnames": [
+                "SubjectUser",
+                "SubjectService"
+            ]
+        },
+        "sessionvo.SupportStatus": {
+            "type": "string",
+            "enum": [
+                "adopted",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "SupportAdopted",
+                "SupportRejected"
+            ]
+        },
+        "sessionvo.SupportTargetType": {
+            "type": "string",
+            "enum": [
+                "evidence",
+                "claim",
+                "artifact_fragment",
+                "operation_output"
+            ],
+            "x-enum-varnames": [
+                "SupportEvidence",
+                "SupportClaim",
+                "SupportArtifactFragment",
+                "SupportOperationOutput"
+            ]
         }
     }
 }

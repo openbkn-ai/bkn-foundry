@@ -626,7 +626,7 @@ func Test_ValidateObjectType(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Success with metric logic property on data_view object type\n", func() {
+		Convey("Success with metric logic property on resource object type\n", func() {
 			ot := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:   "ot1",
@@ -641,8 +641,8 @@ func Test_ValidateObjectType(t *testing.T) {
 					PrimaryKeys: []string{"prop1"},
 					DisplayKey:  "prop1",
 					DataSource: &interfaces.ResourceInfo{
-						Type: interfaces.DATA_SOURCE_TYPE_DATA_VIEW,
-						ID:   "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "resource1",
 					},
 					LogicProperties: []*interfaces.LogicProperty{
 						{

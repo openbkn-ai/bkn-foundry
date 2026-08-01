@@ -7,12 +7,12 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/validator"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	lcategory "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/category"
-	loperator "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/operator"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/validator"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	lcategory "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
+	loperator "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/operator"
 )
 
 // OperatorHandler 算子注册接口

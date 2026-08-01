@@ -91,6 +91,16 @@ type QueryConfig struct {
 	CursorMaxSessions int `mapstructure:"cursorMaxSessions"`
 }
 
+// CatalogHealthCheckConfig configures the periodic physical Catalog health-check worker.
+type CatalogHealthCheckConfig struct {
+	// WorkerEnabled only controls periodic checks; it does not disable create/update/manual connection tests.
+	WorkerEnabled bool `mapstructure:"workerEnabled"`
+	// Timeout applies to every connector TestConnection invocation. Durations use Go duration strings.
+	Timeout time.Duration `mapstructure:"timeout"`
+	// CronExpr is the platform default Cron used by inherit-mode Schedules.
+	CronExpr string `mapstructure:"cronExpr"`
+}
+
 // AppSetting app配置项
 type AppSetting struct {
 	ServerSetting       ServerSetting             `mapstructure:"server"`
@@ -100,6 +110,7 @@ type AppSetting struct {
 	DepServices         map[string]map[string]any `mapstructure:"depServices"`
 	RateLimitingSetting RateLimitingConfig        `mapstructure:"rateLimiting"`
 	QuerySetting        QueryConfig               `mapstructure:"query"`
+	CatalogHealthCheck  CatalogHealthCheckConfig  `mapstructure:"catalogHealthCheck"`
 
 	DBSetting           libdb.DBSetting
 	MQSetting           libmq.MQSetting

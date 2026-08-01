@@ -313,154 +313,6 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			So(result[0].SourceObjectType.OTID, ShouldEqual, "ot1")
 			So(result[0].TargetObjectType.OTID, ShouldEqual, "ot2")
 		})
-
-		Convey("Success with DATA_VIEW type\n", func() {
-			knID := "kn1"
-			branch := interfaces.MAIN_BRANCH
-			rtIDs := []string{"rt1"}
-			rtArr := []*interfaces.RelationType{
-				{
-					RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-						RTID:               "rt1",
-						RTName:             "rt1",
-						Type:               interfaces.RELATION_TYPE_DATA_VIEW,
-						SourceObjectTypeID: "ot1",
-						TargetObjectTypeID: "ot2",
-						MappingRules: &interfaces.InDirectMapping{
-							BackingDataSource: &interfaces.ResourceInfo{
-								ID: "dv1",
-							},
-							SourceMappingRules: []interfaces.Mapping{
-								{
-									SourceProp: interfaces.SimpleProperty{
-										Name: "prop1",
-									},
-									TargetProp: interfaces.SimpleProperty{
-										Name: "field1",
-									},
-								},
-							},
-							TargetMappingRules: []interfaces.Mapping{
-								{
-									SourceProp: interfaces.SimpleProperty{
-										Name: "field2",
-									},
-									TargetProp: interfaces.SimpleProperty{
-										Name: "prop2",
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			objectTypeMap := map[string]*interfaces.ObjectType{
-				"ot1": {
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot1",
-						OTName: "ot1",
-					},
-					PropertyMap: map[string]string{
-						"prop1": "Property1",
-					},
-				},
-				"ot2": {
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot2",
-						OTName: "ot2",
-					},
-					PropertyMap: map[string]string{
-						"prop2": "Property2",
-					},
-				},
-			}
-			dataView := &interfaces.DataView{
-				ViewName: "data_view1",
-				FieldsMap: map[string]*interfaces.ViewField{
-					"field1": {
-						DisplayName: "Field1",
-					},
-					"field2": {
-						DisplayName: "Field2",
-					},
-				},
-			}
-			dva := bmock.NewMockDataViewAccess(mockCtrl)
-
-			service := &relationTypeService{
-				appSetting: appSetting,
-				rta:        rta,
-				ps:         ps,
-				ots:        ots,
-				dva:        dva,
-				ums:        ums,
-			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rtArr, nil)
-			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypeMap, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(dataView, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-
-			result, err := service.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 1)
-			So(result[0].MappingRules.(*interfaces.InDirectMapping).BackingDataSource.Name, ShouldEqual, "data_view1")
-		})
-
-		Convey("Failed when GetDataViewByID returns error for DATA_VIEW type\n", func() {
-			knID := "kn1"
-			branch := interfaces.MAIN_BRANCH
-			rtIDs := []string{"rt1"}
-			rtArr := []*interfaces.RelationType{
-				{
-					RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-						RTID:               "rt1",
-						RTName:             "rt1",
-						Type:               interfaces.RELATION_TYPE_DATA_VIEW,
-						SourceObjectTypeID: "ot1",
-						TargetObjectTypeID: "ot2",
-						MappingRules: &interfaces.InDirectMapping{
-							BackingDataSource: &interfaces.ResourceInfo{
-								ID: "dv1",
-							},
-						},
-					},
-				},
-			}
-			objectTypeMap := map[string]*interfaces.ObjectType{
-				"ot1": {
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot1",
-						OTName: "ot1",
-					},
-				},
-				"ot2": {
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot2",
-						OTName: "ot2",
-					},
-				},
-			}
-			dva := bmock.NewMockDataViewAccess(mockCtrl)
-
-			service := &relationTypeService{
-				appSetting: appSetting,
-				rta:        rta,
-				ps:         ps,
-				ots:        ots,
-				dva:        dva,
-			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rtArr, nil)
-			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypeMap, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
-
-			result, err := service.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
 	})
 }
 
@@ -1781,14 +1633,12 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &relationTypeService{
 			appSetting: appSetting,
 			db:         db,
 			ots:        ots,
-			dva:        dva,
 		}
 
 		Convey("Failed when source object type not found\n", func() {
@@ -1966,15 +1816,13 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(nil, nil)
-
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
 		})
 
-		Convey("Failed when GetDataViewByID returns error in DATA_VIEW type\n", func() {
+		Convey("Failed with legacy data_view backing in strict validation\n", func() {
 			relationType := &interfaces.RelationType{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 					RTID:   "rt1",
@@ -1990,10 +1838,10 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
-
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
 		})
 
 		Convey("Failed when source mapping field not found in data view\n", func() {
@@ -2028,15 +1876,9 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 					"prop1": "Property1",
 				},
 			}
-			dataView := &interfaces.DataView{
-				ViewName:  "data_view1",
-				FieldsMap: map[string]*interfaces.ViewField{},
-			}
 
 			smock.ExpectBegin()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(sourceObjectType, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(dataView, nil)
-			smock.ExpectRollback()
 
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
@@ -2135,7 +1977,6 @@ func Test_relationTypeService_ValidateRelationTypes(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -2144,7 +1985,6 @@ func Test_relationTypeService_ValidateRelationTypes(t *testing.T) {
 			db:         db,
 			ps:         ps,
 			ots:        ots,
-			dva:        dva,
 			rta:        rta,
 		}
 

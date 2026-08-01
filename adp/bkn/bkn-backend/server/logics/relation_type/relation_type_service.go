@@ -46,7 +46,6 @@ type relationTypeService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	cga        interfaces.ConceptGroupAccess
-	dva        interfaces.DataViewAccess
 	mfa        interfaces.ModelFactoryAccess
 	ots        interfaces.ObjectTypeService
 	ps         interfaces.PermissionService
@@ -61,7 +60,6 @@ func NewRelationTypeService(appSetting *common.AppSetting) interfaces.RelationTy
 			appSetting: appSetting,
 			db:         logics.DB,
 			cga:        logics.CGA,
-			dva:        logics.DVA,
 			mfa:        logics.MFA,
 			ots:        object_type.NewObjectTypeService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
@@ -413,16 +411,9 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 		case interfaces.RELATION_TYPE_DATA_VIEW:
 			// 查视图或 vega Resource，翻译名称和桥梁字段显示名
 			mappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
-			var backingType string
-			if mappingRules.BackingDataSource != nil {
-				backingType = mappingRules.BackingDataSource.Type
-			}
-			if backingType == "" {
-				backingType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-			}
 			var fieldsMap map[string]*interfaces.ViewField
 			if mappingRules.BackingDataSource != nil && mappingRules.BackingDataSource.ID != "" {
-				switch backingType {
+				switch mappingRules.BackingDataSource.Type {
 				case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 					res, err := rts.vba.GetResourceByID(ctx, mappingRules.BackingDataSource.ID)
 					if err != nil {
@@ -440,20 +431,9 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 						fieldsMap = logics.VegaResourceSchemaToFieldsMap(res)
 					}
 				default:
-					dataView, err := rts.dva.GetDataViewByID(ctx, mappingRules.BackingDataSource.ID)
-					if err != nil {
-						return []*interfaces.RelationType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-							berrors.BknBackend_RelationType_InternalError_GetDataViewByIDFailed).
-							WithErrorDetails(err.Error())
-					}
-					if dataView == nil {
-						otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s Backing Data view %s not found", relationType.RTID, mappingRules.BackingDataSource.ID))
-						if sourceObj == nil && targetObj == nil {
-							continue
-						}
-					} else {
-						relationType.MappingRules.(*interfaces.InDirectMapping).BackingDataSource.Name = dataView.ViewName
-						fieldsMap = dataView.FieldsMap
+					otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s backing data source type %s is unsupported", relationType.RTID, mappingRules.BackingDataSource.Type))
+					if sourceObj == nil && targetObj == nil {
+						continue
 					}
 				}
 			}
@@ -1265,13 +1245,9 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			inDirectMappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
 			// strictMode为true时才校验 backing 存在性
 			if strictMode && inDirectMappingRules.BackingDataSource != nil && inDirectMappingRules.BackingDataSource.ID != "" {
-				backingType := inDirectMappingRules.BackingDataSource.Type
-				if backingType == "" {
-					backingType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-				}
 				var fieldsMap map[string]*interfaces.ViewField
 				var backingLabel string
-				switch backingType {
+				switch inDirectMappingRules.BackingDataSource.Type {
 				case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 					res, err := rts.vba.GetResourceByID(ctx, inDirectMappingRules.BackingDataSource.ID)
 					if err != nil {
@@ -1284,16 +1260,7 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 					backingLabel = res.Name
 					fieldsMap = logics.VegaResourceSchemaToFieldsMap(res)
 				default:
-					dataView, err := rts.dva.GetDataViewByID(ctx, inDirectMappingRules.BackingDataSource.ID)
-					if err != nil {
-						return err
-					}
-					if dataView == nil {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-							WithErrorDetails(fmt.Sprintf("关系类中的[%s]数据视图[%s]不存在", relationType.RTID, inDirectMappingRules.BackingDataSource.ID))
-					}
-					backingLabel = dataView.ViewName
-					fieldsMap = dataView.FieldsMap
+					return logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, inDirectMappingRules.BackingDataSource.Type)
 				}
 
 				for _, mapping := range inDirectMappingRules.SourceMappingRules {

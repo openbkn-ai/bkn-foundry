@@ -206,7 +206,7 @@ func TestListRequestsDoesNotLeakUnauthorizedPreview(t *testing.T) {
 	}
 }
 
-func TestListRequestsAuthorizesVisibleEventBusinessRefsBeforeProjection(t *testing.T) {
+func TestListRequestsKeepsRecordAuthorizedBusinessRefsWithoutResolverAuthorization(t *testing.T) {
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_refs", "trace_refs", "2026-07-26T09:00:00Z", "查询业务引用", "返回业务结果", "agent-a", "bd_demo", "acct_demo")
 	if err := store.StoreEvidence(context.Background(), evidencevo.NormalizedTrace{
@@ -242,27 +242,22 @@ func TestListRequestsAuthorizesVisibleEventBusinessRefsBeforeProjection(t *testi
 		t.Fatalf("expected one request summary: page=%+v err=%v", page, err)
 	}
 	summary := page.Entries[0]
-	if len(summary.BusinessRefs) != 0 || len(summary.KnowledgeNetworks) != 0 {
-		t.Fatalf("unauthorized and hidden refs must not enter summary: %+v", summary)
+	if !containsSummaryValue(summary.BusinessRefs, "object:kn_secret:item") ||
+		!containsSummaryValue(summary.KnowledgeNetworks, "kn_secret") {
+		t.Fatalf("record-authorized visible refs must remain in summary: %+v", summary)
 	}
-	if summary.EvidenceCompleteness != "partial" ||
-		!containsSummaryReason(summary.PartialReasons, "supporting_evidence_unavailable") {
-		t.Fatalf("unauthorized refs must not satisfy evidence completeness: %+v", summary)
+	if containsSummaryValue(summary.BusinessRefs, "object:kn_hidden:item") {
+		t.Fatalf("producer-hidden refs must remain hidden: %+v", summary)
 	}
-	if len(resolver.requests) != 1 || len(resolver.requests[0].Refs) != 2 ||
-		resolver.requests[0].Refs[0].RefID != "object:kn_demo:item" ||
-		resolver.requests[0].Refs[1].RefID != "object:kn_secret:item" {
-		t.Fatalf("resolver must receive only event-visible refs with trusted scope: %+v", resolver.requests)
-	}
-	if resolver.requests[0].Scope != summaryScope("acct_demo") {
-		t.Fatalf("resolver must use trusted query scope: %+v", resolver.requests[0].Scope)
+	if len(resolver.requests) != 0 {
+		t.Fatalf("summary access must not depend on resolver authorization: %+v", resolver.requests)
 	}
 
 	keywordPage, err := service.ListRequests(context.Background(), evidencevo.SummaryQueryOptions{
 		Scope: summaryScope("acct_demo"), Limit: 20, Keyword: "kn_secret",
 	})
-	if err != nil || len(keywordPage.Entries) != 0 {
-		t.Fatalf("unauthorized ref must not be keyword searchable: page=%+v err=%v", keywordPage, err)
+	if err != nil || len(keywordPage.Entries) != 1 {
+		t.Fatalf("record-authorized ref must remain keyword searchable: page=%+v err=%v", keywordPage, err)
 	}
 }
 
@@ -315,13 +310,8 @@ func TestListRequestsResolvesAllSummaryBusinessRefsOncePerQuery(t *testing.T) {
 	if err != nil || len(page.Entries) != 1 {
 		t.Fatalf("expected authorized summary: page=%+v err=%v", page, err)
 	}
-	if len(resolver.requests) != 1 {
-		t.Fatalf("summary query must batch resolver authorization, got %d calls: %+v", len(resolver.requests), resolver.requests)
-	}
-	if len(resolver.requests[0].Refs) != 2 ||
-		resolver.requests[0].Refs[0].RefID != "object:kn_demo:item" ||
-		resolver.requests[0].Refs[1].RefID != "resource:orders" {
-		t.Fatalf("resolver refs must be deduplicated and stable: %+v", resolver.requests[0].Refs)
+	if len(resolver.requests) != 0 {
+		t.Fatalf("request summary must not invoke resolver as an authorization gate: %+v", resolver.requests)
 	}
 }
 
@@ -366,12 +356,11 @@ func TestListRequestsFailsSoftWhenBusinessResolverIsUnavailable(t *testing.T) {
 	if entry.QuestionPreview != "查询采购履约风险" || entry.ResultPreview != "发现一条逾期采购订单" {
 		t.Fatalf("authorized question and result must remain visible: %+v", entry)
 	}
-	if !page.Partial || !containsSummaryReason(page.PartialReasons, "business_resolver_unavailable") {
-		t.Fatalf("resolver outage must be explicit on the page: %+v", page)
+	if page.Partial && containsSummaryReason(page.PartialReasons, "business_resolver_unavailable") {
+		t.Fatalf("resolver outage must not degrade a summary that does not require display resolution: %+v", page)
 	}
-	if entry.EvidenceCompleteness != "partial" ||
-		!containsSummaryReason(entry.PartialReasons, "business_resolver_unavailable") {
-		t.Fatalf("resolver outage must be explicit on the request: %+v", entry)
+	if containsSummaryReason(entry.PartialReasons, "business_resolver_unavailable") {
+		t.Fatalf("resolver outage must not change objective evidence completeness: %+v", entry)
 	}
 }
 

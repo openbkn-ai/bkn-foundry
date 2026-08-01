@@ -1,6 +1,7 @@
 package httphandler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,8 +10,27 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iauthorizationscope"
 )
+
+type fakeAccessScopeResolver struct {
+	profile         evidencevo.AccessProfile
+	err             error
+	authorization   string
+	trustedIdentity iauthorizationscope.TrustedIdentity
+}
+
+func (f *fakeAccessScopeResolver) Resolve(
+	_ context.Context,
+	authorization string,
+	identity iauthorizationscope.TrustedIdentity,
+) (evidencevo.AccessProfile, error) {
+	f.authorization = authorization
+	f.trustedIdentity = identity
+	return f.profile, f.err
+}
 
 func newDevEvidenceHandler(service *evidencesvc.Service) *EvidenceHandler {
 	return NewEvidenceHandlerWithSecurityConfig(service, EvidenceHandlerSecurityConfig{
@@ -85,6 +105,94 @@ func TestEvidenceHandlerRequiresTrustedQueryIdentity(t *testing.T) {
 	}
 }
 
+func TestEvidenceHandlerBuildsQueryScopeFromCurrentSafeAccessProfile(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", ActorID: "actor-a",
+		EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
+		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-a"},
+		AccountActive: true, TenantActive: true, Fingerprint: "sha256:profile-a",
+	}}
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		AllowUnauthenticatedQuery: true, AuthorizationScopeResolver: resolver,
+	})
+	request := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests/request-a/summary", nil)
+	request.Header.Set("Authorization", "Bearer current-token")
+	request.Header.Set("x-account-id", "actor-a")
+	request.Header.Set("x-account-type", "user")
+	request.Header.Set("x-tenant-id", "tenant-a")
+	request.Header.Set("x-business-domain", "domain-a")
+	request.Header.Set("X-BKN-Effective-Subject-ID", "user-a")
+	request.Header.Set("X-BKN-Application-Principal-ID", "app-a")
+	response := httptest.NewRecorder()
+
+	scope, ok := handler.queryScopeFromRequest(response, request)
+	if !ok || scope.AccessProfile == nil || scope.AccessProfile.Fingerprint != "sha256:profile-a" {
+		t.Fatalf("expected current access profile, scope=%+v response=%d %s", scope, response.Code, response.Body.String())
+	}
+	if scope.AccountID != "user-a" {
+		t.Fatalf("candidate owner filter must use the effective subject, got %q", scope.AccountID)
+	}
+	if resolver.authorization != "Bearer current-token" || resolver.trustedIdentity.ActorID != "actor-a" ||
+		resolver.trustedIdentity.EffectiveSubjectID != "user-a" || resolver.trustedIdentity.ApplicationPrincipalID != "app-a" {
+		t.Fatalf("resolver did not receive trusted identity: auth=%q identity=%+v", resolver.authorization, resolver.trustedIdentity)
+	}
+}
+
+func TestEvidenceHandlerReturnsCurrentAccessProfileCapabilities(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", ActorID: "builder-a",
+		EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
+		ManagedKnowledgeNetworkIDs: []string{"kn-a"},
+		AccountActive:              true, TenantActive: true, Fingerprint: "sha256:profile-a",
+	}}
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		AllowUnauthenticatedQuery: true, AuthorizationScopeResolver: resolver,
+	})
+	request := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/access-profile", nil)
+	request.Header.Set("Authorization", "Bearer current-token")
+	request.Header.Set("x-account-id", "builder-a")
+	request.Header.Set("x-account-type", "user")
+	request.Header.Set("x-tenant-id", "tenant-a")
+	request.Header.Set("x-business-domain", "domain-a")
+	response := httptest.NewRecorder()
+
+	handler.GetAccessProfile(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected access profile, got %d: %s", response.Code, response.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["business_provenance_own"] != true || body["business_provenance_managed_networks"] != true ||
+		body["technical_trace"] != false || body["security_audit"] != false ||
+		body["management_audit"] != false || body["global_log_search"] != false {
+		t.Fatalf("unexpected capabilities: %#v", body)
+	}
+	if body["access_scope_fingerprint"] != "sha256:profile-a" {
+		t.Fatalf("missing fingerprint: %#v", body)
+	}
+	if _, leaked := body["roles"]; leaked {
+		t.Fatalf("access profile must not expose the complete role table: %#v", body)
+	}
+	if _, leaked := body["managed_knowledge_network_ids"]; leaked {
+		t.Fatalf("access profile must not expose managed network identifiers: %#v", body)
+	}
+}
+
+func TestEvidenceHandlerAccessProfileFailsClosedWithoutScopeResolver(t *testing.T) {
+	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
+	request := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/access-profile", nil)
+	response := httptest.NewRecorder()
+
+	handler.GetAccessProfile(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "ACCESS_PROFILE_NOT_CONFIGURED") {
+		t.Fatalf("expected fail-closed access profile response, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestEvidenceHandlerRejectsForgedIdentityWithoutGatewayToken(t *testing.T) {
 	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
 		IngestToken: "producer-ingest-token", QueryGatewayToken: "gateway-query-token",
@@ -139,6 +247,108 @@ func TestEvidenceHandlerAuthenticatesStudioQueryWithHydra(t *testing.T) {
 	}
 }
 
+func TestLifecycleIdentityRejectsOAuthUntilTenantDomainAuthorizationIsDelegated(t *testing.T) {
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/oauth2/introspect" || r.FormValue("token") != "lifecycle-token" {
+			t.Fatalf("unexpected introspection request: %s token=%q", r.URL.Path, r.FormValue("token"))
+		}
+		_, _ = io.WriteString(w, `{"active":true,"sub":"user-authenticated","client_id":"agent-authenticated","ext":{"visitor_type":"user"}}`)
+	}))
+	defer hydra.Close()
+
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: hydra.URL,
+	})
+	nextCalled := false
+	next := handler.RequireTrustedLifecycleIdentity(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("X-BKN-Tenant-ID", "tenant-1")
+	request.Header.Set("X-Business-Domain", "domain-1")
+	request.Header.Set("X-BKN-Application-Principal-ID", "forged-app")
+	request.Header.Set("X-BKN-Effective-Subject-Type", "service")
+	request.Header.Set("X-BKN-Effective-Subject-ID", "forged-subject")
+	request.Header.Set("X-BKN-Delegation-ID", "forged-delegation")
+	response := httptest.NewRecorder()
+
+	next(response, request)
+
+	if response.Code != http.StatusUnauthorized || nextCalled {
+		t.Fatalf(
+			"OAuth without authorized tenant/domain context must be rejected: %d %s",
+			response.Code, response.Body.String(),
+		)
+	}
+}
+
+func TestLifecycleIdentityRejectsAnonymousQueryCompatibilityMode(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(
+		evidencesvc.New(evidencestore.New()),
+		EvidenceHandlerSecurityConfig{AllowUnauthenticatedQuery: true},
+	)
+	nextCalled := false
+	next := handler.RequireTrustedLifecycleIdentity(func(
+		http.ResponseWriter, *http.Request,
+	) {
+		nextCalled = true
+	})
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		nil,
+	)
+	request.Header.Set("X-BKN-Tenant-ID", "forged-tenant")
+	request.Header.Set("X-Business-Domain", "forged-domain")
+	request.Header.Set("X-BKN-Application-Principal-ID", "forged-app")
+	request.Header.Set("X-BKN-Effective-Subject-ID", "forged-subject")
+	response := httptest.NewRecorder()
+
+	next(response, request)
+
+	if response.Code != http.StatusUnauthorized || nextCalled {
+		t.Fatalf(
+			"anonymous query compatibility must not authorize lifecycle writes: %d %s",
+			response.Code, response.Body.String(),
+		)
+	}
+}
+
+func TestLifecycleIdentityRejectsIncompleteOwnerTupleAtGatewayBoundary(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(
+		evidencesvc.New(evidencestore.New()),
+		EvidenceHandlerSecurityConfig{QueryGatewayToken: "trusted-gateway-token"},
+	)
+	nextCalled := false
+	next := handler.RequireTrustedLifecycleIdentity(func(
+		http.ResponseWriter, *http.Request,
+	) {
+		nextCalled = true
+	})
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		nil,
+	)
+	request.Header.Set("X-BKN-Trace-Query-Token", "trusted-gateway-token")
+	request.Header.Set("x-account-id", "subject-1")
+	request.Header.Set("x-account-type", "service")
+	request.Header.Set("x-business-domain", "domain-1")
+	request.Header.Set("x-tenant-id", "tenant-1")
+	response := httptest.NewRecorder()
+
+	next(response, request)
+
+	if response.Code != http.StatusUnauthorized || nextCalled {
+		t.Fatalf(
+			"incomplete owner tuple must be rejected at the gateway boundary: %d %s",
+			response.Code, response.Body.String(),
+		)
+	}
+}
+
 func TestEvidenceHandlerRejectsOAuthIdentityMismatch(t *testing.T) {
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"user"}}`)
@@ -157,6 +367,40 @@ func TestEvidenceHandlerRejectsOAuthIdentityMismatch(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_IDENTITY_MISMATCH") {
 		t.Fatalf("forged OAuth identity must be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRejectsForgedOAuthDelegationIdentity(t *testing.T) {
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"user"}}`)
+	}))
+	defer hydra.Close()
+
+	for _, test := range []struct {
+		name   string
+		header string
+		value  string
+	}{
+		{name: "effective subject", header: "X-BKN-Effective-Subject-ID", value: "victim"},
+		{name: "application principal", header: "X-BKN-Application-Principal-ID", value: "victim-app"},
+		{name: "delegation", header: "X-BKN-Delegation-ID", value: "forged-delegation"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+				HydraAdminURL: hydra.URL,
+			})
+			req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+			req.Header.Set("Authorization", "Bearer studio-token")
+			req.Header.Set("x-business-domain", "bd_demo")
+			req.Header.Set(test.header, test.value)
+			rec := httptest.NewRecorder()
+
+			handler.GetEvidenceChainByTraceID(rec, req)
+
+			if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_IDENTITY_MISMATCH") {
+				t.Fatalf("forged OAuth delegation identity must be rejected, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 
@@ -695,7 +939,7 @@ func TestEvidenceHandlerListsRequestTracesAndTechnicalExecutions(t *testing.T) {
 	}
 }
 
-func TestEvidenceHandlerAdminReadsEvidenceAcrossAccountsWithinBusinessDomain(t *testing.T) {
+func TestEvidenceHandlerPlatformRoleDoesNotReadBusinessEvidenceAcrossAccounts(t *testing.T) {
 	handler := newDevEvidenceHandler(evidencesvc.New(evidencestore.New()))
 	ingestReq := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(validHandlerBatch()))
 	ingestRec := httptest.NewRecorder()
@@ -718,8 +962,8 @@ func TestEvidenceHandlerAdminReadsEvidenceAcrossAccountsWithinBusinessDomain(t *
 	adminReq.Header.Set("x-account-type", "super_admin")
 	adminRec := httptest.NewRecorder()
 	handler.ListRequests(adminRec, adminReq)
-	if adminRec.Code != http.StatusOK || !strings.Contains(adminRec.Body.String(), `"request_id":"req_handler_001"`) {
-		t.Fatalf("admin must see same-domain evidence, got %d: %s", adminRec.Code, adminRec.Body.String())
+	if adminRec.Code != http.StatusOK || strings.Contains(adminRec.Body.String(), `"request_id":"req_handler_001"`) {
+		t.Fatalf("platform role must not imply cross-account business evidence access, got %d: %s", adminRec.Code, adminRec.Body.String())
 	}
 
 	chainReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/9c0d0000000000000000000000000001/evidence-chain", nil)
@@ -727,8 +971,8 @@ func TestEvidenceHandlerAdminReadsEvidenceAcrossAccountsWithinBusinessDomain(t *
 	chainReq.Header.Set("x-account-type", "super_admin")
 	chainRec := httptest.NewRecorder()
 	handler.GetTraceSubresource(chainRec, chainReq)
-	if chainRec.Code != http.StatusOK || !strings.Contains(chainRec.Body.String(), `"claim_id":"claim_handler"`) {
-		t.Fatalf("admin must read same-domain evidence chain, got %d: %s", chainRec.Code, chainRec.Body.String())
+	if chainRec.Code != http.StatusNotFound || strings.Contains(chainRec.Body.String(), `"claim_id":"claim_handler"`) {
+		t.Fatalf("platform role must not read another account's evidence chain, got %d: %s", chainRec.Code, chainRec.Body.String())
 	}
 
 	otherDomainReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/requests?limit=10", nil)
@@ -738,7 +982,7 @@ func TestEvidenceHandlerAdminReadsEvidenceAcrossAccountsWithinBusinessDomain(t *
 	otherDomainRec := httptest.NewRecorder()
 	handler.ListRequests(otherDomainRec, otherDomainReq)
 	if otherDomainRec.Code != http.StatusOK || strings.Contains(otherDomainRec.Body.String(), `"request_id":"req_handler_001"`) {
-		t.Fatalf("admin cross-account read must stay domain-scoped, got %d: %s", otherDomainRec.Code, otherDomainRec.Body.String())
+		t.Fatalf("platform role must not disclose business evidence in another domain, got %d: %s", otherDomainRec.Code, otherDomainRec.Body.String())
 	}
 }
 

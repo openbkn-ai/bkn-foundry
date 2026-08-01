@@ -54,15 +54,7 @@ func NewResourceAccess(appSetting *common.AppSetting) interfaces.ResourceAccess 
 }
 
 // Create creates ra new Resource.
-func (ra *resourceAccess) Create(ctx context.Context, resource *interfaces.Resource) error {
-	return ra.create(ctx, nil, resource)
-}
-
-func (ra *resourceAccess) CreateWithTx(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
-	return ra.create(ctx, tx, resource)
-}
-
-func (ra *resourceAccess) create(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Insert into resource")
 	defer span.End()
 
@@ -102,7 +94,7 @@ func (ra *resourceAccess) create(ctx context.Context, tx *sql.Tx, resource *inte
 			"f_status",
 			"f_status_message",
 			"f_last_discover_status",
-			"f_database",
+			"f_schema",
 			"f_source_identifier",
 			"f_source_metadata",
 			"f_schema_definition",
@@ -139,7 +131,7 @@ func (ra *resourceAccess) create(ctx context.Context, tx *sql.Tx, resource *inte
 			resource.Status,
 			resource.StatusMessage,
 			resource.LastDiscoverStatus,
-			resource.Database,
+			resource.Schema,
 			resource.SourceIdentifier,
 			string(sourceMetadataBytes),
 			string(schemaDefinitionBytes),
@@ -204,7 +196,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
-		"f_database",
+		"f_schema",
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
@@ -229,7 +221,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 
 	resource := &interfaces.Resource{}
 	var tagsStr string
-	var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
+	var sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
 
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	err = row.Scan(
@@ -242,8 +234,8 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		&resource.Status,
 		&resource.StatusMessage,
 		&resource.LastDiscoverStatus,
-		&database,
-		&sourceIdentifier,
+		&resource.Schema,
+		&resource.SourceIdentifier,
 		&sourceMetadata,
 		&schemaDefinition,
 		&indexConfig,
@@ -269,8 +261,6 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 
 	// tags string 转成数组的格式
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-	resource.Database = database.String
-	resource.SourceIdentifier = sourceIdentifier.String
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
 		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
@@ -310,7 +300,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
-		"f_database",
+		"f_schema",
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
@@ -345,7 +335,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
+		var sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -357,8 +347,8 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 			&resource.Status,
 			&resource.StatusMessage,
 			&resource.LastDiscoverStatus,
-			&database,
-			&sourceIdentifier,
+			&resource.Schema,
+			&resource.SourceIdentifier,
 			&sourceMetadata,
 			&schemaDefinition,
 			&indexConfig,
@@ -381,8 +371,6 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 		// tags string 转成数组的格式
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		resource.Database = database.String
-		resource.SourceIdentifier = sourceIdentifier.String
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
 			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 		}
@@ -438,7 +426,7 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
-		"f_database",
+		"f_schema",
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
@@ -470,7 +458,7 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier, sourceMetadata, schemaDefinition sql.NullString
+		var sourceMetadata, schemaDefinition sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -482,8 +470,8 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 			&resource.Status,
 			&resource.StatusMessage,
 			&resource.LastDiscoverStatus,
-			&database,
-			&sourceIdentifier,
+			&resource.Schema,
+			&resource.SourceIdentifier,
 			&sourceMetadata,
 			&schemaDefinition,
 			&resource.LogicType,
@@ -503,8 +491,6 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 
 		// tags string 转成数组的格式
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		resource.Database = database.String
-		resource.SourceIdentifier = sourceIdentifier.String
 		// 不反序列化sourceMetadata、schemaDefinition和logicDefinition的完整结构，以减少内存占用
 		// 仅惰性提取规模信息：列数（schema 顶层元素数）与源端行数估算（properties.row_count）
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
@@ -551,7 +537,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
-		"f_database",
+		"f_schema",
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
@@ -574,7 +560,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 
 	resource := &interfaces.Resource{}
 	var tagsStr string
-	var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig sql.NullString
+	var sourceMetadata, schemaDefinition, indexConfig sql.NullString
 
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	err = row.Scan(
@@ -587,8 +573,8 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		&resource.Status,
 		&resource.StatusMessage,
 		&resource.LastDiscoverStatus,
-		&database,
-		&sourceIdentifier,
+		&resource.Schema,
+		&resource.SourceIdentifier,
 		&sourceMetadata,
 		&schemaDefinition,
 		&indexConfig,
@@ -611,8 +597,6 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 
 	// tags string 转成数组的格式
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-	resource.Database = database.String
-	resource.SourceIdentifier = sourceIdentifier.String
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
 		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
@@ -647,8 +631,8 @@ func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.Resourc
 	if params.Status != "" {
 		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_status"): params.Status})
 	}
-	if params.Database != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_database"): params.Database})
+	if params.Schema != "" {
+		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_schema"): params.Schema})
 	}
 
 	builder = applyResourceExtensionJoins(builder, params)
@@ -711,7 +695,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		resourceExtCol(params, "f_status"),
 		resourceExtCol(params, "f_status_message"),
 		resourceExtCol(params, "f_last_discover_status"),
-		resourceExtCol(params, "f_database"),
+		resourceExtCol(params, "f_schema"),
 		resourceExtCol(params, "f_source_identifier"),
 		resourceExtCol(params, "f_source_metadata"),
 		resourceExtCol(params, "f_schema_definition"),
@@ -743,9 +727,9 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_status"): params.Status})
 		countBuilder = countBuilder.Where(sq.Eq{resourceExtCol(params, "f_status"): params.Status})
 	}
-	if params.Database != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_database"): params.Database})
-		countBuilder = countBuilder.Where(sq.Eq{resourceExtCol(params, "f_database"): params.Database})
+	if params.Schema != "" {
+		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_schema"): params.Schema})
+		countBuilder = countBuilder.Where(sq.Eq{resourceExtCol(params, "f_schema"): params.Schema})
 	}
 
 	builder = applyResourceExtensionJoins(builder, params)
@@ -789,7 +773,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig sql.NullString
+		var sourceMetadata, schemaDefinition, indexConfig sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -801,8 +785,8 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 			&resource.Status,
 			&resource.StatusMessage,
 			&resource.LastDiscoverStatus,
-			&database,
-			&sourceIdentifier,
+			&resource.Schema,
+			&resource.SourceIdentifier,
 			&sourceMetadata,
 			&schemaDefinition,
 			&indexConfig,
@@ -820,8 +804,6 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 
 		// tags string 转成数组的格式
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		resource.Database = database.String
-		resource.SourceIdentifier = sourceIdentifier.String
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
 			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 		}
@@ -933,7 +915,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
-		"f_database",
+		"f_schema",
 		"f_source_identifier",
 		"f_source_metadata",
 		"f_schema_definition",
@@ -965,7 +947,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 	for rows.Next() {
 		resource := &interfaces.Resource{}
 		var tagsStr string
-		var database, sourceIdentifier, sourceMetadata, schemaDefinition, indexConfig sql.NullString
+		var sourceMetadata, schemaDefinition, indexConfig sql.NullString
 
 		err := rows.Scan(
 			&resource.ID,
@@ -977,8 +959,8 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 			&resource.Status,
 			&resource.StatusMessage,
 			&resource.LastDiscoverStatus,
-			&database,
-			&sourceIdentifier,
+			&resource.Schema,
+			&resource.SourceIdentifier,
 			&sourceMetadata,
 			&schemaDefinition,
 			&indexConfig,
@@ -996,8 +978,6 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 		}
 
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		resource.Database = database.String
-		resource.SourceIdentifier = sourceIdentifier.String
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
 			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 		}
@@ -1101,7 +1081,7 @@ func (ra *resourceAccess) DeleteByIDs(ctx context.Context, ids []string) error {
 		return nil
 	}
 
-	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, entityextension.KindResource, ids); err != nil {
+	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, nil, entityextension.KindResource, ids); err != nil {
 		span.SetStatus(codes.Error, "Delete entity extensions failed")
 		return err
 	}
@@ -1212,7 +1192,7 @@ func (ra *resourceAccess) CheckExistByCategories(ctx context.Context, catalogID 
 	return total > 0, nil
 }
 
-func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []string) error {
+func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete resources by catalog IDs")
 	defer span.End()
 
@@ -1227,7 +1207,12 @@ func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []s
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
-	ridRows, err := ra.db.QueryContext(ctx, idSql, idArgs...)
+	var ridRows *sql.Rows
+	if tx != nil {
+		ridRows, err = tx.QueryContext(ctx, idSql, idArgs...)
+	} else {
+		ridRows, err = ra.db.QueryContext(ctx, idSql, idArgs...)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Query resource ids failed")
 		return err
@@ -1247,7 +1232,7 @@ func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []s
 		span.SetStatus(codes.Error, "Iterate rows failed")
 		return err
 	}
-	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, entityextension.KindResource, resIDs); err != nil {
+	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, tx, entityextension.KindResource, resIDs); err != nil {
 		span.SetStatus(codes.Error, "Delete entity extensions failed")
 		return err
 	}
@@ -1256,10 +1241,14 @@ func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, catalogIDs []s
 		Where(sq.Eq{"f_catalog_id": catalogIDs}).
 		ToSql()
 
-	_, execErr := ra.db.ExecContext(ctx, sqlStr, vals...)
-	if execErr != nil {
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
 		span.SetStatus(codes.Error, "Delete failed")
-		return execErr
+		return err
 	}
 
 	span.SetStatus(codes.Ok, "")

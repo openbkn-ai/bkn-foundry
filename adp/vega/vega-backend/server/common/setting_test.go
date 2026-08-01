@@ -4,10 +4,29 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCatalogHealthCheckConfig(t *testing.T) {
+	t.Run("unmarshals shared connection test and schedule settings", func(t *testing.T) {
+		vp := viper.New()
+		vp.Set("catalogHealthCheck", map[string]any{
+			"workerEnabled": true,
+			"timeout":       "30s",
+			"cronExpr":      "0 * * * *",
+		})
+		setting := &AppSetting{}
+
+		require.NoError(t, vp.Unmarshal(setting))
+		assert.True(t, setting.CatalogHealthCheck.WorkerEnabled)
+		assert.Equal(t, 30*time.Second, setting.CatalogHealthCheck.Timeout)
+		assert.Equal(t, "0 * * * *", setting.CatalogHealthCheck.CronExpr)
+	})
+}
 
 func TestGetAuthEnabled(t *testing.T) {
 	tests := []struct {

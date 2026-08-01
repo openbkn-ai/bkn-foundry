@@ -13,7 +13,7 @@ Kubernetes 集群中的工作节点，承载 Pod 运行。
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | d2mio43q6gt6p380disg | node_info_view |
+| resource | d2mio43q6gt6p380disg | node_info_view |
 
 ### Data Properties
 

@@ -134,6 +134,9 @@ func rewriteOrCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]
 	if len(subConds) == 0 {
 		return nil, fmt.Errorf("sub condition size is 0")
 	}
+	if len(subConds) == 0 {
+		return nil, fmt.Errorf("sub condition size is 0")
+	}
 	viewCondi := *cfg
 	viewCondi.SubConds = subConds
 	viewCondi.NameField = nil

@@ -124,7 +124,7 @@ paths:
                       detail: ""
                       kn_id: topologytest
                       data_source:
-                        type: data_view
+                        type: resource
                         id: d3riul5r3eoemkcu9sn0
                       data_properties:
                       - name: component
@@ -457,7 +457,7 @@ paths:
                       detail: ""
                       kn_id: topologytest
                       data_source:
-                        type: data_view
+                        type: resource
                         id: d3riul5r3eoemkcu9sn0
                       data_properties:
                       - name: component
@@ -2962,12 +2962,12 @@ components:
       type: object
       properties:
         type:
-          description: 数据来源类型为数据视图
+          description: 数据来源类型。当前仅支持 vega resource；legacy `data_view` 已废弃。
           enum:
-          - data_view
+          - resource
           type: string
         id:
-          description: 数据视图ID
+          description: 数据来源ID
           type: string
         name:
           description: 名称。查看详情时返回。

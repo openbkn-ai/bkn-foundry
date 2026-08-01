@@ -5,6 +5,34 @@ import (
 	"testing"
 )
 
+func TestArtifactFingerprintIgnoresServerDerivedRecordScope(t *testing.T) {
+	artifact := validArtifact()
+	artifact.BusinessRefs = []string{"object:kn-a:forecast"}
+	normalized, validationErrors := NormalizeArtifact(artifact)
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize artifact: %+v", validationErrors)
+	}
+	normalized.EffectiveSubjectID = "user-a"
+	normalized.ApplicationPrincipalID = "app-a"
+
+	legacy := normalized
+	legacy.EffectiveSubjectID = ""
+	legacy.ApplicationPrincipalID = ""
+	legacy.KnowledgeNetworkIDs = nil
+
+	currentFingerprint, err := ArtifactFingerprint(normalized)
+	if err != nil {
+		t.Fatalf("fingerprint current artifact: %v", err)
+	}
+	legacyFingerprint, err := ArtifactFingerprint(legacy)
+	if err != nil {
+		t.Fatalf("fingerprint legacy artifact: %v", err)
+	}
+	if currentFingerprint != legacyFingerprint {
+		t.Fatalf("server-derived record scope must not change artifact idempotency: current=%s legacy=%s", currentFingerprint, legacyFingerprint)
+	}
+}
+
 func TestNormalizeArtifactAcceptsInlineQuestionAndComputesStableHash(t *testing.T) {
 	artifact := validArtifact()
 	artifact.Content = map[string]any{

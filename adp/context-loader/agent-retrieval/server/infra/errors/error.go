@@ -16,8 +16,8 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/common"
-	"github.com/openbkn-ai/adp/context-loader/agent-retrieval/server/infra/localize"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
 )
 
 // HTTPError HTTP错误

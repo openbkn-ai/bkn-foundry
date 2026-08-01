@@ -4,6 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"sort"
+	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
 const (
@@ -211,6 +215,7 @@ func actionEventState(eventType string) string {
 
 func WithEvents(trace NormalizedTrace, events []EvidenceEvent) NormalizedTrace {
 	trace.Events = events
+	trace.KnowledgeNetworkIDs = knowledgeNetworkIDsFromEvents(events)
 	trace.AcceptedEvents = len(events)
 	trace.ClaimIDs = nil
 	trace.ClaimCount = 0
@@ -240,6 +245,97 @@ func WithEvents(trace NormalizedTrace, events []EvidenceEvent) NormalizedTrace {
 	return trace
 }
 
+func knowledgeNetworkIDsFromEvents(events []EvidenceEvent) []string {
+	networks := map[string]struct{}{}
+	for _, event := range events {
+		collectKnowledgeNetworkIDs(event.Payload, networks, false)
+	}
+	return sortedKnowledgeNetworkIDs(networks)
+}
+
+// KnowledgeNetworkIDsFromRefs derives the knowledge-network boundary from trusted canonical refs.
+func KnowledgeNetworkIDsFromRefs(refs []string) []string {
+	networks := map[string]struct{}{}
+	for _, ref := range refs {
+		if networkID := knowledgeNetworkIDFromCanonicalRef(ref); networkID != "" {
+			networks[networkID] = struct{}{}
+		}
+	}
+	return sortedKnowledgeNetworkIDs(networks)
+}
+
+func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}, allowBareRef bool) {
+	switch item := value.(type) {
+	case string:
+		if !allowBareRef {
+			return
+		}
+		if networkID := knowledgeNetworkIDFromCanonicalRef(item); networkID != "" {
+			networks[networkID] = struct{}{}
+		}
+	case map[string]any:
+		if networkID, ok := item["kn_id"].(string); ok {
+			addKnowledgeNetworkID(networkID, networks)
+		}
+		if refID, ok := item["ref_id"].(string); ok {
+			collectKnowledgeNetworkIDs(refID, networks, true)
+		}
+		for key, nested := range item {
+			collectKnowledgeNetworkIDs(nested, networks, isCanonicalRefContainer(key))
+		}
+	case []any:
+		for _, nested := range item {
+			collectKnowledgeNetworkIDs(nested, networks, allowBareRef)
+		}
+	}
+}
+
+func isCanonicalRefContainer(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	return strings.HasSuffix(key, "_ref") || strings.HasSuffix(key, "_refs")
+}
+
+func knowledgeNetworkIDFromCanonicalRef(ref string) string {
+	ref = strings.TrimSpace(ref)
+	ref = strings.TrimPrefix(ref, "business:")
+	for _, refType := range []sessionvo.BusinessRefType{
+		sessionvo.BusinessRefKnowledgeNetwork,
+		sessionvo.BusinessRefObjectType,
+		sessionvo.BusinessRefObjectInstance,
+		sessionvo.BusinessRefProperty,
+		sessionvo.BusinessRefRelationType,
+		sessionvo.BusinessRefMetric,
+		sessionvo.BusinessRefLogic,
+		sessionvo.BusinessRefFunction,
+		sessionvo.BusinessRefActionType,
+		sessionvo.BusinessRefActionInstance,
+	} {
+		if !refType.MatchesCanonicalRefID(ref) {
+			continue
+		}
+		parts := strings.SplitN(ref, ":", 3)
+		if len(parts) >= 2 {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	return ""
+}
+
+func addKnowledgeNetworkID(networkID string, networks map[string]struct{}) {
+	if networkID = strings.TrimSpace(networkID); networkID != "" {
+		networks[networkID] = struct{}{}
+	}
+}
+
+func sortedKnowledgeNetworkIDs(networks map[string]struct{}) []string {
+	values := make([]string, 0, len(networks))
+	for networkID := range networks {
+		values = append(values, networkID)
+	}
+	sort.Strings(values)
+	return values
+}
+
 type ValidationError struct {
 	Code    string `json:"code"`
 	Path    string `json:"path"`
@@ -256,20 +352,23 @@ func (e ValidationErrors) Error() string {
 }
 
 type NormalizedTrace struct {
-	TraceID          string
-	RequestID        string
-	ConversationID   string
-	TenantID         string
-	BusinessDomain   string
-	AccountID        string
-	AccountType      string
-	SchemaVersion    string
-	Events           []EvidenceEvent
-	ClaimIDs         []string
-	AcceptedEvents   int
-	ClaimCount       int
-	EvidenceRefCount int
-	BusinessRefCount int
+	TraceID                string
+	RequestID              string
+	ConversationID         string
+	TenantID               string
+	BusinessDomain         string
+	AccountID              string
+	AccountType            string
+	EffectiveSubjectID     string
+	ApplicationPrincipalID string
+	KnowledgeNetworkIDs    []string
+	SchemaVersion          string
+	Events                 []EvidenceEvent
+	ClaimIDs               []string
+	AcceptedEvents         int
+	ClaimCount             int
+	EvidenceRefCount       int
+	BusinessRefCount       int
 }
 
 type EvidenceQueryOptions struct {
@@ -278,12 +377,13 @@ type EvidenceQueryOptions struct {
 }
 
 type QueryScope struct {
-	TenantID         string
-	BusinessDomain   string
-	AccountID        string
-	AccountType      string
-	CrossAccountRead bool   `json:"-"`
-	Authorization    string `json:"-"`
+	TenantID       string
+	BusinessDomain string
+	AccountID      string
+	AccountType    string
+	Authorization  string         `json:"-"`
+	AccessProfile  *AccessProfile `json:"-"`
+	View           AccessView     `json:"-"`
 }
 
 func SameOwnership(existing NormalizedTrace, incoming NormalizedTrace) bool {
@@ -301,10 +401,13 @@ func compatibleOptionalIdentity(existing, incoming string) bool {
 }
 
 func MatchesScope(trace NormalizedTrace, scope QueryScope) bool {
+	if scope.AccessProfile != nil {
+		return CanReadRecord(*scope.AccessProfile, trace.RecordScope(), defaultAccessView(scope.View))
+	}
 	if trace.AccountID == "" || trace.AccountType == "" || trace.TenantID == "" && trace.BusinessDomain == "" {
 		return false
 	}
-	if !scope.CrossAccountRead && (trace.AccountID != scope.AccountID || trace.AccountType != scope.AccountType) {
+	if trace.AccountID != scope.AccountID || trace.AccountType != scope.AccountType {
 		return false
 	}
 	if trace.TenantID != "" && trace.TenantID != scope.TenantID {
@@ -314,6 +417,22 @@ func MatchesScope(trace NormalizedTrace, scope QueryScope) bool {
 		return false
 	}
 	return true
+}
+
+func (trace NormalizedTrace) RecordScope() RecordScope {
+	effectiveSubjectID := trace.EffectiveSubjectID
+	applicationPrincipalID := trace.ApplicationPrincipalID
+	if effectiveSubjectID == "" && trace.AccountType != "app" && trace.AccountType != "service" {
+		effectiveSubjectID = trace.AccountID
+	}
+	if applicationPrincipalID == "" && (trace.AccountType == "app" || trace.AccountType == "service") {
+		applicationPrincipalID = trace.AccountID
+	}
+	return RecordScope{
+		TenantID: trace.TenantID, BusinessDomain: trace.BusinessDomain,
+		EffectiveSubjectID: effectiveSubjectID, ApplicationPrincipalID: applicationPrincipalID,
+		KnowledgeNetworkIDs: trace.KnowledgeNetworkIDs,
+	}
 }
 
 type EvidenceQueryResult struct {

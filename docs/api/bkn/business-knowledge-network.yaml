@@ -462,7 +462,7 @@ components:
         type:
           description: 数据来源类型
           enum:
-            - data_view
+            - resource
           type: string
         id:
           description: 数据来源ID

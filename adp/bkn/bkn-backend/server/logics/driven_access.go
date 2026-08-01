@@ -20,8 +20,6 @@ var (
 	ATA            interfaces.ActionTypeAccess
 	BSA            interfaces.BusinessSystemAccess
 	CGA            interfaces.ConceptGroupAccess
-	DDA            interfaces.DataModelAccess
-	DVA            interfaces.DataViewAccess
 	KNA            interfaces.KNAccess
 	MA             interfaces.MetricAccess
 	MFA            interfaces.ModelFactoryAccess
@@ -56,14 +54,6 @@ func SetBusinessSystemAccess(bsa interfaces.BusinessSystemAccess) {
 
 func SetConceptGroupAccess(cga interfaces.ConceptGroupAccess) {
 	CGA = cga
-}
-
-func SetDataModelAccess(dda interfaces.DataModelAccess) {
-	DDA = dda
-}
-
-func SetDataViewAccess(dva interfaces.DataViewAccess) {
-	DVA = dva
 }
 
 func SetKNAccess(kna interfaces.KNAccess) {

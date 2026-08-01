@@ -37,8 +37,8 @@ func searchReq(body, baggage string) *http.Request {
 	return req
 }
 
-var enforce = conf.TraceReadAuthzConfig{Enforce: true, AdminTypes: map[string]bool{"admin": true, "audit": true, "super_admin": true}}
-var shadow = conf.TraceReadAuthzConfig{Enforce: false, AdminTypes: map[string]bool{"admin": true, "audit": true, "super_admin": true}}
+var enforce = conf.TraceReadAuthzConfig{Enforce: true}
+var shadow = conf.TraceReadAuthzConfig{Enforce: false}
 
 // --- scopeQueryToAccount unit tests ---
 
@@ -112,15 +112,15 @@ func TestEnforceScopesNormalCaller(t *testing.T) {
 	}
 }
 
-func TestEnforceDoesNotScopeAdmin(t *testing.T) {
+func TestEnforceScopesPlatformRoleOnRawQuery(t *testing.T) {
 	h, port := handlerWith(enforce)
 	rec := httptest.NewRecorder()
 	h.SearchTraces(rec, searchReq(`{"query":{"match_all":{}}}`, "bkn.account.type=audit,bkn.account.id=auditor-1"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rec.Code)
 	}
-	if strings.Contains(string(port.last), accountAttrField) {
-		t.Fatalf("admin/audit must see all accounts, query should be unscoped: %s", port.last)
+	if !strings.Contains(string(port.last), accountAttrField) || !strings.Contains(string(port.last), "auditor-1") {
+		t.Fatalf("raw query must remain account-scoped even for a platform role: %s", port.last)
 	}
 }
 
@@ -162,17 +162,16 @@ func TestEnforceRejectsAggregationsFromScopedCaller(t *testing.T) {
 	}
 }
 
-func TestAdminMayUseAggregations(t *testing.T) {
-	// Admins are not scoped, so aggregations are fine for them.
+func TestPlatformRoleCannotUseRawAggregations(t *testing.T) {
 	h, port := handlerWith(enforce)
 	rec := httptest.NewRecorder()
 	body := `{"aggs":{"by_svc":{"terms":{"field":"x"}}}}`
 	h.SearchTraces(rec, searchReq(body, "bkn.account.type=admin,bkn.account.id=a-1"))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("admin with aggs should pass, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("platform role raw aggregation must be rejected, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(string(port.last), "aggs") {
-		t.Fatalf("admin aggs should reach OpenSearch unchanged: %s", port.last)
+	if port.last != nil {
+		t.Fatalf("rejected raw aggregation must not reach OpenSearch: %s", port.last)
 	}
 }
 

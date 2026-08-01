@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/client"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
 )
 
 func openAPISpecFromToolMetadata(tool *client.ToolDetail) string {

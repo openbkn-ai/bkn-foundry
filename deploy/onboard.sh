@@ -232,6 +232,7 @@ usage() {
     echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.openbkn-ai/config.yaml under /root/.openbkn-ai/ (mode 700); onboard.sh also writes \$HOME/.bkn auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
     echo "  -y, --yes                 Auto nvm+Node 22, npm -g, [test] user+roles (no Y/n)"
+    echo "  --offline                 Do not access npm registry; require openbkn to be preinstalled"
     echo "  --config=PATH            YAML: deploy/conf/models.yaml.example; model prompts off, but nvm/bkn still Y/n in a TTY (use -y to skip those asks)"
     echo "  --skip-test-user         Do not offer: openbkn admin user test + all roles"
     echo ""
@@ -271,6 +272,8 @@ for _ob_arg in "$@"; do
         -h | --help) usage; exit 0 ;;
         --config=*) INTERACTIVE="false" ;;
         -y | --yes) ONBOARD_ASSUME_YES="true" ;;
+        --offline) export OFFLINE_MODE="true" ;;
+        --enable-bkn-search) ENABLE_BKN_ONLY="true" ;;
         --skip-test-user|--skip-isf-test-user) ONBOARD_SKIP_TEST_USER="true" ;;
     esac
 done
@@ -410,12 +413,16 @@ onboard_ensure_bkn_cli() {
     if command -v openbkn &>/dev/null; then
         return 0
     fi
+    if [[ "${OFFLINE_MODE:-false}" == "true" ]]; then
+        log_error "openbkn not in PATH. --offline requires a preinstalled CLI; install @openbkn/bkn-sdk before entering the offline environment."
+        exit 1
+    fi
     if ! command -v npm &>/dev/null; then
         log_error "openbkn not in PATH and npm not found. With nvm+Node, npm should exist; re-open a shell and re-run."
         exit 1
     fi
     if [[ "${ONBOARD_SKIP_OPENBKN_INSTALL:-false}" == "true" ]]; then
-        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk@alpha  (or unset ONBOARD_SKIP_OPENBKN_INSTALL to allow this script to run npm -g.)"
+        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk  (or unset ONBOARD_SKIP_OPENBKN_INSTALL to allow this script to run npm -g.)"
         exit 1
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
@@ -424,15 +431,15 @@ onboard_ensure_bkn_cli() {
         echo ""
         read -r -p "openbkn CLI not in PATH. Install @openbkn/bkn-sdk globally now? (npm i -g) [Y/n]: " _obk
         if [[ "${_obk}" =~ ^[Nn] ]]; then
-            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk@alpha"
+            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk"
             exit 1
         fi
     else
-        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk@alpha"
+        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk"
         exit 1
     fi
-    if ! npm i -g @openbkn/bkn-sdk@alpha; then
-        log_error "npm i -g @openbkn/bkn-sdk@alpha failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
+    if ! npm i -g @openbkn/bkn-sdk; then
+        log_error "npm i -g @openbkn/bkn-sdk failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
         exit 1
     fi
     hash -r 2>/dev/null || true
@@ -440,6 +447,30 @@ onboard_ensure_bkn_cli() {
         log_error "openbkn still not on PATH. Add npm global bin to PATH, e.g.:  export PATH=\"\$(npm config get prefix 2>/dev/null)/bin:\$PATH\""
         exit 1
     fi
+    log_info "openbkn: $(openbkn --version 2>/dev/null | head -1)"
+}
+
+# Keep an already-installed openbkn CLI current on onboard runs. Do not bypass
+# the existing install consent path, the explicit npm-write escape hatch, or
+# offline operation. An upgrade failure is non-fatal.
+onboard_upgrade_bkn_cli() {
+    if [[ "${ONBOARD_SKIP_OPENBKN_INSTALL:-false}" == "true" ]]; then
+        return 0
+    fi
+    if [[ "${OFFLINE_MODE:-false}" == "true" ]]; then
+        return 0
+    fi
+    if [[ "${ENABLE_BKN_ONLY:-false}" == "true" ]]; then
+        return 0
+    fi
+    if ! command -v openbkn &>/dev/null; then
+        return 0
+    fi
+    if ! npm i -g @openbkn/bkn-sdk; then
+        log_warn "npm i -g @openbkn/bkn-sdk failed; continuing with the existing openbkn CLI."
+        return 0
+    fi
+    hash -r 2>/dev/null || true
     log_info "openbkn: $(openbkn --version 2>/dev/null | head -1)"
 }
 
@@ -457,6 +488,8 @@ onboard_prepend_npm_global_bin_to_path() {
 }
 
 onboard_ensure_node_22
+onboard_prepend_npm_global_bin_to_path
+onboard_upgrade_bkn_cli
 onboard_ensure_bkn_cli
 if ! command -v kubectl &>/dev/null; then
     log_error "kubectl not found"
@@ -491,6 +524,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -y | --yes)
             ONBOARD_ASSUME_YES="true"
+            shift
+            ;;
+        --offline)
+            export OFFLINE_MODE="true"
             shift
             ;;
         --skip-test-user|--skip-isf-test-user)

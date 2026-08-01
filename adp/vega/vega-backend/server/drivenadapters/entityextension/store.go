@@ -47,15 +47,12 @@ func NewStore(appSetting *common.AppSetting) *Store {
 	return st
 }
 
-// Replace 整包替换某实体下的全部 KV（空 map 表示删除全部行）
-func (s *Store) Replace(ctx context.Context, kind string, entityID string, kv map[string]string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
+// Replace 在调用方事务内整包替换某实体下的全部 KV（空 map 表示删除全部行）
+func (s *Store) Replace(ctx context.Context, tx *sql.Tx, kind string, entityID string, kv map[string]string) error {
+	if tx == nil {
+		return fmt.Errorf("transaction is required")
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	if err := deleteByEntityIDTx(ctx, tx, kind, entityID); err != nil {
+	if err := s.deleteByEntityID(ctx, tx, kind, entityID); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
@@ -67,14 +64,15 @@ func (s *Store) Replace(ctx context.Context, kind string, entityID string, kv ma
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+		_, err = tx.ExecContext(ctx, q, args...)
+		if err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
-func deleteByEntityIDTx(ctx context.Context, tx *sql.Tx, kind string, entityID string) error {
+func (s *Store) deleteByEntityID(ctx context.Context, tx *sql.Tx, kind string, entityID string) error {
 	q, args, err := sq.Delete(tableName).Where(sq.Eq{
 		"f_entity_kind": kind,
 		"f_entity_id":   entityID,
@@ -82,12 +80,16 @@ func deleteByEntityIDTx(ctx context.Context, tx *sql.Tx, kind string, entityID s
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, q, args...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, q, args...)
+	} else {
+		_, err = s.db.ExecContext(ctx, q, args...)
+	}
 	return err
 }
 
 // DeleteByEntityIDs 删除多个实体下的全部扩展行（用于批量删 catalog/resource）
-func (s *Store) DeleteByEntityIDs(ctx context.Context, kind string, entityIDs []string) error {
+func (s *Store) DeleteByEntityIDs(ctx context.Context, tx *sql.Tx, kind string, entityIDs []string) error {
 	if len(entityIDs) == 0 {
 		return nil
 	}
@@ -98,7 +100,11 @@ func (s *Store) DeleteByEntityIDs(ctx context.Context, kind string, entityIDs []
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, q, args...)
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, q, args...)
+	} else {
+		_, err = s.db.ExecContext(ctx, q, args...)
+	}
 	return err
 }
 

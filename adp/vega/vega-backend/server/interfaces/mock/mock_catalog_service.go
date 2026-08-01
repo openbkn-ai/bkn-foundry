@@ -72,18 +72,18 @@ func (mr *MockCatalogServiceMockRecorder) CheckExistByName(ctx, name any) *gomoc
 }
 
 // Create mocks base method.
-func (m *MockCatalogService) Create(ctx context.Context, req *interfaces.CatalogRequest) (string, error) {
+func (m *MockCatalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, req)
+	ret := m.ctrl.Call(m, "Create", ctx, req, allowUnhealthy)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockCatalogServiceMockRecorder) Create(ctx, req any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) Create(ctx, req, allowUnhealthy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogService)(nil).Create), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogService)(nil).Create), ctx, req, allowUnhealthy)
 }
 
 // DeleteByIDs mocks base method.
@@ -160,6 +160,21 @@ func (mr *MockCatalogServiceMockRecorder) InternalGetByIDs(ctx, ids any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByIDs", reflect.TypeOf((*MockCatalogService)(nil).InternalGetByIDs), ctx, ids)
 }
 
+// InternalTestConnection mocks base method.
+func (m *MockCatalogService) InternalTestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalTestConnection", ctx, catalogID)
+	ret0, _ := ret[0].(*interfaces.CatalogHealthCheckStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalTestConnection indicates an expected call of InternalTestConnection.
+func (mr *MockCatalogServiceMockRecorder) InternalTestConnection(ctx, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalTestConnection", reflect.TypeOf((*MockCatalogService)(nil).InternalTestConnection), ctx, catalogID)
+}
+
 // List mocks base method.
 func (m *MockCatalogService) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
 	m.ctrl.T.Helper()
@@ -222,32 +237,47 @@ func (mr *MockCatalogServiceMockRecorder) SetEnabled(ctx, catalog, enabled any) 
 }
 
 // TestConnection mocks base method.
-func (m *MockCatalogService) TestConnection(ctx context.Context, catalog *interfaces.Catalog) (*interfaces.CatalogHealthCheckStatus, error) {
+func (m *MockCatalogService) TestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TestConnection", ctx, catalog)
+	ret := m.ctrl.Call(m, "TestConnection", ctx, catalogID)
 	ret0, _ := ret[0].(*interfaces.CatalogHealthCheckStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // TestConnection indicates an expected call of TestConnection.
-func (mr *MockCatalogServiceMockRecorder) TestConnection(ctx, catalog any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) TestConnection(ctx, catalogID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnection", reflect.TypeOf((*MockCatalogService)(nil).TestConnection), ctx, catalog)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnection", reflect.TypeOf((*MockCatalogService)(nil).TestConnection), ctx, catalogID)
+}
+
+// TestConnectionConfig mocks base method.
+func (m *MockCatalogService) TestConnectionConfig(ctx context.Context, req *interfaces.CatalogConnectionTestRequest) (*interfaces.CatalogHealthCheckStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TestConnectionConfig", ctx, req)
+	ret0, _ := ret[0].(*interfaces.CatalogHealthCheckStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TestConnectionConfig indicates an expected call of TestConnectionConfig.
+func (mr *MockCatalogServiceMockRecorder) TestConnectionConfig(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnectionConfig", reflect.TypeOf((*MockCatalogService)(nil).TestConnectionConfig), ctx, req)
 }
 
 // Update mocks base method.
-func (m *MockCatalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest) error {
+func (m *MockCatalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, catalog, req)
+	ret := m.ctrl.Call(m, "Update", ctx, catalog, req, allowUnhealthy)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockCatalogServiceMockRecorder) Update(ctx, catalog, req any) *gomock.Call {
+func (mr *MockCatalogServiceMockRecorder) Update(ctx, catalog, req, allowUnhealthy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogService)(nil).Update), ctx, catalog, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogService)(nil).Update), ctx, catalog, req, allowUnhealthy)
 }
 
 // UpdateMetadata mocks base method.

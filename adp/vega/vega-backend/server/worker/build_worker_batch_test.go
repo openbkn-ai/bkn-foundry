@@ -20,6 +20,19 @@ import (
 	vmock "vega-backend/interfaces/mock"
 )
 
+func TestBatchBuildExecuteType(t *testing.T) {
+	incrementalTask := &interfaces.BuildTask{
+		Mode:        interfaces.BuildTaskModeBatch,
+		ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+	}
+
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(incrementalTask, false))
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(incrementalTask, true))
+	fullTask := &interfaces.BuildTask{Mode: interfaces.BuildTaskModeBatch, ExecuteType: interfaces.BuildTaskExecuteTypeFull}
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(fullTask, false))
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, batchBuildExecuteType(fullTask, true))
+}
+
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -63,7 +76,11 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		bbw := &batchBuildWorker{bts: bts}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+			ID:          "t1",
+			ResourceID:  "r1",
+			Mode:        interfaces.BuildTaskModeBatch,
+			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+			Status:      interfaces.BuildTaskStatusInit,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
@@ -91,7 +108,11 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			LocalIndexName: interfaces.BuildIndexName("r1", "old-task"),
 		}
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+			ID:          "t1",
+			ResourceID:  "r1",
+			Mode:        interfaces.BuildTaskModeBatch,
+			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+			Status:      interfaces.BuildTaskStatusInit,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().

@@ -50,16 +50,13 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		ots := omock.NewMockObjectTypeService(mockCtrl)
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
 		logics.OMA = omAccess
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 			omAccess:   omAccess,
 			ots:        ots,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -294,16 +291,13 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		ots := omock.NewMockObjectTypeService(mockCtrl)
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
 		logics.OMA = omAccess
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 			omAccess:   omAccess,
 			ots:        ots,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -1503,13 +1497,9 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
-
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -1564,9 +1554,7 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 			edge := &interfaces.TypeEdge{
 				RelationType: interfaces.RelationType{
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1583,16 +1571,16 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
 					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildBatchConditions(ctx, query, currentLevelObjects, edge, true)
 			So(err, ShouldBeNil)
@@ -1645,13 +1633,9 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
-
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -1709,9 +1693,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1728,16 +1710,16 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
 					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
 			So(err, ShouldBeNil)
@@ -1764,9 +1746,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1783,7 +1763,9 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			service.vba = &vegaStubForKNQuery{
+				err: rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
+			}
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
 			So(err, ShouldNotBeNil)
@@ -1809,9 +1791,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1828,20 +1808,16 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
 					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).DoAndReturn(func(ctx context.Context, viewID string, viewQuery interfaces.ViewQuery) (interfaces.ViewData, error) {
-				// 验证查询条件：反向映射时使用 TargetMappingRules，查询 view_target_id = "456"
-				So(viewQuery.Filters, ShouldNotBeNil)
-				return viewData, nil
-			})
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, false)
 			So(err, ShouldBeNil)
@@ -1849,7 +1825,6 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 			So(len(conditions), ShouldBeGreaterThan, 0)
 			So(viewDataMap, ShouldNotBeNil)
 			So(len(viewDataMap), ShouldBeGreaterThan, 0)
-			// 验证视图数据映射：反向映射时使用 SourceMappingRules 构建条件，从视图数据中提取 view_id
 			So(len(viewDataMap["obj1"]), ShouldEqual, 1)
 		})
 
@@ -1871,9 +1846,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1890,11 +1863,11 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{},
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{},
+				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
 			So(err, ShouldBeNil)
@@ -1926,9 +1899,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1945,14 +1916,14 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{"view_id": "123", "view_target_id": "789"},
-					{"view_id": "456", "view_target_id": "790"},
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{"view_id": "123", "view_target_id": "789"},
+						{"view_id": "456", "view_target_id": "790"},
+					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
 			So(err, ShouldBeNil)
@@ -1970,13 +1941,9 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
-
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -2003,9 +1970,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -2020,16 +1985,16 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
 					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
 			So(err, ShouldBeNil)
@@ -2058,9 +2023,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -2069,7 +2032,9 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			service.vba = &vegaStubForKNQuery{
+				err: rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
+			}
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
 			So(err, ShouldNotBeNil)
@@ -2099,9 +2064,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -2116,14 +2079,14 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{"view_id": "0", "view_target_id": "100"},
-					{"view_id": "1", "view_target_id": "101"},
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{"view_id": "0", "view_target_id": "100"},
+						{"view_id": "1", "view_target_id": "101"},
+					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil).Times(2)
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
 			So(err, ShouldBeNil)
@@ -2157,9 +2120,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -2168,18 +2129,14 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{"view_id": "123"},
-					{"view_id": "456"},
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{"view_id": "123"},
+						{"view_id": "456"},
+					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).DoAndReturn(func(ctx context.Context, viewID string, query interfaces.ViewQuery) (interfaces.ViewData, error) {
-				So(query.Filters, ShouldNotBeNil)
-				So(query.Filters.Operation, ShouldEqual, "in")
-				return viewData, nil
-			})
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
 			So(err, ShouldBeNil)
@@ -2319,4 +2276,23 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 			So(len(result["obj1"]), ShouldEqual, 1)
 		})
 	})
+}
+
+type vegaStubForKNQuery struct {
+	resp *interfaces.DatasetQueryResponse
+	err  error
+}
+
+func (v *vegaStubForKNQuery) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	if v.err != nil {
+		return nil, v.err
+	}
+	return v.resp, nil
+}
+
+func resourceBacking(id string) *interfaces.ResourceInfo {
+	return &interfaces.ResourceInfo{
+		Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+		ID:   id,
+	}
 }

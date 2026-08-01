@@ -69,7 +69,12 @@ async def stream_chat(
         skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
         system_prompt += await load_skills(skill_ids, account_id, account_type)
         tools = await load_tools(
-            agent.tools, account_id, account_type, depth=0, parent_thread_id=thread_id
+            agent.tools,
+            account_id,
+            account_type,
+            depth=0,
+            parent_thread_id=thread_id,
+            skill_ids=skill_ids,
         )
         tools = instrument_tool_calls(tools, account_id, account_type)
         limits = agent.limits or None
@@ -165,6 +170,7 @@ async def stream_chat(
                                     struct_model,
                                     state.values["messages"],
                                     req.response_format,
+                                    system_prompt,
                                 )
                                 yield _sse("structured", {"content": obj})
                                 await _emit_chat_evidence(

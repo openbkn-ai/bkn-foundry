@@ -299,24 +299,7 @@ func appendEvidenceTimeFilter(must []map[string]any, query iprojectionsource.Que
 }
 
 func ownershipMust(scope evidencevo.QueryScope) []map[string]any {
-	must := make([]map[string]any, 0, 4)
-	for _, item := range []struct {
-		field string
-		value string
-	}{
-		{"bkn.tenant.id", scope.TenantID},
-		{"business_domain", scope.BusinessDomain},
-		{"bkn.account.id", scope.AccountID},
-		{"bkn.account.type", scope.AccountType},
-	} {
-		if scope.CrossAccountRead && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
-			continue
-		}
-		if item.value != "" {
-			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
-		}
-	}
-	return must
+	return scopeCandidateMust(scope)
 }
 
 func projectionTracesFromHits(hits []evidenceHit, scope evidencevo.QueryScope) []evidencevo.NormalizedTrace {

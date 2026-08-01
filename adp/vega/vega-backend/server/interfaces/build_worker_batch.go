@@ -19,8 +19,10 @@ import (
 
 // BatchBuildTaskMessage represents a build task message.
 type BatchBuildTaskMessage struct {
-	TaskID      string `json:"task_id"`
-	ExecuteType string `json:"execute_type"`
+	TaskID string `json:"task_id"`
+	// Reset requests a fresh run for a persisted full task. It is ignored for
+	// incremental tasks, which must retain their checkpoint and index.
+	Reset bool `json:"reset,omitempty"`
 }
 
 type BatchBuildWorker interface {

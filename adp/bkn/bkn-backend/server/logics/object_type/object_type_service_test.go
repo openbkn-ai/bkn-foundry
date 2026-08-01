@@ -9,6 +9,7 @@ package object_type
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -201,8 +202,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
-		dda := bmock.NewMockDataModelAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -213,8 +212,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			ota:        ota,
 			ps:         ps,
 			cga:        cga,
-			dva:        dva,
-			dda:        dda,
 			ma:         ma,
 			ums:        ums,
 		}
@@ -388,7 +385,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -427,61 +423,15 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(&interfaces.DataView{}, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), knID, branch, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			service.ma = ma
+			ma.EXPECT().GetMetricByID(gomock.Any(), knID, branch, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 			So(err, ShouldBeNil)
 			So(len(result), ShouldEqual, 1)
-		})
-
-		Convey("Success with DataSource and dataView\n", func() {
-			knID := "kn1"
-			branch := interfaces.MAIN_BRANCH
-			otIDs := []string{"ot1"}
-			otArr := []*interfaces.ObjectType{
-				{
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:       "ot1",
-						OTName:     "ot1",
-						DataSource: &interfaces.ResourceInfo{ID: "dv1"},
-						DataProperties: []*interfaces.DataProperty{
-							{
-								Name: "prop1",
-								MappedField: &interfaces.Field{
-									Name: "field1",
-								},
-							},
-						},
-					},
-				},
-			}
-			dataView := &interfaces.DataView{
-				ViewName: "view1",
-				FieldsMap: map[string]*interfaces.ViewField{
-					"field1": {
-						DisplayName: "Field 1",
-						Type:        "string",
-					},
-				},
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(dataView, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			smock.ExpectCommit()
-
-			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 1)
-			So(result[0].DataSource.Name, ShouldEqual, "view1")
 		})
 	})
 }
@@ -601,9 +551,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
 		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
-		dda := bmock.NewMockDataModelAccess(mockCtrl)
 		aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -614,9 +562,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ps:         ps,
 			cga:        cga,
 			vba:        vba,
-			dva:        dva,
 			mfa:        mfa,
-			dda:        dda,
 			aoa:        aoa,
 		}
 
@@ -857,7 +803,6 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &objectTypeService{
@@ -868,7 +813,6 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			cga:        cga,
 			ums:        ums,
 			vba:        vba,
-			dva:        dva,
 		}
 
 		Convey("Success with resource-backed object type and mapped fields\n", func() {
@@ -944,7 +888,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			})
 		})
 
-		Convey("Success with data_view-backed object type and mapped fields\n", func() {
+		Convey("Rejected when data_view-backed object type requests sample data\n", func() {
 			objectType := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:   "ot1",
@@ -966,49 +910,28 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 					},
 				},
 			}
-			searchAfter := []any{"cursor-1"}
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), "view1").Return(&interfaces.DataView{
-				ViewID:   "view1",
-				ViewName: "view1",
-				FieldsMap: map[string]*interfaces.ViewField{
-					"source_code":   {Name: "source_code", DisplayName: "物料编码", Type: "string"},
-					"material_name": {Name: "material_name", DisplayName: "物料名称", Type: "string"},
-				},
-			}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
-			dva.EXPECT().GetDataStart(gomock.Any(), "view1", "", nil, 20).Return(&interfaces.ViewQueryResult{
-				Entries: []map[string]any{
-					{"source_code": "M001", "material_name": "螺丝"},
-				},
-				TotalCount:  1,
-				SearchAfter: searchAfter,
-			}, nil)
 
 			result, err := service.GetObjectTypeSampleData(ctx, "kn1", interfaces.MAIN_BRANCH, "ot1", interfaces.ObjectTypeSampleDataQueryParams{
 				Limit:     20,
 				NeedTotal: true,
 			})
 
-			So(err, ShouldBeNil)
-			So(result.Name, ShouldEqual, "物料")
-			So(result.TotalCount, ShouldEqual, 1)
-			So(result.SearchAfter, ShouldResemble, searchAfter)
-			So(result.Columns, ShouldResemble, []*interfaces.ObjectTypeSampleDataColumn{
-				{DataIndex: "material_code", Title: "物料编码"},
-				{DataIndex: "material_name", Title: "物料名称"},
-			})
-			So(result.Entries, ShouldResemble, []map[string]any{
-				{"material_code": "M001", "material_name": "螺丝"},
-			})
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
+			So(result, ShouldBeNil)
 		})
 
-		Convey("Success with data_view search_after pagination\n", func() {
+		Convey("Rejected when data_view search_after pagination requested\n", func() {
 			objectType := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:   "ot1",
@@ -1028,26 +951,20 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), "view1").Return(&interfaces.DataView{
-				ViewID:   "view1",
-				ViewName: "view1",
-				FieldsMap: map[string]*interfaces.ViewField{
-					"source_code": {Name: "source_code", DisplayName: "物料编码", Type: "string"},
-				},
-			}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
-			dva.EXPECT().GetDataNext(gomock.Any(), "view1", cursor, 20).Return(&interfaces.ViewQueryResult{
-				Entries: []map[string]any{{"source_code": "M002"}},
-			}, nil)
 
 			result, err := service.GetObjectTypeSampleData(ctx, "kn1", interfaces.MAIN_BRANCH, "ot1", interfaces.ObjectTypeSampleDataQueryParams{
 				Limit:       20,
 				SearchAfter: cursor,
 			})
 
-			So(err, ShouldBeNil)
-			So(result.Entries, ShouldResemble, []map[string]any{{"material_code": "M002"}})
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
+			So(result, ShouldBeNil)
 		})
 
 		Convey("Failed when data_view sample data uses offset\n", func() {
@@ -1067,13 +984,6 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), "view1").Return(&interfaces.DataView{
-				ViewID:   "view1",
-				ViewName: "view1",
-				FieldsMap: map[string]*interfaces.ViewField{
-					"material_code": {Name: "material_code", DisplayName: "物料编码", Type: "string"},
-				},
-			}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -1083,6 +993,9 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			})
 
 			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
 			So(result, ShouldBeNil)
 		})
 	})
@@ -1096,10 +1009,8 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
 		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
-		dda := bmock.NewMockDataModelAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
@@ -1109,10 +1020,8 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			db:  db,
 			ps:  ps,
 			ota: ota,
-			dva: dva,
 			vba: vba,
 			mfa: mfa,
-			dda: dda,
 			ma:  ma,
 			aoa: aoa,
 			cga: cga,
@@ -1385,7 +1294,6 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &objectTypeService{
@@ -1395,7 +1303,6 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			ps:         ps,
 			cga:        cga,
 			ums:        ums,
-			dva:        dva,
 		}
 
 		Convey("Success listing object types\n", func() {
@@ -2462,8 +2369,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		dva := bmock.NewMockDataViewAccess(mockCtrl)
-		dda := bmock.NewMockDataModelAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
@@ -2472,8 +2377,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			appSetting: appSetting,
 			cga:        cga,
 			vba:        vba,
-			dva:        dva,
-			dda:        dda,
 			ma:         ma,
 			mfa:        mfa,
 			ps:         ps,
@@ -2910,9 +2813,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Entries: []map[string]any{entry},
 			}
 			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).Return(&interfaces.DataView{}, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "metric1").
-				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldBeNil)
@@ -2949,8 +2850,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			}
 			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 			// processObjectTypeDetails may be called for each object type
-			dva.EXPECT().GetDataViewByID(gomock.Any(), gomock.Any()).AnyTimes().Return(nil, nil)
-
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldBeNil)
 			// The filtering happens based on otIDMap, so only ot1 should be included

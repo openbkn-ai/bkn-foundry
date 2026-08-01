@@ -19,7 +19,9 @@ pip install -r requirements.txt
 uvicorn main:app --port 30800
 ```
 
-关键环境变量见 `app/config.py`（RDS*、MF_MODEL_API_PRIVATE_BASE、BKN_AGENT_DEFAULT_TOOLBOXES、OPERATOR_INTEGRATION_BASE、CHECKPOINTER_BACKEND）。默认 toolbox 拉取失败降级告警不击穿对话；`type: "toolbox"` 显式引用失败报错。
+关键环境变量见 `app/config.py`（RDS*、MF_MODEL_API_PRIVATE_BASE、OPERATOR_INTEGRATION_BASE、CHECKPOINTER_BACKEND）。
+
+**工具面零默认**：`agent.tools` 就是工具全集，没有任何隐式挂载 —— 零声明即零工具，要用工具在 agent 定义里显式写 `type: "toolbox"` / `"mcp"` / `"agent"` 引用（`type: "toolbox"` 引用失败报错，不静默降级）。内置 `read_skill_file` 只在声明了技能、或已经装了别的工具时才挂，不会单独把图撑出 tools 节点。
 
 ## API
 

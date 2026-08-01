@@ -14,8 +14,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	ormhelper "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
-	model "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces/model"
+	ormhelper "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+	model "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	gomock "go.uber.org/mock/gomock"
 )
 

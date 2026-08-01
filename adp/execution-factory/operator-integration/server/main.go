@@ -8,14 +8,14 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	logicscommon "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/common"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/mcpinstance"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/skill"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	logicscommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/skill"
 )
 
 // Server 服务

@@ -9,6 +9,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/rs/xid"
+	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
@@ -29,6 +31,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
+	"vega-backend/logics/catalog_health_check_schedule"
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/extensions"
 	"vega-backend/logics/local_index"
@@ -41,6 +44,9 @@ const (
 	EncryptedPrefix = "ENC:"
 
 	catalogAuthResourcePermissionBatchSize = 10000
+	defaultConnectionTestTimeout           = 30 * time.Second
+	connectorInitializationFailedResult    = "Connector initialization failed."
+	connectionTestFailedResult             = "Connection test failed."
 )
 
 var (
@@ -51,12 +57,15 @@ var (
 type catalogService struct {
 	appSetting *common.AppSetting
 	cipher     kwcrypto.Cipher
-	ca         interfaces.CatalogAccess
-	ra         interfaces.ResourceAccess
-	ps         interfaces.PermissionService
-	ums        interfaces.UserMgmtService
-	bta        interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
-	lim        interfaces.LocalIndexManager
+	db         *sql.DB
+
+	ca   interfaces.CatalogAccess
+	ra   interfaces.ResourceAccess
+	ps   interfaces.PermissionService
+	ums  interfaces.UserMgmtService
+	bta  interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
+	hcss interfaces.CatalogHealthCheckScheduleService
+	lim  interfaces.LocalIndexManager
 }
 
 // NewCatalogService creates a new CatalogService.
@@ -70,15 +79,23 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 				logger.Fatalf("Failed to create RSA cipher: %v", err)
 			}
 		}
+
+		hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
+		lim := local_index.NewLocalIndexManager(appSetting)
+		ps := permission.NewPermissionService(appSetting)
+		ums := user_mgmt.NewUserMgmtService(appSetting)
 		cService = &catalogService{
 			appSetting: appSetting,
 			cipher:     cipher,
-			ca:         logics.CA,
-			ra:         logics.RA,
-			ps:         permission.NewPermissionService(appSetting),
-			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			bta:        logics.BTA,
-			lim:        local_index.NewLocalIndexManager(appSetting),
+			db:         logics.DB,
+
+			bta:  logics.BTA,
+			ca:   logics.CA,
+			hcss: hcss,
+			lim:  lim,
+			ps:   ps,
+			ra:   logics.RA,
+			ums:  ums,
 		}
 	})
 	return cService
@@ -152,9 +169,16 @@ func (cs *catalogService) filterCatalogResources(ctx context.Context, ids []stri
 }
 
 // Create creates a new Catalog.
-func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogRequest) (string, error) {
+func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create catalog")
 	defer span.End()
+
+	if req.Internal && req.ConnectorType != "" {
+		span.SetStatus(codes.Error, "Physical catalog cannot be internal")
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails("internal catalogs must be logical")
+	}
 
 	// 判断userid是否有创建业务知识网络的权限（策略决策）；
 	// 内部目录按 internal_catalog 类型校验，默认仅超级管理员/系统 S2S 身份可建
@@ -174,9 +198,18 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	}
 
 	catalogType := interfaces.CatalogTypePhysical
+	healthStatus := interfaces.CatalogHealthStatusUnchecked
+	healthResult := ""
 	if req.ConnectorType == "" {
 		catalogType = interfaces.CatalogTypeLogical
+		if req.HealthCheckSchedule != nil {
+			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+				verrors.VegaBackend_Catalog_InvalidParameter).
+				WithErrorDetails("health check schedules are only supported for physical catalogs")
+		}
 	} else {
+		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
+
 		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
 		sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
@@ -192,16 +225,24 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
 		}
 
-		if err := connector.TestConnection(ctx); err != nil {
+		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
-			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
+			if !allowUnhealthy {
+				return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
+					WithErrorDetails(connectionTestFailedResult)
+			}
+			healthStatus = interfaces.CatalogHealthStatusUnhealthy
+			healthResult = connectionTestFailedResult
+		} else {
+			defer func() { _ = connector.Close(ctx) }()
+			healthStatus = interfaces.CatalogHealthStatusHealthy
+			healthResult = "Connection test succeeded."
 		}
-		defer func() { _ = connector.Close(ctx) }()
 	}
 
 	now := time.Now().UnixMilli()
@@ -210,19 +251,19 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		id = xid.New().String()
 	}
 	catalog := &interfaces.Catalog{
-		ID:                 id,
-		Name:               req.Name,
-		Tags:               req.Tags,
-		Description:        req.Description,
-		Type:               catalogType,
-		Enabled:            req.Enabled,
-		Internal:           req.Internal,
-		ConnectorType:      req.ConnectorType,
-		ConnectorCfg:       req.ConnectorCfg,
-		HealthCheckEnabled: true,
+		ID:            id,
+		Name:          req.Name,
+		Tags:          req.Tags,
+		Description:   req.Description,
+		Type:          catalogType,
+		Enabled:       req.Enabled,
+		Internal:      req.Internal,
+		ConnectorType: req.ConnectorType,
+		ConnectorCfg:  req.ConnectorCfg,
 		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
-			HealthCheckStatus: interfaces.CatalogHealthStatusUnchecked,
+			HealthCheckStatus: healthStatus,
 			LastCheckTime:     now,
+			HealthCheckResult: healthResult,
 		},
 		Creator:    accountInfo,
 		CreateTime: now,
@@ -230,25 +271,40 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		UpdateTime: now,
 	}
 
-	err = cs.ca.Create(ctx, catalog)
-	if err != nil {
-		otellog.LogError(ctx, "Create catalog failed", err)
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
-	}
-
 	if req.Extensions != nil {
 		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
-			_ = cs.ca.DeleteByIDs(ctx, []string{catalog.ID})
 			return "", err
 		}
-		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
-			_ = cs.ca.DeleteByIDs(ctx, []string{catalog.ID})
-			logger.Errorf("Replace catalog extensions failed: %v", err)
-			span.SetStatus(codes.Error, "Replace catalog extensions failed")
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+	}
+
+	tx, err := cs.db.BeginTx(ctx, nil)
+	if err != nil {
+		otellog.LogError(ctx, "Create catalog transaction failed", err)
+		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).
+			WithErrorDetails("failed to create catalog")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	err = cs.ca.Create(ctx, tx, catalog)
+	if err == nil {
+		err = cs.createHealthCheckSchedule(ctx, tx, catalog, req.HealthCheckSchedule)
+	}
+	if err == nil && req.Extensions != nil {
+		err = entityextension.NewStore(cs.appSetting).Replace(
+			ctx, tx, entityextension.KindCatalog, catalog.ID, *req.Extensions)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		otellog.LogError(ctx, "Create catalog transaction failed", err)
+		if httpErr, ok := err.(*rest.HTTPError); ok {
+			return "", httpErr
 		}
+		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).
+			WithErrorDetails("failed to create catalog")
 	}
 
 	// 注册资源
@@ -267,6 +323,15 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	span.SetStatus(codes.Ok, "")
 	return catalog.ID, nil
+}
+
+func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog,
+	req *interfaces.CatalogHealthCheckScheduleRequest) error {
+	if catalog.Type != interfaces.CatalogTypePhysical {
+		return nil
+	}
+	_, err := cs.hcss.Create(ctx, tx, catalog, req)
+	return err
 }
 
 // Get retrieves a Catalog by ID.
@@ -589,7 +654,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 }
 
 // Update updates a Catalog.
-func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest) error {
+func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalog, req *interfaces.CatalogRequest, allowUnhealthy bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update catalog")
 	defer span.End()
 
@@ -615,6 +680,8 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	catalog.Description = req.Description
 
 	if req.ConnectorType != "" {
+		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
+
 		// 注：connector_type 不可变性由 PUT handler 兜底校验（catalog_handler.go），
 		// 此处不重复，仅按 req.ConnectorType 走解密 + 试连 + 持久化流程。
 
@@ -633,16 +700,31 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
 		}
 
-		if err := connector.TestConnection(ctx); err != nil {
+		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			_ = connector.Close(ctx)
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).WithErrorDetails(err.Error())
+			if !allowUnhealthy {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
+					WithErrorDetails(connectionTestFailedResult)
+			}
+			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
+				LastCheckTime:     time.Now().UnixMilli(),
+				HealthCheckResult: connectionTestFailedResult,
+			}
+		} else {
+			defer func() { _ = connector.Close(ctx) }()
+
+			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+				LastCheckTime:     time.Now().UnixMilli(),
+				HealthCheckResult: "Connection test succeeded.",
+			}
 		}
-		defer func() { _ = connector.Close(ctx) }()
 
 		// req.ConnectorConfig 已在 validateAndDecryptSensitiveFields 中加上 ENC: 前缀
 		catalog.ConnectorCfg = req.ConnectorCfg
@@ -658,21 +740,42 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	catalog.Updater = accountInfo
 	catalog.UpdateTime = now
 
-	if err := cs.ca.Update(ctx, catalog); err != nil {
-		span.SetStatus(codes.Error, "Update catalog failed")
+	tx, err := cs.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update catalog transaction failed")
+		otellog.LogError(ctx, "Update catalog transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := cs.ca.Update(ctx, tx, catalog); err != nil {
+		span.SetStatus(codes.Error, "Update catalog failed")
+		otellog.LogError(ctx, "Update catalog failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog")
 	}
 
 	if req.Extensions != nil {
 		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
 			return err
 		}
-		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
+		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, tx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace catalog extensions failed")
+			otellog.LogError(ctx, "Replace catalog extensions failed", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+				verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+				WithErrorDetails("failed to update catalog")
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit catalog update transaction failed")
+		otellog.LogError(ctx, "Commit catalog update transaction failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog")
 	}
 
 	// 请求更新资源名称的接口，更新资源的名称
@@ -780,17 +883,32 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 		}
 	}
 
-	if err := cs.ca.DeleteByIDs(ctx, ids); err != nil {
-		span.SetStatus(codes.Error, "Delete catalogs failed")
+	tx, err := cs.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Delete catalog transaction failed")
+		otellog.LogError(ctx, "Delete catalog transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to delete catalog")
 	}
+	defer func() { _ = tx.Rollback() }()
 
-	// 清理关联resource数据
-	if err := cs.ra.DeleteByCatalogIDs(ctx, ids); err != nil {
-		span.SetStatus(codes.Error, "Delete resources failed")
+	err = cs.hcss.DeleteByCatalogIDs(ctx, tx, ids)
+	if err == nil {
+		err = cs.ra.DeleteByCatalogIDs(ctx, tx, ids)
+	}
+	if err == nil {
+		err = cs.ca.DeleteByIDs(ctx, tx, ids)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Delete catalog transaction failed")
+		otellog.LogError(ctx, "Delete catalog transaction failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_DeleteFailed).WithErrorDetails(err.Error())
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to delete catalog")
 	}
 
 	//  清除资源策略，按内部/普通目录分组删除对应类型的策略
@@ -853,18 +971,150 @@ func (cs *catalogService) CheckExistByName(ctx context.Context, name string) (bo
 }
 
 // TestConnection tests catalog connection.
-func (cs *catalogService) TestConnection(ctx context.Context, catalog *interfaces.Catalog) (*interfaces.CatalogHealthCheckStatus, error) {
+func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Test catalog connection")
 	defer span.End()
 
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   catalogID,
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		span.SetStatus(codes.Error, "Check catalog modify permission failed")
+		return nil, err
+	}
+
+	catalog, err := cs.ca.GetByID(ctx, catalogID)
+	if err != nil {
+		otellog.LogError(ctx, "Get catalog for connection test failed", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			WithErrorDetails("failed to get catalog for connection test")
+	}
 	if catalog == nil {
-		span.SetStatus(codes.Error, "Catalog not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	result := catalog.CatalogHealthCheckStatus
+	result, err := cs.testCatalogConnection(ctx, catalog)
+	if err != nil {
+		span.SetStatus(codes.Error, "Test catalog connection failed")
+		return nil, err
+	}
 	span.SetStatus(codes.Ok, "")
-	return &result, nil
+	return result, nil
+}
+
+// InternalTestConnection tests catalog connection for internal workers.
+func (cs *catalogService) InternalTestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Test catalog connection internally")
+	defer span.End()
+
+	catalog, err := cs.ca.GetByID(ctx, catalogID)
+	if err != nil {
+		return nil, err
+	}
+	if catalog == nil {
+		return nil, fmt.Errorf("catalog not found: %s", catalogID)
+	}
+
+	result, err := cs.testCatalogConnection(ctx, catalog)
+	if err != nil {
+		span.SetStatus(codes.Error, "Test catalog connection failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
+func (cs *catalogService) testCatalogConnection(
+	ctx context.Context, catalog *interfaces.Catalog,
+) (*interfaces.CatalogHealthCheckStatus, error) {
+	if catalog == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+
+	if catalog.ConnectorType == "" {
+		result := interfaces.CatalogHealthCheckStatus{
+			HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
+			LastCheckTime:     time.Now().UnixMilli(),
+			HealthCheckResult: "Logical catalogs do not support connection tests.",
+		}
+		return &result, nil
+	}
+
+	sensitiveFields := factory.GetFactory().GetSensitiveFields(catalog.ConnectorType)
+	config, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+	}
+	result, err := cs.probeConnection(ctx, catalog.ConnectorType, interfaces.ConnectorConfig(config))
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.ca.UpdateHealthCheckStatus(ctx, catalog.ID, *result); err != nil {
+		otellog.LogError(ctx, "Update catalog health check status failed", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			WithErrorDetails("failed to update catalog health check status")
+	}
+	return result, nil
+}
+
+// TestConnectionConfig tests an unpersisted physical catalog configuration without creating a Catalog.
+func (cs *catalogService) TestConnectionConfig(ctx context.Context,
+	req *interfaces.CatalogConnectionTestRequest) (*interfaces.CatalogHealthCheckStatus, error) {
+	if req == nil || req.ConnectorType == "" {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter)
+	}
+
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_CREATE}); err != nil {
+		return nil, err
+	}
+
+	sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
+	decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+	}
+	return cs.probeConnection(ctx, req.ConnectorType, interfaces.ConnectorConfig(decryptedConfig))
+}
+
+func (cs *catalogService) probeConnection(ctx context.Context, connectorType string,
+	config interfaces.ConnectorConfig) (*interfaces.CatalogHealthCheckStatus, error) {
+	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, connectorType, config)
+	if err != nil {
+		otellog.LogError(ctx, "Failed to create connector", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
+	}
+	defer func() { _ = connector.Close(ctx) }()
+
+	result := &interfaces.CatalogHealthCheckStatus{
+		LastCheckTime: time.Now().UnixMilli(),
+	}
+	if err := cs.testConnectorConnection(ctx, connector); err != nil {
+		otellog.LogError(ctx, "Failed to test connection to data source", err)
+		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
+		result.HealthCheckResult = connectionTestFailedResult
+		return result, nil
+	}
+	result.HealthCheckStatus = interfaces.CatalogHealthStatusHealthy
+	result.HealthCheckResult = "Connection test succeeded."
+	return result, nil
+}
+
+func (cs *catalogService) testConnectorConnection(ctx context.Context, connector interfaces.Connector) error {
+	timeout := defaultConnectionTestTimeout
+	if cs.appSetting.CatalogHealthCheck.Timeout > 0 {
+		timeout = cs.appSetting.CatalogHealthCheck.Timeout
+	}
+	testCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return connector.TestConnection(testCtx)
 }
 
 // validateAndDecryptSensitiveFields 验证敏感字段是否为合法 RSA 密文，

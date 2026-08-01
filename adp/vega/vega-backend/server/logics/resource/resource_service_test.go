@@ -14,10 +14,15 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"vega-backend/common"
+	"vega-backend/drivenadapters/entityextension"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
@@ -53,6 +58,24 @@ func newTestService(t *testing.T) (*resourceService,
 	mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil).AnyTimes()
 
 	return rs, mockRA, mockPS, mockDS, mockUMS, mockCS, mockBTA
+}
+
+func expectResourceServiceTransaction(t *testing.T, rs *resourceService, commit bool) {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	rs.db = db
+	mock.ExpectBegin()
+	if commit {
+		mock.ExpectCommit()
+	} else {
+		mock.ExpectRollback()
+	}
+	mock.ExpectClose()
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
@@ -389,11 +412,58 @@ func TestResourceServiceList(t *testing.T) {
 }
 
 func TestResourceServiceCreate(t *testing.T) {
+	t.Run("rolls back resource and extensions when extension replacement fails", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+		rs.db = db
+		rs.appSetting = &common.AppSetting{}
+
+		sensitiveError := "replace t_entity_extension failed at db.internal"
+		replaceErr := errors.New(sensitiveError)
+		patches := gomonkey.NewPatches()
+		t.Cleanup(patches.Reset)
+		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
+			return &entityextension.Store{}
+		})
+		patches.ApplyMethod(&entityextension.Store{}, "Replace",
+			func(_ *entityextension.Store, _ context.Context, tx *sql.Tx, kind, entityID string, _ map[string]string) error {
+				require.NotNil(t, tx)
+				assert.Equal(t, entityextension.KindResource, kind)
+				assert.NotEmpty(t, entityID)
+				return replaceErr
+			})
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+
+		extensionValues := map[string]string{"owner": "team-a"}
+		_, err = rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID:  "catalog-1",
+			Name:       "resource",
+			Category:   interfaces.ResourceCategoryTable,
+			Extensions: &extensionValues,
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to create resource")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
 	t.Run("create dataset category", func(t *testing.T) {
 		rs, mockRA, mockPS, mockDS, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 		mockDS.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
@@ -410,9 +480,10 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 	t.Run("create success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
@@ -428,9 +499,10 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 	t.Run("create with explicit id", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		resource, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
@@ -447,9 +519,10 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 	t.Run("create dberror", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(fmt.Errorf("db error"))
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(fmt.Errorf("db error"))
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
 			Name: "test-resource",
@@ -503,6 +576,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		mockCS := vmock.NewMockCatalogService(ctrl)
 		rs := &resourceService{ra: mockRA, ps: mockPS, cs: mockCS}
+		expectResourceServiceTransaction(t, rs, true)
 
 		mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"cat-internal"}, nil)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -510,7 +584,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			ID:   interfaces.RESOURCE_ID_ALL,
 		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat-internal").Return(true, nil)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
 				if resources[0].Type != interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE {
@@ -656,6 +730,56 @@ func TestResourceServiceUpdateDiscoverStatus(t *testing.T) {
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("rolls back resource and extensions when extension replacement fails", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+		rs.db = db
+		rs.appSetting = &common.AppSetting{}
+
+		sensitiveError := "replace t_entity_extension failed at db.internal"
+		replaceErr := errors.New(sensitiveError)
+		patches := gomonkey.NewPatches()
+		t.Cleanup(patches.Reset)
+		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
+			return &entityextension.Store{}
+		})
+		patches.ApplyMethod(&entityextension.Store{}, "Replace",
+			func(_ *entityextension.Store, _ context.Context, tx *sql.Tx, kind, entityID string, _ map[string]string) error {
+				require.NotNil(t, tx)
+				assert.Equal(t, entityextension.KindResource, kind)
+				assert.Equal(t, "resource-1", entityID)
+				return replaceErr
+			})
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+
+		extensionValues := map[string]string{"owner": "team-a"}
+		err = rs.Update(context.Background(), &interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Name:      "resource",
+			Category:  interfaces.ResourceCategoryTable,
+		}, &interfaces.ResourceRequest{
+			CatalogID:  "catalog-1",
+			Name:       "resource",
+			Extensions: &extensionValues,
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update resource")
+		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
 	t.Run("update nil resource", func(t *testing.T) {
 		rs, _, _, _, _, _, _ := newTestService(t)
 		err := rs.Update(context.Background(), nil, &interfaces.ResourceRequest{})
@@ -665,9 +789,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
-		mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).Return(nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
 		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", Name: "updated"}, &interfaces.ResourceRequest{
 			Name: "updated",
@@ -725,9 +850,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update allows non build relevant change when active build task exists", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-		mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 				if got.LocalIndexName != "vega-build-r1-task-1" {
 					t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)
@@ -757,6 +883,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update clears local index name when build relevant fields change", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
@@ -766,7 +893,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				return nil, 0, nil
 			})
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-		mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 				if got.LocalIndexName != "" {
 					t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
@@ -848,10 +975,11 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update clears local index name when index config changes", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-		mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 				if got.LocalIndexName != "" {
 					t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
@@ -932,13 +1060,14 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update allows unused default embedding model", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		ctrl := gomock.NewController(t)
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-		mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).Return(nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
 		err := rs.Update(context.Background(), &interfaces.Resource{
 			ID:               "r1",
@@ -968,9 +1097,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("update allows schema display fields without clearing local index", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-		mockRA.EXPECT().Update(gomock.Any(), nil, gomock.Any()).
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 				if got.LocalIndexName != "vega-build-r1-task-1" {
 					t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)

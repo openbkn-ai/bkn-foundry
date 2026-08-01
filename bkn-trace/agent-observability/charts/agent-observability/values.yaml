@@ -59,11 +59,35 @@ evidence:
     hydraAdminURL: http://bkn-safe-hydra-admin:4445
     allowUnauthenticated: false
 
+bknSafe:
+  baseURL: http://bkn-safe:3000
+  accessTimeout: 3s
+
 businessResolver:
+  # Opt in only when the deployment can reach the BKN and Vega authorization-aware APIs.
+  # When disabled, business refs and operation-business edges are returned as empty arrays
+  # and disclosure_partial reports that user-visible business metadata was not resolved.
   enabled: false
   bknBaseURL: ""
   vegaBaseURL: ""
   timeout: 3s
+
+core:
+  # Keep existing trace/evidence reads available after an upgrade. Enable
+  # MariaDB explicitly only after its Secret and database are ready.
+  store: memory
+  autoMigrate: true
+  abandonInterval: 30s
+  oneShotIdleTTL: 15m
+  evidenceCollectionState: enabled
+  projection:
+    enabled: false
+    index: bkn-trace-core
+    interval: 1s
+    rebuildVersion: bkn-trace-core-v013
+  mariadb:
+    existingSecret: bkn-trace-core-mariadb
+    dsnKey: dsn
 
 resources:
   limits:

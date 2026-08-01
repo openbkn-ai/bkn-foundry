@@ -49,9 +49,7 @@ const rawQueryTotalCountColumn = "_raw_query_total_count"
 
 // NewRawQueryService 创建SQL查询服务（单例模式）
 func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryService {
-	if appSetting != nil {
-		rawQueryCursorSessions.configure(appSetting.QuerySetting.CursorMaxSessions)
-	}
+	rawQueryCursorSessions.configure(appSetting.QuerySetting.CursorMaxSessions)
 	rawQueryServiceOnce.Do(func() {
 		rawQueryServiceInstance = &rawQueryService{
 			cs: catalog.NewCatalogService(appSetting),

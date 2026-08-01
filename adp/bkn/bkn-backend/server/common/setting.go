@@ -51,13 +51,6 @@ type AppSetting struct {
 	OpenSearchSetting rest.OpenSearchClientConfig
 	HydraAdminSetting hydra.HydraAdminSetting
 
-	// data model url
-	DataModelUrl string
-	// data view url
-	DataViewUrl string
-	// UniQuery url
-	UniQueryUrl string
-
 	// permission url
 	PermissionUrl string
 	// user management url
@@ -92,9 +85,6 @@ const (
 	hydraAdminServiceName          string = "hydra-admin"
 	modelFactoryManagerServiceName string = "mf-model-manager"
 	modelFactoryAPIServiceName     string = "mf-model-api"
-	dataModelServiceName           string = "data-model"
-	dataViewServiceName            string = "data-model"
-	uniQueryServiceName            string = "uniquery"
 	businessSystemServiceName      string = "business-system"
 	ontologyQueryServiceName       string = "ontology-query"
 	vegaBackendServiceName         string = "vega-backend"
@@ -163,12 +153,6 @@ func loadSetting(vp *viper.Viper) {
 	SetPermissionSetting()
 
 	SetUserMgmtSetting()
-
-	SetDataModelSetting()
-
-	SetDataViewSetting()
-
-	SetUniQuerySetting()
 
 	SetModelFactoryManagerSetting()
 
@@ -301,45 +285,6 @@ func SetUserMgmtSetting() {
 	port := setting["port"].(int)
 
 	appSetting.UserMgmtUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
-}
-
-func SetDataModelSetting() {
-	setting, ok := appSetting.DepServices[dataModelServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", dataModelServiceName)
-	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.DataModelUrl = fmt.Sprintf("%s://%s:%d/api/mdl-data-model/in/v1", protocol, host, port)
-}
-
-func SetDataViewSetting() {
-	setting, ok := appSetting.DepServices[dataViewServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", dataViewServiceName)
-	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.DataViewUrl = fmt.Sprintf("%s://%s:%d/api/mdl-data-model/in/v1", protocol, host, port)
-}
-
-func SetUniQuerySetting() {
-	setting, ok := appSetting.DepServices[uniQueryServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", uniQueryServiceName)
-	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.UniQueryUrl = fmt.Sprintf("%s://%s:%d/api/mdl-uniquery/in/v1", protocol, host, port)
 }
 
 func SetModelFactoryManagerSetting() {

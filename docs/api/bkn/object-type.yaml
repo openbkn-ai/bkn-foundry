@@ -117,7 +117,7 @@ paths:
                     color: ""
                     branch: main
                     data_source:
-                      type: data_view
+                      type: resource
                       id: d2mio43q6gt6p380dis0
                     data_properties:
                       - name: id
@@ -304,7 +304,7 @@ paths:
                     color: ""
                     branch: main
                     data_source:
-                      type: data_view
+                      type: resource
                       id: d2mio43q6gt6p380dis0
                     data_properties:
                       - name: id
@@ -447,7 +447,7 @@ paths:
                     color: ""
                     branch: main
                     data_source:
-                      type: data_view
+                      type: resource
                       id: d2mio43q6gt6p380disg
                     data_properties:
                       - name: id
@@ -671,7 +671,7 @@ paths:
                         update_time: 1758157953104
                         kn_id: kn_system_incident_event_network
                         data_source:
-                          type: data_view
+                          type: resource
                           id: d2mio43q6gt6p380dis0
                           name: ""
                         data_properties:
@@ -1153,7 +1153,7 @@ paths:
                         update_time: 1758273996605
                         kn_id: kn_system_incident_event_network
                         data_source:
-                          type: data_view
+                          type: resource
                           id: d2mio43q6gt6p380dis0
                           name: ""
                         data_properties:
@@ -2009,12 +2009,12 @@ components:
       type: object
       properties:
         type:
-          description: 数据来源类型为数据视图
+          description: 数据来源类型。当前仅支持 vega resource；legacy `data_view` 已废弃。
           enum:
-            - data_view
+            - resource
           type: string
         id:
-          description: 数据视图ID
+          description: vega resource ID
           type: string
         name:
           description: 名称。查看详情时返回。

@@ -99,7 +99,9 @@ async def _run_agent_once_core(
         )
     skill_ids = list(dict.fromkeys([*agent.skills, *skills]))
     system_prompt += await load_skills(skill_ids, account_id, account_type)
-    tools = await load_tools(agent.tools, account_id, account_type, depth=depth)
+    tools = await load_tools(
+        agent.tools, account_id, account_type, depth=depth, skill_ids=skill_ids
+    )
     tools = instrument_tool_calls(tools, account_id, account_type)
     limits = agent.limits
     max_turns = limits.max_turns if limits and limits.max_turns else config.DEFAULT_MAX_TURNS
@@ -132,7 +134,9 @@ async def _run_agent_once_core(
             if response_format:
                 # 工具循环跑完后单独抽结构化：原生优先，模型不支持则提示词降级
                 struct_model = build_chat_model(agent.model, streaming=False, max_output_tokens=max_out)
-                obj, validation_path = await structured_extract_with_path(struct_model, result["messages"], response_format)
+                obj, validation_path = await structured_extract_with_path(
+                    struct_model, result["messages"], response_format, system_prompt
+                )
                 output = json.dumps(obj, ensure_ascii=False)
                 await _emit_task_evidence(
                     agent=agent,

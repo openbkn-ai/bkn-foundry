@@ -29,8 +29,7 @@ const (
 )
 
 var validDataSourceTypes = map[string]bool{
-	DATA_SOURCE_TYPE_DATA_VIEW: true,
-	DATA_SOURCE_TYPE_RESOURCE:  true,
+	DATA_SOURCE_TYPE_RESOURCE: true,
 }
 
 var validRelationMappingTypes = map[string]bool{
@@ -394,7 +393,7 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 	if ot.DataSource != nil && strings.TrimSpace(ot.DataSource.Type) != "" {
 		if !validDataSourceTypes[normType(ot.DataSource.Type)] {
 			appendError(result, table, "data_source", "invalid_data_source",
-				fmt.Sprintf("data_source.type must be %q or %q when set, got %q", DATA_SOURCE_TYPE_DATA_VIEW, DATA_SOURCE_TYPE_RESOURCE, ot.DataSource.Type))
+				fmt.Sprintf("data_source.type must be %q when set, got %q", DATA_SOURCE_TYPE_RESOURCE, ot.DataSource.Type))
 		}
 	}
 	if len(ot.DataProperties) > maxPropertyNum {
@@ -754,9 +753,9 @@ func validateRelationTypeDeep(result *ValidationResult, table string, rt *BknRel
 		}
 		if strings.TrimSpace(ind.BackingDataSource.Type) == "" {
 			appendError(result, table, "backing_data_source", "invalid_relation_type", "backing_data_source.type must not be empty")
-		} else if normType(ind.BackingDataSource.Type) != RELATION_MAPPING_TYPE_DATA_VIEW {
+		} else if normType(ind.BackingDataSource.Type) != DATA_SOURCE_TYPE_RESOURCE {
 			appendError(result, table, "backing_data_source", "invalid_relation_type",
-				fmt.Sprintf("backing_data_source.type must be %q", RELATION_MAPPING_TYPE_DATA_VIEW))
+				fmt.Sprintf("backing_data_source.type must be %q", DATA_SOURCE_TYPE_RESOURCE))
 		}
 		if strings.TrimSpace(ind.BackingDataSource.ID) == "" {
 			appendError(result, table, "backing_data_source", "invalid_relation_type", "backing_data_source.id must not be empty")

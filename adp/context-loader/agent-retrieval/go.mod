@@ -1,4 +1,4 @@
-module github.com/openbkn-ai/adp/context-loader/agent-retrieval
+module github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval
 
 go 1.25.0
 
@@ -11,6 +11,7 @@ require (
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
 	github.com/openbkn-ai/bkn-comm-go v0.0.4
+	github.com/openbkn-ai/licverify v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
@@ -21,6 +22,8 @@ require (
 	golang.org/x/text v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+require github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260731091058-c598a3e6d616
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect

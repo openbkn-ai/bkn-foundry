@@ -5,12 +5,12 @@ package driveradapters
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/common"
-	sandboxdriver "github.com/openbkn-ai/adp/execution-factory/operator-integration/server/driveradapters/sandbox"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/logics/business_domain"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/common"
+	sandboxdriver "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/sandbox"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
 type restPublicHandler struct {

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openbkn-ai/adp/execution-factory/operator-integration/server/capabilitieslab/model"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
 
 func TestOperatorInfoForCapability(t *testing.T) {

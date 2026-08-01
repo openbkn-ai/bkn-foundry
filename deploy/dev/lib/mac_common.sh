@@ -381,7 +381,7 @@ mac_prepare_isf_https() {
     # accessAddress; refresh them so the in-cluster URLs/issuers match the new https.
     if helm list -n "${ns}" -q 2>/dev/null | grep -qE '.'; then
         mac_log_info "bkn-foundry releases already in ${ns}; running 'bkn-foundry install' to refresh accessAddress (https/443)"
-        bash "${DEPLOY_ROOT}/deploy.sh" bkn-foundry install || \
+        bash "${DEPLOY_ROOT}/deploy.sh" openbkn install || \
             mac_log_warn "bkn-foundry refresh failed; you may need to re-run 'mac.sh bkn-foundry install' manually"
     fi
 }

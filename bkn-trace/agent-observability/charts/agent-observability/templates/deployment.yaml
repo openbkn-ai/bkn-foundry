@@ -43,12 +43,43 @@ spec:
               value: {{ .Values.evidence.index | quote }}
             - name: BKN_TRACE_EVIDENCE_STORE
               value: {{ .Values.evidence.store | quote }}
+            - name: BKN_TRACE_CORE_STORE
+              value: {{ .Values.core.store | quote }}
+            - name: BKN_TRACE_CORE_AUTO_MIGRATE
+              value: {{ ternary "true" "false" .Values.core.autoMigrate | quote }}
+            - name: BKN_TRACE_CORE_ABANDON_INTERVAL
+              value: {{ .Values.core.abandonInterval | quote }}
+            - name: BKN_TRACE_CORE_ONE_SHOT_IDLE_TTL
+              value: {{ .Values.core.oneShotIdleTTL | quote }}
+            - name: BKN_TRACE_EVIDENCE_COLLECTION_STATE
+              value: {{ .Values.core.evidenceCollectionState | quote }}
+            - name: BKN_TRACE_PROJECTION_ENABLED
+              value: {{ ternary "true" "false" .Values.core.projection.enabled | quote }}
+            - name: BKN_TRACE_PROJECTION_INDEX
+              value: {{ .Values.core.projection.index | quote }}
+            - name: BKN_TRACE_PROJECTION_INTERVAL
+              value: {{ .Values.core.projection.interval | quote }}
+            {{- with .Values.core.projection.rebuildVersion }}
+            - name: BKN_TRACE_PROJECTION_REBUILD_VERSION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if eq .Values.core.store "mariadb" }}
+            - name: BKN_TRACE_CORE_MARIADB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "core.mariadb.existingSecret is required for the MariaDB Core store" .Values.core.mariadb.existingSecret | quote }}
+                  key: {{ .Values.core.mariadb.dsnKey | quote }}
+            {{- end }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST
               value: {{ ternary "true" "false" .Values.evidence.ingestAuth.allowUnauthenticated | quote }}
             - name: BKN_TRACE_ALLOW_RAW_TRACE_QUERY
               value: {{ ternary "true" "false" .Values.evidence.rawTraceQuery.enabled | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
               value: {{ ternary "true" "false" .Values.evidence.queryAuth.allowUnauthenticated | quote }}
+            - name: BKN_SAFE_BASE_URL
+              value: {{ required "bknSafe.baseURL is required" .Values.bknSafe.baseURL | quote }}
+            - name: BKN_SAFE_ACCESS_TIMEOUT
+              value: {{ .Values.bknSafe.accessTimeout | quote }}
             {{- if .Values.evidence.queryAuth.hydraAdminURL }}
             - name: BKN_TRACE_HYDRA_ADMIN_URL
               value: {{ .Values.evidence.queryAuth.hydraAdminURL | quote }}

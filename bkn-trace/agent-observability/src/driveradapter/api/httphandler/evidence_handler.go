@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iauthorizationscope"
 )
 
 const maxEvidenceBodyBytes = 1 << 20
@@ -34,7 +34,7 @@ type EvidenceHandlerSecurityConfig struct {
 	QueryHTTPClient            *http.Client
 	AllowUnauthenticatedIngest bool
 	AllowUnauthenticatedQuery  bool
-	QueryAdminTypes            map[string]bool
+	AuthorizationScopeResolver iauthorizationscope.Resolver
 }
 
 type EvidenceHandler struct {
@@ -45,10 +45,17 @@ type EvidenceHandler struct {
 	queryHTTPClient            *http.Client
 	allowUnauthenticatedIngest bool
 	allowUnauthenticatedQuery  bool
-	queryAdminTypes            map[string]bool
+	authorizationScopeResolver iauthorizationscope.Resolver
 }
 
 func NewEvidenceHandler(evidenceService *evidencesvc.Service) *EvidenceHandler {
+	return NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, nil)
+}
+
+func NewEvidenceHandlerWithAuthorizationScopeResolver(
+	evidenceService *evidencesvc.Service,
+	resolver iauthorizationscope.Resolver,
+) *EvidenceHandler {
 	allowUnauthenticated := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedIngestEnv)), "true")
 	allowUnauthenticatedQuery := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedQueryEnv)), "true")
 	return NewEvidenceHandlerWithSecurityConfig(evidenceService, EvidenceHandlerSecurityConfig{
@@ -57,6 +64,7 @@ func NewEvidenceHandler(evidenceService *evidencesvc.Service) *EvidenceHandler {
 		HydraAdminURL:              os.Getenv(evidenceHydraAdminURLEnv),
 		AllowUnauthenticatedIngest: allowUnauthenticated,
 		AllowUnauthenticatedQuery:  allowUnauthenticatedQuery,
+		AuthorizationScopeResolver: resolver,
 	})
 }
 
@@ -75,10 +83,6 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 	if queryHTTPClient == nil {
 		queryHTTPClient = &http.Client{Timeout: 3 * time.Second}
 	}
-	queryAdminTypes := config.QueryAdminTypes
-	if queryAdminTypes == nil {
-		queryAdminTypes = conf.NewTraceReadAuthzConfig().AdminTypes
-	}
 	return &EvidenceHandler{
 		evidenceService:            evidenceService,
 		ingestToken:                strings.TrimSpace(config.IngestToken),
@@ -87,7 +91,7 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 		queryHTTPClient:            queryHTTPClient,
 		allowUnauthenticatedIngest: config.AllowUnauthenticatedIngest,
 		allowUnauthenticatedQuery:  config.AllowUnauthenticatedQuery,
-		queryAdminTypes:            queryAdminTypes,
+		authorizationScopeResolver: config.AuthorizationScopeResolver,
 	}
 }
 
@@ -102,7 +106,6 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /evidence/events [post]
 func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -814,9 +817,33 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 	scope := evidencevo.QueryScope{
 		TenantID: tenantID, BusinessDomain: businessDomain, AccountID: accountID, AccountType: accountType,
 		Authorization: strings.TrimSpace(r.Header.Get("Authorization")),
+		View:          evidencevo.AccessViewBusiness,
 	}
-	if h.queryAdminTypes[accountType] {
-		scope.CrossAccountRead = true
+	if h.authorizationScopeResolver != nil {
+		effectiveSubjectID := strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-ID"))
+		if effectiveSubjectID == "" {
+			effectiveSubjectID = accountID
+		}
+		applicationPrincipalID := strings.TrimSpace(r.Header.Get("X-BKN-Application-Principal-ID"))
+		if applicationPrincipalID == "" && (accountType == "app" || accountType == "service") {
+			applicationPrincipalID = accountID
+		}
+		profile, err := h.authorizationScopeResolver.Resolve(r.Context(), scope.Authorization, iauthorizationscope.TrustedIdentity{
+			TenantID: tenantID, BusinessDomain: businessDomain, ActorID: accountID,
+			EffectiveSubjectID:     effectiveSubjectID,
+			ApplicationPrincipalID: applicationPrincipalID,
+			DelegationID:           strings.TrimSpace(r.Header.Get("X-BKN-Delegation-ID")),
+		})
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
+				Code: "QUERY_ACCESS_DENIED", Message: "current account and record scope could not be authorized",
+			})
+			return evidencevo.QueryScope{}, false
+		}
+		scope.AccessProfile = &profile
+		if profile.EffectiveSubjectID != "" {
+			scope.AccountID = profile.EffectiveSubjectID
+		}
 	}
 	return scope, true
 }
@@ -829,6 +856,42 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 		if _, ok := h.queryScopeFromRequest(w, r); !ok {
 			return
 		}
+		next(w, r)
+	}
+}
+
+func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		gatewayTrusted := h.queryGatewayToken != "" &&
+			secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken)
+		if !gatewayTrusted {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted gateway identity with authorized tenant and business domain is required",
+			)
+			return
+		}
+		scope, ok := h.queryScopeFromRequest(w, r)
+		if !ok {
+			return
+		}
+		if scope.TenantID == "" || scope.BusinessDomain == "" {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted tenant and business domain context is required",
+			)
+			return
+		}
+		r.Header.Set("X-BKN-Tenant-ID", scope.TenantID)
+		r.Header.Set("X-Business-Domain-ID", scope.BusinessDomain)
+		if _, ok := trustedOwnerFromRequest(r); !ok {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted gateway must provide the complete lifecycle owner identity",
+			)
+			return
+		}
+
 		next(w, r)
 	}
 }
@@ -918,8 +981,33 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_IDENTITY_MISMATCH", Message: "request identity does not match OAuth token"})
 		return false
 	}
+	expectedApplicationPrincipalID := ""
+	if accountType == "app" || accountType == "service" {
+		expectedApplicationPrincipalID = accountID
+	}
+	for _, identity := range []struct {
+		header   string
+		expected string
+	}{
+		{header: "X-BKN-Effective-Subject-ID", expected: accountID},
+		{header: "X-BKN-Application-Principal-ID", expected: expectedApplicationPrincipalID},
+		{header: "X-BKN-Delegation-ID", expected: ""},
+	} {
+		if supplied := strings.TrimSpace(r.Header.Get(identity.header)); supplied != "" && supplied != identity.expected {
+			writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_IDENTITY_MISMATCH", Message: "request delegation identity does not match OAuth token"})
+			return false
+		}
+	}
 	r.Header.Set("x-account-id", accountID)
 	r.Header.Set("x-account-type", accountType)
+	r.Header.Set("X-BKN-Effective-Subject-ID", accountID)
+	if expectedApplicationPrincipalID == "" {
+		r.Header.Del("X-BKN-Application-Principal-ID")
+	} else {
+		r.Header.Set("X-BKN-Application-Principal-ID", expectedApplicationPrincipalID)
+	}
+	r.Header.Del("X-BKN-Delegation-ID")
+	r.Header.Set("X-BKN-Authenticated-Client-ID", strings.TrimSpace(introspection.ClientID))
 	return true
 }
 

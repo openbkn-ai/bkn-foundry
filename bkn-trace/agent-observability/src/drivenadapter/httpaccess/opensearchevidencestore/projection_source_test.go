@@ -396,10 +396,15 @@ func TestOpenSearchProjectionSourceStopsAtScanCapAndMarksTruncated(t *testing.T)
 	}
 }
 
-func TestOwnershipMustSkipsAccountFiltersForCrossAccountReaders(t *testing.T) {
+func TestOwnershipMustSkipsAccountFiltersOnlyForExplicitTechnicalView(t *testing.T) {
+	profile := &evidencevo.AccessProfile{
+		TenantID: "tenant_index", BusinessDomain: "bd_index", AccountActive: true, TenantActive: true,
+		EffectiveSubjectID: "admin_index", Roles: []string{"super_admin"},
+	}
 	must := ownershipMust(evidencevo.QueryScope{
 		TenantID: "tenant_index", BusinessDomain: "bd_index",
-		AccountID: "admin_index", AccountType: "super_admin", CrossAccountRead: true,
+		AccountID: "admin_index", AccountType: "super_admin",
+		AccessProfile: profile, View: evidencevo.AccessViewTechnical,
 	})
 	body, err := json.Marshal(must)
 	if err != nil {
