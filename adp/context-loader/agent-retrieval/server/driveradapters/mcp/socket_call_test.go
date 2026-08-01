@@ -182,26 +182,32 @@ func TestInfoAndToolsListAgreeOnEveryToolInTheDefaultLocale(t *testing.T) {
 	}
 }
 
-func TestRefusalDiffersFromAnUnknownToolOnlyByTheErrorCode(t *testing.T) {
+func TestRefusalIsIndistinguishableFromAnUnknownTool(t *testing.T) {
 	withSocket(t, entitlement.FixedGate(licverify.EditionCommunity))
 	mcptool.Register(extraTool("probe_context", "probe_context"))
 
-	// 「消息文本对齐、错误码不同」这条取舍此前只写在注释里，没有执行者。
-	// 把两个回复摆在一起比：把名字换齐之后文本必须逐字节相同。
+	// 一个未授权的企业工具，对外必须和一个根本不存在的工具长得一模一样——
+	// 文本和错误码都一样。否则调用方逐个猜名字就能把「社区版二进制」和
+	// 「未授权的企业版二进制」区分开，而两者不可区分正是 assemble.go 开头
+	// 写下的自我承诺。
 	unknown := errorText(t, callTool(t, "probe_context_x", map[string]any{}))
 	refused := errorText(t, callTool(t, "probe_context", map[string]any{}))
 	if want := strings.Replace(unknown, "probe_context_x", "probe_context", 1); refused != want {
 		t.Fatalf("未授权的企业工具与未知工具的文本不一致：\n未知  : %s\n未授权: %s", want, refused)
 	}
 
-	// 差异只剩 JSON-RPC 错误码，且它关不掉：mcp-go 的未知工具走 handleToolCall
-	// 内部的 INVALID_PARAMS(-32602)，而 handler / 中间件返回的 error 一律变成
-	// INTERNAL_ERROR(-32603)。要一致就得「未授权时干脆不注册」，那正是本设计
-	// 刻意拒绝的启动期决策（补证要能不重启生效）。这条记在 extension-points.md §6。
+	// 错误码曾经不一致：未知工具走 handleToolCall 内部的 INVALID_PARAMS
+	// (-32602)，而中间件返回的 error 一律被包成 INTERNAL_ERROR(-32603)。
+	// mcp-go v0.55.1 起 ToolFilterFunc 在 tools/call 时也执行，被过滤掉的工具
+	// 由 handleToolCall 用同一条 format string、同一个 sentinel 直接拒掉，两侧
+	// 因此对齐。
+	//
+	// 这条保证挂在 app.go 的 server.WithToolFilter(b.filter) 上：filter 现在
+	// 同时是列表可见性和调用边界。谁把它摘了，这里就会红。
 	unknownCode := callTool(t, "probe_context_x", map[string]any{}).(mcpsdk.JSONRPCError).Error.Code
 	refusedCode := callTool(t, "probe_context", map[string]any{}).(mcpsdk.JSONRPCError).Error.Code
-	if unknownCode == refusedCode {
-		t.Fatal("错误码居然一致了——如果这是有意改的，请一并更新 extension-points.md §6 的记账")
+	if unknownCode != refusedCode {
+		t.Fatalf("错误码把付费工具的存在泄露出去了：未知 %d，未授权 %d", unknownCode, refusedCode)
 	}
 }
 
