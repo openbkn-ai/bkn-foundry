@@ -108,10 +108,16 @@ func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.
 	)
 }
 
-// newMCPServer assembles the tool surface and returns the builder alongside it,
-// so /mcp/info can apply the same licence decisions as tools/list. Split out of
-// NewMCPHandler so tests can read the assembled set directly instead of driving
-// a JSON-RPC handshake to find out what was registered.
+// newMCPServer assembles the tool surface. Split out of NewMCPHandler so tests
+// can read the assembled set directly instead of driving a JSON-RPC handshake
+// to find out what was registered.
+//
+// It returns the builder for those tests only — the serving path discards it.
+// /mcp/info does NOT go through the builder: BuildMCPInfo is called per request
+// from the REST handler, which has no access to one, and constructing a builder
+// there would mean building all sixteen services again. It reads the same facts
+// from mcptool instead (Extras / DecoratorFor / Allowed), and
+// TestInfoAndToolsListAgree… pins the two answers together.
 func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer, *toolBuilder) {
 	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	b := newToolBuilder(localeBundle)

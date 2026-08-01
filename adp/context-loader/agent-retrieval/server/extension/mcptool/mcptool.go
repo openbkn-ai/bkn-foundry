@@ -69,7 +69,13 @@ type ExtraTool struct {
 	// would silently make a paid tool free.
 	MinEdition licverify.Edition
 
-	Key           string // tool key; also the ordering key in /mcp/info
+	// Key identifies the tool in the socket and orders it in /mcp/info. Keep it
+	// equal to Name: the published API describes that catalogue as ordered by
+	// tool name (docs/api/context-loader/mcp.yaml), which only holds while the
+	// two agree. Assembly rejects a Key that collides with a core tool's key
+	// even when the names differ, so the failure is loud rather than a pair of
+	// entries swapping places between restarts.
+	Key           string
 	Name, Desc    string
 	Input, Output json.RawMessage
 	Handle        Handler
@@ -228,11 +234,24 @@ func Gated(t ExtraTool) Handler {
 }
 
 // notFound produces the error mcp-go itself returns for a tool it has never
-// heard of, down to the quoting (server.go: `tool '%s' not found`). An
-// under-licensed enterprise tool has to be indistinguishable from one that does
-// not exist, and a client matching on the message is the likeliest way for the
-// difference to leak.
-func notFound(name string) error { return fmt.Errorf("tool '%s' not found", name) }
+// heard of — same format string, wrapping the same sentinel, so the message is
+// byte-identical (server.go: `tool '%s' not found: %w`, server.ErrToolNotFound).
+//
+// An under-licensed enterprise tool has to be indistinguishable from one that
+// does not exist, and a client matching on the message text is the likeliest
+// way for the difference to leak. Wrapping the sentinel rather than hard-coding
+// its text means mcp-go changing it takes us along.
+//
+// One difference remains and cannot be closed here: mcp-go answers an unknown
+// tool with INVALID_PARAMS (-32602) from inside handleToolCall, while an error
+// returned by a handler or middleware becomes INTERNAL_ERROR (-32603). Closing
+// that would mean not registering under-licensed tools at all — which is the
+// startup-time decision this design deliberately rejects (a certificate
+// installed later has to take effect without a restart). Recorded in
+// bkn-docs docs/shared/licensing/extension-points.md §6.
+func notFound(name string) error {
+	return fmt.Errorf("tool '%s' not found: %w", name, server.ErrToolNotFound)
+}
 
 // GateMiddleware refuses calls to enterprise tools the licence does not cover,
 // before anything else in the chain runs.

@@ -121,12 +121,47 @@ func TestCoreToolCallIsUnaffectedByTheGate(t *testing.T) {
 func TestInfoAndToolsListAgreeOnEnterpriseSchemas(t *testing.T) {
 	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
 	mcptool.Register(extraTool("probe_context", "probe_context"))
+
+	// 企业工具那一半与 locale 无关：两侧用的都是 ee 自带的 t.Input，各自过一次
+	// requireBKNContext。这条断言在任何 locale 下都必须成立，所以不钉环境。
+	listed := listVisible(t)
+	info, err := BuildMCPInfo("https://example.invalid/mcp")
+	if err != nil {
+		t.Fatalf("BuildMCPInfo: %v", err)
+	}
+	for _, extra := range mcptool.Extras() {
+		tool, ok := listed[extra.Name]
+		if !ok {
+			t.Fatalf("tools/list 没有企业工具 %q", extra.Name)
+		}
+		var fromInfo json.RawMessage
+		for _, e := range info.Tools {
+			if e.Name == extra.Name {
+				fromInfo = e.InputSchema
+			}
+		}
+		if string(fromInfo) != string(tool.RawInputSchema) {
+			t.Fatalf("企业工具 %q 的 input schema 两侧不一致：\n/mcp/info : %s\ntools/list: %s",
+				extra.Name, fromInfo, tool.RawInputSchema)
+		}
+	}
+}
+
+func TestInfoAndToolsListAgreeOnEveryToolInTheDefaultLocale(t *testing.T) {
+	// 钉 locale。tools/list 那侧的 core 工具会过 locale 覆盖层
+	// （locale.go 的 schema_descriptions.json），/mcp/info 那侧永远读内嵌那份，
+	// 所以「两侧逐字相等」只在覆盖层为空的默认 locale 下成立。不钉的话，
+	// mcpLocaleFromEnv 会读 LANG——CI runner 上没有所以今天绿，开发机上
+	// LANG=en_US.UTF-8 是常态，会红在一处与本改动无关的 core 工具上。
+	//
+	// 「/mcp/info 对 locale 失明」本身是本 PR 之前就有的缺口（连 Description 都
+	// 取默认 tools_meta.json，而对外文档说随部署语言本地化），值得单开 follow-up；
+	// 这里先把它的边界写清楚，免得这条注释成为仓里唯一记得它的地方。
+	t.Setenv("MCP_LOCALE", "zh-CN")
+	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
+	mcptool.Register(extraTool("probe_context", "probe_context"))
 	mcptool.Decorate(toolKeySearchSchema, searchSchemaDecorator())
 
-	// 两侧是两份实现：tools/list 走 toolBuilder，/mcp/info 遍历 tools_meta。
-	// 合并成一份的代价过高（BuildMCPInfo 每请求调用、拿不到 builder），所以改用
-	// 一条把它们钉在一起的用例——有扩展且已授权时，每个工具的 input schema 必须
-	// 逐字相等。少了这条，两边只要有一侧漏施加什么，就会长期无声分叉。
 	listed := listVisible(t)
 	info, err := BuildMCPInfo("https://example.invalid/mcp")
 	if err != nil {
@@ -144,6 +179,29 @@ func TestInfoAndToolsListAgreeOnEnterpriseSchemas(t *testing.T) {
 			t.Fatalf("工具 %q 的 input schema 两侧不一致：\n/mcp/info : %s\ntools/list: %s",
 				entry.Name, entry.InputSchema, tool.RawInputSchema)
 		}
+	}
+}
+
+func TestRefusalDiffersFromAnUnknownToolOnlyByTheErrorCode(t *testing.T) {
+	withSocket(t, entitlement.FixedGate(licverify.EditionCommunity))
+	mcptool.Register(extraTool("probe_context", "probe_context"))
+
+	// 「消息文本对齐、错误码不同」这条取舍此前只写在注释里，没有执行者。
+	// 把两个回复摆在一起比：把名字换齐之后文本必须逐字节相同。
+	unknown := errorText(t, callTool(t, "probe_context_x", map[string]any{}))
+	refused := errorText(t, callTool(t, "probe_context", map[string]any{}))
+	if want := strings.Replace(unknown, "probe_context_x", "probe_context", 1); refused != want {
+		t.Fatalf("未授权的企业工具与未知工具的文本不一致：\n未知  : %s\n未授权: %s", want, refused)
+	}
+
+	// 差异只剩 JSON-RPC 错误码，且它关不掉：mcp-go 的未知工具走 handleToolCall
+	// 内部的 INVALID_PARAMS(-32602)，而 handler / 中间件返回的 error 一律变成
+	// INTERNAL_ERROR(-32603)。要一致就得「未授权时干脆不注册」，那正是本设计
+	// 刻意拒绝的启动期决策（补证要能不重启生效）。这条记在 extension-points.md §6。
+	unknownCode := callTool(t, "probe_context_x", map[string]any{}).(mcpsdk.JSONRPCError).Error.Code
+	refusedCode := callTool(t, "probe_context", map[string]any{}).(mcpsdk.JSONRPCError).Error.Code
+	if unknownCode == refusedCode {
+		t.Fatal("错误码居然一致了——如果这是有意改的，请一并更新 extension-points.md §6 的记账")
 	}
 }
 
