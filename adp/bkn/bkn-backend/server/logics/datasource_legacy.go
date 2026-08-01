@@ -8,19 +8,16 @@ package logics
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
 
 const (
-	LegacyDataViewBindingIssue = "legacy_data_view_unsupported"
+	LegacyDataViewBindingIssue   = "legacy_data_view_unsupported"
 	ResourceBindingNotFoundIssue = "resource_not_found"
-	legacyDataViewMessage      = "data_view data source is no longer supported; rebind the concept to a vega resource (data_source.type=resource)"
 )
 
 // ResolveDataSourceType returns the explicit data_source.type, or empty when unset.
@@ -37,14 +34,8 @@ func IsLegacyDataViewBinding(dsType string) bool {
 }
 
 // LegacyDataViewBindingError returns a client-facing 400 for deprecated data_view bindings.
-func LegacyDataViewBindingError(ctx context.Context, conceptKind, conceptID string) *rest.HTTPError {
-	detail := legacyDataViewMessage
-	if conceptID != "" {
-		detail = fmt.Sprintf("%s: %s=%s", legacyDataViewMessage, conceptKind, conceptID)
-	}
-	return rest.NewHTTPError(ctx, http.StatusBadRequest,
-		berrors.BknBackend_UnsupportedLegacyDataSourceBinding).
-		WithErrorDetails(detail)
+func LegacyDataViewBindingError(ctx context.Context, errorCode string) *rest.HTTPError {
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, errorCode)
 }
 
 // EnrichDataSourceBindingStatus marks legacy data_view bindings as unavailable in schema responses.

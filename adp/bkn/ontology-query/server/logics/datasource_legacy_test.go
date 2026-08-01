@@ -26,9 +26,9 @@ func TestLegacyDataViewBinding(t *testing.T) {
 		So(logics.IsLegacyDataViewBinding(interfaces.DATA_SOURCE_TYPE_DATA_VIEW), ShouldBeTrue)
 		So(logics.IsLegacyDataViewBinding(interfaces.DATA_SOURCE_TYPE_RESOURCE), ShouldBeFalse)
 
-		err := logics.LegacyDataViewBindingError(ctx, "object_type", "sales_order")
+		err := logics.LegacyDataViewBindingError(ctx, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		So(err, ShouldNotBeNil)
 		So(err.HTTPCode, ShouldEqual, http.StatusBadRequest)
-		So(err.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+		So(err.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 	})
 }

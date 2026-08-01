@@ -1960,7 +1960,7 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportedLegacyDataSourceBinding)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
 		})
 
 		Convey("Failed with legacy data_view backing in strict validation\n", func() {
@@ -1982,7 +1982,7 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportedLegacyDataSourceBinding)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
 		})
 
 		Convey("Failed when source mapping field not found in data view\n", func() {
@@ -2024,7 +2024,7 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportedLegacyDataSourceBinding)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
 		})
 
 		Convey("Success when source/target resolved from batch preflight index\n", func() {

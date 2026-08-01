@@ -832,7 +832,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 			So(result.Datas, ShouldBeNil)
 		})
 

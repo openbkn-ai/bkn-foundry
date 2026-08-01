@@ -965,7 +965,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportedLegacyDataSourceBinding)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
 			So(result, ShouldBeNil)
 		})
 
@@ -1001,7 +1001,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportedLegacyDataSourceBinding)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
 			So(result, ShouldBeNil)
 		})
 
@@ -1033,7 +1033,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportedLegacyDataSourceBinding)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
 			So(result, ShouldBeNil)
 		})
 	})

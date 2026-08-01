@@ -15,7 +15,6 @@ const (
 	OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo      = "OntologyQuery.ObjectType.InvalidParameter.IncludeTypeInfo"
 	OntologyQuery_ObjectType_InvalidParameter_SmallModel           = "OntologyQuery.ObjectType.InvalidParameter.SmallModel"
 	OntologyQuery_ObjectType_UnsupportLogicPropertyParameterSource = "OntologyQuery.ObjectType.UnsupportLogicPropertyParameterSource"
-	OntologyQuery_UnsupportedLegacyDataSourceBinding                 = "OntologyQuery.UnsupportedLegacyDataSourceBinding"
 
 	//404
 	OntologyQuery_ObjectType_ObjectTypeNotFound = "OntologyQuery.ObjectType.ObjectTypeNotFound"
@@ -39,7 +38,6 @@ var (
 		OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo,
 		OntologyQuery_ObjectType_InvalidParameter_SmallModel,
 		OntologyQuery_ObjectType_UnsupportLogicPropertyParameterSource,
-		OntologyQuery_UnsupportedLegacyDataSourceBinding,
 		// OntologyQuery_ObjectType_UnsupportLogicPropertyType,
 
 		// 404

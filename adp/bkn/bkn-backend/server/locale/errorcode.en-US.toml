@@ -133,8 +133,3 @@ ErrorLink = "None"
 Description = "An internal server error occurred while unMarshaling data"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
 ErrorLink = "None"
-
-[BknBackend.UnsupportedLegacyDataSourceBinding]
-Description = "The data_view data source type is no longer supported"
-Solution = "Rebind the concept to a vega resource (data_source.type=resource)."
-ErrorLink = "None"

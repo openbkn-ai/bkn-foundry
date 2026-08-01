@@ -28,10 +28,10 @@ func TestLegacyDataViewBinding(t *testing.T) {
 		So(*ds.BindingAvailable, ShouldBeFalse)
 		So(ds.BindingIssue, ShouldEqual, logics.LegacyDataViewBindingIssue)
 
-		err := logics.LegacyDataViewBindingError(ctx, "object_type", "sales_order")
+		err := logics.LegacyDataViewBindingError(ctx, berrors.BknBackend_ObjectType_InvalidParameter)
 		So(err, ShouldNotBeNil)
 		So(err.HTTPCode, ShouldEqual, http.StatusBadRequest)
-		So(err.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportedLegacyDataSourceBinding)
+		So(err.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
 
 		resourceDS := &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "res-1"}
 		logics.MarkResourceBindingAvailable(resourceDS)

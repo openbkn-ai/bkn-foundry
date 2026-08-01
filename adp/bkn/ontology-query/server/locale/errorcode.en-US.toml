@@ -69,8 +69,3 @@ Description = "Metric query execution failed"
 Solution = "Please try again or contact support if the error persists."
 ErrorLink = "None"
 
-[OntologyQuery.UnsupportedLegacyDataSourceBinding]
-Description = "The data_view data source type is no longer supported"
-Solution = "Rebind the concept to a vega resource (data_source.type=resource) or rely on a built index."
-ErrorLink = "None"
-

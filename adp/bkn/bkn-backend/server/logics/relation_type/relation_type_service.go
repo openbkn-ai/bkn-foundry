@@ -1265,7 +1265,7 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 					fieldsMap = logics.VegaResourceSchemaToFieldsMap(res)
 				default:
 					if logics.IsLegacyDataViewBinding(backingType) {
-						return logics.LegacyDataViewBindingError(ctx, "relation_type", relationType.RTID)
+						return logics.LegacyDataViewBindingError(ctx, berrors.BknBackend_RelationType_InvalidParameter)
 					}
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 						WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", backingType))

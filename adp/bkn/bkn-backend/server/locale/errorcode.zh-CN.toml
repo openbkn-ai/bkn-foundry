@@ -133,8 +133,3 @@ ErrorLink = "暂无"
 Description = "反序列化数据时，服务器内部发生错误"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
 ErrorLink = "暂无" 
-
-[BknBackend.UnsupportedLegacyDataSourceBinding]
-Description = "data_view 数据源已废弃"
-Solution = "请将对象类或关系类重新绑定为 vega resource（data_source.type=resource）。"
-ErrorLink = "暂无"

@@ -91,7 +91,7 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			}
 		default:
 			if logics.IsLegacyDataViewBinding(dsType) {
-				return logics.LegacyDataViewBindingError(ctx, "object_type", objectType.OTID)
+				return logics.LegacyDataViewBindingError(ctx, berrors.BknBackend_ObjectType_InvalidParameter)
 			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
@@ -717,7 +717,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		})
 	default:
 		if logics.IsLegacyDataViewBinding(dsType) {
-			return nil, logics.LegacyDataViewBindingError(ctx, "object_type", objectType.OTID)
+			return nil, logics.LegacyDataViewBindingError(ctx, berrors.BknBackend_ObjectType_InvalidParameter)
 		}
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_ObjectType_InvalidParameter).

@@ -1124,7 +1124,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			backingRows = resp.Entries
 			logger.Debugf("relation [%s] from resource [%s] rows [%d]", edge.RelationType.RTName, mappingRules.BackingDataSource.ID, len(backingRows))
 		} else if logics.IsLegacyDataViewBinding(backingType) {
-			return nil, logics.LegacyDataViewBindingError(ctx, "relation_type", edge.RelationType.RTID)
+			return nil, logics.LegacyDataViewBindingError(ctx, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
 		} else {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", backingType))

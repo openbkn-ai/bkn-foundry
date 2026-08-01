@@ -191,7 +191,7 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		if dsType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
 		} else if logics.IsLegacyDataViewBinding(dsType) {
-			return resps, logics.LegacyDataViewBindingError(ctx, "object_type", objectType.OTID)
+			return resps, logics.LegacyDataViewBindingError(ctx, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		} else {
 			return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", dsType, objectType.OTID))
