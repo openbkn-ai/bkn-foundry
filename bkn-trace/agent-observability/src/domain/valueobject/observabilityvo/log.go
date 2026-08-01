@@ -9,37 +9,38 @@ type ResourceRef struct {
 }
 
 type LogRecord struct {
-	SchemaVersion       string         `json:"schema_version"`
-	LogID               string         `json:"log_id"`
-	SourceID            string         `json:"source_id"`
-	SourceLogID         string         `json:"source_log_id"`
-	Category            string         `json:"log_category"`
-	EventName           string         `json:"event_name"`
-	EventTimestamp      time.Time      `json:"event_timestamp"`
-	ObservedTimestamp   time.Time      `json:"observed_timestamp"`
-	SeverityNumber      int            `json:"severity_number"`
-	SeverityText        string         `json:"severity_text"`
-	Outcome             string         `json:"outcome"`
-	SafeSummary         string         `json:"safe_summary"`
-	ServiceName         string         `json:"service_name"`
-	Environment         string         `json:"deployment_environment"`
-	TenantID            string         `json:"tenant_id"`
-	BusinessDomain      string         `json:"business_domain_id,omitempty"`
-	ActorID             string         `json:"actor_id,omitempty"`
-	EffectiveSubjectID  string         `json:"effective_subject_id,omitempty"`
-	ApplicationID       string         `json:"application_id,omitempty"`
-	IngressPrincipal    string         `json:"ingress_principal"`
-	TrustLevel          string         `json:"trust_level"`
-	RequestID           string         `json:"request_id,omitempty"`
-	TraceID             string         `json:"trace_id,omitempty"`
-	SpanID              string         `json:"span_id,omitempty"`
-	ConversationID      string         `json:"conversation_id,omitempty"`
-	InteractionID       string         `json:"interaction_id,omitempty"`
-	OperationID         string         `json:"operation_id,omitempty"`
-	ResourceRef         *ResourceRef   `json:"resource_ref,omitempty"`
-	ArtifactRef         string         `json:"artifact_ref,omitempty"`
-	Attributes          map[string]any `json:"attributes,omitempty"`
-	KnowledgeNetworkIDs []string       `json:"-"`
+	SchemaVersion       string          `json:"schema_version"`
+	LogID               string          `json:"log_id"`
+	SourceID            string          `json:"source_id"`
+	SourceLogID         string          `json:"source_log_id"`
+	Category            string          `json:"log_category"`
+	EventName           string          `json:"event_name"`
+	EventTimestamp      time.Time       `json:"event_timestamp"`
+	ObservedTimestamp   time.Time       `json:"observed_timestamp"`
+	SeverityNumber      int             `json:"severity_number"`
+	SeverityText        string          `json:"severity_text"`
+	Outcome             string          `json:"outcome"`
+	SafeSummary         string          `json:"safe_summary"`
+	ServiceName         string          `json:"service_name"`
+	Environment         string          `json:"deployment_environment"`
+	TenantID            string          `json:"tenant_id"`
+	BusinessDomain      string          `json:"business_domain_id,omitempty"`
+	ActorID             string          `json:"actor_id,omitempty"`
+	EffectiveSubjectID  string          `json:"effective_subject_id,omitempty"`
+	ApplicationID       string          `json:"application_id,omitempty"`
+	IngressPrincipal    string          `json:"ingress_principal"`
+	TrustLevel          string          `json:"trust_level"`
+	RequestID           string          `json:"request_id,omitempty"`
+	TraceID             string          `json:"trace_id,omitempty"`
+	SpanID              string          `json:"span_id,omitempty"`
+	ConversationID      string          `json:"conversation_id,omitempty"`
+	InteractionID       string          `json:"interaction_id,omitempty"`
+	OperationID         string          `json:"operation_id,omitempty"`
+	ResourceRef         *ResourceRef    `json:"resource_ref,omitempty"`
+	ArtifactRef         string          `json:"artifact_ref,omitempty"`
+	Attributes          map[string]any  `json:"attributes,omitempty"`
+	KnowledgeNetworkIDs []string        `json:"-"`
+	CursorPosition      *SourcePosition `json:"-"`
 }
 
 type LogQuery struct {
@@ -97,6 +98,7 @@ type SourcePage struct {
 type SourcePosition struct {
 	EventTimestamp time.Time `json:"event_timestamp"`
 	LogID          string    `json:"log_id"`
+	SearchAfter    []any     `json:"search_after,omitempty"`
 }
 
 type SourceStatus struct {
@@ -131,9 +133,10 @@ type FacetValue struct {
 }
 
 type FacetResult struct {
-	Values       []FacetValue
-	Partial      bool
-	SourceStatus []SourceStatus
+	Values         []FacetValue
+	Partial        bool
+	SampledRecords int
+	SourceStatus   []SourceStatus
 }
 
 type LogPolicy struct {

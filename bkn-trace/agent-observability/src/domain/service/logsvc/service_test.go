@@ -68,6 +68,29 @@ type categorizedSource struct {
 	queries    int
 }
 
+type filteredPageSource struct {
+	pages [][]observabilityvo.LogRecord
+}
+
+func (source *filteredPageSource) ID() string { return "filtered-pages" }
+
+func (source *filteredPageSource) Search(
+	_ context.Context,
+	query observabilityvo.LogQuery,
+) (observabilityvo.SourcePage, error) {
+	page := 0
+	if query.PageBefore != nil {
+		page = 1
+	}
+	if page >= len(source.pages) {
+		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
+	}
+	records := validTestRecords(source.pages[page])
+	return observabilityvo.SourcePage{
+		Records: records, Count: int64(len(records) + boolInt(page+1 < len(source.pages))), CountAccuracy: "exact",
+	}, nil
+}
+
 func (source *categorizedSource) ID() string { return source.id }
 
 func (source *categorizedSource) Metadata() observabilityvo.SourceStatus {
@@ -319,6 +342,41 @@ func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 	if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 2, Cursor: first.NextCursor}); !errors.Is(err, ErrCursorStale) {
 		t.Fatalf("scope-changed cursor must be stale, got %v", err)
 	}
+}
+
+func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
+	base := time.Now().UTC().Truncate(time.Second)
+	filtered := make([]observabilityvo.LogRecord, 200)
+	for index := range filtered {
+		filtered[index] = observabilityvo.LogRecord{
+			LogID: "filtered-" + time.Duration(index).String(), Category: observabilityvo.CategoryRuntimeSystem,
+			EventName: "service.started", TenantID: "tenant-other", EventTimestamp: base.Add(-time.Duration(index) * time.Second),
+			TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		}
+	}
+	visible := observabilityvo.LogRecord{
+		LogID: "visible", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
+		TenantID: "tenant-a", EventTimestamp: base.Add(-201 * time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+	}
+	service := NewWithCursorKey([]Source{&filteredPageSource{pages: [][]observabilityvo.LogRecord{filtered, {visible}}}}, []byte("test-cursor-signing-key"))
+	profile := activeProfile("admin-a", "admin")
+	profile.Fingerprint = "sha256:scope-a"
+
+	first, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20})
+	if err != nil || len(first.Records) != 0 || first.NextCursor == "" {
+		t.Fatalf("filtered source page must remain pageable: result=%+v err=%v", first, err)
+	}
+	second, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20, Cursor: first.NextCursor})
+	if err != nil || len(second.Records) != 1 || second.Records[0].LogID != "visible" {
+		t.Fatalf("next source page was not reachable: result=%+v err=%v", second, err)
+	}
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func activeProfile(subject, role string) evidencevo.AccessProfile {

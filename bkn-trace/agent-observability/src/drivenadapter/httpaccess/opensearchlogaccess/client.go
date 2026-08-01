@@ -60,6 +60,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 			Hits []struct {
 				ID     string          `json:"_id"`
 				Source json.RawMessage `json:"_source"`
+				Sort   []any           `json:"sort"`
 			} `json:"hits"`
 		} `json:"hits"`
 	}
@@ -71,6 +72,11 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		record, err := mapDocument(hit.ID, hit.Source)
 		if err != nil {
 			return observabilityvo.SourcePage{}, err
+		}
+		if len(hit.Sort) > 0 {
+			record.CursorPosition = &observabilityvo.SourcePosition{
+				EventTimestamp: record.EventTimestamp, LogID: record.SourceLogID, SearchAfter: append([]any(nil), hit.Sort...),
+			}
 		}
 		records = append(records, record)
 	}
@@ -161,7 +167,7 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 			bounds["gte"] = query.TimeFrom.Format(time.RFC3339Nano)
 		}
 		if query.TimeTo != nil {
-			bounds["lte"] = query.TimeTo.Format(time.RFC3339Nano)
+			bounds["lt"] = query.TimeTo.Format(time.RFC3339Nano)
 		}
 		filters = append(filters, map[string]any{"range": map[string]any{"@timestamp": bounds}})
 	}
@@ -177,11 +183,18 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 	}
 	result := map[string]any{
 		"size": limit, "track_total_hits": true,
-		"sort":  []any{map[string]any{"@timestamp": map[string]any{"order": "desc"}}, map[string]any{"_id": map[string]any{"order": "desc"}}},
+		"sort": []any{
+			map[string]any{"@timestamp": map[string]any{"order": "desc"}},
+			map[string]any{"attributes.source_log_id.keyword": map[string]any{"order": "asc", "unmapped_type": "keyword"}},
+		},
 		"query": map[string]any{"bool": boolQuery},
 	}
 	if query.PageBefore != nil && !query.PageBefore.EventTimestamp.IsZero() && query.PageBefore.LogID != "" {
-		result["search_after"] = []any{query.PageBefore.EventTimestamp.Format(time.RFC3339Nano), query.PageBefore.LogID}
+		if len(query.PageBefore.SearchAfter) > 0 {
+			result["search_after"] = append([]any(nil), query.PageBefore.SearchAfter...)
+		} else {
+			result["search_after"] = []any{query.PageBefore.EventTimestamp.Format(time.RFC3339Nano), query.PageBefore.LogID}
+		}
 	}
 	return result
 }
@@ -205,8 +218,10 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 	eventTimestamp, _ := time.Parse(time.RFC3339Nano, document.Timestamp)
 	observedTimestamp, _ := time.Parse(time.RFC3339Nano, document.ObservedTimestamp)
 	record := observabilityvo.LogRecord{
-		SchemaVersion: stringAttribute(document.Attributes, "schema_version", "1.0.0"),
-		LogID:         id, SourceID: stringAttribute(document.Attributes, "source_id", ""), SourceLogID: id,
+		SchemaVersion:  stringAttribute(document.Attributes, "schema_version", "1.0.0"),
+		LogID:          stringAttribute(document.Attributes, "log_id", id),
+		SourceID:       stringAttribute(document.Attributes, "source_id", ""),
+		SourceLogID:    stringAttribute(document.Attributes, "source_log_id", id),
 		Category:       stringAttribute(document.Attributes, "log_category", ""),
 		EventName:      stringAttribute(document.Attributes, "event_name", ""),
 		EventTimestamp: eventTimestamp, ObservedTimestamp: observedTimestamp,

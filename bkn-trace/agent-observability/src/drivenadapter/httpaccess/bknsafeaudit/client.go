@@ -62,13 +62,14 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		parameters.Set("resource", query.ResourceType)
 	}
 	if query.TimeFrom != nil {
-		parameters.Set("from", query.TimeFrom.Format(time.RFC3339))
+		parameters.Set("from", query.TimeFrom.Format(time.RFC3339Nano))
 	}
 	if query.TimeTo != nil {
-		parameters.Set("to", query.TimeTo.Format(time.RFC3339))
+		parameters.Set("to", query.TimeTo.Format(time.RFC3339Nano))
 	}
 	if query.PageBefore != nil && !query.PageBefore.EventTimestamp.IsZero() {
-		parameters.Set("to", query.PageBefore.EventTimestamp.Format(time.RFC3339))
+		parameters.Set("to", query.PageBefore.EventTimestamp.Format(time.RFC3339Nano))
+		parameters.Set("before_id", query.PageBefore.LogID)
 	}
 	if query.FailedOnly {
 		parameters.Set("failed_only", "true")
@@ -145,6 +146,9 @@ type auditLog struct {
 }
 
 func projectAuditLog(entry auditLog, tenantID string) observabilityvo.LogRecord {
+	// BKN Safe is deployed inside one OpenBKN tenant boundary and its legacy audit
+	// table has no tenant column. The forwarded caller token authorizes the source
+	// read; the adapter stamps that deployment tenant onto the safe projection.
 	outcome := "success"
 	severityNumber := 9
 	severityText := "INFO"

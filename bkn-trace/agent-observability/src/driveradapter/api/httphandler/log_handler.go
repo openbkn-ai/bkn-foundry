@@ -19,6 +19,19 @@ type LogHandler struct {
 	authorizer *EvidenceHandler
 }
 
+type observabilityErrorEnvelope struct {
+	Error observabilityError `json:"error"`
+}
+
+type observabilityError struct {
+	Code           string `json:"code"`
+	Message        string `json:"message"`
+	Retryable      bool   `json:"retryable"`
+	RequiredAction string `json:"required_action,omitempty"`
+	RequestID      string `json:"request_id"`
+	RetryAfterMS   int    `json:"retry_after_ms,omitempty"`
+}
+
 var (
 	traceIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	spanIDPattern  = regexp.MustCompile(`^[0-9a-f]{16}$`)
@@ -30,15 +43,11 @@ func NewLogHandler(service *logsvc.Service, authorizer *EvidenceHandler) *LogHan
 
 func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
-			Code: "method_not_allowed", Message: "only GET is supported",
-		})
+		writeObservabilityError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "only GET is supported")
 		return
 	}
 	if handler.service == nil || handler.authorizer == nil {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
-			Code: "sources_unavailable", Message: "observability log query is not configured",
-		})
+		writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "observability log query is not configured")
 		return
 	}
 	if !handler.authorizer.authorizeQueryGateway(w, r) {
@@ -50,9 +59,7 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	query, err := parseLogQuery(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-			Code: "invalid_log_filter", Message: err.Error(),
-		})
+		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", err.Error())
 		return
 	}
 	query.ScopeFingerprint = scope.AccessProfile.Fingerprint
@@ -61,29 +68,17 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, logsvc.ErrCursorInvalid):
-			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-				Code: "cursor_invalid", Message: "the pagination cursor is invalid",
-			})
+			writeObservabilityError(w, r, http.StatusBadRequest, "cursor_invalid", "the pagination cursor is invalid")
 		case errors.Is(err, logsvc.ErrCursorStale):
-			writeJSON(w, http.StatusConflict, rdto.ErrorResponse{
-				Code: "cursor_stale", Message: "the authorization scope, sources, or query changed; restart from the first page",
-			})
+			writeObservabilityError(w, r, http.StatusConflict, "cursor_stale", "the authorization scope, sources, or query changed; restart from the first page")
 		case errors.Is(err, logsvc.ErrInvalidQuery):
-			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-				Code: "invalid_log_filter", Message: "the log time window exceeds the supported range",
-			})
+			writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "the log time window exceeds the supported range")
 		case errors.Is(err, logsvc.ErrAccessDenied):
-			writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{
-				Code: "observability_access_denied", Message: "the current access profile cannot search the requested logs",
-			})
+			writeObservabilityError(w, r, http.StatusForbidden, "observability_access_denied", "the current access profile cannot search the requested logs")
 		case errors.Is(err, logsvc.ErrSourcesUnavailable):
-			writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
-				Code: "sources_unavailable", Message: "all authorized log sources are unavailable",
-			})
+			writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "all authorized log sources are unavailable")
 		default:
-			writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
-				Code: "log_query_failed", Message: "observability log query failed",
-			})
+			writeObservabilityError(w, r, http.StatusInternalServerError, "log_query_failed", "observability log query failed")
 		}
 		return
 	}
@@ -116,17 +111,17 @@ func (handler *LogHandler) GetLog(w http.ResponseWriter, r *http.Request) {
 	}
 	logID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/observability/v1/logs/"))
 	if logID == "" || strings.Contains(logID, "/") {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "invalid_log_id", Message: "log_id is required"})
+		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_id", "log_id is required")
 		return
 	}
 	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
 	record, err := handler.service.Get(sourceContext, profile, logID)
 	if err != nil {
 		if errors.Is(err, logsvc.ErrNotDisclosed) {
-			writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "log_not_disclosed", Message: "log was not found in the authorized scope"})
+			writeObservabilityError(w, r, http.StatusNotFound, "log_not_disclosed", "log was not found in the authorized scope")
 			return
 		}
-		writeLogServiceError(w, err)
+		writeLogServiceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rdto.LogDetailResponse{
@@ -146,23 +141,23 @@ func (handler *LogHandler) GetLogFacets(w http.ResponseWriter, r *http.Request) 
 	}
 	query, err := parseLogQuery(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "invalid_log_filter", Message: err.Error()})
+		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", err.Error())
 		return
 	}
 	facet := strings.TrimSpace(r.URL.Query().Get("facet"))
 	if !supportedLogFacet(facet) {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "invalid_log_filter", Message: "facet is not supported"})
+		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "facet is not supported")
 		return
 	}
 	query.ScopeFingerprint = profile.Fingerprint
 	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
 	result, err := handler.service.Facets(sourceContext, profile, query, facet)
 	if err != nil {
-		writeLogServiceError(w, err)
+		writeLogServiceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rdto.LogFacetResponse{
-		Data: result.Values, Partial: result.Partial, SourceStatus: result.SourceStatus, NextCursor: nil,
+		Data: result.Values, Partial: result.Partial, SampledRecords: result.SampledRecords, SourceStatus: result.SourceStatus, NextCursor: nil,
 	})
 }
 
@@ -174,7 +169,7 @@ func (handler *LogHandler) ListLogSources(w http.ResponseWriter, r *http.Request
 	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
 	data, err := handler.service.Sources(sourceContext, profile)
 	if err != nil {
-		writeLogServiceError(w, err)
+		writeLogServiceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rdto.LogSourcesResponse{Data: data})
@@ -187,7 +182,7 @@ func (handler *LogHandler) ListLogPolicies(w http.ResponseWriter, r *http.Reques
 	}
 	data, err := handler.service.Policies(profile)
 	if err != nil {
-		writeLogServiceError(w, err)
+		writeLogServiceError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rdto.LogPoliciesResponse{Data: data})
@@ -195,11 +190,11 @@ func (handler *LogHandler) ListLogPolicies(w http.ResponseWriter, r *http.Reques
 
 func (handler *LogHandler) authorizedProfile(w http.ResponseWriter, r *http.Request) (evidencevo.AccessProfile, bool) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "method_not_allowed", Message: "only GET is supported"})
+		writeObservabilityError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "only GET is supported")
 		return evidencevo.AccessProfile{}, false
 	}
 	if handler.service == nil || handler.authorizer == nil {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "sources_unavailable", Message: "observability log query is not configured"})
+		writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "observability log query is not configured")
 		return evidencevo.AccessProfile{}, false
 	}
 	if !handler.authorizer.authorizeQueryGateway(w, r) {
@@ -221,21 +216,28 @@ func supportedLogFacet(value string) bool {
 	}
 }
 
-func writeLogServiceError(w http.ResponseWriter, err error) {
+func writeLogServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, logsvc.ErrCursorInvalid):
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "cursor_invalid", Message: "the pagination cursor is invalid"})
+		writeObservabilityError(w, r, http.StatusBadRequest, "cursor_invalid", "the pagination cursor is invalid")
 	case errors.Is(err, logsvc.ErrCursorStale):
-		writeJSON(w, http.StatusConflict, rdto.ErrorResponse{Code: "cursor_stale", Message: "the authorization scope, sources, or query changed; restart from the first page"})
+		writeObservabilityError(w, r, http.StatusConflict, "cursor_stale", "the authorization scope, sources, or query changed; restart from the first page")
 	case errors.Is(err, logsvc.ErrInvalidQuery):
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "invalid_log_filter", Message: "the log time window exceeds the supported range"})
+		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "the log time window exceeds the supported range")
 	case errors.Is(err, logsvc.ErrAccessDenied):
-		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "observability_access_denied", Message: "the current access profile cannot access the requested logs"})
+		writeObservabilityError(w, r, http.StatusForbidden, "observability_access_denied", "the current access profile cannot access the requested logs")
 	case errors.Is(err, logsvc.ErrSourcesUnavailable):
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "sources_unavailable", Message: "all authorized log sources are unavailable"})
+		writeObservabilityError(w, r, http.StatusServiceUnavailable, "sources_unavailable", "all authorized log sources are unavailable")
 	default:
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "log_query_failed", Message: "observability log query failed"})
+		writeObservabilityError(w, r, http.StatusInternalServerError, "log_query_failed", "observability log query failed")
 	}
+}
+
+func writeObservabilityError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+	retryable := status == http.StatusServiceUnavailable || status == http.StatusInternalServerError
+	writeJSON(w, status, observabilityErrorEnvelope{Error: observabilityError{
+		Code: code, Message: message, Retryable: retryable, RequestID: requestIDFromRequest(r),
+	}})
 }
 
 func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {

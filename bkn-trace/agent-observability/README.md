@@ -235,6 +235,8 @@ Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须�
 
 统一日志分页游标使用 `BKN_OBSERVABILITY_CURSOR_SIGNING_KEY` 做 HMAC 签名，并绑定过滤条件、主体、应用、Access Profile 指纹和可见来源。多副本部署必须通过 `observability.cursorSigning.existingSecret` 为全部 Pod 注入同一密钥；单实例本地环境未配置时使用仅在当前进程有效的随机密钥，进程重启后的旧游标按失效处理。密钥不得写入日志、响应或配置文件。
 
+升级存量环境时，如果部署 values 覆盖了 `ingress.paths`，Helm 不会合并 chart 新增路径，必须显式补充 `/api/observability/v1`。扩容到多副本前也必须先配置共享的 `observability.cursorSigning.existingSecret`，否则不同 Pod 签发的游标不能互相验证。
+
 查询仍依据事件生产方或 resolver 声明的 `visibility` 做节点级响应过滤，并区分 `redacted`、`hidden`、`omitted`、`unresolved`、`unauthorized` 统计。`unauthorized` 引用只进入汇总和 `partial_reason[]`，不会展开 `ref_id`、`policy_decision_ref` 或其他节点详情。更细粒度的对象/属性级实时策略裁决仍属于后续阶段。
 
 当前查询侧尚未接入受权 Resolver/display 服务，业务图节点因此只投影注册引用字段，不信任或返回事件中的 `label` 等显示信息；存在可见业务引用时返回 `partial=true` 与 `resolver_unresolved`。受权业务名称和详情补全由后续独立任务实现。

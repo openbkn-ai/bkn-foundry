@@ -34,10 +34,11 @@ type LogDetailResponse struct {
 }
 
 type LogFacetResponse struct {
-	Data         []observabilityvo.FacetValue   `json:"data"`
-	Partial      bool                           `json:"partial"`
-	SourceStatus []observabilityvo.SourceStatus `json:"source_status"`
-	NextCursor   *string                        `json:"next_cursor"`
+	Data           []observabilityvo.FacetValue   `json:"data"`
+	Partial        bool                           `json:"partial"`
+	SampledRecords int                            `json:"sampled_records"`
+	SourceStatus   []observabilityvo.SourceStatus `json:"source_status"`
+	NextCursor     *string                        `json:"next_cursor"`
 }
 
 type LogSourcesResponse struct {

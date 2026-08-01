@@ -70,6 +70,7 @@ type Filter struct {
 	FailedOnly bool
 	From       time.Time
 	To         time.Time
+	BeforeID   string
 	Offset     int
 	Limit      int
 }
@@ -107,7 +108,9 @@ func (s *Store) List(ctx context.Context, f Filter) ([]model.AuditLog, int64, er
 	if !f.From.IsZero() {
 		q = q.Where("created_at >= ?", f.From)
 	}
-	if !f.To.IsZero() {
+	if !f.To.IsZero() && f.BeforeID != "" {
+		q = q.Where("(created_at < ? OR (created_at = ? AND id > ?))", f.To, f.To, f.BeforeID)
+	} else if !f.To.IsZero() {
 		q = q.Where("created_at < ?", f.To)
 	}
 	var total int64
@@ -115,7 +118,7 @@ func (s *Store) List(ctx context.Context, f Filter) ([]model.AuditLog, int64, er
 		return nil, 0, err
 	}
 	logs := make([]model.AuditLog, 0, limit)
-	if err := q.Order("created_at DESC").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
+	if err := q.Order("created_at DESC").Order("id ASC").Offset(offset).Limit(limit).Find(&logs).Error; err != nil {
 		return nil, 0, err
 	}
 	return logs, total, nil

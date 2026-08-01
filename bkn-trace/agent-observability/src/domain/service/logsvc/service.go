@@ -108,6 +108,8 @@ func (service *Service) List(
 	succeeded := 0
 	failed := 0
 	sourcePageSizes := make(map[string]int)
+	sourceCandidates := make(map[string]int)
+	sourceLastRawPosition := make(map[string]observabilityvo.SourcePosition)
 	recordSources := make(map[string]string)
 	sourceHasMore := false
 	for _, source := range visibleSources {
@@ -137,6 +139,9 @@ func (service *Service) List(
 		status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
 		result.SourceStatus = append(result.SourceStatus, status)
 		sourcePageSizes[source.ID()] = len(page.Records)
+		if len(page.Records) > 0 {
+			sourceLastRawPosition[source.ID()] = positionForRecord(page.Records[len(page.Records)-1])
+		}
 		if page.NextCursor != "" || page.Count > int64(len(page.Records)) {
 			sourceHasMore = true
 		}
@@ -145,6 +150,7 @@ func (service *Service) List(
 				matchesQuery(record, sourceQuery) && canReadLog(profile, capabilities, record, query.IsAssociatedDrilldown()) {
 				result.Records = append(result.Records, record)
 				recordSources[recordKey(record)] = source.ID()
+				sourceCandidates[source.ID()]++
 			}
 		}
 	}
@@ -157,7 +163,7 @@ func (service *Service) List(
 			leftSource := recordSources[recordKey(result.Records[i])]
 			rightSource := recordSources[recordKey(result.Records[j])]
 			if leftSource == rightSource {
-				return result.Records[i].LogID > result.Records[j].LogID
+				return positionID(result.Records[i]) < positionID(result.Records[j])
 			}
 			return leftSource < rightSource
 		}
@@ -179,19 +185,27 @@ func (service *Service) List(
 			hasMore = true
 		}
 	}
-	if hasMore && len(result.Records) > 0 {
+	if hasMore {
+		includedBySource := make(map[string]int)
 		for _, record := range result.Records {
-			positions[recordSources[recordKey(record)]] = observabilityvo.SourcePosition{
-				EventTimestamp: record.EventTimestamp, LogID: record.LogID,
+			sourceID := recordSources[recordKey(record)]
+			positions[sourceID] = positionForRecord(record)
+			includedBySource[sourceID]++
+		}
+		for sourceID, rawPosition := range sourceLastRawPosition {
+			if includedBySource[sourceID] == sourceCandidates[sourceID] {
+				positions[sourceID] = rawPosition
 			}
 		}
-		result.NextCursor = encodeCursor(service.cursorKey, cursorPayload{
-			Version: cursorVersion, SortVersion: cursorSortVersion, FilterHash: logFilterHash(query),
-			TenantID: profile.TenantID, EffectiveSubject: profile.EffectiveSubjectID,
-			ApplicationID: profile.ApplicationPrincipalID, ScopeFingerprint: profile.Fingerprint,
-			VisibleSources: visibleSourceIDs, Positions: positions, QueryWatermark: queryWatermark,
-			ExpiresAt: time.Now().Add(cursorTTL),
-		})
+		if len(positions) > 0 {
+			result.NextCursor = encodeCursor(service.cursorKey, cursorPayload{
+				Version: cursorVersion, SortVersion: cursorSortVersion, FilterHash: logFilterHash(query),
+				TenantID: profile.TenantID, EffectiveSubject: profile.EffectiveSubjectID,
+				ApplicationID: profile.ApplicationPrincipalID, ScopeFingerprint: profile.Fingerprint,
+				VisibleSources: visibleSourceIDs, Positions: positions, QueryWatermark: queryWatermark,
+				ExpiresAt: time.Now().Add(cursorTTL),
+			})
+		}
 	}
 	result.Partial = failed > 0
 	result.Count = int64(len(result.Records))
@@ -260,7 +274,7 @@ func (service *Service) Facets(
 		return values[i].Count > values[j].Count
 	})
 	return observabilityvo.FacetResult{
-		Values: values, Partial: list.Partial || !list.CountExact, SourceStatus: list.SourceStatus,
+		Values: values, Partial: list.Partial || !list.CountExact, SampledRecords: len(list.Records), SourceStatus: list.SourceStatus,
 	}, nil
 }
 
@@ -385,7 +399,23 @@ func afterSourcePosition(record observabilityvo.LogRecord, position *observabili
 	if record.EventTimestamp.Before(position.EventTimestamp) {
 		return true
 	}
-	return record.EventTimestamp.Equal(position.EventTimestamp) && record.LogID < position.LogID
+	return record.EventTimestamp.Equal(position.EventTimestamp) && positionID(record) > position.LogID
+}
+
+func positionForRecord(record observabilityvo.LogRecord) observabilityvo.SourcePosition {
+	if record.CursorPosition != nil {
+		position := *record.CursorPosition
+		position.SearchAfter = append([]any(nil), record.CursorPosition.SearchAfter...)
+		return position
+	}
+	return observabilityvo.SourcePosition{EventTimestamp: record.EventTimestamp, LogID: positionID(record)}
+}
+
+func positionID(record observabilityvo.LogRecord) string {
+	if record.SourceLogID != "" {
+		return record.SourceLogID
+	}
+	return record.LogID
 }
 
 func recordKey(record observabilityvo.LogRecord) string {

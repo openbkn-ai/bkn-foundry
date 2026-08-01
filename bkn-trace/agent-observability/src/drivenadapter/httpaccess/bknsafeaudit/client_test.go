@@ -65,6 +65,31 @@ func TestSearchRequiresForwardedCallerAuthorization(t *testing.T) {
 	}
 }
 
+func TestSearchPreservesNanosecondKeysetBoundary(t *testing.T) {
+	var request *http.Request
+	httpClient := &http.Client{Transport: roundTripFunc(func(candidate *http.Request) (*http.Response, error) {
+		request = candidate
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"logs":[],"total":0}`)), Header: make(http.Header), Request: candidate}, nil
+	})}
+	client := New("http://bkn-safe:3000", httpClient)
+	boundary := time.Date(2026, 8, 1, 10, 0, 0, 123456789, time.UTC)
+	ctx := observabilityvo.WithSourceAuthorization(context.Background(), "Bearer token-a")
+
+	_, err := client.Search(ctx, observabilityvo.LogQuery{
+		AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
+		PageBefore:           &observabilityvo.SourcePosition{EventTimestamp: boundary, LogID: "audit-boundary"},
+	})
+	if err != nil {
+		t.Fatalf("search audit source: %v", err)
+	}
+	if got := request.URL.Query().Get("to"); got != "2026-08-01T10:00:00.123456789Z" {
+		t.Fatalf("keyset timestamp lost precision: %q", got)
+	}
+	if got := request.URL.Query().Get("before_id"); got != "audit-boundary" {
+		t.Fatalf("same-timestamp tiebreaker missing: %q", got)
+	}
+}
+
 func TestGetProjectsOneAuditRecordAndNeverExposesRawDetail(t *testing.T) {
 	var request *http.Request
 	httpClient := &http.Client{Transport: roundTripFunc(func(candidate *http.Request) (*http.Response, error) {

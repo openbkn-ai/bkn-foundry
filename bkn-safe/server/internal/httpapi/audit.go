@@ -294,9 +294,10 @@ func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforce
 			Offset:     atoiDefault(c.Query("offset"), 0),
 			Limit:      atoiDefault(c.Query("limit"), 0),
 			FailedOnly: strings.EqualFold(c.Query("failed_only"), "true"),
+			BeforeID:   c.Query("before_id"),
 		}
 		if v := c.Query("from"); v != "" {
-			t, err := time.Parse(time.RFC3339, v)
+			t, err := time.Parse(time.RFC3339Nano, v)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "from must be an RFC3339 timestamp"})
 				return
@@ -304,7 +305,7 @@ func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforce
 			f.From = t
 		}
 		if v := c.Query("to"); v != "" {
-			t, err := time.Parse(time.RFC3339, v)
+			t, err := time.Parse(time.RFC3339Nano, v)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "to must be an RFC3339 timestamp"})
 				return

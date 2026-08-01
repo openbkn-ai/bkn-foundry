@@ -808,16 +808,15 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 	}
 	businessDomain := strings.TrimSpace(r.Header.Get("x-business-domain"))
 	if accountID == "" || accountType == "" || strings.EqualFold(accountType, "anonymous") || tenantID == "" && businessDomain == "" {
-		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
-			Code:    "QUERY_IDENTITY_REQUIRED",
-			Message: "trusted account and tenant or business domain context is required",
-		})
+		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_REQUIRED", "trusted account and tenant or business domain context is required")
 		return evidencevo.QueryScope{}, false
 	}
 	scope := evidencevo.QueryScope{
 		TenantID: tenantID, BusinessDomain: businessDomain, AccountID: accountID, AccountType: accountType,
 		Authorization: strings.TrimSpace(r.Header.Get("Authorization")),
-		View:          evidencevo.AccessViewBusiness,
+		// Evidence and assembly queries retain the business view. Technical view is
+		// selected only by the unified log service after record-scope authorization.
+		View: evidencevo.AccessViewBusiness,
 	}
 	if h.authorizationScopeResolver != nil {
 		effectiveSubjectID := strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-ID"))
@@ -835,9 +834,7 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 			DelegationID:           strings.TrimSpace(r.Header.Get("X-BKN-Delegation-ID")),
 		})
 		if err != nil {
-			writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
-				Code: "QUERY_ACCESS_DENIED", Message: "current account and record scope could not be authorized",
-			})
+			writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_ACCESS_DENIED", "current account and record scope could not be authorized")
 			return evidencevo.QueryScope{}, false
 		}
 		scope.AccessProfile = &profile
@@ -910,14 +907,10 @@ func (h *EvidenceHandler) authorizeQueryGateway(w http.ResponseWriter, r *http.R
 		return h.authorizeOAuthQuery(w, r)
 	}
 	if h.queryGatewayToken == "" {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
-			Code: "QUERY_AUTH_NOT_CONFIGURED", Message: "query gateway authentication is not configured",
-		})
+		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_AUTH_NOT_CONFIGURED", "query gateway authentication is not configured")
 		return false
 	}
-	writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
-		Code: "QUERY_GATEWAY_AUTH_REQUIRED", Message: "trusted query gateway authentication is required",
-	})
+	writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_GATEWAY_AUTH_REQUIRED", "trusted query gateway authentication is required")
 	return false
 }
 
@@ -933,52 +926,52 @@ type hydraIntrospectionResponse struct {
 func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Request) bool {
 	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
 	if len(authorization) <= len("Bearer ") || !strings.EqualFold(authorization[:len("Bearer ")], "Bearer ") {
-		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_OAUTH_REQUIRED", Message: "active OAuth bearer token is required"})
+		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required")
 		return false
 	}
 	token := strings.TrimSpace(authorization[len("Bearer "):])
 	if token == "" {
-		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_OAUTH_REQUIRED", Message: "active OAuth bearer token is required"})
+		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required")
 		return false
 	}
 
 	form := url.Values{"token": []string{token}}.Encode()
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.hydraAdminURL+"/admin/oauth2/introspect", bytes.NewBufferString(form))
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "QUERY_OAUTH_UNAVAILABLE", Message: "OAuth introspection is unavailable"})
+		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
 		return false
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := h.queryHTTPClient.Do(req)
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "QUERY_OAUTH_UNAVAILABLE", Message: "OAuth introspection is unavailable"})
+		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
 		return false
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "QUERY_OAUTH_UNAVAILABLE", Message: "OAuth introspection is unavailable"})
+		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
 		return false
 	}
 
 	var introspection hydraIntrospectionResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&introspection); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "QUERY_OAUTH_UNAVAILABLE", Message: "OAuth introspection is unavailable"})
+		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
 		return false
 	}
 	accountID := strings.TrimSpace(introspection.Subject)
 	accountType := normalizedOAuthAccountType(introspection)
 	if !introspection.Active || accountID == "" || accountType == "" {
-		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_OAUTH_REQUIRED", Message: "active OAuth bearer token is required"})
+		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required")
 		return false
 	}
 	if supplied := strings.TrimSpace(r.Header.Get("x-account-id")); supplied != "" && supplied != accountID {
-		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_IDENTITY_MISMATCH", Message: "request identity does not match OAuth token"})
+		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request identity does not match OAuth token")
 		return false
 	}
 	if supplied := strings.TrimSpace(r.Header.Get("x-account-type")); supplied != "" && !strings.EqualFold(supplied, accountType) {
-		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_IDENTITY_MISMATCH", Message: "request identity does not match OAuth token"})
+		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request identity does not match OAuth token")
 		return false
 	}
 	expectedApplicationPrincipalID := ""
@@ -994,7 +987,7 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 		{header: "X-BKN-Delegation-ID", expected: ""},
 	} {
 		if supplied := strings.TrimSpace(r.Header.Get(identity.header)); supplied != "" && supplied != identity.expected {
-			writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_IDENTITY_MISMATCH", Message: "request delegation identity does not match OAuth token"})
+			writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request delegation identity does not match OAuth token")
 			return false
 		}
 	}
@@ -1009,6 +1002,14 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 	r.Header.Del("X-BKN-Delegation-ID")
 	r.Header.Set("X-BKN-Authenticated-Client-ID", strings.TrimSpace(introspection.ClientID))
 	return true
+}
+
+func writeQueryAuthorizationError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+	if strings.HasPrefix(r.URL.Path, "/api/observability/v1/") {
+		writeObservabilityError(w, r, status, strings.ToLower(code), message)
+		return
+	}
+	writeJSON(w, status, rdto.ErrorResponse{Code: code, Message: message})
 }
 
 func normalizedOAuthAccountType(response hydraIntrospectionResponse) string {

@@ -29,11 +29,11 @@ func (client *fakeSearchClient) GetDocument(context.Context, string, string) (op
 func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 	backend := &fakeSearchClient{response: []byte(`{
 		"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"source-log-a","_source":{
-			"attributes":{"source_id":"context-loader","tenant_id":"tenant-a","business_domain_id":"domain-a","log_category":"runtime.business","event_name":"knowledge.read.completed","effective_subject_id":"builder-a","request_id":"req-a","conversation_id":"conversation-a","interaction_id":"interaction-a","operation_id":"operation-a","knowledge_network_ids":["kn-a"],"ingress_principal":"otel-gateway","trust_level":"trusted"},
+				"attributes":{"log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","tenant_id":"tenant-a","business_domain_id":"domain-a","log_category":"runtime.business","event_name":"knowledge.read.completed","effective_subject_id":"builder-a","request_id":"req-a","conversation_id":"conversation-a","interaction_id":"interaction-a","operation_id":"operation-a","knowledge_network_ids":["kn-a"],"ingress_principal":"otel-gateway","trust_level":"trusted"},
 			"body":"读取需求预测对象","observedTimestamp":"2026-08-01T11:35:47Z","@timestamp":"2026-08-01T11:35:46Z",
 			"resource":{"service.name":"context-loader","deployment.environment":"production"},
 			"severity":{"text":"INFO","number":9},"traceId":"trace-a","spanId":"span-a"
-		}}]}}`)}
+			},"sort":["2026-08-01T11:35:46.123456Z","source-log-a"]}]}}`)}
 	client := New(backend, "ss4o_logs-default-namespace")
 	page, err := client.Search(context.Background(), observabilityvo.LogQuery{
 		TraceID: "trace-a", Limit: 20,
@@ -60,9 +60,36 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 		t.Fatalf("expected one mapped log, got %+v", page)
 	}
 	record := page.Records[0]
-	if record.LogID != "source-log-a" || record.SourceID != "context-loader" || record.TenantID != "tenant-a" || record.Category != observabilityvo.CategoryRuntimeBusiness ||
+	if record.LogID != "context-loader:source-log-a" || record.SourceID != "context-loader" || record.SourceLogID != "source-log-a" || record.TenantID != "tenant-a" || record.Category != observabilityvo.CategoryRuntimeBusiness ||
 		record.ServiceName != "context-loader" || record.TraceID != "trace-a" || len(record.KnowledgeNetworkIDs) != 1 {
 		t.Fatalf("unexpected SS4O projection: %+v", record)
+	}
+	if record.CursorPosition == nil || len(record.CursorPosition.SearchAfter) != 2 || record.CursorPosition.SearchAfter[0] != "2026-08-01T11:35:46.123456Z" {
+		t.Fatalf("OpenSearch sort values were not preserved: %+v", record.CursorPosition)
+	}
+}
+
+func TestSearchReplaysNativeSearchAfterValues(t *testing.T) {
+	backend := &fakeSearchClient{response: []byte(`{"hits":{"total":{"value":0,"relation":"eq"},"hits":[]}}`)}
+	client := New(backend, "logs")
+	positionTime := time.Date(2026, 8, 1, 10, 0, 0, 123456789, time.UTC)
+	_, err := client.Search(context.Background(), observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		PageBefore: &observabilityvo.SourcePosition{
+			EventTimestamp: positionTime, LogID: "source-log-a",
+			SearchAfter: []any{"2026-08-01T10:00:00.123456Z", "source-log-a"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var query map[string]any
+	if err := json.Unmarshal(backend.query, &query); err != nil {
+		t.Fatal(err)
+	}
+	searchAfter, _ := query["search_after"].([]any)
+	if len(searchAfter) != 2 || searchAfter[0] != "2026-08-01T10:00:00.123456Z" || searchAfter[1] != "source-log-a" {
+		t.Fatalf("native search_after was reconstructed instead of replayed: %#v", searchAfter)
 	}
 }
 
@@ -83,7 +110,7 @@ func TestSearchUsesCandidateScopeInsteadOfRequiringEveryManagedNetwork(t *testin
 	if bytes.Count(backend.query, []byte("attributes.knowledge_network_ids.keyword")) != 1 {
 		t.Fatalf("managed networks must be one candidate terms query, not all-of terms: %s", backend.query)
 	}
-	for _, expected := range []string{"minimum_should_match", "attributes.effective_subject_id.keyword", "attributes.application_id.keyword", "search_after", "log-20"} {
+	for _, expected := range []string{"minimum_should_match", "attributes.effective_subject_id.keyword", "attributes.application_id.keyword", "attributes.source_log_id.keyword", "search_after", "log-20"} {
 		if !containsBytes(backend.query, expected) {
 			t.Fatalf("missing scoped keyset element %q: %s", expected, backend.query)
 		}

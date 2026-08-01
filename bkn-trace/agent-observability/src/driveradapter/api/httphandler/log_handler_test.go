@@ -262,6 +262,37 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 	}
 }
 
+func TestLogHandlerUsesCanonicalObservabilityErrorEnvelope(t *testing.T) {
+	profile := evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "admin-a",
+		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
+	}
+	handler := newTestLogHandler(profile, nil)
+	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?trace_id=invalid", nil)
+	request.Header.Set("X-Request-ID", "req-error-contract")
+	response := httptest.NewRecorder()
+
+	handler.ListLogs(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected status: %d %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Error struct {
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			Retryable bool   `json:"retryable"`
+			RequestID string `json:"request_id"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Code != "invalid_log_filter" || body.Error.Message == "" || body.Error.Retryable || body.Error.RequestID != "req-error-contract" {
+		t.Fatalf("unexpected observability error envelope: %s", response.Body.String())
+	}
+}
+
 func TestLogHandlerForwardsCallerAuthorizationToSourceAdapters(t *testing.T) {
 	profile := evidencevo.AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "audit-a",
@@ -340,7 +371,14 @@ func newTestLogHandler(profile evidencevo.AccessProfile, records []observability
 
 func containsJSONCode(payload []byte, expected string) bool {
 	var body map[string]any
-	return json.Unmarshal(payload, &body) == nil && (body["code"] == expected || body["error_code"] == expected)
+	if json.Unmarshal(payload, &body) != nil {
+		return false
+	}
+	if body["code"] == expected || body["error_code"] == expected {
+		return true
+	}
+	errorBody, _ := body["error"].(map[string]any)
+	return errorBody["code"] == expected
 }
 
 func setLogTestIdentity(request *http.Request, subject string) {

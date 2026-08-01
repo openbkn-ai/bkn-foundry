@@ -4,7 +4,7 @@
   "info": {
     "title": "OpenBKN 日志查询 API",
     "version": "0.1.3-r6.2",
-    "description": "OpenBKN 0.1.3 统一日志列表、详情、facet、来源健康、只读策略和导出机器合同。高风险治理写操作、隔离逐条访问和 compliance_grade 不在本版实现范围。"
+    "description": "OpenBKN 0.1.3 当前已实现的统一日志列表、详情、采样 facet、来源健康和只读策略机器合同。日志导出、高风险治理写操作、隔离逐条访问和 compliance_grade 尚未进入本实现合同。"
   },
   "security": [
     {
@@ -434,7 +434,7 @@
         ],
         "responses": {
           "200": {
-            "description": "使用与日志列表相同的过滤和授权投影计算 facet。",
+            "description": "使用与日志列表相同的过滤和授权投影，对当前页最多 200 条记录计算采样 facet；sampled_records 返回实际样本数，partial=true 表示不得按全量分布解读。",
             "content": {
               "application/json": {
                 "schema": {
@@ -525,72 +525,6 @@
           },
           "403": {
             "$ref": "#/components/responses/AccessDenied"
-          }
-        }
-      }
-    },
-    "/api/observability/v1/log-exports": {
-      "post": {
-        "operationId": "createObservabilityLogExport",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LogExportRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "导出任务已受理或进入审批。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LogExportJob"
-                }
-              }
-            }
-          },
-          "403": {
-            "$ref": "#/components/responses/PermissionDenied"
-          },
-          "401": {
-            "$ref": "#/components/responses/AuthenticationRequired"
-          }
-        }
-      }
-    },
-    "/api/observability/v1/log-exports/{job_id}": {
-      "get": {
-        "operationId": "getObservabilityLogExport",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "返回任务状态；下载地址仅在 ready 且仍有权限时短期返回。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LogExportJob"
-                }
-              }
-            }
-          },
-          "404": {
-            "$ref": "#/components/responses/NotDisclosed"
-          },
-          "401": {
-            "$ref": "#/components/responses/AuthenticationRequired"
           }
         }
       }
@@ -1715,6 +1649,7 @@
         "required": [
           "data",
           "partial",
+          "sampled_records",
           "source_status",
           "next_cursor"
         ],
@@ -1741,6 +1676,11 @@
           },
           "partial": {
             "type": "boolean"
+          },
+          "sampled_records": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200
           },
           "source_status": {
             "type": "array",
