@@ -1498,7 +1498,6 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 
-
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 		}
@@ -1555,9 +1554,7 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 			edge := &interfaces.TypeEdge{
 				RelationType: interfaces.RelationType{
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1574,11 +1571,21 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
+					},
+				},
+			}
 
 			conditions, viewDataMap, err := service.buildBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldNotBeNil)
-			So(conditions, ShouldBeNil)
-			So(viewDataMap, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(conditions, ShouldNotBeNil)
+			So(viewDataMap, ShouldNotBeNil)
 		})
 
 		Convey("成功 - 混合映射", func() {
@@ -1626,7 +1633,6 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -1687,9 +1693,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1706,15 +1710,22 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
+					},
+				},
+			}
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
-			So(conditions, ShouldBeNil)
-			So(viewDataMap, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(conditions, ShouldNotBeNil)
+			So(viewDataMap, ShouldNotBeNil)
+			So(len(viewDataMap), ShouldBeGreaterThan, 0)
 		})
 
 		Convey("失败 - 获取视图数据错误", func() {
@@ -1735,9 +1746,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1752,6 +1761,10 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 						},
 					},
 				},
+			}
+
+			service.vba = &vegaStubForKNQuery{
+				err: rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
 			}
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
@@ -1778,9 +1791,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1797,16 +1808,24 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
+					},
+				},
+			}
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, false)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
-			So(conditions, ShouldBeNil)
-			So(viewDataMap, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(conditions, ShouldNotBeNil)
+			So(len(conditions), ShouldBeGreaterThan, 0)
+			So(viewDataMap, ShouldNotBeNil)
+			So(len(viewDataMap), ShouldBeGreaterThan, 0)
+			So(len(viewDataMap["obj1"]), ShouldEqual, 1)
 		})
 
 		Convey("成功 - 空视图数据", func() {
@@ -1827,9 +1846,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1846,15 +1863,16 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{},
+				},
+			}
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
-			So(conditions, ShouldBeNil)
-			So(viewDataMap, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(len(conditions), ShouldEqual, 0)
+			So(len(viewDataMap), ShouldEqual, 0)
 		})
 
 		Convey("成功 - 单个映射规则且多个值使用in操作", func() {
@@ -1881,9 +1899,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				RelationType: interfaces.RelationType{
 					RTName: "relation1",
 					MappingRules: &interfaces.InDirectMapping{
-						BackingDataSource: &interfaces.ResourceInfo{
-							ID: "view1",
-						},
+						BackingDataSource: resourceBacking("res1"),
 						SourceMappingRules: []interfaces.Mapping{
 							{
 								SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1900,15 +1916,21 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{"view_id": "123", "view_target_id": "789"},
+						{"view_id": "456", "view_target_id": "790"},
+					},
+				},
+			}
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
-			So(conditions, ShouldBeNil)
-			So(viewDataMap, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(conditions, ShouldNotBeNil)
+			So(len(conditions), ShouldEqual, 1)
+			So(conditions[0].Operation, ShouldEqual, "in")
+			So(viewDataMap, ShouldNotBeNil)
 		})
 	})
 }
@@ -1919,7 +1941,6 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -1949,9 +1970,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -1966,14 +1985,21 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"view_id":        "123",
+							"view_target_id": "456",
+						},
+					},
+				},
+			}
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
-			So(result, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(len(result), ShouldBeGreaterThan, 0)
 		})
 
 		Convey("失败 - 获取视图数据错误", func() {
@@ -1997,15 +2023,17 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
 						TargetProp: interfaces.SimpleProperty{Name: "view_id"},
 					},
 				},
+			}
+
+			service.vba = &vegaStubForKNQuery{
+				err: rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
 			}
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
@@ -2036,9 +2064,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -2053,14 +2079,18 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{"view_id": "0", "view_target_id": "100"},
+						{"view_id": "1", "view_target_id": "101"},
+					},
+				},
+			}
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
-			So(result, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
 		})
 
 		Convey("成功 - 单个映射规则使用in操作", func() {
@@ -2090,9 +2120,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
-				BackingDataSource: &interfaces.ResourceInfo{
-					ID: "view1",
-				},
+				BackingDataSource: resourceBacking("res1"),
 				SourceMappingRules: []interfaces.Mapping{
 					{
 						SourceProp: interfaces.SimpleProperty{Name: "id"},
@@ -2101,15 +2129,18 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{"view_id": "123"},
+						{"view_id": "456"},
+					},
+				},
+			}
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
-			So(result, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
 		})
 	})
 }
@@ -2245,4 +2276,23 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 			So(len(result["obj1"]), ShouldEqual, 1)
 		})
 	})
+}
+
+type vegaStubForKNQuery struct {
+	resp *interfaces.DatasetQueryResponse
+	err  error
+}
+
+func (v *vegaStubForKNQuery) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	if v.err != nil {
+		return nil, v.err
+	}
+	return v.resp, nil
+}
+
+func resourceBacking(id string) *interfaces.ResourceInfo {
+	return &interfaces.ResourceInfo{
+		Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+		ID:   id,
+	}
 }

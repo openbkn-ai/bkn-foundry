@@ -190,15 +190,13 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 			query.Sort = logics.BuildViewSort(objectType)
 		}
 		// 3. 请求 vega Resource 获取数据
-		if objectType.DataSource != nil && objectType.DataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		if objectType.DataSource == nil || objectType.DataSource.ID == "" {
+			return resps, logics.MissingObjectTypeDataSourceError(ctx, objectType.OTID)
+		}
+		if objectType.DataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
 		} else {
-			dsType := ""
-			if objectType.DataSource != nil {
-				dsType = objectType.DataSource.Type
-			}
-			return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", dsType, objectType.OTID))
+			return resps, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
 		}
 		if err != nil {
 			return resps, err

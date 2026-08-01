@@ -1127,8 +1127,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			if mappingRules.BackingDataSource != nil {
 				backingType = mappingRules.BackingDataSource.Type
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", backingType))
+			return nil, logics.UnsupportedRelationBackingDataSourceError(ctx, backingType)
 		}
 
 		kns.mapViewDataToObjects(backingRows, batchConditions, objectMapping, mappingRules, isForward, result)

@@ -1255,8 +1255,7 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 					backingLabel = res.Name
 					fieldsMap = logics.VegaResourceSchemaToFieldsMap(res)
 				default:
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", inDirectMappingRules.BackingDataSource.Type))
+					return logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, inDirectMappingRules.BackingDataSource.Type)
 				}
 
 				for _, mapping := range inDirectMappingRules.SourceMappingRules {

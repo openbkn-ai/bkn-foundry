@@ -245,24 +245,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
-				},
-			}
-
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
-				},
-			}
-
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
@@ -438,15 +420,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				ObjectTypeID: objectTypeID,
 				PageQuery: interfaces.PageQuery{
 					Limit: 10,
-				},
-			}
-
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
 				},
 			}
 
@@ -918,15 +891,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
-				},
-			}
-
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
@@ -980,15 +944,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 				PageQuery: interfaces.PageQuery{
 					Limit: 10,
-				},
-			}
-
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
 				},
 			}
 
@@ -1065,15 +1020,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 			}
 
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
-				},
-			}
-
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
@@ -1128,15 +1074,6 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				},
 				PageQuery: interfaces.PageQuery{
 					Limit: 10,
-				},
-			}
-
-			service.vba = &vegaStubForOTQuery{
-				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
-					Entries: []map[string]any{
-						{"field1": "value1", "id": "123", "prop1": "value1"},
-					},
 				},
 			}
 

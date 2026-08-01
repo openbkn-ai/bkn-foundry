@@ -89,9 +89,7 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 					WithErrorDetails(fmt.Sprintf("对象类[%s]的资源[%s]不存在", objectType.OTName, objectType.DataSource.ID))
 			}
 		default:
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", objectType.DataSource.Type, objectType.OTID))
+			return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
 		}
 	}
 	if objectType.DataProperties != nil {
@@ -712,9 +710,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 			OutputFields: outputFields,
 		})
 	default:
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", dsType, objectType.OTID))
+		return nil, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, dsType)
 	}
 	if err != nil {
 		logger.Errorf("Query object type sample data error: %s", err.Error())
@@ -1810,20 +1806,21 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 				}
 			}
 		}
-	}
 
-	// 逻辑属性，资源id转名称
-	for j, logicProp := range objectType.LogicProperties {
-		if logicProp.DataSource != nil {
-			switch logicProp.DataSource.Type {
-			case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
-				if logicProp.DataSource.ID != "" {
-					ots.enrichLogicMetricProperty(ctx, objectType, logicProp, j)
+		// 逻辑属性，资源id转名称
+		for j, logicProp := range objectType.LogicProperties {
+			if logicProp.DataSource != nil {
+				switch logicProp.DataSource.Type {
+				case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
+					if logicProp.DataSource.ID != "" {
+						ots.enrichLogicMetricProperty(ctx, objectType, logicProp, j)
+					}
 				}
+				// todo: 处理动态参数,动态参数统一放在一个新字段上,供统一召回的大模型使用(检索那边也需要处理一下)
 			}
-			// todo: 处理动态参数,动态参数统一放在一个新字段上,供统一召回的大模型使用(检索那边也需要处理一下)
 		}
 	}
+
 	return nil
 }
 
