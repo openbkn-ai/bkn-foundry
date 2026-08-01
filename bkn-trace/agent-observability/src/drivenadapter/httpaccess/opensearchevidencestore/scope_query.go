@@ -38,7 +38,7 @@ func scopeCandidateMust(scope evidencevo.QueryScope) []map[string]any {
 		ownerMust := appendLegacyOwnerMust(nil, scope)
 		should = append(should, map[string]any{"bool": map[string]any{"must": ownerMust}})
 	}
-	if len(profile.ManagedKnowledgeNetworkIDs) > 0 {
+	if evidencevo.NeedsCrossAccountCandidates(scope) {
 		should = append(should, map[string]any{"terms": map[string]any{
 			"knowledge_network_ids": profile.ManagedKnowledgeNetworkIDs,
 		}})

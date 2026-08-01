@@ -54,6 +54,23 @@ func TestScopeCandidateMustDoesNotTreatTypeWideNetworkGrantAsBusinessContentAcce
 	}
 }
 
+func TestScopeCandidateMustRequiresNetworkBuilderRoleForManagedNetworkCandidates(t *testing.T) {
+	profile := &evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "user-a",
+		Roles: []string{"normal_user"}, ManagedKnowledgeNetworkIDs: []string{"kn-a"},
+		AccountActive: true, TenantActive: true,
+	}
+	must := scopeCandidateMust(evidencevo.QueryScope{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountID: "user-a", AccountType: "user",
+		View: evidencevo.AccessViewBusiness, AccessProfile: profile,
+	})
+
+	rendered := mustJSON(t, must)
+	if strings.Contains(rendered, "knowledge_network_ids") {
+		t.Fatalf("managed network candidates require the network_builder role: %s", rendered)
+	}
+}
+
 func TestScopeCandidateMustAllowsExplicitTechnicalCrossAccountScanInsideTenantDomain(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "admin-a",

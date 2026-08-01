@@ -248,7 +248,7 @@ func WithEvents(trace NormalizedTrace, events []EvidenceEvent) NormalizedTrace {
 func knowledgeNetworkIDsFromEvents(events []EvidenceEvent) []string {
 	networks := map[string]struct{}{}
 	for _, event := range events {
-		collectKnowledgeNetworkIDs(event.Payload, networks)
+		collectKnowledgeNetworkIDs(event.Payload, networks, false)
 	}
 	return sortedKnowledgeNetworkIDs(networks)
 }
@@ -264,10 +264,10 @@ func KnowledgeNetworkIDsFromRefs(refs []string) []string {
 	return sortedKnowledgeNetworkIDs(networks)
 }
 
-func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}) {
+func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}, allowBareRef bool) {
 	switch item := value.(type) {
 	case string:
-		if networkID := knowledgeNetworkIDFromCanonicalRef(item); networkID != "" {
+		if networkID := knowledgeNetworkIDFromCanonicalRef(item); allowBareRef && networkID != "" {
 			networks[networkID] = struct{}{}
 		}
 	case map[string]any:
@@ -275,16 +275,21 @@ func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}) {
 			addKnowledgeNetworkID(networkID, networks)
 		}
 		if refID, ok := item["ref_id"].(string); ok {
-			collectKnowledgeNetworkIDs(refID, networks)
+			collectKnowledgeNetworkIDs(refID, networks, true)
 		}
-		for _, nested := range item {
-			collectKnowledgeNetworkIDs(nested, networks)
+		for key, nested := range item {
+			collectKnowledgeNetworkIDs(nested, networks, isCanonicalRefContainer(key))
 		}
 	case []any:
 		for _, nested := range item {
-			collectKnowledgeNetworkIDs(nested, networks)
+			collectKnowledgeNetworkIDs(nested, networks, allowBareRef)
 		}
 	}
+}
+
+func isCanonicalRefContainer(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	return strings.HasSuffix(key, "_ref") || strings.HasSuffix(key, "_refs")
 }
 
 func knowledgeNetworkIDFromCanonicalRef(ref string) string {

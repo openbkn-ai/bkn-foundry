@@ -238,6 +238,8 @@ func TestWithEventsDerivesStableKnowledgeNetworkScope(t *testing.T) {
 			},
 		}},
 		{Payload: map[string]any{
+			"message":       "diagnostic text mentions object:kn-phantom:forecast but is not a business ref",
+			"model_outputs": []any{"property:kn-phantom:forecast:qty"},
 			"business_refs": []any{"relation:kn-a:forecast_product", "logic:kn-c:forecast:sum"},
 			"source_refs":   []any{"object:kn-source:forecast"},
 			"resource_refs": []any{map[string]any{"ref_id": "resource:data-view-forecast"}},
