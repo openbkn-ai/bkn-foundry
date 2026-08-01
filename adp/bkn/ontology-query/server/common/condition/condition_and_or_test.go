@@ -60,13 +60,13 @@ func Test_newAndCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("success - empty AND rewrites to nil", func() {
+		Convey("success - empty AND creates nil condition", func() {
 			cfg := &CondCfg{
 				Operation: OperationAnd,
 				SubConds:  []*CondCfg{},
 			}
 			cond, err := newAndCond(ctx, cfg, CUSTOM, fieldsMap)
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			So(cond, ShouldBeNil)
 		})
 
@@ -472,17 +472,17 @@ func Test_rewriteOrCondition(t *testing.T) {
 			return []VectorResp{}, nil
 		}
 
-		Convey("success - empty OR rewrites to nil", func() {
+		Convey("failure - empty OR fails closed during rewrite", func() {
 			cfg := &CondCfg{
 				Operation: OperationOr,
 				SubConds:  []*CondCfg{},
 			}
 			result, err := rewriteOrCondition(ctx, cfg, fieldsMap, vectorizer)
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})
 
-		Convey("success - empty nested OR is skipped during rewrite", func() {
+		Convey("failure - nested empty OR fails closed during rewrite", func() {
 			cfg := &CondCfg{
 				Operation: OperationOr,
 				SubConds: []*CondCfg{
@@ -500,10 +500,8 @@ func Test_rewriteOrCondition(t *testing.T) {
 				},
 			}
 			result, err := rewriteOrCondition(ctx, cfg, fieldsMap, vectorizer)
-			So(err, ShouldBeNil)
-			So(result, ShouldNotBeNil)
-			So(len(result.SubConds), ShouldEqual, 1)
-			So(result.SubConds[0].Name, ShouldEqual, "mapped_name")
+			So(err, ShouldNotBeNil)
+			So(result, ShouldBeNil)
 		})
 	})
 }
