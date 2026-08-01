@@ -136,6 +136,7 @@ RESNAME_impex                     := 导入导出
 RESNAME_operator                  := 算子
 RESNAME_mcp                       := MCP
 RESNAME_toolbox                   := 工具箱
+RESNAME_skill                     := Skill
 
 ## api-docs-html: 用 redocly 为每个 YAML 渲染交互式 HTML 文档（带搜索/折叠/示例），
 ## 输出到 _generated/html/<module>/<resource>.html，并生成一个卡片式 index.html 汇总入口。

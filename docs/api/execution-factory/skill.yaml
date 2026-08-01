@@ -1,0 +1,1508 @@
+---
+openapi: 3.0.3
+info:
+  title: Skill
+  description: |
+    Skill 是一个**文件包**——一份 `SKILL.md` 加上配套脚本与资源，描述「怎么做一件
+    事」。Agent 按需装载它，而不是把全部说明塞进上下文。
+
+    与算子 / 工具的区别：算子和工具是**可调用的函数**，Skill 是**给 Agent 读的
+    工作手册 + 随手册附带的可执行文件**。召回入口在 context-loader 的
+    `find_skills`，那边只返回最小元数据；真正的内容读取与下载在这里。
+
+    **三条读取路径，别用错**：
+
+    | 接口 | 视角 | 读的是 |
+    |---|---|---|
+    | `/skills/{id}/content`、`/files/read`、`/download` | 消费态 | **已发布**的版本 |
+    | `/skills/{id}/management/*` | 管理态 | **当前草稿**，含未发布改动 |
+    | `/skills/{id}/history` + `history/publish` / `history/republish` | 历史 | 已发布过的版本 |
+
+    Studio 的编辑页读管理态，Agent 运行时读消费态。拿错会看到不一致的内容。
+
+    **上传不是 JSON**：注册与更新技能包只接受 `multipart/form-data` 或
+    `application/x-www-form-urlencoded`，发 JSON 直接 400
+    （`unsupported content type`）。
+
+    **时间戳一律是纳秒**：所有 `*_time` 字段由 `time.Now().UnixNano()` 生成。
+
+    **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
+    AppKey）。**本面所有接口都要求 `x-business-domain` 头**（路由组统一加了中间件）。
+  version: 0.1.3
+servers:
+  - url: /api/agent-operator-integration/v1
+security:
+  - OAuth2: []
+  - AppKey: []
+paths:
+  /skills:
+    post:
+      tags:
+        - Skill
+      summary: 注册技能
+      operationId: registerSkill
+      description: |
+        上传一个技能包。**Content-Type 只接受 `multipart/form-data` 或
+        `application/x-www-form-urlencoded`**，发 `application/json` 会被直接拒绝，
+        报 `unsupported content type`。
+
+        `file_type` 决定 `file` 字段怎么解读：
+
+        | `file_type` | `file` 是什么 |
+        |---|---|
+        | `zip` | 技能包压缩文件（multipart 上传） |
+        | `content` | 直接给的技能内容 |
+
+        响应里的 `files` 列出解包后识别到的文件。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegisterSkillForm'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegisterSkillForm'
+      responses:
+        '200':
+          description: 注册结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterSkillResponse'
+        '400':
+          description: 参数错误，或 Content-Type 不是 form / multipart
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags:
+        - Skill
+      summary: 分页查询技能
+      operationId: listSkills
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+        provides:
+          ef_skill_id: data[0].skill_id
+      description: 按业务域分页列出技能，支持按名称、状态、分类、创建人过滤。
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按名称过滤。
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/BizStatus'
+          description: 按状态过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 技能分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/names:
+    post:
+      tags:
+        - Skill
+      summary: 按 ID 批量取技能名
+      operationId: getSkillNames
+      description: |
+        与 `/operator/names`、`/tool-box/names` 同契约：不存在的 ID 静默略过、不占位。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchNamesRequest'
+      responses:
+        '200':
+          description: ID 到名称的映射
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchNamesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/market:
+    get:
+      tags:
+        - Skill
+      summary: 技能市场列表
+      operationId: listSkillMarket
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+      description: |
+        已发布技能的列表。比工作区列表少一个 `status` 过滤——市场里的都是已发布的。
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按名称过滤。
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按分类过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 市场分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/market/{skill_id}:
+    get:
+      tags:
+        - Skill
+      summary: 技能市场详情
+      operationId: getSkillMarketDetail
+      description: 市场视角的技能详情，结构与 `GET /skills/{skill_id}` 一致。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 技能详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}:
+    get:
+      tags:
+        - Skill
+      summary: 查询技能详情
+      operationId: getSkill
+      description: 取技能的元数据。文件清单与内容走 `/content`，包体走 `/download`。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 技能详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+        - Skill
+      summary: 删除技能
+      operationId: deleteSkill
+      description: |
+        删除技能及其全部版本。已被 Agent 挂载的技能删除后装载会失败；
+        knowledge network 里的 `skills` 对象类记录也会随之失效
+        （context-loader 的 `find_skills` 依赖它）。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 删除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/status:
+    put:
+      tags:
+        - Skill
+      summary: 发布 / 下架技能
+      operationId: updateSkillStatus
+      description: |
+        **只接受 `published` 与 `offline` 两个值**——不能通过这个接口把技能改回
+        `unpublish` 或 `editing`，那两个状态由注册与编辑动作产生。
+
+        本面用的是 PUT（工具箱与算子的同类接口用 POST），注意区别。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - published
+                    - offline
+                  description: 目标状态。只接受这两个值。
+      responses:
+        '200':
+          description: 状态更新结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skill_id:
+                    type: string
+                  status:
+                    $ref: '#/components/schemas/BizStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/metadata:
+    put:
+      tags:
+        - Skill
+      summary: 更新技能元数据
+      operationId: updateSkillMetadata
+      description: |
+        改名称 / 描述 / 分类，不动技能包本身。**三个字段都是必填**——整体覆盖。
+
+        更新会产生新 `version`。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSkillMetadataRequest'
+      responses:
+        '200':
+          description: 更新结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/package:
+    put:
+      tags:
+        - Skill
+      summary: 更新技能包
+      operationId: updateSkillPackage
+      description: |
+        换掉技能的文件内容。与注册一样**只接受 form / multipart，不接受 JSON**。
+        更新产生新 `version`，原版本进历史。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateSkillPackageForm'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdateSkillPackageForm'
+      responses:
+        '200':
+          description: 更新结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionResponse'
+        '400':
+          description: 参数错误，或 Content-Type 不是 form / multipart
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/history:
+    get:
+      tags:
+        - Skill
+      summary: 查询技能发布历史
+      operationId: getSkillHistory
+      description: 列出该技能发布过的版本，含每次发布的说明与发布人。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 发布历史
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SkillReleaseHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/history/republish:
+    post:
+      tags:
+        - Skill
+      summary: 把历史版本回灌成草稿
+      operationId: republishSkillHistory
+      description: |
+        取某个历史版本的内容，**写回当前草稿**——不直接发布。用于「拿旧版本当起点
+        继续改」。改完再走正常发布流程。
+
+        与 `history/publish` 的区别：那个是**直接发布**旧版本，跳过草稿。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - version
+              properties:
+                version:
+                  type: string
+                  description: 要回灌的历史版本。
+      responses:
+        '200':
+          description: 回灌结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/history/publish:
+    post:
+      tags:
+        - Skill
+      summary: 直接发布历史版本
+      operationId: publishSkillHistory
+      description: |
+        把某个历史版本**直接发布**成当前版本，跳过草稿。回滚用。
+        草稿里未发布的改动不受影响，仍留在草稿态。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - version
+              properties:
+                version:
+                  type: string
+                  description: 要发布的历史版本。
+      responses:
+        '200':
+          description: 发布结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/content:
+    get:
+      tags:
+        - Skill
+      summary: 查询技能内容（消费态）
+      operationId: getSkillContent
+      description: |
+        返回**已发布版本**的文件清单与包地址。Agent 运行时读的是这个。
+
+        要看草稿里未发布的改动，用 `/management/content`。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 文件清单与包地址
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/files/read:
+    post:
+      tags:
+        - Skill
+      summary: 读取技能内的单个文件（消费态）
+      operationId: readSkillFile
+      description: |
+        按包内相对路径读一个文件。**返回的是文件的下载 URL 而不是内容本身**——
+        拿到 `url` 再去取。路径从 `/content` 返回的 `files[].rel_path` 里挑。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rel_path
+              properties:
+                rel_path:
+                  type: string
+                  description: 包内相对路径，取自 `/content` 的 `files[].rel_path`。
+                  example: SKILL.md
+      responses:
+        '200':
+          description: 文件的访问地址与类型
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillFileRef'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/download:
+    get:
+      tags:
+        - Skill
+      summary: 下载技能包（消费态）
+      operationId: downloadSkill
+      description: 下载**已发布版本**的技能包。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 技能包
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadSkillResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/management/content:
+    get:
+      tags:
+        - Skill
+      summary: 查询技能内容（管理态）
+      operationId: getSkillManagementContent
+      description: |
+        `/content` 的管理态版本：读的是**当前草稿**，含尚未发布的改动。
+        Studio 的编辑页用它。结构与消费态一致。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 草稿的文件清单与包地址
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/management/files/read:
+    post:
+      tags:
+        - Skill
+      summary: 读取技能内的单个文件（管理态）
+      operationId: readSkillManagementFile
+      description: '`/files/read` 的管理态版本：读草稿里的文件。'
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rel_path
+              properties:
+                rel_path:
+                  type: string
+                  description: 包内相对路径。
+      responses:
+        '200':
+          description: 文件的访问地址与类型
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillFileRef'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/management/download:
+    get:
+      tags:
+        - Skill
+      summary: 下载技能包（管理态）
+      operationId: downloadSkillManagement
+      description: '`/download` 的管理态版本：下的是当前草稿。'
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      responses:
+        '200':
+          description: 草稿技能包
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadSkillResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/{skill_id}/execute:
+    post:
+      tags:
+        - Skill
+      summary: 执行技能
+      operationId: executeSkill
+      description: |
+        在沙箱里跑技能包里的一条命令。技能包被上传到沙箱工作目录，然后执行
+        `entry_shell` 指定的命令。
+
+        **`mocked` 字段要看**：为 `true` 表示这次并没有真的在沙箱里执行
+        （沙箱不可用等原因下的降级），返回的 stdout/stderr 不是真实结果。
+
+        与函数执行一样，**命令失败不体现在 HTTP 状态码上**——看 `exit_code`。
+      parameters:
+        - $ref: '#/components/parameters/SkillID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - entry_shell
+              properties:
+                entry_shell:
+                  type: string
+                  description: 要执行的命令。
+                  example: python scripts/run.py --mode full
+                timeout:
+                  type: integer
+                  description: 超时（秒）。
+      responses:
+        '200':
+          description: 执行结果。**命令失败也返回 200，看 `exit_code`**
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteSkillResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/index/build:
+    post:
+      tags:
+        - SkillIndex
+      summary: 创建技能索引构建任务
+      operationId: createSkillIndexBuildTask
+      description: |
+        重建技能的检索索引——`find_skills` 的语义召回依赖它。
+
+        `execute_type` 决定范围：`full` 全量重建，`incremental` 只处理游标之后
+        变更的技能。任务异步执行，用返回的 `task_id` 查进度。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - execute_type
+              properties:
+                execute_type:
+                  $ref: '#/components/schemas/IndexExecuteType'
+      responses:
+        '200':
+          description: 任务已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  status:
+                    $ref: '#/components/schemas/IndexBuildStatus'
+                  execute_type:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags:
+        - SkillIndex
+      summary: 查询索引构建任务列表
+      operationId: listSkillIndexBuildTasks
+      x-contract-probe:
+        readonly: true
+        order: 1
+        query:
+          page_size: 3
+        provides:
+          ef_index_task_id: data[0].task_id
+      description: |
+        分页列出索引构建任务。
+
+        **`status` 过滤不接受 `canceled`**：任务状态本身有 5 个值
+        （`pending` / `running` / `completed` / `failed` / `canceled`），
+        但这个查询参数的白名单只有前 4 个，传 `canceled` 会 400。
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending
+              - running
+              - completed
+              - failed
+          description: |
+            按状态过滤。**不接受 `canceled`**，尽管任务确实会有这个状态。
+        - name: execute_type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/IndexExecuteType'
+          description: 按执行类型过滤。
+        - name: create_user
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按创建人过滤。
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: 忽略分页返回全部。
+      responses:
+        '200':
+          description: 任务分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTaskPage'
+              examples:
+                实测:
+                  value:
+                    total: 4
+                    page: 1
+                    page_size: 2
+                    total_pages: 2
+                    has_next: true
+                    has_prev: false
+                    data:
+                      - task_id: 83039781-8fea-43ba-bc13-11b4fd6f0d39
+                        status: completed
+                        execute_type: full
+                        queue_state: ''
+                        total_count: 1
+                        success_count: 1
+                        delete_count: 0
+                        failed_count: 0
+                        retry_count: 0
+                        max_retry: 3
+                        cursor_update_time: 1784869482749304472
+                        cursor_skill_id: bf93eab9-d2f6-4db3-b564-f47e5e35d4c1
+                        error_msg: ''
+                        create_user: 266c6a42-6131-4d62-8f39-853e7093701c
+                        create_time: 1785228741173540580
+                        update_time: 1785228742311942421
+                        last_finished_time: 1785228742311942166
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/index/build/{task_id}:
+    get:
+      tags:
+        - SkillIndex
+      summary: 查询索引构建任务详情
+      operationId: getSkillIndexBuildTask
+      description: 取单个任务的进度与计数。
+      parameters:
+        - $ref: '#/components/parameters/TaskID'
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBuildTask'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/index/build/{task_id}/cancel:
+    post:
+      tags:
+        - SkillIndex
+      summary: 取消索引构建任务
+      operationId: cancelSkillIndexBuildTask
+      description: |
+        取消排队中或运行中的任务。响应里的 `action` 说明实际做了什么，
+        `queue_state` 说明取消时任务在队列里的位置——已经跑完的任务取消是无操作。
+      parameters:
+        - $ref: '#/components/parameters/TaskID'
+      responses:
+        '200':
+          description: 取消结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  action:
+                    type: string
+                    description: 实际执行的动作。
+                  queue_state:
+                    type: string
+                    description: 取消时任务的队列状态。无则不返回。
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /skills/index/build/{task_id}/retry:
+    post:
+      tags:
+        - SkillIndex
+      summary: 重试索引构建任务
+      operationId: retrySkillIndexBuildTask
+      description: |
+        以失败任务为模板**新建**一个任务重跑。响应里 `source_task_id` 是原任务、
+        `task_id` 是新任务——原任务记录保留不变。
+      parameters:
+        - $ref: '#/components/parameters/TaskID'
+      responses:
+        '200':
+          description: 新任务已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source_task_id:
+                    type: string
+                    description: 被重试的原任务 ID。
+                  task_id:
+                    type: string
+                    description: 新建的任务 ID。
+                  status:
+                    $ref: '#/components/schemas/IndexBuildStatus'
+                  execute_type:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+    AppKey:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    SkillID:
+      name: skill_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 技能 ID。
+    TaskID:
+      name: task_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 索引构建任务 ID。
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 页码，从 1 开始。
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      description: 每页数量，1–100。
+    SortBy:
+      name: sort_by
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - create_time
+          - update_time
+          - name
+        default: update_time
+      description: 排序字段。
+    SortOrder:
+      name: sort_order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+      description: 排序方向。
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    Unauthorized:
+      description: 凭据缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    NotFound:
+      description: 技能或任务不存在
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  schemas:
+    BizStatus:
+      type: string
+      enum:
+        - unpublish
+        - published
+        - offline
+        - editing
+      description: |
+        技能状态。注意**发布接口只接受 `published` / `offline`**，
+        另两个由注册与编辑动作产生。
+
+    SkillFileType:
+      type: string
+      enum:
+        - zip
+        - content
+      description: |
+        上传形态：`zip` 是技能包压缩文件，`content` 是直接给的技能内容。
+
+    IndexExecuteType:
+      type: string
+      enum:
+        - full
+        - incremental
+      description: 索引构建范围：全量 / 增量。
+
+    IndexBuildStatus:
+      type: string
+      enum:
+        - pending
+        - running
+        - completed
+        - failed
+        - canceled
+      description: |
+        任务状态。**列表接口的 `status` 过滤参数不接受 `canceled`**，
+        尽管任务确实会进入这个状态。
+
+    CommonPage:
+      type: object
+      description: 本服务通用的分页信封。
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+
+    SkillPage:
+      allOf:
+        - $ref: '#/components/schemas/CommonPage'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/SkillInfo'
+
+    IndexTaskPage:
+      allOf:
+        - $ref: '#/components/schemas/CommonPage'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/IndexBuildTask'
+
+    RegisterSkillForm:
+      type: object
+      required:
+        - file_type
+        - file
+      properties:
+        file_type:
+          $ref: '#/components/schemas/SkillFileType'
+        file:
+          type: string
+          format: binary
+          description: |
+            技能包。`file_type=zip` 时是压缩文件，`file_type=content` 时是内容本身。
+        category:
+          type: string
+          default: other_category
+          description: 分类。
+        source:
+          type: string
+          enum:
+            - custom
+            - internal
+          default: custom
+          description: 来源。
+        extend_info:
+          type: string
+          description: 扩展信息（JSON 字符串）。
+
+    UpdateSkillPackageForm:
+      type: object
+      required:
+        - file_type
+        - file
+      properties:
+        file_type:
+          $ref: '#/components/schemas/SkillFileType'
+        file:
+          type: string
+          format: binary
+          description: 新的技能包内容。
+
+    RegisterSkillResponse:
+      type: object
+      properties:
+        skill_id:
+          type: string
+        name:
+          type: string
+          description: 从技能包里解析出的名称。
+        description:
+          type: string
+          description: 从技能包里解析出的描述。
+        version:
+          type: string
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        files:
+          type: array
+          items:
+            type: string
+          description: 解包后识别到的文件路径。
+
+    UpdateSkillMetadataRequest:
+      type: object
+      description: 整体覆盖——三个必填字段不传就报错。
+      required:
+        - name
+        - description
+        - category
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        source:
+          type: string
+          enum:
+            - custom
+            - internal
+        extend_info:
+          type: object
+          additionalProperties: true
+
+    SkillVersionResponse:
+      type: object
+      description: 产生新版本的操作的通用响应。
+      properties:
+        skill_id:
+          type: string
+        version:
+          type: string
+          description: 本次操作产生的版本。
+        status:
+          $ref: '#/components/schemas/BizStatus'
+
+    SkillInfo:
+      type: object
+      properties:
+        skill_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          description: |
+            技能描述，通常来自 `SKILL.md` 的 frontmatter。**可能很长**——
+            它是给大模型判断「什么时候该装载这个技能」用的。
+        version:
+          type: string
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        source:
+          type: string
+        business_domain_id:
+          type: string
+        category:
+          type: string
+        category_name:
+          type: string
+          description: 分类显示名（本地化）。
+        dependencies:
+          type: object
+          additionalProperties: true
+          description: 技能声明的依赖。无则不返回。
+        extend_info:
+          type: object
+          additionalProperties: true
+        create_user:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+          description: 创建时间（**纳秒**时间戳）。
+        update_user:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+          description: 更新时间（**纳秒**时间戳）。
+        release_user:
+          type: string
+          description: 发布人。未发布时不返回。
+        release_time:
+          type: integer
+          format: int64
+          description: 发布时间（**纳秒**时间戳）。未发布时不返回。
+
+    SkillReleaseHistory:
+      type: object
+      properties:
+        skill_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        category:
+          type: string
+        source:
+          type: string
+        release_desc:
+          type: string
+          description: 本次发布的说明。
+        release_user:
+          type: string
+        release_time:
+          type: integer
+          format: int64
+          description: 发布时间（**纳秒**时间戳）。
+        create_user:
+          type: string
+        create_time:
+          type: integer
+          format: int64
+        update_user:
+          type: string
+        update_time:
+          type: integer
+          format: int64
+
+    SkillContent:
+      type: object
+      properties:
+        skill_id:
+          type: string
+        url:
+          type: string
+          description: 技能包的访问地址。
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillFileSummary'
+          description: 包内文件清单。
+
+    SkillFileSummary:
+      type: object
+      properties:
+        rel_path:
+          type: string
+          description: 包内相对路径。读单个文件时传它。
+        file_type:
+          type: string
+          description: 文件类型。
+        size:
+          type: integer
+          format: int64
+          description: 字节数。
+        mime_type:
+          type: string
+
+    SkillFileRef:
+      type: object
+      description: |
+        单个文件的引用。**注意返回的是 `url` 不是文件内容**——拿到地址再去取。
+      properties:
+        skill_id:
+          type: string
+        rel_path:
+          type: string
+        url:
+          type: string
+          description: 文件的下载地址。
+        mime_type:
+          type: string
+        file_type:
+          type: string
+
+    DownloadSkillResponse:
+      type: object
+      properties:
+        skill_id:
+          type: string
+        file_name:
+          type: string
+          description: 建议的文件名。
+        content:
+          type: string
+          format: byte
+          description: 包体内容（base64 编码）。
+
+    ExecuteSkillResponse:
+      type: object
+      description: |
+        沙箱执行结果。**成败看 `exit_code`**，命令失败时接口仍返回 200。
+      properties:
+        skill_id:
+          type: string
+        session_id:
+          type: string
+          description: 执行所用的沙箱会话 ID。
+        work_dir:
+          type: string
+          description: 沙箱内的工作目录。
+        file_name:
+          type: string
+          description: 上传的技能包文件名。
+        uploaded_path:
+          type: string
+          description: 技能包在沙箱内的落点。
+        command:
+          type: string
+          description: 实际执行的命令。
+        exit_code:
+          type: integer
+          description: 退出码，`0` 才是成功。
+        stdout:
+          type: string
+        stderr:
+          type: string
+        execution_time:
+          type: integer
+          format: int64
+          description: 执行耗时。
+        mocked:
+          type: boolean
+          description: |
+            **为 `true` 表示这次并没有真的在沙箱里执行**（降级路径），
+            stdout/stderr 不是真实结果。
+
+    IndexBuildTask:
+      type: object
+      properties:
+        task_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/IndexBuildStatus'
+        execute_type:
+          type: string
+        queue_state:
+          type: string
+          description: 队列状态。不在队列时为空串。
+        total_count:
+          type: integer
+          format: int64
+          description: 待处理技能总数。
+        success_count:
+          type: integer
+          format: int64
+        delete_count:
+          type: integer
+          format: int64
+          description: 删除的索引条目数。
+        failed_count:
+          type: integer
+          format: int64
+        retry_count:
+          type: integer
+          format: int64
+        max_retry:
+          type: integer
+          format: int64
+        cursor_update_time:
+          type: integer
+          format: int64
+          description: 增量构建的时间游标（**纳秒**时间戳）。
+        cursor_skill_id:
+          type: string
+          description: 增量构建的技能游标。
+        error_msg:
+          type: string
+          description: 失败原因。无则为空串。
+        create_user:
+          type: string
+          description: |
+            创建者。**这里是账号 UUID**，与技能条目里的显示名
+            （如 `Administrator`）不同形态。
+        create_time:
+          type: integer
+          format: int64
+          description: 创建时间（**纳秒**时间戳）。
+        update_time:
+          type: integer
+          format: int64
+        last_finished_time:
+          type: integer
+          format: int64
+          description: 最近一次完成时间。
+
+    BatchNamesRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+          description: 待取名的技能 ID 列表。空列表返回空 `entries`。
+
+    BatchNamesResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+          description: ID 到名称的映射。**不存在的 ID 被静默略过**。
