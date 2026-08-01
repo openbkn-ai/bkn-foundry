@@ -20,7 +20,10 @@ func newAndCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap m
 	subConds := []Condition{}
 
 	if len(cfg.SubConds) == 0 {
-		return nil, nil
+		return &AndCond{
+			mCfg:      cfg,
+			mSubConds: subConds,
+		}, nil
 	}
 
 	if len(cfg.SubConds) > MaxSubCondition {
