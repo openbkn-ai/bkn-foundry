@@ -124,7 +124,7 @@ paths:
                       detail: ""
                       kn_id: topologytest
                       data_source:
-                        type: data_view
+                        type: resource
                         id: d3riul5r3eoemkcu9sn0
                       data_properties:
                       - name: component
@@ -457,7 +457,7 @@ paths:
                       detail: ""
                       kn_id: topologytest
                       data_source:
-                        type: data_view
+                        type: resource
                         id: d3riul5r3eoemkcu9sn0
                       data_properties:
                       - name: component

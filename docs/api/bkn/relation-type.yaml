@@ -464,7 +464,7 @@ paths:
                         - id: comment
                           name: comment
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615886381058"
                             name: 评论表
                           data_properties:
@@ -570,7 +570,7 @@ paths:
                         - id: comment
                           name: comment
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615886381058"
                             name: ""
                           data_properties:
@@ -643,7 +643,7 @@ paths:
                         - id: comment
                           name: comment
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615886381058"
                             name: 评论表
                           data_properties:
@@ -749,7 +749,7 @@ paths:
                         - id: person
                           name: person
                           data_source:
-                            type: data_view
+                            type: resource
                             id: "1995407615877992449"
                             name: ""
                           data_properties:

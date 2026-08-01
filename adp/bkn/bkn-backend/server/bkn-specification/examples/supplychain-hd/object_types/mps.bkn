@@ -15,7 +15,7 @@ tags: [供应链, 生产, 已审核, 手工表]
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | 77dc1487-498b-4be6-b96c-912e43dd8363 | production_plan |
+| resource | 77dc1487-498b-4be6-b96c-912e43dd8363 | production_plan |
 
 ### Data Properties
 

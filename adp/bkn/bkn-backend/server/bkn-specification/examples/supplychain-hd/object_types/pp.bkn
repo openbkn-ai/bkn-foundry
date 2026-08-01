@@ -15,7 +15,7 @@ tags: [供应链, 计划, 已审核, 手工表]
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | 526f07f0-6c77-4e7d-b7cd-b891215c3d44 | product_demand_plan |
+| resource | 526f07f0-6c77-4e7d-b7cd-b891215c3d44 | product_demand_plan |
 
 ### Data Properties
 

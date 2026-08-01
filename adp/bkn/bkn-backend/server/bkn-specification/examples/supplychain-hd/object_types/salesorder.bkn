@@ -13,7 +13,7 @@ tags: [供应链, 销售, 已审核, 老数据]
 
 | Type | ID | Name |
 |------|----|------|
-| data_view | ec2f0a5e-aa15-480a-9f00-e637760e90f0 | 订单信息_fixed |
+| resource | ec2f0a5e-aa15-480a-9f00-e637760e90f0 | 订单信息_fixed |
 
 ### Data Properties
 

@@ -430,6 +430,11 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 						relationType.MappingRules.(*interfaces.InDirectMapping).BackingDataSource.Name = res.Name
 						fieldsMap = logics.VegaResourceSchemaToFieldsMap(res)
 					}
+				default:
+					otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s backing data source type %s is unsupported", relationType.RTID, mappingRules.BackingDataSource.Type))
+					if sourceObj == nil && targetObj == nil {
+						continue
+					}
 				}
 			}
 

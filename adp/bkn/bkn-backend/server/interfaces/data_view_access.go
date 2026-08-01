@@ -6,10 +6,7 @@
 
 package interfaces
 
-import (
-	"context"
-	"database/sql"
-)
+import "database/sql"
 
 type DataView struct {
 	ViewID    string                `json:"id"`
@@ -39,11 +36,4 @@ type ViewQueryResult struct {
 	TotalCount  int64            `json:"total_count"`
 	SearchAfter []any            `json:"search_after"`
 	Entries     []map[string]any `json:"entries"`
-}
-
-//go:generate mockgen -source ../interfaces/data_view_access.go -destination ../interfaces/mock/mock_data_view_access.go
-type DataViewAccess interface {
-	GetDataViewByID(ctx context.Context, id string) (*DataView, error)
-	GetDataStart(ctx context.Context, id string, incKey string, incValue any, limit int) (*ViewQueryResult, error)
-	GetDataNext(ctx context.Context, id string, searchAfter []any, limit int) (*ViewQueryResult, error)
 }
