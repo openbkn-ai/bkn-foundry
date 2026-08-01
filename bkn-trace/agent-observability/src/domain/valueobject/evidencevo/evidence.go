@@ -289,9 +289,7 @@ func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}) {
 
 func knowledgeNetworkIDFromCanonicalRef(ref string) string {
 	ref = strings.TrimSpace(ref)
-	if strings.HasPrefix(ref, "business:") {
-		ref = strings.TrimPrefix(ref, "business:")
-	}
+	ref = strings.TrimPrefix(ref, "business:")
 	for _, refType := range []sessionvo.BusinessRefType{
 		sessionvo.BusinessRefKnowledgeNetwork,
 		sessionvo.BusinessRefObjectType,
