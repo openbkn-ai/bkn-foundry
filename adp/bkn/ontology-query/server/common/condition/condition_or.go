@@ -127,7 +127,7 @@ func rewriteOrCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]
 			subConds = append(subConds, cond)
 			continue
 		}
-		if PromoteLegacyLeafWithSubConds(subCond).Operation == OperationAnd {
+		if promoted := PromoteLegacyLeafWithSubConds(subCond); promoted != nil && promoted.Operation == OperationAnd {
 			return nil, nil
 		}
 	}

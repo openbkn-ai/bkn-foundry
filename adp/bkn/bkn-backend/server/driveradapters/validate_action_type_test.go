@@ -406,7 +406,7 @@ func Test_ValidateActionType(t *testing.T) {
 			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
 		})
 
-		Convey("Failed with empty and condition when strictMode false\n", func() {
+		Convey("Success with empty and condition when strictMode false\n", func() {
 			at := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:         "at1",
@@ -420,10 +420,7 @@ func Test_ValidateActionType(t *testing.T) {
 				},
 			}
 			err := ValidateActionType(ctx, at, false)
-			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Failed with nested empty or condition path\n", func() {

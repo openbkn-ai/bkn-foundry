@@ -555,5 +555,26 @@ func Test_rewriteOrCondition(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(result, ShouldBeNil)
 		})
+
+		Convey("success - nil child is skipped during OR rewrite", func() {
+			cfg := &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					nil,
+					{
+						Name:      "name",
+						Operation: OperationEq,
+						ValueOptCfg: ValueOptCfg{
+							Value: "test",
+						},
+					},
+				},
+			}
+			result, err := rewriteOrCondition(ctx, cfg, fieldsMap, vectorizer)
+			So(err, ShouldBeNil)
+			So(result, ShouldNotBeNil)
+			So(len(result.SubConds), ShouldEqual, 1)
+			So(result.SubConds[0].Name, ShouldEqual, "mapped_name")
+		})
 	})
 }
