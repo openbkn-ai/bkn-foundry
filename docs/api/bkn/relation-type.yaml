@@ -623,7 +623,7 @@ paths:
                             type: data_view
                             mapping_rules:
                               backing_data_source:
-                                type: data_view
+                                type: resource
                                 id: "1995407615768940546"
                               source_mapping_rules:
                                 - source_property:
@@ -860,7 +860,7 @@ paths:
                                   target_property:
                                     name: c_commentid
                               backing_data_source:
-                                type: data_view
+                                type: resource
                                 id: "1995407615873798146"
                           source_object_type_id: comment
                           target_object_type_id: person

@@ -218,7 +218,7 @@ func Test_ValidateRelationType(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Success with data_view mapping rules\n", func() {
+		Convey("Success with data_view relation using resource backing\n", func() {
 			rt := &interfaces.RelationType{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 					RTID:               "rt1",
@@ -228,8 +228,8 @@ func Test_ValidateRelationType(t *testing.T) {
 					TargetObjectTypeID: "ot2",
 					MappingRules: map[string]any{
 						"backing_data_source": map[string]any{
-							"type": interfaces.RELATION_TYPE_DATA_VIEW,
-							"id":   "dv1",
+							"type": interfaces.DATA_SOURCE_TYPE_RESOURCE,
+							"id":   "resource1",
 						},
 						"source_mapping_rules": []map[string]any{
 							{

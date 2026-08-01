@@ -117,7 +117,7 @@ paths:
                     color: ""
                     branch: main
                     data_source:
-                      type: data_view
+                      type: resource
                       id: d2mio43q6gt6p380dis0
                     data_properties:
                       - name: id
@@ -304,7 +304,7 @@ paths:
                     color: ""
                     branch: main
                     data_source:
-                      type: data_view
+                      type: resource
                       id: d2mio43q6gt6p380dis0
                     data_properties:
                       - name: id
@@ -447,7 +447,7 @@ paths:
                     color: ""
                     branch: main
                     data_source:
-                      type: data_view
+                      type: resource
                       id: d2mio43q6gt6p380disg
                     data_properties:
                       - name: id
@@ -671,7 +671,7 @@ paths:
                         update_time: 1758157953104
                         kn_id: kn_system_incident_event_network
                         data_source:
-                          type: data_view
+                          type: resource
                           id: d2mio43q6gt6p380dis0
                           name: ""
                         data_properties:
@@ -1153,7 +1153,7 @@ paths:
                         update_time: 1758273996605
                         kn_id: kn_system_incident_event_network
                         data_source:
-                          type: data_view
+                          type: resource
                           id: d2mio43q6gt6p380dis0
                           name: ""
                         data_properties:

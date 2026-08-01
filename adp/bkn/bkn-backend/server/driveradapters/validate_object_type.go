@@ -121,8 +121,7 @@ func validateObjectTypeDataSource(ctx context.Context, objectType *interfaces.Ob
 	if objectType.DataSource == nil || objectType.DataSource.Type == "" {
 		return nil
 	}
-	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_DATA_VIEW &&
-		objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("对象类[%s]数据来源类型[%s]不支持, 只支持 resource", objectType.OTName, objectType.DataSource.Type))
 	}
