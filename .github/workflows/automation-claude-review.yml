@@ -7,11 +7,12 @@ name: Claude Code Review
 # 恰恰最容易引入新问题；只审首版会让这部分完全不过审。
 # 连续推送的浪费由下面的 concurrency 收敛：新一次运行会取消尚未完成的上一次。
 #
-# 也在评论事件上复评：评审提出的「待确认」项在澄清前不予批准（见下方 prompt），
-# 作者可以不改代码、只回帖来回应，因此必须让回帖也能触发一次复评，否则 approve
-# 永远补不上。为避免自我循环，评论事件由下方 job 的 if 过滤掉 bot 自己的评论，
-# 并限定发起者为 OWNER/MEMBER/COLLABORATOR——评论事件在 base 仓上下文携带
-# secret 运行，限定关联方可挡掉 fork 陌生人触发的 pwn-request。
+# 评论也能触发复评，但必须在评论正文里显式写 `/review`。早先是每条评论都跑一轮，
+# 作者每回一帖就复评一次，轮次膨胀且额度白烧——待确认项现在不阻断放行（见下方
+# prompt），自动复评失去了存在理由，改成按需触发。为避免自我循环，评论事件由下方
+# job 的 if 过滤掉 bot 自己的评论，并限定发起者为 OWNER/MEMBER/COLLABORATOR——
+# 评论事件在 base 仓上下文携带 secret 运行，限定关联方可挡掉 fork 陌生人触发的
+# pwn-request。
 #
 # 需要对任意 PR 重新评审时，手动触发 workflow_dispatch 并填 PR 编号。
 #
@@ -53,7 +54,7 @@ concurrency:
   # 否则 claude-code-action（track_progress）在评论触发的复评跑到一半时以 bot 身份贴
   # tracking comment，那条 comment 又触发 issue_comment、排进同一 -comment 组，
   # cancel-in-progress 在 job if 过滤掉 bot 评论之前就把正在跑的复评取消了——评论触发的
-  # 复评每次贴进度评论那刻自杀（作者回帖复评后放行因此永远补不上 approve）。
+  # 复评每次贴进度评论那刻自杀，`/review` 一次都跑不完。
   # 按 comment.id 分组后每条评论各自独立、互不取消，bot 的进度评论也顶不掉正在跑的复评。
   group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}-${{ (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && format('comment-{0}', github.event.comment.id) || 'push' }}
   cancel-in-progress: true
@@ -63,10 +64,12 @@ jobs:
     # 逐事件放行：
     #   - workflow_dispatch：手动，总放行。
     #   - pull_request：只同仓 PR（fork 拿不到 secret，跳过避免红叉）。
-    #   - 评论/行内回复：必须挂在 PR 上、PR 仍 open、非 bot 自己发的、且发起者为
-    #     OWNER/MEMBER/COLLABORATOR，挡掉自我循环与 fork 陌生人的 pwn-request。
+    #   - 评论/行内回复：必须挂在 PR 上、PR 仍 open、评论正文含 `/review`、非 bot
+    #     自己发的、且发起者为 OWNER/MEMBER/COLLABORATOR，挡掉自我循环与 fork
+    #     陌生人的 pwn-request。
     #     state == 'open' 让合并/关闭后的评论不再触发复评——merge 已不可逆，
     #     再跑只是白费额度、在死 PR 上贴噪声。
+    #     `/review` 把「每回一帖跑一轮」压成按需触发，评审轮次由人决定。
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
@@ -74,11 +77,13 @@ jobs:
        github.event.pull_request.state == 'open' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        github.event.sender.login != 'github-actions[bot]' &&
+       contains(github.event.comment.body, '/review') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
        github.event.issue.state == 'open' &&
        github.event.sender.login != 'github-actions[bot]' &&
+       contains(github.event.comment.body, '/review') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     permissions:
@@ -179,32 +184,30 @@ jobs:
             最终 schema 必须一致，且都要与代码实际引用的列对齐——把相关 f_ 列名
             `git grep` 到 drivenadapters 层逐一核对。
 
-            这次可能是复评（作者推了新提交或回复了评论）。先把现状摸清再下结论：
-            - `gh pr view "$PR_NUMBER" --json reviewDecision,reviewRequests,comments`
-              以及 `gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/comments"`
-              读回你之前留下的 inline 评论与其下的回复，弄清哪些「待确认」项
-              PR 发起者已经回应、哪些还悬着。
-            - `gh pr checks "$PR_NUMBER"` 看必需检查当前状态。
-            - 复评不等于只核这份待确认清单。上一轮漏掉的问题按定义不在清单里，因此
-              仍要按上面「必须走出 diff」三条重新过一遍全量改动，尤其是首轮之后
-              新增的文件。只核清单会让每一轮都收敛在已知项上，漏报永远补不回来。
+            这次可能是复评（作者推了新提交）。复评的目标是收敛，不是每轮重开一次
+            全面评审：
+            - 先读回你之前留下的 inline 评论与其下的回复：
+              `gh pr view "$PR_NUMBER" --json reviewDecision,comments` 与
+              `gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/comments"`。
+            - 已经提过的问题，作者改了、或给出对得上疑点的解释，就算过。不必追求
+              措辞完美，更不要凭「可能」把同一条追问第二遍。
+            - 上面「必须走出 diff」那三条的全量兜底重扫只在首轮做一次；复评的深挖
+              范围限定在上一轮之后新增的提交与文件。
+            - 第二轮起，除非发现你能说清失效场景的确定阻断项，否则就 approve。
+              评审轮次本身有成本，把 PR 反复挂起比放过一个待确认项更贵。
 
-            按下面的优先级落成一次 PR review（不是普通评论），三选一：
+            按下面的规则落成一次 PR review（不是普通评论），二选一：
 
-            1. 有阻塞项（确定的缺陷）→ `gh pr review "$PR_NUMBER" --request-changes
-               --body "<阻塞清单>"`。
-            2. 无阻塞项，但仍有待确认项没有被澄清 → 不要 approve。用
-               `gh pr review "$PR_NUMBER" --comment --body "<未澄清项清单>"` 留言等回应。
-               逐条判断发起者的回应是否真正澄清了该疑点：
-               - 回应正面、切题、能打消疑虑 → 该条视为已澄清。
-               - 回应缺失、答非所问、回避，或仍留有实质疑点 → 该条仍未澄清，
-                 在留言里点名说明还差什么、请补充；别默认「回了就算清」。
-               - 回应本身暴露出新的确定缺陷 → 归到第 1 类。
-               判断要讲理、就事论事，不要为难：回应只要合理对上了疑点就放行，
-               不必追求完美措辞，也不要凭「可能」反复追问同一条。
-            3. 无阻塞项、所有待确认项都已被你判定为澄清、且必需检查没有失败也没有
-               还在跑 → `gh pr review "$PR_NUMBER" --approve --body "<一句放行理由>"`。
-               必需检查只要有失败或仍 pending，就退回第 2 类留言说明在等 CI，先不批。
+            1. 有阻塞项 → `gh pr review "$PR_NUMBER" --request-changes
+               --body "<阻塞清单>"`。阻塞项的门槛是：你已经读过源码核实，能说清
+               具体的失效场景（什么输入、什么状态、坏成什么样）。说不清就不是阻塞项。
+            2. 没有阻塞项 → `gh pr review "$PR_NUMBER" --approve --body "<放行理由>"`。
+               待确认项不阻断放行：写进 approve 的 body 里当提示，由作者自行判断，
+               不要为了等一个回应而改用 --comment 或 --request-changes。
+
+            不要把 CI 当放行条件。CI 全绿是 Branch Protection 的独立闸门，合并时自然
+            会拦住，评审只判代码本身。必需检查还在跑、甚至已经失败，都照常按上面二选一
+            表态；失败如果明显由这份改动引起，在 body 里点一句即可，不改变结论。
 
             批准以 github-actions[bot] 身份提交，只表态、不合并。人工仍需自行 merge。
 
