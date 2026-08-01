@@ -49,15 +49,14 @@ type permissionsResponse struct {
 }
 
 type fingerprintInput struct {
-	TenantID                    string
-	BusinessDomain              string
-	ActorID                     string
-	EffectiveSubjectID          string
-	ApplicationPrincipalID      string
-	DelegationID                string
-	Roles                       []string
-	ManagedKnowledgeNetworkIDs  []string
-	ManagesAllKnowledgeNetworks bool
+	TenantID                   string
+	BusinessDomain             string
+	ActorID                    string
+	EffectiveSubjectID         string
+	ApplicationPrincipalID     string
+	DelegationID               string
+	Roles                      []string
+	ManagedKnowledgeNetworkIDs []string
 }
 
 func New(baseURL string, httpClient *http.Client) *Client {
@@ -92,21 +91,18 @@ func (c *Client) Resolve(
 
 	roles := currentBuiltInRoles(me.Roles)
 	managedNetworks := concreteManagedNetworks(permissions)
-	managesAllNetworks := contains(roles, "network_builder") && hasTypeWideNetworkManagement(permissions)
 	input := fingerprintInput{
 		TenantID: identity.TenantID, BusinessDomain: identity.BusinessDomain,
 		ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
 		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
 		Roles: roles, ManagedKnowledgeNetworkIDs: managedNetworks,
-		ManagesAllKnowledgeNetworks: managesAllNetworks,
 	}
 	return evidencevo.AccessProfile{
 		TenantID: identity.TenantID, BusinessDomain: identity.BusinessDomain,
 		ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
 		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
 		Roles: roles, ManagedKnowledgeNetworkIDs: managedNetworks,
-		ManagesAllKnowledgeNetworks: managesAllNetworks,
-		AccountActive:               true, TenantActive: true,
+		AccountActive: true, TenantActive: true,
 		Fingerprint: accessScopeFingerprint(input),
 	}, nil
 }
@@ -172,48 +168,23 @@ func concreteManagedNetworks(response permissionsResponse) []string {
 	return values
 }
 
-func hasTypeWideNetworkManagement(response permissionsResponse) bool {
-	for _, permission := range response.Permissions {
-		if permission.Resource.Type != "knowledge_network" || permission.Resource.ID != "*" {
-			continue
-		}
-		for _, operation := range permission.Operations {
-			if _, allowed := networkManagementOperations[operation]; allowed {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func contains(values []string, expected string) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
-		}
-	}
-	return false
-}
-
 func accessScopeFingerprint(input fingerprintInput) string {
 	roles := append([]string(nil), input.Roles...)
 	networks := append([]string(nil), input.ManagedKnowledgeNetworkIDs...)
 	sort.Strings(roles)
 	sort.Strings(networks)
 	body, _ := json.Marshal(struct {
-		TenantID                    string   `json:"tenant_id"`
-		BusinessDomain              string   `json:"business_domain"`
-		ActorID                     string   `json:"actor_id"`
-		EffectiveSubjectID          string   `json:"effective_subject_id"`
-		ApplicationPrincipalID      string   `json:"application_principal_id"`
-		DelegationID                string   `json:"delegation_id"`
-		Roles                       []string `json:"roles"`
-		ManagedKnowledgeNetworkIDs  []string `json:"managed_knowledge_network_ids"`
-		ManagesAllKnowledgeNetworks bool     `json:"manages_all_knowledge_networks"`
+		TenantID                   string   `json:"tenant_id"`
+		BusinessDomain             string   `json:"business_domain"`
+		ActorID                    string   `json:"actor_id"`
+		EffectiveSubjectID         string   `json:"effective_subject_id"`
+		ApplicationPrincipalID     string   `json:"application_principal_id"`
+		DelegationID               string   `json:"delegation_id"`
+		Roles                      []string `json:"roles"`
+		ManagedKnowledgeNetworkIDs []string `json:"managed_knowledge_network_ids"`
 	}{
 		input.TenantID, input.BusinessDomain, input.ActorID, input.EffectiveSubjectID,
 		input.ApplicationPrincipalID, input.DelegationID, roles, networks,
-		input.ManagesAllKnowledgeNetworks,
 	})
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])

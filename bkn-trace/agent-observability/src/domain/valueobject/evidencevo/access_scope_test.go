@@ -74,18 +74,17 @@ func TestNetworkBuilderMustManageEveryKnowledgeNetwork(t *testing.T) {
 	}
 }
 
-func TestNetworkBuilderWithTypeWideManagementCanReadAnyScopedNetworkRecord(t *testing.T) {
+func TestNetworkBuilderTypeWideGrantDoesNotImplyBusinessContentAccess(t *testing.T) {
 	profile := AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
 		EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
-		ManagesAllKnowledgeNetworks: true,
 	}
 	record := RecordScope{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "other-user",
 		KnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
 	}
-	if !CanReadRecord(profile, record, AccessViewBusiness) {
-		t.Fatal("network_builder with a knowledge_network:* management grant must read scoped records")
+	if CanReadRecord(profile, record, AccessViewBusiness) {
+		t.Fatal("type-wide management must not bypass concrete business content authorization")
 	}
 
 	record.KnowledgeNetworkIDs = nil
@@ -148,10 +147,10 @@ func TestCrossAccountCandidatesRequireAnExplicitAuthorizedView(t *testing.T) {
 		t.Fatal("managed-network business lookup needs cross-account candidates before record filtering")
 	}
 	typeWideBuilder := &AccessProfile{
-		Roles: []string{"network_builder"}, ManagesAllKnowledgeNetworks: true,
+		Roles: []string{"network_builder"},
 	}
-	if !NeedsCrossAccountCandidates(QueryScope{AccessProfile: typeWideBuilder, View: AccessViewBusiness}) {
-		t.Fatal("type-wide network management needs cross-account candidates before record filtering")
+	if NeedsCrossAccountCandidates(QueryScope{AccessProfile: typeWideBuilder, View: AccessViewBusiness}) {
+		t.Fatal("type-wide network management must not widen business provenance candidates")
 	}
 	admin := &AccessProfile{Roles: []string{"admin"}}
 	if NeedsCrossAccountCandidates(QueryScope{AccessProfile: admin, View: AccessViewBusiness}) {
@@ -241,11 +240,24 @@ func TestWithEventsDerivesStableKnowledgeNetworkScope(t *testing.T) {
 		{Payload: map[string]any{
 			"business_refs": []any{"relation:kn-a:forecast_product", "logic:kn-c:forecast:sum"},
 			"source_refs":   []any{"object:kn-source:forecast"},
-			"resource_refs": []any{map[string]any{"ref_id": "resource:kn-resource:forecast"}},
+			"resource_refs": []any{map[string]any{"ref_id": "resource:data-view-forecast"}},
 			"field_refs":    []any{"property:kn-field:forecast:qty"},
+			"output": map[string]any{
+				"business_refs": []any{
+					"object:kn-nested:forecast",
+					map[string]any{
+						"ref_id":  "object:kn-parent:forecast",
+						"related": []any{map[string]any{"ref_id": "property:kn-deep:forecast:qty"}},
+					},
+				},
+				"metadata": map[string]any{"kn_id": "kn-structured"},
+			},
 		}},
 	})
-	want := []string{"kn-a", "kn-b", "kn-c", "kn-direct", "kn-explicit", "kn-field", "kn-resource", "kn-source"}
+	want := []string{
+		"kn-a", "kn-b", "kn-c", "kn-deep", "kn-direct", "kn-explicit", "kn-field",
+		"kn-nested", "kn-parent", "kn-source", "kn-structured",
+	}
 	if !reflect.DeepEqual(trace.KnowledgeNetworkIDs, want) {
 		t.Fatalf("unexpected knowledge network scope: got %v want %v", trace.KnowledgeNetworkIDs, want)
 	}

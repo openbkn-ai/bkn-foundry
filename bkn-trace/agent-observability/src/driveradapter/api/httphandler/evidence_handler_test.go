@@ -142,8 +142,8 @@ func TestEvidenceHandlerReturnsCurrentAccessProfileCapabilities(t *testing.T) {
 	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", ActorID: "builder-a",
 		EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
-		ManagesAllKnowledgeNetworks: true,
-		AccountActive:               true, TenantActive: true, Fingerprint: "sha256:profile-a",
+		ManagedKnowledgeNetworkIDs: []string{"kn-a"},
+		AccountActive:              true, TenantActive: true, Fingerprint: "sha256:profile-a",
 	}}
 	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
 		AllowUnauthenticatedQuery: true, AuthorizationScopeResolver: resolver,
@@ -367,6 +367,40 @@ func TestEvidenceHandlerRejectsOAuthIdentityMismatch(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_IDENTITY_MISMATCH") {
 		t.Fatalf("forged OAuth identity must be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEvidenceHandlerRejectsForgedOAuthDelegationIdentity(t *testing.T) {
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"user"}}`)
+	}))
+	defer hydra.Close()
+
+	for _, test := range []struct {
+		name   string
+		header string
+		value  string
+	}{
+		{name: "effective subject", header: "X-BKN-Effective-Subject-ID", value: "victim"},
+		{name: "application principal", header: "X-BKN-Application-Principal-ID", value: "victim-app"},
+		{name: "delegation", header: "X-BKN-Delegation-ID", value: "forged-delegation"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+				HydraAdminURL: hydra.URL,
+			})
+			req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/missing/evidence-chain", nil)
+			req.Header.Set("Authorization", "Bearer studio-token")
+			req.Header.Set("x-business-domain", "bd_demo")
+			req.Header.Set(test.header, test.value)
+			rec := httptest.NewRecorder()
+
+			handler.GetEvidenceChainByTraceID(rec, req)
+
+			if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "QUERY_IDENTITY_MISMATCH") {
+				t.Fatalf("forged OAuth delegation identity must be rejected, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 

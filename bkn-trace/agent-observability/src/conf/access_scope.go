@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -17,8 +18,13 @@ func NewAccessScopeConfig() AccessScopeConfig {
 		baseURL = "http://bkn-safe:3000"
 	}
 	timeout := 3 * time.Second
-	if configured, err := time.ParseDuration(strings.TrimSpace(os.Getenv("BKN_SAFE_ACCESS_TIMEOUT"))); err == nil && configured > 0 {
-		timeout = configured
+	if value := strings.TrimSpace(os.Getenv("BKN_SAFE_ACCESS_TIMEOUT")); value != "" {
+		configured, err := time.ParseDuration(value)
+		if err != nil || configured <= 0 {
+			slog.Warn("invalid BKN Safe access timeout; using default", "value", value, "default", timeout)
+		} else {
+			timeout = configured
+		}
 	}
 	return AccessScopeConfig{BKNBaseURL: baseURL, Timeout: timeout}
 }

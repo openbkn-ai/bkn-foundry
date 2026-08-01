@@ -231,22 +231,7 @@ type evidenceHit struct {
 
 func (s *Store) searchPage(ctx context.Context, field, value string, scope evidencevo.QueryScope, size int, searchAfter []any) ([]evidenceHit, error) {
 	must := []map[string]any{{"bool": exactTermQuery(field, value)}}
-	for _, item := range []struct {
-		field string
-		value string
-	}{
-		{"bkn.tenant.id", scope.TenantID},
-		{"business_domain", scope.BusinessDomain},
-		{"bkn.account.id", scope.AccountID},
-		{"bkn.account.type", scope.AccountType},
-	} {
-		if evidencevo.NeedsCrossAccountCandidates(scope) && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
-			continue
-		}
-		if item.value != "" {
-			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
-		}
-	}
+	must = append(must, scopeCandidateMust(scope)...)
 	queryBody := map[string]any{
 		"size": size,
 		"query": map[string]any{

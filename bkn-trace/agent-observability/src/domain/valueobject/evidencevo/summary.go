@@ -513,10 +513,10 @@ func collectBusinessRefs(value any, refs map[string]struct{}) {
 	case map[string]any:
 		if refID, ok := item["ref_id"].(string); ok && refID != "" {
 			visibility, _ := item["visibility"].(string)
-			if visibility == "" || visibility == "visible" {
-				refs[refID] = struct{}{}
+			if visibility != "" && visibility != "visible" {
+				return
 			}
-			return
+			refs[refID] = struct{}{}
 		}
 		for _, nested := range item {
 			collectBusinessRefs(nested, refs)
@@ -529,17 +529,7 @@ func collectBusinessRefs(value any, refs map[string]struct{}) {
 }
 
 func knowledgeNetworkFromRef(ref string) string {
-	parts := strings.Split(ref, ":")
-	if len(parts) >= 3 && parts[0] == "business" {
-		parts = parts[1:]
-	}
-	if len(parts) >= 3 {
-		switch parts[0] {
-		case "object", "relation", "action", "metric", "logic":
-			return parts[1]
-		}
-	}
-	return ""
+	return knowledgeNetworkIDFromCanonicalRef(ref)
 }
 
 func advanceActionSummary(summary *ActionSummary, eventType string) {

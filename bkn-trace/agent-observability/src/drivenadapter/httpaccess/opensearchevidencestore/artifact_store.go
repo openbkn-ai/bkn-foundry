@@ -114,22 +114,7 @@ func (s *Store) ListArtifactsByRequestID(ctx context.Context, requestID string, 
 		limit = iartifactstore.MaxArtifactQueryLimit
 	}
 	must := []map[string]any{{"bool": exactTermQuery("bkn.request.id", requestID)}}
-	for _, item := range []struct {
-		field string
-		value string
-	}{
-		{"bkn.tenant.id", scope.TenantID},
-		{"business_domain", scope.BusinessDomain},
-		{"bkn.account.id", scope.AccountID},
-		{"bkn.account.type", scope.AccountType},
-	} {
-		if evidencevo.NeedsCrossAccountCandidates(scope) && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
-			continue
-		}
-		if item.value != "" {
-			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
-		}
-	}
+	must = append(must, scopeCandidateMust(scope)...)
 	query, err := json.Marshal(map[string]any{
 		"size":  limit + 1,
 		"query": map[string]any{"bool": map[string]any{"must": must}},

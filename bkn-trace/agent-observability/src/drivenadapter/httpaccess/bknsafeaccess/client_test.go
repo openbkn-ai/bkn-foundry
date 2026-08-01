@@ -50,9 +50,6 @@ func TestResolveBuildsProfileFromCurrentSafeIdentityAndNetworkGrants(t *testing.
 	if !reflect.DeepEqual(profile.ManagedKnowledgeNetworkIDs, []string{"kn-a", "kn-b"}) {
 		t.Fatalf("only concrete management grants may enter the profile: %v", profile.ManagedKnowledgeNetworkIDs)
 	}
-	if !profile.ManagesAllKnowledgeNetworks {
-		t.Fatal("network_builder knowledge_network:* management grant must enter the profile")
-	}
 	if profile.Fingerprint == "" {
 		t.Fatal("access scope fingerprint is required")
 	}
@@ -79,8 +76,8 @@ func TestResolveDoesNotTreatGlobalAdminWildcardAsNetworkManagement(t *testing.T)
 	if err != nil {
 		t.Fatalf("resolve profile: %v", err)
 	}
-	if profile.ManagesAllKnowledgeNetworks {
-		t.Fatal("global super_admin wildcard must not imply knowledge network business access")
+	if len(profile.ManagedKnowledgeNetworkIDs) != 0 {
+		t.Fatal("global super_admin wildcard must not imply concrete knowledge network business access")
 	}
 }
 
@@ -122,10 +119,5 @@ func TestResolveFingerprintIsStableAndChangesWithManagedScope(t *testing.T) {
 	second.ManagedKnowledgeNetworkIDs = []string{"kn-a"}
 	if accessScopeFingerprint(first) == accessScopeFingerprint(second) {
 		t.Fatal("managed network revocation must change the fingerprint")
-	}
-	second = first
-	second.ManagesAllKnowledgeNetworks = true
-	if accessScopeFingerprint(first) == accessScopeFingerprint(second) {
-		t.Fatal("type-wide network management must change the fingerprint")
 	}
 }

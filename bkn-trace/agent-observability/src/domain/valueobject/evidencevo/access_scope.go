@@ -13,18 +13,17 @@ const (
 // AccessProfile is derived from trusted gateway identity and current BKN Safe grants.
 // Callers cannot supply roles or managed knowledge networks in request payloads.
 type AccessProfile struct {
-	TenantID                    string
-	BusinessDomain              string
-	ActorID                     string
-	EffectiveSubjectID          string
-	ApplicationPrincipalID      string
-	DelegationID                string
-	Roles                       []string
-	ManagedKnowledgeNetworkIDs  []string
-	ManagesAllKnowledgeNetworks bool
-	AccountActive               bool
-	TenantActive                bool
-	Fingerprint                 string
+	TenantID                   string
+	BusinessDomain             string
+	ActorID                    string
+	EffectiveSubjectID         string
+	ApplicationPrincipalID     string
+	DelegationID               string
+	Roles                      []string
+	ManagedKnowledgeNetworkIDs []string
+	AccountActive              bool
+	TenantActive               bool
+	Fingerprint                string
 }
 
 // RecordScope is the immutable access projection attached to a persisted run.
@@ -65,8 +64,7 @@ func NeedsCrossAccountCandidates(scope QueryScope) bool {
 	profile := *scope.AccessProfile
 	switch defaultAccessView(scope.View) {
 	case AccessViewBusiness:
-		return hasAnyRole(profile, "network_builder") &&
-			(profile.ManagesAllKnowledgeNetworks || len(profile.ManagedKnowledgeNetworkIDs) > 0)
+		return hasAnyRole(profile, "network_builder") && len(profile.ManagedKnowledgeNetworkIDs) > 0
 	case AccessViewTechnical:
 		return hasAnyRole(profile, "admin", "super_admin")
 	case AccessViewSecurity:
@@ -114,9 +112,6 @@ func managesEveryRecordNetwork(profile AccessProfile, record RecordScope) bool {
 		if networkID == "" {
 			return false
 		}
-	}
-	if profile.ManagesAllKnowledgeNetworks {
-		return true
 	}
 	managed := make(map[string]struct{}, len(profile.ManagedKnowledgeNetworkIDs))
 	for _, networkID := range profile.ManagedKnowledgeNetworkIDs {

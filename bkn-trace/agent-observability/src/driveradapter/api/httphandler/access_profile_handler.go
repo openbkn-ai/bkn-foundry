@@ -56,11 +56,11 @@ func accessProfileResponse(profile evidencevo.AccessProfile) rdto.AccessProfileR
 	return rdto.AccessProfileResponse{
 		BusinessProvenanceOwn: active,
 		BusinessProvenanceManagedNetworks: active && hasRole("network_builder") &&
-			(profile.ManagesAllKnowledgeNetworks || len(profile.ManagedKnowledgeNetworkIDs) > 0),
-		TechnicalTrace:         active && hasRole("admin", "super_admin"),
-		SecurityAudit:          active && hasRole("security", "audit", "super_admin"),
-		ManagementAudit:        active && hasRole("audit", "super_admin"),
-		GlobalLogSearch:        active && hasRole("admin", "security", "audit", "super_admin"),
+			len(profile.ManagedKnowledgeNetworkIDs) > 0,
+		TechnicalTrace:         false,
+		SecurityAudit:          false,
+		ManagementAudit:        false,
+		GlobalLogSearch:        false,
 		AccessScopeFingerprint: profile.Fingerprint,
 	}
 }

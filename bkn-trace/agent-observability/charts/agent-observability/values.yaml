@@ -59,6 +59,10 @@ evidence:
     hydraAdminURL: http://bkn-safe-hydra-admin:4445
     allowUnauthenticated: false
 
+bknSafe:
+  baseURL: http://bkn-safe:3000
+  accessTimeout: 3s
+
 businessResolver:
   # Opt in only when the deployment can reach the BKN and Vega authorization-aware APIs.
   # When disabled, business refs and operation-business edges are returned as empty arrays

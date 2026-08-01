@@ -76,6 +76,10 @@ spec:
               value: {{ ternary "true" "false" .Values.evidence.rawTraceQuery.enabled | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
               value: {{ ternary "true" "false" .Values.evidence.queryAuth.allowUnauthenticated | quote }}
+            - name: BKN_SAFE_BASE_URL
+              value: {{ required "bknSafe.baseURL is required" .Values.bknSafe.baseURL | quote }}
+            - name: BKN_SAFE_ACCESS_TIMEOUT
+              value: {{ .Values.bknSafe.accessTimeout | quote }}
             {{- if .Values.evidence.queryAuth.hydraAdminURL }}
             - name: BKN_TRACE_HYDRA_ADMIN_URL
               value: {{ .Values.evidence.queryAuth.hydraAdminURL | quote }}

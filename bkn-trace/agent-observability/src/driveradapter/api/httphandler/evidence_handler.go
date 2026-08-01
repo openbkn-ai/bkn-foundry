@@ -981,8 +981,32 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_IDENTITY_MISMATCH", Message: "request identity does not match OAuth token"})
 		return false
 	}
+	expectedApplicationPrincipalID := ""
+	if accountType == "app" || accountType == "service" {
+		expectedApplicationPrincipalID = accountID
+	}
+	for _, identity := range []struct {
+		header   string
+		expected string
+	}{
+		{header: "X-BKN-Effective-Subject-ID", expected: accountID},
+		{header: "X-BKN-Application-Principal-ID", expected: expectedApplicationPrincipalID},
+		{header: "X-BKN-Delegation-ID", expected: ""},
+	} {
+		if supplied := strings.TrimSpace(r.Header.Get(identity.header)); supplied != "" && supplied != identity.expected {
+			writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "QUERY_IDENTITY_MISMATCH", Message: "request delegation identity does not match OAuth token"})
+			return false
+		}
+	}
 	r.Header.Set("x-account-id", accountID)
 	r.Header.Set("x-account-type", accountType)
+	r.Header.Set("X-BKN-Effective-Subject-ID", accountID)
+	if expectedApplicationPrincipalID == "" {
+		r.Header.Del("X-BKN-Application-Principal-ID")
+	} else {
+		r.Header.Set("X-BKN-Application-Principal-ID", expectedApplicationPrincipalID)
+	}
+	r.Header.Del("X-BKN-Delegation-ID")
 	r.Header.Set("X-BKN-Authenticated-Client-ID", strings.TrimSpace(introspection.ClientID))
 	return true
 }

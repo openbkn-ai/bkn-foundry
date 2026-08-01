@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
 const (
@@ -246,12 +248,7 @@ func WithEvents(trace NormalizedTrace, events []EvidenceEvent) NormalizedTrace {
 func knowledgeNetworkIDsFromEvents(events []EvidenceEvent) []string {
 	networks := map[string]struct{}{}
 	for _, event := range events {
-		if networkID, ok := event.Payload["kn_id"].(string); ok {
-			addKnowledgeNetworkID(networkID, networks)
-		}
-		for _, field := range []string{"business_refs", "source_refs", "resource_refs", "field_refs"} {
-			collectKnowledgeNetworkIDs(event.Payload[field], networks)
-		}
+		collectKnowledgeNetworkIDs(event.Payload, networks)
 	}
 	return sortedKnowledgeNetworkIDs(networks)
 }
@@ -274,8 +271,14 @@ func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}) {
 			networks[networkID] = struct{}{}
 		}
 	case map[string]any:
+		if networkID, ok := item["kn_id"].(string); ok {
+			addKnowledgeNetworkID(networkID, networks)
+		}
 		if refID, ok := item["ref_id"].(string); ok {
 			collectKnowledgeNetworkIDs(refID, networks)
+		}
+		for _, nested := range item {
+			collectKnowledgeNetworkIDs(nested, networks)
 		}
 	case []any:
 		for _, nested := range item {
@@ -285,16 +288,27 @@ func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}) {
 }
 
 func knowledgeNetworkIDFromCanonicalRef(ref string) string {
-	parts := strings.Split(strings.TrimSpace(ref), ":")
-	if len(parts) > 0 && parts[0] == "business" {
-		parts = parts[1:]
+	ref = strings.TrimSpace(ref)
+	if strings.HasPrefix(ref, "business:") {
+		ref = strings.TrimPrefix(ref, "business:")
 	}
-	if len(parts) == 2 && parts[0] == "kn" {
-		return strings.TrimSpace(parts[1])
-	}
-	if len(parts) >= 3 {
-		switch parts[0] {
-		case "object", "object_instance", "property", "relation", "metric", "logic", "function", "action_type", "action_instance", "resource":
+	for _, refType := range []sessionvo.BusinessRefType{
+		sessionvo.BusinessRefKnowledgeNetwork,
+		sessionvo.BusinessRefObjectType,
+		sessionvo.BusinessRefObjectInstance,
+		sessionvo.BusinessRefProperty,
+		sessionvo.BusinessRefRelationType,
+		sessionvo.BusinessRefMetric,
+		sessionvo.BusinessRefLogic,
+		sessionvo.BusinessRefFunction,
+		sessionvo.BusinessRefActionType,
+		sessionvo.BusinessRefActionInstance,
+	} {
+		if !refType.MatchesCanonicalRefID(ref) {
+			continue
+		}
+		parts := strings.SplitN(ref, ":", 3)
+		if len(parts) >= 2 {
 			return strings.TrimSpace(parts[1])
 		}
 	}

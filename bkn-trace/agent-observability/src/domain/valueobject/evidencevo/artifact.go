@@ -296,6 +296,9 @@ func (artifact EvidenceArtifact) RecordScope() RecordScope {
 }
 
 func ArtifactFingerprint(artifact EvidenceArtifact) (string, error) {
+	artifact.EffectiveSubjectID = ""
+	artifact.ApplicationPrincipalID = ""
+	artifact.KnowledgeNetworkIDs = nil
 	body, err := json.Marshal(artifact)
 	if err != nil {
 		return "", err
