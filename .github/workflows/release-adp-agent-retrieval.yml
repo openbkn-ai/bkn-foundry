@@ -28,6 +28,51 @@ jobs:
       service-path: adp/context-loader/agent-retrieval
       stack: chart-only
 
+  # 发布产物的构建配置断言。这类偏差不出现在任何 .go 的 diff 里，源码评审覆盖
+  # 不到，所以判据落在产物上。背景与判据依据见内部文档。
+  no-dev-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # 只造 runner 原生架构这一份：跨架构产物在这条性质上没有差别，qemu 不值。
+      - name: Build the release image (native arch only)
+        uses: docker/build-push-action@v6
+        with:
+          context: adp/context-loader/agent-retrieval
+          file: adp/context-loader/agent-retrieval/docker/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: agent-retrieval:no-dev-gate-check
+          cache-from: type=gha,scope=agent-retrieval-no-dev-gate
+          cache-to: type=gha,mode=max,scope=agent-retrieval-no-dev-gate
+
+      - name: Assert the release build configuration
+        run: |
+          cid=$(docker create agent-retrieval:no-dev-gate-check)
+          docker cp "$cid:/app/agent-retrieval/agent-retrieval" ./agent-retrieval.bin
+          docker rm "$cid" >/dev/null
+
+          # 先自检手法有效：抠错路径或 grep 静默失败会让检查永远"通过"。哨兵取
+          # 两种构型下都在的字符串。
+          if ! grep -aqF 'entitlement: SetGate after Freeze' ./agent-retrieval.bin; then
+            echo "::error::检查手法失效：预期必然存在的符号未命中，产物或判据已不成立。"
+            exit 1
+          fi
+
+          if grep -aqF 'OPENBKN_EDITION' ./agent-retrieval.bin; then
+            echo "::error::发布产物的构建配置不符合预期，检查 Dockerfile 与构建参数。"
+            echo "::error::判据依据见内部文档；不要通过放宽本断言来绕过。"
+            exit 1
+          fi
+
+          echo "OK"
+
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
