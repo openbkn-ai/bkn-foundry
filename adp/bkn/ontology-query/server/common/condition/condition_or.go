@@ -125,6 +125,10 @@ func rewriteOrCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]
 
 		if cond != nil {
 			subConds = append(subConds, cond)
+			continue
+		}
+		if PromoteLegacyLeafWithSubConds(subCond).Operation == OperationAnd {
+			return nil, nil
 		}
 	}
 	if len(subConds) == 0 {
