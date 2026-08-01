@@ -32,7 +32,7 @@ func (client *Client) ID() string { return sourceID }
 
 func (client *Client) Metadata() observabilityvo.SourceStatus {
 	return observabilityvo.SourceStatus{
-		SourceID: sourceID, Status: "available", Reliability: "best_effort",
+		SourceID: sourceID, Status: "healthy", Reliability: "best_effort",
 		CollectionMethod: "direct_otlp", CoveredModules: []string{"openbkn"}, CountAccuracy: "exact",
 		Categories: []string{
 			observabilityvo.CategoryRuntimeSystem,
@@ -111,14 +111,32 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 	}
 	addTerm("attributes.tenant_id.keyword", query.AuthorizedTenantID)
 	addTerm("attributes.business_domain_id.keyword", query.AuthorizedBusinessDomain)
-	addTerm("attributes.effective_subject_id.keyword", query.AuthorizedSubjectID)
+	addTerm("attributes.trust_level.keyword", "trusted")
 	authorizedCategories := intersectValues(query.Categories, query.AuthorizedCategories)
 	if len(query.Categories) == 0 {
 		authorizedCategories = query.AuthorizedCategories
 	}
 	addTerms("attributes.log_category.keyword", authorizedCategories)
-	for _, networkID := range query.AuthorizedKnowledgeNetworkIDs {
-		addTerm("attributes.knowledge_network_ids.keyword", networkID)
+	if query.RequireRecordScope {
+		candidates := make([]any, 0, 3)
+		if query.AuthorizedSubjectID != "" {
+			candidates = append(candidates, map[string]any{"term": map[string]any{
+				"attributes.effective_subject_id.keyword": query.AuthorizedSubjectID,
+			}})
+		}
+		if query.AuthorizedApplicationID != "" {
+			candidates = append(candidates, map[string]any{"term": map[string]any{
+				"attributes.application_id.keyword": query.AuthorizedApplicationID,
+			}})
+		}
+		if len(query.AuthorizedKnowledgeNetworkIDs) > 0 {
+			candidates = append(candidates, map[string]any{"terms": map[string]any{
+				"attributes.knowledge_network_ids.keyword": query.AuthorizedKnowledgeNetworkIDs,
+			}})
+		}
+		filters = append(filters, map[string]any{"bool": map[string]any{
+			"should": candidates, "minimum_should_match": 1,
+		}})
 	}
 	addTerm("traceId.keyword", query.TraceID)
 	addTerm("spanId.keyword", query.SpanID)
@@ -132,7 +150,11 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 	addTerm("attributes.resource_id.keyword", query.ResourceID)
 	addTerms("resource.service.name.keyword", query.Services)
 	addTerms("resource.deployment.environment.keyword", query.Environments)
-	addTerms("attributes.event_name.keyword", query.EventNames)
+	authorizedEventNames := observabilityvo.RegisteredEventNames(authorizedCategories)
+	if len(query.EventNames) > 0 {
+		authorizedEventNames = intersectValues(query.EventNames, authorizedEventNames)
+	}
+	addTerms("attributes.event_name.keyword", authorizedEventNames)
 	if query.TimeFrom != nil || query.TimeTo != nil {
 		bounds := make(map[string]any)
 		if query.TimeFrom != nil {
@@ -147,17 +169,21 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		filters = append(filters, map[string]any{"range": map[string]any{"severity.number": map[string]any{"gte": query.SeverityMinimum}}})
 	}
 	if query.FailedOnly {
-		addTerm("attributes.outcome.keyword", "failure")
+		addTerms("attributes.outcome.keyword", []string{"failure", "denied"})
 	}
 	boolQuery := map[string]any{"filter": filters}
 	if strings.TrimSpace(query.Query) != "" {
 		boolQuery["must"] = []any{map[string]any{"match_phrase": map[string]any{"attributes.safe_summary": query.Query}}}
 	}
-	return map[string]any{
+	result := map[string]any{
 		"size": limit, "track_total_hits": true,
-		"sort":  []any{map[string]any{"observedTimestamp": map[string]any{"order": "desc"}}, map[string]any{"_id": map[string]any{"order": "desc"}}},
+		"sort":  []any{map[string]any{"@timestamp": map[string]any{"order": "desc"}}, map[string]any{"_id": map[string]any{"order": "desc"}}},
 		"query": map[string]any{"bool": boolQuery},
 	}
+	if query.PageBefore != nil && !query.PageBefore.EventTimestamp.IsZero() && query.PageBefore.LogID != "" {
+		result["search_after"] = []any{query.PageBefore.EventTimestamp.Format(time.RFC3339Nano), query.PageBefore.LogID}
+	}
+	return result
 }
 
 func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {

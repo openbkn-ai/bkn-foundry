@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func (source handlerLogSource) Get(_ context.Context, logID string) (observabili
 
 func (source handlerLogSource) Metadata() observabilityvo.SourceStatus {
 	return observabilityvo.SourceStatus{
-		SourceID: "otel", Status: "available", Reliability: "best_effort",
+		SourceID: "otel", Status: "healthy", Reliability: "best_effort",
 		CollectionMethod: "direct_otlp", CoveredModules: []string{"context-loader"},
 		CountAccuracy: "exact", Categories: []string{observabilityvo.CategoryRuntimeBusiness},
 	}
@@ -64,7 +65,7 @@ func TestLogHandlerReturnsTheR62ListEnvelope(t *testing.T) {
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{{
 		SchemaVersion: "1.0.0", LogID: "log-a", SourceID: "otel", SourceLogID: "source-a",
 		Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed",
-		EventTimestamp: time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC), ObservedTimestamp: time.Date(2026, 8, 1, 10, 0, 1, 0, time.UTC),
+		EventTimestamp: time.Now().UTC(), ObservedTimestamp: time.Now().UTC(),
 		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "读取需求预测对象",
 		ServiceName: "context-loader", Environment: "local", TenantID: "tenant-a", BusinessDomain: "domain-a",
 		EffectiveSubjectID: "other-a", IngressPrincipal: "otel-collector", TrustLevel: "trusted",
@@ -138,7 +139,7 @@ func TestLogHandlerReturnsAuthorizedDetailAndHidesUnauthorizedDetail(t *testing.
 	setLogTestIdentity(otherRequest, "user-a")
 	otherResponse := httptest.NewRecorder()
 	handler.GetLog(otherResponse, otherRequest)
-	if otherResponse.Code != http.StatusNotFound || !containsJSONCode(otherResponse.Body.Bytes(), "resource_not_disclosed") {
+	if otherResponse.Code != http.StatusNotFound || !containsJSONCode(otherResponse.Body.Bytes(), "log_not_disclosed") {
 		t.Fatalf("unauthorized detail must be undisclosed, got %d: %s", otherResponse.Code, otherResponse.Body.String())
 	}
 }
@@ -149,8 +150,9 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
 	}
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{{
-		LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "request.completed",
+		LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "admin-a",
+		EventTimestamp: time.Now().UTC(),
 	}})
 
 	tests := []struct {
@@ -159,7 +161,7 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 		call   func(http.ResponseWriter, *http.Request)
 		assert func([]byte) bool
 	}{
-		{name: "facets", path: "/api/observability/v1/log-facets?facet=event_name", call: handler.GetLogFacets, assert: func(body []byte) bool { return containsJSONFacet(body, "request.completed", 1) }},
+		{name: "facets", path: "/api/observability/v1/log-facets?facet=event_name", call: handler.GetLogFacets, assert: func(body []byte) bool { return containsJSONFacet(body, "service.started", 1) }},
 		{name: "sources", path: "/api/observability/v1/log-sources", call: handler.ListLogSources, assert: func(body []byte) bool { return containsJSONSource(body, "otel") }},
 		{name: "policies", path: "/api/observability/v1/log-policies", call: handler.ListLogPolicies, assert: func(body []byte) bool { return containsJSONPolicy(body, observabilityvo.CategoryRuntimeSystem) }},
 	}
@@ -194,15 +196,69 @@ func TestLogFacetRejectsUnsupportedFacet(t *testing.T) {
 }
 
 func TestParseLogQueryAcceptsRFC3339TimeRangeAndRejectsReverseRange(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs?from=2026-08-01T10:00:00Z&to=2026-08-01T11:00:00Z", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs?time_from=2026-08-01T10:00:00Z&time_to=2026-08-01T11:00:00Z", nil)
 	query, err := parseLogQuery(request)
 	if err != nil || query.TimeFrom == nil || query.TimeTo == nil || !query.TimeFrom.Before(*query.TimeTo) {
 		t.Fatalf("valid time range was not parsed: query=%+v err=%v", query, err)
 	}
 
-	reversed := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs?from=2026-08-01T12:00:00Z&to=2026-08-01T11:00:00Z", nil)
+	reversed := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs?time_from=2026-08-01T12:00:00Z&time_to=2026-08-01T11:00:00Z", nil)
 	if _, err := parseLogQuery(reversed); err == nil {
 		t.Fatal("reverse time range must be rejected")
+	}
+}
+
+func TestParseLogQueryRejectsUnregisteredAndMalformedFilters(t *testing.T) {
+	paths := []string{
+		"/api/observability/v1/logs?categories=plugin.custom",
+		"/api/observability/v1/logs?event_names=plugin.custom.event",
+		"/api/observability/v1/logs?trace_id=trace-a",
+		"/api/observability/v1/logs?span_id=span-a",
+		"/api/observability/v1/logs?q=" + strings.Repeat("x", 513),
+	}
+	for _, path := range paths {
+		if _, err := parseLogQuery(httptest.NewRequest(http.MethodGet, path, nil)); err == nil {
+			t.Fatalf("invalid filter was accepted: %s", path)
+		}
+	}
+}
+
+func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
+	profile := evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "admin-a",
+		Roles: []string{"admin"}, AccountActive: true, TenantActive: true, Fingerprint: "sha256:scope-a",
+	}
+	base := time.Now().UTC().Truncate(time.Second)
+	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{
+		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a", EventTimestamp: base},
+		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a", EventTimestamp: base.Add(-time.Second)},
+		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a", EventTimestamp: base.Add(-2 * time.Second)},
+	})
+	firstRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2", nil)
+	setLogTestIdentity(firstRequest, "admin-a")
+	firstResponse := httptest.NewRecorder()
+	handler.ListLogs(firstResponse, firstRequest)
+	var firstBody struct {
+		NextCursor string `json:"next_cursor"`
+	}
+	if firstResponse.Code != http.StatusOK || json.Unmarshal(firstResponse.Body.Bytes(), &firstBody) != nil || firstBody.NextCursor == "" {
+		t.Fatalf("first page did not return a cursor: %d %s", firstResponse.Code, firstResponse.Body.String())
+	}
+
+	invalidRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&cursor=invalid", nil)
+	setLogTestIdentity(invalidRequest, "admin-a")
+	invalidResponse := httptest.NewRecorder()
+	handler.ListLogs(invalidResponse, invalidRequest)
+	if invalidResponse.Code != http.StatusBadRequest || !containsJSONCode(invalidResponse.Body.Bytes(), "cursor_invalid") {
+		t.Fatalf("invalid cursor contract mismatch: %d %s", invalidResponse.Code, invalidResponse.Body.String())
+	}
+
+	changedFilterRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&failed_only=true&cursor="+firstBody.NextCursor, nil)
+	setLogTestIdentity(changedFilterRequest, "admin-a")
+	changedFilterResponse := httptest.NewRecorder()
+	handler.ListLogs(changedFilterResponse, changedFilterRequest)
+	if changedFilterResponse.Code != http.StatusConflict || !containsJSONCode(changedFilterResponse.Body.Bytes(), "cursor_stale") {
+		t.Fatalf("stale cursor contract mismatch: %d %s", changedFilterResponse.Code, changedFilterResponse.Body.String())
 	}
 }
 
@@ -230,6 +286,51 @@ func TestLogHandlerForwardsCallerAuthorizationToSourceAdapters(t *testing.T) {
 }
 
 func newTestLogHandler(profile evidencevo.AccessProfile, records []observabilityvo.LogRecord) *LogHandler {
+	for index := range records {
+		if records[index].SchemaVersion == "" {
+			records[index].SchemaVersion = "1.0.0"
+		}
+		if records[index].SourceID == "" {
+			records[index].SourceID = "test-source"
+		}
+		if records[index].SourceLogID == "" {
+			records[index].SourceLogID = records[index].LogID
+		}
+		if records[index].EventTimestamp.IsZero() {
+			records[index].EventTimestamp = time.Now().UTC()
+		}
+		if records[index].ObservedTimestamp.IsZero() {
+			records[index].ObservedTimestamp = records[index].EventTimestamp
+		}
+		if records[index].SeverityNumber == 0 {
+			records[index].SeverityNumber, records[index].SeverityText = 9, "INFO"
+		}
+		if records[index].Outcome == "" {
+			records[index].Outcome = "success"
+		}
+		if records[index].ServiceName == "" {
+			records[index].ServiceName = "test-service"
+		}
+		if records[index].Environment == "" {
+			records[index].Environment = "test"
+		}
+		if records[index].EventName == "" {
+			switch records[index].Category {
+			case observabilityvo.CategoryRuntimeBusiness:
+				records[index].EventName = "knowledge.read.completed"
+			case observabilityvo.CategoryRuntimeModel:
+				records[index].EventName = "model.inference.completed"
+			default:
+				records[index].EventName = "service.started"
+			}
+		}
+		if records[index].TrustLevel == "" {
+			records[index].TrustLevel = "trusted"
+		}
+		if records[index].IngressPrincipal == "" {
+			records[index].IngressPrincipal = "test-gateway"
+		}
+	}
 	resolver := &fakeAccessScopeResolver{profile: profile}
 	evidenceHandler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
 		AllowUnauthenticatedQuery: true, AuthorizationScopeResolver: resolver,

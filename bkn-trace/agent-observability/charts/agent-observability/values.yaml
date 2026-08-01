@@ -30,6 +30,7 @@ ingress:
   host: ""
   paths:
     - /api/agent-observability/v1
+    - /api/observability/v1
   tls: []
 
 evidence:
@@ -72,6 +73,13 @@ businessResolver:
   vegaBaseURL: ""
   timeout: 3s
 
+observability:
+  # Configure the same Secret on every replica so signed pagination cursors
+  # remain valid across pods. A single local replica may leave this empty.
+  cursorSigning:
+    existingSecret: ""
+    secretKey: key
+
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable
   # MariaDB explicitly only after its Secret and database are ready.
@@ -104,6 +112,7 @@ affinity: {}
 opensearch:
   endpoint:  http://opensearch-cluster-master.resource.svc.cluster.local:9200
   traceIndex: ss4o_traces-default-anyshare
+  logIndex: ss4o_logs-default-anyshare
   auth:
     enabled: false
     username: ""

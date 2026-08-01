@@ -39,6 +39,8 @@ spec:
               value: {{ .Values.opensearch.endpoint | quote }}
             - name: OPENSEARCH_TRACE_INDEX
               value: {{ .Values.opensearch.traceIndex | quote }}
+            - name: OPENSEARCH_LOG_INDEX
+              value: {{ .Values.opensearch.logIndex | quote }}
             - name: OPENSEARCH_EVIDENCE_INDEX
               value: {{ .Values.evidence.index | quote }}
             - name: BKN_TRACE_EVIDENCE_STORE
@@ -113,6 +115,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.evidence.queryAuth.existingSecret | quote }}
                   key: {{ .Values.evidence.queryAuth.secretKey | quote }}
+            {{- end }}
+            {{- if .Values.observability.cursorSigning.existingSecret }}
+            - name: BKN_OBSERVABILITY_CURSOR_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.observability.cursorSigning.existingSecret | quote }}
+                  key: {{ .Values.observability.cursorSigning.secretKey | quote }}
             {{- end }}
           livenessProbe:
             tcpSocket:

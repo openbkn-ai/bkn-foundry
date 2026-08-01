@@ -3,6 +3,7 @@ package httphandler
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,11 @@ type LogHandler struct {
 	service    *logsvc.Service
 	authorizer *EvidenceHandler
 }
+
+var (
+	traceIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	spanIDPattern  = regexp.MustCompile(`^[0-9a-f]{16}$`)
+)
 
 func NewLogHandler(service *logsvc.Service, authorizer *EvidenceHandler) *LogHandler {
 	return &LogHandler{service: service, authorizer: authorizer}
@@ -54,6 +60,18 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	result, err := handler.service.List(sourceContext, *scope.AccessProfile, query)
 	if err != nil {
 		switch {
+		case errors.Is(err, logsvc.ErrCursorInvalid):
+			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+				Code: "cursor_invalid", Message: "the pagination cursor is invalid",
+			})
+		case errors.Is(err, logsvc.ErrCursorStale):
+			writeJSON(w, http.StatusConflict, rdto.ErrorResponse{
+				Code: "cursor_stale", Message: "the authorization scope, sources, or query changed; restart from the first page",
+			})
+		case errors.Is(err, logsvc.ErrInvalidQuery):
+			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+				Code: "invalid_log_filter", Message: "the log time window exceeds the supported range",
+			})
 		case errors.Is(err, logsvc.ErrAccessDenied):
 			writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{
 				Code: "observability_access_denied", Message: "the current access profile cannot search the requested logs",
@@ -105,7 +123,7 @@ func (handler *LogHandler) GetLog(w http.ResponseWriter, r *http.Request) {
 	record, err := handler.service.Get(sourceContext, profile, logID)
 	if err != nil {
 		if errors.Is(err, logsvc.ErrNotDisclosed) {
-			writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "resource_not_disclosed", Message: "log was not found in the authorized scope"})
+			writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "log_not_disclosed", Message: "log was not found in the authorized scope"})
 			return
 		}
 		writeLogServiceError(w, err)
@@ -153,7 +171,8 @@ func (handler *LogHandler) ListLogSources(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	data, err := handler.service.Sources(profile)
+	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
+	data, err := handler.service.Sources(sourceContext, profile)
 	if err != nil {
 		writeLogServiceError(w, err)
 		return
@@ -204,6 +223,12 @@ func supportedLogFacet(value string) bool {
 
 func writeLogServiceError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, logsvc.ErrCursorInvalid):
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "cursor_invalid", Message: "the pagination cursor is invalid"})
+	case errors.Is(err, logsvc.ErrCursorStale):
+		writeJSON(w, http.StatusConflict, rdto.ErrorResponse{Code: "cursor_stale", Message: "the authorization scope, sources, or query changed; restart from the first page"})
+	case errors.Is(err, logsvc.ErrInvalidQuery):
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "invalid_log_filter", Message: "the log time window exceeds the supported range"})
 	case errors.Is(err, logsvc.ErrAccessDenied):
 		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "observability_access_denied", Message: "the current access profile cannot access the requested logs"})
 	case errors.Is(err, logsvc.ErrSourcesUnavailable):
@@ -215,16 +240,19 @@ func writeLogServiceError(w http.ResponseWriter, err error) {
 
 func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 	values := r.URL.Query()
-	timeFrom, err := parseOptionalLogTime(values.Get("from"), "from")
+	if len(values.Get("q")) > 512 {
+		return observabilityvo.LogQuery{}, errors.New("q exceeds the supported length")
+	}
+	timeFrom, err := parseOptionalLogTime(values.Get("time_from"), "time_from")
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
 	}
-	timeTo, err := parseOptionalLogTime(values.Get("to"), "to")
+	timeTo, err := parseOptionalLogTime(values.Get("time_to"), "time_to")
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
 	}
 	if timeFrom != nil && timeTo != nil && timeTo.Before(*timeFrom) {
-		return observabilityvo.LogQuery{}, errors.New("to must not be before from")
+		return observabilityvo.LogQuery{}, errors.New("time_to must not be before time_from")
 	}
 	limit, err := parseBoundedInteger(values.Get("limit"), 50, 1, 200, "limit")
 	if err != nil {
@@ -241,16 +269,35 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 			return observabilityvo.LogQuery{}, errors.New("failed_only must be true or false")
 		}
 	}
+	categories := queryList(values["categories"])
+	for _, category := range categories {
+		if !containsString(observabilityvo.AllCategories, category) {
+			return observabilityvo.LogQuery{}, errors.New("categories contains an unregistered log category")
+		}
+	}
+	eventNames := queryList(values["event_names"])
+	for _, eventName := range eventNames {
+		if !observabilityvo.IsRegisteredEventName(eventName) {
+			return observabilityvo.LogQuery{}, errors.New("event_names contains an unregistered event")
+		}
+	}
+	traceID, spanID := strings.TrimSpace(values.Get("trace_id")), strings.TrimSpace(values.Get("span_id"))
+	if traceID != "" && !traceIDPattern.MatchString(traceID) {
+		return observabilityvo.LogQuery{}, errors.New("trace_id must contain 32 lowercase hexadecimal characters")
+	}
+	if spanID != "" && !spanIDPattern.MatchString(spanID) {
+		return observabilityvo.LogQuery{}, errors.New("span_id must contain 16 lowercase hexadecimal characters")
+	}
 	return observabilityvo.LogQuery{
 		Query: values.Get("q"), TimeFrom: timeFrom, TimeTo: timeTo,
-		Categories: queryList(values["categories"]), SeverityMinimum: severity,
+		Categories: categories, SeverityMinimum: severity,
 		Services: queryList(values["services"]), Environments: queryList(values["environments"]),
-		EventNames: queryList(values["event_names"]), BusinessDomain: values.Get("business_domain_id"),
+		EventNames: eventNames, BusinessDomain: values.Get("business_domain_id"),
 		ActorID: values.Get("actor_id"), ApplicationID: values.Get("application_id"),
 		ResourceType: values.Get("resource_type"), ResourceID: values.Get("resource_id"),
 		ConversationID: values.Get("conversation_id"), InteractionID: values.Get("interaction_id"),
 		OperationID: values.Get("operation_id"), RequestID: values.Get("request_id"),
-		TraceID: values.Get("trace_id"), SpanID: values.Get("span_id"), FailedOnly: failedOnly,
+		TraceID: traceID, SpanID: spanID, FailedOnly: failedOnly,
 		Limit: limit, Cursor: values.Get("cursor"),
 	}, nil
 }

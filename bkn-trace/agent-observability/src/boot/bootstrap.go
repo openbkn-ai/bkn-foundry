@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectorsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaudit"
@@ -61,6 +62,7 @@ func NewApp() (*App, error) {
 	httpServerConfig := conf.NewHTTPServerConfig()
 	openSearchConfig := conf.NewOpenSearchConfig()
 	evidenceConfig := conf.NewEvidenceConfig()
+	observabilityConfig := conf.NewObservabilityConfig()
 	resolverConfig := conf.NewBusinessResolverConfig()
 	docs.SwaggerInfo.BasePath = APIBasePath
 
@@ -92,10 +94,16 @@ func NewApp() (*App, error) {
 		&http.Client{Timeout: accessScopeConfig.Timeout},
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
-	logHandler := httphandler.NewLogHandler(logsvc.New([]logsvc.Source{
+	logHandler := httphandler.NewLogHandler(logsvc.NewWithCursorKey([]logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
 		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
-	}), evidenceHandler)
+		logsvc.NewNotIntegratedSource("bkn-safe-access", []string{
+			observabilityvo.CategoryAccessUser,
+		}, []string{"BKN Safe OAuth"}),
+		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
+			observabilityvo.CategoryAuditSecurity,
+		}, []string{"BKN Safe Authorization"}),
+	}, observabilityConfig.CursorSigningKey), evidenceHandler)
 	coreConfig := conf.NewCoreConfig()
 	metrics := coremetrics.New()
 	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)

@@ -1,9 +1,11 @@
 package opensearchlogaccess
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
@@ -36,8 +38,10 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 	page, err := client.Search(context.Background(), observabilityvo.LogQuery{
 		TraceID: "trace-a", Limit: 20,
 		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a",
+		AuthorizedSubjectID:           "builder-a",
 		AuthorizedCategories:          []string{observabilityvo.CategoryRuntimeBusiness},
 		AuthorizedKnowledgeNetworkIDs: []string{"kn-a"},
+		RequireRecordScope:            true,
 	})
 	if err != nil {
 		t.Fatalf("search logs: %v", err)
@@ -59,6 +63,30 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 	if record.LogID != "source-log-a" || record.SourceID != "context-loader" || record.TenantID != "tenant-a" || record.Category != observabilityvo.CategoryRuntimeBusiness ||
 		record.ServiceName != "context-loader" || record.TraceID != "trace-a" || len(record.KnowledgeNetworkIDs) != 1 {
 		t.Fatalf("unexpected SS4O projection: %+v", record)
+	}
+}
+
+func TestSearchUsesCandidateScopeInsteadOfRequiringEveryManagedNetwork(t *testing.T) {
+	backend := &fakeSearchClient{response: []byte(`{"hits":{"total":{"value":0,"relation":"eq"},"hits":[]}}`)}
+	positionTime := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	client := New(backend, "logs")
+	_, err := client.Search(context.Background(), observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a",
+		AuthorizedSubjectID: "builder-a", AuthorizedApplicationID: "app-a",
+		AuthorizedCategories:          []string{observabilityvo.CategoryRuntimeBusiness},
+		AuthorizedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"}, RequireRecordScope: true,
+		PageBefore: &observabilityvo.SourcePosition{EventTimestamp: positionTime, LogID: "log-20"},
+	})
+	if err != nil {
+		t.Fatalf("search logs: %v", err)
+	}
+	if bytes.Count(backend.query, []byte("attributes.knowledge_network_ids.keyword")) != 1 {
+		t.Fatalf("managed networks must be one candidate terms query, not all-of terms: %s", backend.query)
+	}
+	for _, expected := range []string{"minimum_should_match", "attributes.effective_subject_id.keyword", "attributes.application_id.keyword", "search_after", "log-20"} {
+		if !containsBytes(backend.query, expected) {
+			t.Fatalf("missing scoped keyset element %q: %s", expected, backend.query)
+		}
 	}
 }
 

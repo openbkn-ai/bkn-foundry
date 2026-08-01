@@ -72,8 +72,11 @@ type LogQuery struct {
 	AuthorizedTenantID            string
 	AuthorizedBusinessDomain      string
 	AuthorizedSubjectID           string
+	AuthorizedApplicationID       string
 	AuthorizedCategories          []string
 	AuthorizedKnowledgeNetworkIDs []string
+	RequireRecordScope            bool
+	PageBefore                    *SourcePosition
 }
 
 func (query LogQuery) IsAssociatedDrilldown() bool {
@@ -87,6 +90,13 @@ type SourcePage struct {
 	Count         int64
 	CountAccuracy string
 	Watermark     string
+}
+
+// SourcePosition is the last record consumed from one source. Adapters use it
+// as a strict keyset boundary; it is never accepted directly from callers.
+type SourcePosition struct {
+	EventTimestamp time.Time `json:"event_timestamp"`
+	LogID          string    `json:"log_id"`
 }
 
 type SourceStatus struct {

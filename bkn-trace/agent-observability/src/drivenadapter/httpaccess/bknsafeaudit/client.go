@@ -36,7 +36,7 @@ func (client *Client) ID() string { return sourceID }
 
 func (client *Client) Metadata() observabilityvo.SourceStatus {
 	return observabilityvo.SourceStatus{
-		SourceID: sourceID, Status: "available", Reliability: "best_effort",
+		SourceID: sourceID, Status: "healthy", Reliability: "best_effort",
 		CollectionMethod: "source_adapter", CoveredModules: []string{"BKN Safe Admin API"},
 		CountAccuracy: "exact", Categories: []string{observabilityvo.CategoryAuditAdmin},
 	}
@@ -66,6 +66,9 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	}
 	if query.TimeTo != nil {
 		parameters.Set("to", query.TimeTo.Format(time.RFC3339))
+	}
+	if query.PageBefore != nil && !query.PageBefore.EventTimestamp.IsZero() {
+		parameters.Set("to", query.PageBefore.EventTimestamp.Format(time.RFC3339))
 	}
 	if query.FailedOnly {
 		parameters.Set("failed_only", "true")
@@ -158,7 +161,7 @@ func projectAuditLog(entry auditLog, tenantID string) observabilityvo.LogRecord 
 		Category: observabilityvo.CategoryAuditAdmin, EventName: auditEventName(entry),
 		EventTimestamp: entry.CreatedAt, ObservedTimestamp: entry.CreatedAt,
 		SeverityNumber: severityNumber, SeverityText: severityText, Outcome: outcome,
-		SafeSummary: summary, ServiceName: "bkn-safe-admin",
+		SafeSummary: summary, ServiceName: "bkn-safe-admin", Environment: "unknown",
 		TenantID: tenantID, ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID,
 		IngressPrincipal: "bkn-safe", TrustLevel: "trusted",
 		ResourceRef: &observabilityvo.ResourceRef{ResourceType: entry.Resource, ResourceID: entry.TargetID},
