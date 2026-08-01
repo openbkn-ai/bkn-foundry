@@ -1,6 +1,8 @@
 // Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
 //
-// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
 
 // Package app is context-loader's bootstrap, split out of package main so a
 // second entry point can reuse it. The community binary (server/main.go) and
