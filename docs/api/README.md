@@ -27,8 +27,6 @@
 | 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。由 Go 注解生成，**禁止手改 YAML**。**全量** |
 | 🟫 context-loader | [`context-loader/`](context-loader/) | Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP。**外部面全量**（内部 `/in/v1` 面不收录） |
 | 🟩 execution-factory | [`execution-factory/`](execution-factory/) | 执行工厂：函数 / 沙箱观测 / 导入导出 / 算子 / MCP / 工具箱 / Skill。**公开面全量**（90 个端点）。只收 Ingress 暴露的 `/v1`，内部面 `internal-v1` 刻意不收（不校验令牌），能力面 `/api/capabilities-lab/v1` 暂未收 |
-| 🟩 execution-factory | [`execution-factory/`](execution-factory/) | 执行工厂。**仅部分**：已覆盖函数、沙箱观测、导入导出（12 个端点），算子 / 工具箱 / MCP / Skill 四面 77 个端点尚未文档化。只收 Ingress 暴露的公开面，内部面 `internal-v1` 刻意不收 |
-| 🟩 execution-factory | [`execution-factory/`](execution-factory/) | 执行工厂：函数 / 沙箱观测 / 导入导出 / 算子 / MCP / 工具箱 / Skill。**公开面全量**（90 个端点）。只收 Ingress 暴露的 `/v1`，内部面 `internal-v1` 刻意不收（不校验令牌），能力面 `/api/capabilities-lab/v1` 暂未收 |
 | 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
 
 > 未文档化的服务：`bkn-safe`。

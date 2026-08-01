@@ -130,13 +130,17 @@ RESNAME_instance-subgraph         := 实例子图查询
 RESNAME_logic-property            := 逻辑属性求值
 RESNAME_action                    := 行动召回与执行
 RESNAME_data-access               := 数据层直查
+# context-loader（模块限定，避免与 execution-factory 的同名文件互相覆盖）
+RESNAME_context-loader_mcp        := MCP 服务
+RESNAME_context-loader_skill      := Skill 召回
+# execution-factory
 RESNAME_function                  := 函数
 RESNAME_sandbox                   := 沙箱观测
 RESNAME_impex                     := 导入导出
 RESNAME_operator                  := 算子
-RESNAME_mcp                       := MCP
 RESNAME_toolbox                   := 工具箱
-RESNAME_skill                     := Skill
+RESNAME_execution-factory_mcp     := MCP
+RESNAME_execution-factory_skill   := Skill
 
 ## api-docs-html: 用 redocly 为每个 YAML 渲染交互式 HTML 文档（带搜索/折叠/示例），
 ## 输出到 _generated/html/<module>/<resource>.html，并生成一个卡片式 index.html 汇总入口。
@@ -170,7 +174,7 @@ api-docs-html:
 	  for y in $(API_DIR)/$$m/*.yaml; do \
 	    [ -e "$$y" ] || continue; \
 	    base=$$(basename "$$y" .yaml); \
-	    rn=$$(make -s print-resname RES="$$base"); [ -n "$$rn" ] || rn="$$base"; \
+	    rn=$$(make -s print-resname MOD="$$m" RES="$$base"); [ -n "$$rn" ] || rn="$$base"; \
 	    printf '<a class="card" data-name="%s %s" href="./%s/%s.html" target="_blank" rel="noopener"><span class="name">%s</span><span class="arrow">&rarr;</span></a>\n' "$$base" "$$rn" "$$m" "$$base" "$$rn" >> "$$idx"; \
 	  done; \
 	  printf '</div>\n</section>\n' >> "$$idx"; \
@@ -186,9 +190,13 @@ print-modtitle:
 print-moddesc:
 	@echo "$(MODDESC_$(MOD))"
 
-## print-resname: 内部辅助，回显某资源的中文名（供侧栏显示用）
+## print-resname: 内部辅助，回显某资源的中文名（供侧栏显示用）。
+## 先查模块限定的 RESNAME_<模块>_<资源>，再回落到全局的 RESNAME_<资源>。
+## 需要限定是因为不同模块会有同名文件：context-loader 与 execution-factory
+## 都有 mcp.yaml / skill.yaml，扁平命名空间下后者会覆盖前者的显示名。
 print-resname:
-	@echo "$(RESNAME_$(RES))"
+	@if [ -n "$(RESNAME_$(MOD)_$(RES))" ]; then echo "$(RESNAME_$(MOD)_$(RES))"; \
+	else echo "$(RESNAME_$(RES))"; fi
 
 ## api-docs-clean: 清空 _generated 的产物（渲染前重建，避免删源后残留旧文件）
 api-docs-clean:
