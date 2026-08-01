@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
@@ -40,27 +41,18 @@ func (h *EvidenceHandler) GetAccessProfile(w http.ResponseWriter, r *http.Reques
 }
 
 func accessProfileResponse(profile evidencevo.AccessProfile) rdto.AccessProfileResponse {
-	roles := make(map[string]struct{}, len(profile.Roles))
-	for _, role := range profile.Roles {
-		roles[role] = struct{}{}
-	}
-	hasRole := func(values ...string) bool {
-		for _, value := range values {
-			if _, ok := roles[value]; ok {
-				return true
-			}
-		}
-		return false
-	}
-	active := profile.AccountActive && profile.TenantActive
+	capabilities := observabilityvo.CapabilitiesFor(profile)
 	return rdto.AccessProfileResponse{
-		BusinessProvenanceOwn: active,
-		BusinessProvenanceManagedNetworks: active && hasRole("network_builder") &&
-			len(profile.ManagedKnowledgeNetworkIDs) > 0,
-		TechnicalTrace:         false,
-		SecurityAudit:          false,
-		ManagementAudit:        false,
-		GlobalLogSearch:        false,
-		AccessScopeFingerprint: profile.Fingerprint,
+		BusinessProvenanceOwn:             capabilities.BusinessProvenanceOwn,
+		BusinessProvenanceManagedNetworks: capabilities.BusinessProvenanceManagedNetworks,
+		TechnicalTrace:                    capabilities.TechnicalTrace,
+		SecurityAudit:                     capabilities.SecurityAudit,
+		ManagementAudit:                   capabilities.ManagementAudit,
+		GlobalLogSearch:                   capabilities.GlobalLogSearch,
+		AllowedLogCategories:              capabilities.AllowedLogCategories,
+		LogSensitiveFields:                capabilities.LogSensitiveFields,
+		LogExport:                         capabilities.LogExport,
+		LogPolicyRead:                     capabilities.LogPolicyRead,
+		AccessScopeFingerprint:            profile.Fingerprint,
 	}
 }

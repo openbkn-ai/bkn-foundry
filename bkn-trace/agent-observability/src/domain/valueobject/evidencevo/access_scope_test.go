@@ -28,6 +28,35 @@ func TestAccessProfileCanReadOwnAndDelegatedBusinessRecord(t *testing.T) {
 	}
 }
 
+func TestAccessProfileCanReadTechnicalTraceForOwnOrManagedRecord(t *testing.T) {
+	record := RecordScope{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "owner-a",
+		KnowledgeNetworkIDs: []string{"kn-a"},
+	}
+	base := AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+	}
+
+	owner := base
+	owner.EffectiveSubjectID = "owner-a"
+	if !CanReadRecord(owner, record, AccessViewTechnical) {
+		t.Fatal("record owner must be able to inspect the linked technical trace")
+	}
+
+	builder := base
+	builder.EffectiveSubjectID = "builder-a"
+	builder.Roles = []string{"network_builder"}
+	builder.ManagedKnowledgeNetworkIDs = []string{"kn-a"}
+	if !CanReadRecord(builder, record, AccessViewTechnical) {
+		t.Fatal("network builder must be able to inspect traces for fully managed networks")
+	}
+
+	builder.ManagedKnowledgeNetworkIDs = []string{"kn-b"}
+	if CanReadRecord(builder, record, AccessViewTechnical) {
+		t.Fatal("network builder must not inspect traces outside the managed-network scope")
+	}
+}
+
 func TestAccessProfileCanReadOwnApplicationBusinessRecord(t *testing.T) {
 	profile := AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,

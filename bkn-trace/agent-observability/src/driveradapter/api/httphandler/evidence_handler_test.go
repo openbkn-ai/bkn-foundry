@@ -166,9 +166,16 @@ func TestEvidenceHandlerReturnsCurrentAccessProfileCapabilities(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if body["business_provenance_own"] != true || body["business_provenance_managed_networks"] != true ||
-		body["technical_trace"] != false || body["security_audit"] != false ||
-		body["management_audit"] != false || body["global_log_search"] != false {
+		body["technical_trace"] != true || body["security_audit"] != false ||
+		body["management_audit"] != false || body["global_log_search"] != true ||
+		body["log_export"] != true || body["log_policy_read"] != false ||
+		body["log_sensitive_fields"] != false {
 		t.Fatalf("unexpected capabilities: %#v", body)
+	}
+	categories, ok := body["allowed_log_categories"].([]any)
+	if !ok || len(categories) != 3 || categories[0] != "runtime.system" ||
+		categories[1] != "runtime.business" || categories[2] != "runtime.model" {
+		t.Fatalf("unexpected allowed log categories: %#v", body)
 	}
 	if body["access_scope_fingerprint"] != "sha256:profile-a" {
 		t.Fatalf("missing fingerprint: %#v", body)

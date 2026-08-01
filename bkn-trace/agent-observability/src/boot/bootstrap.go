@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectorsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
@@ -52,6 +53,7 @@ type App struct {
 }
 
 const APIBasePath = "/api/agent-observability/v1"
+const ObservabilityAPIBasePath = "/api/observability/v1"
 
 func NewApp() (*App, error) {
 	httpServerConfig := conf.NewHTTPServerConfig()
@@ -88,6 +90,7 @@ func NewApp() (*App, error) {
 		&http.Client{Timeout: accessScopeConfig.Timeout},
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
+	logHandler := httphandler.NewLogHandler(logsvc.New(nil), evidenceHandler)
 	coreConfig := conf.NewCoreConfig()
 	metrics := coremetrics.New()
 	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
@@ -109,7 +112,7 @@ func NewApp() (*App, error) {
 	)
 	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
 
-	app := newApp(httpServerConfig, traceHandler, evidenceHandler, sessionHandler, ledgerHandler, metrics)
+	app := newApp(httpServerConfig, traceHandler, evidenceHandler, logHandler, sessionHandler, ledgerHandler, metrics)
 	app.closeDatabase = closeDatabase
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
@@ -285,6 +288,7 @@ func newApp(
 	httpServerConfig conf.HTTPServerConfig,
 	traceHandler *httphandler.TraceHandler,
 	evidenceHandler *httphandler.EvidenceHandler,
+	logHandler *httphandler.LogHandler,
 	sessionHandler *httphandler.SessionHandler,
 	ledgerHandler *httphandler.LedgerHandler,
 	metrics http.Handler,
@@ -328,6 +332,7 @@ func newApp(
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
 	mux.HandleFunc(APIBasePath+"/trace-executions", readAuth(evidenceHandler.ListTraceExecutions))
 	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
+	mux.HandleFunc(ObservabilityAPIBasePath+"/logs", readAuth(logHandler.ListLogs))
 	httphandler.RegisterSessionRoutes(
 		mux, APIBasePath, sessionHandler, evidenceHandler.RequireTrustedLifecycleIdentity,
 	)

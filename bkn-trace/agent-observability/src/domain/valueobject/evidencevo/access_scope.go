@@ -45,7 +45,8 @@ func CanReadRecord(profile AccessProfile, record RecordScope, view AccessView) b
 	case AccessViewBusiness:
 		return ownsRecord(profile, record) || managesEveryRecordNetwork(profile, record)
 	case AccessViewTechnical:
-		return hasAnyRole(profile, "admin", "super_admin")
+		return ownsRecord(profile, record) || managesEveryRecordNetwork(profile, record) ||
+			hasAnyRole(profile, "admin", "super_admin")
 	case AccessViewSecurity:
 		return hasAnyRole(profile, "security", "super_admin")
 	case AccessViewAudit:
