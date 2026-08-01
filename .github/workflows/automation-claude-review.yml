@@ -1,18 +1,21 @@
 name: Claude Code Review
 
-# 由 Claude 对 PR 做代码评审：开启、重开、从 draft 转 ready、每次推送新提交，
-# 以及 PR 发起者留下评论/行内回复时，各跑一次。
+# 由 Claude 对 PR 做代码评审：开启、重开、从 draft 转 ready、每次推送新提交时各跑
+# 一次；此外可在评论里写 `/review` 或 `@claude` 手动要一轮。
 #
 # 覆盖每次推送而非只审首版，是因为评审之后追加的提交往往是「按意见快速改一下」，
 # 恰恰最容易引入新问题；只审首版会让这部分完全不过审。
 # 连续推送的浪费由下面的 concurrency 收敛：新一次运行会取消尚未完成的上一次。
 #
-# 评论也能触发复评，但必须在评论正文里显式写 `/review`。早先是每条评论都跑一轮，
-# 作者每回一帖就复评一次，轮次膨胀且额度白烧——待确认项现在不阻断放行（见下方
-# prompt），自动复评失去了存在理由，改成按需触发。为避免自我循环，评论事件由下方
-# job 的 if 过滤掉 bot 自己的评论，并限定发起者为 OWNER/MEMBER/COLLABORATOR——
-# 评论事件在 base 仓上下文携带 secret 运行，限定关联方可挡掉 fork 陌生人触发的
-# pwn-request。
+# 评论也能触发复评，但必须在正文里显式写 `/review` 或 `@claude`。早先是每条评论都跑
+# 一轮，作者每回一帖就复评一次，轮次膨胀且额度白烧——待确认项现在不阻断放行（见下方
+# prompt），自动复评失去了存在理由，改成按需触发。两个口令都收是因为 `@claude` 已是
+# 团队既有习惯，本仓没有别的 workflow 接管它；只认 `/review` 会让这个写法在合并后
+# 静默失效，连提示都没有。注意 contains 是子串匹配，评论里粘到含 `/review` 字样的
+# 链接或命令会误触发一轮——代价是一次评审，未做更严的匹配。
+# 为避免自我循环，评论事件由下方 job 的 if 过滤掉 bot 自己的评论，并限定发起者为
+# OWNER/MEMBER/COLLABORATOR——评论事件在 base 仓上下文携带 secret 运行，限定关联方
+# 可挡掉 fork 陌生人触发的 pwn-request。
 #
 # 需要对任意 PR 重新评审时，手动触发 workflow_dispatch 并填 PR 编号。
 #
@@ -64,12 +67,12 @@ jobs:
     # 逐事件放行：
     #   - workflow_dispatch：手动，总放行。
     #   - pull_request：只同仓 PR（fork 拿不到 secret，跳过避免红叉）。
-    #   - 评论/行内回复：必须挂在 PR 上、PR 仍 open、评论正文含 `/review`、非 bot
-    #     自己发的、且发起者为 OWNER/MEMBER/COLLABORATOR，挡掉自我循环与 fork
-    #     陌生人的 pwn-request。
+    #   - 评论/行内回复：必须挂在 PR 上、PR 仍 open、评论正文含 `/review` 或
+    #     `@claude`、非 bot 自己发的、且发起者为 OWNER/MEMBER/COLLABORATOR，
+    #     挡掉自我循环与 fork 陌生人的 pwn-request。
     #     state == 'open' 让合并/关闭后的评论不再触发复评——merge 已不可逆，
     #     再跑只是白费额度、在死 PR 上贴噪声。
-    #     `/review` 把「每回一帖跑一轮」压成按需触发，评审轮次由人决定。
+    #     口令过滤把「每回一帖跑一轮」压成按需触发，评审轮次由人决定。
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
@@ -77,13 +80,13 @@ jobs:
        github.event.pull_request.state == 'open' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        github.event.sender.login != 'github-actions[bot]' &&
-       contains(github.event.comment.body, '/review') &&
+       (contains(github.event.comment.body, '/review') || contains(github.event.comment.body, '@claude')) &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
        github.event.issue.state == 'open' &&
        github.event.sender.login != 'github-actions[bot]' &&
-       contains(github.event.comment.body, '/review') &&
+       (contains(github.event.comment.body, '/review') || contains(github.event.comment.body, '@claude')) &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     permissions:
@@ -201,6 +204,9 @@ jobs:
             1. 有阻塞项 → `gh pr review "$PR_NUMBER" --request-changes
                --body "<阻塞清单>"`。阻塞项的门槛是：你已经读过源码核实，能说清
                具体的失效场景（什么输入、什么状态、坏成什么样）。说不清就不是阻塞项。
+               body 末尾固定带一句「改完请推新提交，或回复 `/review` 要一轮复评」——
+               CHANGES_REQUESTED 会一直挡着合并，而改动若落在本 workflow 的 paths
+               之外，推提交并不会自动复评，作者必须知道怎么把这个状态解掉。
             2. 没有阻塞项 → `gh pr review "$PR_NUMBER" --approve --body "<放行理由>"`。
                待确认项不阻断放行：写进 approve 的 body 里当提示，由作者自行判断，
                不要为了等一个回应而改用 --comment 或 --request-changes。
