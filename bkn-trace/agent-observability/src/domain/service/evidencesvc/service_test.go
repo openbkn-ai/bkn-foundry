@@ -392,6 +392,24 @@ func TestDirectKnowledgeReadExposesBusinessRefsWithoutFabricatingClaim(t *testin
 	}
 }
 
+func TestIngestPersistsDerivedKnowledgeNetworkScope(t *testing.T) {
+	store := evidencestore.New()
+	ingested, validationErrors, err := New(store).Ingest(
+		context.Background(),
+		mustJSON(t, twoPointOneBatch(validTwoPointOneEvents())),
+	)
+	if err != nil || len(validationErrors) > 0 {
+		t.Fatalf("ingest failed: errors=%+v err=%v", validationErrors, err)
+	}
+	stored, err := store.GetEvidenceByTraceID(context.Background(), ingested.TraceID, evidencevo.EvidenceQueryOptions{})
+	if err != nil || len(stored.Traces) != 1 {
+		t.Fatalf("load stored trace: result=%+v err=%v", stored, err)
+	}
+	if !reflect.DeepEqual(stored.Traces[0].KnowledgeNetworkIDs, []string{"supplychain"}) {
+		t.Fatalf("stored trace lost knowledge network scope: %v", stored.Traces[0].KnowledgeNetworkIDs)
+	}
+}
+
 func TestIngestIsIdempotentForSameEventIDAndContent(t *testing.T) {
 	store := evidencestore.New()
 	service := New(store)
@@ -1400,7 +1418,7 @@ func TestGetBusinessGraphByTraceIDReturnsClaimAndBusinessNodes(t *testing.T) {
 	}
 }
 
-func TestBusinessGraphAddsDisplayOnlyFromAuthorizedResolver(t *testing.T) {
+func TestBusinessGraphAddsDisplayOnlyFromResolvedResolverMetadata(t *testing.T) {
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_graph_display", "req_graph_display")}}
 	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{{
 		RefID: "object:kn_demo:customer", Visibility: "visible", Display: &evidencevo.BusinessDisplay{
@@ -1505,7 +1523,7 @@ func TestBusinessGraphPromotesClaimedRetrievalSourceToResolvedBusinessEvidence(t
 	}
 }
 
-func TestBusinessGraphResolverUnauthorizedDoesNotLeakRefOrDisplay(t *testing.T) {
+func TestBusinessGraphResolverVisibilityDoesNotOverrideRecordAuthorization(t *testing.T) {
 	store := &fakeStore{traces: []evidencevo.NormalizedTrace{queryTrace("trace_graph_resolver_denied", "req_graph_resolver_denied")}}
 	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{{
 		RefID: "object:kn_demo:customer", Visibility: "unauthorized",
@@ -1518,13 +1536,15 @@ func TestBusinessGraphResolverUnauthorizedDoesNotLeakRefOrDisplay(t *testing.T) 
 	if err != nil || !found {
 		t.Fatalf("query denied graph: found=%v err=%v", found, err)
 	}
-	for _, node := range response.Data.Nodes {
-		if strings.Contains(node.ID, "object:kn_demo:customer") || node.Display != nil {
-			t.Fatalf("unauthorized resolver result leaked node or display: %+v", node)
-		}
+	node := businessNodeByID(t, response.Data.Nodes, "business:object:kn_demo:customer")
+	if node.Display != nil {
+		t.Fatalf("unresolved resolver metadata must not provide a display: %+v", node)
 	}
-	if response.VisibilitySummary.UnauthorizedRefCount != 1 || !contains(response.PartialReasons, "business_ref_unauthorized") {
-		t.Fatalf("expected unauthorized governance result: %+v", response)
+	if response.VisibilitySummary.UnauthorizedRefCount != 0 || contains(response.PartialReasons, "business_ref_unauthorized") {
+		t.Fatalf("resolver visibility must not be treated as record authorization: %+v", response)
+	}
+	if !contains(response.PartialReasons, "resolver_unresolved") {
+		t.Fatalf("missing display metadata must remain explicit: %+v", response.PartialReasons)
 	}
 }
 

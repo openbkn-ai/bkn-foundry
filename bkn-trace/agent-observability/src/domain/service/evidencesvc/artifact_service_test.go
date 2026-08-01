@@ -81,7 +81,7 @@ func TestGetArtifactReturnsOwnedContentWhenBusinessResolverIsUnavailable(t *test
 		ArtifactID: "artifact_unresolved_ref_service", ArtifactType: evidencevo.ArtifactTypeDataResult,
 		RequestID: "req_unresolved_ref", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		BusinessRefs: []string{"object:kn_sales:order"},
-		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
+		ContentType:  "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"count": 12},
 		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
 	})
@@ -107,7 +107,7 @@ func TestGetArtifactReturnsOwnedContentWhenBusinessResolverCannotResolveRef(t *t
 		ArtifactID: "artifact_missing_resolution_service", ArtifactType: evidencevo.ArtifactTypeDataResult,
 		RequestID: "req_missing_resolution", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		BusinessRefs: []string{"object:kn_sales:order"},
-		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
+		ContentType:  "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"count": 12},
 		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
 	})
@@ -126,12 +126,12 @@ func TestGetArtifactReturnsOwnedContentWhenBusinessResolverCannotResolveRef(t *t
 	if err != nil || !found || got.Content == nil {
 		t.Fatalf("owned artifact content must remain readable when refs are unresolved: artifact=%+v found=%v err=%v", got, found, err)
 	}
-	if len(resolver.requests) != 1 {
-		t.Fatalf("resolver should still be called for audit context: %+v", resolver.requests)
+	if len(resolver.requests) != 0 {
+		t.Fatalf("artifact access must not depend on business ref resolution: %+v", resolver.requests)
 	}
 }
 
-func TestGetArtifactRequiresResolverAuthorizationForSourceAndBusinessRefs(t *testing.T) {
+func TestGetArtifactUsesRecordAuthorizationInsteadOfResolverVisibility(t *testing.T) {
 	store := evidencestore.New()
 	artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
 		ArtifactID: "artifact_resolver_guard", ArtifactType: evidencevo.ArtifactTypeDataResult,
@@ -155,20 +155,19 @@ func TestGetArtifactRequiresResolverAuthorizationForSourceAndBusinessRefs(t *tes
 		{RefID: "resource:orders", Visibility: "visible"},
 		{RefID: "object:kn_sales:order", Visibility: "unauthorized"},
 	}}
-	_, found, err := NewWithBusinessResolver(store, deniedResolver).GetArtifact(context.Background(), artifact.ArtifactID, scope)
-	if err != nil || found {
-		t.Fatalf("unauthorized business ref must hide artifact content: found=%v err=%v", found, err)
+	got, found, err := NewWithBusinessResolver(store, deniedResolver).GetArtifact(context.Background(), artifact.ArtifactID, scope)
+	if err != nil || !found || got.Content == nil {
+		t.Fatalf("record-authorized artifact must remain readable regardless of resolver visibility: artifact=%+v found=%v err=%v", got, found, err)
 	}
-	if len(deniedResolver.requests) != 1 || deniedResolver.requests[0].Scope.AccountID != "acct_demo" ||
-		deniedResolver.requests[0].Scope.BusinessDomain != "bd_demo" {
-		t.Fatalf("resolver must receive trusted account and requested domain: %+v", deniedResolver.requests)
+	if len(deniedResolver.requests) != 0 {
+		t.Fatalf("resolver must not authorize artifact content: %+v", deniedResolver.requests)
 	}
 
 	visibleResolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{
 		{RefID: "resource:orders", Visibility: "visible"},
 		{RefID: "object:kn_sales:order", Visibility: "visible"},
 	}}
-	got, found, err := NewWithBusinessResolver(store, visibleResolver).GetArtifact(context.Background(), artifact.ArtifactID, scope)
+	got, found, err = NewWithBusinessResolver(store, visibleResolver).GetArtifact(context.Background(), artifact.ArtifactID, scope)
 	if err != nil || !found || got.Content == nil {
 		t.Fatalf("fully authorized refs must expose artifact: artifact=%+v found=%v err=%v", got, found, err)
 	}

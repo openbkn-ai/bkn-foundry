@@ -70,10 +70,6 @@ func newTraceReadAuthz(cfg conf.TraceReadAuthzConfig) traceReadAuthz {
 	return traceReadAuthz{cfg: cfg}
 }
 
-func (a traceReadAuthz) isAdmin(accountType string) bool {
-	return a.cfg.AdminTypes[accountType]
-}
-
 // authorize decides what query actually runs for a trace read. It returns the
 // (possibly account-scoped) query body, or an HTTP status+message when the
 // request must be refused.
@@ -82,7 +78,6 @@ func (a traceReadAuthz) isAdmin(accountType string) bool {
 //
 //   - no identity + enforce  -> 401
 //   - no identity + shadow   -> log, run the caller's query unchanged
-//   - admin account          -> run unchanged (cross-account by design)
 //   - normal + shadow        -> log "would scope", run unchanged
 //   - normal + enforce       -> inject a term filter on the caller's account
 func (a traceReadAuthz) authorize(id identity, body json.RawMessage) (effective json.RawMessage, status int, message string) {
@@ -91,9 +86,6 @@ func (a traceReadAuthz) authorize(id identity, body json.RawMessage) (effective 
 			return nil, http.StatusUnauthorized, "trace read requires an authenticated account"
 		}
 		slog.Warn("trace read without account identity", "mode", "shadow", "action", "allowed_unscoped")
-		return body, 0, ""
-	}
-	if a.isAdmin(id.accountType) {
 		return body, 0, ""
 	}
 	if !a.cfg.Enforce {

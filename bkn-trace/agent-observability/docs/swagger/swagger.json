@@ -8,6 +8,44 @@
     },
     "basePath": "/api/agent-observability/v1",
     "paths": {
+        "/access-profile": {
+            "get": {
+                "description": "Returns server-derived page capabilities and a scope fingerprint. Roles and managed resource identifiers are never accepted from or disclosed to the client.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "access"
+                ],
+                "summary": "Get the current BKN Trace access profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.AccessProfileResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/conversations": {
             "get": {
                 "produces": [
@@ -2908,6 +2946,9 @@
                 "agent_or_app": {
                     "type": "string"
                 },
+                "application_principal_id": {
+                    "type": "string"
+                },
                 "artifact_id": {
                     "type": "string"
                 },
@@ -2948,11 +2989,20 @@
                 "content_type": {
                     "type": "string"
                 },
+                "effective_subject_id": {
+                    "type": "string"
+                },
                 "initiator": {
                     "type": "string"
                 },
                 "interaction_id": {
                     "type": "string"
+                },
+                "knowledge_network_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "observed_at": {
                     "type": "string"
@@ -3938,6 +3988,32 @@
                     "type": "string"
                 },
                 "replayed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "rdto.AccessProfileResponse": {
+            "type": "object",
+            "properties": {
+                "access_scope_fingerprint": {
+                    "type": "string"
+                },
+                "business_provenance_managed_networks": {
+                    "type": "boolean"
+                },
+                "business_provenance_own": {
+                    "type": "boolean"
+                },
+                "global_log_search": {
+                    "type": "boolean"
+                },
+                "management_audit": {
+                    "type": "boolean"
+                },
+                "security_audit": {
+                    "type": "boolean"
+                },
+                "technical_trace": {
                     "type": "boolean"
                 }
             }

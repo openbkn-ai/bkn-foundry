@@ -85,6 +85,7 @@ func (s *QueryService) GetInteractionAuthorized(
 	scope evidencevo.QueryScope,
 ) (InteractionView, error) {
 	var interaction sessionvo.Interaction
+	var recordOwner sessionvo.Owner
 	var revision *sessionvo.AssemblyRevision
 	var claimIDs []string
 	err := s.sessions.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
@@ -93,9 +94,13 @@ func (s *QueryService) GetInteractionAuthorized(
 			return ErrNotFound
 		}
 		conversation, found := tx.FindConversation(current.ConversationID)
-		if !found || !conversation.Owner.Equal(owner) {
+		if !found {
 			return ErrNotFound
 		}
+		if scope.AccessProfile == nil && !conversation.Owner.Equal(owner) {
+			return ErrNotFound
+		}
+		recordOwner = conversation.Owner
 		interaction = current
 		if current.ClosureManifest != nil {
 			claimIDs = append([]string(nil), current.ClosureManifest.Claims...)
@@ -110,14 +115,21 @@ func (s *QueryService) GetInteractionAuthorized(
 	if err != nil {
 		return InteractionView{}, err
 	}
-	events, err := s.ledger.ListInteractionEvents(ctx, owner, interactionID)
+	events, err := s.ledger.ListInteractionEvents(ctx, recordOwner, interactionID)
 	if err != nil {
 		return InteractionView{}, err
 	}
 	if revision != nil {
 		events = eventsInRevision(events, revision.IncludedEventIDs)
 	}
-	externalEvidence, err := s.loadPriorEvidence(ctx, owner, interaction, events)
+	if scope.AccessProfile != nil && !evidencevo.CanReadRecord(
+		*scope.AccessProfile,
+		interactionRecordScope(recordOwner, events),
+		evidencevo.AccessViewBusiness,
+	) {
+		return InteractionView{}, ErrNotFound
+	}
+	externalEvidence, err := s.loadPriorEvidence(ctx, recordOwner, interaction, events)
 	if err != nil {
 		return InteractionView{}, err
 	}
@@ -126,6 +138,21 @@ func (s *QueryService) GetInteractionAuthorized(
 		Interaction: interaction, Revision: revision,
 		Assembly: s.projectBusinessRefs(ctx, scope, assembled),
 	}, nil
+}
+
+func interactionRecordScope(owner sessionvo.Owner, events []ledgervo.Event) evidencevo.RecordScope {
+	refs := make([]string, 0)
+	for _, event := range events {
+		for _, ref := range event.BusinessRefs {
+			refs = append(refs, ref.RefID)
+		}
+	}
+	return evidencevo.RecordScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		EffectiveSubjectID:     owner.EffectiveSubjectID,
+		ApplicationPrincipalID: owner.ApplicationPrincipalID,
+		KnowledgeNetworkIDs:    evidencevo.KnowledgeNetworkIDsFromRefs(refs),
+	}
 }
 
 type priorSupportSource struct {
@@ -240,13 +267,18 @@ func (s *QueryService) projectBusinessRefs(ctx context.Context, scope evidencevo
 	viewsByKey := make(map[string]BusinessRefView, len(assembled.BusinessRefs))
 	for _, ref := range assembled.BusinessRefs {
 		resolution, found := resolutions[resolverRefKey(string(ref.RefType), ref.RefID, sourceSystemForBusinessRef(ref))]
-		if !found || (resolution.Visibility != "visible" && resolution.Visibility != "redacted") {
-			if resolveErr == nil && (!found || resolution.Visibility == "unresolved" || resolution.Visibility == "") {
-				disclosureReasons["business_ref_unresolved"] = struct{}{}
+		status := "unresolved"
+		var display *evidencevo.BusinessDisplay
+		if found && resolution.Display != nil {
+			display = resolution.Display
+			status = resolution.Display.ResolutionStatus
+			if status == "" {
+				status = "resolved"
 			}
-			continue
+		} else {
+			disclosureReasons["business_ref_unresolved"] = struct{}{}
 		}
-		view := BusinessRefView{TechnicalRef: ref, DisclosureStatus: resolution.Visibility, Display: resolution.Display}
+		view := BusinessRefView{TechnicalRef: ref, DisclosureStatus: status, Display: display}
 		viewsByKey[businessRefKey(ref)] = view
 		projected.BusinessRefs = append(projected.BusinessRefs, view)
 	}

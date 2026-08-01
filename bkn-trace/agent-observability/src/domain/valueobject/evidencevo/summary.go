@@ -512,7 +512,11 @@ func collectBusinessRefs(value any, refs map[string]struct{}) {
 	switch item := value.(type) {
 	case map[string]any:
 		if refID, ok := item["ref_id"].(string); ok && refID != "" {
-			refs[refID] = struct{}{}
+			visibility, _ := item["visibility"].(string)
+			if visibility == "" || visibility == "visible" {
+				refs[refID] = struct{}{}
+			}
+			return
 		}
 		for _, nested := range item {
 			collectBusinessRefs(nested, refs)

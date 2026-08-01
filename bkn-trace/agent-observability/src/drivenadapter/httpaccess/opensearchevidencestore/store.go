@@ -32,24 +32,27 @@ type Store struct {
 }
 
 type document struct {
-	DocumentID       string                     `json:"document_id"`
-	TraceID          string                     `json:"trace_id"`
-	RequestID        string                     `json:"bkn.request.id"`
-	ConversationID   string                     `json:"bkn.conversation.id,omitempty"`
-	TenantID         string                     `json:"bkn.tenant.id,omitempty"`
-	BusinessDomain   string                     `json:"business_domain,omitempty"`
-	AccountID        string                     `json:"bkn.account.id"`
-	AccountType      string                     `json:"bkn.account.type"`
-	SchemaVersion    string                     `json:"bkn.trace.schema.version"`
-	Events           []evidencevo.EvidenceEvent `json:"events"`
-	ClaimIDs         []string                   `json:"claim_ids,omitempty"`
-	AcceptedEvents   int                        `json:"accepted_event_count"`
-	ClaimCount       int                        `json:"claim_count"`
-	EvidenceRefCount int                        `json:"evidence_ref_count"`
-	BusinessRefCount int                        `json:"business_ref_count"`
-	ObservedStart    string                     `json:"observed_start,omitempty"`
-	IngestedAt       string                     `json:"ingested_at"`
-	Aggregate        bool                       `json:"aggregate,omitempty"`
+	DocumentID             string                     `json:"document_id"`
+	TraceID                string                     `json:"trace_id"`
+	RequestID              string                     `json:"bkn.request.id"`
+	ConversationID         string                     `json:"bkn.conversation.id,omitempty"`
+	TenantID               string                     `json:"bkn.tenant.id,omitempty"`
+	BusinessDomain         string                     `json:"business_domain,omitempty"`
+	AccountID              string                     `json:"bkn.account.id"`
+	AccountType            string                     `json:"bkn.account.type"`
+	EffectiveSubjectID     string                     `json:"effective_subject_id,omitempty"`
+	ApplicationPrincipalID string                     `json:"application_principal_id,omitempty"`
+	KnowledgeNetworkIDs    []string                   `json:"knowledge_network_ids,omitempty"`
+	SchemaVersion          string                     `json:"bkn.trace.schema.version"`
+	Events                 []evidencevo.EvidenceEvent `json:"events"`
+	ClaimIDs               []string                   `json:"claim_ids,omitempty"`
+	AcceptedEvents         int                        `json:"accepted_event_count"`
+	ClaimCount             int                        `json:"claim_count"`
+	EvidenceRefCount       int                        `json:"evidence_ref_count"`
+	BusinessRefCount       int                        `json:"business_ref_count"`
+	ObservedStart          string                     `json:"observed_start,omitempty"`
+	IngestedAt             string                     `json:"ingested_at"`
+	Aggregate              bool                       `json:"aggregate,omitempty"`
 }
 
 type searchResponse struct {
@@ -237,7 +240,7 @@ func (s *Store) searchPage(ctx context.Context, field, value string, scope evide
 		{"bkn.account.id", scope.AccountID},
 		{"bkn.account.type", scope.AccountType},
 	} {
-		if scope.CrossAccountRead && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
+		if evidencevo.NeedsCrossAccountCandidates(scope) && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
 			continue
 		}
 		if item.value != "" {
@@ -334,26 +337,29 @@ func (s *Store) ensureIndex(ctx context.Context) error {
 	return nil
 }
 
-const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"business_domain":{"type":"keyword"},"bkn":{"properties":{"conversation":{"properties":{"id":{"type":"keyword"}}},"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"observed_start":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"ingested_at":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"aggregate":{"type":"boolean"}}}}`
+const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"business_domain":{"type":"keyword"},"effective_subject_id":{"type":"keyword"},"application_principal_id":{"type":"keyword"},"knowledge_network_ids":{"type":"keyword"},"bkn":{"properties":{"conversation":{"properties":{"id":{"type":"keyword"}}},"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"observed_start":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"ingested_at":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"aggregate":{"type":"boolean"}}}}`
 
 func toDocument(trace evidencevo.NormalizedTrace, ingestedAt time.Time) document {
 	doc := document{
-		TraceID:          trace.TraceID,
-		RequestID:        trace.RequestID,
-		ConversationID:   trace.ConversationID,
-		TenantID:         trace.TenantID,
-		BusinessDomain:   trace.BusinessDomain,
-		AccountID:        trace.AccountID,
-		AccountType:      trace.AccountType,
-		SchemaVersion:    trace.SchemaVersion,
-		Events:           trace.Events,
-		ClaimIDs:         trace.ClaimIDs,
-		AcceptedEvents:   trace.AcceptedEvents,
-		ClaimCount:       trace.ClaimCount,
-		EvidenceRefCount: trace.EvidenceRefCount,
-		BusinessRefCount: trace.BusinessRefCount,
-		ObservedStart:    traceObservedStart(trace),
-		IngestedAt:       ingestedAt.Format(time.RFC3339Nano),
+		TraceID:                trace.TraceID,
+		RequestID:              trace.RequestID,
+		ConversationID:         trace.ConversationID,
+		TenantID:               trace.TenantID,
+		BusinessDomain:         trace.BusinessDomain,
+		AccountID:              trace.AccountID,
+		AccountType:            trace.AccountType,
+		EffectiveSubjectID:     trace.EffectiveSubjectID,
+		ApplicationPrincipalID: trace.ApplicationPrincipalID,
+		KnowledgeNetworkIDs:    append([]string(nil), trace.KnowledgeNetworkIDs...),
+		SchemaVersion:          trace.SchemaVersion,
+		Events:                 trace.Events,
+		ClaimIDs:               trace.ClaimIDs,
+		AcceptedEvents:         trace.AcceptedEvents,
+		ClaimCount:             trace.ClaimCount,
+		EvidenceRefCount:       trace.EvidenceRefCount,
+		BusinessRefCount:       trace.BusinessRefCount,
+		ObservedStart:          traceObservedStart(trace),
+		IngestedAt:             ingestedAt.Format(time.RFC3339Nano),
 	}
 	doc.DocumentID = evidenceDocumentID(doc)
 	return doc
@@ -375,20 +381,23 @@ func traceObservedStart(trace evidencevo.NormalizedTrace) string {
 
 func fromDocument(doc document) evidencevo.NormalizedTrace {
 	return evidencevo.NormalizedTrace{
-		TraceID:          doc.TraceID,
-		RequestID:        doc.RequestID,
-		ConversationID:   doc.ConversationID,
-		TenantID:         doc.TenantID,
-		BusinessDomain:   doc.BusinessDomain,
-		AccountID:        doc.AccountID,
-		AccountType:      doc.AccountType,
-		SchemaVersion:    doc.SchemaVersion,
-		Events:           doc.Events,
-		ClaimIDs:         doc.ClaimIDs,
-		AcceptedEvents:   doc.AcceptedEvents,
-		ClaimCount:       doc.ClaimCount,
-		EvidenceRefCount: doc.EvidenceRefCount,
-		BusinessRefCount: doc.BusinessRefCount,
+		TraceID:                doc.TraceID,
+		RequestID:              doc.RequestID,
+		ConversationID:         doc.ConversationID,
+		TenantID:               doc.TenantID,
+		BusinessDomain:         doc.BusinessDomain,
+		AccountID:              doc.AccountID,
+		AccountType:            doc.AccountType,
+		EffectiveSubjectID:     doc.EffectiveSubjectID,
+		ApplicationPrincipalID: doc.ApplicationPrincipalID,
+		KnowledgeNetworkIDs:    append([]string(nil), doc.KnowledgeNetworkIDs...),
+		SchemaVersion:          doc.SchemaVersion,
+		Events:                 doc.Events,
+		ClaimIDs:               doc.ClaimIDs,
+		AcceptedEvents:         doc.AcceptedEvents,
+		ClaimCount:             doc.ClaimCount,
+		EvidenceRefCount:       doc.EvidenceRefCount,
+		BusinessRefCount:       doc.BusinessRefCount,
 	}
 }
 

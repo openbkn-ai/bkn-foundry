@@ -308,75 +308,7 @@ func (s *Service) GetArtifact(ctx context.Context, artifactID string, scope evid
 	if err != nil || !found {
 		return evidencevo.EvidenceArtifact{}, found, err
 	}
-	authorized, err := s.authorizeArtifactRefs(ctx, artifact, scope)
-	if err != nil {
-		return evidencevo.EvidenceArtifact{}, false, err
-	}
-	if !authorized {
-		return evidencevo.EvidenceArtifact{}, false, nil
-	}
 	return artifact, true, nil
-}
-
-func (s *Service) authorizeArtifactRefs(ctx context.Context, artifact evidencevo.EvidenceArtifact, scope evidencevo.QueryScope) (bool, error) {
-	refs := make([]ibusinessresolver.BusinessRef, 0, len(artifact.BusinessRefs)+1)
-	seen := map[string]struct{}{}
-	appendRef := func(refID string) {
-		refID = strings.TrimSpace(refID)
-		if refID == "" {
-			return
-		}
-		if _, exists := seen[refID]; exists {
-			return
-		}
-		seen[refID] = struct{}{}
-		parts := strings.Split(refID, ":")
-		refType := ""
-		if len(parts) > 0 {
-			refType = parts[0]
-		}
-		refs = append(refs, ibusinessresolver.BusinessRef{RefID: refID, RefType: refType})
-	}
-	if resolverSupportsArtifactRef(artifact.SourceRef) {
-		appendRef(artifact.SourceRef)
-	}
-	for _, refID := range artifact.BusinessRefs {
-		appendRef(refID)
-	}
-	if len(refs) == 0 {
-		return true, nil
-	}
-	if s.businessResolver == nil {
-		return true, nil
-	}
-	resolutions, err := s.businessResolver.ResolveBusinessRefs(ctx, ibusinessresolver.ResolveRequest{Scope: scope, Refs: refs})
-	if err != nil {
-		return false, err
-	}
-	resolved := map[string]ibusinessresolver.Resolution{}
-	for _, resolution := range resolutions {
-		resolved[resolution.RefID] = resolution
-	}
-	for _, ref := range refs {
-		resolution, ok := resolved[ref.RefID]
-		if ok && !visibleResolution(resolution) {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-func resolverSupportsArtifactRef(refID string) bool {
-	prefix, _, ok := strings.Cut(strings.TrimSpace(refID), ":")
-	if !ok {
-		return false
-	}
-	switch prefix {
-	case "kn", "object", "relation", "action_type", "metric", "property", "resource", "field":
-		return true
-	default:
-		return false
-	}
 }
 
 func artifactMatchesTrace(artifact evidencevo.EvidenceArtifact, trace evidencevo.NormalizedTrace) bool {
@@ -895,11 +827,6 @@ func (s *Service) buildBusinessGraph(ctx context.Context, traces []evidencevo.No
 						continue
 					}
 					resolution, resolved := resolutions[refID]
-					if resolved && !visibleResolution(resolution) {
-						countResolverVisibility(resolution.Visibility, &response.VisibilitySummary)
-						partialReasons["business_ref_"+resolution.Visibility] = struct{}{}
-						continue
-					}
 					if _, seen := businessRefs[refID]; !seen {
 						businessRefs[refID] = struct{}{}
 						response.VisibilitySummary.AuthorizedRefCount++
@@ -934,11 +861,6 @@ func (s *Service) buildBusinessGraph(ctx context.Context, traces []evidencevo.No
 						continue
 					}
 					resolution, resolved := resolutions[refID]
-					if resolved && !visibleResolution(resolution) {
-						countResolverVisibility(resolution.Visibility, &response.VisibilitySummary)
-						partialReasons["business_ref_"+resolution.Visibility] = struct{}{}
-						continue
-					}
 					if _, seen := businessRefs[refID]; !seen {
 						businessRefs[refID] = struct{}{}
 						response.VisibilitySummary.AuthorizedRefCount++
@@ -987,11 +909,6 @@ func (s *Service) buildBusinessGraph(ctx context.Context, traces []evidencevo.No
 						continue
 					}
 					resolution, resolved := resolutions[refID]
-					if resolved && !visibleResolution(resolution) {
-						countResolverVisibility(resolution.Visibility, &response.VisibilitySummary)
-						partialReasons["business_ref_"+resolution.Visibility] = struct{}{}
-						continue
-					}
 					if _, ok := businessRefs[refID]; !ok {
 						businessRefs[refID] = struct{}{}
 						response.VisibilitySummary.AuthorizedRefCount++
@@ -1159,14 +1076,6 @@ func claimedFactBusinessRefs(event evidencevo.EvidenceEvent) []any {
 func trustedQueryScope(scope evidencevo.QueryScope) bool {
 	return strings.TrimSpace(scope.AccountID) != "" && strings.TrimSpace(scope.AccountType) != "" &&
 		(strings.TrimSpace(scope.TenantID) != "" || strings.TrimSpace(scope.BusinessDomain) != "")
-}
-
-func visibleResolution(resolution ibusinessresolver.Resolution) bool {
-	return resolution.Visibility == "" || resolution.Visibility == "visible" || resolution.Visibility == "redacted"
-}
-
-func countResolverVisibility(visibility string, summary *evidencevo.VisibilitySummary) {
-	countVisibility(map[string]any{"visibility": visibility}, summary)
 }
 
 func hasBusinessExecutionEnvelope(traces []evidencevo.NormalizedTrace) bool {

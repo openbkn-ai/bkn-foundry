@@ -11,32 +11,35 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 )
 
-const artifactIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"artifact_id":{"type":"keyword"},"artifact_type":{"type":"keyword"},"trace_id":{"type":"keyword"},"interaction_id":{"type":"keyword"},"operation_id":{"type":"keyword"},"claim_id":{"type":"keyword"},"source_ref":{"type":"keyword"},"business_refs":{"type":"keyword"},"content_type":{"type":"keyword"},"schema_version":{"type":"keyword"},"observed_at":{"type":"date"},"as_of":{"type":"date"},"source_version":{"type":"keyword"},"content_hash":{"type":"keyword"},"content_json":{"type":"keyword","index":false,"doc_values":false},"snapshot_ref":{"type":"keyword"},"business_domain":{"type":"keyword"},"initiator":{"type":"keyword"},"agent_or_app":{"type":"keyword"},"bkn":{"properties":{"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}}}}}}}`
+const artifactIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"artifact_id":{"type":"keyword"},"artifact_type":{"type":"keyword"},"trace_id":{"type":"keyword"},"interaction_id":{"type":"keyword"},"operation_id":{"type":"keyword"},"claim_id":{"type":"keyword"},"source_ref":{"type":"keyword"},"business_refs":{"type":"keyword"},"content_type":{"type":"keyword"},"schema_version":{"type":"keyword"},"observed_at":{"type":"date"},"as_of":{"type":"date"},"source_version":{"type":"keyword"},"content_hash":{"type":"keyword"},"content_json":{"type":"keyword","index":false,"doc_values":false},"snapshot_ref":{"type":"keyword"},"business_domain":{"type":"keyword"},"effective_subject_id":{"type":"keyword"},"application_principal_id":{"type":"keyword"},"knowledge_network_ids":{"type":"keyword"},"initiator":{"type":"keyword"},"agent_or_app":{"type":"keyword"},"bkn":{"properties":{"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}}}}}}}`
 
 type artifactDocument struct {
-	ArtifactID     string                  `json:"artifact_id"`
-	ArtifactType   evidencevo.ArtifactType `json:"artifact_type"`
-	RequestID      string                  `json:"bkn.request.id"`
-	TraceID        string                  `json:"trace_id,omitempty"`
-	InteractionID  string                  `json:"interaction_id,omitempty"`
-	OperationID    string                  `json:"operation_id,omitempty"`
-	ClaimID        string                  `json:"claim_id,omitempty"`
-	SourceRef      string                  `json:"source_ref,omitempty"`
-	BusinessRefs   []string                `json:"business_refs,omitempty"`
-	ContentType    string                  `json:"content_type"`
-	SchemaVersion  string                  `json:"schema_version"`
-	ObservedAt     string                  `json:"observed_at"`
-	AsOf           string                  `json:"as_of,omitempty"`
-	SourceVersion  string                  `json:"source_version,omitempty"`
-	ContentHash    string                  `json:"content_hash"`
-	ContentJSON    string                  `json:"content_json,omitempty"`
-	SnapshotRef    string                  `json:"snapshot_ref,omitempty"`
-	TenantID       string                  `json:"bkn.tenant.id,omitempty"`
-	BusinessDomain string                  `json:"business_domain,omitempty"`
-	AccountID      string                  `json:"bkn.account.id"`
-	AccountType    string                  `json:"bkn.account.type"`
-	Initiator      string                  `json:"initiator,omitempty"`
-	AgentOrApp     string                  `json:"agent_or_app,omitempty"`
+	ArtifactID             string                  `json:"artifact_id"`
+	ArtifactType           evidencevo.ArtifactType `json:"artifact_type"`
+	RequestID              string                  `json:"bkn.request.id"`
+	TraceID                string                  `json:"trace_id,omitempty"`
+	InteractionID          string                  `json:"interaction_id,omitempty"`
+	OperationID            string                  `json:"operation_id,omitempty"`
+	ClaimID                string                  `json:"claim_id,omitempty"`
+	SourceRef              string                  `json:"source_ref,omitempty"`
+	BusinessRefs           []string                `json:"business_refs,omitempty"`
+	ContentType            string                  `json:"content_type"`
+	SchemaVersion          string                  `json:"schema_version"`
+	ObservedAt             string                  `json:"observed_at"`
+	AsOf                   string                  `json:"as_of,omitempty"`
+	SourceVersion          string                  `json:"source_version,omitempty"`
+	ContentHash            string                  `json:"content_hash"`
+	ContentJSON            string                  `json:"content_json,omitempty"`
+	SnapshotRef            string                  `json:"snapshot_ref,omitempty"`
+	TenantID               string                  `json:"bkn.tenant.id,omitempty"`
+	BusinessDomain         string                  `json:"business_domain,omitempty"`
+	AccountID              string                  `json:"bkn.account.id"`
+	AccountType            string                  `json:"bkn.account.type"`
+	EffectiveSubjectID     string                  `json:"effective_subject_id,omitempty"`
+	ApplicationPrincipalID string                  `json:"application_principal_id,omitempty"`
+	KnowledgeNetworkIDs    []string                `json:"knowledge_network_ids,omitempty"`
+	Initiator              string                  `json:"initiator,omitempty"`
+	AgentOrApp             string                  `json:"agent_or_app,omitempty"`
 }
 
 func (s *Store) StoreArtifact(ctx context.Context, artifact evidencevo.EvidenceArtifact) (bool, error) {
@@ -120,7 +123,7 @@ func (s *Store) ListArtifactsByRequestID(ctx context.Context, requestID string, 
 		{"bkn.account.id", scope.AccountID},
 		{"bkn.account.type", scope.AccountType},
 	} {
-		if scope.CrossAccountRead && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
+		if evidencevo.NeedsCrossAccountCandidates(scope) && (item.field == "bkn.account.id" || item.field == "bkn.account.type") {
 			continue
 		}
 		if item.value != "" {
@@ -180,7 +183,9 @@ func toArtifactDocument(artifact evidencevo.EvidenceArtifact) (artifactDocument,
 		ContentHash: artifact.ContentHash, SnapshotRef: artifact.SnapshotRef,
 		TenantID: artifact.TenantID, BusinessDomain: artifact.BusinessDomain,
 		AccountID: artifact.AccountID, AccountType: artifact.AccountType,
-		Initiator: artifact.Initiator, AgentOrApp: artifact.AgentOrApp,
+		EffectiveSubjectID: artifact.EffectiveSubjectID, ApplicationPrincipalID: artifact.ApplicationPrincipalID,
+		KnowledgeNetworkIDs: append([]string(nil), artifact.KnowledgeNetworkIDs...),
+		Initiator:           artifact.Initiator, AgentOrApp: artifact.AgentOrApp,
 	}
 	if artifact.Content != nil {
 		content, err := json.Marshal(artifact.Content)
@@ -207,7 +212,9 @@ func decodeArtifactDocument(body []byte) (evidencevo.EvidenceArtifact, error) {
 		ContentHash: document.ContentHash, SnapshotRef: document.SnapshotRef,
 		TenantID: document.TenantID, BusinessDomain: document.BusinessDomain,
 		AccountID: document.AccountID, AccountType: document.AccountType,
-		Initiator: document.Initiator, AgentOrApp: document.AgentOrApp,
+		EffectiveSubjectID: document.EffectiveSubjectID, ApplicationPrincipalID: document.ApplicationPrincipalID,
+		KnowledgeNetworkIDs: append([]string(nil), document.KnowledgeNetworkIDs...),
+		Initiator:           document.Initiator, AgentOrApp: document.AgentOrApp,
 	}
 	if document.ContentJSON != "" {
 		if err := json.Unmarshal([]byte(document.ContentJSON), &artifact.Content); err != nil {

@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
@@ -81,7 +82,12 @@ func NewApp() (*App, error) {
 		resolver = businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout})
 		evidenceService = evidencesvc.NewWithBusinessResolver(evidenceStore, resolver)
 	}
-	evidenceHandler := httphandler.NewEvidenceHandler(evidenceService)
+	accessScopeConfig := conf.NewAccessScopeConfig()
+	accessScopeResolver := bknsafeaccess.New(
+		accessScopeConfig.BKNBaseURL,
+		&http.Client{Timeout: accessScopeConfig.Timeout},
+	)
+	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
 	coreConfig := conf.NewCoreConfig()
 	metrics := coremetrics.New()
 	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
@@ -321,6 +327,7 @@ func newApp(
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
 	mux.HandleFunc(APIBasePath+"/trace-executions", readAuth(evidenceHandler.ListTraceExecutions))
+	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
 	httphandler.RegisterSessionRoutes(
 		mux, APIBasePath, sessionHandler, evidenceHandler.RequireTrustedLifecycleIdentity,
 	)

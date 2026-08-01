@@ -102,7 +102,62 @@ func TestQueryUsesLatestImmutableRevisionEventSetAndEnforcesOwner(t *testing.T) 
 	}
 }
 
-func TestQueryProjectsAuthorizedBusinessNamesWithoutChangingAssemblyCompleteness(t *testing.T) {
+func TestQueryAuthorizesManagedKnowledgeNetworkInteraction(t *testing.T) {
+	t.Parallel()
+
+	sessions, ledger, owner, interaction := queryFixture(t)
+	profile := evidencevo.AccessProfile{
+		TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"supplychain"},
+		AccountActive: true, TenantActive: true,
+	}
+	requester := owner
+	requester.EffectiveSubjectID = profile.EffectiveSubjectID
+	view, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
+		context.Background(), requester, interaction.ID,
+		evidencevo.QueryScope{AccessProfile: &profile, View: evidencevo.AccessViewBusiness},
+	)
+	if err != nil {
+		t.Fatalf("network builder query managed interaction: %v", err)
+	}
+	if view.Interaction.ID != interaction.ID {
+		t.Fatalf("unexpected interaction: %#v", view.Interaction)
+	}
+}
+
+func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T) {
+	t.Parallel()
+
+	sessions, ledger, owner, interaction := queryFixture(t)
+	tests := map[string]evidencevo.AccessProfile{
+		"partial network scope": {
+			TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+			Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"other-network"},
+			AccountActive: true, TenantActive: true,
+		},
+		"platform admin cannot read business body": {
+			TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "admin-1",
+			Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
+		},
+	}
+	for name, profile := range tests {
+		name, profile := name, profile
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			requester := owner
+			requester.EffectiveSubjectID = profile.EffectiveSubjectID
+			_, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
+				context.Background(), requester, interaction.ID,
+				evidencevo.QueryScope{AccessProfile: &profile, View: evidencevo.AccessViewBusiness},
+			)
+			if err != assemblysvc.ErrNotFound {
+				t.Fatalf("out-of-scope interaction must use non-disclosure response, got %v", err)
+			}
+		})
+	}
+}
+
+func TestQueryProjectsResolvedBusinessNamesWithoutChangingRecordAuthorization(t *testing.T) {
 	t.Parallel()
 
 	sessions, ledger, owner, interaction := queryFixture(t)
@@ -127,24 +182,32 @@ func TestQueryProjectsAuthorizedBusinessNamesWithoutChangingAssemblyCompleteness
 	if view.Assembly.Completeness != sessionvo.EvidenceNotApplicable {
 		t.Fatalf("disclosure changed objective assembly completeness: %s", view.Assembly.Completeness)
 	}
-	if len(view.Assembly.BusinessRefs) != 1 {
-		t.Fatalf("unauthorized ref count leaked or visible ref missing: %#v", view.Assembly.BusinessRefs)
+	if len(view.Assembly.BusinessRefs) != 2 {
+		t.Fatalf("resolver visibility must not remove record-authorized technical refs: %#v", view.Assembly.BusinessRefs)
 	}
 	projected := view.Assembly.BusinessRefs[0]
 	if projected.Display == nil || projected.Display.Name != "需求预测单" ||
-		projected.TechnicalRef.Version != "2026.07" || projected.DisclosureStatus != "visible" {
-		t.Fatalf("authorized business display or technical ref missing: %#v", projected)
+		projected.TechnicalRef.Version != "2026.07" || projected.DisclosureStatus != "resolved" {
+		t.Fatalf("resolved business display or technical ref missing: %#v", projected)
 	}
-	if len(view.Assembly.OperationBusinessEdges) != 1 ||
-		view.Assembly.OperationBusinessEdges[0].BusinessRef.TechnicalRef.RefID != "object:supplychain:forecast" {
-		t.Fatalf("operation edge was not projected with its authorized business ref: %#v", view.Assembly.OperationBusinessEdges)
+	if view.Assembly.BusinessRefs[1].TechnicalRef.RefID != "property:supplychain:forecast:qty" ||
+		view.Assembly.BusinessRefs[1].Display != nil || view.Assembly.BusinessRefs[1].DisclosureStatus != "unresolved" {
+		t.Fatalf("unresolved resolver metadata must retain the technical ref without display: %#v", view.Assembly.BusinessRefs[1])
+	}
+	edgeRefs := map[string]bool{}
+	for _, edge := range view.Assembly.OperationBusinessEdges {
+		edgeRefs[edge.BusinessRef.TechnicalRef.RefID] = true
+	}
+	if len(view.Assembly.OperationBusinessEdges) != 2 ||
+		!edgeRefs["object:supplychain:forecast"] || !edgeRefs["property:supplychain:forecast:qty"] {
+		t.Fatalf("operation edges must retain all record-authorized business refs: %#v", view.Assembly.OperationBusinessEdges)
 	}
 	if len(resolver.requests) != 1 || resolver.requests[0].Scope.Authorization != "Bearer current-user-token" {
 		t.Fatalf("resolver did not receive current authorization scope: %#v", resolver.requests)
 	}
 }
 
-func TestQueryBusinessProjectionFailsClosedWhenResolverCannotAuthorizeRefs(t *testing.T) {
+func TestQueryBusinessProjectionKeepsTechnicalRefsWhenResolverCannotEnrichDisplay(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]func(*sessionstore.Store, *ledgerstore.Store) *assemblysvc.QueryService{
@@ -171,8 +234,8 @@ func TestQueryBusinessProjectionFailsClosedWhenResolverCannotAuthorizeRefs(t *te
 			if err != nil {
 				t.Fatalf("query projected graph: %v", err)
 			}
-			if len(view.Assembly.BusinessRefs) != 0 || len(view.Assembly.OperationBusinessEdges) != 0 {
-				t.Fatalf("unresolved authorization leaked business refs or edges: %#v", view.Assembly)
+			if len(view.Assembly.BusinessRefs) != 2 || len(view.Assembly.OperationBusinessEdges) != 2 {
+				t.Fatalf("resolver degradation must not remove record-authorized refs or edges: %#v", view.Assembly)
 			}
 			if view.Assembly.BusinessRefs == nil || view.Assembly.OperationBusinessEdges == nil {
 				t.Fatalf("empty projected collections must serialize as arrays: %#v", view.Assembly)
@@ -212,8 +275,8 @@ func TestQueryDoesNotReuseAuthorizationAcrossBusinessRefTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query projected graph: %v", err)
 	}
-	if len(view.Assembly.BusinessRefs) != 1 || view.Assembly.BusinessRefs[0].TechnicalRef.RefType != sessionvo.BusinessRefObjectType {
-		t.Fatalf("authorization was reused across ref types: %#v", view.Assembly.BusinessRefs)
+	if len(view.Assembly.BusinessRefs) != 3 {
+		t.Fatalf("resolver display matching must not remove technical refs of another type: %#v", view.Assembly.BusinessRefs)
 	}
 }
 

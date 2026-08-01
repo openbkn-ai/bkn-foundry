@@ -81,6 +81,22 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 	}
 }
 
+func TestDocumentRoundTripPreservesRecordAccessScope(t *testing.T) {
+	trace := normalizedTrace()
+	trace.EffectiveSubjectID = "user-a"
+	trace.ApplicationPrincipalID = "app-a"
+	trace.KnowledgeNetworkIDs = []string{"kn-a", "kn-b"}
+
+	doc := toDocument(trace, time.Date(2026, 8, 1, 1, 2, 3, 0, time.UTC))
+	roundTrip := fromDocument(doc)
+	if roundTrip.EffectiveSubjectID != "user-a" || roundTrip.ApplicationPrincipalID != "app-a" {
+		t.Fatalf("record owner scope was not preserved: %+v", roundTrip)
+	}
+	if len(roundTrip.KnowledgeNetworkIDs) != 2 || roundTrip.KnowledgeNetworkIDs[0] != "kn-a" || roundTrip.KnowledgeNetworkIDs[1] != "kn-b" {
+		t.Fatalf("knowledge network scope was not preserved: %v", roundTrip.KnowledgeNetworkIDs)
+	}
+}
+
 func TestStoreEvidenceTreatsIdenticalEventReplayAsIdempotent(t *testing.T) {
 	indexed := false
 	indexAttempts := 0

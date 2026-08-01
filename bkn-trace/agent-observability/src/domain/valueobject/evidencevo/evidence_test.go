@@ -36,12 +36,6 @@ func TestMatchesScopeRequiresEveryPersistedOwnershipDimension(t *testing.T) {
 	if !MatchesScope(trace, QueryScope{TenantID: "tenant_a", BusinessDomain: "domain_a", AccountID: "account_a", AccountType: "user"}) {
 		t.Fatal("exact ownership must match")
 	}
-	if !MatchesScope(trace, QueryScope{TenantID: "tenant_a", BusinessDomain: "domain_a", AccountID: "admin_a", AccountType: "super_admin", CrossAccountRead: true}) {
-		t.Fatal("trusted cross-account readers must match within the same ownership boundary")
-	}
-	if MatchesScope(trace, QueryScope{TenantID: "tenant_a", BusinessDomain: "domain_b", AccountID: "admin_a", AccountType: "super_admin", CrossAccountRead: true}) {
-		t.Fatal("cross-account readers must still be constrained by business domain")
-	}
 }
 
 func TestSameOwnershipComparesEveryPersistedDimension(t *testing.T) {
