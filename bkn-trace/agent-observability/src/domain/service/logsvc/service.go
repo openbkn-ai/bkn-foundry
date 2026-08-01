@@ -396,6 +396,12 @@ func afterSourcePosition(record observabilityvo.LogRecord, position *observabili
 	if position == nil || position.EventTimestamp.IsZero() {
 		return true
 	}
+	// A native search_after tuple is the source's authoritative strict boundary.
+	// Rechecking it with _source timestamps can use a different precision and
+	// incorrectly discard records from the same indexed millisecond.
+	if len(position.SearchAfter) > 0 && record.CursorPosition != nil && len(record.CursorPosition.SearchAfter) > 0 {
+		return true
+	}
 	if record.EventTimestamp.Before(position.EventTimestamp) {
 		return true
 	}
@@ -493,7 +499,7 @@ func validLogProjection(record observabilityvo.LogRecord) bool {
 
 func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQuery) bool {
 	return (query.TimeFrom == nil || !record.EventTimestamp.Before(*query.TimeFrom)) &&
-		(query.TimeTo == nil || !record.EventTimestamp.After(*query.TimeTo)) &&
+		(query.TimeTo == nil || record.EventTimestamp.Before(*query.TimeTo)) &&
 		matchesOptional(record.TraceID, query.TraceID) && matchesOptional(record.SpanID, query.SpanID) &&
 		matchesOptional(record.RequestID, query.RequestID) && matchesOptional(record.ConversationID, query.ConversationID) &&
 		matchesOptional(record.InteractionID, query.InteractionID) && matchesOptional(record.OperationID, query.OperationID) &&

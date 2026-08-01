@@ -8,22 +8,16 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 )
 
 type fakeSearchClient struct {
 	query    []byte
 	response []byte
-	document opensearch.Document
 }
 
 func (client *fakeSearchClient) Search(_ context.Context, _ string, query []byte) ([]byte, error) {
 	client.query = append([]byte(nil), query...)
 	return client.response, nil
-}
-
-func (client *fakeSearchClient) GetDocument(context.Context, string, string) (opensearch.Document, error) {
-	return client.document, nil
 }
 
 func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
@@ -54,6 +48,11 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 	for _, expected := range []string{"attributes.tenant_id.keyword", "attributes.business_domain_id.keyword", "attributes.log_category.keyword", "attributes.knowledge_network_ids.keyword", "traceId.keyword"} {
 		if !containsBytes(encoded, expected) {
 			t.Fatalf("trusted filter %s was not pushed down: %s", expected, encoded)
+		}
+	}
+	for _, expected := range []string{"attributes.log_id", "attributes.source_log_id"} {
+		if !hasExistsFilter(query, expected) {
+			t.Fatalf("required R6.2 field %s was not enforced: %s", expected, encoded)
 		}
 	}
 	if len(page.Records) != 1 {
@@ -117,20 +116,61 @@ func TestSearchUsesCandidateScopeInsteadOfRequiringEveryManagedNetwork(t *testin
 	}
 }
 
-func TestGetMapsDocumentAndPreservesMissingTrustedScopeAsEmpty(t *testing.T) {
-	backend := &fakeSearchClient{document: opensearch.Document{Source: []byte(`{
-		"attributes":{"service.name":"bkn-backend"},"body":"query_hash=sha256:abc",
-		"observedTimestamp":"2026-08-01T11:35:47Z","@timestamp":"2026-08-01T11:35:46Z",
-		"resource":{"service.name":"bkn-backend"},"severity":{"text":"INFO","number":9},"traceId":"trace-a"
-	}`)}}
+func TestListLogIDCanRoundTripThroughGet(t *testing.T) {
+	backend := &fakeSearchClient{response: []byte(`{
+		"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"source-log-a","_source":{
+			"attributes":{"schema_version":"1.0.0","log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","tenant_id":"tenant-a","business_domain_id":"domain-a","log_category":"runtime.business","event_name":"knowledge.read.completed","outcome":"success","safe_summary":"读取需求预测对象","trust_level":"trusted"},
+			"observedTimestamp":"2026-08-01T11:35:47Z","@timestamp":"2026-08-01T11:35:46Z",
+			"resource":{"service.name":"context-loader","deployment.environment":"production"},
+			"severity":{"text":"INFO","number":9}
+		}}]}}`)}
 	client := New(backend, "ss4o_logs-default-namespace")
-	record, found, err := client.Get(context.Background(), "source-log-a")
+	page, err := client.Search(context.Background(), observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a",
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
+	})
+	if err != nil || len(page.Records) != 1 {
+		t.Fatalf("list log: records=%d err=%v", len(page.Records), err)
+	}
+	listedLogID := page.Records[0].LogID
+	ctx := observabilityvo.WithSourceAccessScope(context.Background(), observabilityvo.SourceAccessScope{
+		TenantID: "tenant-a", BusinessDomain: "domain-a",
+	})
+	record, found, err := client.Get(ctx, listedLogID)
 	if err != nil || !found {
 		t.Fatalf("get log: found=%v err=%v", found, err)
 	}
-	if record.LogID != "source-log-a" || record.TenantID != "" || record.Category != "" {
-		t.Fatalf("adapter must not invent trusted scope for legacy logs: %+v", record)
+	if record.LogID != listedLogID || record.SourceLogID != "source-log-a" {
+		t.Fatalf("list log_id did not round-trip through detail: listed=%q record=%+v", listedLogID, record)
 	}
+	for _, expected := range []string{"attributes.log_id.keyword", listedLogID, "attributes.tenant_id.keyword", "tenant-a", "attributes.business_domain_id.keyword", "domain-a"} {
+		if !containsBytes(backend.query, expected) {
+			t.Fatalf("detail query is missing %q: %s", expected, backend.query)
+		}
+	}
+}
+
+func TestGetFailsClosedWithoutTrustedTenantScope(t *testing.T) {
+	backend := &fakeSearchClient{}
+	client := New(backend, "ss4o_logs-default-namespace")
+	_, found, err := client.Get(context.Background(), "context-loader:source-log-a")
+	if err == nil || found || len(backend.query) != 0 {
+		t.Fatalf("detail lookup must fail before querying without trusted tenant scope: found=%v err=%v query=%s", found, err, backend.query)
+	}
+}
+
+func hasExistsFilter(query map[string]any, expected string) bool {
+	queryObject, _ := query["query"].(map[string]any)
+	boolObject, _ := queryObject["bool"].(map[string]any)
+	filters, _ := boolObject["filter"].([]any)
+	for _, item := range filters {
+		filter, _ := item.(map[string]any)
+		exists, _ := filter["exists"].(map[string]any)
+		if exists["field"] == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func containsBytes(payload []byte, value string) bool {

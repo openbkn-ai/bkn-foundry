@@ -372,6 +372,36 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 	}
 }
 
+func TestAfterSourcePositionTrustsNativeSearchAfterOrdering(t *testing.T) {
+	boundary := time.Date(2026, 8, 1, 10, 0, 0, 123000000, time.UTC)
+	record := observabilityvo.LogRecord{
+		LogID: "log-b", SourceLogID: "source-b",
+		EventTimestamp: boundary.Add(456 * time.Microsecond),
+		CursorPosition: &observabilityvo.SourcePosition{
+			EventTimestamp: boundary.Add(456 * time.Microsecond), LogID: "source-b",
+			SearchAfter: []any{float64(1785578400123), "source-b"},
+		},
+	}
+	position := &observabilityvo.SourcePosition{
+		EventTimestamp: boundary, LogID: "source-a",
+		SearchAfter: []any{float64(1785578400123), "source-a"},
+	}
+	if !afterSourcePosition(record, position) {
+		t.Fatal("native search_after result was rejected by a mismatched source timestamp precision")
+	}
+}
+
+func TestMatchesQueryUsesExclusiveTimeToBoundary(t *testing.T) {
+	boundary := time.Date(2026, 8, 1, 11, 0, 0, 0, time.UTC)
+	query := observabilityvo.LogQuery{TimeTo: &boundary}
+	if matchesQuery(observabilityvo.LogRecord{EventTimestamp: boundary}, query) {
+		t.Fatal("time_to is exclusive in the API contract and source query")
+	}
+	if !matchesQuery(observabilityvo.LogRecord{EventTimestamp: boundary.Add(-time.Nanosecond)}, query) {
+		t.Fatal("record immediately before time_to must remain visible")
+	}
+}
+
 func boolInt(value bool) int {
 	if value {
 		return 1

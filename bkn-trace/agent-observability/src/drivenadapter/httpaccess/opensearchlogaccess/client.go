@@ -3,20 +3,33 @@ package opensearchlogaccess
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 )
 
 const sourceID = "otel-runtime"
 
 type openSearchClient interface {
 	Search(context.Context, string, []byte) ([]byte, error)
-	GetDocument(context.Context, string, string) (opensearch.Document, error)
+}
+
+type searchResponse struct {
+	Hits struct {
+		Total struct {
+			Value    int64  `json:"value"`
+			Relation string `json:"relation"`
+		} `json:"total"`
+		Hits []searchHit `json:"hits"`
+	} `json:"hits"`
+}
+
+type searchHit struct {
+	ID     string          `json:"_id"`
+	Source json.RawMessage `json:"_source"`
+	Sort   []any           `json:"sort"`
 }
 
 type Client struct {
@@ -51,19 +64,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	var response struct {
-		Hits struct {
-			Total struct {
-				Value    int64  `json:"value"`
-				Relation string `json:"relation"`
-			} `json:"total"`
-			Hits []struct {
-				ID     string          `json:"_id"`
-				Source json.RawMessage `json:"_source"`
-				Sort   []any           `json:"sort"`
-			} `json:"hits"`
-		} `json:"hits"`
-	}
+	var response searchResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return observabilityvo.SourcePage{}, fmt.Errorf("decode OpenSearch log response: %w", err)
 	}
@@ -88,15 +89,46 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 }
 
 func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.LogRecord, bool, error) {
-	document, err := client.backend.GetDocument(ctx, client.index, logID)
-	if errors.Is(err, opensearch.ErrDocumentNotFound) {
-		return observabilityvo.LogRecord{}, false, nil
+	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
+	if strings.TrimSpace(scope.TenantID) == "" {
+		return observabilityvo.LogRecord{}, false, fmt.Errorf("trusted tenant scope is required for OpenSearch log detail")
 	}
+	body, err := json.Marshal(buildDetailQuery(logID, scope))
+	if err != nil {
+		return observabilityvo.LogRecord{}, false, fmt.Errorf("encode OpenSearch log detail query: %w", err)
+	}
+	responseBody, err := client.backend.Search(ctx, client.index, body)
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	record, err := mapDocument(logID, document.Source)
+	var response searchResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return observabilityvo.LogRecord{}, false, fmt.Errorf("decode OpenSearch log detail response: %w", err)
+	}
+	if len(response.Hits.Hits) == 0 {
+		return observabilityvo.LogRecord{}, false, nil
+	}
+	hit := response.Hits.Hits[0]
+	record, err := mapDocument(hit.ID, hit.Source)
+	if err == nil && record.LogID != logID {
+		return observabilityvo.LogRecord{}, false, fmt.Errorf("OpenSearch log detail returned mismatched log_id")
+	}
 	return record, err == nil, err
+}
+
+func buildDetailQuery(logID string, scope observabilityvo.SourceAccessScope) map[string]any {
+	filters := []any{
+		map[string]any{"term": map[string]any{"attributes.log_id.keyword": logID}},
+		map[string]any{"term": map[string]any{"attributes.tenant_id.keyword": scope.TenantID}},
+		map[string]any{"term": map[string]any{"attributes.trust_level.keyword": "trusted"}},
+	}
+	if scope.BusinessDomain != "" {
+		filters = append(filters, map[string]any{"term": map[string]any{"attributes.business_domain_id.keyword": scope.BusinessDomain}})
+	}
+	return map[string]any{
+		"size": 1, "track_total_hits": false,
+		"query": map[string]any{"bool": map[string]any{"filter": filters}},
+	}
 }
 
 func buildQuery(query observabilityvo.LogQuery) map[string]any {
@@ -105,6 +137,9 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		limit = 50
 	}
 	filters := make([]any, 0, 16)
+	for _, field := range []string{"attributes.log_id", "attributes.source_log_id"} {
+		filters = append(filters, map[string]any{"exists": map[string]any{"field": field}})
+	}
 	addTerm := func(field, value string) {
 		if value != "" {
 			filters = append(filters, map[string]any{"term": map[string]any{field: value}})
