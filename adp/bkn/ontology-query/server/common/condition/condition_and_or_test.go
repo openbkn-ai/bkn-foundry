@@ -60,14 +60,17 @@ func Test_newAndCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("success - empty AND creates nil condition", func() {
+		Convey("success - empty AND creates match-all condition", func() {
 			cfg := &CondCfg{
 				Operation: OperationAnd,
 				SubConds:  []*CondCfg{},
 			}
 			cond, err := newAndCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
-			So(cond, ShouldBeNil)
+			So(cond, ShouldNotBeNil)
+			dsl, err := cond.Convert(ctx, nil)
+			So(err, ShouldBeNil)
+			So(dsl, ShouldContainSubstring, `"must"`)
 		})
 
 		Convey("失败 - 子条件超过限制", func() {
@@ -367,6 +370,31 @@ func Test_newOrCond(t *testing.T) {
 			cond, err := newOrCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
 			So(cond, ShouldBeNil)
+		})
+
+		Convey("success - nested empty AND is skipped in OR", func() {
+			cfg := &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					{
+						Operation: OperationAnd,
+						SubConds:  []*CondCfg{},
+					},
+					{
+						Name:      "name",
+						Operation: OperationEq,
+						ValueOptCfg: ValueOptCfg{
+							Value: "test",
+						},
+					},
+				},
+			}
+			cond, err := newOrCond(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+			So(cond, ShouldNotBeNil)
+			dsl, err := cond.Convert(ctx, nil)
+			So(err, ShouldBeNil)
+			So(dsl, ShouldContainSubstring, `"should"`)
 		})
 	})
 }

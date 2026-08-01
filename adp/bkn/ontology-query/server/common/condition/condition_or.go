@@ -33,7 +33,12 @@ func newOrCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap ma
 			return nil, err
 		}
 
-		subConds = append(subConds, cond)
+		if cond != nil {
+			subConds = append(subConds, cond)
+		}
+	}
+	if len(subConds) == 0 {
+		return nil, fmt.Errorf("sub condition size is 0")
 	}
 
 	return &OrCond{
