@@ -125,6 +125,43 @@ func TestQueryAuthorizesManagedKnowledgeNetworkInteraction(t *testing.T) {
 	}
 }
 
+func TestQueryRejectsManagedInteractionWhenOperationEdgeReferencesUnmanagedNetwork(t *testing.T) {
+	t.Parallel()
+
+	sessions, ledger, owner, interaction := queryFixture(t)
+	edgeOnly := semanticEvent("evt-edge-only", "op-edge-only", 2)
+	edgeOnly.Owner = owner
+	edgeOnly.ConversationID = interaction.ConversationID
+	edgeOnly.InteractionID = interaction.ID
+	edgeOnly.BusinessRefs = nil
+	edgeOnly.OperationBusinessEdges = []sessionvo.OperationBusinessEdge{{
+		OperationID: edgeOnly.OperationID,
+		BusinessRef: sessionvo.BusinessRef{
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:restricted:salary",
+			BusinessDomainID: owner.BusinessDomainID, Version: "2026.07",
+		},
+		Role: sessionvo.OperationRoleRead, ObservedAt: edgeOnly.ObservedAt,
+	}}
+	if _, err := ledger.Commit(context.Background(), edgeOnly); err != nil {
+		t.Fatalf("commit edge-only business ref: %v", err)
+	}
+
+	profile := evidencevo.AccessProfile{
+		TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"supplychain"},
+		AccountActive: true, TenantActive: true,
+	}
+	requester := owner
+	requester.EffectiveSubjectID = profile.EffectiveSubjectID
+	_, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
+		context.Background(), requester, interaction.ID,
+		evidencevo.QueryScope{AccessProfile: &profile, View: evidencevo.AccessViewBusiness},
+	)
+	if err != assemblysvc.ErrNotFound {
+		t.Fatalf("operation edge network must be included in all-of authorization, got %v", err)
+	}
+}
+
 func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T) {
 	t.Parallel()
 

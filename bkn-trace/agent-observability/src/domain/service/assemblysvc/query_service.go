@@ -141,11 +141,14 @@ func (s *QueryService) GetInteractionAuthorized(
 }
 
 func interactionRecordScope(owner sessionvo.Owner, events []ledgervo.Event) evidencevo.RecordScope {
-	// Ledger BusinessRefs are the validated authorization boundary; the opaque Envelope is not scanned.
+	// The authorization boundary covers every ref assemble can disclose; the opaque Envelope is not scanned.
 	refs := make([]string, 0)
 	for _, event := range events {
 		for _, ref := range event.BusinessRefs {
 			refs = append(refs, ref.RefID)
+		}
+		for _, edge := range event.OperationBusinessEdges {
+			refs = append(refs, edge.BusinessRef.RefID)
 		}
 	}
 	return evidencevo.RecordScope{

@@ -267,7 +267,10 @@ func KnowledgeNetworkIDsFromRefs(refs []string) []string {
 func collectKnowledgeNetworkIDs(value any, networks map[string]struct{}, allowBareRef bool) {
 	switch item := value.(type) {
 	case string:
-		if networkID := knowledgeNetworkIDFromCanonicalRef(item); allowBareRef && networkID != "" {
+		if !allowBareRef {
+			return
+		}
+		if networkID := knowledgeNetworkIDFromCanonicalRef(item); networkID != "" {
 			networks[networkID] = struct{}{}
 		}
 	case map[string]any:
