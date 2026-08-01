@@ -50,16 +50,13 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		ots := omock.NewMockObjectTypeService(mockCtrl)
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
 		logics.OMA = omAccess
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 			omAccess:   omAccess,
 			ots:        ots,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -294,16 +291,13 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		ots := omock.NewMockObjectTypeService(mockCtrl)
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
 		logics.OMA = omAccess
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 			omAccess:   omAccess,
 			ots:        ots,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -1503,13 +1497,10 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -1583,21 +1574,11 @@ func Test_knowledgeNetworkService_buildBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
-					},
-				},
-			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldBeNil)
-			So(conditions, ShouldNotBeNil)
-			So(viewDataMap, ShouldNotBeNil)
+			So(err, ShouldNotBeNil)
+			So(conditions, ShouldBeNil)
+			So(viewDataMap, ShouldBeNil)
 		})
 
 		Convey("成功 - 混合映射", func() {
@@ -1645,13 +1626,10 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -1728,22 +1706,15 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
-					},
-				},
-			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldBeNil)
-			So(conditions, ShouldNotBeNil)
-			So(viewDataMap, ShouldNotBeNil)
-			So(len(viewDataMap), ShouldBeGreaterThan, 0)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(conditions, ShouldBeNil)
+			So(viewDataMap, ShouldBeNil)
 		})
 
 		Convey("失败 - 获取视图数据错误", func() {
@@ -1782,8 +1753,6 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
 			So(err, ShouldNotBeNil)
@@ -1828,29 +1797,16 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
-					},
-				},
-			}
 
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).DoAndReturn(func(ctx context.Context, viewID string, viewQuery interfaces.ViewQuery) (interfaces.ViewData, error) {
-				// 验证查询条件：反向映射时使用 TargetMappingRules，查询 view_target_id = "456"
-				So(viewQuery.Filters, ShouldNotBeNil)
-				return viewData, nil
-			})
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, false)
-			So(err, ShouldBeNil)
-			So(conditions, ShouldNotBeNil)
-			So(len(conditions), ShouldBeGreaterThan, 0)
-			So(viewDataMap, ShouldNotBeNil)
-			So(len(viewDataMap), ShouldBeGreaterThan, 0)
-			// 验证视图数据映射：反向映射时使用 SourceMappingRules 构建条件，从视图数据中提取 view_id
-			So(len(viewDataMap["obj1"]), ShouldEqual, 1)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(conditions, ShouldBeNil)
+			So(viewDataMap, ShouldBeNil)
 		})
 
 		Convey("成功 - 空视图数据", func() {
@@ -1890,16 +1846,15 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{},
-			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldBeNil)
-			So(len(conditions), ShouldEqual, 0)
-			So(len(viewDataMap), ShouldEqual, 0)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(conditions, ShouldBeNil)
+			So(viewDataMap, ShouldBeNil)
 		})
 
 		Convey("成功 - 单个映射规则且多个值使用in操作", func() {
@@ -1945,21 +1900,15 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{"view_id": "123", "view_target_id": "789"},
-					{"view_id": "456", "view_target_id": "790"},
-				},
-			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
-			So(err, ShouldBeNil)
-			So(conditions, ShouldNotBeNil)
-			So(len(conditions), ShouldEqual, 1)
-			So(conditions[0].Operation, ShouldEqual, "in")
-			So(viewDataMap, ShouldNotBeNil)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(conditions, ShouldBeNil)
+			So(viewDataMap, ShouldBeNil)
 		})
 	})
 }
@@ -1970,13 +1919,10 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
-		logics.UA = uAccess
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()
@@ -2020,21 +1966,14 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{
-						"view_id":        "123",
-						"view_target_id": "456",
-					},
-				},
-			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil)
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
-			So(err, ShouldBeNil)
-			So(result, ShouldNotBeNil)
-			So(len(result), ShouldBeGreaterThan, 0)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(result, ShouldBeNil)
 		})
 
 		Convey("失败 - 获取视图数据错误", func() {
@@ -2068,8 +2007,6 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 					},
 				},
 			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(interfaces.ViewData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
 			So(err, ShouldNotBeNil)
@@ -2116,18 +2053,14 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{"view_id": "0", "view_target_id": "100"},
-					{"view_id": "1", "view_target_id": "101"},
-				},
-			}
-
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).Return(viewData, nil).Times(2)
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
-			So(err, ShouldBeNil)
-			So(result, ShouldNotBeNil)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(result, ShouldBeNil)
 		})
 
 		Convey("成功 - 单个映射规则使用in操作", func() {
@@ -2168,22 +2101,15 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				},
 			}
 
-			viewData := interfaces.ViewData{
-				Datas: []map[string]any{
-					{"view_id": "123"},
-					{"view_id": "456"},
-				},
-			}
 
-			uAccess.EXPECT().GetViewDataByID(gomock.Any(), "view1", gomock.Any()).DoAndReturn(func(ctx context.Context, viewID string, query interfaces.ViewQuery) (interfaces.ViewData, error) {
-				So(query.Filters, ShouldNotBeNil)
-				So(query.Filters.Operation, ShouldEqual, "in")
-				return viewData, nil
-			})
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)
-			So(err, ShouldBeNil)
-			So(result, ShouldNotBeNil)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_UnsupportedLegacyDataSourceBinding)
+			So(result, ShouldBeNil)
 		})
 	})
 }

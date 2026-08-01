@@ -48,17 +48,14 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		ots := omock.NewMockObjectTypeService(mockCtrl)
-		uAccess := omock.NewMockUniqueryAccess(mockCtrl)
 
 		// 设置全局变量
 		logics.OMA = omAccess
-		logics.UA = uAccess
 
 		service := &actionTypeService{
 			appSetting: appSetting,
 			omAccess:   omAccess,
 			ots:        ots,
-			uAccess:    uAccess,
 		}
 
 		ctx := context.Background()

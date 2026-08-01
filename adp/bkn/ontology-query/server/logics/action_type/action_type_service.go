@@ -37,7 +37,6 @@ type actionTypeService struct {
 	appSetting *common.AppSetting
 	omAccess   interfaces.OntologyManagerAccess
 	ots        interfaces.ObjectTypeService
-	uAccess    interfaces.UniqueryAccess
 }
 
 func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeService {
@@ -46,7 +45,6 @@ func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeSe
 			appSetting: appSetting,
 			omAccess:   logics.OMA,
 			ots:        object_type.NewObjectTypeService(appSetting),
-			uAccess:    logics.UA,
 		}
 	})
 	return atService

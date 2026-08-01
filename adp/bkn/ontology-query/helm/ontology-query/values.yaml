@@ -56,10 +56,6 @@ depServices:
     host: bkn-backend-svc
     port: 13014
     protocol: http
-  uniquery:
-    host: mdl-uniquery-svc
-    port: 13011
-    protocol: http
   agent-operator-integration:
     host: agent-operator-integration
     port: 9000

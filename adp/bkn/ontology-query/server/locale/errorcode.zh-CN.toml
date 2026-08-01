@@ -68,3 +68,8 @@ ErrorLink = "暂无"
 Description = "指标查询执行失败"
 Solution = "请重试或联系支持。"
 ErrorLink = "暂无"
+
+[OntologyQuery.UnsupportedLegacyDataSourceBinding]
+Description = "data_view 数据源已废弃"
+Solution = "请将对象类或关系类重新绑定为 vega resource（data_source.type=resource），或依赖已构建的索引。"
+ErrorLink = "暂无"

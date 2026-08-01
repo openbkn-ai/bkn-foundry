@@ -47,7 +47,6 @@ type AppSetting struct {
 	HydraAdminSetting hydra.HydraAdminSetting
 
 	BKNBackendUrl  string
-	UniQueryUrl    string
 	VegaBackendUrl string
 	// 算子执行 url
 	AgentOperatorUrl string
@@ -72,7 +71,6 @@ const (
 	modelFactoryManagerServiceName string = "mf-model-manager"
 	modelFactoryAPIServiceName     string = "mf-model-api"
 	bknBackendServiceName          string = "bkn-backend"
-	uniQueryServiceName            string = "uniquery"
 	vegaBackendServiceName         string = "vega-backend"
 	agentOperatorServiceName       string = "agent-operator-integration"
 )
@@ -145,7 +143,6 @@ func loadSetting(vp *viper.Viper) {
 
 	SetModelFactoryAPISetting()
 
-	SetUniQuerySetting()
 	SetVegaBackendSetting()
 
 	SetAgentOperatorSetting()
@@ -235,19 +232,6 @@ func SetBKNBackendSetting() {
 	port := setting["port"].(int)
 
 	appSetting.BKNBackendUrl = fmt.Sprintf("%s://%s:%d/api/bkn-backend/in/v1/knowledge-networks", protocol, host, port)
-}
-
-func SetUniQuerySetting() {
-	setting, ok := appSetting.DepServices[uniQueryServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", uniQueryServiceName)
-	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.UniQueryUrl = fmt.Sprintf("%s://%s:%d/api/mdl-uniquery/in/v1", protocol, host, port)
 }
 
 func SetVegaBackendSetting() {

@@ -32,8 +32,6 @@ import (
 	"bkn-backend/drivenadapters/auth"
 	"bkn-backend/drivenadapters/business_system"
 	"bkn-backend/drivenadapters/concept_group"
-	"bkn-backend/drivenadapters/data_model"
-	"bkn-backend/drivenadapters/data_view"
 	"bkn-backend/drivenadapters/knowledge_network"
 	"bkn-backend/drivenadapters/metric"
 	"bkn-backend/drivenadapters/model_factory"
@@ -161,8 +159,6 @@ func main() {
 		logics.SetBusinessSystemAccess(business_system.NewBusinessSystemAccess(appSetting))
 	}
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
-	logics.SetDataModelAccess(data_model.NewDataModelAccess(appSetting))
-	logics.SetDataViewAccess(data_view.NewDataViewAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
 	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))

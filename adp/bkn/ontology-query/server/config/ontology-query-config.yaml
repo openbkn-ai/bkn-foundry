@@ -59,14 +59,6 @@ depServices:
     host: localhost
     port: 9898
     protocol: http
-  data-model:
-    host: localhost
-    port: 13020
-    protocol: http
-  uniquery:
-    host: localhost
-    port: 13011
-    protocol: http
   vega-backend:
     host: localhost
     port: 13014

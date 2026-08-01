@@ -16,7 +16,6 @@ var (
 	MFA interfaces.ModelFactoryAccess
 	OMA interfaces.OntologyManagerAccess
 	OSA interfaces.OpenSearchAccess
-	UA  interfaces.UniqueryAccess
 	VBA interfaces.VegaBackendAccess
 )
 
@@ -38,10 +37,6 @@ func SetOntologyManagerAccess(ota interfaces.OntologyManagerAccess) {
 
 func SetOpenSearchAccess(osa interfaces.OpenSearchAccess) {
 	OSA = osa
-}
-
-func SetUniqueryAccess(ua interfaces.UniqueryAccess) {
-	UA = ua
 }
 
 func SetVegaBackendAccess(v interfaces.VegaBackendAccess) {

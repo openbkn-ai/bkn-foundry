@@ -37,7 +37,6 @@ type knowledgeNetworkService struct {
 	appSetting *common.AppSetting
 	omAccess   interfaces.OntologyManagerAccess
 	ots        interfaces.ObjectTypeService
-	uAccess    interfaces.UniqueryAccess
 	vba        interfaces.VegaBackendAccess
 }
 
@@ -47,7 +46,6 @@ func NewKnowledgeNetworkService(appSetting *common.AppSetting) interfaces.Knowle
 			appSetting: appSetting,
 			omAccess:   logics.OMA,
 			ots:        object_type.NewObjectTypeService(appSetting),
-			uAccess:    logics.UA,
 			vba:        logics.VBA,
 		}
 	})
@@ -1101,10 +1099,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		}
 		viewQuery.Sort = sort
 
-		backingType := mappingRules.BackingDataSource.Type
-		if backingType == "" {
-			backingType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
-		}
+	backingType := logics.ResolveDataSourceType(mappingRules.BackingDataSource)
 		var backingRows []map[string]any
 		if backingType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			params := &interfaces.ResourceDataQueryParams{
@@ -1128,14 +1123,11 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			}
 			backingRows = resp.Entries
 			logger.Debugf("relation [%s] from resource [%s] rows [%d]", edge.RelationType.RTName, mappingRules.BackingDataSource.ID, len(backingRows))
+		} else if logics.IsLegacyDataViewBinding(backingType) {
+			return nil, logics.LegacyDataViewBindingError(ctx, "relation_type", edge.RelationType.RTID)
 		} else {
-			backingViewData, err := kns.uAccess.GetViewDataByID(ctx, mappingRules.BackingDataSource.ID, *viewQuery)
-			if err != nil {
-				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
-			}
-			backingRows = backingViewData.Datas
-			logger.Debugf("依据关系[%s]从视图[%s]中获取到的数据条数为[%d]", edge.RelationType.RTName, mappingRules.BackingDataSource.ID, len(backingRows))
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", backingType))
 		}
 
 		kns.mapViewDataToObjects(backingRows, batchConditions, objectMapping, mappingRules, isForward, result)

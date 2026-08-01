@@ -34,6 +34,7 @@ const (
 	BknBackend_NullParameter_ConditionName      = "BknBackend.NullParameter.ConditionName"
 	BknBackend_NullParameter_ConditionOperation = "BknBackend.NullParameter.ConditionOperation"
 	BknBackend_UnsupportConditionOperation      = "BknBackend.UnsupportConditionOperation"
+	BknBackend_UnsupportedLegacyDataSourceBinding = "BknBackend.UnsupportedLegacyDataSourceBinding"
 	BknBackend_CountExceeded_Conditions         = "BknBackend.CountExceeded.Conditions"
 
 	// 406
@@ -73,6 +74,7 @@ var (
 		BknBackend_NullParameter_ConditionName,
 		BknBackend_NullParameter_ConditionOperation,
 		BknBackend_UnsupportConditionOperation,
+		BknBackend_UnsupportedLegacyDataSourceBinding,
 		BknBackend_CountExceeded_Conditions,
 		BknBackend_InvalidParameter_ConditionValue,
 

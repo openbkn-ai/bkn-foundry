@@ -63,18 +63,6 @@ func Test_SetOpenSearchAccess(t *testing.T) {
 	})
 }
 
-func Test_SetUniqueryAccess(t *testing.T) {
-	Convey("Test SetUniqueryAccess", t, func() {
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		ua := omock.NewMockUniqueryAccess(mockCtrl)
-
-		SetUniqueryAccess(ua)
-		So(UA, ShouldEqual, ua)
-	})
-}
-
 func Test_GlobalVariables(t *testing.T) {
 	Convey("Test Global Variables", t, func() {
 		mockCtrl := gomock.NewController(t)
@@ -85,19 +73,16 @@ func Test_GlobalVariables(t *testing.T) {
 			mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 			oma := omock.NewMockOntologyManagerAccess(mockCtrl)
 			osa := omock.NewMockOpenSearchAccess(mockCtrl)
-			ua := omock.NewMockUniqueryAccess(mockCtrl)
 
 			SetAgentOperatorAccess(aoa)
 			SetModelFactoryAccess(mfa)
 			SetOntologyManagerAccess(oma)
 			SetOpenSearchAccess(osa)
-			SetUniqueryAccess(ua)
 
 			So(AOA, ShouldEqual, aoa)
 			So(MFA, ShouldEqual, mfa)
 			So(OMA, ShouldEqual, oma)
 			So(OSA, ShouldEqual, osa)
-			So(UA, ShouldEqual, ua)
 		})
 
 		Convey("成功 - 多次设置同一变量", func() {
