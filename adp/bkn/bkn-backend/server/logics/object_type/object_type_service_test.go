@@ -21,7 +21,6 @@ import (
 	cond "bkn-backend/common/condition"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
-	"bkn-backend/logics"
 	bmock "bkn-backend/interfaces/mock"
 )
 
@@ -433,43 +432,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 			So(err, ShouldBeNil)
 			So(len(result), ShouldEqual, 1)
-		})
-
-		Convey("Legacy data_view binding marked unavailable on detail\n", func() {
-			knID := "kn1"
-			branch := interfaces.MAIN_BRANCH
-			otIDs := []string{"ot1"}
-			otArr := []*interfaces.ObjectType{
-				{
-					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:       "ot1",
-						OTName:     "ot1",
-						DataSource: &interfaces.ResourceInfo{ID: "dv1"},
-						DataProperties: []*interfaces.DataProperty{
-							{
-								Name: "prop1",
-								MappedField: &interfaces.Field{
-									Name: "field1",
-								},
-							},
-						},
-					},
-				},
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			smock.ExpectCommit()
-
-			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 1)
-			So(result[0].DataSource.BindingAvailable, ShouldNotBeNil)
-			So(*result[0].DataSource.BindingAvailable, ShouldBeFalse)
-			So(result[0].DataSource.BindingIssue, ShouldEqual, logics.LegacyDataViewBindingIssue)
 		})
 	})
 }

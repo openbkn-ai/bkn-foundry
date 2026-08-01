@@ -75,8 +75,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 // validateObjectTypeStrictExternalDeps checks backing data view or vega resource, vector embedding models, and logic property references.
 func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.Context, objectType *interfaces.ObjectType) error {
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
-		dsType := logics.ResolveDataSourceType(objectType.DataSource)
-		switch dsType {
+		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 			res, err := ots.vba.GetResourceByID(ctx, objectType.DataSource.ID)
 			if err != nil {
@@ -90,12 +89,9 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 					WithErrorDetails(fmt.Sprintf("对象类[%s]的资源[%s]不存在", objectType.OTName, objectType.DataSource.ID))
 			}
 		default:
-			if logics.IsLegacyDataViewBinding(dsType) {
-				return logics.LegacyDataViewBindingError(ctx, berrors.BknBackend_ObjectType_InvalidParameter)
-			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", dsType, objectType.OTID))
+				WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", objectType.DataSource.Type, objectType.OTID))
 		}
 	}
 	if objectType.DataProperties != nil {
@@ -701,7 +697,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		outputFields = append(outputFields, sourceField)
 	}
 
-	dsType := logics.ResolveDataSourceType(objectType.DataSource)
+	dsType := objectType.DataSource.Type
 
 	var datasetResp *interfaces.DatasetQueryResponse
 	switch dsType {
@@ -716,9 +712,6 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 			OutputFields: outputFields,
 		})
 	default:
-		if logics.IsLegacyDataViewBinding(dsType) {
-			return nil, logics.LegacyDataViewBindingError(ctx, berrors.BknBackend_ObjectType_InvalidParameter)
-		}
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", dsType, objectType.OTID))
@@ -1796,14 +1789,12 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 
 	// 查视图或 vega Resource 组装 ops. 不需要组装,因为保存的时候会保存进去
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
-		dsType := logics.ResolveDataSourceType(objectType.DataSource)
-		switch dsType {
+		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 			res, err := ots.vba.GetResourceByID(ctx, objectType.DataSource.ID)
 			if err != nil || res == nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s vega Resource %s not found, error: %v",
 					objectType.OTID, objectType.DataSource.ID, err))
-				logics.MarkResourceBindingUnavailable(objectType.DataSource)
 			} else {
 				objectType.DataSource.Name = res.Name
 				fieldsMap := logics.VegaResourceSchemaToFieldsMap(res)
@@ -1817,10 +1808,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 					}
 					objectType.DataProperties[j].ConditionOperations = ots.processConditionOperations(objectType, prop, dslView)
 				}
-				logics.MarkResourceBindingAvailable(objectType.DataSource)
 			}
-		default:
-			logics.EnrichDataSourceBindingStatus(objectType.DataSource)
 		}
 	}
 

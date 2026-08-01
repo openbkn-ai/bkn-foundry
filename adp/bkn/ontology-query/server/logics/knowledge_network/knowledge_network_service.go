@@ -1099,9 +1099,8 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		}
 		viewQuery.Sort = sort
 
-	backingType := logics.ResolveDataSourceType(mappingRules.BackingDataSource)
 		var backingRows []map[string]any
-		if backingType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		if mappingRules.BackingDataSource != nil && mappingRules.BackingDataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			params := &interfaces.ResourceDataQueryParams{
 				NeedTotal: viewQuery.NeedTotal,
 				Paging: interfaces.ResourceDataPagingRequest{
@@ -1123,10 +1122,12 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			}
 			backingRows = resp.Entries
 			logger.Debugf("relation [%s] from resource [%s] rows [%d]", edge.RelationType.RTName, mappingRules.BackingDataSource.ID, len(backingRows))
-		} else if logics.IsLegacyDataViewBinding(backingType) {
-			return nil, logics.LegacyDataViewBindingError(ctx, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
 		} else {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			backingType := ""
+			if mappingRules.BackingDataSource != nil {
+				backingType = mappingRules.BackingDataSource.Type
+			}
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", backingType))
 		}
 

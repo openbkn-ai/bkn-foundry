@@ -411,13 +411,9 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 		case interfaces.RELATION_TYPE_DATA_VIEW:
 			// 查视图或 vega Resource，翻译名称和桥梁字段显示名
 			mappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
-			var backingType string
-			if mappingRules.BackingDataSource != nil {
-				backingType = logics.ResolveDataSourceType(mappingRules.BackingDataSource)
-			}
 			var fieldsMap map[string]*interfaces.ViewField
 			if mappingRules.BackingDataSource != nil && mappingRules.BackingDataSource.ID != "" {
-				switch backingType {
+				switch mappingRules.BackingDataSource.Type {
 				case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 					res, err := rts.vba.GetResourceByID(ctx, mappingRules.BackingDataSource.ID)
 					if err != nil {
@@ -427,17 +423,13 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 					}
 					if res == nil {
 						otellog.LogWarn(ctx, fmt.Sprintf("Relation type [%s]'s backing vega Resource %s not found", relationType.RTID, mappingRules.BackingDataSource.ID))
-						logics.MarkResourceBindingUnavailable(mappingRules.BackingDataSource)
 						if sourceObj == nil && targetObj == nil {
 							continue
 						}
 					} else {
 						relationType.MappingRules.(*interfaces.InDirectMapping).BackingDataSource.Name = res.Name
 						fieldsMap = logics.VegaResourceSchemaToFieldsMap(res)
-						logics.MarkResourceBindingAvailable(mappingRules.BackingDataSource)
 					}
-				default:
-					logics.EnrichDataSourceBindingStatus(mappingRules.BackingDataSource)
 				}
 			}
 
@@ -1248,10 +1240,9 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			inDirectMappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
 			// strictMode为true时才校验 backing 存在性
 			if strictMode && inDirectMappingRules.BackingDataSource != nil && inDirectMappingRules.BackingDataSource.ID != "" {
-				backingType := logics.ResolveDataSourceType(inDirectMappingRules.BackingDataSource)
 				var fieldsMap map[string]*interfaces.ViewField
 				var backingLabel string
-				switch backingType {
+				switch inDirectMappingRules.BackingDataSource.Type {
 				case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 					res, err := rts.vba.GetResourceByID(ctx, inDirectMappingRules.BackingDataSource.ID)
 					if err != nil {
@@ -1264,11 +1255,8 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 					backingLabel = res.Name
 					fieldsMap = logics.VegaResourceSchemaToFieldsMap(res)
 				default:
-					if logics.IsLegacyDataViewBinding(backingType) {
-						return logics.LegacyDataViewBindingError(ctx, berrors.BknBackend_RelationType_InvalidParameter)
-					}
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", backingType))
+						WithErrorDetails(fmt.Sprintf("unsupported relation backing data_source.type %q", inDirectMappingRules.BackingDataSource.Type))
 				}
 
 				for _, mapping := range inDirectMappingRules.SourceMappingRules {

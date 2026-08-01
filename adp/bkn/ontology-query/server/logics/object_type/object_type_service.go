@@ -162,7 +162,10 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		}
 	}
 
-	dataSourceType := logics.ResolveDataSourceType(objectType.DataSource)
+	dataSourceType := ""
+	if objectType.DataSource != nil {
+		dataSourceType = objectType.DataSource.Type
+	}
 	useIndex := !query.IgnoringStore && objectType.Status != nil && objectType.Status.IndexAvailable &&
 		dataSourceType != interfaces.DATA_SOURCE_TYPE_RESOURCE
 
@@ -186,13 +189,14 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 			// 给默认值, 默认按 _score desc，主键 asc
 			query.Sort = logics.BuildViewSort(objectType)
 		}
-		// 3. 请求 vega Resource 获取数据（data_view 已废弃）
-		dsType := logics.ResolveDataSourceType(objectType.DataSource)
-		if dsType == interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		// 3. 请求 vega Resource 获取数据
+		if objectType.DataSource != nil && objectType.DataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
-		} else if logics.IsLegacyDataViewBinding(dsType) {
-			return resps, logics.LegacyDataViewBindingError(ctx, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		} else {
+			dsType := ""
+			if objectType.DataSource != nil {
+				dsType = objectType.DataSource.Type
+			}
 			return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("unsupported data_source.type %q on object_type %s", dsType, objectType.OTID))
 		}

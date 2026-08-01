@@ -217,9 +217,6 @@ type ResourceInfo struct {
 	BoxID      string `json:"box_id,omitempty" mapstructure:"box_id"`
 	ToolID     string `json:"tool_id,omitempty" mapstructure:"tool_id"`
 	ResultPath string `json:"result_path,omitempty" mapstructure:"result_path"`
-
-	BindingAvailable *bool  `json:"binding_available,omitempty" mapstructure:"binding_available"`
-	BindingIssue     string `json:"binding_issue,omitempty" mapstructure:"binding_issue"`
 }
 
 // 概念索引的id生成规则， kn_id + module_type + id + branch
