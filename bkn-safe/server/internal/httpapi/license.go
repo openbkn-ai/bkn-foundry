@@ -69,12 +69,20 @@ func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service, e *authz.Enf
 		c.JSON(http.StatusOK, gin.H{"instance_fp": svc.Fingerprint()})
 	})
 
-	// GET /license/activation-code — the offline activation request code the
-	// customer pastes into the license portal (shown next to the fingerprint,
-	// both copyable).
+	// GET /license/activation-code — what the customer submits to the license
+	// portal for offline activation.
+	//
+	// The activation_code field is gone. It used to carry base64({lic_id,
+	// instance_fp}), and the issuer stopped accepting it in 2026-07: the portal
+	// now validates ^fp_[0-9a-f]{16}$ and answers 400 to anything else. Keeping
+	// the field would not have been compatibility, it would have been shipping a
+	// value whose only remaining use is to make an admin's paste fail. Studio
+	// dropped its copy button the same week, and no other client ever read it.
+	//
+	// The route keeps its name so existing links and scripts do not 404.
 	g.GET("/license/activation-code", RequirePermission(e, "admin-license", "view"), func(c *gin.Context) {
-		fp, code, licID := svc.ActivationCode()
-		c.JSON(http.StatusOK, gin.H{"instance_fp": fp, "activation_code": code, "lic_id": licID})
+		fp, licID := svc.ActivationRequest()
+		c.JSON(http.StatusOK, gin.H{"instance_fp": fp, "lic_id": licID})
 	})
 
 	// DELETE /license — drop the installed license (back to unactivated).
@@ -172,7 +180,7 @@ func registerLicenseInternal(r *gin.Engine, svc *license.Service, keysStore *aut
 			if snap.Payload.Limits != nil {
 				resp["limits"] = snap.Payload.Limits
 			}
-			resp["edition"] = snap.Payload.Edition
+			resp["edition"] = string(snap.Payload.Edition)
 		}
 		c.JSON(http.StatusOK, resp)
 	})
@@ -213,7 +221,7 @@ func licenseStatus(svc *license.Service) gin.H {
 		h["renew_error"] = snap.RenewErr.Error()
 	}
 	if p := snap.Payload; p != nil {
-		h["edition"] = p.Edition
+		h["edition"] = string(p.Edition)
 		h["expires_at"] = p.ExpiresAt
 		h["contract_expires_at"] = p.ContractExpiresAt
 		if snap.State == licverify.StateGrace && p.ExpiresAt != 0 {

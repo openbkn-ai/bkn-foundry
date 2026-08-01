@@ -385,7 +385,11 @@ func TestRemove(t *testing.T) {
 	if err := svc.Remove(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if snap := svc.State(); snap.State != licverify.StateInvalid {
+	// Not "invalid": licverify separates "no license" from "broken license".
+	// This test database is minutes old, so removing the license lands back in
+	// the trial window. Neither state carries paid capability — only valid and
+	// grace do — so what changes here is the label an admin screen shows.
+	if snap := svc.State(); snap.State != licverify.StateTrial {
 		t.Fatalf("state after remove = %s", snap.State)
 	}
 	if _, _, err := svc.Current(); !errors.Is(err, ErrNoLicense) {
@@ -393,28 +397,17 @@ func TestRemove(t *testing.T) {
 	}
 }
 
-func TestActivationCodeWithoutLicense(t *testing.T) {
+func TestActivationRequestWithoutLicense(t *testing.T) {
 	keyTable, _ := testKeys(t)
 	db := testDB(t)
 	svc := newTestService(t, db, config.LicenseConfig{}, keyTable)
 
-	fp, code, licID := svc.ActivationCode()
+	fp, licID := svc.ActivationRequest()
 	if fp != localFP() {
 		t.Fatalf("fp = %s", fp)
 	}
 	if licID != "" {
 		t.Fatalf("licID with no license = %q", licID)
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded map[string]string
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		t.Fatal(err)
-	}
-	if decoded["instance_fp"] != localFP() {
-		t.Fatalf("code fp = %s", decoded["instance_fp"])
 	}
 }
 
