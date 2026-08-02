@@ -184,8 +184,12 @@ echo "  Catalog: $CAT_ID ($RES_N table resources)"
 # ── Step 2: Build Knowledge Network (object types bound to Vega resources) ───
 echo ""
 echo "=== Step 2: Build Knowledge Network ==="
-KN_ID=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null | jget kn_id)
-[ -z "$KN_ID" ] && KN_ID=$(openbkn --json bkn create "${KN_NAME}_b" 2>/dev/null | jget id)
+# One create, then read the id out of that same response: the CLI has returned
+# `id` rather than `kn_id`, and calling create a second time to "retry" left a
+# stray empty KN behind on every run.
+KN_JSON=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null || true)
+KN_ID=$(printf '%s' "$KN_JSON" | jget kn_id)
+[ -n "$KN_ID" ] || KN_ID=$(printf '%s' "$KN_JSON" | jget id)
 [ -z "$KN_ID" ] && { echo "Error: no kn_id in response" >&2; exit 1; }
 echo "  Knowledge Network: $KN_ID"
 INV_RES=$(res_id "eval_inventory"); PO_RES=$(res_id "eval_production_orders")

@@ -157,8 +157,12 @@ PO_RES=$(res_id "erp_purchase_order")
 # ── Step 2: Create Knowledge Network + object types (resource binding) ───────
 echo ""
 echo "=== Step 2: Create Knowledge Network ==="
-KN_ID=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null | jget kn_id)
-[ -z "$KN_ID" ] && KN_ID=$(openbkn --json bkn create "${KN_NAME}_b" 2>/dev/null | jget id)
+# One create, then read the id out of that same response: the CLI has returned
+# `id` rather than `kn_id`, and calling create a second time to "retry" left a
+# stray empty KN behind on every run.
+KN_JSON=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null || true)
+KN_ID=$(printf '%s' "$KN_JSON" | jget kn_id)
+[ -n "$KN_ID" ] || KN_ID=$(printf '%s' "$KN_JSON" | jget id)
 if [ -z "$KN_ID" ]; then
     echo "Error: could not create knowledge network." >&2; exit 1
 fi

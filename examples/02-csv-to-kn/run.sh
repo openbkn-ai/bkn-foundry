@@ -105,8 +105,12 @@ for r in json.load(sys.stdin).get('entries',[]):
 # ── Step 3: Build Knowledge Network (object types bound to resources) ────────
 echo ""
 echo "=== Step 3: Build Knowledge Network ==="
-KN_ID=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null | jget kn_id)
-[ -z "$KN_ID" ] && KN_ID=$(openbkn --json bkn create "${KN_NAME}_b" 2>/dev/null | jget id)
+# One create, then read the id out of that same response: the CLI has returned
+# `id` rather than `kn_id`, and calling create a second time to "retry" left a
+# stray empty KN behind on every run.
+KN_JSON=$(openbkn --json bkn create "$KN_NAME" 2>/dev/null || true)
+KN_ID=$(printf '%s' "$KN_JSON" | jget kn_id)
+[ -n "$KN_ID" ] || KN_ID=$(printf '%s' "$KN_JSON" | jget id)
 [ -z "$KN_ID" ] && { echo "Error: KN create failed." >&2; exit 1; }
 echo "  Knowledge Network: $KN_ID"
 # Build the object-type create body ({"entries":[entry]}) for a resource-bound
