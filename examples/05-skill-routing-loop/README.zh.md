@@ -131,3 +131,8 @@ pip install -r tool_backend/requirements.txt
 
 本地 mock backend 进程两种模式下都会在退出时停掉，除非设了 `DEBUG_KEEP=1`
 （保留整条路由链路便于调试）。
+
+在上一次跑剩下的资源上重跑没问题:KN ID 是写死的（`ex05_skill_routing`），`bkn push`
+以 overwrite 模式导入，同 ID 原地更新。Skill 和 MCP 的名字都带运行时间戳 —— 已被
+**已发布** Skill 占用的名字在发布时会被拒绝 —— 所以每次运行注册自己的一套，不会和
+上一次撞名。列表堆得太多时手动删掉旧的，或者跑一次 `CLEANUP=1`。

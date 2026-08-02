@@ -142,3 +142,10 @@ printed on exit. Run with `CLEANUP=1 ./run.sh` to delete them on exit, success o
 
 The local mock tool backend process is stopped on exit either way, unless `DEBUG_KEEP=1`
 is set (which keeps the whole routing loop callable for debugging).
+
+Re-running over the resources a previous run left behind works: the KN id is fixed
+(`ex05_skill_routing`) and `bkn push` imports in overwrite mode, so the network is
+updated in place. Skills and the MCP server carry the run timestamp in their names —
+a Skill name already held by a *published* Skill is rejected at publish time — so each
+run registers its own set rather than colliding with the last one. Delete the old ones
+by hand (or run once with `CLEANUP=1`) when the list gets noisy.

@@ -148,8 +148,15 @@ for skill_dir in "$SCRIPT_DIR"/skills/*/; do
     skill_name=$(basename "$skill_dir")
     rendered_skill_dir="$RENDERED_SKILLS/$skill_name"
     cp -R "$skill_dir" "$rendered_skill_dir"
+    # Suffix the registered name with the run timestamp. Registration itself
+    # allows duplicate names, but publishing rejects a name already held by a
+    # published Skill — so a second run over the Skills this one leaves behind
+    # would fail at set-status. The KN binds Skills by id, and the routing
+    # assertions map ids back through the directory name, so the suffix stays
+    # contained to the Skill registry.
     find "$rendered_skill_dir" -type f -name 'SKILL.md' -exec sed -i.bak \
-        -e "s|{{TOOL_BACKEND_PUBLIC_URL}}|$TOOL_BACKEND_PUBLIC_URL|g" {} \;
+        -e "s|{{TOOL_BACKEND_PUBLIC_URL}}|$TOOL_BACKEND_PUBLIC_URL|g" \
+        -e "1,10s|^name: \(.*\)$|name: \1_${TIMESTAMP}|" {} \;
     find "$rendered_skill_dir" -name '*.bak' -delete
     # openbkn skill register zips the directory itself.
     REG_RAW=$(openbkn --json skill register "$rendered_skill_dir" 2>&1)
