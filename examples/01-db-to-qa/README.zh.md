@@ -90,9 +90,10 @@ openbkn bkn search <kn-id> "物料"
 
 ## 清理
 
-脚本默认**保留**创建的资源（知识网络、数据源），退出时打印资源 ID 供查看。
+脚本默认**保留**创建的知识网络与 Vega catalog，退出时打印资源 ID 供查看。
 需要自动删除时用 `CLEANUP=1 ./run.sh`。手动清理：
+
 ```bash
 openbkn bkn delete <kn-id> -y
-openbkn ds delete <datasource-id> -y
+openbkn call /api/vega-backend/v1/catalogs/<catalog-id> -X DELETE
 ```

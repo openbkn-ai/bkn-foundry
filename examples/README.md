@@ -47,8 +47,9 @@ See the README inside each example for specific prerequisites.
 
 ## Cleanup
 
-Scripts **keep** everything they create (datasources, knowledge networks, actions) so you can
+Scripts **keep** everything they create (Vega catalogs, knowledge networks, actions) so you can
 inspect the result; the resource IDs are printed on exit. Run with `CLEANUP=1 ./run.sh` to have
 the script delete them on exit instead — whether the run succeeds or fails.
 
-**06-world-cup** leaves datasources, MySQL rows, Vega catalogs, and the pushed KN in place unless you delete them manually.
+**06-world-cup** has no cleanup path at all, so `CLEANUP=1` does nothing there: its MySQL rows,
+Vega catalogs and pushed KN always stay until you delete them yourself.

@@ -71,7 +71,7 @@ if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
 fi
 
 # ── JSON helper: read a top-level field from stdin ───────────────────────────
-jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('$1','') if isinstance(d,dict) else '')" 2>/dev/null || true; }
+jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print((d.get('$1') or '') if isinstance(d,dict) else '')" 2>/dev/null || true; }
 
 TIMESTAMP=$(date +%s)
 CAT_NAME="example_cat_${TIMESTAMP}"

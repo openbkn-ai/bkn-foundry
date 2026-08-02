@@ -140,8 +140,9 @@ healthy run.
 Platform resources (KN, MCP, Skills, Catalog) are **kept** by default; their IDs are
 printed on exit. Run with `CLEANUP=1 ./run.sh` to delete them on exit, success or failure.
 
-The local mock tool backend process is stopped on exit either way, unless `DEBUG_KEEP=1`
-is set (which keeps the whole routing loop callable for debugging).
+The local mock tool backend process is stopped on exit as well — `DEBUG_KEEP=1` keeps it
+running so the whole routing loop stays callable for debugging. `CLEANUP=1` wins over
+`DEBUG_KEEP=1`: an explicit cleanup always stops the backend.
 
 Re-running over the resources a previous run left behind works: the KN id is fixed
 (`ex05_skill_routing`) and `bkn push` imports in overwrite mode, so the network is

@@ -61,10 +61,11 @@ if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
     done
 fi
 command -v "$MYSQL_BIN" >/dev/null 2>&1 || { echo "Error: mysql client not found (Ubuntu: sudo apt install -y mysql-client)"; exit 1; }
-jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('$1','') if isinstance(d,dict) else '')" 2>/dev/null || true; }
+jget() { python3 -c "import json,sys;d=json.load(sys.stdin);print((d.get('$1') or '') if isinstance(d,dict) else '')" 2>/dev/null || true; }
 
 # Track resources for cleanup
 CAT_ID="" TMP_KN_ID="" MCP_ID=""
+KN_PUSHED=""   # set once bkn push lands; KN_ID is a fixed literal, not proof it exists
 SKILL_IDS=()
 TOOL_BACKEND_PID=""
 STANDARD_REPLENISH_ID=""
@@ -76,7 +77,7 @@ cleanup() {
     if [ "${CLEANUP:-0}" != "1" ]; then
         echo ""
         echo "=== Resources kept (set CLEANUP=1 to delete on exit) ==="
-        echo "  KN=$KN_ID  TMP_KN=$TMP_KN_ID  CAT=$CAT_ID  MCP=$MCP_ID"
+        echo "  KN=${KN_PUSHED:+$KN_ID}  TMP_KN=$TMP_KN_ID  CAT=$CAT_ID  MCP=$MCP_ID"
         echo "  SKILLS=${SKILL_IDS[*]:-}"
         # The mock tool backend is a local process holding a port — stop it anyway,
         # unless DEBUG_KEEP=1 asks for the whole loop to stay callable.
@@ -100,7 +101,7 @@ cleanup() {
         openbkn skill set-status "$sid" offline >/dev/null 2>&1 || true
         echo y | openbkn skill delete "$sid" >/dev/null 2>&1 && echo "  ✓ skill $sid" || true
     done
-    openbkn bkn delete "$KN_ID" -y >/dev/null 2>&1 && echo "  ✓ kn $KN_ID" || true
+    [ -n "$KN_PUSHED" ] && openbkn bkn delete "$KN_ID" -y >/dev/null 2>&1 && echo "  ✓ kn $KN_ID" || true
     [ -n "$TMP_KN_ID" ] && openbkn bkn delete "$TMP_KN_ID" -y >/dev/null 2>&1 && echo "  ✓ tmp kn $TMP_KN_ID" || true
     [ -n "$CAT_ID" ] && openbkn call "/api/vega-backend/v1/catalogs/$CAT_ID" -X DELETE >/dev/null 2>&1 && echo "  ✓ catalog $CAT_ID" || true
     [ -n "$TOOL_BACKEND_PID" ] && kill "$TOOL_BACKEND_PID" 2>/dev/null && echo "  ✓ mock backend pid $TOOL_BACKEND_PID" || true
@@ -111,11 +112,11 @@ trap cleanup EXIT
 # poll the latest job until it reaches a terminal state.
 bkn_build_wait() { # <kn_id> <timeout_s>
     local kn="$1" timeout="${2:-60}" state
-    openbkn call "/api/ontology-manager/v1/knowledge-networks/$kn/jobs" -X POST \
+    openbkn call "/api/bkn-backend/v1/knowledge-networks/$kn/jobs" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"name\":\"ex05_build_$(date +%s)\",\"job_type\":\"full\"}" >/dev/null 2>&1 || return 1
     for _ in $(seq 1 $((timeout / 3))); do
-        state=$(openbkn --json call "/api/ontology-manager/v1/knowledge-networks/$kn/jobs?limit=1&direction=desc" 2>/dev/null \
+        state=$(openbkn --json call "/api/bkn-backend/v1/knowledge-networks/$kn/jobs?limit=1&direction=desc" 2>/dev/null \
             | python3 -c "import json,sys
 d=json.load(sys.stdin)
 jobs=d if isinstance(d,list) else d.get('entries',[])
@@ -316,6 +317,7 @@ PUSH_RAW=$(openbkn --json bkn push "$RENDERED_BKN" 2>&1)
 echo "$PUSH_RAW" | tail -3
 # kn_id is fixed (network.bkn frontmatter id) — just confirm push succeeded
 echo "$PUSH_RAW" | grep -q "\"kn_id\"" || { echo "ERROR: bkn push failed" >&2; exit 1; }
+KN_PUSHED=1
 echo "  ✓ KN: $KN_ID"
 
 # ── Step 7: Build KN ─────────────────────────────────────────────────────────

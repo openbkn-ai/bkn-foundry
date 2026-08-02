@@ -129,8 +129,8 @@ pip install -r tool_backend/requirements.txt
 脚本默认**保留**平台资源（KN、MCP、Skills、Catalog），退出时打印各资源 ID。
 需要自动删除时用 `CLEANUP=1 ./run.sh`（成功 / 失败都清理）。
 
-本地 mock backend 进程两种模式下都会在退出时停掉，除非设了 `DEBUG_KEEP=1`
-（保留整条路由链路便于调试）。
+本地 mock backend 进程同样会在退出时停掉；设 `DEBUG_KEEP=1` 可让它继续跑，
+保留整条路由链路便于调试。`CLEANUP=1` 优先于 `DEBUG_KEEP=1`：显式清理时一定会停掉进程。
 
 在上一次跑剩下的资源上重跑没问题:KN ID 是写死的（`ex05_skill_routing`），`bkn push`
 以 overwrite 模式导入，同 ID 原地更新。Skill 和 MCP 的名字都带运行时间戳 —— 已被
