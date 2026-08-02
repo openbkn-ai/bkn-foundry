@@ -7,7 +7,7 @@
 
 | 文件 | 主题 | 包含的端点（`/api/agent-operator-integration/v1` 下） |
 |---|---|---|
-| [function.yaml](function.yaml) | 函数 | `POST /function/execute`、`GET /function/dependencies`、`GET /function/dependency-versions/{package_name}`、`GET /template/{template_type}`、`POST /ai_generate/function/{type}`、`GET /ai_generate/prompt/{type}` |
+| [function.yaml](function.yaml) | 函数 | `POST /function/execute`、`POST /function/infer-schema`、`GET /function/dependencies`、`GET /function/dependency-versions/{package_name}`、`GET /template/{template_type}`、`POST /ai_generate/function/{type}`、`GET /ai_generate/prompt/{type}` |
 | [sandbox.yaml](sandbox.yaml) | 沙箱观测 | `GET /sandbox/health`、`GET /sandbox/pool`、`GET /sandbox/sessions`、`GET /sandbox/sessions/{id}` |
 | [impex.yaml](impex.yaml) | 导入导出 | `GET /impex/export/{type}/{id}`、`POST /impex/import/{type}` |
 | [operator.yaml](operator.yaml) | 算子 | 注册 / 编辑 / 更新 / 列表 / 详情 / 批量取名 / 状态 / 删除 / 调试 / 历史版本 / 市场 / 分类 / 内置算子，共 15 条 |
@@ -15,7 +15,7 @@
 | [toolbox.yaml](toolbox.yaml) | 工具箱 | 工具箱 CRUD 与状态 / 箱内工具增删改查与启停 / 调试与代理调用 / 算子转工具 / OpenAPI 能力包 / 市场 4 条，共 22 条 |
 | [skill.yaml](skill.yaml) | Skill | 注册 / 列表 / 详情 / 元数据与包更新 / 发布与历史 / 市场 2 条 / 消费态与管理态读取各 3 条 / 执行 / 索引构建 5 条，共 25 条 |
 
-**公开面 90 条已全部收录。**
+**公开面 91 条已全部收录。**
 
 ## 写一个函数：完整走一遍
 
@@ -118,20 +118,39 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 ## 覆盖边界
 
-**公开面 `/api/agent-operator-integration/v1` 的 90 个端点已全部收录**：
-函数 6 + 沙箱观测 4 + 导入导出 2 + 算子 15 + MCP 16 + 工具箱 22 + Skill 25。
+**公开面 `/api/agent-operator-integration/v1` 的 91 个端点已全部收录**：
+函数 7 + 沙箱观测 4 + 导入导出 2 + 算子 15 + MCP 16 + 工具箱 22 + Skill 25。
 
-> 端点总数从 89 修正为 90：MCP 的 `Any /mcp/app/{mcp_id}/mcp`（Streamable HTTP
-> 端点）此前统计时被漏掉——抽路由的正则只匹配 GET/POST/PUT/DELETE/PATCH，没算
-> `Any`。
+> 端点总数两次修正：89 → 90（MCP 的 `Any /mcp/app/{mcp_id}/mcp` 被漏，抽路由的
+> 正则没算 `Any`）→ 91（`POST /function/infer-schema` 被漏，最初枚举时读的是过期
+> 分支上的 handler 文件）。现在的数字与代码 `RegisterPublic` 逐条对过，
+> 并用实机访问日志交叉验证过没有「日志里有、文档里没有」的路径。
 
 ### 验证程度分两级，不要混为一谈
 
 - **路由与收录范围**：全部从代码的 `RegisterPublic` 逐条核过，90 条不多不少。
-- **字段级**：只有实机打过的才算验证过——函数 5 条、沙箱 3 条、算子 3 条、
-  MCP 2 条、工具箱 2 条、Skill 2 条，合计 **17 条**。其余 73 条按 Go 类型写成，
-  **未经实机验证**，改动时请人工核对，或等 #578 合入后用 `x-contract-probe`
-  把只读 GET 纳入契约巡检。
+- **字段级**：只有实机打过的才算验证过，其余按 Go 类型写成，**未经实机验证**，
+  改动时请人工核对，或用 `x-contract-probe` 把只读 GET 纳入契约巡检
+  （机制见 [`tools/README.md`](../tools/README.md)）。
+
+### 实际被调用的有多少
+
+拿测试服 `14.103.77.23` 上该服务 pod 近 3 天的访问日志比对过：**91 条里有 31 条
+被真实打到**，其余 59 条在该环境没有流量。这**不等于「没用」**——那是一个测试
+环境，写操作（注册算子、建工具箱、发布技能）与市场、历史版本、索引重建等功能
+本就低频或未被使用。此处只作为「哪些是热路径」的参考：
+
+| 被打得最多 | 次数 |
+|---|---|
+| `GET /tool-box/list` | 265 |
+| `GET /skills` | 87 |
+| `GET /operator/category` | 74 |
+| `GET /mcp/list` | 67 |
+| `GET /tool-box/{box_id}/tool/{tool_id}` | 40 |
+
+日志里还有 40 条打到内部面 `internal-v1`（工具代理调用与 `function/exec`），
+那是集群内 bkn-agent / context-loader 走 ClusterIP 的调用，不经 Ingress，
+也不在本文档范围。
 
 仍不收录的两个面：内部面 `internal-v1`（刻意不挂 Ingress，见上节）与能力面
 `/api/capabilities-lab/v1`。

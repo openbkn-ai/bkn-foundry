@@ -153,6 +153,78 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /function/infer-schema:
+    post:
+      tags:
+        - Function
+      summary: 从函数代码推导参数定义
+      operationId: inferFunctionSchema
+      description: |
+        把代码送进沙箱执行，向 SDK 取它登记的 schema，从而免去在界面上把入参 / 出参
+        再手填一遍——`@tool` 函数的签名、类型注解与 docstring 已经描述了同样的信息，
+        这里让签名成为唯一事实源。
+
+        **推导不出来不是错误**：代码没用 `@tool`、有语法错误、import 失败，都返回
+        200 且 `supported: false`，其余字段为空，调用方据此回退到手工填写。
+        真正的 4xx/5xx 只在参数不合法、无权限、沙箱不可用时出现。
+
+        **这会真的执行你的代码**，因此与 `/function/execute` 用同一套 execute 授权。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InferSchemaRequest'
+            examples:
+              带 @tool 的代码:
+                value:
+                  code: |
+                    from sandbox_sdk import tool
+
+                    @tool
+                    def add(a: int, b: int) -> int:
+                        """把两个整数相加。"""
+                        return a + b
+      responses:
+        '200':
+          description: |
+            推导结果。**推导失败也是 200**，看 `supported`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InferSchemaResponse'
+              examples:
+                推导成功:
+                  value:
+                    supported: true
+                    name: add
+                    description: 把两个整数相加。
+                    inputs:
+                      - name: a
+                        type: number
+                        required: true
+                      - name: b
+                        type: number
+                        required: true
+                    outputs:
+                      - name: result
+                        type: number
+                未用 @tool:
+                  value:
+                    supported: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 当前账户没有算子的 execute 权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /function/dependencies:
     get:
       tags:
@@ -682,6 +754,43 @@ components:
           description: |
             生成内容。`python_function_generator` 返回代码文本；
             `metadata_param_generator` 返回参数定义结构。
+
+    InferSchemaRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: |
+            用户函数代码。用 `@tool` 装饰并写好类型注解与 docstring 才推导得出，
+            否则返回 `supported: false`。
+
+    InferSchemaResponse:
+      type: object
+      description: |
+        推导结果。**`supported` 为 `false` 时其余字段为空**——这不是错误，
+        是「没推导出来，请手工填」。
+      properties:
+        supported:
+          type: boolean
+          description: 是否推导出了 `@tool` 函数。
+        name:
+          type: string
+          description: 函数名。
+        description:
+          type: string
+          description: 取自 docstring。
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+          description: 推导出的入参定义。
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterDef'
+          description: 推导出的出参定义。
 
     ParameterDef:
       type: object
