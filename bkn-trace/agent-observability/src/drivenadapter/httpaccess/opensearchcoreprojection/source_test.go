@@ -31,12 +31,18 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 		if strings.Contains(queryBody, "match_phrase") {
 			t.Fatalf("authorization filters must not use analyzed phrase matching: %s", body)
 		}
-		for _, field := range []string{"owner.tenant_id.keyword", "owner.business_domain_id.keyword"} {
+		for _, field := range []string{
+			"owner.tenant_id.keyword", "owner.business_domain_id.keyword",
+			"request_id.keyword", "trace_id.keyword", "interaction_id.keyword",
+		} {
 			if !strings.Contains(queryBody, field) {
-				t.Fatalf("authorization filter %q must use exact keyword matching: %s", field, body)
+				t.Fatalf("identifier filter %q must use exact keyword matching: %s", field, body)
 			}
 		}
-		for _, field := range []string{"owner.tenant_id", "owner.business_domain_id"} {
+		for _, field := range []string{
+			"owner.tenant_id", "owner.business_domain_id",
+			"request_id", "trace_id", "interaction_id",
+		} {
 			if strings.Contains(queryBody, `"`+field+`":{"value"`) {
 				t.Fatalf("identifier filter %q must not query the analyzed text field: %s", field, body)
 			}
@@ -89,6 +95,9 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 	)
 
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		RequestID:     "req-1",
+		TraceID:       "11111111111111111111111111111111",
+		InteractionID: "int-1",
 		Scope: evidencevo.QueryScope{
 			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
 			AccessProfile: &evidencevo.AccessProfile{
