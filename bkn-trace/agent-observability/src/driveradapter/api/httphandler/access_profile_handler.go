@@ -32,7 +32,7 @@ func (h *EvidenceHandler) GetAccessProfile(w http.ResponseWriter, r *http.Reques
 		})
 		return
 	}
-	scope, ok := h.queryScopeFromRequest(w, r)
+	scope, ok := h.queryScopeFromRequest(w, r, false)
 	if !ok || scope.AccessProfile == nil {
 		return
 	}

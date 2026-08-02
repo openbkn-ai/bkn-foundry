@@ -780,7 +780,7 @@ func (h *EvidenceHandler) evidenceQueryOptionsFromRequest(w http.ResponseWriter,
 	if !h.authorizeQueryGateway(w, r) {
 		return evidencevo.EvidenceQueryOptions{}, false
 	}
-	scope, ok := h.queryScopeFromRequest(w, r)
+	scope, ok := h.queryScopeFromRequest(w, r, false)
 	if !ok {
 		return evidencevo.EvidenceQueryOptions{}, false
 	}
@@ -799,7 +799,7 @@ func (h *EvidenceHandler) evidenceQueryOptionsFromRequest(w http.ResponseWriter,
 	return evidencevo.EvidenceQueryOptions{Limit: limit, Scope: scope}, true
 }
 
-func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.QueryScope, bool) {
+func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.Request, skipSubjectAuthorization bool) (evidencevo.QueryScope, bool) {
 	accountID := strings.TrimSpace(r.Header.Get("x-account-id"))
 	accountType := strings.TrimSpace(r.Header.Get("x-account-type"))
 	tenantID := strings.TrimSpace(r.Header.Get("x-tenant-id"))
@@ -818,7 +818,7 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 		// selected only by the unified log service after record-scope authorization.
 		View: evidencevo.AccessViewBusiness,
 	}
-	if h.queryGatewayToken != "" && secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken) {
+	if skipSubjectAuthorization {
 		return scope, true
 	}
 	if h.authorizationScopeResolver != nil {
@@ -853,7 +853,7 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 		if !h.authorizeQueryGateway(w, r) {
 			return
 		}
-		if _, ok := h.queryScopeFromRequest(w, r); !ok {
+		if _, ok := h.queryScopeFromRequest(w, r, false); !ok {
 			return
 		}
 		next(w, r)
@@ -871,7 +871,7 @@ func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc)
 			)
 			return
 		}
-		scope, ok := h.queryScopeFromRequest(w, r)
+		scope, ok := h.queryScopeFromRequest(w, r, true)
 		if !ok {
 			return
 		}

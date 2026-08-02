@@ -53,7 +53,7 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	if !handler.authorizer.authorizeQueryGateway(w, r) {
 		return
 	}
-	scope, ok := handler.authorizer.queryScopeFromRequest(w, r)
+	scope, ok := handler.authorizer.queryScopeFromRequest(w, r, false)
 	if !ok || scope.AccessProfile == nil {
 		return
 	}
@@ -200,7 +200,7 @@ func (handler *LogHandler) authorizedProfile(w http.ResponseWriter, r *http.Requ
 	if !handler.authorizer.authorizeQueryGateway(w, r) {
 		return evidencevo.AccessProfile{}, false
 	}
-	scope, ok := handler.authorizer.queryScopeFromRequest(w, r)
+	scope, ok := handler.authorizer.queryScopeFromRequest(w, r, false)
 	if !ok || scope.AccessProfile == nil {
 		return evidencevo.AccessProfile{}, false
 	}

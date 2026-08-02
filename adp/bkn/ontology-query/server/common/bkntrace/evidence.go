@@ -179,6 +179,7 @@ func ProducerOutbox() *outbox.Repository {
 
 func ConfigureProducerOutbox(db *sql.DB) (*outbox.Worker, error) {
 	if !ProducerOutboxEnabled() {
+		WarnIfLegacyEvidenceMisconfigured()
 		return nil, nil
 	}
 	if ProducerOutboxCleanupOnly() {
@@ -210,6 +211,16 @@ func ConfigureProducerOutbox(db *sql.DB) (*outbox.Worker, error) {
 		return nil, nil
 	}
 	return outbox.NewWorker(repository), nil
+}
+
+func WarnIfLegacyEvidenceMisconfigured() {
+	if ProducerOutboxEnabled() || strings.TrimSpace(os.Getenv(envEvidenceIngestURL)) == "" {
+		return
+	}
+	log.Printf(
+		"WARN: %s is set but %s is not true; BKN Trace evidence production is disabled until producer outbox is enabled and migrated",
+		envEvidenceIngestURL, envOutboxEnabled,
+	)
 }
 
 func statefulSetStreamID(podName string) (string, error) {

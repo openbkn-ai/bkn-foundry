@@ -125,7 +125,7 @@ func TestEvidenceHandlerBuildsQueryScopeFromCurrentSafeAccessProfile(t *testing.
 	request.Header.Set("X-BKN-Application-Principal-ID", "app-a")
 	response := httptest.NewRecorder()
 
-	scope, ok := handler.queryScopeFromRequest(response, request)
+	scope, ok := handler.queryScopeFromRequest(response, request, false)
 	if !ok || scope.AccessProfile == nil || scope.AccessProfile.Fingerprint != "sha256:profile-a" {
 		t.Fatalf("expected current access profile, scope=%+v response=%d %s", scope, response.Code, response.Body.String())
 	}
@@ -386,6 +386,32 @@ func TestLifecycleIdentityAcceptsTrustedGatewayProducerWithoutOAuthScope(t *test
 	}
 	if resolver.authorization != "" {
 		t.Fatalf("OAuth scope resolver must not run for trusted gateway producer delivery")
+	}
+}
+
+func TestQueryScopeWithGatewayTokenStillRunsResolverForReadPaths(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", ActorID: "actor-a",
+		EffectiveSubjectID: "user-a", AccountActive: true, TenantActive: true,
+	}}
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		QueryGatewayToken:          "gateway-query-token",
+		AuthorizationScopeResolver: resolver,
+	})
+	request := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/traces/by-request", nil)
+	request.Header.Set("X-BKN-Trace-Query-Token", "gateway-query-token")
+	request.Header.Set("x-account-id", "actor-a")
+	request.Header.Set("x-account-type", "user")
+	request.Header.Set("x-tenant-id", "tenant-a")
+	request.Header.Set("x-business-domain", "domain-a")
+	response := httptest.NewRecorder()
+
+	scope, ok := handler.queryScopeFromRequest(response, request, false)
+	if !ok || scope.AccessProfile == nil {
+		t.Fatalf("read paths must still resolve record scope with gateway token: ok=%t scope=%+v body=%s", ok, scope, response.Body.String())
+	}
+	if resolver.trustedIdentity.ActorID != "actor-a" {
+		t.Fatalf("OAuth scope resolver must run for read paths even with gateway token: identity=%+v", resolver.trustedIdentity)
 	}
 }
 

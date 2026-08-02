@@ -399,11 +399,23 @@ onboard_upsert_cm_embedded_yaml() {
 }
 
 # Restart BKN / ontology-query after ConfigMap change
+onboard_rollout_restart() {
+    local ns="$1"
+    local name="$2"
+    if kubectl get statefulset "${name}" -n "${ns}" >/dev/null 2>&1; then
+        kubectl rollout restart "statefulset/${name}" -n "${ns}" 2>/dev/null || onboard_log_warn "statefulset/${name} missing or not restartable"
+        kubectl rollout status "statefulset/${name}" -n "${ns}" --timeout=300s 2>/dev/null || true
+    elif kubectl get deployment "${name}" -n "${ns}" >/dev/null 2>&1; then
+        kubectl rollout restart "deployment/${name}" -n "${ns}" 2>/dev/null || onboard_log_warn "deployment/${name} missing or not restartable"
+        kubectl rollout status "deployment/${name}" -n "${ns}" --timeout=300s 2>/dev/null || true
+    else
+        onboard_log_warn "${name} missing or not restartable"
+    fi
+}
+
 onboard_bkn_rollout() {
     local ns="$1"
-    kubectl rollout restart "deployment/bkn-backend" -n "${ns}" 2>/dev/null || onboard_log_warn "deployment/bkn-backend missing or not restartable"
-    kubectl rollout restart "deployment/ontology-query" -n "${ns}" 2>/dev/null || onboard_log_warn "deployment/ontology-query missing or not restartable"
-    kubectl rollout status "deployment/bkn-backend" -n "${ns}" --timeout=300s 2>/dev/null || true
-    kubectl rollout status "deployment/ontology-query" -n "${ns}" --timeout=300s 2>/dev/null || true
+    onboard_rollout_restart "${ns}" "bkn-backend"
+    onboard_rollout_restart "${ns}" "ontology-query"
     onboard_log_info "Rollout signalled for bkn-backend and ontology-query"
 }

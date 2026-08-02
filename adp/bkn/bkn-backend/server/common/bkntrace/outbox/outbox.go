@@ -400,6 +400,26 @@ func safeErrorMessage(code string) string {
 	}
 }
 
+func coreDeliveryOutcome(statusCode int) (status string, errorCode string, retry bool) {
+	switch {
+	case statusCode >= 200 && statusCode < 300:
+		return StatusDelivered, "", false
+	case statusCode == http.StatusConflict:
+		return StatusConflict, "producer_sequence_conflict", false
+	case statusCode >= 500 || statusCode == http.StatusTooManyRequests:
+		return StatusRetry, "core_unavailable", true
+	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden ||
+		statusCode == http.StatusNotFound || statusCode == http.StatusRequestTimeout:
+		return StatusRetry, "core_unavailable", true
+	case statusCode == http.StatusBadRequest:
+		return StatusDLQ, "core_rejected", false
+	case statusCode >= 400 && statusCode < 500:
+		return StatusRetry, "core_unavailable", true
+	default:
+		return StatusDLQ, "core_rejected", false
+	}
+}
+
 type Worker struct {
 	repository *Repository
 	client     *http.Client
@@ -474,26 +494,23 @@ func (w *Worker) deliver(record *Record) {
 		return
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusConflict {
-		_, _ = w.repository.Complete(context.Background(), record, StatusConflict, "producer_sequence_conflict", time.Time{})
+	status, errorCode, shouldRetry := coreDeliveryOutcome(resp.StatusCode)
+	if status == StatusDelivered {
+		var ack struct {
+			Durable bool `json:"durable_ack"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&ack); err != nil || !ack.Durable {
+			_, _ = w.repository.Complete(context.Background(), record, StatusRetry, "core_unavailable", retryAt(record.Attempts))
+			return
+		}
+		_, _ = w.repository.Complete(context.Background(), record, StatusDelivered, "", time.Time{})
 		return
 	}
-	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
-		_, _ = w.repository.Complete(context.Background(), record, StatusRetry, "core_unavailable", retryAt(record.Attempts))
+	if shouldRetry {
+		_, _ = w.repository.Complete(context.Background(), record, StatusRetry, errorCode, retryAt(record.Attempts))
 		return
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_, _ = w.repository.Complete(context.Background(), record, StatusDLQ, "core_rejected", time.Time{})
-		return
-	}
-	var ack struct {
-		Durable bool `json:"durable_ack"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ack); err != nil || !ack.Durable {
-		_, _ = w.repository.Complete(context.Background(), record, StatusRetry, "core_unavailable", retryAt(record.Attempts))
-		return
-	}
-	_, _ = w.repository.Complete(context.Background(), record, StatusDelivered, "", time.Time{})
+	_, _ = w.repository.Complete(context.Background(), record, status, errorCode, time.Time{})
 }
 
 func retryAt(attempt uint32) time.Time {

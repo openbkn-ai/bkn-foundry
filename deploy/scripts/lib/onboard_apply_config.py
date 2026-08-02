@@ -235,6 +235,40 @@ def main() -> int:
     return r
 
 
+def _rollout_restart(namespace: str, name: str) -> None:
+    for kind in ("statefulset", "deployment"):
+        check = subprocess.run(
+            ["kubectl", "get", kind, name, "-n", namespace],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if check.returncode != 0:
+            continue
+        restart = subprocess.run(
+            ["kubectl", "rollout", "restart", f"{kind}/{name}", "-n", namespace],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+        if restart.returncode != 0:
+            print(f"[onboard] rollout restart {kind}/{name}: {restart.stderr}", file=sys.stderr)
+        else:
+            print(f"[onboard] rolled out {kind}/{name}")
+        subprocess.call(
+            [
+                "kubectl",
+                "rollout",
+                "status",
+                f"{kind}/{name}",
+                "-n",
+                namespace,
+                "--timeout=300s",
+            ]
+        )
+        return
+    print(f"[onboard] rollout restart {name}: workload not found", file=sys.stderr)
+
+
 def patch_bkn_cms_and_rollout(namespace: str, dname: str) -> int:
     """Set server.defaultSmallModel* in *-config.yaml in bkn-backend-cm and ontology-query-cm.
 
@@ -255,45 +289,7 @@ def patch_bkn_cms_and_rollout(namespace: str, dname: str) -> int:
         if r != 0:
             return r
     for dep in ("bkn-backend", "ontology-query"):
-        p = subprocess.run(
-            [
-                "kubectl",
-                "rollout",
-                "restart",
-                f"deployment/{dep}",
-                "-n",
-                namespace,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-        )
-        if p.returncode != 0:
-            print(f"[onboard] rollout restart {dep}: {p.stderr}", file=sys.stderr)
-        else:
-            print(f"[onboard] rolled out {dep}")
-    subprocess.call(
-        [
-            "kubectl",
-            "rollout",
-            "status",
-            f"deployment/bkn-backend",
-            "-n",
-            namespace,
-            "--timeout=300s",
-        ]
-    )
-    subprocess.call(
-        [
-            "kubectl",
-            "rollout",
-            "status",
-            f"deployment/ontology-query",
-            "-n",
-            namespace,
-            "--timeout=300s",
-        ]
-    )
+        _rollout_restart(namespace, dep)
     return 0
 
 
