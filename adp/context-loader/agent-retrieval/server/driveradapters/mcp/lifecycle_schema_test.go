@@ -381,8 +381,8 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(string(values), `gateway_token_secret_key: "token"`) {
 		t.Fatalf("Helm lifecycle values must define the trusted gateway token key: %s", values)
 	}
-	if !strings.Contains(string(values), `default_tenant_id: ""`) {
-		t.Fatalf("Helm lifecycle values must expose the single-tenant trust scope: %s", values)
+	if !strings.Contains(string(values), `default_tenant_id: "openbkn-local"`) {
+		t.Fatalf("Helm lifecycle values must align with the observability single-tenant scope: %s", values)
 	}
 	deploymentPath := filepath.Clean("../../../helm/agent-retrieval/templates/deployment.yaml")
 	deployment, err := os.ReadFile(deploymentPath)

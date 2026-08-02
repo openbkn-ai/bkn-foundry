@@ -109,6 +109,9 @@ func RecordInteractionArtifact(
 	artifactType InteractionArtifactType,
 	content any,
 ) (string, error) {
+	if !EvidenceEnabled() {
+		return "", nil
+	}
 	ec, ok := baseEventContext(ctx)
 	if !ok {
 		return "", errors.New("current request, trace and trusted account context are required")

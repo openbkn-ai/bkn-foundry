@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,15 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 		body, _ := io.ReadAll(r.Body)
 		if !json.Valid(body) {
 			t.Fatalf("invalid search body: %s", body)
+		}
+		queryBody := string(body)
+		if strings.Contains(queryBody, "match_phrase") {
+			t.Fatalf("authorization filters must not use analyzed phrase matching: %s", body)
+		}
+		for _, field := range []string{"owner.tenant_id.keyword", "owner.business_domain_id.keyword"} {
+			if !strings.Contains(queryBody, field) {
+				t.Fatalf("authorization filter %q must use exact keyword matching: %s", field, body)
+			}
 		}
 		_, _ = io.WriteString(w, `{
 			"hits":{"hits":[{"_source":{

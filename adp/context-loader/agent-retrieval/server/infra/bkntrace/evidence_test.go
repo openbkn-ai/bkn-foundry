@@ -100,6 +100,21 @@ func TestRecordInteractionArtifactPersistsGovernedContentAndLedgerLink(t *testin
 	}
 }
 
+func TestRecordInteractionArtifactIsOptionalWhenEvidenceIsDisabled(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "")
+
+	ref, err := RecordInteractionArtifact(
+		context.Background(), "conversation-1", "interaction-1", InteractionArtifactQuestion,
+		"6月份有哪些需求预测单？",
+	)
+	if err != nil {
+		t.Fatalf("disabled evidence must not block the managed lifecycle: %v", err)
+	}
+	if ref != "" {
+		t.Fatalf("disabled evidence returned artifact ref %q, want empty", ref)
+	}
+}
+
 func TestBuildSearchSchemaEventsRejectsMissingReplayEnvelope(t *testing.T) {
 	ctx := testTraceContext()
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)

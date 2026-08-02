@@ -113,8 +113,9 @@ type spanLogger struct {
 }
 
 func (s *spanLogger) Debug(v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprint(v...))
-	s.maker.DefaultLogger.Debug(msg)
+	localMsg := fmt.Sprint(v...)
+	s.maker.DefaultLogger.Debug(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogDebug(s.ctx, msg, contextLogAttributes(s.ctx)...)
 		return
@@ -123,8 +124,9 @@ func (s *spanLogger) Debug(v ...interface{}) {
 }
 
 func (s *spanLogger) Info(v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprint(v...))
-	s.maker.DefaultLogger.Info(msg)
+	localMsg := fmt.Sprint(v...)
+	s.maker.DefaultLogger.Info(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogInfo(s.ctx, msg, contextLogAttributes(s.ctx)...)
 		return
@@ -133,8 +135,9 @@ func (s *spanLogger) Info(v ...interface{}) {
 }
 
 func (s *spanLogger) Warn(v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprint(v...))
-	s.maker.DefaultLogger.Warn(msg)
+	localMsg := fmt.Sprint(v...)
+	s.maker.DefaultLogger.Warn(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogWarn(s.ctx, msg, contextLogAttributes(s.ctx)...)
 		return
@@ -143,8 +146,9 @@ func (s *spanLogger) Warn(v ...interface{}) {
 }
 
 func (s *spanLogger) Error(v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprint(v...))
-	s.maker.DefaultLogger.Error(msg)
+	localMsg := fmt.Sprint(v...)
+	s.maker.DefaultLogger.Error(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogError(s.ctx, msg, nil, contextLogAttributes(s.ctx)...)
 		return
@@ -153,8 +157,9 @@ func (s *spanLogger) Error(v ...interface{}) {
 }
 
 func (s *spanLogger) Debugf(format string, v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprintf(format, v...))
-	s.maker.DefaultLogger.Debug(msg)
+	localMsg := fmt.Sprintf(format, v...)
+	s.maker.DefaultLogger.Debug(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogDebug(s.ctx, msg, contextLogAttributes(s.ctx)...)
 		return
@@ -163,8 +168,9 @@ func (s *spanLogger) Debugf(format string, v ...interface{}) {
 }
 
 func (s *spanLogger) Infof(format string, v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprintf(format, v...))
-	s.maker.DefaultLogger.Info(msg)
+	localMsg := fmt.Sprintf(format, v...)
+	s.maker.DefaultLogger.Info(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogInfo(s.ctx, msg, contextLogAttributes(s.ctx)...)
 		return
@@ -173,8 +179,9 @@ func (s *spanLogger) Infof(format string, v ...interface{}) {
 }
 
 func (s *spanLogger) Warnf(format string, v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprintf(format, v...))
-	s.maker.DefaultLogger.Warn(msg)
+	localMsg := fmt.Sprintf(format, v...)
+	s.maker.DefaultLogger.Warn(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogWarn(s.ctx, msg, contextLogAttributes(s.ctx)...)
 		return
@@ -183,8 +190,9 @@ func (s *spanLogger) Warnf(format string, v ...interface{}) {
 }
 
 func (s *spanLogger) Errorf(format string, v ...interface{}) {
-	msg := internalLogMessage(s.ctx, fmt.Sprintf(format, v...))
-	s.maker.DefaultLogger.Error(msg)
+	localMsg := fmt.Sprintf(format, v...)
+	s.maker.DefaultLogger.Error(localMsg)
+	msg := internalLogMessage(s.ctx, localMsg)
 	if s.ctx != nil {
 		otellog.LogError(s.ctx, msg, nil, contextLogAttributes(s.ctx)...)
 		return

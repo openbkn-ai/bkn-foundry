@@ -2,11 +2,26 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
+
+type recordingLogger struct {
+	messages []string
+}
+
+func (l *recordingLogger) Debug(v ...interface{})                        { l.messages = append(l.messages, fmt.Sprint(v...)) }
+func (l *recordingLogger) Info(v ...interface{})                         { l.messages = append(l.messages, fmt.Sprint(v...)) }
+func (l *recordingLogger) Warn(v ...interface{})                         { l.messages = append(l.messages, fmt.Sprint(v...)) }
+func (l *recordingLogger) Error(v ...interface{})                        { l.messages = append(l.messages, fmt.Sprint(v...)) }
+func (l *recordingLogger) Debugf(f string, v ...interface{})             { l.Debug(fmt.Sprintf(f, v...)) }
+func (l *recordingLogger) Infof(f string, v ...interface{})              { l.Info(fmt.Sprintf(f, v...)) }
+func (l *recordingLogger) Warnf(f string, v ...interface{})              { l.Warn(fmt.Sprintf(f, v...)) }
+func (l *recordingLogger) Errorf(f string, v ...interface{})             { l.Error(fmt.Sprintf(f, v...)) }
+func (l *recordingLogger) WithContext(context.Context) interfaces.Logger { return l }
 
 func TestOperationLogAttributesCarryTrustedBusinessOperationScope(t *testing.T) {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
@@ -78,5 +93,19 @@ func TestInternalLogMessageOmitsGovernedBusinessContent(t *testing.T) {
 	}
 	if got := internalLogMessage(context.Background(), raw); got != raw {
 		t.Fatalf("ungoverned internal message=%q, want original", got)
+	}
+}
+
+func TestSpanLoggerPreservesLocalDiagnosticMessage(t *testing.T) {
+	local := &recordingLogger{}
+	logger := NewSamplerLogger(local).WithContext(common.SetTraceContextToCtx(
+		context.Background(), common.TraceContext{OperationID: "op-1"},
+	))
+	raw := "database query failed: connection refused"
+
+	logger.Error(raw)
+
+	if len(local.messages) != 1 || local.messages[0] != raw {
+		t.Fatalf("local diagnostic message was lost: %#v", local.messages)
 	}
 }

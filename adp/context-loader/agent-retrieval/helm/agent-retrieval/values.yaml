@@ -168,9 +168,9 @@ observability:
     # Mandatory 3.0 business-call dependency. Product deployments install
     # agent-observability before agent-retrieval; standalone releases override this URL.
     core_url: "http://agent-observability:8080"
-    # Trusted deployment scope for installations without tenant claims.
-    # Leave empty in multi-tenant deployments; their gateway supplies x-tenant-id.
-    default_tenant_id: ""
+    # 0.1.3 defaults to the same single-tenant scope as agent-observability.
+    # A trusted inbound x-tenant-id always takes precedence in multi-tenant deployments.
+    default_tenant_id: "openbkn-local"
     gateway_token_secret_name: ""
     gateway_token_secret_key: "token"
   evidence:

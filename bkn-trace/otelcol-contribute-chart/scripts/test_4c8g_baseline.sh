@@ -28,6 +28,8 @@ assert_contains "path: /"
 assert_contains "port: health"
 assert_contains "name: metrics"
 assert_contains "containerPort: 8888"
+assert_contains "host: 0.0.0.0"
+assert_contains "port: 8888"
 
 if ! grep -Fq "memory: 512Mi" <<<"${rendered}"; then
   echo "collector memory limit must fit the OpenBKN 4C8G baseline" >&2
