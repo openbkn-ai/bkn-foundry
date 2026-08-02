@@ -54,17 +54,33 @@ jobs:
 
       - name: Assert the release build configuration
         run: |
+          # 路径来自 docker/Dockerfile 的 WORKDIR 与 COPY。那边改了目录结构这里
+          # 会 docker cp 非零退出（报的是 docker 原话，不是下面的 ::error::）。
           cid=$(docker create agent-retrieval:no-dev-gate-check)
           docker cp "$cid:/app/agent-retrieval/agent-retrieval" ./agent-retrieval.bin
           docker rm "$cid" >/dev/null
 
-          # 先自检手法有效：抠错路径或 grep 静默失败会让检查永远"通过"。哨兵取
-          # 两种构型下都在的字符串。
+          # 三条断言，防的是三件不同的事。
+
+          # 一、手法自检。抠错路径、grep 退出码 2（文件不可读）都会让下面的否定
+          # 断言静默放过。哨兵取两种构型下都在的字符串，所以它只证明「抠到了正确
+          # 的二进制、grep 真的跑了」。放在最前面是有意的。
           if ! grep -aqF 'entitlement: SetGate after Freeze' ./agent-retrieval.bin; then
             echo "::error::检查手法失效：预期必然存在的符号未命中，产物或判据已不成立。"
             exit 1
           fi
 
+          # 二、正向断言。否定断言锁的是「某个符号不在」，而那条判据是外挂约定：
+          # 符号改名、实现换成不读环境变量的形式，否定断言都会一路绿灯。这条改为
+          # 直接要求发布构型独有的符号必须在，判据便不再依赖那个约定。
+          if ! grep -aqF 'entitlement: licence hub is half-configured' ./agent-retrieval.bin; then
+            echo "::error::发布产物里没有发布构型独有的符号，构建配置不符合预期。"
+            echo "::error::检查 Dockerfile 与构建参数；判据依据见内部文档。"
+            exit 1
+          fi
+
+          # 三、否定断言。与上一条互补：正向那条防「该有的没有」，这条防「不该有
+          # 的混进来」。两条同时成立才算构型正确。
           if grep -aqF 'OPENBKN_EDITION' ./agent-retrieval.bin; then
             echo "::error::发布产物的构建配置不符合预期，检查 Dockerfile 与构建参数。"
             echo "::error::判据依据见内部文档；不要通过放宽本断言来绕过。"
@@ -74,7 +90,10 @@ jobs:
           echo "OK"
 
   build:
-    needs: test
+    # no-dev-gate 必须是前置而不是并发：Actions 不会因为一个 job 红就取消并发中
+    # 的其它 job，所以并发意味着推 tag 时镜像已经进了 GHCR 与 SWR，断言才变红。
+    # 那是事后告警，不是闸门。代价是发布路径多串行一次带缓存的编译。
+    needs: [test, no-dev-gate]
     uses: ./.github/workflows/reusable-build.yml
     secrets: inherit
     with:

@@ -22,12 +22,16 @@ import (
 // stub that shipped and merely logged a warning would be a licence bypass with
 // a polite note attached.
 //
-// Each service's release job should assert that its artefact contains no
-// OPENBKN_EDITION string (`! strings <bin> | grep -q OPENBKN_EDITION`). That
-// assertion does not exist yet — it belongs on the pipelines that produce
-// binaries, and this module produces none. Stated as a to-do rather than as
-// fact on purpose: a comment claiming a defence that is not there is worse than
-// no comment, because the next person relaxes on the strength of it.
+// Each service's release job asserts its artefact's build configuration on the
+// artefact itself, because the mistake this guards against lives in build tags
+// and Dockerfiles rather than in any .go file. agent-retrieval's release
+// workflow has the reference implementation; copy it when a service starts
+// linking this package. The assertion belongs on the pipelines that produce
+// binaries — this module produces none, so it cannot carry its own.
+//
+// The wording here tracks reality on purpose, in both directions: a comment
+// claiming a defence that is not there lets the next person relax on the
+// strength of it, and one denying a defence that is there gets it built twice.
 //
 // The environment is re-read on every call rather than resolved once, so the
 // stub has the same shape as the shipped gate: a licence that changes under a
