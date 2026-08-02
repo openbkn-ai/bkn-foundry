@@ -104,7 +104,7 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 		"interaction_id":           query.InteractionID,
 	} {
 		if value != "" {
-			must = append(must, exactTermQuery(field, value))
+			must = append(must, exactKeywordQuery(field, value))
 		}
 	}
 	if !query.From.IsZero() || !query.To.IsZero() {
@@ -148,16 +148,8 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 	return result, len(response.Hits.Hits) >= size, nil
 }
 
-func exactTermQuery(field string, value string) map[string]any {
-	return map[string]any{
-		"bool": map[string]any{
-			"should": []map[string]any{
-				{"term": map[string]any{field: map[string]any{"value": value}}},
-				{"term": map[string]any{field + ".keyword": map[string]any{"value": value}}},
-			},
-			"minimum_should_match": 1,
-		},
-	}
+func exactKeywordQuery(field string, value string) map[string]any {
+	return map[string]any{"term": map[string]any{field + ".keyword": map[string]any{"value": value}}}
 }
 
 func receiptMatchesScope(receipt receiptDocument, scope evidencevo.QueryScope) bool {

@@ -36,6 +36,11 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 				t.Fatalf("authorization filter %q must use exact keyword matching: %s", field, body)
 			}
 		}
+		for _, field := range []string{"owner.tenant_id", "owner.business_domain_id"} {
+			if strings.Contains(queryBody, `"`+field+`":{"value"`) {
+				t.Fatalf("identifier filter %q must not query the analyzed text field: %s", field, body)
+			}
+		}
 		_, _ = io.WriteString(w, `{
 			"hits":{"hits":[{"_source":{
 				"receipt_id":"rcpt-1","schema_version":"3.0.0",
