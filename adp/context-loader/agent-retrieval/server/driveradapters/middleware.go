@@ -14,6 +14,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -141,12 +142,52 @@ func middlewareRequestLog(logger interfaces.Logger) gin.HandlerFunc {
 			URI:          c.Request.RequestURI,
 			Method:       c.Request.Method,
 			RemoteAddr:   c.Request.RemoteAddr,
-			RequestBody:  redactSensitiveFields(byteToInterface(req)),
+			RequestBody:  requestBodyForLog(c.Request.URL.Path, req),
 			ResponseCode: c.Writer.Status(),
 			Latency:      float64(time.Since(now).Nanoseconds()) / 1e6, //nolint:mnd
 		})
 		logger.WithContext(c.Request.Context()).Infof("HTTP API Log : %s", logPayload)
 	}
+}
+
+func requestBodyForLog(path string, body []byte) interface{} {
+	if strings.Contains(path, "/mcp/") || strings.HasSuffix(path, "/mcp") {
+		return mcpRequestBodyForLog(body)
+	}
+	return redactSensitiveFields(byteToInterface(body))
+}
+
+func mcpRequestBodyForLog(body []byte) map[string]interface{} {
+	summary := map[string]interface{}{
+		"content_length": len(body),
+		"redacted":       true,
+		"reason":         "MCP arguments are governed evidence, not general log content",
+	}
+	parsed, ok := byteToInterface(body).(map[string]interface{})
+	if !ok {
+		return summary
+	}
+	if method, ok := parsed["method"].(string); ok {
+		summary["jsonrpc_method"] = method
+	}
+	params, ok := parsed["params"].(map[string]interface{})
+	if !ok {
+		return summary
+	}
+	if toolName, ok := params["name"].(string); ok {
+		summary["tool_name"] = toolName
+	}
+	arguments, ok := params["arguments"].(map[string]interface{})
+	if !ok {
+		return summary
+	}
+	argumentKeys := make([]string, 0, len(arguments))
+	for key := range arguments {
+		argumentKeys = append(argumentKeys, key)
+	}
+	sort.Strings(argumentKeys)
+	summary["argument_keys"] = argumentKeys
+	return summary
 }
 
 func middlewareTrace(c *gin.Context) {

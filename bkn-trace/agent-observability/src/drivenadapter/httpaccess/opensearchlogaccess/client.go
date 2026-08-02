@@ -76,7 +76,8 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		}
 		if len(hit.Sort) > 0 {
 			record.CursorPosition = &observabilityvo.SourcePosition{
-				EventTimestamp: record.EventTimestamp, LogID: record.SourceLogID, SearchAfter: append([]any(nil), hit.Sort...),
+				EventTimestamp: record.EventTimestamp, SourceID: record.SourceID,
+				LogID: record.SourceLogID, SearchAfter: append([]any(nil), hit.Sort...),
 			}
 		}
 		records = append(records, record)
@@ -206,6 +207,11 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		}
 		filters = append(filters, map[string]any{"range": map[string]any{"@timestamp": bounds}})
 	}
+	if query.ObservedBefore != nil {
+		filters = append(filters, map[string]any{"range": map[string]any{
+			"observedTimestamp": map[string]any{"lte": query.ObservedBefore.Format(time.RFC3339Nano)},
+		}})
+	}
 	if query.SeverityMinimum > 0 {
 		filters = append(filters, map[string]any{"range": map[string]any{"severity.number": map[string]any{"gte": query.SeverityMinimum}}})
 	}
@@ -220,15 +226,19 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		"size": limit, "track_total_hits": true,
 		"sort": []any{
 			map[string]any{"@timestamp": map[string]any{"order": "desc"}},
+			map[string]any{"attributes.source_id.keyword": map[string]any{"order": "asc", "unmapped_type": "keyword"}},
 			map[string]any{"attributes.source_log_id.keyword": map[string]any{"order": "asc", "unmapped_type": "keyword"}},
 		},
 		"query": map[string]any{"bool": boolQuery},
 	}
-	if query.PageBefore != nil && !query.PageBefore.EventTimestamp.IsZero() && query.PageBefore.LogID != "" {
+	if query.PageBefore != nil && (len(query.PageBefore.SearchAfter) > 0 ||
+		(!query.PageBefore.EventTimestamp.IsZero() && query.PageBefore.LogID != "")) {
 		if len(query.PageBefore.SearchAfter) > 0 {
 			result["search_after"] = append([]any(nil), query.PageBefore.SearchAfter...)
 		} else {
-			result["search_after"] = []any{query.PageBefore.EventTimestamp.Format(time.RFC3339Nano), query.PageBefore.LogID}
+			result["search_after"] = []any{
+				query.PageBefore.EventTimestamp.Format(time.RFC3339Nano), query.PageBefore.SourceID, query.PageBefore.LogID,
+			}
 		}
 	}
 	return result
@@ -278,6 +288,7 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 		ConversationID:      stringAttribute(document.Attributes, "conversation_id", ""),
 		InteractionID:       stringAttribute(document.Attributes, "interaction_id", ""),
 		OperationID:         stringAttribute(document.Attributes, "operation_id", ""),
+		ToolName:            stringAttribute(document.Attributes, "tool_name", ""),
 		ArtifactRef:         stringAttribute(document.Attributes, "artifact_ref", ""),
 		KnowledgeNetworkIDs: stringSliceAttribute(document.Attributes, "knowledge_network_ids"),
 		Attributes:          projectedAttributes(document.Attributes),

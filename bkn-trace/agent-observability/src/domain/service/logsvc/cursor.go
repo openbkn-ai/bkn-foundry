@@ -17,7 +17,7 @@ import (
 
 const (
 	cursorVersion     = "r6.2-v1"
-	cursorSortVersion = "event_timestamp_source_log_desc_v1"
+	cursorSortVersion = "event_timestamp_desc_source_id_source_log_id_asc_v2"
 	cursorTTL         = 15 * time.Minute
 )
 

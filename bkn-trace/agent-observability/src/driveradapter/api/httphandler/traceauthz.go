@@ -20,10 +20,8 @@ const accountAttrField = "attributes.bkn.account.id.keyword"
 
 const headerBaggage = "baggage"
 
-// identity is the caller resolved from gateway-propagated baggage. Trace
-// services do not verify tokens themselves — the gateway authenticates and
-// forwards bkn.account.id / bkn.account.type, the same trusted-header model the
-// rest of the platform uses.
+// identity is the caller resolved by the trusted query middleware or, for
+// backwards-compatible internal calls, gateway-propagated baggage.
 type identity struct {
 	accountID   string
 	accountType string
@@ -34,6 +32,11 @@ type identity struct {
 // ("bkn.account.type=user,bkn.account.id=u-1,..."). present is false when no
 // account id is carried.
 func identityFromRequest(r *http.Request) identity {
+	if scope, ok := trustedQueryScopeFromContext(r.Context()); ok {
+		id := identity{accountID: scope.AccountID, accountType: scope.AccountType}
+		id.present = id.accountID != ""
+		return id
+	}
 	bag := parseBaggage(r.Header.Get(headerBaggage))
 	id := identity{
 		accountID:   bag["bkn.account.id"],

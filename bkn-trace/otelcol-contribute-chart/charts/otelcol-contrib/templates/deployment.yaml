@@ -42,6 +42,12 @@ spec:
             - name: otlp-http
               containerPort: {{ .Values.service.ports.http }}
               protocol: TCP
+            - name: health
+              containerPort: {{ .Values.service.ports.health }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.ports.metrics }}
+              protocol: TCP
           env:
             {{- with .Values.extraEnvs }}
             {{- toYaml . | nindent 12 }}
@@ -51,6 +57,18 @@ spec:
               mountPath: /conf
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
       volumes:
         - name: config
           configMap:

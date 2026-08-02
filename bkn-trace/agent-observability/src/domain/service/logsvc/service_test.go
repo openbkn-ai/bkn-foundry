@@ -3,6 +3,7 @@ package logsvc
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,45 @@ type fakeSource struct {
 
 type capturingSource struct {
 	query observabilityvo.LogQuery
+}
+
+type blockingSource struct {
+	id      string
+	started chan<- string
+	release <-chan struct{}
+	active  *atomic.Int32
+	peak    *atomic.Int32
+}
+
+func (source *blockingSource) ID() string { return source.id }
+
+func (source *blockingSource) Metadata() observabilityvo.SourceStatus {
+	return observabilityvo.SourceStatus{
+		SourceID: source.id, Status: "healthy", Reliability: "best_effort",
+		Categories: []string{observabilityvo.CategoryRuntimeSystem},
+	}
+}
+
+func (source *blockingSource) Search(ctx context.Context, _ observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
+	active := source.active.Add(1)
+	defer source.active.Add(-1)
+	for {
+		peak := source.peak.Load()
+		if active <= peak || source.peak.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+	select {
+	case source.started <- source.id:
+	case <-ctx.Done():
+		return observabilityvo.SourcePage{}, ctx.Err()
+	}
+	select {
+	case <-source.release:
+		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
+	case <-ctx.Done():
+		return observabilityvo.SourcePage{}, ctx.Err()
+	}
 }
 
 func (source *capturingSource) ID() string { return "capturing" }
@@ -170,6 +210,124 @@ func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) 
 	}
 }
 
+func TestListQueriesIndependentSourcesConcurrently(t *testing.T) {
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	var active atomic.Int32
+	var peak atomic.Int32
+	service := NewWithOptions([]Source{
+		&blockingSource{id: "source-a", started: started, release: release, active: &active, peak: &peak},
+		&blockingSource{id: "source-b", started: started, release: release, active: &active, peak: &peak},
+	}, Options{CursorKey: []byte("test-cursor-key"), SourceTimeout: time.Second, MaxConcurrentSources: 2})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+		done <- err
+	}()
+	for index := 0; index < 2; index++ {
+		select {
+		case <-started:
+		case <-time.After(250 * time.Millisecond):
+			close(release)
+			t.Fatal("sources were queried serially")
+		}
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("concurrent source query failed: %v", err)
+	}
+	if peak.Load() != 2 {
+		t.Fatalf("peak source concurrency = %d, want 2", peak.Load())
+	}
+}
+
+func TestListDoesNotExceedConfiguredSourceConcurrency(t *testing.T) {
+	started := make(chan string, 4)
+	release := make(chan struct{})
+	var active atomic.Int32
+	var peak atomic.Int32
+	sources := make([]Source, 4)
+	for index := range sources {
+		sources[index] = &blockingSource{
+			id: "source-" + time.Duration(index).String(), started: started, release: release,
+			active: &active, peak: &peak,
+		}
+	}
+	service := NewWithOptions(sources, Options{
+		CursorKey: []byte("test-cursor-key"), SourceTimeout: time.Second, MaxConcurrentSources: 2,
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+		done <- err
+	}()
+	for index := 0; index < 2; index++ {
+		select {
+		case <-started:
+		case <-time.After(250 * time.Millisecond):
+			close(release)
+			t.Fatal("configured source workers did not start")
+		}
+	}
+	select {
+	case sourceID := <-started:
+		close(release)
+		t.Fatalf("source %s exceeded the configured concurrency bound", sourceID)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("bounded source query failed: %v", err)
+	}
+	if peak.Load() > 2 {
+		t.Fatalf("peak source concurrency = %d, want at most 2", peak.Load())
+	}
+}
+
+func TestListTimesOutOneSourceAndReturnsTheHealthySource(t *testing.T) {
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var active atomic.Int32
+	var peak atomic.Int32
+	slow := &blockingSource{id: "slow", started: started, release: release, active: &active, peak: &peak}
+	healthy := categorizedSource{
+		id: "healthy", categories: []string{observabilityvo.CategoryRuntimeSystem},
+		records: []observabilityvo.LogRecord{{
+			LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
+			TenantID: "tenant-a", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		}},
+	}
+	service := NewWithOptions([]Source{slow, &healthy}, Options{
+		CursorKey: []byte("test-cursor-key"), SourceTimeout: 20 * time.Millisecond, MaxConcurrentSources: 2,
+	})
+
+	startedAt := time.Now()
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+	if err != nil {
+		t.Fatalf("healthy source must survive another source timeout: %v", err)
+	}
+	// Keep a coarse wall-clock guard against an unbounded wait. The precise
+	// 20 ms deadline is asserted by the source_timeout status below; a tighter
+	// wall-clock threshold is flaky when the full suite saturates a 4C8G host.
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("source timeout did not bound request latency: %s", elapsed)
+	}
+	if !result.Partial || len(result.Records) != 1 || len(result.SourceStatus) != 2 {
+		t.Fatalf("timeout partial result is incomplete: %+v", result)
+	}
+	for _, status := range result.SourceStatus {
+		if status.SourceID == "slow" {
+			if status.Status != "unavailable" || status.Reason != "source_timeout" || status.LatencyMS == nil {
+				t.Fatalf("slow source timeout was not disclosed: %+v", status)
+			}
+			return
+		}
+	}
+	t.Fatal("slow source status is missing")
+}
+
 func TestDetailAndFacetsUseTheSameRecordAuthorization(t *testing.T) {
 	owned := ownedBusinessLog("owned", "owner-a", "trace-a")
 	other := ownedBusinessLog("other", "owner-b", "trace-a")
@@ -206,6 +364,30 @@ func TestSourcesAndPoliciesFollowTheAccessProfile(t *testing.T) {
 	}
 	if _, err := service.Policies(activeProfile("user-a", "normal_user")); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("normal user policy read must be denied, got %v", err)
+	}
+}
+
+func TestSourcesHealthCheckUsesTheConfiguredSourceTimeout(t *testing.T) {
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var active atomic.Int32
+	var peak atomic.Int32
+	service := NewWithOptions([]Source{
+		&blockingSource{id: "slow", started: started, release: release, active: &active, peak: &peak},
+		&categorizedSource{id: "healthy", categories: []string{observabilityvo.CategoryRuntimeSystem}},
+	}, Options{CursorKey: []byte("test-cursor-key"), SourceTimeout: 20 * time.Millisecond, MaxConcurrentSources: 2})
+
+	startedAt := time.Now()
+	statuses, err := service.Sources(context.Background(), activeProfile("admin-a", "admin"))
+	if err != nil {
+		t.Fatalf("source health query failed: %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("source health query was not bounded by its timeout: %s", elapsed)
+	}
+	if len(statuses) != 2 || statuses[0].SourceID != "slow" || statuses[0].Reason != "source_timeout" ||
+		statuses[1].Status != "healthy" {
+		t.Fatalf("source health status is incomplete: %+v", statuses)
 	}
 }
 
@@ -246,6 +428,9 @@ func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
 	}
 	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.TimeTo.Sub(*source.query.TimeFrom) != time.Hour {
 		t.Fatalf("default one-hour window was not frozen: %+v", source.query)
+	}
+	if source.query.ObservedBefore == nil || !source.query.ObservedBefore.Equal(*source.query.TimeTo) {
+		t.Fatalf("query watermark was not pushed to the source: %+v", source.query)
 	}
 }
 
@@ -311,6 +496,28 @@ func TestListExcludesUntrustedUnknownAndCategoryMismatchedRecords(t *testing.T) 
 	}
 	if len(result.Records) != 1 || result.Records[0].LogID != "trusted" {
 		t.Fatalf("quarantined records escaped the query projection: %+v", result.Records)
+	}
+}
+
+func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
+	timestamp := time.Now().UTC().Truncate(time.Second)
+	result, err := New([]Source{
+		fakeSource{id: "adapter-a", records: []observabilityvo.LogRecord{{
+			LogID: "log-z", SourceID: "producer-z", SourceLogID: "log-z",
+			Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
+			TenantID: "tenant-a", EventTimestamp: timestamp, TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		}}},
+		fakeSource{id: "adapter-z", records: []observabilityvo.LogRecord{{
+			LogID: "log-a", SourceID: "producer-a", SourceLogID: "log-a",
+			Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
+			TenantID: "tenant-a", EventTimestamp: timestamp, TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		}}},
+	}).List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 2 || result.Records[0].SourceID != "producer-a" || result.Records[1].SourceID != "producer-z" {
+		t.Fatalf("same-timestamp logs must sort by source_id then source_log_id: %+v", result.Records)
 	}
 }
 
@@ -402,6 +609,23 @@ func TestMatchesQueryUsesExclusiveTimeToBoundary(t *testing.T) {
 	}
 }
 
+func TestMatchesQueryExcludesRecordsObservedAfterTheQueryWatermark(t *testing.T) {
+	watermark := time.Date(2026, 8, 1, 11, 0, 0, 0, time.UTC)
+	query := observabilityvo.LogQuery{ObservedBefore: &watermark}
+	if matchesQuery(observabilityvo.LogRecord{
+		EventTimestamp:    watermark.Add(-time.Hour),
+		ObservedTimestamp: watermark.Add(time.Nanosecond),
+	}, query) {
+		t.Fatal("a late-arriving record must not enter a cursor-stable result set")
+	}
+	if !matchesQuery(observabilityvo.LogRecord{
+		EventTimestamp:    watermark.Add(-time.Hour),
+		ObservedTimestamp: watermark,
+	}, query) {
+		t.Fatal("a record observed at the query watermark must remain visible")
+	}
+}
+
 func boolInt(value bool) int {
 	if value {
 		return 1
@@ -466,4 +690,33 @@ func validTestRecord(record observabilityvo.LogRecord) observabilityvo.LogRecord
 		record.Environment = "test"
 	}
 	return record
+}
+
+func BenchmarkListEightSources(b *testing.B) {
+	base := time.Now().UTC().Truncate(time.Second)
+	sources := make([]Source, 8)
+	for sourceIndex := range sources {
+		records := make([]observabilityvo.LogRecord, 200)
+		for recordIndex := range records {
+			records[recordIndex] = validTestRecord(observabilityvo.LogRecord{
+				LogID:    "log-" + time.Duration(sourceIndex*200+recordIndex).String(),
+				SourceID: "source-" + time.Duration(sourceIndex).String(),
+				Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
+				TenantID: "tenant-a", EventTimestamp: base.Add(-time.Duration(recordIndex) * time.Millisecond),
+				TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+			})
+		}
+		sources[sourceIndex] = fakeSource{id: "source-" + time.Duration(sourceIndex).String(), records: records}
+	}
+	service := NewWithOptions(sources, Options{
+		CursorKey: []byte("benchmark-cursor-key"), SourceTimeout: time.Second, MaxConcurrentSources: 4,
+	})
+	profile := activeProfile("admin-a", "admin")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 200}); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

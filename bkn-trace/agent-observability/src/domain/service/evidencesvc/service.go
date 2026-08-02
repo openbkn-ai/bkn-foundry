@@ -248,6 +248,17 @@ func NewWithProjectionSource(store ievidencestore.EvidenceStorePort, projectionS
 	return service
 }
 
+func NewWithBusinessResolverAndProjectionSource(
+	store ievidencestore.EvidenceStorePort,
+	resolver ibusinessresolver.BusinessResolverPort,
+	projectionSource iprojectionsource.ProjectionSourcePort,
+) *Service {
+	service := New(store)
+	service.businessResolver = resolver
+	service.projectionSource = projectionSource
+	return service
+}
+
 func (s *Service) IngestArtifact(ctx context.Context, body []byte) (evidencevo.ArtifactIngestResponse, evidencevo.ValidationErrors, error) {
 	var artifact evidencevo.EvidenceArtifact
 	if err := json.Unmarshal(body, &artifact); err != nil {
@@ -418,7 +429,10 @@ func (s *Service) GetEvidenceChainByRequestID(ctx context.Context, requestID str
 		return evidencevo.EvidenceChainResponse{}, false, err
 	}
 	if len(result.Traces) == 0 {
-		return evidencevo.EvidenceChainResponse{}, false, nil
+		result.Traces, result.Truncated, err = s.projectedRequestTraces(ctx, requestID, options)
+		if err != nil || len(result.Traces) == 0 {
+			return evidencevo.EvidenceChainResponse{}, false, err
+		}
 	}
 	return buildEvidenceChain(result.Traces, result.Truncated), true, nil
 }
@@ -440,7 +454,10 @@ func (s *Service) GetBusinessGraphByRequestID(ctx context.Context, requestID str
 		return evidencevo.BusinessGraphResponse{}, false, err
 	}
 	if len(result.Traces) == 0 {
-		return evidencevo.BusinessGraphResponse{}, false, nil
+		result.Traces, result.Truncated, err = s.projectedRequestTraces(ctx, requestID, options)
+		if err != nil || len(result.Traces) == 0 {
+			return evidencevo.BusinessGraphResponse{}, false, err
+		}
 	}
 	return s.buildBusinessGraph(ctx, result.Traces, result.Truncated, options.Scope), true, nil
 }
@@ -478,9 +495,29 @@ func (s *Service) GetSnapshotPreviewByRequestID(ctx context.Context, requestID s
 		return evidencevo.SnapshotPreviewResponse{}, false, err
 	}
 	if len(result.Traces) == 0 {
-		return evidencevo.SnapshotPreviewResponse{}, false, nil
+		result.Traces, result.Truncated, err = s.projectedRequestTraces(ctx, requestID, options)
+		if err != nil || len(result.Traces) == 0 {
+			return evidencevo.SnapshotPreviewResponse{}, false, err
+		}
 	}
 	return buildSnapshotPreview(result.Traces, result.Truncated), true, nil
+}
+
+func (s *Service) projectedRequestTraces(
+	ctx context.Context,
+	requestID string,
+	options evidencevo.EvidenceQueryOptions,
+) ([]evidencevo.NormalizedTrace, bool, error) {
+	if s.projectionSource == nil {
+		return nil, false, nil
+	}
+	result, err := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
+		Scope: options.Scope, RequestID: strings.TrimSpace(requestID), Limit: MaxEvidenceQueryLimit,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return result.Traces, result.Truncated, nil
 }
 
 func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evidencevo.EvidenceChainResponse {
@@ -535,6 +572,8 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 				}
 				response.Data.BusinessRefs = appendVisibleRefsUnique(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary, businessRefIDs)
 			case "knowledge.read.observed":
+				response.Data.BusinessRefs = appendVisibleRefsUnique(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary, businessRefIDs)
+			case "retrieval.completed", "data.query.observed", "logic.execution.observed", "tool.called", "tool.result.observed":
 				response.Data.BusinessRefs = appendVisibleRefsUnique(response.Data.BusinessRefs, arrayField(event.Payload, "business_refs"), &response.VisibilitySummary, businessRefIDs)
 			}
 		}
@@ -806,6 +845,43 @@ func (s *Service) buildBusinessGraph(ctx context.Context, traces []evidencevo.No
 
 	for _, trace := range traces {
 		for _, event := range trace.Events {
+			if isExecutionFact(event.EventType) && event.EventType != "knowledge.read.observed" {
+				refs := arrayField(event.Payload, "business_refs")
+				if len(refs) > 0 {
+					businessRefEvents++
+				}
+				for _, item := range refs {
+					ref, ok := item.(map[string]any)
+					if !ok {
+						partialReasons["business_ref_invalid"] = struct{}{}
+						continue
+					}
+					if !visible(ref) {
+						countVisibility(ref, &response.VisibilitySummary)
+						continue
+					}
+					refID, _ := stringField(ref, "ref_id")
+					if refID == "" {
+						partialReasons["business_ref_id_missing"] = struct{}{}
+						continue
+					}
+					resolution, resolved := resolutions[refID]
+					if _, seen := businessRefs[refID]; !seen {
+						businessRefs[refID] = struct{}{}
+						response.VisibilitySummary.AuthorizedRefCount++
+					}
+					var display *evidencevo.BusinessDisplay
+					if resolved && resolution.Display != nil && resolution.Display.ResolutionStatus == "resolved" {
+						display = resolution.Display
+					} else {
+						partialReasons["resolver_unresolved"] = struct{}{}
+					}
+					addBusinessNode(&response, businessNodes, refID, "", ref, display)
+					if operationNode := eventNodes[event.EventID]; operationNode != "" {
+						appendGraphEdge(&response, edges, &edgeIndex, operationNode, "business:"+refID, "uses_business_ref", visibilityValue(ref))
+					}
+				}
+			}
 			if claimIDs := claimedSourceEvents[event.EventID]; len(claimIDs) > 0 {
 				refs := claimedFactBusinessRefs(event)
 				if len(refs) > 0 {
@@ -987,7 +1063,7 @@ func (s *Service) resolveBusinessRefs(ctx context.Context, traces []evidencevo.N
 	for _, trace := range traces {
 		for _, event := range trace.Events {
 			items := []any{}
-			if event.EventType == "business.refs.resolved" || event.EventType == "knowledge.read.observed" {
+			if event.EventType == "business.refs.resolved" || event.EventType == "knowledge.read.observed" || isExecutionFact(event.EventType) {
 				items = append(items, arrayField(event.Payload, "business_refs")...)
 			}
 			if _, claimed := claimedSourceEvents[event.EventID]; claimed {

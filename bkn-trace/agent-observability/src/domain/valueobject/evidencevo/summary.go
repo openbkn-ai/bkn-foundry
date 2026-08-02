@@ -18,6 +18,9 @@ type ActionSummary struct {
 
 type RequestSummary struct {
 	RequestID            string        `json:"request_id"`
+	OperationID          string        `json:"operation_id,omitempty"`
+	OperationKey         string        `json:"operation_key,omitempty"`
+	ToolName             string        `json:"tool_name,omitempty"`
 	ConversationID       string        `json:"conversation_id,omitempty"`
 	InteractionID        string        `json:"interaction_id,omitempty"`
 	StartedAt            string        `json:"started_at,omitempty"`
@@ -271,6 +274,13 @@ func buildRequestSummary(
 			allTracesTerminal = false
 		}
 		for _, event := range trace.Events {
+			mergeStableIdentity(&summary.OperationID, event.OperationID)
+			if event.OperationID != "" || event.EventType == "retrieval.completed" {
+				mergeStableIdentity(&summary.ToolName, event.OperationName)
+				if operationKey, _ := summaryStringField(event.Payload, "operation_key"); operationKey != "" {
+					mergeStableIdentity(&summary.OperationKey, operationKey)
+				}
+			}
 			collectBusinessRefs(event.Payload, businessRefs)
 			advanceActionSummary(&summary.ActionSummary, event.EventType)
 		}
@@ -289,7 +299,9 @@ func buildRequestSummary(
 		firstNonEmpty(&summary.BusinessDomain, artifact.BusinessDomain)
 		firstNonEmpty(&summary.AgentOrApp, artifact.AgentOrApp)
 		firstNonEmpty(&summary.Initiator, artifact.Initiator)
-		mergeStarted(&started, artifact.ObservedAt)
+		if started.IsZero() {
+			mergeStarted(&started, artifact.ObservedAt)
+		}
 		for _, ref := range artifact.BusinessRefs {
 			if ref != "" {
 				businessRefs[ref] = struct{}{}
@@ -306,7 +318,9 @@ func buildRequestSummary(
 				summary.ResultPreview = preview
 				hasResult = true
 			}
-			mergeCompleted(&completed, artifact.ObservedAt)
+			if completed.IsZero() {
+				mergeCompleted(&completed, artifact.ObservedAt)
+			}
 		default:
 			hasSupportingEvidence = true
 		}
@@ -374,6 +388,15 @@ func buildRequestSummary(
 	if summary.InteractionID == "-" {
 		summary.InteractionID = ""
 	}
+	if summary.OperationID == "-" {
+		summary.OperationID = ""
+	}
+	if summary.OperationKey == "-" {
+		summary.OperationKey = ""
+	}
+	if summary.ToolName == "-" {
+		summary.ToolName = ""
+	}
 	return summary, traceSummaries
 }
 
@@ -395,8 +418,15 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 			}
 			firstNonEmpty(&summary.RootOperation, event.OperationName)
 		}
+		if event.EventType == "retrieval.completed" {
+			firstNonEmpty(&summary.RootOperation, event.OperationName)
+			firstNonEmpty(&summary.AgentOrApp, event.Producer)
+		}
 		if event.SpanID != "" {
 			spans[event.SpanID] = struct{}{}
+		}
+		if strings.HasPrefix(event.EventID, "artifact-link:") {
+			continue
 		}
 		mergeStarted(&started, event.ObservedAt)
 		if eventHasError(event) {
@@ -416,7 +446,9 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 			if summary.Status != "error" {
 				summary.Status = "completed"
 			}
-			mergeCompleted(&completed, artifact.ObservedAt)
+			if completed.IsZero() {
+				mergeCompleted(&completed, artifact.ObservedAt)
+			}
 		}
 	}
 	summary.SpanCount = len(spans)

@@ -19,7 +19,7 @@ ghcr.io/<github_org_or_user>/charts/otelcol-contrib
 当前版本：
 
 - Chart version: `0.1.0`
-- App version: `0.145.0`
+- App version: `0.148.0`
 
 ---
 
@@ -35,6 +35,8 @@ ghcr.io/<github_org_or_user>/charts/otelcol-contrib
 │           ├── _helpers.tpl
 │           ├── configmap.yaml
 │           ├── deployment.yaml
+│           ├── networkpolicy.yaml
+│           ├── prometheusrule.yaml
 │           ├── service.yaml
 │           ├── serviceaccount.yaml
 │           └── NOTES.txt
@@ -43,7 +45,9 @@ ghcr.io/<github_org_or_user>/charts/otelcol-contrib
 │       ├── chart-ci.yaml
 │       └── chart-release.yaml
 └── scripts/
-    └── create-nodeport-service.sh
+    ├── create-nodeport-service.sh
+    ├── test_4c8g_baseline.sh
+    └── validate_collector_config.sh
 ```
 
 ---
@@ -64,10 +68,10 @@ ghcr.io/<github_org_or_user>/charts/otelcol-contrib
 
 可通过 `values.yaml` 的 `opensearchExporter` 段配置 OpenSearch exporter，也可直接覆盖 `config` 段自定义 collector 配置。
 
-默认 collector 镜像使用国内镜像源：
+默认 collector 镜像：
 
 ```text
-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.145.0
+docker.io/otel/opentelemetry-collector-contrib:0.148.0
 ```
 
 默认会渲染以下 exporter 结构：
@@ -82,6 +86,15 @@ exporters:
     dataset: default
     namespace: namespace
     bulk_action: create
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 2048
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 5m
     mapping:
       mode: ss4o
 ```
@@ -89,6 +102,18 @@ exporters:
 如果开启 `opensearchExporter.auth.enabled=true`，chart 会自动增加 `basicauth/client` extension，并通过 `opensearch.http.auth.authenticator` 将其绑定到 exporter。
 
 注意：官方 `opensearchexporter` 当前支持 `traces` 和 `logs`，默认不为 `metrics` 创建 OpenSearch 导出 pipeline。
+
+### 4C8G 最小部署基线
+
+默认单副本 Collector 限制为 `500m CPU / 512MiB`，适配 OpenBKN `4C8G` 最小环境：
+
+- `memory_limiter`：`384MiB` 上限、`96MiB` 突发余量，位于 `batch` 之前；
+- `batch`：512 条目标批次、1024 条硬上限、5 秒刷新；
+- OpenSearch 发送队列：2048 批、2 个消费者；
+- OpenSearch 失败重试：指数退避，最长 5 分钟；
+- 健康端点：`:13133/`；Collector 指标：`:8888/metrics`。
+
+`monitoring.prometheusRule.enabled=true` 时渲染队列接近容量、日志导出失败和遥测拒绝告警。`networkPolicy.enabled=true` 时只允许带 `openbkn.ai/otel-producer=true` 标签的同命名空间 Pod 写入 OTLP，并允许指定监控命名空间抓取指标。两项默认关闭，启用前必须核对目标集群的 CRD、命名空间和工作负载标签。
 
 ---
 
@@ -141,7 +166,11 @@ helm pull oci://ghcr.io/<github_org_or_user>/charts/otelcol-contrib --version <v
 ```bash
 helm lint charts/otelcol-contrib
 helm template otelcol-contrib charts/otelcol-contrib
+bash scripts/test_4c8g_baseline.sh charts/otelcol-contrib
+./scripts/validate_collector_config.sh charts/otelcol-contrib
 ```
+
+最后一条命令使用 chart 锁定版本的真实 Collector 二进制执行离线 `validate`，需要本机 Docker 可用。
 
 安装示例：
 

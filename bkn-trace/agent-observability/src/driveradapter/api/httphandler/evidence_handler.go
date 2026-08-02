@@ -2,6 +2,7 @@ package httphandler
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
@@ -26,11 +27,13 @@ const evidenceQueryGatewayTokenEnv = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
 const evidenceAllowUnauthenticatedQueryEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY"
 const evidenceQueryGatewayTokenHeader = "X-BKN-Trace-Query-Token"
 const evidenceHydraAdminURLEnv = "BKN_TRACE_HYDRA_ADMIN_URL"
+const evidenceDeploymentTenantIDEnv = "BKN_TRACE_DEPLOYMENT_TENANT_ID"
 
 type EvidenceHandlerSecurityConfig struct {
 	IngestToken                string
 	QueryGatewayToken          string
 	HydraAdminURL              string
+	DeploymentTenantID         string
 	QueryHTTPClient            *http.Client
 	AllowUnauthenticatedIngest bool
 	AllowUnauthenticatedQuery  bool
@@ -42,10 +45,18 @@ type EvidenceHandler struct {
 	ingestToken                string
 	queryGatewayToken          string
 	hydraAdminURL              string
+	deploymentTenantID         string
 	queryHTTPClient            *http.Client
 	allowUnauthenticatedIngest bool
 	allowUnauthenticatedQuery  bool
 	authorizationScopeResolver iauthorizationscope.Resolver
+}
+
+type trustedQueryScopeContextKey struct{}
+
+func trustedQueryScopeFromContext(ctx context.Context) (evidencevo.QueryScope, bool) {
+	scope, ok := ctx.Value(trustedQueryScopeContextKey{}).(evidencevo.QueryScope)
+	return scope, ok
 }
 
 func NewEvidenceHandler(evidenceService *evidencesvc.Service) *EvidenceHandler {
@@ -62,6 +73,7 @@ func NewEvidenceHandlerWithAuthorizationScopeResolver(
 		IngestToken:                os.Getenv(evidenceIngestTokenEnv),
 		QueryGatewayToken:          os.Getenv(evidenceQueryGatewayTokenEnv),
 		HydraAdminURL:              os.Getenv(evidenceHydraAdminURLEnv),
+		DeploymentTenantID:         os.Getenv(evidenceDeploymentTenantIDEnv),
 		AllowUnauthenticatedIngest: allowUnauthenticated,
 		AllowUnauthenticatedQuery:  allowUnauthenticatedQuery,
 		AuthorizationScopeResolver: resolver,
@@ -88,6 +100,7 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 		ingestToken:                strings.TrimSpace(config.IngestToken),
 		queryGatewayToken:          strings.TrimSpace(config.QueryGatewayToken),
 		hydraAdminURL:              strings.TrimRight(strings.TrimSpace(config.HydraAdminURL), "/"),
+		deploymentTenantID:         strings.TrimSpace(config.DeploymentTenantID),
 		queryHTTPClient:            queryHTTPClient,
 		allowUnauthenticatedIngest: config.AllowUnauthenticatedIngest,
 		allowUnauthenticatedQuery:  config.AllowUnauthenticatedQuery,
@@ -800,11 +813,21 @@ func (h *EvidenceHandler) evidenceQueryOptionsFromRequest(w http.ResponseWriter,
 }
 
 func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.QueryScope, bool) {
+	if scope, ok := trustedQueryScopeFromContext(r.Context()); ok {
+		return scope, true
+	}
 	accountID := strings.TrimSpace(r.Header.Get("x-account-id"))
 	accountType := strings.TrimSpace(r.Header.Get("x-account-type"))
 	tenantID := strings.TrimSpace(r.Header.Get("x-tenant-id"))
 	if tenantID == "" {
 		tenantID = strings.TrimSpace(r.Header.Get("x-bkn-tenant-id"))
+	}
+	if h.deploymentTenantID != "" {
+		if tenantID != "" && tenantID != h.deploymentTenantID {
+			writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request tenant does not match the deployment tenant")
+			return evidencevo.QueryScope{}, false
+		}
+		tenantID = h.deploymentTenantID
 	}
 	businessDomain := strings.TrimSpace(r.Header.Get("x-business-domain"))
 	if accountID == "" || accountType == "" || strings.EqualFold(accountType, "anonymous") || tenantID == "" && businessDomain == "" {
@@ -850,10 +873,12 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 		if !h.authorizeQueryGateway(w, r) {
 			return
 		}
-		if _, ok := h.queryScopeFromRequest(w, r); !ok {
+		scope, ok := h.queryScopeFromRequest(w, r)
+		if !ok {
 			return
 		}
-		next(w, r)
+		ctx := context.WithValue(r.Context(), trustedQueryScopeContextKey{}, scope)
+		next(w, r.WithContext(ctx))
 	}
 }
 
@@ -868,9 +893,35 @@ func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc)
 			)
 			return
 		}
-		scope, ok := h.queryScopeFromRequest(w, r)
-		if !ok {
+		accountID := strings.TrimSpace(r.Header.Get("x-account-id"))
+		accountType := strings.TrimSpace(r.Header.Get("x-account-type"))
+		tenantID := strings.TrimSpace(r.Header.Get("x-tenant-id"))
+		if tenantID == "" {
+			tenantID = strings.TrimSpace(r.Header.Get("x-bkn-tenant-id"))
+		}
+		if h.deploymentTenantID != "" {
+			if tenantID != "" && tenantID != h.deploymentTenantID {
+				writeLifecycleError(
+					w, r, http.StatusUnauthorized, "permission_denied",
+					"request tenant does not match the deployment tenant",
+				)
+				return
+			}
+			tenantID = h.deploymentTenantID
+		}
+		businessDomain := strings.TrimSpace(r.Header.Get("x-business-domain"))
+		if accountID == "" || accountType == "" || strings.EqualFold(accountType, "anonymous") ||
+			tenantID == "" || businessDomain == "" {
+			writeLifecycleError(
+				w, r, http.StatusUnauthorized, "permission_denied",
+				"trusted account, tenant and business domain context is required",
+			)
 			return
+		}
+		scope := evidencevo.QueryScope{
+			TenantID: tenantID, BusinessDomain: businessDomain,
+			AccountID: accountID, AccountType: accountType,
+			View: evidencevo.AccessViewBusiness,
 		}
 		if scope.TenantID == "" || scope.BusinessDomain == "" {
 			writeLifecycleError(
@@ -889,11 +940,15 @@ func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc)
 			return
 		}
 
-		next(w, r)
+		ctx := context.WithValue(r.Context(), trustedQueryScopeContextKey{}, scope)
+		next(w, r.WithContext(ctx))
 	}
 }
 
 func (h *EvidenceHandler) authorizeQueryGateway(w http.ResponseWriter, r *http.Request) bool {
+	if _, ok := trustedQueryScopeFromContext(r.Context()); ok {
+		return true
+	}
 	if h.queryGatewayToken != "" && secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken) {
 		return true
 	}
@@ -1043,6 +1098,18 @@ func (h *EvidenceHandler) AuthorizeTechnicalTraceQuery(w http.ResponseWriter, r 
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to authorize trace query"})
 		return false
+	}
+	if !found {
+		page, listErr := h.evidenceService.ListRequests(r.Context(), evidencevo.SummaryQueryOptions{
+			TraceID: traceID,
+			Scope:   options.Scope,
+			Limit:   1,
+		})
+		if listErr != nil {
+			writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to authorize trace query"})
+			return false
+		}
+		found = len(page.Entries) > 0
 	}
 	if !found {
 		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})

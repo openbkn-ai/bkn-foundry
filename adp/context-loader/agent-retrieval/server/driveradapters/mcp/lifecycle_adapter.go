@@ -170,6 +170,27 @@ func handleLifecycleTool(
 			target, apiErr, err := client.GetReceipt(ctx, stringValue(args["receipt_id"]))
 			return lifecycleCallResult(target, apiErr, err)
 		}
+		if name == "bkn_complete_interaction" {
+			interactionID := stringValue(args["interaction_id"])
+			var current bkntrace.Interaction
+			apiErr, err := client.Call(
+				ctx, http.MethodGet, "/interactions/"+url.PathEscape(interactionID), nil, &current,
+			)
+			if err != nil {
+				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			}
+			if apiErr != nil {
+				return lifecycleToolError(lifecycleError(*apiErr)), nil
+			}
+			artifactRef, err := bkntrace.RecordInteractionArtifact(
+				ctx, current.ConversationID, current.InteractionID,
+				bkntrace.InteractionArtifactResult, args["answer"],
+			)
+			if err != nil {
+				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			}
+			args["answer_artifact_ref"] = artifactRef
+		}
 		method, path, body := lifecycleRequest(name, args)
 		var target any
 		switch name {
@@ -184,6 +205,15 @@ func handleLifecycleTool(
 		}
 		if apiErr != nil {
 			return lifecycleToolError(lifecycleError(*apiErr)), nil
+		}
+		interaction, interactionTarget := target.(*bkntrace.Interaction)
+		if name == "bkn_start_interaction" && interactionTarget {
+			if _, err := bkntrace.RecordInteractionArtifact(
+				ctx, interaction.ConversationID, interaction.InteractionID,
+				bkntrace.InteractionArtifactQuestion, args["question"],
+			); err != nil {
+				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			}
 		}
 		return mcpsdk.NewToolResultStructured(target, "managed lifecycle state updated"), nil
 	}
@@ -217,10 +247,10 @@ func lifecycleRequest(name string, args map[string]any) (string, string, map[str
 	default:
 		interactionID := url.PathEscape(stringValue(args["interaction_id"]))
 		action := strings.TrimPrefix(strings.TrimSuffix(name, "_interaction"), "bkn_")
-		return http.MethodPost, "/interactions/" + interactionID + "/" + action,
-			copyArgs(args, "terminal_idempotency_key", "lease_token", "lease_epoch",
-				"completion_manifest_version", "answer_artifact_ref", "claims",
-				"expected_operations", "expected_receipts", "assembler_deadline", "completion_reason")
+		body := copyArgs(args, "terminal_idempotency_key", "lease_token", "lease_epoch",
+			"completion_manifest_version", "answer_artifact_ref", "claims",
+			"expected_operations", "expected_receipts", "assembler_deadline", "completion_reason")
+		return http.MethodPost, "/interactions/" + interactionID + "/" + action, body
 	}
 }
 

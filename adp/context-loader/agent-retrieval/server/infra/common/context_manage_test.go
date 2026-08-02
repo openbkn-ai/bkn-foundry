@@ -229,6 +229,32 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 	})
 }
 
+func TestTraceContextUsesConfiguredTenantOnlyWhenInboundTenantIsMissing(t *testing.T) {
+	t.Setenv("BKN_TRACE_DEFAULT_TENANT_ID", "openbkn-local")
+	domainOnly := TraceContextFromHeaders(func(key string) string {
+		if key == HeaderBusinessDomain {
+			return "bd_public"
+		}
+		return ""
+	})
+	if domainOnly.TenantID != "openbkn-local" {
+		t.Fatalf("default tenant = %q, want openbkn-local", domainOnly.TenantID)
+	}
+	trustedTenant := TraceContextFromHeaders(func(key string) string {
+		switch key {
+		case HeaderTenantID:
+			return "tenant-from-gateway"
+		case HeaderBusinessDomain:
+			return "bd_public"
+		default:
+			return ""
+		}
+	})
+	if trustedTenant.TenantID != "tenant-from-gateway" {
+		t.Fatalf("inbound tenant was overwritten: %q", trustedTenant.TenantID)
+	}
+}
+
 func TestCallerCorrelationIDsAreValidatedWithoutGeneration(t *testing.T) {
 	convey.Convey("valid caller ids are propagated and invalid ids are dropped", t, func() {
 		headers := map[string]string{

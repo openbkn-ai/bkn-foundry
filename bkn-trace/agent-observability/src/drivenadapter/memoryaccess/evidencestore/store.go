@@ -130,6 +130,7 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	for _, trace := range traces {
 		if query.RequestID != "" && trace.RequestID != query.RequestID ||
 			query.TraceID != "" && trace.TraceID != query.TraceID ||
+			query.InteractionID != "" && !memoryTraceHasInteraction(trace, query.InteractionID) ||
 			query.BusinessDomain != "" && trace.BusinessDomain != query.BusinessDomain ||
 			!memoryTraceInRange(trace, query.From, query.To) {
 			continue
@@ -140,6 +141,7 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	for _, artifact := range artifacts {
 		if query.RequestID != "" && artifact.RequestID != query.RequestID ||
 			query.TraceID != "" && artifact.TraceID != query.TraceID ||
+			query.InteractionID != "" && artifact.InteractionID != query.InteractionID ||
 			query.BusinessDomain != "" && artifact.BusinessDomain != query.BusinessDomain ||
 			!memoryTimeInRange(artifact.ObservedAt, query.From, query.To) {
 			continue
@@ -158,6 +160,15 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 		truncated = true
 	}
 	return iprojectionsource.Result{Traces: filteredTraces, Artifacts: filteredArtifacts, Truncated: truncated}, nil
+}
+
+func memoryTraceHasInteraction(trace evidencevo.NormalizedTrace, interactionID string) bool {
+	for _, event := range trace.Events {
+		if event.InteractionID == interactionID {
+			return true
+		}
+	}
+	return false
 }
 
 func memoryTraceInRange(trace evidencevo.NormalizedTrace, from, to time.Time) bool {

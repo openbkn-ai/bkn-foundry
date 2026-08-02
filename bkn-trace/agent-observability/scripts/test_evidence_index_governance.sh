@@ -20,6 +20,21 @@ if grep -Fq "agent-observability-evidence-index-setup" <<<"${default_rendered}";
   echo "evidence index setup job must not render by default" >&2
   exit 1
 fi
+if ! grep -A1 -Fq 'name: BKN_OBSERVABILITY_SOURCE_TIMEOUT
+              value: "3s"' <<<"${default_rendered}"; then
+  echo "observability source timeout must be rendered" >&2
+  exit 1
+fi
+if ! grep -A1 -Fq 'name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
+              value: "4"' <<<"${default_rendered}"; then
+  echo "observability source concurrency must be rendered" >&2
+  exit 1
+fi
+if ! grep -A1 -Fq 'name: BKN_TRACE_DEPLOYMENT_TENANT_ID
+              value: "openbkn-local"' <<<"${default_rendered}"; then
+  echo "single-tenant deployments must inject the trusted deployment tenant" >&2
+  exit 1
+fi
 
 rendered="$(helm template agent-observability "${chart_dir}" \
   --set evidence.store=opensearch \

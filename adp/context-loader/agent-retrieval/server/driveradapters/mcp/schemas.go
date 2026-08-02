@@ -90,6 +90,7 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 	case "bkn_start_interaction":
 		addString("conversation_id", true)
 		addString("idempotency_key", true)
+		addString("question", true)
 		properties["lease_seconds"] = map[string]any{"type": "integer", "minimum": 1}
 	case "bkn_close_conversation":
 		addString("conversation_id", true)
@@ -106,6 +107,9 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 		addString("completion_manifest_version", true)
 		addString("completion_reason", true)
 		addString("answer_artifact_ref", false)
+		if toolKey == "bkn_complete_interaction" {
+			addString("answer", true)
+		}
 		properties["claims"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 		properties["expected_operations"] = expectedResourceSchema("operation_id")
 		properties["expected_receipts"] = expectedResourceSchema("receipt_id")

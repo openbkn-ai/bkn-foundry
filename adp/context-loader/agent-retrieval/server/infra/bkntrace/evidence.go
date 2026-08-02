@@ -12,11 +12,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -40,6 +42,22 @@ const maxSubgraphEvidenceRefs = 100
 
 type Event map[string]any
 
+type InteractionArtifactType string
+
+const (
+	InteractionArtifactQuestion InteractionArtifactType = "question"
+	InteractionArtifactResult   InteractionArtifactType = "result"
+)
+
+type evidenceOutcomeContextKey struct{}
+
+type evidenceOutcome struct {
+	mu           sync.Mutex
+	durable      bool
+	eventIDs     []string
+	businessRefs []BusinessRef
+}
+
 var (
 	evidenceHTTPClient = &http.Client{}
 	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
@@ -58,6 +76,8 @@ type eventContext struct {
 	requestID        string
 	accountID        string
 	accountType      string
+	applicationID    string
+	subjectType      string
 	tenantID         string
 	businessDomain   string
 	conversationID   string
@@ -80,6 +100,108 @@ func HashValue(value any) string {
 
 func EvidenceEnabled() bool {
 	return evidenceIngestURL() != ""
+}
+
+func RecordInteractionArtifact(
+	ctx context.Context,
+	conversationID string,
+	interactionID string,
+	artifactType InteractionArtifactType,
+	content any,
+) (string, error) {
+	ec, ok := baseEventContext(ctx)
+	if !ok {
+		return "", errors.New("current request, trace and trusted account context are required")
+	}
+	ec.conversationID = strings.TrimSpace(conversationID)
+	ec.interactionID = strings.TrimSpace(interactionID)
+	ec.operationID = ""
+	ec.attempt = 1
+	if ec.conversationID == "" || ec.interactionID == "" {
+		return "", errors.New("conversation_id and interaction_id are required")
+	}
+	eventType := ""
+	artifactField := ""
+	switch artifactType {
+	case InteractionArtifactQuestion:
+		eventType = "agent.interaction.started"
+		artifactField = "question_artifact_ref"
+	case InteractionArtifactResult:
+		eventType = "claim.created"
+		artifactField = "result_artifact_ref"
+	default:
+		return "", fmt.Errorf("unsupported interaction artifact type %q", artifactType)
+	}
+	contentHash := HashValue(content)
+	idHash := sha256.Sum256([]byte(ec.interactionID + "|" + string(artifactType) + "|" + contentHash))
+	artifactID := "art_" + string(artifactType) + "_" + hex.EncodeToString(idHash[:16])
+	artifactRef := "artifact:" + artifactID
+	traceBlock := traceBlockFromEventContext(ec)
+	artifact := map[string]any{
+		"artifact_id": artifactID, "artifact_type": string(artifactType),
+		"bkn.request.id": ec.requestID, "trace_id": ec.traceID,
+		"interaction_id": ec.interactionID, "content_type": "application/json",
+		"schema_version": "2.2.0", "observed_at": ec.observedAt,
+		"content_hash": contentHash, "content": content,
+		"bkn.tenant.id": ec.tenantID, "business_domain": ec.businessDomain,
+		"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
+		"effective_subject_id":     ec.accountID,
+		"application_principal_id": ec.applicationID,
+		"initiator":                "account:" + ec.accountID, "agent_or_app": ec.applicationID,
+	}
+	if err := postArtifactWithRetry(evidenceArtifactURL(), evidenceTimeout(), traceBlock, artifact); err != nil {
+		return "", err
+	}
+	event := buildEvent(
+		ec, eventType, "interaction."+string(artifactType),
+		map[string]any{artifactField: artifactRef, "content_hash": contentHash}, "", "",
+	)
+	event["event_id"] = stableEventID(ec.traceID, ec.interactionID, eventType, 1)
+	if err := postBatchWithRetry(evidenceIngestURL(), evidenceTimeout(), batch{
+		ContractVersion: ContractVersion, Trace: traceBlock, Events: []Event{event},
+	}); err != nil {
+		return "", err
+	}
+	return artifactRef, nil
+}
+
+func postArtifactWithRetry(
+	url string,
+	timeout time.Duration,
+	traceBlock map[string]any,
+	artifact map[string]any,
+) error {
+	if url == "" {
+		return errors.New("BKN Trace artifact URL is not configured")
+	}
+	body, err := json.Marshal(artifact)
+	if err != nil {
+		return err
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		postCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		req, requestErr := http.NewRequestWithContext(postCtx, http.MethodPost, url, bytes.NewReader(body))
+		if requestErr != nil {
+			cancel()
+			return requestErr
+		}
+		setEvidenceIngestHeaders(req.Header, traceBlock)
+		resp, requestErr := evidenceHTTPClient.Do(req)
+		if requestErr == nil {
+			resp.Body.Close()
+			if resp.StatusCode < http.StatusBadRequest {
+				cancel()
+				return nil
+			}
+			requestErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+		cancel()
+		err = requestErr
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
+		}
+	}
+	return err
 }
 
 func EmitSearchSchemaEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.SearchSchemaReq, resp *interfaces.SearchSchemaResp) string {
@@ -111,7 +233,7 @@ func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string,
 }
 
 func submitAndReturnFirstEventID(ctx context.Context, logger interfaces.Logger, req any, events []Event) string {
-	SubmitEvents(ctx, logger, req, events)
+	_ = SubmitEvents(ctx, logger, req, events)
 	if len(events) == 0 {
 		return ""
 	}
@@ -125,7 +247,11 @@ func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaRe
 		return nil
 	}
 	refs := schemaEvidenceRefs(resolvedKnID(req), resp)
-	return buildRetrievalEvents(ec, "context.search_schema", HashValue(strings.TrimSpace(req.Query)), len(refs), false, refs)
+	candidateCount := 0
+	if resp != nil {
+		candidateCount = len(resp.ObjectTypes) + len(resp.RelationTypes) + len(resp.ActionTypes) + len(resp.MetricTypes)
+	}
+	return buildRetrievalEvents(ec, "context.search_schema", HashValue(strings.TrimSpace(req.Query)), candidateCount, false, refs)
 }
 
 func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []Event {
@@ -205,27 +331,29 @@ func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidat
 	return []Event{fact}
 }
 
-func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events []Event) {
+func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events []Event) error {
 	if len(events) == 0 {
-		return
+		return nil
 	}
 	ec, ok := contextFromRequest(ctx, req)
 	if !ok || ec.accountID == "" || ec.accountType == "" {
-		return
+		return nil
 	}
 	ingestURL := evidenceIngestURL()
 	if ingestURL == "" {
-		return
+		return nil
 	}
 	timeout := evidenceTimeout()
 	traceBlock := map[string]any{
-		"trace_id":         ec.traceID,
-		"traceparent":      ec.traceparent,
-		"bkn.request.id":   ec.requestID,
-		"bkn.tenant.id":    ec.tenantID,
-		"business_domain":  ec.businessDomain,
-		"bkn.account.id":   ec.accountID,
-		"bkn.account.type": ec.accountType,
+		"trace_id":                     ec.traceID,
+		"traceparent":                  ec.traceparent,
+		"bkn.request.id":               ec.requestID,
+		"bkn.tenant.id":                ec.tenantID,
+		"business_domain":              ec.businessDomain,
+		"bkn.account.id":               ec.accountID,
+		"bkn.account.type":             ec.accountType,
+		"bkn.application.principal.id": ec.applicationID,
+		"bkn.effective.subject.type":   ec.subjectType,
 	}
 	if ec.conversationID != "" {
 		traceBlock["bkn.conversation.id"] = ec.conversationID
@@ -244,19 +372,78 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		} else {
 			log.Printf("BKN Trace evidence ingestion dropped: in-flight limit reached")
 		}
+		return fmt.Errorf("evidence ingestion in-flight limit reached")
+	}
+	defer func() { <-evidenceInFlight }()
+	if err := postBatchWithRetry(ingestURL, timeout, payload); err != nil {
+		if logger != nil {
+			logger.WithContext(ctx).Warnf("BKN Trace evidence ingestion unavailable: %v", err)
+		} else {
+			log.Printf("BKN Trace evidence ingestion unavailable: %v", err)
+		}
+		return err
+	}
+	recordDurableEvidenceOutcome(ctx, payload)
+	return nil
+}
+
+func withEvidenceOutcome(ctx context.Context) context.Context {
+	if evidenceOutcomeFromContext(ctx) != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, evidenceOutcomeContextKey{}, &evidenceOutcome{})
+}
+
+func evidenceOutcomeFromContext(ctx context.Context) *evidenceOutcome {
+	value, _ := ctx.Value(evidenceOutcomeContextKey{}).(*evidenceOutcome)
+	return value
+}
+
+func recordDurableEvidenceOutcome(ctx context.Context, payload batch) {
+	outcome := evidenceOutcomeFromContext(ctx)
+	if outcome == nil {
 		return
 	}
-
-	go func() {
-		defer func() { <-evidenceInFlight }()
-		if err := postBatchWithRetry(ingestURL, timeout, payload); err != nil {
-			if logger != nil {
-				logger.WithContext(ctx).Warnf("BKN Trace evidence ingestion unavailable: %v", err)
-			} else {
-				log.Printf("BKN Trace evidence ingestion unavailable: %v", err)
+	outcome.mu.Lock()
+	defer outcome.mu.Unlock()
+	outcome.durable = true
+	seenEvents := make(map[string]struct{}, len(outcome.eventIDs))
+	for _, eventID := range outcome.eventIDs {
+		seenEvents[eventID] = struct{}{}
+	}
+	seenRefs := make(map[string]struct{}, len(outcome.businessRefs))
+	for _, ref := range outcome.businessRefs {
+		seenRefs[ref.RefType+"\x00"+ref.RefID+"\x00"+ref.Version] = struct{}{}
+	}
+	for _, event := range payload.Events {
+		if eventID := stringValue(event["event_id"]); eventID != "" {
+			if _, exists := seenEvents[eventID]; !exists {
+				outcome.eventIDs = append(outcome.eventIDs, eventID)
+				seenEvents[eventID] = struct{}{}
 			}
 		}
-	}()
+		for _, ref := range trace30BusinessRefs(event, stringValue(payload.Trace["business_domain"])) {
+			key := ref.RefType + "\x00" + ref.RefID + "\x00" + ref.Version
+			if _, exists := seenRefs[key]; exists {
+				continue
+			}
+			outcome.businessRefs = append(outcome.businessRefs, BusinessRef{
+				RefType: ref.RefType, RefID: ref.RefID, BusinessDomainID: ref.BusinessDomainID,
+				Version: ref.Version, DisplayHint: ref.DisplayHint,
+			})
+			seenRefs[key] = struct{}{}
+		}
+	}
+}
+
+func snapshotEvidenceOutcome(ctx context.Context) (bool, []string, []BusinessRef) {
+	outcome := evidenceOutcomeFromContext(ctx)
+	if outcome == nil {
+		return false, nil, nil
+	}
+	outcome.mu.Lock()
+	defer outcome.mu.Unlock()
+	return outcome.durable, append([]string(nil), outcome.eventIDs...), append([]BusinessRef(nil), outcome.businessRefs...)
 }
 
 func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
@@ -273,35 +460,210 @@ func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) 
 }
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	postCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	for _, event := range payload.Events {
+		requestPayload, err := trace30EvidenceEvent(payload.Trace, event)
+		if err != nil {
+			return err
+		}
+		body, err := json.Marshal(requestPayload)
+		if err != nil {
+			return err
+		}
+		postCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		req, err := http.NewRequestWithContext(postCtx, http.MethodPost, ingestURL, bytes.NewReader(body))
+		if err != nil {
+			cancel()
+			return err
+		}
+		setEvidenceIngestHeaders(req.Header, payload.Trace)
 
-	req, err := http.NewRequestWithContext(postCtx, http.MethodPost, ingestURL, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if token := strings.TrimSpace(os.Getenv(envEvidenceIngestToken)); token != "" {
-		req.Header.Set("X-BKN-Trace-Ingest-Token", token)
-	}
-
-	resp, err := evidenceHTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		resp, err := evidenceHTTPClient.Do(req)
+		if err != nil {
+			cancel()
+			return err
+		}
+		resp.Body.Close()
+		cancel()
+		if resp.StatusCode >= http.StatusBadRequest {
+			return fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
 	}
 	return nil
 }
 
+type trace30Event struct {
+	SchemaVersion          string                 `json:"bkn.trace.schema.version"`
+	EventID                string                 `json:"event_id"`
+	EventType              string                 `json:"event_type"`
+	PayloadHash            string                 `json:"payload_hash"`
+	ConversationID         string                 `json:"conversation_id"`
+	InteractionID          string                 `json:"interaction_id"`
+	OperationID            string                 `json:"operation_id,omitempty"`
+	Attempt                uint32                 `json:"attempt,omitempty"`
+	RequestID              string                 `json:"request_id,omitempty"`
+	TraceID                string                 `json:"trace_id,omitempty"`
+	SpanID                 string                 `json:"span_id,omitempty"`
+	ProducerID             string                 `json:"producer_id"`
+	ProducerStreamID       string                 `json:"producer_stream_id"`
+	ProducerEpoch          uint64                 `json:"producer_epoch"`
+	ProducerSequence       uint64                 `json:"producer_sequence"`
+	CausationEventIDs      []string               `json:"causation_event_ids,omitempty"`
+	StartedAt              string                 `json:"started_at"`
+	ObservedAt             string                 `json:"observed_at"`
+	EmittedAt              string                 `json:"emitted_at"`
+	Envelope               Event                  `json:"envelope"`
+	BusinessRefs           []trace30BusinessRef   `json:"business_refs,omitempty"`
+	OperationBusinessEdges []trace30OperationEdge `json:"operation_business_edges,omitempty"`
+}
+
+type trace30BusinessRef struct {
+	RefType          string `json:"ref_type"`
+	RefID            string `json:"ref_id"`
+	BusinessDomainID string `json:"business_domain_id"`
+	Version          string `json:"version"`
+	DisplayHint      string `json:"display_hint,omitempty"`
+}
+
+type trace30OperationEdge struct {
+	OperationID string             `json:"operation_id"`
+	BusinessRef trace30BusinessRef `json:"business_ref"`
+	Role        string             `json:"role"`
+	ObservedAt  string             `json:"observed_at"`
+}
+
+func trace30EvidenceEvent(traceBlock map[string]any, event Event) (trace30Event, error) {
+	envelope, err := json.Marshal(event)
+	if err != nil {
+		return trace30Event{}, err
+	}
+	sum := sha256.Sum256(envelope)
+	operationID := stringValue(event["operation_id"])
+	attempt := uint32(intValue(event["attempt"], 1))
+	observedAt := stringValue(event["observed_at"])
+	emittedAt := stringValue(event["emitted_at"])
+	if emittedAt == "" {
+		emittedAt = observedAt
+	}
+	refs := trace30BusinessRefs(event, stringValue(traceBlock["business_domain"]))
+	edges := make([]trace30OperationEdge, 0, len(refs))
+	for _, ref := range refs {
+		edges = append(edges, trace30OperationEdge{
+			OperationID: operationID, BusinessRef: ref, Role: "read", ObservedAt: observedAt,
+		})
+	}
+	causationIDs := []string{}
+	if value := stringValue(event["causation_event_id"]); value != "" {
+		causationIDs = append(causationIDs, value)
+	}
+	producerStreamKey := operationID
+	if producerStreamKey == "" {
+		producerStreamKey = "interaction:" + stringValue(event["interaction_id"]) + ":" + stringValue(event["event_type"])
+	}
+	return trace30Event{
+		SchemaVersion: CoreSchemaVersion, EventID: stringValue(event["event_id"]),
+		EventType: stringValue(event["event_type"]), PayloadHash: hex.EncodeToString(sum[:]),
+		ConversationID: stringValue(traceBlock["bkn.conversation.id"]),
+		InteractionID:  stringValue(event["interaction_id"]), OperationID: operationID,
+		Attempt: attempt, RequestID: stringValue(traceBlock["bkn.request.id"]),
+		TraceID: stringValue(traceBlock["trace_id"]), SpanID: stringValue(event["span_id"]),
+		ProducerID: ModuleName, ProducerStreamID: ModuleName + ":" + producerStreamKey,
+		ProducerEpoch: 1, ProducerSequence: uint64(attempt), CausationEventIDs: causationIDs,
+		StartedAt: observedAt, ObservedAt: observedAt, EmittedAt: emittedAt,
+		Envelope: event, BusinessRefs: refs, OperationBusinessEdges: edges,
+	}, nil
+}
+
+func trace30BusinessRefs(event Event, businessDomain string) []trace30BusinessRef {
+	payload, _ := event["payload"].(map[string]any)
+	items, _ := payload["source_refs"].([]map[string]any)
+	refs := make([]trace30BusinessRef, 0, len(items))
+	for _, item := range items {
+		refID := stringValue(item["ref_id"])
+		refType := trace30RefType(stringValue(item["ref_type"]))
+		if refID == "" || refType == "" || businessDomain == "" {
+			continue
+		}
+		version := stringValue(item["version_status"])
+		if version == "" {
+			version = "observed"
+		}
+		refs = append(refs, trace30BusinessRef{
+			RefType: refType, RefID: refID, BusinessDomainID: businessDomain,
+			Version: version, DisplayHint: stringValue(item["display_hint"]),
+		})
+	}
+	return refs
+}
+
+func trace30RefType(value string) string {
+	switch value {
+	case "object":
+		return "object_type"
+	case "relation":
+		return "relation_type"
+	case "action":
+		return "action_type"
+	case "knowledge_network", "object_type", "object_instance", "property", "relation_type",
+		"data_resource", "metric", "logic", "function", "action_type", "action_instance":
+		return value
+	default:
+		return ""
+	}
+}
+
+func setEvidenceIngestHeaders(headers http.Header, traceBlock map[string]any) {
+	headers.Set("Content-Type", "application/json")
+	headers.Set("X-BKN-Trace-Ingest-Token", strings.TrimSpace(os.Getenv(envEvidenceIngestToken)))
+	headers.Set(coreGatewayTokenHeader, strings.TrimSpace(os.Getenv(envCoreGatewayToken)))
+	accountID := stringValue(traceBlock["bkn.account.id"])
+	accountType := stringValue(traceBlock["bkn.account.type"])
+	tenantID := stringValue(traceBlock["bkn.tenant.id"])
+	businessDomain := stringValue(traceBlock["business_domain"])
+	applicationID := stringValue(traceBlock["bkn.application.principal.id"])
+	if applicationID == "" {
+		applicationID = ModuleName
+	}
+	subjectType := stringValue(traceBlock["bkn.effective.subject.type"])
+	if subjectType == "" {
+		subjectType = "user"
+	}
+	headers.Set("x-account-id", accountID)
+	headers.Set("x-account-type", accountType)
+	headers.Set("x-tenant-id", tenantID)
+	headers.Set("x-business-domain", businessDomain)
+	headers.Set("X-BKN-Tenant-ID", tenantID)
+	headers.Set("X-Business-Domain-ID", businessDomain)
+	headers.Set("X-BKN-Application-Principal-ID", applicationID)
+	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
+	headers.Set("X-BKN-Effective-Subject-ID", accountID)
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
+}
+
+func intValue(value any, fallback int) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case float64:
+		return int(typed)
+	default:
+		return fallback
+	}
+}
+
 func evidenceIngestURL() string {
 	return strings.TrimSpace(os.Getenv(envEvidenceIngestURL))
+}
+
+func evidenceArtifactURL() string {
+	value := strings.TrimRight(evidenceIngestURL(), "/")
+	if strings.HasSuffix(value, "/events") {
+		return strings.TrimSuffix(value, "/events") + "/artifacts"
+	}
+	return ""
 }
 
 func evidenceTimeout() time.Duration {
@@ -317,6 +679,34 @@ func evidenceTimeout() time.Duration {
 }
 
 func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
+	ec, ok := baseEventContext(ctx)
+	if !ok {
+		return eventContext{}, false
+	}
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	if schemaReq, ok := req.(*interfaces.SearchSchemaReq); ok && schemaReq != nil {
+		if ec.accountID == "" {
+			ec.accountID = strings.TrimSpace(schemaReq.XAccountID)
+		}
+		if ec.accountType == "" {
+			ec.accountType = strings.TrimSpace(schemaReq.XAccountType)
+		}
+	}
+	ec.interactionID = strings.TrimSpace(traceContext.InteractionID)
+	ec.operationID = strings.TrimSpace(traceContext.OperationID)
+	if ec.interactionID == "" || ec.operationID == "" {
+		return eventContext{}, false
+	}
+	ec.causationEventID = strings.TrimSpace(traceContext.CausationEventID)
+	ec.claimID = strings.TrimSpace(traceContext.ClaimID)
+	ec.attempt = traceContext.Attempt
+	if ec.attempt < 1 || ec.attempt > 1000 {
+		ec.attempt = 1
+	}
+	return ec, true
+}
+
+func baseEventContext(ctx context.Context) (eventContext, bool) {
 	spanContext := trace.SpanContextFromContext(ctx)
 	if !spanContext.IsValid() {
 		return eventContext{}, false
@@ -335,30 +725,25 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 	authContext, _ := common.GetAccountAuthContextFromCtx(ctx)
 	accountID := ""
 	accountType := ""
+	applicationID := ""
+	subjectType := "user"
 	if authContext != nil {
 		accountID = strings.TrimSpace(authContext.AccountID)
 		accountType = strings.TrimSpace(string(authContext.AccountType))
-	}
-	if schemaReq, ok := req.(*interfaces.SearchSchemaReq); ok && schemaReq != nil {
-		if accountID == "" {
-			accountID = strings.TrimSpace(schemaReq.XAccountID)
+		applicationID = accountID
+		if authContext.TokenInfo != nil && strings.TrimSpace(authContext.TokenInfo.ClientID) != "" {
+			applicationID = strings.TrimSpace(authContext.TokenInfo.ClientID)
 		}
-		if accountType == "" {
-			accountType = strings.TrimSpace(schemaReq.XAccountType)
+		if authContext.AccountType == interfaces.AccessorTypeApp {
+			subjectType = "service"
 		}
 	}
-	interactionID := strings.TrimSpace(traceContext.InteractionID)
-	operationID := strings.TrimSpace(traceContext.OperationID)
-	if interactionID == "" || operationID == "" {
+	if accountID == "" || accountType == "" {
 		return eventContext{}, false
 	}
 	flags := "00"
 	if spanContext.TraceFlags().IsSampled() {
 		flags = "01"
-	}
-	attempt := traceContext.Attempt
-	if attempt < 1 || attempt > 1000 {
-		attempt = 1
 	}
 	return eventContext{
 		traceID:          spanContext.TraceID().String(),
@@ -367,16 +752,30 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 		requestID:        traceContext.RequestID,
 		accountID:        accountID,
 		accountType:      accountType,
+		applicationID:    applicationID,
+		subjectType:      subjectType,
 		tenantID:         strings.TrimSpace(traceContext.TenantID),
 		businessDomain:   strings.TrimSpace(traceContext.BusinessDomain),
 		conversationID:   strings.TrimSpace(traceContext.ConversationID),
-		interactionID:    interactionID,
-		operationID:      operationID,
+		interactionID:    strings.TrimSpace(traceContext.InteractionID),
+		operationID:      strings.TrimSpace(traceContext.OperationID),
 		causationEventID: strings.TrimSpace(traceContext.CausationEventID),
 		claimID:          strings.TrimSpace(traceContext.ClaimID),
-		attempt:          attempt,
+		attempt:          traceContext.Attempt,
 		observedAt:       observedAt,
 	}, true
+}
+
+func traceBlockFromEventContext(ec eventContext) map[string]any {
+	return map[string]any{
+		"trace_id": ec.traceID, "traceparent": ec.traceparent,
+		"bkn.request.id": ec.requestID, "bkn.tenant.id": ec.tenantID,
+		"business_domain": ec.businessDomain, "bkn.account.id": ec.accountID,
+		"bkn.account.type":             ec.accountType,
+		"bkn.application.principal.id": ec.applicationID,
+		"bkn.effective.subject.type":   ec.subjectType,
+		"bkn.conversation.id":          ec.conversationID,
+	}
 }
 
 func buildEvent(ec eventContext, eventType, operationName string, payload map[string]any, claimID, causationEventID string) Event {
@@ -415,7 +814,15 @@ func schemaEvidenceRefs(knID string, resp *interfaces.SearchSchemaResp) []map[st
 	if resp == nil || strings.TrimSpace(knID) == "" {
 		return nil
 	}
-	refs := make([]map[string]any, 0, len(resp.ObjectTypes)+len(resp.RelationTypes)+len(resp.ActionTypes)+len(resp.MetricTypes))
+	refs := make([]map[string]any, 0, 1+len(resp.ObjectTypes)+len(resp.RelationTypes)+len(resp.ActionTypes)+len(resp.MetricTypes))
+	refs = append(refs, map[string]any{
+		"ref_id":         "kn:" + knID,
+		"ref_type":       "knowledge_network",
+		"source_system":  "context-loader",
+		"validity":       "observed",
+		"version_status": "unversioned",
+		"visibility":     "visible",
+	})
 	refs = append(refs, conceptRefs("object", "object", knID, resp.ObjectTypes)...)
 	refs = append(refs, conceptRefs("relation", "relation", knID, resp.RelationTypes)...)
 	refs = append(refs, conceptRefs("action_type", "action", knID, resp.ActionTypes)...)

@@ -25,9 +25,11 @@ import (
 )
 
 const (
-	CoreSchemaVersion = "3.0.0"
-	coreAPIPath       = "/api/agent-observability/v1"
-	envCoreURL        = "BKN_TRACE_CORE_URL"
+	CoreSchemaVersion      = "3.0.0"
+	coreAPIPath            = "/api/agent-observability/v1"
+	envCoreURL             = "BKN_TRACE_CORE_URL"
+	envCoreGatewayToken    = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
+	coreGatewayTokenHeader = "X-BKN-Trace-Query-Token"
 
 	lifecycleClientTimeout      = 10 * time.Second
 	lifecycleMaxIdleConnections = 100
@@ -193,18 +195,26 @@ type FinishAttemptInput struct {
 	EvidenceDurability   string
 	Retryable            bool
 	ObservedEvidenceRefs []string
+	BusinessRefs         []BusinessRef
+	ArtifactRefs         []string
+	PartialReasons       []string
 }
 
 type LifecycleClient struct {
-	baseURL string
-	client  *http.Client
+	baseURL      string
+	gatewayToken string
+	client       *http.Client
 }
 
 func NewLifecycleClient(baseURL string, client *http.Client) *LifecycleClient {
 	if client == nil {
 		client = newLifecycleHTTPClient()
 	}
-	return &LifecycleClient{baseURL: strings.TrimRight(baseURL, "/"), client: client}
+	return &LifecycleClient{
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		gatewayToken: strings.TrimSpace(os.Getenv(envCoreGatewayToken)),
+		client:       client,
+	}
 }
 
 func NewLifecycleClientFromEnv() *LifecycleClient {
@@ -341,6 +351,9 @@ func (c *LifecycleClient) finishAttempt(
 		"evidence_durability": evidenceDurability, "retryable": input.Retryable,
 		"request_id": input.RequestID, "trace_id": input.TraceID,
 		"observed_evidence_refs": input.ObservedEvidenceRefs,
+		"business_refs":          input.BusinessRefs,
+		"artifact_refs":          input.ArtifactRefs,
+		"partial_reasons":        input.PartialReasons,
 	}
 	var result OperationResult
 	path := "/operations/" + url.PathEscape(input.OperationID) + "/attempts/" +
@@ -380,6 +393,9 @@ func (c *LifecycleClient) do(
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.gatewayToken != "" {
+		req.Header.Set(coreGatewayTokenHeader, c.gatewayToken)
+	}
 	if err := setTrustedLifecycleHeaders(ctx, req.Header); err != nil {
 		return &APIError{
 			Code: "permission_denied", Message: err.Error(),
@@ -424,6 +440,13 @@ func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error 
 	if auth.AccountType == interfaces.AccessorTypeApp {
 		subjectType = "service"
 	}
+	// Core first authorizes the trusted query scope, then validates the richer
+	// lifecycle owner tuple. Both header sets come from this authenticated
+	// service boundary, never from the lifecycle request body.
+	headers.Set("x-account-id", auth.AccountID)
+	headers.Set("x-account-type", string(auth.AccountType))
+	headers.Set("x-tenant-id", traceContext.TenantID)
+	headers.Set("x-business-domain", traceContext.BusinessDomain)
 	headers.Set("X-BKN-Tenant-ID", traceContext.TenantID)
 	headers.Set("X-Business-Domain-ID", traceContext.BusinessDomain)
 	headers.Set("X-BKN-Application-Principal-ID", applicationID)

@@ -15,6 +15,7 @@ type Query struct {
 	Status         string
 	RequestID      string
 	TraceID        string
+	InteractionID  string
 	Limit          int
 }
 

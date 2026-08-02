@@ -11,6 +11,8 @@ metadata:
 {{- $_ := set $config "exporters" (dict) }}
 {{- end }}
 {{- $opensearch := dict "http" (dict "endpoint" .Values.opensearchExporter.http.endpoint) "bulk_action" .Values.opensearchExporter.bulkAction "dataset" .Values.opensearchExporter.dataset "namespace" .Values.opensearchExporter.namespace }}
+{{- $_ := set $opensearch "sending_queue" (dict "enabled" .Values.opensearchExporter.sendingQueue.enabled "num_consumers" .Values.opensearchExporter.sendingQueue.numConsumers "queue_size" .Values.opensearchExporter.sendingQueue.queueSize) }}
+{{- $_ := set $opensearch "retry_on_failure" (dict "enabled" .Values.opensearchExporter.retryOnFailure.enabled "initial_interval" .Values.opensearchExporter.retryOnFailure.initialInterval "max_interval" .Values.opensearchExporter.retryOnFailure.maxInterval "max_elapsed_time" .Values.opensearchExporter.retryOnFailure.maxElapsedTime) }}
 {{- if hasKey .Values.opensearchExporter.http "tls" }}
 {{- $tls := dict }}
 {{- if hasKey .Values.opensearchExporter.http.tls "insecure" }}
