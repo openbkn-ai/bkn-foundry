@@ -137,5 +137,8 @@ healthy run.
 
 ## Cleanup
 
-Resources (KN, MCP, Skills, Catalog, mock backend process) are deleted
-automatically on script exit, success or failure.
+Platform resources (KN, MCP, Skills, Catalog) are **kept** by default; their IDs are
+printed on exit. Run with `CLEANUP=1 ./run.sh` to delete them on exit, success or failure.
+
+The local mock tool backend process is stopped on exit either way, unless `DEBUG_KEEP=1`
+is set (which keeps the whole routing loop callable for debugging).

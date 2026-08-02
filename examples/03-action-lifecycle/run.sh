@@ -119,8 +119,9 @@ AT_ID=""
 SCHED_ID=""
 
 cleanup() {
-    if [ "${KEEP_RESOURCES:-0}" = "1" ]; then
-        echo ""; echo "=== Cleanup skipped (KEEP_RESOURCES=1) ==="
+    if [ "${CLEANUP:-0}" != "1" ]; then
+        echo ""; echo "=== Resources kept (set CLEANUP=1 to delete on exit) ==="
+        echo "  KN=$KN_ID  CAT=$CAT_ID  TOOLBOX=$BOX_ID  ACTION_TYPE=$AT_ID  SCHEDULE=$SCHED_ID"
         echo "  Inspect: openbkn toolbox list | grep eval_action_toolbox ; openbkn bkn action-log list $KN_ID"
         return 0
     fi

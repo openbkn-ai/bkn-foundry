@@ -47,7 +47,8 @@ See the README inside each example for specific prerequisites.
 
 ## Cleanup
 
-Most scripts delete all created resources (datasources, knowledge networks, actions) automatically
-on exit — whether the run succeeds or fails.
+Scripts **keep** everything they create (datasources, knowledge networks, actions) so you can
+inspect the result; the resource IDs are printed on exit. Run with `CLEANUP=1 ./run.sh` to have
+the script delete them on exit instead — whether the run succeeds or fails.
 
 **06-world-cup** leaves datasources, MySQL rows, Vega catalogs, and the pushed KN in place unless you delete them manually.

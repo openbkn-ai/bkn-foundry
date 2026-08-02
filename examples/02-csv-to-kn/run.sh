@@ -39,6 +39,13 @@ CAT_ID=""; KN_ID=""
 
 cleanup() {
     [ -z "$KN_ID" ] && [ -z "$CAT_ID" ] && return 0
+    if [ "${CLEANUP:-0}" != "1" ]; then
+        echo ""
+        echo "=== Resources kept (set CLEANUP=1 to delete on exit) ==="
+        [ -n "$KN_ID" ]  && echo "  KN      $KN_ID   (openbkn bkn delete $KN_ID -y)" || true
+        [ -n "$CAT_ID" ] && echo "  Catalog $CAT_ID  (openbkn call /api/vega-backend/v1/catalogs/$CAT_ID -X DELETE)" || true
+        return 0
+    fi
     echo ""; echo "=== Cleanup ==="
     [ -n "$KN_ID" ]  && openbkn bkn delete "$KN_ID" -y 2>/dev/null && echo "  Deleted KN $KN_ID"
     [ -n "$CAT_ID" ] && openbkn call "/api/vega-backend/v1/catalogs/$CAT_ID" -X DELETE 2>/dev/null && echo "  Deleted catalog $CAT_ID"

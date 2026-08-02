@@ -97,3 +97,13 @@ Replace the files in `data/` with your own CSVs. Requirements:
 | Schema setup | Write SQL seed file | Just bring CSVs |
 | Network feature | Semantic search + Q&A | Subgraph traversal + export |
 | Data domain | Supply chain (BOM, orders) | HR (employees, projects) |
+
+## Cleanup
+
+The KN and Vega catalog are **kept** after the run; their IDs are printed on exit.
+Run with `CLEANUP=1 ./run.sh` to delete them automatically, or clean up by hand:
+
+```bash
+openbkn bkn delete <kn-id> -y
+openbkn call /api/vega-backend/v1/catalogs/<catalog-id> -X DELETE
+```

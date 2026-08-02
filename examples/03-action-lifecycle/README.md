@@ -54,4 +54,5 @@ written correctly. In production, replace the tool binding with your ERP or noti
 
 ## Cleanup
 
-Resources are deleted automatically when the script exits (success or failure).
+Created resources are **kept** by default; their IDs are printed on exit. Run with
+`CLEANUP=1 ./run.sh` to delete them automatically (success or failure).

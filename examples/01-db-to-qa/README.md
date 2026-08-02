@@ -105,7 +105,8 @@ openbkn bkn search <kn-id> "物料"
 
 ## Cleanup
 
-Resources (KN, datasource) are deleted automatically on exit. Manual cleanup:
+Resources (KN, datasource) are **kept** after the run so you can inspect them; their IDs are
+printed on exit. Run with `CLEANUP=1 ./run.sh` to delete them automatically instead. Manual cleanup:
 ```bash
 openbkn bkn delete <kn-id> -y
 openbkn ds delete <datasource-id> -y

@@ -126,5 +126,8 @@ pip install -r tool_backend/requirements.txt
 
 ## Cleanup
 
-脚本退出时（成功 / 失败）自动清理所有资源：KN、MCP、Skills、Catalog、
-mock backend 进程。
+脚本默认**保留**平台资源（KN、MCP、Skills、Catalog），退出时打印各资源 ID。
+需要自动删除时用 `CLEANUP=1 ./run.sh`（成功 / 失败都清理）。
+
+本地 mock backend 进程两种模式下都会在退出时停掉，除非设了 `DEBUG_KEEP=1`
+（保留整条路由链路便于调试）。

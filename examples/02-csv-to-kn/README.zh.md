@@ -93,3 +93,13 @@ vim .env
 | Schema 准备 | 编写 SQL seed 文件 | 直接带 CSV |
 | 网络特性展示 | 语义搜索 + 问答 | **子图遍历** + 导出 |
 | 数据领域 | 供应链（BOM、采购订单） | **HR（员工、部门、项目）** |
+
+## 清理
+
+脚本默认**保留**创建的知识网络与 Vega catalog，退出时打印资源 ID。
+需要自动删除时用 `CLEANUP=1 ./run.sh`，或手动清理：
+
+```bash
+openbkn bkn delete <kn-id> -y
+openbkn call /api/vega-backend/v1/catalogs/<catalog-id> -X DELETE
+```
