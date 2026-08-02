@@ -169,7 +169,7 @@ func registerLicenseInternal(r *gin.Engine, svc *license.Service, keysStore *aut
 	g.GET("/capabilities", func(c *gin.Context) {
 		snap := svc.State()
 		resp := gin.H{
-			"state":    snap.State,
+			"state":    string(snap.State),
 			"features": []string{},
 			"limits":   map[string]int64{},
 		}
@@ -211,7 +211,7 @@ func RequireAppKey(keysStore *auth.APIKeyStore) gin.HandlerFunc {
 func licenseStatus(svc *license.Service) gin.H {
 	snap := svc.State()
 	h := gin.H{
-		"state":     snap.State,
+		"state":     string(snap.State),
 		"activated": svc.Activated(),
 	}
 	if snap.Err != nil {
@@ -237,8 +237,8 @@ func licenseStatus(svc *license.Service) gin.H {
 }
 
 // licenseDetail is the admin view: status plus identity/customer/features and
-// the instance fingerprint (the activation guide needs fingerprint + code
-// visible side by side).
+// the instance fingerprint (the activation guide shows the fingerprint — it is
+// what the portal asks for).
 func licenseDetail(svc *license.Service) gin.H {
 	h := licenseStatus(svc)
 	h["instance_fp"] = svc.Fingerprint()

@@ -15,7 +15,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/licverify"
@@ -70,10 +70,10 @@ type Service struct {
 	mu           sync.Mutex
 	lastRenewErr string
 
-	// firstRunAt is resolved once and never changes: the guard asks for it on
-	// every state evaluation, and that must not become a query per call.
-	firstRunOnce sync.Once
-	firstRunAt   int64
+	// firstRunAt caches the resolved first-run time: the guard asks for it on
+	// every state evaluation, and that must not become a query per call. Zero
+	// means "not resolved yet" — see firstRun for why a failure is not cached.
+	firstRunAt atomic.Int64
 }
 
 // New builds the service with the official compiled-in key table. The
@@ -295,7 +295,6 @@ func (s *Service) Run(ctx context.Context) {
 	}
 }
 
-// loadText is the Guard's Load hook: the license text, "" when none installed.
 // firstRun is when this deployment first started, in unix seconds. licverify
 // uses it to tell a fresh install (trial: quiet, nothing to do yet) apart from
 // one whose trial window has elapsed (unlicensed: standing prompt to activate).
@@ -308,25 +307,38 @@ func (s *Service) Run(ctx context.Context) {
 // it. A dedicated install-metadata row would be more direct but would cost a
 // migration for a value that is already sitting in the database.
 //
+// Read it as ORDER BY ... LIMIT 1 into the model, not as SELECT MIN(...) into a
+// sql.NullTime: scanning an expression column bypasses GORM's field decoding
+// and lands on the driver's raw value, which for SQLite is a string and fails
+// to scan into a time. That failure is silent — it degrades to 0, i.e. "brand
+// new" — so the whole distinction would quietly never happen. TestFirstRun is
+// what keeps this honest.
+//
 // Answering 0 (empty table, or a database that will not answer) reads as
 // "brand new", i.e. trial. That is the quiet state and it grants nothing, so
-// the failure mode is a missing activation prompt rather than a false one.
+// the failure mode is a missing activation prompt rather than a false one. A
+// failed read is not memoised: the value is cached only once it is real, so a
+// database that was briefly unreachable does not pin this replica to trial for
+// the rest of its life.
 func (s *Service) firstRun() int64 {
-	s.firstRunOnce.Do(func() {
-		var at sql.NullTime
-		if err := s.db.Model(&model.User{}).
-			Select("MIN(created_at)").Scan(&at).Error; err != nil {
-			slog.Warn("license: cannot resolve first-run time; treating this deployment as new",
-				"err", err)
-			return
-		}
-		if at.Valid {
-			s.firstRunAt = at.Time.Unix()
-		}
-	})
-	return s.firstRunAt
+	if at := s.firstRunAt.Load(); at != 0 {
+		return at
+	}
+	var first model.User
+	if err := s.db.Order("created_at ASC").Limit(1).Find(&first).Error; err != nil {
+		slog.Warn("license: cannot resolve first-run time; treating this deployment as new",
+			"err", err)
+		return 0
+	}
+	if first.CreatedAt.IsZero() {
+		return 0
+	}
+	at := first.CreatedAt.Unix()
+	s.firstRunAt.Store(at)
+	return at
 }
 
+// loadText is the Guard's Load hook: the license text, "" when none installed.
 func (s *Service) loadText() (string, error) {
 	var row model.License
 	err := s.db.First(&row, "id = ?", rowID).Error

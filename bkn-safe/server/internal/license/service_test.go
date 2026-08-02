@@ -397,6 +397,59 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+// TestFirstRun is the用例 that makes the trial/unlicensed distinction real.
+// Without it the whole thing degrades silently: an unresolved first-run time
+// reads as 0, which reads as "brand new", which is trial — the same answer a
+// correct implementation gives for a fresh install, so nothing looks wrong.
+// The first version of firstRun did exactly that on SQLite and every existing
+// test still passed.
+func TestFirstRun(t *testing.T) {
+	keyTable, _ := testKeys(t)
+
+	for name, tc := range map[string]struct {
+		age   time.Duration
+		state licverify.State
+	}{
+		"fresh install is inside the trial window": {age: 24 * time.Hour, state: licverify.StateTrial},
+		"trial elapsed": {age: licverify.TrialPeriod + 24*time.Hour, state: licverify.StateUnlicensed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := testDB(t)
+			born := time.Now().Add(-tc.age)
+			if err := db.Create(&model.User{ID: "u-admin", Account: "admin", CreatedAt: born}).Error; err != nil {
+				t.Fatal(err)
+			}
+			svc := newTestService(t, db, config.LicenseConfig{}, keyTable)
+
+			if got := svc.firstRun(); got != born.Unix() {
+				t.Fatalf("firstRun = %d, want %d — the timestamp did not survive the round trip", got, born.Unix())
+			}
+			if got := svc.State().State; got != tc.state {
+				t.Fatalf("state = %s, want %s", got, tc.state)
+			}
+		})
+	}
+}
+
+// A database that will not answer must not pin this replica to trial forever.
+func TestFirstRunDoesNotCacheAFailure(t *testing.T) {
+	keyTable, _ := testKeys(t)
+	db := testDB(t)
+	svc := newTestService(t, db, config.LicenseConfig{}, keyTable)
+
+	if got := svc.firstRun(); got != 0 {
+		t.Fatalf("firstRun on an empty table = %d, want 0", got)
+	}
+
+	born := time.Now().Add(-licverify.TrialPeriod - 24*time.Hour)
+	if err := db.Create(&model.User{ID: "u-admin", Account: "admin", CreatedAt: born}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.firstRun(); got != born.Unix() {
+		t.Fatalf("firstRun = %d after the row appeared, want %d — an unresolved read was cached", got, born.Unix())
+	}
+}
+
 func TestActivationRequestWithoutLicense(t *testing.T) {
 	keyTable, _ := testKeys(t)
 	db := testDB(t)
