@@ -134,6 +134,7 @@ func main() {
 	}
 	var traceOutbox *outbox.Worker
 	var outboxDB *sql.DB
+	bkntrace.WarnIfLegacyEvidenceMisconfigured()
 	if bkntrace.ProducerOutboxEnabled() {
 		outboxDB, err = bkntrace.OpenProducerOutboxDB(appSetting.DBSetting)
 		if err != nil {
