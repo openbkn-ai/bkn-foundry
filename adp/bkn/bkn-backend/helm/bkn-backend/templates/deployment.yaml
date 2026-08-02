@@ -1,17 +1,15 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ .Values.moduleName }}
   namespace: {{ .Values.namespace }}
   labels:
     module: {{ .Values.moduleName }}
 spec:
+  serviceName: {{ .Values.moduleName }}
   replicas: {{ .Values.replicaCount }}
-  strategy:
+  updateStrategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 2
-      maxUnavailable: 1
   selector:
     matchLabels:
       module: {{ .Values.moduleName }}
@@ -90,6 +88,8 @@ spec:
             value: {{ .Values.bknSafe.directoryProvider | quote }}
           - name: BKN_SAFE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          - name: BKN_SAFE_BASE_URL
+            value: {{ .Values.bknSafe.url | quote }}
           {{- if .Values.bknTrace.evidence.ingestUrl }}
           - name: BKN_TRACE_EVIDENCE_INGEST_URL
             value: {{ .Values.bknTrace.evidence.ingestUrl | quote }}
@@ -102,6 +102,19 @@ spec:
               secretKeyRef:
                 name: {{ .Values.bknTrace.evidence.ingestTokenSecretName | quote }}
                 key: {{ .Values.bknTrace.evidence.ingestTokenSecretKey | quote }}
+          {{- end }}
+          - name: BKN_TRACE_OUTBOX_ENABLED
+            value: {{ .Values.bknTrace.producerOutbox.enabled | quote }}
+          - name: BKN_TRACE_OUTBOX_WORKER_ENABLED
+            value: {{ .Values.bknTrace.producerOutbox.workerEnabled | quote }}
+          - name: BKN_TRACE_APPLICATION_PRINCIPAL_ID
+            value: {{ .Values.bknTrace.producerOutbox.applicationPrincipalID | quote }}
+          {{- if .Values.bknTrace.producerOutbox.queryGatewayTokenSecretName }}
+          - name: BKN_TRACE_QUERY_GATEWAY_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.bknTrace.producerOutbox.queryGatewayTokenSecretName | quote }}
+                key: {{ .Values.bknTrace.producerOutbox.queryGatewayTokenSecretKey | quote }}
           {{- end }}
           - name: POD_IP
             valueFrom:

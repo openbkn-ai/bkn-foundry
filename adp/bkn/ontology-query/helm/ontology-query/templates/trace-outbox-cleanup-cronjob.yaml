@@ -1,0 +1,58 @@
+{{- if and .Values.bknTrace.producerOutbox.enabled .Values.bknTrace.producerOutbox.cleanup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Values.moduleName }}-trace-outbox-cleanup
+  namespace: {{ .Values.namespace }}
+  labels:
+    module: {{ .Values.moduleName }}
+spec:
+  schedule: {{ .Values.bknTrace.producerOutbox.cleanup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            module: {{ .Values.moduleName }}
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: trace-outbox-cleanup
+              image: {{ template "ontology-query.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - name: TZ
+                  value: {{ .Values.env.timezone }}
+                - name: LANG
+                  value: {{ .Values.env.language }}
+                - name: BKN_TRACE_OUTBOX_ENABLED
+                  value: "true"
+                - name: BKN_TRACE_OUTBOX_WORKER_ENABLED
+                  value: "false"
+                - name: BKN_TRACE_OUTBOX_CLEANUP_ONLY
+                  value: "true"
+                - name: BKN_TRACE_OUTBOX_CLEANUP_BATCH_SIZE
+                  value: {{ .Values.bknTrace.producerOutbox.cleanup.batchSize | quote }}
+                - name: BKN_TRACE_OUTBOX_DELIVERED_RETENTION_DAYS
+                  value: {{ .Values.bknTrace.producerOutbox.cleanup.deliveredRetentionDays | quote }}
+                - name: BKN_TRACE_OUTBOX_ABANDONED_RETENTION_DAYS
+                  value: {{ .Values.bknTrace.producerOutbox.cleanup.abandonedRetentionDays | quote }}
+                - name: DB_TYPE
+                  value: {{ .Values.depServices.rds.type | quote }}
+                - name: DM_SVC_PATH
+                  value: /opt/ontology-query/config
+              resources: {{- toYaml .Values.resources | nindent 16 }}
+              volumeMounts:
+                - name: {{ .Values.moduleName }}-cm
+                  mountPath: /opt/ontology-query/config
+          volumes:
+            - name: {{ .Values.moduleName }}-cm
+              configMap:
+                name: {{ .Values.moduleName }}-cm
+{{- end }}

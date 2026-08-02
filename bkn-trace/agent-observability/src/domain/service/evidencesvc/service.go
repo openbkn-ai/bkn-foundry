@@ -27,6 +27,7 @@ var (
 	correlationIDRE = regexp.MustCompile(`^[0-9A-Za-z_.:-]{1,128}$`)
 	timestampRE     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$`)
 	hashRE          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	payloadHashRE   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	controlledRefRE = regexp.MustCompile(`^[a-z][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
 	artifactRefRE   = regexp.MustCompile(`^artifact:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 )
@@ -2227,6 +2228,11 @@ func checkSensitive(value any, path string, errors *evidencevo.ValidationErrors)
 			childPath := path + "." + k
 			if forbiddenRawKey(k) {
 				add(errors, "BKN_TRACE_FORBIDDEN_RAW_PAYLOAD_FIELD", childPath, "raw prompt, SQL, answer, tool IO, row data, token, cookie, or authorization fields are forbidden")
+			}
+			if k == "payload_hash" {
+				if value, ok := v.(string); ok && payloadHashRE.MatchString(value) {
+					continue
+				}
 			}
 			checkSensitive(v, childPath, errors)
 		}

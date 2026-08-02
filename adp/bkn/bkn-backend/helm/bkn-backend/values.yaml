@@ -164,3 +164,15 @@ bknTrace:
     timeoutMs: "2000"
     ingestTokenSecretName: ""
     ingestTokenSecretKey: "ingest-token"
+  producerOutbox:
+    enabled: false
+    workerEnabled: false
+    applicationPrincipalID: "bkn-backend"
+    queryGatewayTokenSecretName: ""
+    queryGatewayTokenSecretKey: "query-gateway-token"
+    cleanup:
+      enabled: false
+      schedule: "0 3 * * *"
+      batchSize: 1000
+      deliveredRetentionDays: 30
+      abandonedRetentionDays: 180

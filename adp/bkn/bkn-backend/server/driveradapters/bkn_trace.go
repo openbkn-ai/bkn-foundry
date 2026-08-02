@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -66,17 +67,29 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestC
 	c.Header(headerBKNOperationID, operationID)
 	c.Header(headerBKNEventObservedAt, observedAt)
 	return bkntrace.RequestContext{
-		RequestID:        requestID,
-		AccountID:        accountID,
-		AccountType:      accountType,
-		BusinessDomain:   strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
-		InteractionID:    interactionID,
-		OperationID:      operationID,
-		CausationEventID: strings.TrimSpace(c.GetHeader(headerBKNCausationEventID)),
-		ClaimID:          strings.TrimSpace(c.GetHeader(headerBKNClaimID)),
-		Attempt:          attempt,
-		ObservedAt:       observedAt,
+		RequestID:              requestID,
+		AccountID:              accountID,
+		AccountType:            accountType,
+		BusinessDomain:         strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
+		TenantID:               strings.TrimSpace(c.GetHeader("x-tenant-id")),
+		ApplicationPrincipalID: strings.TrimSpace(os.Getenv("BKN_TRACE_APPLICATION_PRINCIPAL_ID")),
+		EffectiveSubjectID:     accountID,
+		EffectiveSubjectType:   bknTraceSubjectType(accountType),
+		DelegationID:           strings.TrimSpace(c.GetHeader("x-bkn-delegation-id")),
+		InteractionID:          interactionID,
+		OperationID:            operationID,
+		CausationEventID:       strings.TrimSpace(c.GetHeader(headerBKNCausationEventID)),
+		ClaimID:                strings.TrimSpace(c.GetHeader(headerBKNClaimID)),
+		Attempt:                attempt,
+		ObservedAt:             observedAt,
 	}
+}
+
+func bknTraceSubjectType(accountType string) string {
+	if strings.EqualFold(accountType, "service") || strings.EqualFold(accountType, "app") {
+		return "service"
+	}
+	return "user"
 }
 
 func emitObjectTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.ObjectType, total int64) {

@@ -45,6 +45,12 @@ spec:
             - /app/config.yaml
             - --secret-config
             - /etc/data-migrator/secret-config.yaml
+            {{- if .Values.services }}
+            - --service
+            {{- range .Values.services }}
+            - {{ . | quote }}
+            {{- end }}
+            {{- end }}
           volumeMounts:
             - name: {{ .Values.moduleName }}-secret
               mountPath: /etc/data-migrator/secret-config.yaml

@@ -38,10 +38,21 @@ antiAffinity:
 auth:
   enabled: true
 
+bknSafe:
+  url: "http://bkn-safe:3000"
+
 # 微服务通信依赖配置
 depServices:
   class-443:
     ingressClass: class-443
+  # Only required when bknTrace.producerOutbox.enabled is true. It shares the
+  # bkn-backend instance and the openbkn schema, but owns separate tables.
+  rds:
+    host: mariadb-mariadb-master.resource.svc.cluster.local.
+    port: 3330
+    user: root
+    password: ""
+    type: MARIADB
   hydra-admin:
     host: bkn-safe-hydra-admin
     port: 4445
@@ -126,3 +137,15 @@ bknTrace:
     timeoutMs: "2000"
     ingestTokenSecretName: ""
     ingestTokenSecretKey: "ingest-token"
+  producerOutbox:
+    enabled: false
+    workerEnabled: false
+    applicationPrincipalID: "ontology-query"
+    queryGatewayTokenSecretName: ""
+    queryGatewayTokenSecretKey: "query-gateway-token"
+    cleanup:
+      enabled: false
+      schedule: "0 3 * * *"
+      batchSize: 1000
+      deliveredRetentionDays: 30
+      abandonedRetentionDays: 180

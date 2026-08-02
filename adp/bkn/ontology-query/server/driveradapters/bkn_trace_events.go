@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -27,17 +28,29 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 		businessDomain = strings.TrimSpace(traceContext.BusinessDomain)
 	}
 	return bkntrace.RequestContext{
-		RequestID:        traceContext.RequestID,
-		AccountID:        visitor.ID,
-		AccountType:      string(visitor.Type),
-		BusinessDomain:   businessDomain,
-		InteractionID:    traceContext.InteractionID,
-		OperationID:      traceContext.OperationID,
-		CausationEventID: traceContext.CausationEventID,
-		ClaimID:          traceContext.ClaimID,
-		Attempt:          traceContext.Attempt,
-		ObservedAt:       traceContext.ObservedAt,
+		RequestID:              traceContext.RequestID,
+		AccountID:              visitor.ID,
+		AccountType:            string(visitor.Type),
+		BusinessDomain:         businessDomain,
+		TenantID:               strings.TrimSpace(c.GetHeader("x-tenant-id")),
+		ApplicationPrincipalID: strings.TrimSpace(os.Getenv("BKN_TRACE_APPLICATION_PRINCIPAL_ID")),
+		EffectiveSubjectID:     visitor.ID,
+		EffectiveSubjectType:   ontologyTraceSubjectType(string(visitor.Type)),
+		DelegationID:           strings.TrimSpace(c.GetHeader("x-bkn-delegation-id")),
+		InteractionID:          traceContext.InteractionID,
+		OperationID:            traceContext.OperationID,
+		CausationEventID:       traceContext.CausationEventID,
+		ClaimID:                traceContext.ClaimID,
+		Attempt:                traceContext.Attempt,
+		ObservedAt:             traceContext.ObservedAt,
 	}
+}
+
+func ontologyTraceSubjectType(accountType string) string {
+	if strings.EqualFold(accountType, "service") || strings.EqualFold(accountType, "app") {
+		return "service"
+	}
+	return "user"
 }
 
 func emitObjectQueryEvidence(c *gin.Context, ctx context.Context, visitor hydra.Visitor, query *interfaces.ObjectQueryBaseOnObjectType, result *interfaces.Objects) {

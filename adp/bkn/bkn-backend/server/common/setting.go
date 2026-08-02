@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/fsnotify/fsnotify"
 	libdb "github.com/openbkn-ai/bkn-comm-go/db"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
@@ -172,8 +171,7 @@ func loadSetting(vp *viper.Viper) {
 		version.ServerName, version.ServerVersion, version.LanguageGo,
 		version.GoVersion, version.GoArch)
 
-	s, _ := sonic.MarshalString(appSetting)
-	logger.Debug(s)
+	logger.Debug("Application settings loaded")
 }
 
 func SetDBSetting() {

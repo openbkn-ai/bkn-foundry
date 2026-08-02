@@ -1,17 +1,15 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ .Values.moduleName }}
   namespace: {{ .Values.namespace }}
   labels:
     module: {{ .Values.moduleName }}
 spec:
+  serviceName: {{ .Values.moduleName }}
   replicas: {{ .Values.replicaCount }}
-  strategy:
+  updateStrategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 2
-      maxUnavailable: 1
   selector:
     matchLabels:
       module: {{ .Values.moduleName }}
@@ -96,6 +94,19 @@ spec:
                 name: {{ .Values.bknTrace.evidence.ingestTokenSecretName | quote }}
                 key: {{ .Values.bknTrace.evidence.ingestTokenSecretKey | quote }}
           {{- end }}
+          - name: BKN_TRACE_OUTBOX_ENABLED
+            value: {{ .Values.bknTrace.producerOutbox.enabled | quote }}
+          - name: BKN_TRACE_OUTBOX_WORKER_ENABLED
+            value: {{ .Values.bknTrace.producerOutbox.workerEnabled | quote }}
+          - name: BKN_TRACE_APPLICATION_PRINCIPAL_ID
+            value: {{ .Values.bknTrace.producerOutbox.applicationPrincipalID | quote }}
+          {{- if .Values.bknTrace.producerOutbox.queryGatewayTokenSecretName }}
+          - name: BKN_TRACE_QUERY_GATEWAY_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.bknTrace.producerOutbox.queryGatewayTokenSecretName | quote }}
+                key: {{ .Values.bknTrace.producerOutbox.queryGatewayTokenSecretKey | quote }}
+          {{- end }}
           - name: POD_IP
             valueFrom:
               fieldRef:
@@ -104,12 +115,18 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.name
+          {{- if .Values.depServices.rds.type }}
+          - name: DB_TYPE
+            value: {{ .Values.depServices.rds.type | quote }}
+          {{- end }}
           - name: DM_SVC_PATH
             value: /opt/ontology-query/config
           - name: ACTION_EXECUTION_MAX_OBJECTS
             value: "{{ .Values.env.actionExecutionMaxObjects }}"
           - name: AUTH_ENABLED
             value: {{ .Values.auth.enabled | quote }}
+          - name: BKN_SAFE_BASE_URL
+            value: {{ .Values.bknSafe.url | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm

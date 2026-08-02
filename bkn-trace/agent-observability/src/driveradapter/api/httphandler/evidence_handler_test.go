@@ -356,6 +356,39 @@ func TestLifecycleIdentityRejectsIncompleteOwnerTupleAtGatewayBoundary(t *testin
 	}
 }
 
+func TestLifecycleIdentityAcceptsTrustedGatewayProducerWithoutOAuthScope(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{err: io.ErrUnexpectedEOF}
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		IngestToken:                "producer-ingest-token",
+		QueryGatewayToken:          "gateway-query-token",
+		AuthorizationScopeResolver: resolver,
+	})
+	nextCalled := false
+	next := handler.RequireTrustedLifecycleIdentity(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", nil)
+	request.Header.Set("X-BKN-Trace-Query-Token", "gateway-query-token")
+	request.Header.Set("x-account-id", "acct_e2e_demo")
+	request.Header.Set("x-account-type", "user")
+	request.Header.Set("x-tenant-id", "tenant-e2e")
+	request.Header.Set("x-business-domain", "domain-e2e")
+	request.Header.Set("X-BKN-Application-Principal-ID", "bkn-backend")
+	request.Header.Set("X-BKN-Effective-Subject-Type", "user")
+	request.Header.Set("X-BKN-Effective-Subject-ID", "acct_e2e_demo")
+	response := httptest.NewRecorder()
+
+	next(response, request)
+
+	if response.Code != http.StatusNoContent || !nextCalled {
+		t.Fatalf("trusted gateway producer must bypass OAuth scope resolver: %d %s", response.Code, response.Body.String())
+	}
+	if resolver.authorization != "" {
+		t.Fatalf("OAuth scope resolver must not run for trusted gateway producer delivery")
+	}
+}
+
 func TestEvidenceHandlerRejectsOAuthIdentityMismatch(t *testing.T) {
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"active":true,"sub":"acct_demo","client_id":"openbkn-studio","ext":{"visitor_type":"user"}}`)

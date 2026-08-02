@@ -79,6 +79,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	bknApiV1 := c.Group("/api/bkn-backend/v1")
 	otlApiV1 := c.Group("/api/ontology-manager/v1")
+	bknApiV1.GET("/trace/outbox", r.ListTraceOutbox)
+	bknApiV1.GET("/trace/outbox/:outbox_id", r.GetTraceOutbox)
+	bknApiV1.POST("/trace/outbox/:outbox_id/retry", r.verifyJsonContentType(), r.RetryTraceOutbox)
+	bknApiV1.POST("/trace/outbox/:outbox_id/abandon", r.verifyJsonContentType(), r.AbandonTraceOutbox)
 
 	for _, apiV1 := range []*gin.RouterGroup{bknApiV1, otlApiV1} {
 		// 业务知识网络

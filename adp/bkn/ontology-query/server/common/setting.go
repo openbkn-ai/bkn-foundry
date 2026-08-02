@@ -9,11 +9,12 @@ package common
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/fsnotify/fsnotify"
+	libdb "github.com/openbkn-ai/bkn-comm-go/db"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel"
@@ -43,6 +44,7 @@ type AppSetting struct {
 	OtelSetting   otel.OtelConfig           `mapstructure:"otel"`
 	DepServices   map[string]map[string]any `mapstructure:"depServices"`
 
+	DBSetting         libdb.DBSetting
 	OpenSearchSetting rest.OpenSearchClientConfig
 	HydraAdminSetting hydra.HydraAdminSetting
 
@@ -67,6 +69,7 @@ const (
 	configType string = "yaml"
 
 	opensearchServiceName          string = "opensearch"
+	rdsServiceName                 string = "rds"
 	hydraAdminServiceName          string = "hydra-admin"
 	modelFactoryManagerServiceName string = "mf-model-manager"
 	modelFactoryAPIServiceName     string = "mf-model-api"
@@ -134,6 +137,9 @@ func loadSetting(vp *viper.Viper) {
 	APP_LOCATION = loc
 
 	SetLogSetting(appSetting.LogSetting)
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_OUTBOX_ENABLED")), "true") {
+		SetDBSetting()
+	}
 
 	SetOpenSearchSetting()
 	SetHydraAdminSetting()
@@ -153,8 +159,18 @@ func loadSetting(vp *viper.Viper) {
 		version.ServerName, version.ServerVersion, version.LanguageGo,
 		version.GoVersion, version.GoArch)
 
-	s, _ := sonic.MarshalString(appSetting)
-	logger.Debug(s)
+	logger.Debug("Application settings loaded")
+}
+
+func SetDBSetting() {
+	setting, ok := appSetting.DepServices[rdsServiceName]
+	if !ok {
+		logger.Fatalf("service %s not found in depServices", rdsServiceName)
+	}
+	appSetting.DBSetting = libdb.DBSetting{
+		Host: setting["host"].(string), Port: setting["port"].(int),
+		Username: setting["user"].(string), Password: setting["password"].(string), DBName: "openbkn",
+	}
 }
 
 func SetOpenSearchSetting() {

@@ -10,22 +10,29 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"bkn-backend/common/bkntrace/outbox"
 	"bkn-backend/interfaces"
 	"go.opentelemetry.io/otel/trace"
 )
 
 const (
+	// ContractVersion is retained for the existing internal evidence builders.
+	// SubmitEvents wraps those sanitized facts in the Core 3.0 immutable event.
 	ContractVersion = "2.1.0"
 	ModuleName      = "bkn-backend"
 )
@@ -34,6 +41,15 @@ const (
 	envEvidenceIngestURL       = "BKN_TRACE_EVIDENCE_INGEST_URL"
 	envEvidenceIngestToken     = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
 	envEvidenceIngestTimeoutMS = "BKN_TRACE_EVIDENCE_TIMEOUT_MS"
+	envOutboxEnabled           = "BKN_TRACE_OUTBOX_ENABLED"
+	envOutboxWorkerEnabled     = "BKN_TRACE_OUTBOX_WORKER_ENABLED"
+	envOutboxCleanupOnly       = "BKN_TRACE_OUTBOX_CLEANUP_ONLY"
+	envOutboxCleanupBatchSize  = "BKN_TRACE_OUTBOX_CLEANUP_BATCH_SIZE"
+	envOutboxDeliveredDays     = "BKN_TRACE_OUTBOX_DELIVERED_RETENTION_DAYS"
+	envOutboxAbandonedDays     = "BKN_TRACE_OUTBOX_ABANDONED_RETENTION_DAYS"
+	envQueryGatewayToken       = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
+	envApplicationPrincipalID  = "BKN_TRACE_APPLICATION_PRINCIPAL_ID"
+	envPodName                 = "POD_NAME"
 )
 
 const maxInFlightEvidenceBatches = 64
@@ -56,16 +72,21 @@ const (
 type Event map[string]any
 
 type RequestContext struct {
-	RequestID        string
-	AccountID        string
-	AccountType      string
-	BusinessDomain   string
-	InteractionID    string
-	OperationID      string
-	CausationEventID string
-	ClaimID          string
-	Attempt          int
-	ObservedAt       string
+	RequestID              string
+	AccountID              string
+	AccountType            string
+	BusinessDomain         string
+	TenantID               string
+	ApplicationPrincipalID string
+	EffectiveSubjectID     string
+	EffectiveSubjectType   string
+	DelegationID           string
+	InteractionID          string
+	OperationID            string
+	CausationEventID       string
+	ClaimID                string
+	Attempt                int
+	ObservedAt             string
 }
 
 type ReadSubject struct {
@@ -111,10 +132,111 @@ var (
 	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
 	safeErrorCodeRE    = regexp.MustCompile(`^[0-9A-Za-z_.-]{1,128}$`)
 	safeErrorPathRE    = regexp.MustCompile(`^\$(?:\.[0-9A-Za-z_.-]+|\[[0-9]+\])+$`)
+	producerOutboxMu   sync.RWMutex
+	producerOutbox     *outbox.Repository
 )
 
 func EvidenceEnabled() bool {
-	return evidenceIngestURL() != ""
+	producerOutboxMu.RLock()
+	defer producerOutboxMu.RUnlock()
+	return producerOutbox != nil
+}
+
+func ProducerOutboxEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxEnabled)), "true")
+}
+
+func ProducerOutboxCleanupOnly() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxCleanupOnly)), "true")
+}
+
+func CleanupProducerOutbox(ctx context.Context) (outbox.CleanupResult, error) {
+	producerOutboxMu.RLock()
+	repository := producerOutbox
+	producerOutboxMu.RUnlock()
+	if repository == nil {
+		return outbox.CleanupResult{}, errors.New("BKN Trace producer outbox is not configured")
+	}
+	now := time.Now().UTC()
+	return repository.Cleanup(ctx,
+		now.AddDate(0, 0, -positiveEnvInt(envOutboxDeliveredDays, 30)),
+		now.AddDate(0, 0, -positiveEnvInt(envOutboxAbandonedDays, 180)),
+		now.AddDate(0, 0, -positiveEnvInt(envOutboxAbandonedDays, 180)),
+		positiveEnvInt(envOutboxCleanupBatchSize, 1000),
+	)
+}
+
+func positiveEnvInt(key string, fallback int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
+	if err != nil || value < 1 {
+		return fallback
+	}
+	return value
+}
+
+// ProducerOutbox returns the process-local repository used by the durable
+// producer. It is nil when the feature is disabled or initialization failed.
+func ProducerOutbox() *outbox.Repository {
+	producerOutboxMu.RLock()
+	defer producerOutboxMu.RUnlock()
+	return producerOutbox
+}
+
+// ConfigureProducerOutbox enables durable 3.0 evidence delivery for this
+// process. The service starts only the Worker after the database migration has
+// been applied; an unset BKN_TRACE_OUTBOX_ENABLED preserves the old opt-out.
+func ConfigureProducerOutbox(db *sql.DB) (*outbox.Worker, error) {
+	if !ProducerOutboxEnabled() {
+		return nil, nil
+	}
+	if ProducerOutboxCleanupOnly() {
+		repository, err := outbox.NewCleanupRepository(db, strings.TrimSpace(os.Getenv("DB_TYPE")))
+		if err != nil {
+			return nil, err
+		}
+		producerOutboxMu.Lock()
+		producerOutbox = repository
+		producerOutboxMu.Unlock()
+		return nil, nil
+	}
+	streamID, err := statefulSetStreamID(strings.TrimSpace(os.Getenv(envPodName)))
+	if err != nil {
+		return nil, err
+	}
+	repository, err := outbox.NewRepository(db, outbox.Config{
+		ProducerID:         ModuleName,
+		ProducerStreamID:   streamID,
+		DatabaseType:       strings.TrimSpace(os.Getenv("DB_TYPE")),
+		IngestURL:          evidenceIngestURL(),
+		IngestToken:        strings.TrimSpace(os.Getenv(envEvidenceIngestToken)),
+		QueryGatewayToken:  strings.TrimSpace(os.Getenv(envQueryGatewayToken)),
+		CoreRequestTimeout: evidenceTimeout(),
+		LeaseDuration:      30 * time.Second,
+		PollInterval:       250 * time.Millisecond,
+	})
+	if err != nil {
+		return nil, err
+	}
+	producerOutboxMu.Lock()
+	producerOutbox = repository
+	producerOutboxMu.Unlock()
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxWorkerEnabled)), "true") {
+		return nil, nil
+	}
+	return outbox.NewWorker(repository), nil
+}
+
+func statefulSetStreamID(podName string) (string, error) {
+	parts := strings.Split(strings.TrimSpace(podName), "-")
+	if len(parts) < 2 || parts[len(parts)-1] == "" {
+		return "", fmt.Errorf("%s must be a StatefulSet pod name", envPodName)
+	}
+	for _, value := range parts[len(parts)-1] {
+		if value < '0' || value > '9' {
+			return "", fmt.Errorf("%s must end with a StatefulSet ordinal", envPodName)
+		}
+	}
+	return ModuleName + "-" + parts[len(parts)-1], nil
 }
 
 func HashValue(value any) string {
@@ -220,38 +342,80 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 	if !ok {
 		return
 	}
-	ingestURL := evidenceIngestURL()
-	if ingestURL == "" {
+	owner := trustedOwner(reqCtx, ec)
+	producerOutboxMu.RLock()
+	repository := producerOutbox
+	producerOutboxMu.RUnlock()
+	if repository == nil {
 		return
 	}
-
-	payload := batch{
-		ContractVersion: ContractVersion,
-		Trace: map[string]any{
-			"trace_id":         ec.traceID,
-			"traceparent":      ec.traceparent,
-			"bkn.request.id":   ec.requestID,
-			"business_domain":  ec.businessDomain,
-			"bkn.account.id":   ec.accountID,
-			"bkn.account.type": ec.accountType,
-		},
-		Events: events,
-	}
-
-	select {
-	case evidenceInFlight <- struct{}{}:
-	default:
-		log.Printf("BKN Trace evidence ingestion dropped: in-flight limit reached")
-		return
-	}
-
-	timeout := evidenceTimeout()
-	go func() {
-		defer func() { <-evidenceInFlight }()
-		if err := postBatchWithRetry(ingestURL, timeout, payload); err != nil {
-			log.Printf("BKN Trace evidence ingestion unavailable: %v", err)
+	for _, event := range events {
+		coreEvent, err := toCoreEvent(event, ec)
+		if err != nil {
+			log.Printf("BKN Trace evidence outbox rejected event: %v", err)
+			continue
 		}
-	}()
+		if _, err := repository.Enqueue(ctx, coreEvent, owner); err != nil {
+			// Query evidence is intentionally fail-open. The business response must
+			// not wait for observability persistence, but the loss is observable.
+			log.Printf("BKN Trace evidence outbox write failed: %v", err)
+		}
+	}
+}
+
+func trustedOwner(reqCtx RequestContext, ec eventContext) outbox.Owner {
+	subjectID := strings.TrimSpace(reqCtx.EffectiveSubjectID)
+	if subjectID == "" {
+		subjectID = ec.accountID
+	}
+	subjectType := strings.TrimSpace(reqCtx.EffectiveSubjectType)
+	if subjectType == "" {
+		subjectType = coreSubjectType(ec.accountType)
+	}
+	return outbox.Owner{
+		TenantID: strings.TrimSpace(reqCtx.TenantID), BusinessDomainID: ec.businessDomain,
+		ApplicationPrincipalID: strings.TrimSpace(reqCtx.ApplicationPrincipalID),
+		EffectiveSubjectType:   subjectType, EffectiveSubjectID: subjectID,
+		DelegationID: strings.TrimSpace(reqCtx.DelegationID),
+	}
+}
+
+func coreSubjectType(accountType string) string {
+	if strings.EqualFold(strings.TrimSpace(accountType), "service") || strings.EqualFold(strings.TrimSpace(accountType), "app") {
+		return "service"
+	}
+	return "user"
+}
+
+func toCoreEvent(event Event, ec eventContext) (outbox.Event, error) {
+	raw, err := json.Marshal(event)
+	if err != nil {
+		return outbox.Event{}, err
+	}
+	observedAt, err := time.Parse(time.RFC3339Nano, ec.observedAt)
+	if err != nil {
+		return outbox.Event{}, err
+	}
+	eventID, _ := event["event_id"].(string)
+	eventType, _ := event["event_type"].(string)
+	if eventID == "" || eventType == "" {
+		return outbox.Event{}, errors.New("evidence event ID and type are required")
+	}
+	conversationID := "conv_" + ec.requestID
+	return outbox.Event{
+		EventID: eventID, EventType: eventType, ConversationID: conversationID,
+		InteractionID: ec.interactionID, OperationID: ec.operationID,
+		Attempt: uint32(ec.attempt), RequestID: ec.requestID, TraceID: ec.traceID, SpanID: ec.spanID,
+		CausationIDs: nonEmptyStrings(ec.causationEventID),
+		StartedAt:    observedAt, ObservedAt: observedAt, EmittedAt: observedAt, Envelope: raw,
+	}, nil
+}
+
+func nonEmptyStrings(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return []string{strings.TrimSpace(value)}
 }
 
 func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {

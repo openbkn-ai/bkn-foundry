@@ -40,6 +40,10 @@ services:
   bkn-backend:
     path: migrations/bkn-backend
     # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
+  bkn-backend-trace-outbox:
+    path: migrations/bkn-backend-trace-outbox
+  ontology-query-trace-outbox:
+    path: migrations/ontology-query-trace-outbox
   vega-backend:
     path: migrations/vega-backend
     # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本

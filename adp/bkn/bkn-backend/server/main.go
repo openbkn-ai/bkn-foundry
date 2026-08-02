@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 
 	// _ "net/http/pprof"
@@ -26,6 +27,8 @@ import (
 	_ "go.uber.org/automaxprocs"
 
 	"bkn-backend/common"
+	"bkn-backend/common/bkntrace"
+	"bkn-backend/common/bkntrace/outbox"
 	"bkn-backend/drivenadapters/action_schedule"
 	"bkn-backend/drivenadapters/action_type"
 	"bkn-backend/drivenadapters/agent_operator"
@@ -53,6 +56,8 @@ type mgrService struct {
 	restHandler    driveradapters.RestHandler
 	conceptSyncer  *worker.ConceptSyncer
 	scheduleWorker *worker.ScheduleWorker
+	traceOutbox    *outbox.Worker
+	outboxDB       *sql.DB
 }
 
 func (server *mgrService) start() {
@@ -71,6 +76,9 @@ func (server *mgrService) start() {
 
 	go server.conceptSyncer.Start()
 	go server.scheduleWorker.Start()
+	if server.traceOutbox != nil {
+		server.traceOutbox.Start()
+	}
 
 	// 监听中断信号（SIGINT、SIGTERM）
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -106,6 +114,14 @@ func (server *mgrService) start() {
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
+	}
+	if server.traceOutbox != nil {
+		if err := server.traceOutbox.Stop(ctx); err != nil {
+			logger.Warnf("BKN Trace outbox shutdown: %v", err)
+		}
+	}
+	if server.outboxDB != nil {
+		_ = server.outboxDB.Close()
 	}
 
 	server.otelProviders.Shutdown(ctx)
@@ -143,6 +159,26 @@ func main() {
 	// 初始化数据库连接
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
+	outboxDB, err := bkntrace.OpenProducerOutboxDB(appSetting.DBSetting)
+	if err != nil {
+		logger.Fatalf("Failed to open BKN Trace producer outbox database: %v", err)
+	}
+	traceOutbox, err := bkntrace.ConfigureProducerOutbox(outboxDB)
+	if err != nil {
+		logger.Fatalf("Failed to configure BKN Trace producer outbox: %v", err)
+	}
+	if bkntrace.ProducerOutboxCleanupOnly() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		result, err := bkntrace.CleanupProducerOutbox(ctx)
+		if err != nil {
+			logger.Fatalf("Failed to clean BKN Trace producer outbox: %v", err)
+		}
+		logger.Infof("BKN Trace producer outbox cleanup complete: delivered=%d abandoned=%d audits=%d", result.Delivered, result.Abandoned, result.Audits)
+		_ = outboxDB.Close()
+		otelProviders.Shutdown(ctx)
+		return
+	}
 
 	audit.Init(&appSetting.MQSetting)
 
@@ -175,6 +211,8 @@ func main() {
 		restHandler:    driveradapters.NewRestHandler(appSetting),
 		conceptSyncer:  worker.NewConceptSyncer(appSetting),
 		scheduleWorker: worker.NewScheduleWorker(appSetting),
+		traceOutbox:    traceOutbox,
+		outboxDB:       outboxDB,
 	}
 	server.start()
 }

@@ -867,6 +867,16 @@ func TestIngestRejectsSensitiveReferenceValues(t *testing.T) {
 	}
 }
 
+func TestCheckSensitiveAllowsCanonicalPayloadHash(t *testing.T) {
+	validationErrors := evidencevo.ValidationErrors{}
+	checkSensitive(map[string]any{
+		"payload_hash": "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777",
+	}, "$", &validationErrors)
+	if len(validationErrors) != 0 {
+		t.Fatalf("canonical payload hash must not be treated as sensitive: %+v", validationErrors)
+	}
+}
+
 func TestIngestRejectsAmbiguousShortBusinessReference(t *testing.T) {
 	events := validTwoPointOneEvents()
 	for _, event := range events {

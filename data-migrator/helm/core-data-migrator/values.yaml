@@ -32,6 +32,11 @@ restartPolicy: Never
 
 nodeSelector: {}
 
+# Empty means migrate every configured service. A DM8 deployment can limit this
+# list to the Producer Outbox migration units while its existing schemas remain
+# managed by the platform's DM8 baseline process.
+services: []
+
 depServices:
   rds:
     source_type: internal

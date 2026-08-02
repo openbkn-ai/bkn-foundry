@@ -818,6 +818,9 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 		// selected only by the unified log service after record-scope authorization.
 		View: evidencevo.AccessViewBusiness,
 	}
+	if h.queryGatewayToken != "" && secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken) {
+		return scope, true
+	}
 	if h.authorizationScopeResolver != nil {
 		effectiveSubjectID := strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-ID"))
 		if effectiveSubjectID == "" {
