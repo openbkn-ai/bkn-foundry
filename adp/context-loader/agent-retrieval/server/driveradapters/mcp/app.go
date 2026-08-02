@@ -175,7 +175,7 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 		// announces itself to anyone probing.
 		server.WithToolHandlerMiddleware(mcptool.GateMiddleware()),
 		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
-		// Not just a listing filter. Since mcp-go v0.55.1 the filter also runs
+		// Not just a listing filter. Since mcp-go v0.55.0 the filter also runs
 		// on tools/call, and a tool it drops is refused by mcp-go itself with
 		// the same error code and text an unknown tool gets. That is what makes
 		// an unlicensed enterprise tool indistinguishable from one that was

@@ -242,13 +242,12 @@ func Gated(t ExtraTool) Handler {
 // way for the difference to leak. Wrapping the sentinel rather than hard-coding
 // its text means mcp-go changing it takes us along.
 //
-// One difference remains and cannot be closed here: mcp-go answers an unknown
-// tool with INVALID_PARAMS (-32602) from inside handleToolCall, while an error
-// returned by a handler or middleware becomes INTERNAL_ERROR (-32603). Closing
-// that would mean not registering under-licensed tools at all — which is the
-// startup-time decision this design deliberately rejects (a certificate
-// installed later has to take effect without a restart). Recorded in
-// bkn-docs docs/shared/licensing/extension-points.md §6.
+// The error code is not this function's to set — mcp-go assigns it, and what
+// it assigns depends on where the refusal happens. The tool filter registered
+// in driveradapters/mcp/app.go is what puts the refusal in the same place an
+// unknown tool lands, so the two answers agree; see the note there. This
+// wrapper covers the case where the filter is bypassed, and is deliberately
+// kept even though that path should not occur.
 func notFound(name string) error {
 	return fmt.Errorf("tool '%s' not found: %w", name, server.ErrToolNotFound)
 }

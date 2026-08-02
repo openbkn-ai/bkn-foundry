@@ -198,7 +198,7 @@ func TestRefusalIsIndistinguishableFromAnUnknownTool(t *testing.T) {
 
 	// 错误码曾经不一致：未知工具走 handleToolCall 内部的 INVALID_PARAMS
 	// (-32602)，而中间件返回的 error 一律被包成 INTERNAL_ERROR(-32603)。
-	// mcp-go v0.55.1 起 ToolFilterFunc 在 tools/call 时也执行，被过滤掉的工具
+	// mcp-go v0.55.0 起 ToolFilterFunc 在 tools/call 时也执行，被过滤掉的工具
 	// 由 handleToolCall 用同一条 format string、同一个 sentinel 直接拒掉，两侧
 	// 因此对齐。
 	//
