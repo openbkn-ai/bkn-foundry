@@ -108,7 +108,7 @@ func (b *toolBuilder) addExtras() {
 		// tool is unusable by anyone following it — the schema comes from ee,
 		// which has no reason to know this service has a lifecycle guard.
 		b.pending = append(b.pending, pendingTool{
-			newToolWithSchemas(t.Name, t.Desc, requireBKNContext(t.Input), t.Output),
+			newToolWithSchemas(t.Name, t.Desc, offerBKNContext(t.Input), t.Output),
 			mcptool.Gated(t),
 		})
 	}

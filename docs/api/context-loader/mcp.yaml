@@ -6,17 +6,52 @@ info:
     Context Loader 把自己的检索能力同时以 **MCP Server** 形式对外：Cursor、Claude
     Desktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。
 
-    工具集与本模块的 REST 端点一一对应，共 16 个：`search_schema`、
+    工具集共 27 个，分两类。
+
+    **业务工具 16 个**，与本模块的 REST 端点一一对应：`search_schema`、
     `query_object_instance`、`query_instance_subgraph`、`get_logic_properties_values`、
     `get_action_info`、`execute_action`、`get_action_execution`、
     `list_action_executions`、`find_skills`、`run_sql`、`list_knowledge_networks`、
     `get_kn_detail`、`get_object_types`、`get_relation_types`、`list_resources`、
     `describe_resource`。各工具的语义与参数含义见本目录下对应的 REST 文档。
 
+    **业务溯源工具 11 个**，用于管理 BKN Trace 的会话与交互：
+    `bkn_create_conversation`、`bkn_resume_conversation`、`bkn_close_conversation`、
+    `bkn_start_interaction`、`bkn_complete_interaction`、`bkn_fail_interaction`、
+    `bkn_cancel_interaction`、`bkn_handoff_interaction`、`bkn_get_operation`、
+    `bkn_retry_operation`、`bkn_get_receipt`。只有需要业务级溯源的调用方才用得到，
+    见下方「业务溯源上下文」。
+
     **接入方式**：Streamable HTTP，端点 `/api/agent-retrieval/v1/mcp`，
     协议流程 `initialize` → `tools/list` → `tools/call`（JSON-RPC 2.0）。
     鉴权与 REST 一致：`Authorization: Bearer <token>`，OAuth access token 或
     `bak_` 前缀的 AppKey，不需要其他头。
+
+    **业务溯源上下文（`bkn_context`）**
+
+    每个业务工具的入参里都有一个可选的 `bkn_context`，声明这次调用属于哪一轮业务
+    对话。它有三个必填子字段，要么同时提供、要么整体省略，不接受只给一部分——
+    缺失的字段只能凭空生成，会让回执声称一条从未发生的因果关系。
+
+    - `conversation_id`：来自 `bkn_create_conversation` 的返回，不可自拟
+    - `interaction_id`：来自 `bkn_start_interaction` 的返回，不可自拟
+    - `operation_key`：调用方自取的字符串，同一次逻辑调用重试时须保持不变，
+      本服务据此做幂等，重发不会重复执行
+
+    **省略时**（Cursor、Claude Code 等通用 MCP 客户端的默认情形）：本服务按当次
+    MCP 连接自动归并——一条连接对应一个会话，连接内的所有调用归入同一次交互。
+    调用直接可用，无需任何额外配置，但证据链只能追溯到「哪条连接」，
+    追溯不到「哪个用户提问」，且该交互不会收口，拿不到 closure manifest。
+
+    **自带时**（bkn-agent 等持有真实业务会话的调用方）：先用溯源工具建立会话与
+    交互，再把三个字段带进每次业务调用，即可获得完整的业务级溯源。
+
+    注意 REST 面没有连接的概念，因此那 16 个端点的 `bkn_context` 仍为必填，
+    与 MCP 面不同。
+
+    **多业务域部署**：单业务域安装无需任何额外请求头。若部署时清空了
+    `observability.lifecycle.default_business_domain`，则每次请求都须带
+    `x-business-domain`，否则调用会被拒绝。
 
     不想先握手就想知道有哪些工具时，直接 `GET /mcp/info`——它返回完整的工具目录
     （含每个工具的输入输出 schema）与一份可直接粘贴的客户端配置。

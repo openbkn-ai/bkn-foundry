@@ -48,7 +48,7 @@ func tryLoadToolSchemas(toolKey string) (input, output json.RawMessage) {
 		return nil, nil
 	}
 	if isBusinessTool(toolKey) {
-		wrapper.InputSchema = requireBKNContext(wrapper.InputSchema)
+		wrapper.InputSchema = offerBKNContext(wrapper.InputSchema)
 	}
 	return wrapper.InputSchema, wrapper.OutputSchema
 }
@@ -97,7 +97,7 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 			// 自己的定义就是业务工具，生命周期守卫会向它要 bkn_context。这个端点
 			// 存在的理由是「不握手就看清能力面」，广播一份调不通的 schema 比不广播
 			// 更糟——照它集成会直接拿到 conversation_required。
-			InputSchema:  requireBKNContext(t.Input),
+			InputSchema:  offerBKNContext(t.Input),
 			OutputSchema: t.Output,
 		}})
 	}

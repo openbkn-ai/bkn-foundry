@@ -63,7 +63,7 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 		panic(path + ": missing input_schema")
 	}
 	if isBusinessTool(toolKey) {
-		wrapper.InputSchema = requireBKNContext(wrapper.InputSchema)
+		wrapper.InputSchema = offerBKNContext(wrapper.InputSchema)
 	}
 	return wrapper.InputSchema, wrapper.OutputSchema
 }
@@ -341,7 +341,16 @@ func isBusinessTool(toolKey string) bool {
 	return !lifecycle
 }
 
-func requireBKNContext(input json.RawMessage) json.RawMessage {
+// offerBKNContext advertises the managed lifecycle context on every business
+// tool without demanding it.
+//
+// It used to be required. A required field an MCP client cannot legitimately
+// fill is worse than an absent one: the client is an LLM reading this schema,
+// and its cheapest way to satisfy "required" is to invent three plausible IDs,
+// which Core then rejects as conversation_not_found. Callers that own a real
+// business conversation (bkn-agent) still send it and keep full business-level
+// traceability; callers that have none now fall back to their MCP session.
+func offerBKNContext(input json.RawMessage) json.RawMessage {
 	var schema map[string]any
 	if err := json.Unmarshal(input, &schema); err != nil {
 		panic("invalid business tool input schema: " + err.Error())
@@ -352,8 +361,13 @@ func requireBKNContext(input json.RawMessage) json.RawMessage {
 		schema["properties"] = properties
 	}
 	properties["bkn_context"] = map[string]any{
-		"type":        "object",
-		"description": "BKN Trace 3.0 managed lifecycle context for this logical tool call.",
+		"type": "object",
+		"description": "BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。" +
+			"conversation_id 来自 bkn_create_conversation，interaction_id 来自 " +
+			"bkn_start_interaction，operation_key 由调用方自取且同一次逻辑调用重试时须保持不变。" +
+			"三者必须同时提供或同时省略：省略时本服务按当前 MCP 连接自动归并会话，" +
+			"调用可直接执行，但证据链只能追溯到连接级而非具体的用户提问；" +
+			"半数提供会被拒绝，因为缺失字段只能凭空生成，会让回执声称一条从未发生的因果关系。",
 		"properties": map[string]any{
 			"conversation_id": map[string]any{"type": "string"},
 			"interaction_id":  map[string]any{"type": "string"},
@@ -369,13 +383,17 @@ func requireBKNContext(input json.RawMessage) json.RawMessage {
 		"additionalProperties": false,
 	}
 	required, _ := schema["required"].([]any)
+	kept := make([]any, 0, len(required))
 	for _, value := range required {
-		if value == "bkn_context" {
-			raw, _ := json.Marshal(schema)
-			return raw
+		if value != "bkn_context" {
+			kept = append(kept, value)
 		}
 	}
-	schema["required"] = append(required, "bkn_context")
+	if len(kept) > 0 {
+		schema["required"] = kept
+	} else {
+		delete(schema, "required")
+	}
 	raw, err := json.Marshal(schema)
 	if err != nil {
 		panic("marshal business tool input schema: " + err.Error())

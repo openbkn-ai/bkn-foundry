@@ -126,7 +126,7 @@ func TestInfoAndToolsListAgreeOnEnterpriseSchemas(t *testing.T) {
 	mcptool.Register(extraTool("probe_context", "probe_context"))
 
 	// 企业工具那一半与 locale 无关：两侧用的都是 ee 自带的 t.Input，各自过一次
-	// requireBKNContext。这条断言在任何 locale 下都必须成立，所以不钉环境。
+	// offerBKNContext。这条断言在任何 locale 下都必须成立，所以不钉环境。
 	listed := listVisible(t)
 	info, err := BuildMCPInfo("https://example.invalid/mcp")
 	if err != nil {
