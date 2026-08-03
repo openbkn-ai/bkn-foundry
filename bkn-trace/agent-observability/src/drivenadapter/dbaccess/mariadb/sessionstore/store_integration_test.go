@@ -331,7 +331,7 @@ func TestTerminalRaceCommitsOneWinner(t *testing.T) {
 	}
 }
 
-func TestTerminalAndLeaseReaperRaceCommitsOneWinner(t *testing.T) {
+func TestExpiredLeaseReaperWinsAgainstTerminalRequest(t *testing.T) {
 	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
 	if dsn == "" {
 		t.Skip("BKN_TRACE_TEST_MARIADB_DSN is not set")
@@ -366,17 +366,25 @@ func TestTerminalAndLeaseReaperRaceCommitsOneWinner(t *testing.T) {
 		context.Background(),
 		sessionsvc.StartInteractionCommand{
 			Owner: owner, ConversationID: conversation.ID,
-			IdempotencyKey: "start", LeaseDuration: 20 * time.Millisecond,
+			IdempotencyKey: "start", LeaseDuration: time.Hour,
 		},
 	)
 	if err != nil {
 		t.Fatalf("start interaction: %v", err)
 	}
-	time.Sleep(15 * time.Millisecond)
+	if _, err := db.Exec(`
+		UPDATE bkn_trace_interactions
+		SET lease_expires_at = UTC_TIMESTAMP(6) - INTERVAL 1 SECOND
+		WHERE interaction_id = ?`, interaction.ID); err != nil {
+		t.Fatalf("expire interaction lease: %v", err)
+	}
 
 	var wg sync.WaitGroup
 	terminalErr := make(chan error, 1)
-	reaperErr := make(chan error, 1)
+	reaperResult := make(chan struct {
+		interactions []sessionvo.Interaction
+		err          error
+	}, 1)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
@@ -396,25 +404,31 @@ func TestTerminalAndLeaseReaperRaceCommitsOneWinner(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		_, err := service.AbandonExpiredInteractions(context.Background(), 100)
-		reaperErr <- err
+		interactions, err := service.AbandonExpiredInteractions(context.Background(), 100)
+		reaperResult <- struct {
+			interactions []sessionvo.Interaction
+			err          error
+		}{interactions: interactions, err: err}
 	}()
 	wg.Wait()
-	if err := <-reaperErr; err != nil {
-		t.Fatalf("lease reaper: %v", err)
+	result := <-reaperResult
+	if result.err != nil {
+		t.Fatalf("lease reaper: %v", result.err)
 	}
-	if err := <-terminalErr; err != nil &&
-		!sessionsvc.IsCode(err, sessionsvc.CodeTerminalConflict) {
-		t.Fatalf("unexpected terminal result: %v", err)
+	if len(result.interactions) != 1 || result.interactions[0].ID != interaction.ID ||
+		result.interactions[0].ExecutionStatus != sessionvo.InteractionAbandoned {
+		t.Fatalf("lease reaper did not abandon the expired interaction: %#v", result.interactions)
+	}
+	if err := <-terminalErr; !sessionsvc.IsCode(err, sessionsvc.CodeTerminalConflict) {
+		t.Fatalf("terminal request against expired lease = %v, want terminal conflict", err)
 	}
 
 	current, err := service.GetInteraction(context.Background(), owner, interaction.ID)
 	if err != nil {
 		t.Fatalf("get interaction: %v", err)
 	}
-	if current.ExecutionStatus != sessionvo.InteractionCompleted &&
-		current.ExecutionStatus != sessionvo.InteractionAbandoned {
-		t.Fatalf("race did not commit one terminal status: %#v", current)
+	if current.ExecutionStatus != sessionvo.InteractionAbandoned {
+		t.Fatalf("expired lease was not abandoned: %#v", current)
 	}
 	var terminalProjectionCount int
 	if err := db.QueryRow(`
@@ -426,7 +440,7 @@ func TestTerminalAndLeaseReaperRaceCommitsOneWinner(t *testing.T) {
 		t.Fatalf("count terminal projection: %v", err)
 	}
 	if terminalProjectionCount != 1 {
-		t.Fatalf("expected one terminal projection, got %d", terminalProjectionCount)
+		t.Fatalf("expected one abandoned projection, got %d", terminalProjectionCount)
 	}
 }
 
