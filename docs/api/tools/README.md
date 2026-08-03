@@ -53,6 +53,7 @@ python3 docs/api/tools/api_contract_diff.py --spec-dir docs/api \
 - 只发 `GET`。
 - 带 `x-http-method-override: GET` 语义的只读 `POST` 需显式 `--include-query-post`。
 - 文档中用 `x-contract-probe.readonly: true` 显式标注的只读 `POST` 需显式 `--include-probe-post`。
+- 标了 `x-contract-probe` 的 `GET` 无条件走批次化路径（`GET` 本来就允许发，标注只用于排批次与取参）。
 - 任何情况下都不发 `PUT` / `DELETE`，也不发未被上面两种方式显式标注为只读的 `POST`。
 
 ## 探测「查询即 POST」的服务
@@ -81,7 +82,7 @@ python3 docs/api/tools/api_contract_diff.py --spec-dir docs/api \
 
 | 字段 | 说明 |
 |---|---|
-| `readonly` | 必须显式为 `true`。**这是唯一的开关**——工具不猜哪个 POST 安全，只认这行声明 |
+| `readonly` | 必须显式为 `true`。**这是唯一的开关**——工具不猜哪个 POST 安全，只认这行声明。`GET` 上写它不改变「能不能发」（本来就能），只是把该端点纳入批次化路径 |
 | `order` | 执行批次，默认 1。低批先跑完并抽出 `provides`，高批才开始 |
 | `body` / `query` | 请求体 / 额外 query 的模板。值里可写 `{name}` 引用已发现的参数 |
 | `provides` | `{参数名: 取值路径}`，路径形如 `entries[0].id`。取不到就不产出，依赖它的后续接口会被标为「缺少探测参数」而不是发一个必然失败的请求 |
@@ -92,6 +93,13 @@ python3 docs/api/tools/api_contract_diff.py --spec-dir docs/api \
 2. **参数名建议加模块前缀**（如 `cl_kn_id`），避免和 `DISCOVERY` 表里自动发现的
    通用参数名（`kn_id` / `ot_id` / `id`）串用。
 3. **标注与端点同源**，改接口时在同一个文件里改，评审时一起看。
+4. **`GET` 只在需要分批时才标**。普通只读 `GET` 默认已在探测范围内，加标注没有
+   收益；只有当它要 `provides` 产出 id 给后续端点、或需要固定 query 参数才有必要
+   ——因为普通 GET 路径是一次性并发，拿不到同批其他请求的产出。
+
+`fill_path` 在发现不到路径参数时，会退回该参数自身声明的 `example` / `default` /
+`enum`（如 `template_type` 的枚举只有 `python`），这类取值不依赖环境数据，不必因为
+「列表里没有」整条跳过。
 
 ## 工作方式
 

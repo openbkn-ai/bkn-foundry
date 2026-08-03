@@ -106,7 +106,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 - **内部接口**：`/api/agent-operator-integration/internal-v1` 是内部面，另有 `POST /function/exec/{version}`（按已注册的函数版本执行，`timeout` 单位毫秒）等端点，**本文档不收录**。
 - **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），也挂在 Ingress 上，路径与语义都与 `v1` 不同，**本文档暂不收录**。
 - **时间戳一律是纳秒**：所有 `*_time` 字段由 `time.Now().UnixNano()` 生成，形如 `1784880971306127803`；按毫秒解析会得到 1970 年附近的日期。全服务统一，算子 / MCP / 工具箱 / Skill 都是。
-- **契约巡检**：只读 GET 上标了 `x-contract-probe`，需巡检工具支持该扩展（见 #578）才会生效；在那之前这些标注是惰性的。
+- **契约巡检**：只读 GET **默认就在探测范围内，不需要标注**。本模块 13 处 `x-contract-probe` 只加在「需要分批」的端点上——列表接口用 `provides` 把 `box_id` / `skill_id` / `mcp_id` 等喂给后续批次的详情接口，普通 GET 路径是一次性并发、拿不到上一条的产出。机制见 [`tools/README.md`](../tools/README.md)。
 
 ## 收录范围为什么是这些
 
@@ -128,10 +128,13 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 ### 验证程度分两级，不要混为一谈
 
-- **路由与收录范围**：全部从代码的 `RegisterPublic` 逐条核过，90 条不多不少。
-- **字段级**：只有实机打过的才算验证过，其余按 Go 类型写成，**未经实机验证**，
-  改动时请人工核对，或用 `x-contract-probe` 把只读 GET 纳入契约巡检
-  （机制见 [`tools/README.md`](../tools/README.md)）。
+- **路由与收录范围**：全部从代码的 `RegisterPublic` 逐条核过，91 条不多不少。
+- **字段级**：只有实机打过的才算验证过（见下节），其余按 Go 类型写成，
+  **未经实机验证**，改动时请人工核对。
+
+服务目录下 `adp/execution-factory/operator-integration/docs/apis/` 里有一份历史
+草稿可作参照，但它与实现存在漂移（context-loader 的同类草稿实测就有三处写错），
+不要直接当作真相源。
 
 ### 实机验证覆盖
 
@@ -163,11 +166,3 @@ ClusterIP 调工具代理与 `function/exec`），不经 Ingress，也不在本�
 
 仍不收录的两个面：内部面 `internal-v1`（刻意不挂 Ingress，见上节）与能力面
 `/api/capabilities-lab/v1`。
-
-**验证程度分两级**，模块内不同文件不一样：**路由与收录范围**全部从代码的
-`RegisterPublic` 核过；**字段级**只有实机打过的算数——函数 5 条、沙箱 3 条、
-算子的分类与两个列表。其余按 Go 类型与服务目录草稿写成，标注为未实机验证。
-
-这些接口的**响应结构未经本批次验证**，改动时请人工核对。服务目录下
-`adp/execution-factory/operator-integration/docs/apis/` 里有一份历史草稿可作参照，
-但它与实现存在漂移（context-loader 的同类草稿实测就有三处写错），不要直接当作真相源。
