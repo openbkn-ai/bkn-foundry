@@ -121,7 +121,18 @@ func New(deps Deps) *gin.Engine {
 		// the adminwrite socket. In a community binary no mounter was registered,
 		// so Mount is a no-op and those endpoints stay absent (404). The guarded
 		// operations live in newAdminWriteServices; ee owns only the HTTP shape.
-		if adminwrite.Mount(admin, newAdminWriteServices(deps.Enforcer, deps.DB)) {
+		// The licence gate goes in FRONT of RequireAdmin, on its own group at the
+		// same prefix. Adding it to `admin` would put it behind authentication,
+		// and then an unauthenticated probe would get 401 from an enterprise
+		// binary where a community one answers 404 — the paid surface would be
+		// identifiable without any credential at all. Audit sits after the gate
+		// for the same reason: a hidden route must not produce a record shaped
+		// differently from a route that does not exist.
+		gatedAdmin := r.Group("/api/safe/v1/admin", adminwrite.Gate(), RequireAdmin(verifier, deps.Enforcer))
+		if deps.Audit != nil {
+			gatedAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
+		}
+		if adminwrite.Mount(gatedAdmin, newAdminWriteServices(deps.Enforcer, deps.DB)) {
 			slog.Info("rbac_basic admin write routes mounted (enterprise build)")
 		}
 		// Global AppKey oversight: list/revoke any user's keys.

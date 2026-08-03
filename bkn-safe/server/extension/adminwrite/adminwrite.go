@@ -77,9 +77,10 @@ type RolePatch struct {
 type Services interface {
 	// RequirePermission returns core's RBAC middleware for a resource/op, so ee
 	// write routes keep the same per-caller permission checks community reads
-	// use. This is the RBAC layer; the licence layer is the socket's (see
-	// requireFeature), and it runs first — an unlicensed request must never reach
-	// an authorization check, or the permission error would disclose the endpoint.
+	// use. This is the RBAC layer. The licence layer is the socket's (Gate) and
+	// the caller is responsible for ordering it first — an unlicensed request
+	// must not reach any authorization check, including authentication, or the
+	// 401/403 discloses that the endpoint exists in this binary.
 	RequirePermission(resourceType, op string) gin.HandlerFunc
 
 	// CreateRole creates a custom role and returns its id.
@@ -192,16 +193,39 @@ func registerMounter(m Mounter) {
 // The reason still gets recorded, just not to the caller: the log is where an
 // operator finds out this was an entitlement gap rather than a missing route
 // (ee-design.md §7.5 requires the two to be distinguishable server-side).
-func requireFeature(f extension.Feature) gin.HandlerFunc {
+func Gate() gin.HandlerFunc {
+	f := gatedOn
+	if f == "" {
+		// Legacy RegisterMounter: the caller gates inside its own mounter, so
+		// the socket has nothing to enforce. Never nil — a caller that wires
+		// Gate() unconditionally must not have to branch on it.
+		return func(c *gin.Context) { c.Next() }
+	}
 	return func(c *gin.Context) {
 		if extension.Enabled(f) {
 			c.Next()
 			return
 		}
+		// The reason goes to the log, never to the caller. §7.5 requires an
+		// operator to be able to tell an entitlement gap from a missing route;
+		// the caller must not be able to tell them apart at all.
 		slog.Info("adminwrite: route hidden, feature not licensed",
 			"feature", string(f), "method", c.Request.Method, "path", c.Request.URL.Path)
-		c.Data(http.StatusNotFound, "text/plain; charset=utf-8", []byte("404 page not found"))
+
+		// gin's own answer for an unmounted route, byte for byte: status 404,
+		// Content-Type "text/plain" (gin.MIMEPlain), body "404 page not found"
+		// with no trailing newline and no other header.
+		//
+		// Reproduced here rather than delegated, because there is nothing to
+		// delegate to: gin only runs its not-found handler when no route
+		// matched, and this route did match. Both obvious shortcuts are wrong
+		// and were tried — writing the header by hand yields
+		// "text/plain; charset=utf-8", and net/http's NotFound adds a trailing
+		// newline plus X-Content-Type-Options: nosniff. Each is a fingerprint
+		// even though the status and body look right, which is why the test
+		// compares the whole response rather than the status code.
 		c.Abort()
+		c.Data(http.StatusNotFound, gin.MIMEPlain, []byte("404 page not found"))
 	}
 }
 
@@ -215,13 +239,17 @@ func Freeze() { frozen = true }
 // socket. In a community build no mounter was registered, so this is a no-op
 // and the write routes stay absent (404). Returns whether routes were mounted,
 // for the startup log.
+// Mount does NOT apply Gate() itself. gin appends group middleware to the
+// parent chain, so a gate added here would run after whatever the caller
+// already put on the group — in bkn-safe that is RequireAdmin, and an
+// unauthenticated probe would then get 401 from an enterprise binary where the
+// community one answers 404. Ordering is the caller's to get right, and
+// router.go puts Gate() first; TestGateRunsBeforeAuthentication is what checks
+// that it stays that way.
 func Mount(g *gin.RouterGroup, svc Services) bool {
 	frozen = true
 	if mounter == nil {
 		return false
-	}
-	if gatedOn != "" {
-		g = g.Group("", requireFeature(gatedOn))
 	}
 	mounter(g, svc)
 	return true
@@ -235,5 +263,6 @@ func Mounted() bool { return mounter != nil }
 // the exported wrapper.
 func resetForTest() {
 	mounter = nil
+	gatedOn = ""
 	frozen = false
 }

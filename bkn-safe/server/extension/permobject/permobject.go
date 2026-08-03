@@ -78,12 +78,19 @@ type Authorizer interface {
 var impl atomic.Value // Authorizer
 
 // Register plugs the ee implementation into the socket. It is called from the
-// enterprise assembly entry point (cmd/*-ee), after that entry point has
-// verified the license carries perm_object_level.
+// enterprise assembly entry point (cmd/*-ee).
 //
-// It panics on a second registration, on registration after the extension
-// registry is frozen, and on registration without a license — see
-// extension.Claim. All three are assembly bugs that must be loud at startup.
+// Registration is UNCONDITIONAL — do not check the licence first. An entry
+// point that registers only when a certificate is already present cannot be
+// switched on by a certificate installed afterwards: the registry is frozen
+// before that certificate arrives, so the only remedy left is restarting the
+// service on the customer's site to fix a licensing mistake. Available() and
+// Decide() re-read the licence on every call, which is where the tier belongs.
+//
+// It panics on a second registration and on registration after the extension
+// registry is frozen — see extension.Claim. Both are assembly bugs that must
+// be loud at startup. Registering while unlicensed used to panic too; that
+// rule is what produced the pattern described above, and it is gone.
 func Register(a Authorizer) {
 	if a == nil {
 		panic("permobject: Register(nil)")
