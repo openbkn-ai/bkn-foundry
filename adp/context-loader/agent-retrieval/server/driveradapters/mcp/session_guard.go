@@ -84,8 +84,9 @@ func guardBusinessToolCallWithCompletion(
 			return nil, fmt.Errorf("lifecycle operation client is not configured")
 		}
 		var businessContext bknContext
-		if conversationID == "" && interactionID == "" && operationKey == "" {
-			resolved, lifecycleErr, err := resolveAutoSession(ctx, autoClient, req, arguments)
+		autoSession := conversationID == "" && interactionID == "" && operationKey == ""
+		if autoSession {
+			resolved, lifecycleErr, err := resolveAutoSession(ctx, autoClient, req, arguments, autoSessionRetry{})
 			if err != nil {
 				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
 			}
@@ -131,6 +132,22 @@ func guardBusinessToolCallWithCompletion(
 			Input:    arguments,
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
+		// An auto session outlives any single call, so it can go stale between
+		// calls in ways the client cannot see or fix: Core declares the
+		// interaction terminal once its lease lapses, and caps one interaction at
+		// 128 operations. Both surface here, from operations:ensure — not from
+		// resolving the session — so the rebuild has to wrap this call.
+		if autoSession && err == nil && isStaleAutoSession(lifecycleErr) {
+			rebuilt, rebuildErr, resolveErr := resolveAutoSession(
+				ctx, autoClient, req, arguments,
+				autoSessionRetry{afterInteractionID: businessContext.InteractionID},
+			)
+			if resolveErr == nil && rebuildErr == nil {
+				businessContext = rebuilt
+				intent.Context = rebuilt
+				ensured, lifecycleErr, err = ensure(ctx, intent)
+			}
+		}
 		if err != nil {
 			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
 		} else if lifecycleErr != nil {
@@ -155,8 +172,13 @@ func guardBusinessToolCallWithCompletion(
 			}
 			operationID, attempt := operationIdentity(ensured.Operation)
 			traceContext, _ := common.GetTraceContextFromCtx(ctx)
-			traceContext.ConversationID = conversationID
-			traceContext.InteractionID = interactionID
+			// Must come from the resolved context, not the raw arguments: under the
+			// session fallback the arguments carry no ids, and writing them back
+			// would blank out what Guard.Begin just established. Evidence events
+			// with an empty interaction_id are rejected by Core in bulk, and the
+			// rejection only warns — the whole evidence trail would vanish silently.
+			traceContext.ConversationID = businessContext.ConversationID
+			traceContext.InteractionID = businessContext.InteractionID
 			traceContext.OperationID = operationID
 			traceContext.Attempt = attempt
 			ctx = common.SetTraceContextToCtx(ctx, traceContext)

@@ -19,6 +19,7 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
 type fakeClientSession struct{ id string }
@@ -33,10 +34,6 @@ type fakeCore struct {
 	mu                sync.Mutex
 	conversationCalls int
 	interactionKeys   []string
-	// activeInteraction mirrors Core: a second interaction on the same
-	// conversation is rejected unless the start key replays the existing one.
-	activeInteraction string
-	staleOnce         bool
 }
 
 func newFakeCore(t *testing.T) *fakeCore {
@@ -87,22 +84,12 @@ func newFakeCore(t *testing.T) *fakeCore {
 				return
 			}
 			core.interactionKeys = append(core.interactionKeys, body.IdempotencyKey)
-			if core.staleOnce && body.IdempotencyKey == core.activeInteraction {
-				core.staleOnce = false
-				w.WriteHeader(http.StatusConflict)
-				_ = json.NewEncoder(w).Encode(map[string]any{"error": bkntrace.APIError{
-					Code: "interaction_terminal", Message: "lease expired",
-					RequiredAction: "start_interaction",
-				}})
-				return
-			}
-			if core.activeInteraction == "" {
-				core.activeInteraction = body.IdempotencyKey
-			}
+			// Mirrors Core: a replayed start key resolves to the interaction that
+			// key already owns and answers 200, without consulting its lease. Core
+			// therefore never reports staleness here, and a rebuild that reuses the
+			// key gets the dead interaction straight back.
 			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
-				InteractionID: "int-for-" + body.IdempotencyKey,
-				// Core resolves a replayed start key to the interaction it already
-				// owns, which is what lets concurrent callers converge.
+				InteractionID:  "int-for-" + body.IdempotencyKey,
 				ConversationID: "conv-active", ExecutionStatus: "active",
 				LeaseToken: "lease-1", LeaseEpoch: 1,
 			})
@@ -305,15 +292,67 @@ func TestPartialBusinessContextStillFailsInsteadOfBeingCompleted(t *testing.T) {
 	}
 }
 
-func TestFallbackRebuildsTheSessionWhenTheLeaseExpired(t *testing.T) {
+func TestFallbackRebuildsTheSessionWhenCoreReportsItStale(t *testing.T) {
+	// Core never reports staleness while starting an interaction: a replayed
+	// start key resolves to the interaction it already owns, lease or no lease,
+	// and answers 200. The death only shows up one step later, when the
+	// operation is ensured — which is why the rebuild has to wrap that call.
+	for _, staleCode := range []string{"interaction_terminal", "operation_required"} {
+		t.Run(staleCode, func(t *testing.T) {
+			core := newFakeCore(t)
+			var seen []bknContext
+			guarded := guardBusinessToolCallWithCompletion(
+				func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+					seen = append(seen, intent.Context)
+					if len(seen) == 1 {
+						return nil, &lifecycleError{
+							Code: staleCode, Message: "session went stale between calls",
+							RequiredAction: "start_interaction",
+						}, nil
+					}
+					return &operationResult{Created: true, Execute: true}, nil, nil
+				},
+				nil, core.client(),
+				func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+					return mcpsdk.NewToolResultStructured(map[string]any{"ok": true}, `{"ok":true}`), nil
+				},
+			)
+
+			result, err := guarded(contextWithSession("session-a"), contextlessBusinessRequest())
+			if err != nil {
+				t.Fatalf("guard returned protocol error: %v", err)
+			}
+			if result.IsError {
+				t.Fatalf("a stale auto session must be rebuilt, not surfaced: %#v", result.StructuredContent)
+			}
+			if len(core.interactionKeys) != 2 || core.interactionKeys[0] == core.interactionKeys[1] {
+				t.Fatalf("rebuild must use a different start key, keys = %v", core.interactionKeys)
+			}
+			// Salted with the dead interaction, so concurrent callers that saw the
+			// same death converge on one replacement instead of racing.
+			if !strings.Contains(core.interactionKeys[1], seen[0].InteractionID) {
+				t.Fatalf("replacement key is not derived from the dead interaction: %v", core.interactionKeys)
+			}
+			if len(seen) != 2 || seen[1].InteractionID == seen[0].InteractionID {
+				t.Fatalf("rebuilt session reused the dead interaction: %#v", seen)
+			}
+		})
+	}
+}
+
+func TestExplicitContextIsNeverRebuiltOnStaleErrors(t *testing.T) {
+	// A caller that owns its conversation owns the recovery too. Silently moving
+	// its work onto a service-invented interaction would attribute that work to a
+	// turn the caller never started.
 	core := newFakeCore(t)
-	core.activeInteraction = "mcp:session-a"
-	core.staleOnce = true
-	var seen []bknContext
+	attempts := 0
 	guarded := guardBusinessToolCallWithCompletion(
-		func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
-			seen = append(seen, intent.Context)
-			return &operationResult{Created: true, Execute: true}, nil, nil
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			attempts++
+			return nil, &lifecycleError{
+				Code: "interaction_terminal", Message: "interaction is not active",
+				RequiredAction: "start_interaction",
+			}, nil
 		},
 		nil, core.client(),
 		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
@@ -321,18 +360,56 @@ func TestFallbackRebuildsTheSessionWhenTheLeaseExpired(t *testing.T) {
 		},
 	)
 
-	result, err := guarded(contextWithSession("session-a"), contextlessBusinessRequest())
+	result, err := guarded(contextWithSession("session-a"), validBusinessToolRequest())
 	if err != nil {
 		t.Fatalf("guard returned protocol error: %v", err)
 	}
-	if result.IsError {
-		t.Fatalf("an expired lease must be rebuilt, not surfaced: %#v", result.StructuredContent)
+	if !result.IsError {
+		t.Fatal("a caller-owned terminal interaction must surface, not be papered over")
 	}
-	if len(core.interactionKeys) != 2 || core.interactionKeys[0] == core.interactionKeys[1] {
-		t.Fatalf("retry must open a new interaction, keys = %v", core.interactionKeys)
+	if attempts != 1 {
+		t.Fatalf("ensure ran %d times; an explicit context must not be retried", attempts)
 	}
-	if len(seen) != 1 || seen[0].InteractionID == "" {
-		t.Fatalf("rebuilt session did not produce a usable context: %#v", seen)
+	if core.conversationCalls != 0 {
+		t.Fatal("an explicit context must never open a fallback conversation")
+	}
+}
+
+func TestResolvedContextReachesTheDownstreamTraceContext(t *testing.T) {
+	// The guard used to write the caller's raw arguments back onto the trace
+	// context. Under the fallback those are empty, so the evidence events the
+	// business tool emits carried no interaction id — and Core drops such events
+	// in bulk with only a warning, silently emptying the very trail this fallback
+	// exists to produce.
+	core := newFakeCore(t)
+	var resolved bknContext
+	var downstream common.TraceContext
+	guarded := guardBusinessToolCallWithCompletion(
+		func(ctx context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+			resolved = intent.Context
+			return &operationResult{
+				Created: true, Execute: true, LifecycleContext: ctx,
+				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
+			}, nil, nil
+		},
+		nil, core.client(),
+		func(ctx context.Context, _ mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			downstream, _ = common.GetTraceContextFromCtx(ctx)
+			return mcpsdk.NewToolResultStructured(map[string]any{"ok": true}, `{"ok":true}`), nil
+		},
+	)
+
+	if _, err := guarded(contextWithSession("session-a"), contextlessBusinessRequest()); err != nil {
+		t.Fatalf("guard returned protocol error: %v", err)
+	}
+	if resolved.ConversationID == "" || resolved.InteractionID == "" {
+		t.Fatalf("fallback did not resolve a usable context: %#v", resolved)
+	}
+	if downstream.ConversationID != resolved.ConversationID {
+		t.Fatalf("downstream conversation = %q, want %q", downstream.ConversationID, resolved.ConversationID)
+	}
+	if downstream.InteractionID != resolved.InteractionID {
+		t.Fatalf("downstream interaction = %q, want %q", downstream.InteractionID, resolved.InteractionID)
 	}
 }
 

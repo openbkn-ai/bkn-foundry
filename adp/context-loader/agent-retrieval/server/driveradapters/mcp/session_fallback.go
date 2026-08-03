@@ -35,19 +35,41 @@ const (
 	autoSessionOperationNS = "mcp-auto"
 )
 
-// autoSessionEpoch salts the interaction idempotency key. It advances only when
-// a lease has expired, so the retry opens a fresh interaction instead of
-// replaying the dead one.
-type autoSessionRetry struct{ epoch int }
+// autoSessionRetry salts the interaction idempotency key. Core resolves a
+// replayed start key to the interaction it already owns without checking its
+// lease, so reusing the key would hand back the same dead interaction. Only a
+// different key can open a live one.
+//
+// The salt is the id of the interaction that went stale rather than a counter,
+// so concurrent callers that all hit the same dead interaction derive the same
+// replacement key and converge on one new interaction instead of racing.
+type autoSessionRetry struct{ afterInteractionID string }
 
-// resolveAutoSession derives a bkn_context for a client that supplied none, and
-// rebuilds the session once when the previous interaction went stale. Core
-// renews the lease on every operation, so only an idle connection lands here.
+// isStaleAutoSession reports whether an auto session died between calls in a way
+// the client cannot see or repair. Core declares an interaction terminal once
+// its lease lapses, and caps a single interaction at 128 operations; a long-lived
+// MCP connection reaches both in ordinary use.
+func isStaleAutoSession(value *lifecycleError) bool {
+	if value == nil {
+		return false
+	}
+	switch value.Code {
+	case "interaction_terminal", "operation_required", "conversation_closed", "conversation_expired":
+		return true
+	default:
+		return false
+	}
+}
+
+// resolveAutoSession derives a full bkn_context for a client that supplied none.
+// The caller decides when to ask for a rebuild, because the staleness only shows
+// up downstream, when the operation is ensured against Core.
 func resolveAutoSession(
 	ctx context.Context,
 	client *bkntrace.LifecycleClient,
 	req mcpsdk.CallToolRequest,
 	arguments map[string]any,
+	retry autoSessionRetry,
 ) (bknContext, *lifecycleError, error) {
 	if client == nil || !client.Enabled() {
 		return bknContext{}, lifecycleErrorPtr(bkntrace.APIError{
@@ -55,24 +77,6 @@ func resolveAutoSession(
 			RequiredAction: "install_enterprise_implementation",
 		}), nil
 	}
-	resolved, lifecycleErr, err := resolveAutoContext(ctx, client, req, arguments, autoSessionRetry{})
-	if err != nil || !isAutoSessionRecoverable(lifecycleErr) {
-		return resolved, lifecycleErr, err
-	}
-	return resolveAutoContext(ctx, client, req, arguments, autoSessionRetry{epoch: 1})
-}
-
-// resolveAutoContext derives a full bkn_context for a client that supplied none.
-// It returns the zero value untouched when the client did supply one — a partial
-// context stays an error, since splicing a client conversation onto a generated
-// interaction would fabricate a causality edge that never happened.
-func resolveAutoContext(
-	ctx context.Context,
-	client *bkntrace.LifecycleClient,
-	req mcpsdk.CallToolRequest,
-	arguments map[string]any,
-	retry autoSessionRetry,
-) (bknContext, *lifecycleError, error) {
 	sessionID := autoSessionID(ctx)
 	if sessionID == "" {
 		return bknContext{}, &lifecycleError{
@@ -89,7 +93,7 @@ func resolveAutoContext(
 		return bknContext{}, lifecycleErrorPtr(*apiErr), nil
 	}
 	interaction, apiErr, err := client.StartInteraction(
-		ctx, conversation.ConversationID, autoInteractionKey(sessionID, retry.epoch),
+		ctx, conversation.ConversationID, autoInteractionKey(sessionID, retry),
 	)
 	if err != nil {
 		return bknContext{}, nil, err
@@ -115,11 +119,11 @@ func autoSessionID(ctx context.Context) string {
 	return strings.TrimSpace(session.SessionID())
 }
 
-func autoInteractionKey(sessionID string, epoch int) string {
-	if epoch <= 0 {
+func autoInteractionKey(sessionID string, retry autoSessionRetry) string {
+	if retry.afterInteractionID == "" {
 		return autoSessionKeyPrefix + sessionID
 	}
-	return autoSessionKeyPrefix + sessionID + ":" + string(rune('0'+epoch%10))
+	return autoSessionKeyPrefix + sessionID + ":after:" + retry.afterInteractionID
 }
 
 // autoOperationKey makes a replayed identical call idempotent within the
@@ -141,21 +145,6 @@ func autoOperationKey(toolName string, arguments map[string]any) string {
 	raw, _ := json.Marshal(map[string]any{"tool": toolName, "input": normalized})
 	sum := sha256.Sum256(raw)
 	return autoSessionOperationNS + ":" + toolName + ":" + hex.EncodeToString(sum[:8])
-}
-
-// isAutoSessionRecoverable reports whether a stale auto-session can be rebuilt
-// by opening a new interaction. An idle connection loses its lease after five
-// minutes, and the client has no way to know that happened.
-func isAutoSessionRecoverable(value *lifecycleError) bool {
-	if value == nil {
-		return false
-	}
-	switch value.Code {
-	case "interaction_terminal", "interaction_required", "conversation_closed", "conversation_expired":
-		return true
-	default:
-		return false
-	}
 }
 
 func lifecycleErrorPtr(value bkntrace.APIError) *lifecycleError {
