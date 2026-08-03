@@ -9,6 +9,14 @@ import (
 	"vega-backend/interfaces"
 )
 
+func TestMariaDBConnectorBuildPagedSQL(t *testing.T) {
+	connector := &MariaDBConnector{}
+	assert.Equal(t,
+		"SELECT * FROM (SELECT id FROM orders) AS _raw_query_page LIMIT 10 OFFSET 20",
+		connector.BuildPagedSQL("SELECT id FROM orders", 20, 10),
+	)
+}
+
 func TestBuildHavingCondition(t *testing.T) {
 	connector := &MariaDBConnector{}
 	tests := []struct {

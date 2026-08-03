@@ -10,6 +10,14 @@ import (
 	"vega-backend/interfaces"
 )
 
+func TestPostgresqlConnectorBuildPagedSQL(t *testing.T) {
+	connector := &PostgresqlConnector{}
+	assert.Equal(t,
+		"SELECT * FROM (SELECT id FROM orders) AS _raw_query_page LIMIT 10 OFFSET 20",
+		connector.BuildPagedSQL("SELECT id FROM orders", 20, 10),
+	)
+}
+
 func TestPostgresqlBuildHavingCondition(t *testing.T) {
 	connector := &PostgresqlConnector{}
 	tests := []struct {

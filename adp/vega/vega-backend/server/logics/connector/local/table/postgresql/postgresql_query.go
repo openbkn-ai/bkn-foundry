@@ -60,6 +60,74 @@ func convertValue(v any, colName string, origTypeMap map[string]string) any {
 	}
 }
 
+// BuildPagedSQL applies PostgreSQL paging syntax to a validated query.
+func (c *PostgresqlConnector) BuildPagedSQL(sql string, offset, limit int) string {
+	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_page LIMIT %d OFFSET %d", sql, limit, offset)
+}
+
+// ExecuteRawSQL 执行原始SQL查询
+func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("connect failed: %w", err)
+	}
+
+	rows, err := c.db.QueryContext(ctx, sql)
+	if err != nil {
+		return nil, fmt.Errorf("execute query failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("get columns failed: %w", err)
+	}
+
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, fmt.Errorf("get column types failed: %w", err)
+	}
+
+	response := &interfaces.RawQueryResponse{
+		Columns: make([]interfaces.ColumnInfo, len(columns)),
+		Entries: make([]map[string]any, 0),
+	}
+
+	// 填充列信息
+	for i, col := range columns {
+		response.Columns[i] = interfaces.ColumnInfo{
+			Name: col,
+			Type: c.MapType(columnTypes[i].DatabaseTypeName()),
+		}
+	}
+
+	// 读取结果行
+	for rows.Next() {
+		values := make([]any, len(columns))
+		valuePtrs := make([]any, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("scan row failed: %w", err)
+		}
+
+		row := make(map[string]any)
+		for i, col := range columns {
+			row[col] = convertValue(values[i], col, nil)
+		}
+		response.Entries = append(response.Entries, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows failed: %w", err)
+	}
+
+	totalCount := int64(len(response.Entries))
+	response.TotalCount = &totalCount
+
+	return response, nil
+}
+
 // ExecuteQuery 执行单表查询。
 func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
