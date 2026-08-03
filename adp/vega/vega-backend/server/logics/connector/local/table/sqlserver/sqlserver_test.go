@@ -1,5 +1,4 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
 // Licensed under the Apache License, Version 2.0.
 
@@ -8,6 +7,7 @@ package sqlserver
 import (
 	"context"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -154,10 +154,12 @@ func TestSQLServerConnectorNew(t *testing.T) {
 
 func TestSQLServerConnectorBuildPagedSQL(t *testing.T) {
 	connector := &SQLServerConnector{}
+	query := connector.BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10)
 	assert.Equal(t,
 		"SELECT * FROM (SELECT id FROM dbo.orders) AS _raw_query_page ORDER BY (SELECT 1) OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
-		connector.BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10),
+		query,
 	)
+	assert.NotContains(t, strings.ToUpper(query), " LIMIT ")
 }
 
 func TestSQLServerConnectorListTables(t *testing.T) {

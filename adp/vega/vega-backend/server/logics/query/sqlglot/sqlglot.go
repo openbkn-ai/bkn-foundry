@@ -104,7 +104,7 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 		return "postgres", nil
 	case "maria", interfaces.ConnectorTypeMariaDB:
 		return "mysql", nil // MariaDB使用mysql方言
-	case interfaces.ConnectorTypeSQLServer:
+	case "tsql", interfaces.ConnectorTypeSQLServer:
 		return "tsql", nil
 	default:
 		logger.Errorf("unsupported dataSourceType: %s", dataSourceType)

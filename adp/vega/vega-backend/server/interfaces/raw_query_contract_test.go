@@ -273,4 +273,10 @@ func TestRawQueryRequestRejectsContinuationTimeout(t *testing.T) {
 func TestRawQueryContractEffectiveInputDialect(t *testing.T) {
 	assert.Equal(t, "postgres", RawQueryContract{QueryFormat: QueryFormatSQL}.EffectiveInputDialect())
 	assert.Equal(t, "mysql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "MySQL"}.EffectiveInputDialect())
+	assert.Equal(t, "tsql", RawQueryContract{QueryFormat: QueryFormatSQL, InputDialect: "TSQL"}.EffectiveInputDialect())
+	require.NoError(t, RawQueryContract{
+		Query:        "SELECT * FROM {{orders}}",
+		QueryFormat:  QueryFormatSQL,
+		InputDialect: "tsql",
+	}.Validate())
 }
