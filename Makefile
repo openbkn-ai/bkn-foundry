@@ -91,7 +91,7 @@ MODTITLE_vega              := VEGA 引擎
 ## 模块中文描述（index 卡片副标题用）。未列出的模块回落为空。
 MODDESC_bkn               := 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出
 MODDESC_bkn-agent         := Agent 运行时：Agent 增删改查 / 对话与调用 / 任务 / 提示词版本 / 会话 / 导入导出
-MODDESC_execution-factory := 能力落地：函数编写与沙箱执行 / 依赖与模板 / AI 生成（算子、工具箱、MCP、Skill 待补）
+MODDESC_execution-factory := 执行工厂：函数与沙箱执行 / 算子 / 工具箱 / MCP / Skill / 导入导出
 MODDESC_agent-observability := BKN Trace：受管会话生命周期 / 业务证据 / 技术链路 / 快照
 MODDESC_context-loader    := Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP
 MODDESC_mf-model-manager  := 模型工厂：大模型连通性测试 / 默认模型设置 / 调用监控

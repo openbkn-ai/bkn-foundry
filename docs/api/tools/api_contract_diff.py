@@ -151,11 +151,11 @@ class SpecLoader:
             # 记下数组形态本身。oneOf 分支里的数组(如 mapping_rules 的 direct
             # 形态)否则只会留下父级的 object 记录,和实际的 `key[]` 对不上。
             # prefix 为空 = 响应根就是数组(如 GET /operator/category),此时
-            # actual_paths 会产出一条裸 "[]",文档侧不记就会误报「文档未声明」。
-            if True:
-                out.setdefault(prefix + "[]",
-                               ((schema.get("items") or {}).get("type", "object"),
-                                required))
+            # actual_paths 会产出一条裸 "[]",文档侧不记就会误报「文档未声明」,
+            # 所以根节点也要记,不能只在 prefix 非空时记。
+            out.setdefault(prefix + "[]",
+                           ((schema.get("items") or {}).get("type", "object"),
+                            required))
             self.field_paths(schema.get("items", {}), doc, path, prefix + "[]",
                              depth + 1, seen, required, out)
             return out
@@ -409,6 +409,29 @@ def sample_value(param):
     return None
 
 
+def with_required_query(op, query=None):
+    """把必填 query 参数补进 query 表;返回 (query 表, 造不出取值的参数名)。
+
+    已经在 query 里的不覆盖 —— probe 显式写的值优先于按 schema 造的值。
+    普通 GET 路径与 probe 路径共用这一段,否则给 `/tool-box/market/tools`
+    (tool_name 必填)这类端点加 probe 后会静默 400。
+    """
+    out = dict(query or {})
+    unfillable = []
+    for p in op["params"]:
+        if p.get("in") != "query" or not p.get("required"):
+            continue
+        name = p.get("name")
+        if name in out:
+            continue
+        val = sample_value(p)
+        if val is None:
+            unfillable.append(name)
+        else:
+            out[name] = val
+    return out, unfillable
+
+
 # --------------------------------------------------------------------------
 # 路径参数发现
 # --------------------------------------------------------------------------
@@ -596,6 +619,13 @@ def run_probes(execu, host_of, headers, ops, found, args):
             if unresolved:
                 op["skip"] = "缺少路径参数 " + ",".join(unresolved)
                 continue
+            # 必填 query 不带就是必然 400。probe 里显式写了的以 probe 为准,
+            # 没写的按 schema 造一个合规取值 —— 与普通 GET 路径同一套规则。
+            query, unfillable = with_required_query(op, query)
+            if unfillable:
+                op["skip"] = ("必填 query 参数无法自动取值 "
+                              + ",".join(unfillable))
+                continue
             if query:
                 url += ("&" if "?" in url else "?") + "&".join(
                     f"{k}={v}" for k, v in query.items())
@@ -754,18 +784,11 @@ def main():
             op["skip"] = "无服务地址映射"
             continue
         # 必填 query 参数不带就是必然 400，按 schema 造一个合规取值
-        required_q = [p for p in op["params"]
-                      if p.get("in") == "query" and p.get("required")]
-        qs, unfillable = [], []
-        for p in required_q:
-            v = sample_value(p)
-            if v is None:
-                unfillable.append(p.get("name"))
-            else:
-                qs.append(f"{p['name']}={v}")
+        filled, unfillable = with_required_query(op)
         if unfillable:
             op["skip"] = "必填 query 参数无法自动取值 " + ",".join(unfillable)
             continue
+        qs = [f"{k}={v}" for k, v in filled.items()]
         if qs:
             url = url + ("&" if "?" in url else "?") + "&".join(qs)
             op["filled_query"] = qs
@@ -806,7 +829,7 @@ def main():
 
 
 def render(ops, ids, args):
-    checked, gaps, skipped = [], [], []
+    checked, gaps, skipped, thin = [], [], [], []
     for op in ops:
         if op.get("doc_fields") is None:
             continue
@@ -861,8 +884,17 @@ def render(ops, ids, args):
             alt = k[:-2] if k.endswith("[]") else k + "[]"
             return k in act or alt in act
 
+        def under_empty(k):
+            # `data[]` 为空时,`data[].name` 这些子路径本次无从观测。
+            # 用 `e + "[]"` 而不是裸 `e` 比,免得 `data` 顺带盖住 `database`。
+            return any(k.startswith(e + "[]") for e in empties)
+
         absent_all = [k for k in doc if ".*" not in k and not satisfied(k)
-                      and not any(k.startswith(e) for e in empties)]
+                      and not under_empty(k)]
+        # 被空数组挡住、这一轮压根没验到的字段。它们既不算缺口也不算验过,
+        # 单独记一笔 —— 否则一个 `{"data": []}` 会报成「已比对、0 缺口」。
+        unobserved = [k for k in doc if ".*" not in k and not satisfied(k)
+                      and under_empty(k)]
         # 父级本身就没返回时,其子路径是连带的,不重复报
         absent_roots = []
         for k in sorted(absent_all, key=len):
@@ -871,12 +903,15 @@ def render(ops, ids, args):
         required_absent = [k for k in absent_roots if doc[k][1]]
         optional_absent = [k for k in absent_roots if not doc[k][1]]
 
+        op["_unobserved"] = unobserved
         if missing or required_absent or badtype:
             op["_missing"] = missing
             op["_absent"] = required_absent
             op["_optional"] = optional_absent
             op["_badtype"] = badtype
             gaps.append(op)
+        if unobserved:
+            thin.append(op)
         checked.append(op)
 
     with_schema = [o for o in ops if o.get("doc_fields") is not None]
@@ -908,6 +943,10 @@ def render(ops, ids, args):
                  + " —— 这些接口的响应结构本次**未经验证**")
     L.append(f"- 实际请求成功并完成比对:**{len(checked)} / {len(probeable)}**")
     L.append(f"- 存在缺口:**{len(gaps)}**   未能比对:{len(skipped)}")
+    if thin:
+        L.append(f"- 其中**响应样本为空**:{len(thin)} 条,共 "
+                 f"{sum(len(o['_unobserved']) for o in thin)} 个字段落在空数组"
+                 f"下、本次未观测 —— 这些接口的「0 缺口」不等于验过,见下节")
     uniq = sorted({(n, v) for _, n, v in ids})
     L.append("- 自动发现的路径参数:`"
              + json.dumps(dict(uniq), ensure_ascii=False) + "`\n")
@@ -933,6 +972,16 @@ def render(ops, ids, args):
     else:
         L.append("## 缺口明细\n\n比对成功的接口全部一致。\n")
 
+    if thin:
+        L.append("## 响应样本为空(0 缺口 ≠ 已验证)\n")
+        L.append("列表返回空数组时,数组元素的字段无从观测,报告里既不会算缺口"
+                 "也不该算验过。环境里补上对应数据后重跑才有结论。\n")
+        for op in sorted(thin, key=lambda o: (o["module"], o["req_url"])):
+            u = op["_unobserved"]
+            L.append(f"- `{op['method']} {op['req_url']}` —— {len(u)} 个字段"
+                     f"未观测(如 `{'`, `'.join(u[:5])}`)")
+        L.append("")
+
     if skipped:
         L.append("## 未能比对(需人工跟进)\n")
         by = {}
@@ -945,7 +994,8 @@ def render(ops, ids, args):
             if len(group) > 40:
                 L.append(f"- …另 {len(group)-40} 个")
             L.append("")
-    return "\n".join(L), {"gap_ops": len(gaps), "checked": len(checked)}
+    return "\n".join(L), {"gap_ops": len(gaps), "checked": len(checked),
+                          "empty_sample": len(thin)}
 
 
 if __name__ == "__main__":

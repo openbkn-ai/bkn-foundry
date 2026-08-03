@@ -105,7 +105,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 - **错误信封**：本服务**不用** `kweaver-go-lib/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorCompact`](../_shared/errors.yaml)（与 context-loader 同源同形）。
 - **内部接口**：`/api/agent-operator-integration/internal-v1` 是内部面，另有 `POST /function/exec/{version}`（按已注册的函数版本执行，`timeout` 单位毫秒）等端点，**本文档不收录**。
 - **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），也挂在 Ingress 上，路径与语义都与 `v1` 不同，**本文档暂不收录**。
-- **时间戳一律是纳秒**：所有 `*_time` 字段由 `time.Now().UnixNano()` 生成，形如 `1784880971306127803`；按毫秒解析会得到 1970 年附近的日期。全服务统一，算子 / MCP / 工具箱 / Skill 都是。
+- **`*_time` 一律是纳秒**：算子 / MCP / 工具箱 / Skill 的 `*_time` 字段都由 `time.Now().UnixNano()` 生成，形如 `1784880971306127803`；按毫秒解析会得到 1970 年附近的日期。例外是沙箱观测面，它的 `created_at` / `last_used_at` / `checked_at` 是 RFC3339 字符串——两种记法看字段后缀区分（`*_time` 是纳秒整数，`*_at` 是字符串）。
 - **契约巡检**：只读 GET **默认就在探测范围内，不需要标注**。本模块 13 处 `x-contract-probe` 只加在「需要分批」的端点上——列表接口用 `provides` 把 `box_id` / `skill_id` / `mcp_id` 等喂给后续批次的详情接口，普通 GET 路径是一次性并发、拿不到上一条的产出。机制见 [`tools/README.md`](../tools/README.md)。
 
 ## 收录范围为什么是这些
@@ -138,21 +138,25 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 ### 实机验证覆盖
 
-在开发 VM（`parallels@10.211.55.4`，已升到 main 最新的
-`0.1.3-main…sha185a9c2`）跑契约巡检，**91 条里 33 条完成字段级比对、缺口 0**：
+在开发 VM（`parallels@10.211.55.4`，镜像
+`0.1.3-main.20260730112246.sha185a9c2`）跑契约巡检，**91 条里 30 条完成字段级比对、
+缺口 0**；但其中 4 条的响应是空列表，数组元素的字段本次无从观测，因此**真正被逐字段
+核过的是 26 条**：
 
 ```bash
 make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=parallels@10.211.55.4 \
      CONTRACT_ARGS="--include-probe-post --token $TOKEN"
 ```
 
-未比对的 58 条分三类，都不是「验过没问题」，接手时请自行核对：
+91 条的去向如下。除「完成字段级比对」外都不是「验过没问题」，接手时请自行核对：
 
 | 类别 | 条数 | 说明 |
 |---|---|---|
-| 写操作 / 未标只读 | 49 | 注册、编辑、删除、发布、执行等，工具按设计不发送 |
+| 完成字段级比对 | 30 | 缺口 0。其中 4 条响应样本为空（`function/dependencies`、`operator/info/list`、`operator/market`、`skills/index/build`），共 112 个字段落在空数组下未观测——巡检报告里单列一节标出，不要把这几条的「0 缺口」当成验过 |
+| 写操作 / 未标只读 | 42 | 注册、编辑、删除、发布、执行等，工具按设计不发送 |
+| 200 无 JSON 响应体 | 7 | 删除、状态变更、SSE 流、`.adp` 导入——文档本就没有 200 响应 schema，无从比对 |
 | 缺路径参数 | 7 | 环境里没有对应数据（如没有算子版本、没有 MCP 工具名） |
-| 环境相关失败 | 2 | 如 `/tool-box/market/tools` 需要必填的 `tool_name` |
+| 环境相关失败 | 5 | MCP 代理不可达（503）、代理型 MCP 无接入地址（400）、技能包下载响应非 JSON（2 条）、`/tool-box/market/tools` 必填的 `tool_name` 造不出取值 |
 
 ### 实际被调用的有多少
 
