@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	_ "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 	"github.com/mitchellh/mapstructure"
 
 	"vega-backend/interfaces"
@@ -25,6 +26,14 @@ const (
 	portMin = 1
 	portMax = 65535
 )
+
+var allowedOptions = map[string]struct{}{
+	msdsn.Encrypt:                {},
+	msdsn.TrustServerCertificate: {},
+	msdsn.HostNameInCertificate:  {},
+	msdsn.ConnectionTimeout:      {},
+	msdsn.AppName:                {},
+}
 
 type config struct {
 	Host     string         `mapstructure:"host"`
@@ -87,19 +96,43 @@ func (c *SQLServerConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Con
 		}
 		seen[strings.ToLower(schema)] = struct{}{}
 	}
+	options, err := normalizeOptions(value.Options)
+	if err != nil {
+		return nil, err
+	}
+	value.Options = options
 	return &SQLServerConnector{config: &value}, nil
 }
 
+func normalizeOptions(options map[string]any) (map[string]any, error) {
+	normalized := make(map[string]any, len(options))
+	for option, value := range options {
+		name := strings.ToLower(strings.TrimSpace(option))
+		if _, ok := allowedOptions[name]; !ok {
+			return nil, fmt.Errorf("unsupported sqlserver option: %s", option)
+		}
+		if _, ok := normalized[name]; ok {
+			return nil, fmt.Errorf("duplicate sqlserver option: %s", name)
+		}
+		switch name {
+		case msdsn.Encrypt, msdsn.TrustServerCertificate:
+			if _, ok := value.(bool); !ok {
+				return nil, fmt.Errorf("sqlserver option %s must be a boolean", name)
+			}
+		}
+		normalized[name] = value
+	}
+	return normalized, nil
+}
+
 func (c *SQLServerConnector) connectionString() string {
-	u := &url.URL{Scheme: "sqlserver", User: url.UserPassword(c.config.Username, c.config.Password), Host: c.config.Host + ":" + strconv.Itoa(c.config.Port)}
+	u := &url.URL{
+		Scheme: "sqlserver",
+		User:   url.UserPassword(c.config.Username, c.config.Password),
+		Host:   c.config.Host + ":" + strconv.Itoa(c.config.Port),
+	}
 	q := u.Query()
 	q.Set("database", c.config.Database)
-	if _, ok := c.config.Options["encrypt"]; !ok {
-		q.Set("encrypt", "true")
-	}
-	if _, ok := c.config.Options["trustservercertificate"]; !ok {
-		q.Set("trustservercertificate", "false")
-	}
 	for key, value := range c.config.Options {
 		q.Set(key, fmt.Sprint(value))
 	}

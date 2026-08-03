@@ -7,6 +7,7 @@ package sqlserver
 
 import (
 	"context"
+	"net/url"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -21,22 +22,133 @@ import (
 func TestSQLServerConnectorNew(t *testing.T) {
 	builder := &SQLServerConnector{}
 	connector, err := builder.New(interfaces.ConnectorConfig{
-		"host": "sqlserver", "port": 1433, "username": "reader", "password": "secret", "database": "erp",
-		"schemas": []string{"dbo"}, "options": map[string]any{"encrypt": true},
+		"host":     "sqlserver",
+		"port":     1433,
+		"username": "reader",
+		"password": "secret",
+		"database": "erp",
+		"schemas":  []string{"dbo"},
 	})
 	require.NoError(t, err)
 	got := connector.(*SQLServerConnector)
 	assert.Equal(t, "sqlserver", got.config.Host)
-	assert.Contains(t, got.connectionString(), "database=erp")
+	connectionURL, err := url.Parse(got.connectionString())
+	require.NoError(t, err)
+	assert.Equal(t, "erp", connectionURL.Query().Get("database"))
+	assert.False(t, connectionURL.Query().Has("encrypt"))
+	assert.False(t, connectionURL.Query().Has("trustservercertificate"))
 
-	for _, cfg := range []interfaces.ConnectorConfig{
-		{"host": "sqlserver"},
-		{"host": "sqlserver", "port": 0, "username": "reader", "password": "secret", "database": "erp"},
-		{"host": "sqlserver", "port": 1433, "username": "reader", "password": "secret", "database": "erp", "schemas": []string{"dbo", "DBO"}},
-	} {
-		connector, err := builder.New(cfg)
-		require.Error(t, err)
-		assert.Nil(t, connector)
+	connector, err = builder.New(interfaces.ConnectorConfig{
+		"host":     "sqlserver",
+		"port":     1433,
+		"username": "reader",
+		"password": "secret",
+		"database": "erp",
+		"options": map[string]any{
+			"Encrypt":                true,
+			"TrustServerCertificate": false,
+			"HostNameInCertificate":  "db.internal",
+			"Connection Timeout":     10,
+			"App Name":               "vega",
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"encrypt":                true,
+		"trustservercertificate": false,
+		"hostnameincertificate":  "db.internal",
+		"connection timeout":     10,
+		"app name":               "vega",
+	}, connector.(*SQLServerConnector).config.Options)
+	connectionURL, err = url.Parse(connector.(*SQLServerConnector).connectionString())
+	require.NoError(t, err)
+	assert.Equal(t, "true", connectionURL.Query().Get("encrypt"))
+	assert.Equal(t, "false", connectionURL.Query().Get("trustservercertificate"))
+
+	invalidConfigs := []struct {
+		name         string
+		config       interfaces.ConnectorConfig
+		errorContain string
+	}{
+		{name: "incomplete", config: interfaces.ConnectorConfig{"host": "sqlserver"}, errorContain: "config is incomplete"},
+		{
+			name: "invalid port",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     -1,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+			},
+			errorContain: "out of valid range",
+		},
+		{
+			name: "duplicate schema",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"schemas":  []string{"dbo", "DBO"},
+			},
+			errorContain: "duplicate element found in schemas",
+		},
+		{
+			name: "unknown option",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"packet size": 4096},
+			},
+			errorContain: "unsupported sqlserver option: packet size",
+		},
+		{
+			name: "duplicate option ignores case",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"encrypt": true, "Encrypt": false},
+			},
+			errorContain: "duplicate sqlserver option: encrypt",
+		},
+		{
+			name: "encrypt must be boolean",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"encrypt": "strict"},
+			},
+			errorContain: "sqlserver option encrypt must be a boolean",
+		},
+		{
+			name: "trust server certificate must be boolean",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"trustservercertificate": "false"},
+			},
+			errorContain: "sqlserver option trustservercertificate must be a boolean",
+		},
+	}
+	for _, test := range invalidConfigs {
+		t.Run(test.name, func(t *testing.T) {
+			connector, err := builder.New(test.config)
+			require.ErrorContains(t, err, test.errorContain)
+			assert.Nil(t, connector)
+		})
 	}
 }
 
