@@ -66,6 +66,45 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	}
 }
 
+func TestEnqueueRejectsZeroEpoch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("new sql mock: %v", err)
+	}
+	defer db.Close()
+	repository := &Repository{
+		db:      db,
+		config:  Config{ProducerID: "bkn-backend", ProducerStreamID: "bkn-backend"},
+		dialect: dialectMariaDB,
+	}
+	now := time.Now().UTC()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).
+		WithArgs("bkn-backend", "bkn-backend").
+		WillReturnRows(sqlmock.NewRows([]string{"current_epoch", "next_sequence"}).AddRow(uint64(0), uint64(1)))
+	mock.ExpectRollback()
+
+	_, err = repository.Enqueue(context.Background(), Event{
+		EventID: "evt-zero", EventType: "knowledge.read.observed", ConversationID: "c1", InteractionID: "i1",
+		StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`),
+	}, Owner{TenantID: "t1", BusinessDomainID: "d1", ApplicationPrincipalID: "bkn-backend", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"})
+	if err == nil {
+		t.Fatal("Enqueue() accepted epoch 0")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsureStreamStateStartsAtEpochOne(t *testing.T) {
+	if query := (&Repository{dialect: dialectMariaDB}).ensureStreamStateSQL(); !regexp.MustCompile(`SELECT \?, \?, 1, 1`).MatchString(query) {
+		t.Fatalf("MariaDB stream-state initialization must use epoch 1: %s", query)
+	}
+	if query := (&Repository{dialect: dialectDM8}).ensureStreamStateSQL(); !regexp.MustCompile(`VALUES \(source\.producer_id, source\.producer_stream_id, 1, 1`).MatchString(query) {
+		t.Fatalf("DM8 stream-state initialization must use epoch 1: %s", query)
+	}
+}
+
 func TestClaimHeadOfLineBlocksLaterSequenceDuringBackoff(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

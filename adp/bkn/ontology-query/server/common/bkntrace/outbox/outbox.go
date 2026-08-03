@@ -23,13 +23,14 @@ import (
 )
 
 const (
-	StatusPending    = "pending"
-	StatusProcessing = "processing"
-	StatusRetry      = "retry"
-	StatusDelivered  = "delivered"
-	StatusDLQ        = "dlq"
-	StatusConflict   = "conflict"
-	StatusAbandoned  = "abandoned"
+	StatusPending               = "pending"
+	StatusProcessing            = "processing"
+	StatusRetry                 = "retry"
+	StatusDelivered             = "delivered"
+	StatusDLQ                   = "dlq"
+	StatusConflict              = "conflict"
+	StatusAbandoned             = "abandoned"
+	initialProducerEpoch uint64 = 1
 )
 
 const (
@@ -205,6 +206,9 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT current_epoch, next_sequence FROM %s WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE", tableStream), r.config.ProducerID, r.config.ProducerStreamID).Scan(&epoch, &next); err != nil {
 		return Event{}, err
 	}
+	if epoch == 0 {
+		return Event{}, fmt.Errorf("producer stream %q has invalid epoch 0", r.config.ProducerStreamID)
+	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("UPDATE %s SET next_sequence = ?, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ?", tableStream), next+1, time.Now().UTC(), r.config.ProducerID, r.config.ProducerStreamID); err != nil {
 		return Event{}, err
 	}
@@ -362,6 +366,12 @@ func (r *Repository) loadCurrentEpoch(ctx context.Context, now time.Time) (uint6
 	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT current_epoch FROM %s WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE", tableStream), r.config.ProducerID, r.config.ProducerStreamID).Scan(&epoch); err != nil {
 		return 0, err
 	}
+	if epoch == 0 {
+		if err := r.initializeEpochZero(ctx, tx, now); err != nil {
+			return 0, err
+		}
+		epoch = initialProducerEpoch
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
@@ -386,11 +396,33 @@ func (r *Repository) acquireEpoch(ctx context.Context, now time.Time) (uint64, e
 	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT current_epoch FROM %s WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE", tableStream), r.config.ProducerID, r.config.ProducerStreamID).Scan(&epoch); err != nil {
 		return 0, err
 	}
+	if epoch == 0 {
+		if err := r.initializeEpochZero(ctx, tx, now); err != nil {
+			return 0, err
+		}
+		epoch = initialProducerEpoch
+	}
 	epoch++
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("UPDATE %s SET current_epoch = ?, next_sequence = 1, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ?", tableStream), epoch, now, r.config.ProducerID, r.config.ProducerStreamID); err != nil {
 		return 0, err
 	}
 	return epoch, tx.Commit()
+}
+
+func (r *Repository) initializeEpochZero(ctx context.Context, tx *sql.Tx, now time.Time) error {
+	var incomplete int
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf(
+		"SELECT COUNT(*) FROM %s WHERE producer_stream_id = ? AND status NOT IN (?, ?)", tableOutbox,
+	), r.config.ProducerStreamID, StatusDelivered, StatusAbandoned).Scan(&incomplete); err != nil {
+		return err
+	}
+	if incomplete != 0 {
+		return fmt.Errorf("producer stream %q has %d incomplete epoch 0 records; abandon them before enabling delivery", r.config.ProducerStreamID, incomplete)
+	}
+	_, err := tx.ExecContext(ctx, fmt.Sprintf(
+		"UPDATE %s SET current_epoch = ?, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ? AND current_epoch = 0", tableStream,
+	), initialProducerEpoch, now, r.config.ProducerID, r.config.ProducerStreamID)
+	return err
 }
 
 func CanonicalHash(payload json.RawMessage) string {
@@ -864,10 +896,10 @@ func (r *Repository) ensureStreamStateSQL() string {
 		return fmt.Sprintf(`MERGE INTO %s target USING (SELECT ? AS producer_id, ? AS producer_stream_id FROM DUAL) source
 			ON (target.producer_id = source.producer_id AND target.producer_stream_id = source.producer_stream_id)
 			WHEN NOT MATCHED THEN INSERT (producer_id, producer_stream_id, current_epoch, next_sequence, created_at, updated_at)
-			VALUES (source.producer_id, source.producer_stream_id, 0, 1, ?, ?)`, tableStream)
+			VALUES (source.producer_id, source.producer_stream_id, 1, 1, ?, ?)`, tableStream)
 	}
 	return fmt.Sprintf(`INSERT INTO %s (producer_id, producer_stream_id, current_epoch, next_sequence, created_at, updated_at)
-		SELECT ?, ?, 0, 1, ?, ? WHERE NOT EXISTS (SELECT 1 FROM %s WHERE producer_id = ? AND producer_stream_id = ?)`, tableStream, tableStream)
+		SELECT ?, ?, 1, 1, ?, ? WHERE NOT EXISTS (SELECT 1 FROM %s WHERE producer_id = ? AND producer_stream_id = ?)`, tableStream, tableStream)
 }
 
 func (r *Repository) deleteOutboxSQL(timestampColumn string) string {

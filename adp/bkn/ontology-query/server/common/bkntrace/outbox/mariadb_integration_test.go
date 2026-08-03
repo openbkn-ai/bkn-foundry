@@ -57,25 +57,44 @@ func TestMariaDBRepositoryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("enqueue second event: %v", err)
 	}
-	if first.ProducerSequence != 1 || second.ProducerSequence != 2 || first.ProducerEpoch != second.ProducerEpoch {
+	if first.ProducerEpoch != initialProducerEpoch || second.ProducerEpoch != initialProducerEpoch ||
+		first.ProducerSequence != 1 || second.ProducerSequence != 2 {
 		t.Fatalf("unexpected producer ordering: first=%d/%d second=%d/%d", first.ProducerEpoch, first.ProducerSequence, second.ProducerEpoch, second.ProducerSequence)
 	}
+	workerRepository, err := NewRepository(db, Config{
+		ProducerID: "integration-test", ProducerStreamID: streamID, DatabaseType: "MARIADB",
+		IngestURL: "http://core.invalid", QueryGatewayToken: "integration-token", BumpEpochOnStart: true,
+	})
+	if err != nil {
+		t.Fatalf("start worker repository: %v", err)
+	}
+	if workerRepository.epoch != initialProducerEpoch+1 {
+		t.Fatalf("worker epoch = %d, want %d", workerRepository.epoch, initialProducerEpoch+1)
+	}
+	third, err := repository.Enqueue(context.Background(), integrationEvent(suffix+"-3", now), owner)
+	if err != nil {
+		t.Fatalf("enqueue post-worker event: %v", err)
+	}
+	if third.ProducerEpoch != initialProducerEpoch+1 || third.ProducerSequence != 1 {
+		t.Fatalf("post-worker event ordering = %d/%d, want 2/1", third.ProducerEpoch, third.ProducerSequence)
+	}
 
-	record, err := repository.ClaimHeadOfLine(context.Background(), now)
+	claimAt := time.Now().UTC()
+	record, err := repository.ClaimHeadOfLine(context.Background(), claimAt)
 	if err != nil || record == nil || record.Event.EventID != first.EventID {
 		t.Fatalf("claim first event = %#v, %v", record, err)
 	}
-	if _, err := repository.Complete(context.Background(), record, StatusRetry, "core_timeout", now.Add(time.Minute)); err != nil {
+	if _, err := repository.Complete(context.Background(), record, StatusRetry, "core_timeout", claimAt.Add(time.Minute)); err != nil {
 		t.Fatalf("schedule retry: %v", err)
 	}
-	blocked, err := repository.ClaimHeadOfLine(context.Background(), now)
+	blocked, err := repository.ClaimHeadOfLine(context.Background(), claimAt)
 	if err != nil || blocked != nil {
 		t.Fatalf("later sequence must remain blocked during retry, got %#v, %v", blocked, err)
 	}
-	if _, err := db.Exec("UPDATE "+tableOutbox+" SET available_at = ? WHERE event_id = ?", now, first.EventID); err != nil {
+	if _, err := db.Exec("UPDATE "+tableOutbox+" SET available_at = ? WHERE event_id = ?", claimAt, first.EventID); err != nil {
 		t.Fatalf("make retry available: %v", err)
 	}
-	retry, err := repository.ClaimHeadOfLine(context.Background(), now)
+	retry, err := repository.ClaimHeadOfLine(context.Background(), time.Now().UTC())
 	if err != nil || retry == nil || retry.Event.EventID != first.EventID {
 		t.Fatalf("reclaim first event = %#v, %v", retry, err)
 	}
@@ -88,6 +107,13 @@ func TestMariaDBRepositoryIntegration(t *testing.T) {
 	}
 	if updated, err := repository.Complete(context.Background(), next, StatusDelivered, "", time.Time{}); err != nil || !updated {
 		t.Fatalf("deliver second event = %t, %v", updated, err)
+	}
+	last, err := repository.ClaimHeadOfLine(context.Background(), time.Now().UTC())
+	if err != nil || last == nil || last.Event.EventID != third.EventID {
+		t.Fatalf("claim post-worker event = %#v, %v", last, err)
+	}
+	if updated, err := repository.Complete(context.Background(), last, StatusDelivered, "", time.Time{}); err != nil || !updated {
+		t.Fatalf("deliver post-worker event = %t, %v", updated, err)
 	}
 }
 
