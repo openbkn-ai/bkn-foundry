@@ -32,7 +32,6 @@ import (
 // closure manifest — an auto-session has no answer to close over.
 const (
 	autoSessionKeyPrefix   = "mcp:"
-	autoSessionQuestion    = "(mcp auto-session)"
 	autoSessionOperationNS = "mcp-auto"
 )
 
@@ -90,8 +89,7 @@ func resolveAutoContext(
 		return bknContext{}, lifecycleErrorPtr(*apiErr), nil
 	}
 	interaction, apiErr, err := client.StartInteraction(
-		ctx, conversation.ConversationID,
-		autoInteractionKey(sessionID, retry.epoch), autoSessionQuestion,
+		ctx, conversation.ConversationID, autoInteractionKey(sessionID, retry.epoch),
 	)
 	if err != nil {
 		return bknContext{}, nil, err

@@ -292,14 +292,18 @@ func (c *LifecycleClient) EnsureCurrentConversation(
 // StartInteraction opens an interaction, or returns the existing one when the
 // same idempotency key is replayed. Core resolves the key before it rejects a
 // second active interaction, so concurrent callers converge instead of racing.
+//
+// Core rejects unknown body fields, and its start contract carries only the
+// idempotency key and lease. The question a caller asked is evidence, recorded
+// separately, never part of this request.
 func (c *LifecycleClient) StartInteraction(
 	ctx context.Context,
-	conversationID, idempotencyKey, question string,
+	conversationID, idempotencyKey string,
 ) (Interaction, *APIError, error) {
 	var interaction Interaction
 	path := "/conversations/" + url.PathEscape(conversationID) + "/interactions"
 	apiErr, err := c.do(ctx, http.MethodPost, path, map[string]any{
-		"idempotency_key": idempotencyKey, "question": question,
+		"idempotency_key": idempotencyKey,
 	}, &interaction)
 	return interaction, apiErr, err
 }

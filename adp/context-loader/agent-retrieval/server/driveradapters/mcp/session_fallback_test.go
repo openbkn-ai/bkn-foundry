@@ -49,8 +49,19 @@ func newFakeCore(t *testing.T) *fakeCore {
 		case strings.HasSuffix(r.URL.Path, "/conversations:ensure-current"):
 			var body struct {
 				ExternalConversationKey string `json:"external_conversation_key"`
+				IdempotencyKey          string `json:"idempotency_key"`
+				OneShot                 bool   `json:"one_shot"`
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			decoder := json.NewDecoder(r.Body)
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": bkntrace.APIError{
+					Code: "conversation_required", Message: "request body does not match the lifecycle contract",
+					RequiredAction: "create_conversation",
+				}})
+				return
+			}
 			core.conversationCalls++
 			_ = json.NewEncoder(w).Encode(bkntrace.Conversation{
 				ConversationID:          "conv-for-" + body.ExternalConversationKey,
@@ -60,9 +71,21 @@ func newFakeCore(t *testing.T) *fakeCore {
 		case strings.HasSuffix(r.URL.Path, "/interactions"):
 			var body struct {
 				IdempotencyKey string `json:"idempotency_key"`
-				Question       string `json:"question"`
+				LeaseSeconds   int64  `json:"lease_seconds"`
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			// Core decodes with DisallowUnknownFields and its start contract has
+			// exactly these two fields. A lenient fake here let a body Core would
+			// reject pass every unit test and fail on the first real call.
+			decoder := json.NewDecoder(r.Body)
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": bkntrace.APIError{
+					Code: "interaction_required", Message: "request body does not match the lifecycle contract",
+					RequiredAction: "start_interaction",
+				}})
+				return
+			}
 			core.interactionKeys = append(core.interactionKeys, body.IdempotencyKey)
 			if core.staleOnce && body.IdempotencyKey == core.activeInteraction {
 				core.staleOnce = false
