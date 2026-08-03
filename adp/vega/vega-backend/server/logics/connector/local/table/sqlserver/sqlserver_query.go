@@ -476,7 +476,7 @@ func buildSQLServerProjection(resource *interfaces.Resource, params *interfaces.
 			groupFields = append(groupFields, field)
 			continue
 		}
-		datePart, err := sqlServerDatePart(group.CalendarInterval)
+		datePart, err := sqlServerDateTruncPart(group.CalendarInterval)
 		if err != nil {
 			return nil, nil, "", "", false, err
 		}

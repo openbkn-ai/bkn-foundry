@@ -125,6 +125,8 @@ func TestRawQueryServiceExecute(t *testing.T) {
 		{name: "for xml", sql: "SELECT id FROM {{resource-1}} FOR XML PATH", hasTableReference: true},
 		{name: "next sequence value", sql: "SELECT NEXT VALUE FOR dbo.order_seq OVER (ORDER BY id), id FROM {{resource-1}} ORDER BY id", hasTableReference: true},
 		{name: "offset fetch", sql: "SELECT id FROM {{resource-1}} ORDER BY id OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY", hasTableReference: true},
+		{name: "table lock hint", sql: "SELECT id FROM {{resource-1}} WITH (TABLOCKX)", hasTableReference: true},
+		{name: "non-literal top", sql: "SELECT TOP (5 + 5) id FROM {{resource-1}} ORDER BY id", hasTableReference: true},
 	}
 	for _, test := range rejectedTSQLTests {
 		t.Run("rejects tsql before connector creation: "+test.name, func(t *testing.T) {

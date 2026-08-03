@@ -274,6 +274,10 @@ try:
         limit = statement.args.get("limit")
         if statement.args.get("offset") is not None or isinstance(limit, exp.Fetch):
             reject("SQL Server OFFSET/FETCH queries are not supported")
+        if limit is not None and (
+            not isinstance(limit.expression, exp.Literal) or not limit.expression.is_int
+        ):
+            reject("SQL Server TOP requires an integer literal")
         limit_options = limit.args.get("limit_options") if limit is not None else None
         if limit_options is not None and (
             limit_options.args.get("percent") or limit_options.args.get("with_ties")
@@ -283,6 +287,8 @@ try:
     for node in statement.walk():
         if dialect == "tsql" and isinstance(node, exp.NextValueFor):
             reject("SQL Server NEXT VALUE FOR is not read-only")
+        if dialect == "tsql" and isinstance(node, exp.WithTableHint):
+            reject("SQL Server table hints are not supported")
         if type(node).__name__ in FORBIDDEN_NODE_NAMES:
             reject("unsupported SQL construct: " + type(node).__name__)
         if isinstance(node, exp.Func):

@@ -232,7 +232,7 @@ func beforeCondition(field *interfaces.Property, values []any) (sq.Sqlizer, erro
 	if !ok {
 		return nil, fmt.Errorf("condition [before] unit value should be a string")
 	}
-	datePart, err := sqlServerDatePart(unit)
+	datePart, err := sqlServerDateAddPart(unit)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func numericInterval(value any) (int64, bool) {
 }
 
 func currentCondition(field *interfaces.Property, unit string) (sq.Sqlizer, error) {
-	datePart, err := sqlServerDatePart(unit)
+	datePart, err := sqlServerDateTruncPart(unit)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,14 @@ func currentCondition(field *interfaces.Property, unit string) (sq.Sqlizer, erro
 	return sq.Expr("DATETRUNC(" + datePart + ", " + column + ") = DATETRUNC(" + datePart + ", SYSDATETIME())"), nil
 }
 
-func sqlServerDatePart(unit string) (string, error) {
+func sqlServerDateTruncPart(unit string) (string, error) {
+	if strings.EqualFold(strings.TrimSpace(unit), interfaces.CALENDAR_UNIT_WEEK) {
+		return "iso_week", nil
+	}
+	return sqlServerDateAddPart(unit)
+}
+
+func sqlServerDateAddPart(unit string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(unit)) {
 	case interfaces.CALENDAR_UNIT_YEAR:
 		return "year", nil

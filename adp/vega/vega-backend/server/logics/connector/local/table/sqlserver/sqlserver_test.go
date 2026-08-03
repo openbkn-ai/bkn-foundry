@@ -209,6 +209,20 @@ func TestSQLServerConnectorNew(t *testing.T) {
 			},
 			errorContain: "sqlserver option connection timeout must be a non-negative integer",
 		},
+		{
+			name: "connection timeout must fit duration",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options": map[string]any{
+					"connection timeout": uint64(math.MaxInt64/int64(time.Second)) + 1,
+				},
+			},
+			errorContain: "not greater than",
+		},
 	}
 	for _, test := range invalidConfigs {
 		t.Run(test.name, func(t *testing.T) {
@@ -670,6 +684,21 @@ func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
 			},
 			containsSQL: []string{"DATETRUNC(month, [created_at]) = DATETRUNC(month, SYSDATETIME())"},
 		},
+		{
+			name: "current week uses ISO boundary",
+			condition: &filter_condition.CurrentCond{
+				Cfg: constCfg, Lfield: createdAt, Value: "week",
+			},
+			containsSQL: []string{"DATETRUNC(iso_week, [created_at]) = DATETRUNC(iso_week, SYSDATETIME())"},
+		},
+		{
+			name: "before week keeps DATEADD week part",
+			condition: &filter_condition.BeforeCond{
+				Cfg: constCfg, Lfield: createdAt, Value: []any{float64(2), "week"},
+			},
+			containsSQL: []string{"[created_at] < DATEADD(week, -@p1, SYSDATETIME())"},
+			args:        []any{int64(2)},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -713,6 +742,16 @@ func TestBuildSQLServerProjection(t *testing.T) {
 		assert.True(t, aggregate)
 		assert.Equal(t, []string{"DATETRUNC(month, [created_time]) AS [created_at]"}, projection)
 		assert.Equal(t, []string{"DATETRUNC(month, [created_time])"}, groupFields)
+	})
+	t.Run("builds ISO week calendar interval", func(t *testing.T) {
+		projection, groupFields, _, _, aggregate, err := buildSQLServerProjection(resource, &interfaces.ResourceDataQueryParams{
+			GroupBy: []*interfaces.GroupByItem{{Property: "created_at", CalendarInterval: "week"}},
+		}, fields)
+
+		require.NoError(t, err)
+		assert.True(t, aggregate)
+		assert.Equal(t, []string{"DATETRUNC(iso_week, [created_time]) AS [created_at]"}, projection)
+		assert.Equal(t, []string{"DATETRUNC(iso_week, [created_time])"}, groupFields)
 	})
 	t.Run("adds count projection for count having", func(t *testing.T) {
 		projection, _, alias, expression, aggregate, err := buildSQLServerProjection(resource, &interfaces.ResourceDataQueryParams{

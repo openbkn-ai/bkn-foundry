@@ -87,6 +87,8 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 		{name: "for xml", sql: "SELECT id FROM orders FOR XML PATH"},
 		{name: "next sequence value", sql: "SELECT NEXT VALUE FOR dbo.order_seq OVER (ORDER BY id), id FROM orders ORDER BY id"},
 		{name: "offset fetch", sql: "SELECT id FROM orders ORDER BY id OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY"},
+		{name: "table lock hint", sql: "SELECT id FROM orders WITH (TABLOCKX)"},
+		{name: "non-literal top", sql: "SELECT TOP (5 + 5) id FROM orders ORDER BY id"},
 	}
 	for _, test := range rejectedTSQLTests {
 		t.Run("rejects tsql statement: "+test.name, func(t *testing.T) {

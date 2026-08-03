@@ -10,10 +10,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
@@ -23,8 +25,9 @@ import (
 )
 
 const (
-	portMin = 1
-	portMax = 65535
+	portMin                     = 1
+	portMax                     = 65535
+	maxConnectionTimeoutSeconds = uint64(math.MaxInt64 / int64(time.Second))
 )
 
 var allowedOptions = map[string]struct{}{
@@ -127,7 +130,10 @@ func normalizeOptions(options map[string]any) (map[string]any, error) {
 		case msdsn.ConnectionTimeout:
 			timeout, ok := connectionTimeout(value)
 			if !ok {
-				return nil, fmt.Errorf("sqlserver option %s must be a non-negative integer", name)
+				return nil, fmt.Errorf(
+					"sqlserver option %s must be a non-negative integer not greater than %d",
+					name, maxConnectionTimeoutSeconds,
+				)
 			}
 			value = timeout
 		}
@@ -139,33 +145,60 @@ func normalizeOptions(options map[string]any) (map[string]any, error) {
 func connectionTimeout(value any) (uint64, bool) {
 	switch timeout := value.(type) {
 	case int:
-		return uint64(timeout), timeout >= 0
+		if timeout < 0 {
+			return 0, false
+		}
+		return validConnectionTimeout(uint64(timeout))
 	case int8:
-		return uint64(timeout), timeout >= 0
+		if timeout < 0 {
+			return 0, false
+		}
+		return validConnectionTimeout(uint64(timeout))
 	case int16:
-		return uint64(timeout), timeout >= 0
+		if timeout < 0 {
+			return 0, false
+		}
+		return validConnectionTimeout(uint64(timeout))
 	case int32:
-		return uint64(timeout), timeout >= 0
+		if timeout < 0 {
+			return 0, false
+		}
+		return validConnectionTimeout(uint64(timeout))
 	case int64:
-		return uint64(timeout), timeout >= 0
+		if timeout < 0 {
+			return 0, false
+		}
+		return validConnectionTimeout(uint64(timeout))
 	case uint:
-		return uint64(timeout), true
+		return validConnectionTimeout(uint64(timeout))
 	case uint8:
-		return uint64(timeout), true
+		return validConnectionTimeout(uint64(timeout))
 	case uint16:
-		return uint64(timeout), true
+		return validConnectionTimeout(uint64(timeout))
 	case uint32:
-		return uint64(timeout), true
+		return validConnectionTimeout(uint64(timeout))
 	case uint64:
-		return timeout, true
+		return validConnectionTimeout(timeout)
 	case float32:
 		converted := float64(timeout)
-		return uint64(converted), converted >= 0 && converted == float64(uint64(converted))
+		return floatConnectionTimeout(converted)
 	case float64:
-		return uint64(timeout), timeout >= 0 && timeout == float64(uint64(timeout))
+		return floatConnectionTimeout(timeout)
 	default:
 		return 0, false
 	}
+}
+
+func validConnectionTimeout(timeout uint64) (uint64, bool) {
+	return timeout, timeout <= maxConnectionTimeoutSeconds
+}
+
+func floatConnectionTimeout(timeout float64) (uint64, bool) {
+	if math.IsNaN(timeout) || math.IsInf(timeout, 0) || timeout < 0 ||
+		timeout > float64(maxConnectionTimeoutSeconds) || timeout != math.Trunc(timeout) {
+		return 0, false
+	}
+	return uint64(timeout), true
 }
 
 func (c *SQLServerConnector) connectionString() string {
