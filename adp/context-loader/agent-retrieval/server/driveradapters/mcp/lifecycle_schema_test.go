@@ -347,8 +347,8 @@ func TestLifecycleMCPInputRequiredFieldsMatchCorePathAndBody(t *testing.T) {
 	expected := map[string][]string{
 		"bkn_create_conversation":  {"external_conversation_key"},
 		"bkn_resume_conversation":  {"conversation_id"},
-		"bkn_start_interaction":    {"conversation_id", "idempotency_key"},
-		"bkn_complete_interaction": {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason"},
+		"bkn_start_interaction":    {"conversation_id", "idempotency_key", "question"},
+		"bkn_complete_interaction": {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason", "answer"},
 		"bkn_fail_interaction":     {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason"},
 		"bkn_cancel_interaction":   {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason"},
 		"bkn_handoff_interaction":  {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason"},
@@ -378,6 +378,12 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(string(values), `core_url: "http://agent-observability:8080"`) {
 		t.Fatalf("Helm lifecycle default must target the agent-observability service: %s", values)
 	}
+	if !strings.Contains(string(values), `gateway_token_secret_key: "token"`) {
+		t.Fatalf("Helm lifecycle values must define the trusted gateway token key: %s", values)
+	}
+	if !strings.Contains(string(values), `default_tenant_id: "openbkn-local"`) {
+		t.Fatalf("Helm lifecycle values must align with the observability single-tenant scope: %s", values)
+	}
 	deploymentPath := filepath.Clean("../../../helm/agent-retrieval/templates/deployment.yaml")
 	deployment, err := os.ReadFile(deploymentPath)
 	if err != nil {
@@ -389,6 +395,13 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	}
 	if strings.Contains(rendering, `if .Values.observability.lifecycle.core_url`) {
 		t.Fatal("lifecycle enforcement must not have a long-lived disable switch")
+	}
+	if !strings.Contains(rendering, `name: BKN_TRACE_QUERY_GATEWAY_TOKEN`) ||
+		!strings.Contains(rendering, `.Values.observability.lifecycle.gateway_token_secret_name`) {
+		t.Fatal("Helm must inject the lifecycle gateway token from a Secret")
+	}
+	if !strings.Contains(rendering, `name: BKN_TRACE_DEFAULT_TENANT_ID`) {
+		t.Fatal("Helm must support an explicit single-tenant trust scope")
 	}
 }
 

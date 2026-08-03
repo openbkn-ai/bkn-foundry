@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/telemetry"
 )
 
 const (
@@ -49,11 +50,12 @@ const (
 )
 
 type Guard struct {
-	client *LifecycleClient
+	client               *LifecycleClient
+	emitOperationOutcome func(context.Context, bool)
 }
 
 func NewGuard(client *LifecycleClient) *Guard {
-	return &Guard{client: client}
+	return &Guard{client: client, emitOperationOutcome: telemetry.EmitOperationOutcome}
 }
 
 func (g *Guard) Begin(
@@ -89,8 +91,9 @@ func (g *Guard) Begin(
 	traceContext.ConversationID = intent.Context.ConversationID
 	traceContext.InteractionID = intent.Context.InteractionID
 	traceContext.OperationID = result.Operation.OperationID
+	traceContext.ToolName = intent.ToolName
 	traceContext.Attempt = int(result.Operation.Attempt)
-	return common.SetTraceContextToCtx(ctx, traceContext), state, GuardExecute, nil, nil
+	return withEvidenceOutcome(common.SetTraceContextToCtx(ctx, traceContext)), state, GuardExecute, nil, nil
 }
 
 func ensureFinishCorrelation(ctx context.Context) (context.Context, error) {
@@ -137,6 +140,11 @@ func (g *Guard) Finish(
 		TraceID:     spanContext.TraceID().String(),
 		Retryable:   retryable,
 	}
+	if durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx); durable {
+		input.EvidenceDurability = "durable"
+		input.ObservedEvidenceRefs = evidenceRefs
+		input.BusinessRefs = businessRefs
+	}
 	finishContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer cancel()
 
@@ -151,6 +159,7 @@ func (g *Guard) Finish(
 			result, apiErr, err = g.client.CompleteAttempt(finishContext, input)
 		}
 		if err == nil && apiErr == nil {
+			g.emitFinalizedOutcome(ctx, failed)
 			return result, nil, nil
 		}
 		if apiErr != nil && !apiErr.Retryable && apiErr.Code != "receipt_pending" {
@@ -173,6 +182,7 @@ func (g *Guard) Finish(
 						return lastResult, conflict, nil
 					}
 					lastResult.Operation = operation
+					g.emitFinalizedOutcome(ctx, failed)
 					return lastResult, nil, nil
 				}
 				if operationErr != nil && !operationErr.Retryable {
@@ -194,6 +204,12 @@ func (g *Guard) Finish(
 		Code: "receipt_pending", Message: "operation receipt finalization is not yet confirmed",
 		Retryable: true, RequiredAction: "poll_receipt",
 	}, nil
+}
+
+func (g *Guard) emitFinalizedOutcome(ctx context.Context, failed bool) {
+	if g.emitOperationOutcome != nil {
+		g.emitOperationOutcome(ctx, failed)
+	}
 }
 
 func validateRecoveredReceipt(

@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
 type fakeStore struct {
@@ -1619,6 +1620,75 @@ func TestGetBusinessGraphByRequestIDHandlesHiddenAndUnresolvedRefs(t *testing.T)
 	}
 	if len(response.Data.Nodes) != 2 {
 		t.Fatalf("hidden/unresolved refs must not leak as graph nodes: %+v", response.Data.Nodes)
+	}
+}
+
+func TestGetBusinessGraphByRequestIDFallsBackToAuthorizedProjection(t *testing.T) {
+	trace := businessGraphTraceWithGovernance("trace_graph_projection", "req_graph_projection")
+	source := &capturingProjectionSource{result: iprojectionsource.Result{
+		Traces: []evidencevo.NormalizedTrace{trace},
+	}}
+	service := NewWithProjectionSource(&fakeStore{}, source)
+
+	response, found, err := service.GetBusinessGraphByRequestID(
+		context.Background(),
+		"req_graph_projection",
+		evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
+			BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+		}},
+	)
+
+	if err != nil || !found || len(response.Data.Nodes) == 0 {
+		t.Fatalf("request business graph must recover from the authorized projection: response=%+v found=%v err=%v", response, found, err)
+	}
+	if len(source.queries) != 1 || source.queries[0].RequestID != "req_graph_projection" {
+		t.Fatalf("projection fallback must remain request-scoped: %+v", source.queries)
+	}
+}
+
+func TestReceiptBusinessRefsPopulateEvidenceChainAndBusinessGraph(t *testing.T) {
+	trace := evidencevo.NormalizedTrace{
+		TraceID: "trace_receipt_refs", RequestID: "req_receipt_refs",
+		Events: []evidencevo.EvidenceEvent{{
+			EventID: "receipt:receipt_refs", EventType: "retrieval.completed",
+			InteractionID: "interaction_refs", OperationID: "operation_refs",
+			Payload: map[string]any{
+				"status": "completed",
+				"business_refs": []any{
+					map[string]any{"ref_id": "kn:supplychain_hd0202", "ref_type": "knowledge_network", "visibility": "visible", "version_status": "versioned"},
+					map[string]any{"ref_id": "object:supplychain_hd0202:forecast", "ref_type": "object_type", "visibility": "visible", "version_status": "versioned"},
+				},
+			},
+		}},
+	}
+	source := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{trace}}}
+	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{
+		{RefID: "kn:supplychain_hd0202", Visibility: "visible", Display: &evidencevo.BusinessDisplay{Name: "HD供应链业务知识网络_v3", ResolutionStatus: "resolved"}},
+		{RefID: "object:supplychain_hd0202:forecast", Visibility: "visible", Display: &evidencevo.BusinessDisplay{Name: "产品需求预测单", ResolutionStatus: "resolved"}},
+	}}
+	service := NewWithBusinessResolverAndProjectionSource(&fakeStore{}, resolver, source)
+	options := evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
+		BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+	}}
+
+	chain, found, err := service.GetEvidenceChainByRequestID(context.Background(), trace.RequestID, options)
+	if err != nil || !found || len(chain.Data.BusinessRefs) != 2 {
+		t.Fatalf("receipt business refs must populate evidence chain: chain=%+v found=%v err=%v", chain, found, err)
+	}
+	graph, found, err := service.GetBusinessGraphByRequestID(context.Background(), trace.RequestID, options)
+	if err != nil || !found {
+		t.Fatalf("query receipt business graph: found=%v err=%v", found, err)
+	}
+	if contains(graph.PartialReasons, "missing_business_refs") {
+		t.Fatalf("governed receipt refs must satisfy business evidence: %+v", graph.PartialReasons)
+	}
+	kn := businessNodeByID(t, graph.Data.Nodes, "business:kn:supplychain_hd0202")
+	if kn.Display == nil || kn.Display.Name != "HD供应链业务知识网络_v3" {
+		t.Fatalf("business resolver display must be used: %+v", kn)
+	}
+	if !graphHasNode(graph.Data.Nodes, "business:object:supplychain_hd0202:forecast") ||
+		!graphHasEdgeType(graph.Data.Edges, "uses_business_ref") {
+		t.Fatalf("receipt refs must be connected to their OpenBKN operation: %+v", graph.Data)
 	}
 }
 

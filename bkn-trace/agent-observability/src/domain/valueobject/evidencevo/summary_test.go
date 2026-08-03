@@ -240,6 +240,45 @@ func TestBuildExecutionSummariesUsesOnlyArtifactsExplicitlyReferencedByEvents(t 
 	}
 }
 
+func TestBuildExecutionSummariesKeepsOperationTimingSeparateFromInteractionArtifacts(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_operation_timing", RequestID: "req_operation_timing",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		SchemaVersion: ArtifactContractVersion,
+		Events: []EvidenceEvent{
+			{
+				EventID: "event_question_link", EventType: "agent.interaction.started",
+				ObservedAt: "2026-08-02T09:00:01Z", EmittedAt: "2026-08-02T09:00:01Z",
+				TraceID: "trace_operation_timing", RequestID: "req_operation_timing",
+				Payload: map[string]any{"question_artifact_ref": "artifact:question_operation_timing"},
+			},
+			{
+				EventID: "event_result_link", EventType: "claim.created",
+				ObservedAt: "2026-08-02T09:00:02Z", EmittedAt: "2026-08-02T09:00:02Z",
+				TraceID: "trace_operation_timing", RequestID: "req_operation_timing",
+				Payload: map[string]any{
+					"claim_id":            "claim_operation_timing",
+					"result_artifact_ref": "artifact:result_operation_timing",
+					"business_refs":       []any{map[string]any{"ref_id": "object:kn_demo:forecast"}},
+				},
+			},
+		},
+	}
+	question := summaryArtifact(t, "question_operation_timing", ArtifactTypeQuestion, trace.TraceID, map[string]any{"text": "六月预测是多少？"})
+	question.RequestID = trace.RequestID
+	question.ObservedAt = "2026-08-02T09:00:00Z"
+	result := summaryArtifact(t, "result_operation_timing", ArtifactTypeResult, trace.TraceID, map[string]any{"text": "合计 11594"})
+	result.RequestID = trace.RequestID
+	result.ObservedAt = "2026-08-02T09:00:03Z"
+
+	requests, _ := BuildExecutionSummaries([]NormalizedTrace{trace}, []EvidenceArtifact{question, result})
+
+	if len(requests) != 1 || requests[0].StartedAt != "2026-08-02T09:00:01Z" ||
+		requests[0].CompletedAt != "2026-08-02T09:00:02Z" || requests[0].DurationMS != 1000 {
+		t.Fatalf("operation timing must come from execution events, not interaction artifacts: %+v", requests)
+	}
+}
+
 func TestSummaryCollectionEnvelopeUsesEntriesAndEmptyArray(t *testing.T) {
 	body, err := json.Marshal(RequestSummaryPage{Entries: []RequestSummary{}, Total: 0})
 	if err != nil {

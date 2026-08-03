@@ -5,9 +5,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -317,4 +319,32 @@ func TestRedactSensitiveFields(t *testing.T) {
 			convey.So(out["limit"], convey.ShouldEqual, float64(10))
 		})
 	})
+}
+
+func TestMCPRequestBodyForLogOmitsGovernedBusinessContent(t *testing.T) {
+	body := []byte(`{
+		"jsonrpc":"2.0",
+		"method":"tools/call",
+		"params":{"name":"run_sql","arguments":{
+			"question":"6月份有哪些需求预测单？",
+			"sql":"SELECT * FROM secret_table",
+			"answer":"需求总量为11594"
+		}}
+	}`)
+
+	logged := requestBodyForLog("/api/agent-retrieval/v1/mcp/", body)
+	encoded, err := jsoniter.MarshalToString(logged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"6月份", "SELECT *", "11594", "secret_table"} {
+		if strings.Contains(encoded, forbidden) {
+			t.Fatalf("MCP business content leaked into general log: %s", encoded)
+		}
+	}
+	for _, expected := range []string{"tools/call", "run_sql", "argument_keys", "question", "sql", "answer"} {
+		if !strings.Contains(encoded, expected) {
+			t.Fatalf("safe MCP structure missing %q: %s", expected, encoded)
+		}
+	}
 }

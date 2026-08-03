@@ -114,19 +114,28 @@ func TestLicenseFingerprintWithoutLicense(t *testing.T) {
 	}
 }
 
-func TestLicenseActivationCodeWithoutLicense(t *testing.T) {
+func TestLicenseActivationRequestWithoutLicense(t *testing.T) {
 	r, _, _ := newLicenseServer(t)
 	w := adminReq(t, r, http.MethodGet, licAdminBase+"/activation-code", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("activation-code = %d", w.Code)
 	}
-	var resp struct {
-		InstanceFP     string `json:"instance_fp"`
-		ActivationCode string `json:"activation_code"`
-	}
+	var resp map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp.InstanceFP == "" || resp.ActivationCode == "" {
-		t.Fatalf("both fingerprint and code must be present: %s", w.Body.String())
+
+	fp, _ := resp["instance_fp"].(string)
+	if fp == "" {
+		t.Fatalf("the fingerprint is what the portal wants; it must be present: %s", w.Body.String())
+	}
+	if _, ok := resp["lic_id"]; !ok {
+		t.Fatalf("lic_id must be present (empty with no license): %s", w.Body.String())
+	}
+
+	// The retired field must stay gone. The issuer validates ^fp_[0-9a-f]{16}$
+	// and answers 400 to the old base64 blob, so re-adding it would hand an
+	// admin a value that only fails.
+	if _, ok := resp["activation_code"]; ok {
+		t.Fatalf("activation_code came back; the portal no longer accepts it: %s", w.Body.String())
 	}
 }
 
@@ -170,7 +179,10 @@ func TestLicenseImportDetailAndRemove(t *testing.T) {
 	}
 	w = adminReq(t, r, http.MethodGet, licAdminBase, nil)
 	_ = json.Unmarshal(w.Body.Bytes(), &detail)
-	if detail.State != string(licverify.StateInvalid) {
+	// See TestRemove: a freshly created deployment with no license reads
+	// "trial", not "invalid" — "invalid" now means a license that failed to
+	// verify, which is a different thing to tell an admin.
+	if detail.State != string(licverify.StateTrial) {
 		t.Fatalf("state after remove = %s", detail.State)
 	}
 }

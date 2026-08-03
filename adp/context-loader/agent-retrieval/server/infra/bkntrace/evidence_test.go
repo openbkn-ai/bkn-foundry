@@ -54,6 +54,67 @@ func testTraceContext() context.Context {
 	return ctx
 }
 
+func TestRecordInteractionArtifactPersistsGovernedContentAndLedgerLink(t *testing.T) {
+	var artifactBody map[string]any
+	var eventBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch r.URL.Path {
+		case "/api/agent-observability/v1/evidence/artifacts":
+			_ = json.Unmarshal(body, &artifactBody)
+			w.WriteHeader(http.StatusCreated)
+		case "/api/agent-observability/v1/evidence/events":
+			_ = json.Unmarshal(body, &eventBody)
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv(envEvidenceIngestURL, server.URL+"/api/agent-observability/v1/evidence/events")
+	t.Setenv(envEvidenceIngestToken, "test-ingest-token")
+
+	ref, err := RecordInteractionArtifact(
+		testTraceContext(), "conversation-1", "interaction-1", InteractionArtifactQuestion,
+		"6月份有哪些需求预测单？",
+	)
+	if err != nil {
+		t.Fatalf("record interaction artifact: %v", err)
+	}
+	if !strings.HasPrefix(ref, "artifact:art_question_") {
+		t.Fatalf("unexpected artifact ref: %q", ref)
+	}
+	if artifactBody["content"] != "6月份有哪些需求预测单？" || artifactBody["interaction_id"] != "interaction-1" {
+		t.Fatalf("artifact content or interaction was lost: %#v", artifactBody)
+	}
+	if eventBody["event_type"] != "agent.interaction.started" || eventBody["interaction_id"] != "interaction-1" {
+		t.Fatalf("ledger link was not emitted: %#v", eventBody)
+	}
+	if _, exists := eventBody["operation_id"]; exists {
+		t.Fatalf("interaction-level artifact must not claim a tool operation: %#v", eventBody)
+	}
+	envelope := eventBody["envelope"].(map[string]any)
+	payload := envelope["payload"].(map[string]any)
+	if payload["question_artifact_ref"] != ref {
+		t.Fatalf("ledger event does not link the artifact: %#v", payload)
+	}
+}
+
+func TestRecordInteractionArtifactIsOptionalWhenEvidenceIsDisabled(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "")
+
+	ref, err := RecordInteractionArtifact(
+		context.Background(), "conversation-1", "interaction-1", InteractionArtifactQuestion,
+		"6月份有哪些需求预测单？",
+	)
+	if err != nil {
+		t.Fatalf("disabled evidence must not block the managed lifecycle: %v", err)
+	}
+	if ref != "" {
+		t.Fatalf("disabled evidence returned artifact ref %q, want empty", ref)
+	}
+}
+
 func TestBuildSearchSchemaEventsRejectsMissingReplayEnvelope(t *testing.T) {
 	ctx := testTraceContext()
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
@@ -245,6 +306,9 @@ func TestBuildSearchSchemaEventsUsesHashAndRefsOnly(t *testing.T) {
 	}
 	if !strings.Contains(text, `"query_hash":"sha256:`) {
 		t.Fatalf("missing query hash: %s", text)
+	}
+	if !strings.Contains(text, `"ref_id":"kn:kn_demo"`) {
+		t.Fatalf("missing knowledge network ref: %s", text)
 	}
 	if !strings.Contains(text, `"ref_id":"object:kn_demo:customer"`) {
 		t.Fatalf("missing object type ref: %s", text)
@@ -531,11 +595,11 @@ func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
 	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
 	previous := evidenceHTTPClient
 	t.Cleanup(func() { evidenceHTTPClient = previous })
-	payloads := make(chan batch, 1)
+	payloads := make(chan map[string]any, 1)
 	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		var payload batch
+		var payload map[string]any
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode evidence batch: %v", err)
+			t.Fatalf("decode 3.0 evidence event: %v", err)
 		}
 		payloads <- payload
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
@@ -565,8 +629,8 @@ func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
 	SubmitEvents(ctx, nil, nil, []Event{{"event_type": "retrieval.completed"}})
 	select {
 	case payload := <-payloads:
-		if got := payload.Trace["bkn.conversation.id"]; got != "agent:thread_supply_chain" {
-			t.Fatalf("bkn.conversation.id=%v", got)
+		if got := payload["conversation_id"]; got != "agent:thread_supply_chain" {
+			t.Fatalf("conversation_id=%v", got)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for evidence batch")
@@ -584,7 +648,7 @@ func TestPostBatchWithRetryTreatsNon2xxAsFailure(t *testing.T) {
 		}
 		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
-	if err := postBatchWithRetry("http://trace.local", time.Second, batch{}); err != nil {
+	if err := postBatchWithRetry("http://trace.local", time.Second, batch{Events: []Event{{}}}); err != nil {
 		t.Fatal(err)
 	}
 	if calls.Load() != 3 {
@@ -592,18 +656,105 @@ func TestPostBatchWithRetryTreatsNon2xxAsFailure(t *testing.T) {
 	}
 }
 
-func TestPostBatchSendsDedicatedIngestToken(t *testing.T) {
+func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "producer-token")
+	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "gateway-token")
 	previous := evidenceHTTPClient
 	t.Cleanup(func() { evidenceHTTPClient = previous })
 	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "producer-token" {
 			t.Fatalf("ingest token header=%q", got)
 		}
+		if got := req.Header.Get("X-BKN-Trace-Query-Token"); got != "gateway-token" {
+			t.Fatalf("query gateway token header=%q", got)
+		}
+		for header, want := range map[string]string{
+			"x-account-id":                   "acct_demo",
+			"x-account-type":                 "user",
+			"x-tenant-id":                    "tenant_demo",
+			"x-business-domain":              "domain_demo",
+			"X-BKN-Tenant-ID":                "tenant_demo",
+			"X-Business-Domain-ID":           "domain_demo",
+			"X-BKN-Application-Principal-ID": "context-loader",
+			"X-BKN-Effective-Subject-Type":   "user",
+			"X-BKN-Effective-Subject-ID":     "acct_demo",
+		} {
+			if got := req.Header.Get(header); got != want {
+				t.Fatalf("%s=%q, want %q", header, got, want)
+			}
+		}
+		var event map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&event); err != nil {
+			t.Fatalf("decode 3.0 evidence event: %v", err)
+		}
+		for key, want := range map[string]any{
+			"bkn.trace.schema.version": "3.0.0",
+			"conversation_id":          "conv_demo",
+			"interaction_id":           "int_context_loader_0001",
+			"operation_id":             "op_context_retrieval_0001",
+			"producer_id":              "context-loader",
+		} {
+			if event[key] != want {
+				t.Fatalf("%s=%v, want %v", key, event[key], want)
+			}
+		}
+		if event["payload_hash"] == "" || event["envelope"] == nil {
+			t.Fatalf("3.0 event is missing immutable envelope identity: %#v", event)
+		}
+		refs, ok := event["business_refs"].([]any)
+		if !ok || len(refs) != 1 {
+			t.Fatalf("business_refs=%#v, want one typed ref", event["business_refs"])
+		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
-	if err := postBatch("http://trace.local", time.Second, batch{}); err != nil {
+	payload := batch{
+		Trace: map[string]any{
+			"trace_id": "71210000000000000000000000000001", "bkn.request.id": "req_context_loader_phase2_0001",
+			"bkn.tenant.id": "tenant_demo", "business_domain": "domain_demo",
+			"bkn.account.id": "acct_demo", "bkn.account.type": "user",
+			"bkn.conversation.id": "conv_demo",
+		},
+		Events: []Event{{
+			"event_id": "evt_demo", "event_type": "retrieval.completed",
+			"observed_at": "2026-07-25T08:00:00Z", "emitted_at": "2026-07-25T08:00:00Z",
+			"span_id": "7121000000000001", "interaction_id": "int_context_loader_0001",
+			"operation_id": "op_context_retrieval_0001", "attempt": 1,
+			"payload": map[string]any{"source_refs": []map[string]any{{
+				"ref_id": "resource:forecast_resource", "ref_type": "data_resource",
+				"version_status": "unversioned",
+			}}},
+		}},
+	}
+	if err := postBatch("http://trace.local", time.Second, payload); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSubmitEventsRecordsDurableOutcomeForOperationFinish(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
+	previous := evidenceHTTPClient
+	t.Cleanup(func() { evidenceHTTPClient = previous })
+	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusAccepted,
+			Body: io.NopCloser(strings.NewReader(
+				`{"event_id":"evt_durable","durable_ack":true,"replayed":false,"ingest_sequence":1,"ingested_at":"2026-07-25T08:00:01Z"}`,
+			)),
+		}, nil
+	})}
+	ctx := withEvidenceOutcome(testTraceContext())
+	events := BuildRunSQLEvents(ctx, "SELECT 1", []string{"forecast_resource"}, &interfaces.VegaRawQueryResp{})
+	SubmitEvents(ctx, nil, nil, events)
+
+	outcome := evidenceOutcomeFromContext(ctx)
+	if outcome == nil || !outcome.durable {
+		t.Fatalf("durable evidence outcome was not recorded: %#v", outcome)
+	}
+	if len(outcome.eventIDs) != 1 || outcome.eventIDs[0] != events[0]["event_id"] {
+		t.Fatalf("event IDs=%#v, want emitted event", outcome.eventIDs)
+	}
+	if len(outcome.businessRefs) != 1 || outcome.businessRefs[0].RefID != "resource:forecast_resource" {
+		t.Fatalf("business refs=%#v, want queried resource", outcome.businessRefs)
 	}
 }
 
@@ -615,8 +766,22 @@ func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
 		if _, err := io.ReadFull(r.Body, body); err != nil {
 			t.Errorf("read ingest body: %v", err)
 		}
+		var event map[string]any
+		if err := json.Unmarshal(body, &event); err != nil {
+			t.Errorf("decode 3.0 evidence event: %v", err)
+		}
+		traceBlock := map[string]any{
+			"trace_id":            event["trace_id"],
+			"bkn.request.id":      event["request_id"],
+			"bkn.conversation.id": event["conversation_id"],
+			"bkn.tenant.id":       r.Header.Get("x-tenant-id"),
+			"business_domain":     r.Header.Get("x-business-domain"),
+			"bkn.account.id":      r.Header.Get("x-account-id"),
+			"bkn.account.type":    r.Header.Get("x-account-type"),
+		}
+		encoded, _ := json.Marshal(traceBlock)
 		select {
-		case bodies <- body:
+		case bodies <- encoded:
 		default:
 		}
 		w.WriteHeader(http.StatusOK)
@@ -630,13 +795,14 @@ func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
 
 	select {
 	case body := <-bodies:
-		var payload struct {
-			Trace map[string]any `json:"trace"`
-		}
-		if err := json.Unmarshal(body, &payload); err != nil {
+		var traceBlock map[string]any
+		if err := json.Unmarshal(body, &traceBlock); err != nil {
 			t.Fatalf("decode ingest body: %v", err)
 		}
-		return payload.Trace
+		if traceBlock["bkn.conversation.id"] == "" {
+			delete(traceBlock, "bkn.conversation.id")
+		}
+		return traceBlock
 	case <-time.After(2 * time.Second):
 		t.Fatalf("expected evidence ingestion request")
 		return nil

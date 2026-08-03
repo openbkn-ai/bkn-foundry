@@ -13,6 +13,31 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
+func RegisterBusinessProvenanceRoutes(
+	mux *http.ServeMux,
+	basePath string,
+	handler *EvidenceHandler,
+	middleware ...func(http.HandlerFunc) http.HandlerFunc,
+) {
+	wrap := func(next http.HandlerFunc) http.HandlerFunc {
+		for index := len(middleware) - 1; index >= 0; index-- {
+			next = middleware[index](next)
+		}
+		return next
+	}
+	mux.HandleFunc(basePath+"/business-provenance/conversations", wrap(handler.ListBusinessProvenanceConversations))
+	mux.HandleFunc(basePath+"/business-provenance/interactions", wrap(handler.ListBusinessProvenanceInteractions))
+	mux.HandleFunc(basePath+"/business-provenance/interactions/", wrap(handler.GetInteractionSummary))
+	mux.HandleFunc(basePath+"/business-provenance/requests", wrap(handler.ListRequests))
+	mux.HandleFunc(basePath+"/business-provenance/requests/", wrap(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(strings.TrimSuffix(r.URL.Path, "/"), "/traces") {
+			handler.ListRequestTraces(w, r)
+			return
+		}
+		handler.GetRequestSummary(w, r)
+	}))
+}
+
 // ListBusinessProvenanceConversations godoc
 // @Summary List observable business conversations
 // @Description Returns one authorized business-provenance row per conversation, aggregated from real interactions and requests.
@@ -111,6 +136,7 @@ func (h *EvidenceHandler) ListBusinessProvenanceInteractions(w http.ResponseWrit
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
+// @Router /business-provenance/requests [get]
 func (h *EvidenceHandler) ListRequests(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -140,6 +166,7 @@ func (h *EvidenceHandler) ListRequests(w http.ResponseWriter, r *http.Request) {
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
+// @Router /business-provenance/requests/{request_id} [get]
 func (h *EvidenceHandler) GetRequestSummary(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -178,6 +205,7 @@ func (h *EvidenceHandler) GetRequestSummary(w http.ResponseWriter, r *http.Reque
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
+// @Router /business-provenance/interactions/{interaction_id} [get]
 func (h *EvidenceHandler) GetInteractionSummary(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -219,7 +247,7 @@ func (h *EvidenceHandler) GetInteractionSummary(w http.ResponseWriter, r *http.R
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /requests/{request_id}/traces [get]
+// @Router /business-provenance/requests/{request_id}/traces [get]
 func (h *EvidenceHandler) ListRequestTraces(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -336,7 +364,7 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 }
 
 func requestIDFromSummaryPath(path string, traces bool) string {
-	const prefix = "/api/agent-observability/v1/requests/"
+	const prefix = "/api/agent-observability/v1/business-provenance/requests/"
 	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}
@@ -357,7 +385,7 @@ func requestIDFromSummaryPath(path string, traces bool) string {
 }
 
 func interactionIDFromSummaryPath(path string) string {
-	const prefix = "/api/agent-observability/v1/interactions/"
+	const prefix = "/api/agent-observability/v1/business-provenance/interactions/"
 	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}

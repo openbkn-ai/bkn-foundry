@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,7 +77,7 @@ func TestSearchReplaysNativeSearchAfterValues(t *testing.T) {
 		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
 		PageBefore: &observabilityvo.SourcePosition{
 			EventTimestamp: positionTime, LogID: "source-log-a",
-			SearchAfter: []any{"2026-08-01T10:00:00.123456Z", "source-log-a"},
+			SearchAfter: []any{"2026-08-01T10:00:00.123456Z", "context-loader", "source-log-a"},
 		},
 	})
 	if err != nil {
@@ -87,8 +88,49 @@ func TestSearchReplaysNativeSearchAfterValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	searchAfter, _ := query["search_after"].([]any)
-	if len(searchAfter) != 2 || searchAfter[0] != "2026-08-01T10:00:00.123456Z" || searchAfter[1] != "source-log-a" {
+	if len(searchAfter) != 3 || searchAfter[0] != "2026-08-01T10:00:00.123456Z" ||
+		searchAfter[1] != "context-loader" || searchAfter[2] != "source-log-a" {
 		t.Fatalf("native search_after was reconstructed instead of replayed: %#v", searchAfter)
+	}
+}
+
+func TestBuildQueryReplaysNativeSearchAfterWithoutAParsedTimestamp(t *testing.T) {
+	query := buildQuery(observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		PageBefore: &observabilityvo.SourcePosition{
+			LogID: "source-log-a", SearchAfter: []any{"invalid-legacy-time", "context-loader", "source-log-a"},
+		},
+	})
+	searchAfter, _ := query["search_after"].([]any)
+	if len(searchAfter) != 3 || searchAfter[0] != "invalid-legacy-time" {
+		t.Fatalf("native search_after must be authoritative even when _source time cannot be parsed: %#v", searchAfter)
+	}
+}
+
+func TestBuildQueryUsesTheContractTieBreakers(t *testing.T) {
+	query := buildQuery(observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+	})
+	sorts, _ := query["sort"].([]any)
+	encoded, _ := json.Marshal(sorts)
+	if len(sorts) != 3 || !strings.Contains(string(encoded), `"attributes.source_id.keyword"`) ||
+		!strings.Contains(string(encoded), `"attributes.source_log_id.keyword"`) {
+		t.Fatalf("native sort must be event_timestamp DESC, source_id ASC, source_log_id ASC: %s", encoded)
+	}
+}
+
+func TestBuildQueryFreezesObservedTimestampAtTheGatewayWatermark(t *testing.T) {
+	watermark := time.Date(2026, 8, 1, 12, 0, 0, 123, time.UTC)
+	body, err := json.Marshal(buildQuery(observabilityvo.LogQuery{
+		AuthorizedTenantID:   "tenant-a",
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		ObservedBefore:       &watermark,
+	}))
+	if err != nil {
+		t.Fatalf("marshal query: %v", err)
+	}
+	if !strings.Contains(string(body), `"observedTimestamp":{"lte":"2026-08-01T12:00:00.000000123Z"}`) {
+		t.Fatalf("observed watermark is missing from OpenSearch query: %s", body)
 	}
 }
 
@@ -119,7 +161,7 @@ func TestSearchUsesCandidateScopeInsteadOfRequiringEveryManagedNetwork(t *testin
 func TestListLogIDCanRoundTripThroughGet(t *testing.T) {
 	backend := &fakeSearchClient{response: []byte(`{
 		"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"source-log-a","_source":{
-			"attributes":{"schema_version":"1.0.0","log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","tenant_id":"tenant-a","business_domain_id":"domain-a","log_category":"runtime.business","event_name":"knowledge.read.completed","outcome":"success","safe_summary":"读取需求预测对象","trust_level":"trusted"},
+			"attributes":{"schema_version":"1.0.0","log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","tenant_id":"tenant-a","business_domain_id":"domain-a","log_category":"runtime.business","event_name":"knowledge.read.completed","outcome":"success","safe_summary":"读取需求预测对象","trust_level":"trusted","tool_name":"run_sql"},
 			"observedTimestamp":"2026-08-01T11:35:47Z","@timestamp":"2026-08-01T11:35:46Z",
 			"resource":{"service.name":"context-loader","deployment.environment":"production"},
 			"severity":{"text":"INFO","number":9}
@@ -133,6 +175,9 @@ func TestListLogIDCanRoundTripThroughGet(t *testing.T) {
 		t.Fatalf("list log: records=%d err=%v", len(page.Records), err)
 	}
 	listedLogID := page.Records[0].LogID
+	if page.Records[0].ToolName != "run_sql" {
+		t.Fatalf("tool identity was not projected into log record: %+v", page.Records[0])
+	}
 	ctx := observabilityvo.WithSourceAccessScope(context.Background(), observabilityvo.SourceAccessScope{
 		TenantID: "tenant-a", BusinessDomain: "domain-a",
 	})

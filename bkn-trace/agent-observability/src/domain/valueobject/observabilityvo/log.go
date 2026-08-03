@@ -36,6 +36,7 @@ type LogRecord struct {
 	ConversationID      string          `json:"conversation_id,omitempty"`
 	InteractionID       string          `json:"interaction_id,omitempty"`
 	OperationID         string          `json:"operation_id,omitempty"`
+	ToolName            string          `json:"tool_name,omitempty"`
 	ResourceRef         *ResourceRef    `json:"resource_ref,omitempty"`
 	ArtifactRef         string          `json:"artifact_ref,omitempty"`
 	Attributes          map[string]any  `json:"attributes,omitempty"`
@@ -78,6 +79,7 @@ type LogQuery struct {
 	AuthorizedKnowledgeNetworkIDs []string
 	RequireRecordScope            bool
 	PageBefore                    *SourcePosition
+	ObservedBefore                *time.Time
 }
 
 func (query LogQuery) IsAssociatedDrilldown() bool {
@@ -97,6 +99,7 @@ type SourcePage struct {
 // as a strict keyset boundary; it is never accepted directly from callers.
 type SourcePosition struct {
 	EventTimestamp time.Time `json:"event_timestamp"`
+	SourceID       string    `json:"source_id,omitempty"`
 	LogID          string    `json:"log_id"`
 	SearchAfter    []any     `json:"search_after,omitempty"`
 }

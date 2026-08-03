@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchcoreprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchlogaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
@@ -43,6 +44,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionrebuild"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
@@ -82,11 +84,34 @@ func NewApp() (*App, error) {
 	if strings.EqualFold(evidenceConfig.Store, "opensearch") {
 		evidenceStore = opensearchevidencestore.New(openSearchClient, openSearchConfig.EvidenceIndex)
 	}
-	evidenceService := evidencesvc.New(evidenceStore)
 	var resolver ibusinessresolver.BusinessResolverPort
 	if resolverConfig.Enabled {
 		resolver = businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout})
+	}
+	coreConfig := conf.NewCoreConfig()
+	metrics := coremetrics.New()
+	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
+	if err != nil {
+		return nil, err
+	}
+	var summaryProjection iprojectionsource.ProjectionSourcePort
+	if legacyProjection, ok := evidenceStore.(iprojectionsource.ProjectionSourcePort); ok {
+		summaryProjection = legacyProjection
+		if coreConfig.ProjectionEnabled {
+			summaryProjection = opensearchcoreprojection.New(
+				openSearchClient, coreConfig.ProjectionIndex, legacyProjection,
+			)
+		}
+	}
+	var evidenceService *evidencesvc.Service
+	if summaryProjection != nil {
+		evidenceService = evidencesvc.NewWithBusinessResolverAndProjectionSource(
+			evidenceStore, resolver, summaryProjection,
+		)
+	} else if resolver != nil {
 		evidenceService = evidencesvc.NewWithBusinessResolver(evidenceStore, resolver)
+	} else {
+		evidenceService = evidencesvc.New(evidenceStore)
 	}
 	accessScopeConfig := conf.NewAccessScopeConfig()
 	accessScopeResolver := bknsafeaccess.New(
@@ -94,7 +119,7 @@ func NewApp() (*App, error) {
 		&http.Client{Timeout: accessScopeConfig.Timeout},
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
-	logHandler := httphandler.NewLogHandler(logsvc.NewWithCursorKey([]logsvc.Source{
+	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions([]logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
 		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
 		logsvc.NewNotIntegratedSource("bkn-safe-access", []string{
@@ -103,13 +128,11 @@ func NewApp() (*App, error) {
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
-	}, observabilityConfig.CursorSigningKey), evidenceHandler)
-	coreConfig := conf.NewCoreConfig()
-	metrics := coremetrics.New()
-	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
-	if err != nil {
-		return nil, err
-	}
+	}, logsvc.Options{
+		CursorKey:            observabilityConfig.CursorSigningKey,
+		SourceTimeout:        observabilityConfig.SourceTimeout,
+		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
+	}), evidenceHandler)
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
 		EvidenceCollectionState: func() string {
 			if coreConfig.EvidenceCollectionState == "" {
@@ -311,14 +334,11 @@ func newApp(
 		mux.Handle("/metrics", metrics)
 	}
 
-	// readAuth wraps every trace/evidence READ route. In enforce mode it refuses
-	// a caller with no account identity, closing the unauthenticated-read hole
-	// uniformly across all read endpoints — not only the two that additionally
-	// scope by account. In shadow mode it is a pass-through. The evidence WRITE
-	// route (/evidence/events) is excluded: it keeps its own ingest-token guard.
-	readAuthCfg := conf.NewTraceReadAuthzConfig()
+	// Resolve the OAuth or trusted-gateway identity once at the read boundary,
+	// then share the immutable access scope with trace, evidence and log handlers.
+	// The evidence WRITE route keeps its independent ingest-token guard.
 	readAuth := func(h http.HandlerFunc) http.HandlerFunc {
-		return httphandler.RequireReadIdentity(readAuthCfg, h)
+		return evidenceHandler.RequireTrustedQueryIdentity(h)
 	}
 
 	mux.HandleFunc(APIBasePath+"/traces/_search", readAuth(traceHandler.SearchTraces))
@@ -343,8 +363,7 @@ func newApp(
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
-	mux.HandleFunc(APIBasePath+"/business-provenance/conversations", readAuth(evidenceHandler.ListBusinessProvenanceConversations))
-	mux.HandleFunc(APIBasePath+"/business-provenance/interactions", readAuth(evidenceHandler.ListBusinessProvenanceInteractions))
+	httphandler.RegisterBusinessProvenanceRoutes(mux, APIBasePath, evidenceHandler, readAuth)
 	mux.HandleFunc(APIBasePath+"/trace-executions", readAuth(evidenceHandler.ListTraceExecutions))
 	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs", readAuth(logHandler.ListLogs))

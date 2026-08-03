@@ -86,6 +86,8 @@ spec:
             - name: BKN_TRACE_HYDRA_ADMIN_URL
               value: {{ .Values.evidence.queryAuth.hydraAdminURL | quote }}
             {{- end }}
+            - name: BKN_TRACE_DEPLOYMENT_TENANT_ID
+              value: {{ required "evidence.queryAuth.deploymentTenantID is required" .Values.evidence.queryAuth.deploymentTenantID | quote }}
             {{- if .Values.businessResolver.enabled }}
             - name: BKN_TRACE_BKN_RESOLVER_URL
               value: {{ .Values.businessResolver.bknBaseURL | quote }}
@@ -123,6 +125,10 @@ spec:
                   name: {{ .Values.observability.cursorSigning.existingSecret | quote }}
                   key: {{ .Values.observability.cursorSigning.secretKey | quote }}
             {{- end }}
+            - name: BKN_OBSERVABILITY_SOURCE_TIMEOUT
+              value: {{ .Values.observability.sourceTimeout | quote }}
+            - name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
+              value: {{ .Values.observability.maxConcurrentSources | quote }}
           livenessProbe:
             tcpSocket:
               port: http

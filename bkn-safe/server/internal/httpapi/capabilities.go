@@ -54,7 +54,7 @@ func registerCapabilities(g *gin.RouterGroup, svc *license.Service) {
 
 		if svc != nil {
 			if snap := svc.State(); snap.Payload != nil {
-				resp.Edition = snap.Payload.Edition
+				resp.Edition = string(snap.Payload.Edition)
 				if snap.Payload.Features != nil {
 					resp.Features = snap.Payload.Features
 				}

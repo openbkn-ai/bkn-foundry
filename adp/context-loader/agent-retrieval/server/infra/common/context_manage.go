@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -38,6 +39,7 @@ const (
 	HeaderTenantID            = "x-tenant-id"
 	HeaderBusinessDomain      = "x-business-domain"
 	HeaderBKNEventObservedAt  = "bkn-event-observed-at"
+	envDefaultTenantID        = "BKN_TRACE_DEFAULT_TENANT_ID"
 )
 
 type traceContextKey string
@@ -57,6 +59,7 @@ type TraceContext struct {
 	ConversationID     string
 	InteractionID      string
 	OperationID        string
+	ToolName           string
 	CausationEventID   string
 	ClaimID            string
 	Attempt            int
@@ -170,7 +173,7 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	_, observedAtErr := time.Parse(time.RFC3339Nano, observedAt)
 	return TraceContext{
 		RequestID:          requestID,
-		TenantID:           sanitizeBusinessTraceID(getHeader(HeaderTenantID)),
+		TenantID:           sanitizeBusinessTraceID(firstNonEmpty(getHeader(HeaderTenantID), os.Getenv(envDefaultTenantID))),
 		BusinessDomain:     firstNonEmpty(getHeader(HeaderBusinessDomain), parseBaggage(getHeader(HeaderBaggage))["business_domain"]),
 		Baggage:            parseBaggage(getHeader(HeaderBaggage)),
 		ConversationID:     sanitizeBusinessTraceID(getHeader(HeaderBKNConversationID)),

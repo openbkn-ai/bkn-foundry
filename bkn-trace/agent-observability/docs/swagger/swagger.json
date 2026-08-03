@@ -252,6 +252,295 @@
                 }
             }
         },
+        "/business-provenance/interactions/{interaction_id}": {
+            "get": {
+                "description": "Aggregates every authorized request and trace in one caller-owned interaction.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "interactions"
+                ],
+                "summary": "Get one observable business interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.InteractionSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/requests": {
+            "get": {
+                "description": "Returns stable request summaries generated from authorized evidence and artifacts.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "requests"
+                ],
+                "summary": "List observable business requests",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller-owned conversation ID",
+                        "name": "conversation_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "One user interaction ID",
+                        "name": "interaction_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or after this RFC3339 timestamp",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or before this RFC3339 timestamp",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Execution status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent or application",
+                        "name": "agent_or_app",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Business domain",
+                        "name": "business_domain",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Knowledge network",
+                        "name": "knowledge_network",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Evidence completeness",
+                        "name": "evidence_completeness",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Question, result, ID, business ref, or error keyword",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.RequestSummaryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/requests/{request_id}": {
+            "get": {
+                "description": "Returns an authorized request summary and its business-content availability.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "requests"
+                ],
+                "summary": "Get one observable business request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.RequestSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/requests/{request_id}/traces": {
+            "get": {
+                "description": "Supports one business request to multiple distributed traces and returns request_id on every trace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "requests"
+                ],
+                "summary": "List technical traces belonging to a business request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller-owned conversation ID",
+                        "name": "conversation_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "One user interaction ID",
+                        "name": "interaction_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.TraceSummaryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/conversations": {
             "get": {
                 "produces": [
@@ -2032,77 +2321,6 @@
                 }
             }
         },
-        "/requests/{request_id}/traces": {
-            "get": {
-                "description": "Supports one business request to multiple distributed traces and returns request_id on every trace.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "requests"
-                ],
-                "summary": "List technical traces belonging to a business request",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "BKN request ID",
-                        "name": "request_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Page size, 1..200",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Opaque pagination cursor",
-                        "name": "cursor",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Caller-owned conversation ID",
-                        "name": "conversation_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "One user interaction ID",
-                        "name": "interaction_id",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.TraceSummaryPage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/trace-executions": {
             "get": {
                 "description": "Returns stable trace summaries with reverse request links, generated from authorized trace evidence.",
@@ -3629,6 +3847,12 @@
                         "type": "string"
                     }
                 },
+                "operation_id": {
+                    "type": "string"
+                },
+                "operation_key": {
+                    "type": "string"
+                },
                 "partial_reasons": {
                     "type": "array",
                     "items": {
@@ -3648,6 +3872,9 @@
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                },
+                "tool_name": {
                     "type": "string"
                 },
                 "trace_count": {

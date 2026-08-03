@@ -13,12 +13,16 @@ import (
 )
 
 type capturingProjectionSource struct {
-	result  iprojectionsource.Result
-	queries []iprojectionsource.Query
+	result    iprojectionsource.Result
+	resultFor func(iprojectionsource.Query) iprojectionsource.Result
+	queries   []iprojectionsource.Query
 }
 
 func (s *capturingProjectionSource) LoadExecutionProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
 	s.queries = append(s.queries, query)
+	if s.resultFor != nil {
+		return s.resultFor(query), nil
+	}
 	return s.result, nil
 }
 
@@ -512,6 +516,131 @@ func TestExactRequestSummaryAndTraceLookupDoNotCallListProjection(t *testing.T) 
 	if len(source.queries) != 0 {
 		t.Fatalf("exact request queries must not scan list projection: %+v", source.queries)
 	}
+}
+
+func TestExactRequestSummaryAndTraceLookupFallsBackToReceiptProjection(t *testing.T) {
+	trace := evidencevo.NormalizedTrace{
+		TraceID: "trace_receipt", RequestID: "req_receipt",
+		ConversationID: "conversation_supply_chain",
+		TenantID:       "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		Events: []evidencevo.EvidenceEvent{{
+			EventID: "receipt:receipt_1", EventType: "retrieval.completed",
+			ObservedAt: "2026-08-02T09:00:00Z", EmittedAt: "2026-08-02T09:00:01Z",
+			RequestID: "req_receipt", TraceID: "trace_receipt", InteractionID: "interaction_july",
+			OperationID: "op_run_sql", OperationName: "run_sql",
+			Payload: map[string]any{
+				"status": "completed", "operation_key": "forecast-data-query",
+			},
+		}},
+	}
+	source := &capturingProjectionSource{result: iprojectionsource.Result{
+		Traces: []evidencevo.NormalizedTrace{trace},
+	}}
+	service := NewWithProjectionSource(evidencestore.New(), source)
+
+	request, found, err := service.GetRequestSummary(context.Background(), "req_receipt", summaryScope("acct_demo"))
+	if err != nil || !found {
+		t.Fatalf("receipt-backed request must support exact lookup: request=%+v found=%v err=%v", request, found, err)
+	}
+	if request.OperationID != "op_run_sql" || request.OperationKey != "forecast-data-query" || request.ToolName != "run_sql" {
+		t.Fatalf("receipt-backed request must preserve operation identity: %+v", request)
+	}
+
+	traces, err := service.ListRequestTraces(context.Background(), "req_receipt", evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+	if err != nil || len(traces.Entries) != 1 || traces.Entries[0].TraceID != "trace_receipt" {
+		t.Fatalf("receipt-backed request traces must support exact lookup: traces=%+v err=%v", traces, err)
+	}
+	if len(source.queries) != 3 {
+		t.Fatalf("request detail must query its receipt and interaction context, while trace lookup remains request-scoped: %+v", source.queries)
+	}
+	if source.queries[0].RequestID != "req_receipt" || source.queries[1].InteractionID != "interaction_july" ||
+		source.queries[2].RequestID != "req_receipt" {
+		t.Fatalf("exact fallback must push request or interaction identity: %+v", source.queries)
+	}
+	for _, query := range source.queries {
+		if query.Limit != MaxSummaryScanEntries {
+			t.Fatalf("exact fallback must remain bounded: %+v", query)
+		}
+	}
+}
+
+func TestExactRequestSummaryEnrichesReceiptWithInteractionContent(t *testing.T) {
+	receipt := evidencevo.NormalizedTrace{
+		TraceID: "trace_enriched", RequestID: "req_enriched", ConversationID: "conversation_supply_chain",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		Events: []evidencevo.EvidenceEvent{{
+			EventID: "receipt:enriched", EventType: "retrieval.completed",
+			ObservedAt: "2026-08-02T09:00:01Z", EmittedAt: "2026-08-02T09:00:02Z",
+			RequestID: "req_enriched", TraceID: "trace_enriched", InteractionID: "interaction_june",
+			OperationID: "op_enriched", OperationName: "run_sql",
+			Payload: map[string]any{"status": "completed", "operation_key": "june-query"},
+		}},
+	}
+	interactionTrace := receipt
+	interactionTrace.Events = append([]evidencevo.EvidenceEvent{
+		{
+			EventID: "question:enriched", EventType: "agent.interaction.started",
+			ObservedAt: "2026-08-02T09:00:00Z", EmittedAt: "2026-08-02T09:00:00Z",
+			RequestID: "req_enriched", TraceID: "trace_enriched", InteractionID: "interaction_june",
+			Payload: map[string]any{"question_artifact_ref": "artifact:question_enriched"},
+		},
+		{
+			EventID: "result:enriched", EventType: "claim.created",
+			ObservedAt: "2026-08-02T09:00:03Z", EmittedAt: "2026-08-02T09:00:03Z",
+			RequestID: "req_enriched", TraceID: "trace_enriched", InteractionID: "interaction_june",
+			Payload: map[string]any{
+				"claim_id": "claim_enriched", "result_artifact_ref": "artifact:result_enriched",
+				"business_refs": []any{map[string]any{"ref_id": "object:kn_demo:forecast"}},
+			},
+		},
+	}, receipt.Events...)
+	question := summaryServiceArtifact(t, "question_enriched", evidencevo.ArtifactTypeQuestion, "req_enriched", "trace_enriched", "interaction_june", "六月预测是多少？")
+	result := summaryServiceArtifact(t, "result_enriched", evidencevo.ArtifactTypeResult, "req_enriched", "trace_enriched", "interaction_june", "合计 11594")
+	source := &capturingProjectionSource{resultFor: func(query iprojectionsource.Query) iprojectionsource.Result {
+		if query.InteractionID == "interaction_june" {
+			return iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{interactionTrace}, Artifacts: []evidencevo.EvidenceArtifact{question, result}}
+		}
+		return iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{receipt}}
+	}}
+	service := NewWithProjectionSource(evidencestore.New(), source)
+
+	request, found, err := service.GetRequestSummary(context.Background(), "req_enriched", summaryScope("acct_demo"))
+
+	if err != nil || !found {
+		t.Fatalf("exact request lookup failed: request=%+v found=%v err=%v", request, found, err)
+	}
+	if request.QuestionPreview != "六月预测是多少？" || request.ResultPreview != "合计 11594" ||
+		request.EvidenceCompleteness != "complete" {
+		t.Fatalf("exact request must inherit its interaction content: %+v", request)
+	}
+	if request.StartedAt != "2026-08-02T09:00:01Z" || request.CompletedAt != "2026-08-02T09:00:02Z" || request.DurationMS != 1000 {
+		t.Fatalf("interaction enrichment must not overwrite operation timing: %+v", request)
+	}
+}
+
+func summaryServiceArtifact(
+	t *testing.T,
+	id string,
+	typeName evidencevo.ArtifactType,
+	requestID string,
+	traceID string,
+	interactionID string,
+	text string,
+) evidencevo.EvidenceArtifact {
+	t.Helper()
+	artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
+		ArtifactID: id, ArtifactType: typeName, RequestID: requestID, TraceID: traceID,
+		InteractionID: interactionID, ContentType: "application/json",
+		SchemaVersion: evidencevo.ArtifactContractVersion, ObservedAt: "2026-08-02T09:00:00Z",
+		Content: map[string]any{"text": text}, BusinessRefs: []string{"object:kn_demo:forecast"},
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+	})
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize summary artifact: %+v", validationErrors)
+	}
+	return artifact
 }
 
 func TestExactTraceExecutionLookupDoesNotCallListProjectionAndReturnsRequest(t *testing.T) {

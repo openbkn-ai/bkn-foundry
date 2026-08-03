@@ -346,6 +346,26 @@ func (s *Service) GetRequestSummary(ctx context.Context, requestID string, scope
 	requestID = strings.TrimSpace(requestID)
 	for _, request := range requests {
 		if request.RequestID == requestID {
+			if request.InteractionID != "" &&
+				(request.QuestionPreview == "" || request.ResultPreview == "") &&
+				s.projectionSource != nil {
+				result, projectionErr := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
+					Scope: scope, InteractionID: request.InteractionID, Limit: MaxSummaryScanEntries,
+				})
+				if projectionErr != nil {
+					return evidencevo.RequestSummary{}, false, projectionErr
+				}
+				enrichedRequests, _ := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
+				for _, enriched := range enrichedRequests {
+					if enriched.RequestID == requestID {
+						request = enrichExactRequestSummary(request, enriched)
+						break
+					}
+				}
+				if result.Truncated {
+					metadata.addReason("projection_scan_cap_reached")
+				}
+			}
 			if metadata.Truncated {
 				request.EvidenceCompleteness = "partial"
 				for _, reason := range metadata.PartialReasons {
@@ -356,6 +376,31 @@ func (s *Service) GetRequestSummary(ctx context.Context, requestID string, scope
 		}
 	}
 	return evidencevo.RequestSummary{}, false, nil
+}
+
+func enrichExactRequestSummary(target, source evidencevo.RequestSummary) evidencevo.RequestSummary {
+	firstNonEmptySummary(&target.QuestionPreview, source.QuestionPreview)
+	firstNonEmptySummary(&target.ResultPreview, source.ResultPreview)
+	firstNonEmptySummary(&target.Initiator, source.Initiator)
+	target.BusinessRefs = sortedSummarySet(summaryStringSet(target.BusinessRefs, source.BusinessRefs))
+	target.KnowledgeNetworks = sortedSummarySet(summaryStringSet(target.KnowledgeNetworks, source.KnowledgeNetworks))
+	if source.EvidenceCompleteness != "" && source.EvidenceCompleteness != "content_unavailable" {
+		target.EvidenceCompleteness = source.EvidenceCompleteness
+		target.PartialReasons = append([]string{}, source.PartialReasons...)
+	}
+	return target
+}
+
+func summaryStringSet(groups ...[]string) map[string]struct{} {
+	result := map[string]struct{}{}
+	for _, group := range groups {
+		for _, value := range group {
+			if value != "" {
+				result[value] = struct{}{}
+			}
+		}
+	}
+	return result
 }
 
 func (s *Service) GetInteractionSummary(
@@ -520,7 +565,9 @@ func (s *Service) loadTraceExecutionSummaries(ctx context.Context, traceID strin
 		metadata.addReason("evidence_query_truncated")
 	}
 	if len(result.Traces) == 0 {
-		return []evidencevo.RequestSummary{}, []evidencevo.TraceSummary{}, metadata, nil
+		return s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
+			Scope: scope, TraceID: traceID, Limit: MaxSummaryScanEntries,
+		}, metadata)
 	}
 	traces := mergeTraceBatches(result.Traces)
 	artifacts := []evidencevo.EvidenceArtifact{}
@@ -602,7 +649,9 @@ func (s *Service) loadRequestExecutionSummaries(ctx context.Context, requestID s
 		metadata.addReason("evidence_query_truncated")
 	}
 	if len(result.Traces) == 0 {
-		return []evidencevo.RequestSummary{}, []evidencevo.TraceSummary{}, metadata, nil
+		return s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
+			Scope: scope, RequestID: requestID, Limit: MaxSummaryScanEntries,
+		}, metadata)
 	}
 	traces := mergeTraceBatches(result.Traces)
 	artifacts := []evidencevo.EvidenceArtifact{}
@@ -621,6 +670,25 @@ func (s *Service) loadRequestExecutionSummaries(ctx context.Context, requestID s
 	}
 	requests, traceSummaries := evidencevo.BuildExecutionSummaries(traces, artifacts)
 	return requests, traceSummaries, metadata, nil
+}
+
+func (s *Service) loadProjectedExecutionSummaries(
+	ctx context.Context,
+	query iprojectionsource.Query,
+	metadata summaryLoadMetadata,
+) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {
+	if s.projectionSource == nil {
+		return []evidencevo.RequestSummary{}, []evidencevo.TraceSummary{}, metadata, nil
+	}
+	result, err := s.projectionSource.LoadExecutionProjection(ctx, query)
+	if err != nil {
+		return nil, nil, summaryLoadMetadata{}, err
+	}
+	if result.Truncated {
+		metadata.addReason("projection_scan_cap_reached")
+	}
+	requests, traces := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
+	return requests, traces, metadata, nil
 }
 
 func appendUniqueSummaryReason(reasons []string, reason string) []string {

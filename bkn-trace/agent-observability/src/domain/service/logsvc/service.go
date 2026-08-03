@@ -1,10 +1,12 @@
 package logsvc
 
 import (
+	"container/heap"
 	"context"
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -34,21 +36,88 @@ type metadataSource interface {
 }
 
 type Service struct {
-	sources   []Source
-	cursorKey []byte
+	sources              []Source
+	cursorKey            []byte
+	sourceTimeout        time.Duration
+	maxConcurrentSources int
 }
+
+type Options struct {
+	CursorKey            []byte
+	SourceTimeout        time.Duration
+	MaxConcurrentSources int
+}
+
+const (
+	defaultSourceTimeout        = 3 * time.Second
+	defaultMaxConcurrentSources = 4
+)
 
 func New(sources []Source) *Service {
 	return NewWithCursorKey(sources, randomCursorKey())
 }
 
 func NewWithCursorKey(sources []Source, cursorKey []byte) *Service {
-	if len(cursorKey) == 0 {
-		cursorKey = randomCursorKey()
+	return NewWithOptions(sources, Options{CursorKey: cursorKey})
+}
+
+func NewWithOptions(sources []Source, options Options) *Service {
+	if len(options.CursorKey) == 0 {
+		options.CursorKey = randomCursorKey()
+	}
+	if options.SourceTimeout <= 0 {
+		options.SourceTimeout = defaultSourceTimeout
+	}
+	if options.MaxConcurrentSources <= 0 {
+		options.MaxConcurrentSources = defaultMaxConcurrentSources
 	}
 	return &Service{
-		sources: append([]Source(nil), sources...), cursorKey: append([]byte(nil), cursorKey...),
+		sources: append([]Source(nil), sources...), cursorKey: append([]byte(nil), options.CursorKey...),
+		sourceTimeout: options.SourceTimeout, maxConcurrentSources: options.MaxConcurrentSources,
 	}
+}
+
+type sourceSearchResult struct {
+	source Source
+	page   observabilityvo.SourcePage
+	status observabilityvo.SourceStatus
+	err    error
+}
+
+type logCandidate struct {
+	record          observabilityvo.LogRecord
+	adapterSourceID string
+}
+
+type candidateCursor struct {
+	batchIndex  int
+	recordIndex int
+}
+
+type candidateHeap struct {
+	items   []candidateCursor
+	batches [][]logCandidate
+}
+
+func (items candidateHeap) Len() int { return len(items.items) }
+func (items candidateHeap) Less(left, right int) bool {
+	leftCursor, rightCursor := items.items[left], items.items[right]
+	return candidateBefore(
+		items.batches[leftCursor.batchIndex][leftCursor.recordIndex],
+		items.batches[rightCursor.batchIndex][rightCursor.recordIndex],
+	)
+}
+func (items candidateHeap) Swap(left, right int) {
+	items.items[left], items.items[right] = items.items[right], items.items[left]
+}
+func (items *candidateHeap) Push(value any) {
+	items.items = append(items.items, value.(candidateCursor))
+}
+func (items *candidateHeap) Pop() any {
+	last := len(items.items) - 1
+	value := items.items[last]
+	items.items = items.items[:last]
+	return value
 }
 
 func (service *Service) List(
@@ -89,6 +158,13 @@ func (service *Service) List(
 	}
 
 	result := observabilityvo.ListResult{Records: []observabilityvo.LogRecord{}, SourceStatus: []observabilityvo.SourceStatus{}}
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
 	sourceQuery := query
 	sourceQuery.Cursor = ""
 	sourceQuery.Limit = 200
@@ -105,39 +181,30 @@ func (service *Service) List(
 	sourceQuery.AuthorizedKnowledgeNetworkIDs = append(
 		[]string(nil), profile.ManagedKnowledgeNetworkIDs...,
 	)
+	sourceQuery.ObservedBefore = &queryWatermark
 	succeeded := 0
 	failed := 0
 	sourcePageSizes := make(map[string]int)
 	sourceCandidates := make(map[string]int)
 	sourceLastRawPosition := make(map[string]observabilityvo.SourcePosition)
-	recordSources := make(map[string]string)
+	candidateBatches := make([][]logCandidate, 0, len(visibleSources))
 	sourceHasMore := false
-	for _, source := range visibleSources {
-		metadata := sourceStatus(source)
-		if metadata.Status == "not_integrated" {
+	for _, sourceResult := range service.searchSources(ctx, visibleSources, sourceQuery, positions) {
+		source := sourceResult.source
+		if sourceResult.status.Status == "not_integrated" {
 			failed++
-			result.SourceStatus = append(result.SourceStatus, metadata)
+			result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 			continue
 		}
 		position, hasPosition := positions[source.ID()]
-		if hasPosition {
-			sourceQuery.PageBefore = &position
-		} else {
-			sourceQuery.PageBefore = nil
-		}
-		page, err := source.Search(ctx, sourceQuery)
-		if err != nil {
+		if sourceResult.err != nil {
 			failed++
-			status := sourceStatus(source)
-			status.Status, status.Reason, status.CountAccuracy = "unavailable", "source_query_failed", "unavailable"
-			result.SourceStatus = append(result.SourceStatus, status)
+			result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 			continue
 		}
 		succeeded++
-		status := sourceStatus(source)
-		status.Status = "healthy"
-		status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
-		result.SourceStatus = append(result.SourceStatus, status)
+		page := sourceResult.page
+		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 		sourcePageSizes[source.ID()] = len(page.Records)
 		if len(page.Records) > 0 {
 			sourceLastRawPosition[source.ID()] = positionForRecord(page.Records[len(page.Records)-1])
@@ -145,40 +212,34 @@ func (service *Service) List(
 		if page.NextCursor != "" || page.Count > int64(len(page.Records)) {
 			sourceHasMore = true
 		}
+		candidates := make([]logCandidate, 0, len(page.Records))
 		for _, record := range page.Records {
-			if contains(effectiveCategories, record.Category) && afterSourcePosition(record, sourceQuery.PageBefore) &&
+			var pageBefore *observabilityvo.SourcePosition
+			if hasPosition {
+				pageBefore = &position
+			}
+			if contains(effectiveCategories, record.Category) && afterSourcePosition(record, pageBefore) &&
 				matchesQuery(record, sourceQuery) && canReadLog(profile, capabilities, record, query.IsAssociatedDrilldown()) {
-				result.Records = append(result.Records, record)
-				recordSources[recordKey(record)] = source.ID()
-				sourceCandidates[source.ID()]++
+				candidates = append(candidates, logCandidate{record: record, adapterSourceID: source.ID()})
 			}
 		}
+		sort.SliceStable(candidates, func(left, right int) bool {
+			return candidateBefore(candidates[left], candidates[right])
+		})
+		sourceCandidates[source.ID()] = len(candidates)
+		candidateBatches = append(candidateBatches, candidates)
 	}
 	if succeeded == 0 {
 		return observabilityvo.ListResult{}, ErrSourcesUnavailable
 	}
 
-	sort.SliceStable(result.Records, func(i, j int) bool {
-		if result.Records[i].EventTimestamp.Equal(result.Records[j].EventTimestamp) {
-			leftSource := recordSources[recordKey(result.Records[i])]
-			rightSource := recordSources[recordKey(result.Records[j])]
-			if leftSource == rightSource {
-				return positionID(result.Records[i]) < positionID(result.Records[j])
-			}
-			return leftSource < rightSource
-		}
-		return result.Records[i].EventTimestamp.After(result.Records[j].EventTimestamp)
-	})
-	limit := query.Limit
-	if limit <= 0 {
-		limit = 50
+	merged := mergeCandidates(candidateBatches, limit+1)
+	hasMore := sourceHasMore || len(merged) > limit
+	if len(merged) > limit {
+		merged = merged[:limit]
 	}
-	if limit > 200 {
-		limit = 200
-	}
-	hasMore := sourceHasMore || len(result.Records) > limit
-	if len(result.Records) > limit {
-		result.Records = result.Records[:limit]
+	for _, candidate := range merged {
+		result.Records = append(result.Records, candidate.record)
 	}
 	for _, size := range sourcePageSizes {
 		if size >= sourceQuery.Limit {
@@ -187,10 +248,9 @@ func (service *Service) List(
 	}
 	if hasMore {
 		includedBySource := make(map[string]int)
-		for _, record := range result.Records {
-			sourceID := recordSources[recordKey(record)]
-			positions[sourceID] = positionForRecord(record)
-			includedBySource[sourceID]++
+		for _, candidate := range merged {
+			positions[candidate.adapterSourceID] = positionForRecord(candidate.record)
+			includedBySource[candidate.adapterSourceID]++
 		}
 		for sourceID, rawPosition := range sourceLastRawPosition {
 			if includedBySource[sourceID] == sourceCandidates[sourceID] {
@@ -211,6 +271,102 @@ func (service *Service) List(
 	result.Count = int64(len(result.Records))
 	result.CountExact = !result.Partial && !hasMore
 	return result, nil
+}
+
+func mergeCandidates(batches [][]logCandidate, limit int) []logCandidate {
+	if limit <= 0 {
+		return nil
+	}
+	queue := &candidateHeap{batches: batches, items: make([]candidateCursor, 0, len(batches))}
+	totalCandidates := 0
+	for batchIndex, batch := range batches {
+		if len(batch) > 0 {
+			queue.items = append(queue.items, candidateCursor{batchIndex: batchIndex})
+			totalCandidates += len(batch)
+		}
+	}
+	heap.Init(queue)
+	result := make([]logCandidate, 0, min(limit, totalCandidates))
+	for queue.Len() > 0 && len(result) < limit {
+		cursor := heap.Pop(queue).(candidateCursor)
+		result = append(result, batches[cursor.batchIndex][cursor.recordIndex])
+		cursor.recordIndex++
+		if cursor.recordIndex < len(batches[cursor.batchIndex]) {
+			heap.Push(queue, cursor)
+		}
+	}
+	return result
+}
+
+func candidateBefore(left, right logCandidate) bool {
+	if !left.record.EventTimestamp.Equal(right.record.EventTimestamp) {
+		return left.record.EventTimestamp.After(right.record.EventTimestamp)
+	}
+	if left.record.SourceID != right.record.SourceID {
+		return left.record.SourceID < right.record.SourceID
+	}
+	if positionID(left.record) != positionID(right.record) {
+		return positionID(left.record) < positionID(right.record)
+	}
+	return left.adapterSourceID < right.adapterSourceID
+}
+
+func (service *Service) searchSources(
+	ctx context.Context,
+	sources []Source,
+	query observabilityvo.LogQuery,
+	positions map[string]observabilityvo.SourcePosition,
+) []sourceSearchResult {
+	results := make([]sourceSearchResult, len(sources))
+	semaphore := make(chan struct{}, service.maxConcurrentSources)
+	var waitGroup sync.WaitGroup
+	for index, source := range sources {
+		results[index] = sourceSearchResult{source: source, status: sourceStatus(source)}
+		if results[index].status.Status == "not_integrated" {
+			continue
+		}
+		waitGroup.Add(1)
+		go func(index int, source Source) {
+			defer waitGroup.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				results[index].err = ctx.Err()
+				results[index].status.Status = "unavailable"
+				results[index].status.Reason = "source_query_failed"
+				results[index].status.CountAccuracy = "unavailable"
+				return
+			}
+			sourceQuery := query
+			if position, ok := positions[source.ID()]; ok {
+				sourceQuery.PageBefore = &position
+			} else {
+				sourceQuery.PageBefore = nil
+			}
+			startedAt := time.Now()
+			sourceContext, cancel := context.WithTimeout(ctx, service.sourceTimeout)
+			defer cancel()
+			page, err := source.Search(sourceContext, sourceQuery)
+			latency := time.Since(startedAt).Milliseconds()
+			results[index].status.LatencyMS = &latency
+			results[index].page = page
+			results[index].err = err
+			if err != nil {
+				results[index].status.Status = "unavailable"
+				results[index].status.Reason = "source_query_failed"
+				if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+					results[index].status.Reason = "source_timeout"
+				}
+				results[index].status.CountAccuracy = "unavailable"
+				return
+			}
+			results[index].status.Status = "healthy"
+			results[index].status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
+		}(index, source)
+	}
+	waitGroup.Wait()
+	return results
 }
 
 func (service *Service) Get(
@@ -289,24 +445,16 @@ func (service *Service) Sources(ctx context.Context, profile evidencevo.AccessPr
 	from := now.Add(-time.Hour)
 	query := observabilityvo.LogQuery{
 		Limit: 1, AuthorizedTenantID: profile.TenantID, AuthorizedBusinessDomain: profile.BusinessDomain,
-		TimeFrom: &from, TimeTo: &now,
+		TimeFrom: &from, TimeTo: &now, ObservedBefore: &now,
 		AuthorizedSubjectID: profile.EffectiveSubjectID, AuthorizedApplicationID: profile.ApplicationPrincipalID,
 		AuthorizedCategories:          append([]string(nil), capabilities.AllowedLogCategories...),
 		AuthorizedKnowledgeNetworkIDs: append([]string(nil), profile.ManagedKnowledgeNetworkIDs...),
 		RequireRecordScope:            hasRole(profile, "network_builder") && !hasRole(profile, "admin", "super_admin"),
 	}
-	for _, source := range visibleSources {
-		status := sourceStatus(source)
-		if status.Status == "not_integrated" {
-			statuses = append(statuses, status)
-			continue
-		}
-		page, err := source.Search(ctx, query)
-		if err != nil {
-			status.Status, status.Reason, status.CountAccuracy = "unavailable", "source_health_check_failed", "unavailable"
-		} else {
-			status.Status = "healthy"
-			status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
+	for _, result := range service.searchSources(ctx, visibleSources, query, nil) {
+		status := result.status
+		if result.err != nil && status.Reason != "source_timeout" {
+			status.Reason = "source_health_check_failed"
 		}
 		statuses = append(statuses, status)
 	}
@@ -414,7 +562,9 @@ func positionForRecord(record observabilityvo.LogRecord) observabilityvo.SourceP
 		position.SearchAfter = append([]any(nil), record.CursorPosition.SearchAfter...)
 		return position
 	}
-	return observabilityvo.SourcePosition{EventTimestamp: record.EventTimestamp, LogID: positionID(record)}
+	return observabilityvo.SourcePosition{
+		EventTimestamp: record.EventTimestamp, SourceID: record.SourceID, LogID: positionID(record),
+	}
 }
 
 func positionID(record observabilityvo.LogRecord) string {
@@ -422,10 +572,6 @@ func positionID(record observabilityvo.LogRecord) string {
 		return record.SourceLogID
 	}
 	return record.LogID
-}
-
-func recordKey(record observabilityvo.LogRecord) string {
-	return record.SourceID + "\x00" + record.LogID
 }
 
 func applyLogTimeWindow(query *observabilityvo.LogQuery, watermark time.Time) error {
@@ -500,6 +646,7 @@ func validLogProjection(record observabilityvo.LogRecord) bool {
 func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQuery) bool {
 	return (query.TimeFrom == nil || !record.EventTimestamp.Before(*query.TimeFrom)) &&
 		(query.TimeTo == nil || record.EventTimestamp.Before(*query.TimeTo)) &&
+		(query.ObservedBefore == nil || !record.ObservedTimestamp.After(*query.ObservedBefore)) &&
 		matchesOptional(record.TraceID, query.TraceID) && matchesOptional(record.SpanID, query.SpanID) &&
 		matchesOptional(record.RequestID, query.RequestID) && matchesOptional(record.ConversationID, query.ConversationID) &&
 		matchesOptional(record.InteractionID, query.InteractionID) && matchesOptional(record.OperationID, query.OperationID) &&

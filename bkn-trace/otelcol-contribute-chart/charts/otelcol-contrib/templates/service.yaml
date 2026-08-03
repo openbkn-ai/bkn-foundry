@@ -23,3 +23,11 @@ spec:
       port: {{ .Values.service.ports.http }}
       targetPort: otlp-http
       protocol: TCP
+    - name: health
+      port: {{ .Values.service.ports.health }}
+      targetPort: health
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.service.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP

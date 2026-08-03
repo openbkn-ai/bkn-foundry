@@ -602,6 +602,10 @@ definitions:
         items:
           type: string
         type: array
+      operation_id:
+        type: string
+      operation_key:
+        type: string
       partial_reasons:
         items:
           type: string
@@ -615,6 +619,8 @@ definitions:
       started_at:
         type: string
       status:
+        type: string
+      tool_name:
         type: string
       trace_count:
         type: integer
@@ -1964,6 +1970,201 @@ paths:
       summary: List observable business interactions
       tags:
       - business-provenance
+  /business-provenance/interactions/{interaction_id}:
+    get:
+      description: Aggregates every authorized request and trace in one caller-owned
+        interaction.
+      parameters:
+      - description: BKN interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.InteractionSummary'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get one observable business interaction
+      tags:
+      - interactions
+  /business-provenance/requests:
+    get:
+      description: Returns stable request summaries generated from authorized evidence
+        and artifacts.
+      parameters:
+      - description: Page size, 1..200
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Caller-owned conversation ID
+        in: query
+        name: conversation_id
+        type: string
+      - description: One user interaction ID
+        in: query
+        name: interaction_id
+        type: string
+      - description: Started at or after this RFC3339 timestamp
+        in: query
+        name: from
+        type: string
+      - description: Started at or before this RFC3339 timestamp
+        in: query
+        name: to
+        type: string
+      - description: Execution status
+        in: query
+        name: status
+        type: string
+      - description: Agent or application
+        in: query
+        name: agent_or_app
+        type: string
+      - description: Business domain
+        in: query
+        name: business_domain
+        type: string
+      - description: Knowledge network
+        in: query
+        name: knowledge_network
+        type: string
+      - description: Evidence completeness
+        in: query
+        name: evidence_completeness
+        type: string
+      - description: Question, result, ID, business ref, or error keyword
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.RequestSummaryPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: List observable business requests
+      tags:
+      - requests
+  /business-provenance/requests/{request_id}:
+    get:
+      description: Returns an authorized request summary and its business-content
+        availability.
+      parameters:
+      - description: BKN request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.RequestSummary'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get one observable business request
+      tags:
+      - requests
+  /business-provenance/requests/{request_id}/traces:
+    get:
+      description: Supports one business request to multiple distributed traces and
+        returns request_id on every trace.
+      parameters:
+      - description: BKN request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      - description: Page size, 1..200
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque pagination cursor
+        in: query
+        name: cursor
+        type: string
+      - description: Caller-owned conversation ID
+        in: query
+        name: conversation_id
+        type: string
+      - description: One user interaction ID
+        in: query
+        name: interaction_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.TraceSummaryPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: List technical traces belonging to a business request
+      tags:
+      - requests
   /conversations:
     get:
       parameters:
@@ -3141,54 +3342,6 @@ paths:
       summary: Get one request projection from durable Receipts
       tags:
       - lifecycle
-  /requests/{request_id}/traces:
-    get:
-      description: Supports one business request to multiple distributed traces and
-        returns request_id on every trace.
-      parameters:
-      - description: BKN request ID
-        in: path
-        name: request_id
-        required: true
-        type: string
-      - description: Page size, 1..200
-        in: query
-        name: limit
-        type: integer
-      - description: Opaque pagination cursor
-        in: query
-        name: cursor
-        type: string
-      - description: Caller-owned conversation ID
-        in: query
-        name: conversation_id
-        type: string
-      - description: One user interaction ID
-        in: query
-        name: interaction_id
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.TraceSummaryPage'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: List technical traces belonging to a business request
-      tags:
-      - requests
   /trace-executions:
     get:
       description: Returns stable trace summaries with reverse request links, generated

@@ -24,10 +24,16 @@ import (
 )
 
 func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
+	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "trusted-context-loader-token")
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		for name, expected := range map[string]string{
+			"X-BKN-Trace-Query-Token":        "trusted-context-loader-token",
+			"x-account-id":                   "user-1",
+			"x-account-type":                 "user",
+			"x-tenant-id":                    "tenant-1",
+			"x-business-domain":              "domain-1",
 			"X-BKN-Tenant-ID":                "tenant-1",
 			"X-Business-Domain-ID":           "domain-1",
 			"X-BKN-Application-Principal-ID": "client-1",
@@ -273,6 +279,14 @@ func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
 	traceContext.RequestID = "req_finish_without_span_0001"
 	ctx = common.SetTraceContextToCtx(ctx, traceContext)
+	ctx = withEvidenceOutcome(ctx)
+	outcome := evidenceOutcomeFromContext(ctx)
+	outcome.durable = true
+	outcome.eventIDs = []string{"evt_durable"}
+	outcome.businessRefs = []BusinessRef{{
+		RefType: "data_resource", RefID: "resource:forecast_resource",
+		BusinessDomainID: "domain-demo", Version: "unversioned",
+	}}
 
 	_, apiErr, err := NewGuard(client).Finish(
 		ctx, pendingGuardState(), "sha256:result", false, false,
@@ -286,6 +300,17 @@ func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
 	traceID, _ := requestBody["trace_id"].(string)
 	if len(traceID) != 32 {
 		t.Fatalf("finish request did not derive a valid trace ID: %#v", requestBody)
+	}
+	if requestBody["evidence_durability"] != "durable" {
+		t.Fatalf("finish request lost durable evidence ACK: %#v", requestBody)
+	}
+	refs, _ := requestBody["observed_evidence_refs"].([]any)
+	if len(refs) != 1 || refs[0] != "evt_durable" {
+		t.Fatalf("finish request lost evidence refs: %#v", requestBody)
+	}
+	businessRefs, _ := requestBody["business_refs"].([]any)
+	if len(businessRefs) != 1 {
+		t.Fatalf("finish request lost business refs: %#v", requestBody)
 	}
 }
 
@@ -385,6 +410,36 @@ func TestGuardFinishRecoversWhenCommittedResponseIsLost(t *testing.T) {
 		receiptCalls != 1 || operationCalls != 1 {
 		t.Fatalf("unexpected lost response recovery: result=%#v finish=%d receipt=%d operation=%d",
 			result, finishCalls, receiptCalls, operationCalls)
+	}
+}
+
+func TestGuardFinishEmitsOneOutcomeOnlyAfterDurableFinalization(t *testing.T) {
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		return lifecycleJSONResponse(http.StatusOK, OperationResult{
+			Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+			Receipt: Receipt{
+				ReceiptID: "receipt-1", OperationID: "op-1", Attempt: 1,
+				ReceiptStatus: "completed",
+			},
+		}), nil
+	})
+	guard := NewGuard(client)
+	emissions := 0
+	guard.emitOperationOutcome = func(_ context.Context, failed bool) {
+		emissions++
+		if failed {
+			t.Fatal("successful finalization emitted a failed outcome")
+		}
+	}
+
+	_, apiErr, err := guard.Finish(
+		finishLifecycleContext(false), pendingGuardState(), "sha256:result", false, false,
+	)
+	if err != nil || apiErr != nil {
+		t.Fatalf("finish failed: api=%#v err=%v", apiErr, err)
+	}
+	if emissions != 1 {
+		t.Fatalf("outcome emissions=%d, want 1", emissions)
 	}
 }
 

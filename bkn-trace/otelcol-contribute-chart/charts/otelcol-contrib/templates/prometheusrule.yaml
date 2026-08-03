@@ -1,0 +1,41 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "otelcol-contrib.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.monitoring.prometheusRule.namespace | quote }}
+  labels:
+    app.kubernetes.io/name: {{ include "otelcol-contrib.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- with .Values.monitoring.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: {{ include "otelcol-contrib.fullname" . }}.resilience
+      rules:
+        - alert: OpenBKNOtelCollectorQueueNearCapacity
+          expr: max(otelcol_exporter_queue_size) / clamp_min(max(otelcol_exporter_queue_capacity), 1) > {{ .Values.monitoring.prometheusRule.queueUtilizationThreshold }}
+          for: {{ .Values.monitoring.prometheusRule.for }}
+          labels:
+            severity: warning
+          annotations:
+            summary: OpenBKN telemetry export queue is near capacity
+            description: The Collector export queue has remained above the configured utilization threshold.
+        - alert: OpenBKNOtelCollectorLogExportFailure
+          expr: sum(rate(otelcol_exporter_send_failed_log_records_total[5m])) > 0
+          for: {{ .Values.monitoring.prometheusRule.for }}
+          labels:
+            severity: critical
+          annotations:
+            summary: OpenBKN logs are failing to reach the storage backend
+            description: The Collector is reporting failed log record exports.
+        - alert: OpenBKNOtelCollectorRefusedTelemetry
+          expr: sum(rate(otelcol_receiver_refused_log_records_total[5m])) + sum(rate(otelcol_receiver_refused_spans_total[5m])) > 0
+          for: {{ .Values.monitoring.prometheusRule.for }}
+          labels:
+            severity: critical
+          annotations:
+            summary: OpenBKN telemetry is being refused
+            description: The Collector has refused incoming logs or spans, commonly due to memory pressure.
+{{- end }}

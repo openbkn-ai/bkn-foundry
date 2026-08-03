@@ -175,6 +175,15 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 		// announces itself to anyone probing.
 		server.WithToolHandlerMiddleware(mcptool.GateMiddleware()),
 		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
+		// Not just a listing filter. Since mcp-go v0.55.1 the filter also runs
+		// on tools/call, and a tool it drops is refused by mcp-go itself with
+		// the same error code and text an unknown tool gets. That is what makes
+		// an unlicensed enterprise tool indistinguishable from one that was
+		// never built in — the gate middleware above still refuses it, but a
+		// middleware's error can only ever surface as INTERNAL_ERROR, which is
+		// a code an unknown tool never returns. Removing this line reopens that
+		// difference; TestRefusalIsIndistinguishableFromAnUnknownTool is what
+		// notices.
 		server.WithToolFilter(b.filter),
 	)
 	registerLifecycleTools(mcpServer, lifecycleClient)

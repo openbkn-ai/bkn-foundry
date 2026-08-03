@@ -33,10 +33,33 @@ affinity: {}
 
 service:
   type: ClusterIP
-  annotations: {}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8888"
+    prometheus.io/path: /metrics
   ports:
     grpc: 4317
     http: 4318
+    health: 13133
+    metrics: 8888
+
+monitoring:
+  prometheusRule:
+    enabled: false
+    namespace: ""
+    additionalLabels: {}
+    queueUtilizationThreshold: 0.8
+    for: 5m
+
+# Enable only after confirming that producer and monitoring pod labels match
+# the target cluster. The policy protects OTLP ingestion from arbitrary pods.
+networkPolicy:
+  enabled: false
+  producerPodLabels:
+    openbkn.ai/otel-producer: "true"
+  monitoringNamespaceLabels:
+    kubernetes.io/metadata.name: monitoring
+  monitoringPodLabels: {}
 
 opensearchExporter:
   enabled: true
@@ -63,12 +86,25 @@ opensearchExporter:
     dedup: false
     dedot: false
   bulkAction: create
+  sendingQueue:
+    enabled: true
+    numConsumers: 2
+    queueSize: 2048
+  retryOnFailure:
+    enabled: true
+    initialInterval: 1s
+    maxInterval: 30s
+    maxElapsedTime: 5m
 
 debugExporter:
   enabled: false
   verbosity: detailed
 
 config:
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+
   receivers:
     otlp:
       protocols:
@@ -78,17 +114,33 @@ config:
           endpoint: 0.0.0.0:4318
 
   processors:
-    batch: {}
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 384
+      spike_limit_mib: 96
+    batch:
+      timeout: 5s
+      send_batch_size: 512
+      send_batch_max_size: 1024
 
   service:
+    extensions: [health_check]
+    telemetry:
+      metrics:
+        readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: 0.0.0.0
+                  port: 8888
     pipelines:
       traces:
         receivers: [otlp]
-        processors: [batch]
+        processors: [memory_limiter, batch]
         exporters: [opensearch]
       logs:
         receivers: [otlp]
-        processors: [batch]
+        processors: [memory_limiter, batch]
         exporters: [opensearch]
 
 extraArgs: []

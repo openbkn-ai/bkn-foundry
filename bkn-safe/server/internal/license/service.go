@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/licverify"
@@ -68,6 +69,11 @@ type Service struct {
 	// guard snapshot and need no lock.
 	mu           sync.Mutex
 	lastRenewErr string
+
+	// firstRunAt caches the resolved first-run time: the guard asks for it on
+	// every state evaluation, and that must not become a query per call. Zero
+	// means "not resolved yet" — see firstRun for why a failure is not cached.
+	firstRunAt atomic.Int64
 }
 
 // New builds the service with the official compiled-in key table. The
@@ -110,6 +116,7 @@ func NewWithKeyTable(db *gorm.DB, cfg config.LicenseConfig, aud *audit.Store, ke
 		RenewURL:   renewURL,
 		InstanceFP: fp,
 		HTTPClient: hc,
+		FirstRun:   s.firstRun,
 		Logf: func(format string, args ...any) {
 			slog.Info("license: " + fmt.Sprintf(format, args...))
 		},
@@ -156,14 +163,21 @@ func (s *Service) Activated() bool {
 	return snap.Payload != nil && snap.Payload.HWFingerprint != ""
 }
 
-// ActivationCode returns the offline activation request code the customer
-// pastes into the license portal. With no license installed the lic_id half is
-// empty; the portal then binds whichever license the code is submitted against.
-func (s *Service) ActivationCode() (fp, code, licID string) {
+// ActivationRequest returns what the customer pastes into the license portal
+// for offline activation: this instance's fingerprint, plus the id of the
+// license already installed, if any. With no license the lic_id half is empty
+// and the portal binds whichever license the fingerprint is submitted against.
+//
+// It used to also return an "activation code" — a base64 of exactly these two
+// fields, and nothing else. licverify retired that helper (dd891e6, "offline
+// activation pastes the fingerprint") because the issuer only ever read
+// instance_fp back out of it, so the encoding bought nothing and cost the
+// customer a step that could go wrong in a copy-paste.
+func (s *Service) ActivationRequest() (fp, licID string) {
 	if snap := s.guard.State(); snap.Payload != nil {
 		licID = snap.Payload.LicID
 	}
-	return s.fp, licverify.ActivationCode(licID, s.fp), licID
+	return s.fp, licID
 }
 
 // Current returns the raw license text and its ETag for module distribution.
@@ -279,6 +293,49 @@ func (s *Service) Run(ctx context.Context) {
 			s.checkClock(time.Now())
 		}
 	}
+}
+
+// firstRun is when this deployment first started, in unix seconds. licverify
+// uses it to tell a fresh install (trial: quiet, nothing to do yet) apart from
+// one whose trial window has elapsed (unlicensed: standing prompt to activate).
+// Neither state carries paid capability — FeatureEnabled only honours valid and
+// grace — so this only decides which of the two an admin screen shows.
+//
+// The timestamp is the oldest user row. bkn-safe seeds the built-in admin at
+// install and there is no path that deletes every user, so the minimum is the
+// moment this deployment came up, it survives restarts and replicas agree on
+// it. A dedicated install-metadata row would be more direct but would cost a
+// migration for a value that is already sitting in the database.
+//
+// Read it as ORDER BY ... LIMIT 1 into the model, not as SELECT MIN(...) into a
+// sql.NullTime: scanning an expression column bypasses GORM's field decoding
+// and lands on the driver's raw value, which for SQLite is a string and fails
+// to scan into a time. That failure is silent — it degrades to 0, i.e. "brand
+// new" — so the whole distinction would quietly never happen. TestFirstRun is
+// what keeps this honest.
+//
+// Answering 0 (empty table, or a database that will not answer) reads as
+// "brand new", i.e. trial. That is the quiet state and it grants nothing, so
+// the failure mode is a missing activation prompt rather than a false one. A
+// failed read is not memoised: the value is cached only once it is real, so a
+// database that was briefly unreachable does not pin this replica to trial for
+// the rest of its life.
+func (s *Service) firstRun() int64 {
+	if at := s.firstRunAt.Load(); at != 0 {
+		return at
+	}
+	var first model.User
+	if err := s.db.Order("created_at ASC").Limit(1).Find(&first).Error; err != nil {
+		slog.Warn("license: cannot resolve first-run time; treating this deployment as new",
+			"err", err)
+		return 0
+	}
+	if first.CreatedAt.IsZero() {
+		return 0
+	}
+	at := first.CreatedAt.Unix()
+	s.firstRunAt.Store(at)
+	return at
 }
 
 // loadText is the Guard's Load hook: the license text, "" when none installed.

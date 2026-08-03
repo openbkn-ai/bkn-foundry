@@ -159,6 +159,7 @@ func (s *Store) listArtifactProjection(ctx context.Context, query iprojectionsou
 func matchesProjectionTrace(trace evidencevo.NormalizedTrace, query iprojectionsource.Query) bool {
 	if query.RequestID != "" && trace.RequestID != query.RequestID ||
 		query.TraceID != "" && trace.TraceID != query.TraceID ||
+		query.InteractionID != "" && !traceHasInteraction(trace, query.InteractionID) ||
 		query.BusinessDomain != "" && trace.BusinessDomain != query.BusinessDomain {
 		return false
 	}
@@ -177,6 +178,7 @@ func matchesProjectionTrace(trace evidencevo.NormalizedTrace, query iprojections
 func matchesProjectionArtifact(artifact evidencevo.EvidenceArtifact, query iprojectionsource.Query) bool {
 	if query.RequestID != "" && artifact.RequestID != query.RequestID ||
 		query.TraceID != "" && artifact.TraceID != query.TraceID ||
+		query.InteractionID != "" && artifact.InteractionID != query.InteractionID ||
 		query.BusinessDomain != "" && artifact.BusinessDomain != query.BusinessDomain {
 		return false
 	}
@@ -191,6 +193,15 @@ func matchesProjectionArtifact(artifact evidencevo.EvidenceArtifact, query iproj
 		(query.To.IsZero() || !observedAt.After(query.To))
 }
 
+func traceHasInteraction(trace evidencevo.NormalizedTrace, interactionID string) bool {
+	for _, event := range trace.Events {
+		if event.InteractionID == interactionID {
+			return true
+		}
+	}
+	return false
+}
+
 type artifactProjectionHit struct {
 	Source evidencevo.EvidenceArtifact
 	Sort   []any
@@ -198,6 +209,9 @@ type artifactProjectionHit struct {
 
 func (s *Store) listArtifactProjectionPage(ctx context.Context, query iprojectionsource.Query, searchAfter []any, size int) ([]artifactProjectionHit, error) {
 	must := appendProjectionIdentityFilters(ownershipMust(query.Scope), query)
+	if query.InteractionID != "" {
+		must = append(must, map[string]any{"bool": exactTermQuery("interaction_id", query.InteractionID)})
+	}
 	if !query.From.IsZero() || !query.To.IsZero() {
 		bounds := map[string]any{}
 		if !query.From.IsZero() {
