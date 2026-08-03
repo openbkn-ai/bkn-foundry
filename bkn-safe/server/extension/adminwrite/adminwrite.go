@@ -78,8 +78,8 @@ type Services interface {
 	// RequirePermission returns core's RBAC middleware for a resource/op, so ee
 	// write routes keep the same per-caller permission checks community reads
 	// use. This is the RBAC layer; the licence layer is the socket's (see
-// requireFeature), and it runs first — an unlicensed request must never reach
-// an authorization check, or the permission error would disclose the endpoint.
+	// requireFeature), and it runs first — an unlicensed request must never reach
+	// an authorization check, or the permission error would disclose the endpoint.
 	RequirePermission(resourceType, op string) gin.HandlerFunc
 
 	// CreateRole creates a custom role and returns its id.
