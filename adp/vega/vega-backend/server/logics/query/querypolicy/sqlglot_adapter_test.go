@@ -85,6 +85,8 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 		{name: "top percent", sql: "SELECT TOP (10) PERCENT id FROM orders ORDER BY score"},
 		{name: "for json", sql: "SELECT id FROM orders ORDER BY id FOR JSON PATH"},
 		{name: "for xml", sql: "SELECT id FROM orders FOR XML PATH"},
+		{name: "next sequence value", sql: "SELECT NEXT VALUE FOR dbo.order_seq OVER (ORDER BY id), id FROM orders ORDER BY id"},
+		{name: "offset fetch", sql: "SELECT id FROM orders ORDER BY id OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY"},
 	}
 	for _, test := range rejectedTSQLTests {
 		t.Run("rejects tsql statement: "+test.name, func(t *testing.T) {

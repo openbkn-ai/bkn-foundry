@@ -368,20 +368,31 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 	}
 	if len(params.Sort) > 0 {
 		for _, sort := range params.Sort {
-			property, ok := fields[sort.Field]
 			sortExpression := ""
-			if ok {
-				sortExpression = quoteIdentifier(property.OriginalName)
+			if isAggregate {
 				for _, group := range params.GroupBy {
-					if group.Property == sort.Field && group.CalendarInterval != "" {
-						sortExpression = quoteIdentifier(group.Property)
-						break
+					if group.Property != sort.Field {
+						continue
 					}
+					property := fields[group.Property]
+					sortExpression = quoteIdentifier(property.OriginalName)
+					if group.CalendarInterval != "" {
+						sortExpression = quoteIdentifier(group.Property)
+					}
+					break
 				}
-			} else if isAggregate && sort.Field == aggregateAlias {
-				sortExpression = quoteIdentifier(aggregateAlias)
+				if sortExpression == "" && aggregateAlias != "" && sort.Field == aggregateAlias {
+					sortExpression = quoteIdentifier(aggregateAlias)
+				}
+				if sortExpression == "" {
+					return nil, fmt.Errorf("aggregate sort field must be a group field or aggregation alias: %s", sort.Field)
+				}
 			} else {
-				return nil, fmt.Errorf("sort field is not defined by resource schema: %s", sort.Field)
+				property, ok := fields[sort.Field]
+				if !ok {
+					return nil, fmt.Errorf("sort field is not defined by resource schema: %s", sort.Field)
+				}
+				sortExpression = quoteIdentifier(property.OriginalName)
 			}
 			direction := "ASC"
 			if sort.Direction == interfaces.DESC_DIRECTION {

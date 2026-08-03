@@ -123,6 +123,8 @@ func TestRawQueryServiceExecute(t *testing.T) {
 		{name: "top percent", sql: "SELECT TOP (10) PERCENT id FROM {{resource-1}} ORDER BY score", hasTableReference: true},
 		{name: "for json", sql: "SELECT id FROM {{resource-1}} ORDER BY id FOR JSON PATH", hasTableReference: true},
 		{name: "for xml", sql: "SELECT id FROM {{resource-1}} FOR XML PATH", hasTableReference: true},
+		{name: "next sequence value", sql: "SELECT NEXT VALUE FOR dbo.order_seq OVER (ORDER BY id), id FROM {{resource-1}} ORDER BY id", hasTableReference: true},
+		{name: "offset fetch", sql: "SELECT id FROM {{resource-1}} ORDER BY id OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY", hasTableReference: true},
 	}
 	for _, test := range rejectedTSQLTests {
 		t.Run("rejects tsql before connector creation: "+test.name, func(t *testing.T) {

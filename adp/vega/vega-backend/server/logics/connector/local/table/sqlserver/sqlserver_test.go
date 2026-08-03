@@ -500,36 +500,93 @@ func TestSQLServerConnectorExecuteQuery(t *testing.T) {
 }
 
 func TestSQLServerConnectorExecuteAggregateQuery(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
-	connector := &SQLServerConnector{connected: true, db: db}
-	resource := &interfaces.Resource{
-		SourceIdentifier: "sales.orders",
-		SchemaDefinition: []*interfaces.Property{
-			{Name: "customer", OriginalName: "customer_id"},
-			{Name: "amount", OriginalName: "order_amount"},
-		},
-	}
-	mock.ExpectQuery(
-		`SELECT \[customer_id\], SUM\(\[order_amount\]\) AS \[total_amount\] FROM \[sales\]\.\[orders\] `+
-			`GROUP BY \[customer_id\] HAVING SUM\(\[order_amount\]\) >= @p1 `+
-			`ORDER BY \[total_amount\] DESC OFFSET @p2 ROWS FETCH NEXT @p3 ROWS ONLY`,
-	).WithArgs(100, 0, 10).WillReturnRows(
-		sqlmock.NewRows([]string{"customer_id", "total_amount"}).AddRow("c-1", 128),
-	)
+	t.Run("executes aggregate query", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+		connector := &SQLServerConnector{connected: true, db: db}
+		resource := &interfaces.Resource{
+			SourceIdentifier: "sales.orders",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "customer", OriginalName: "customer_id"},
+				{Name: "amount", OriginalName: "order_amount"},
+			},
+		}
+		mock.ExpectQuery(
+			`SELECT \[customer_id\], SUM\(\[order_amount\]\) AS \[total_amount\] FROM \[sales\]\.\[orders\] `+
+				`GROUP BY \[customer_id\] HAVING SUM\(\[order_amount\]\) >= @p1 `+
+				`ORDER BY \[total_amount\] DESC OFFSET @p2 ROWS FETCH NEXT @p3 ROWS ONLY`,
+		).WithArgs(100, 0, 10).WillReturnRows(
+			sqlmock.NewRows([]string{"customer_id", "total_amount"}).AddRow("c-1", 128),
+		)
 
-	result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
-		GroupBy:     []*interfaces.GroupByItem{{Property: "customer"}},
-		Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: "total_amount"},
-		Having:      &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: 100},
-		Sort:        []*interfaces.SortField{{Field: "total_amount", Direction: interfaces.DESC_DIRECTION}},
-		Limit:       10,
-		NeedTotal:   true,
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+			GroupBy:     []*interfaces.GroupByItem{{Property: "customer"}},
+			Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: "total_amount"},
+			Having:      &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: 100},
+			Sort:        []*interfaces.SortField{{Field: "total_amount", Direction: interfaces.DESC_DIRECTION}},
+			Limit:       10,
+			NeedTotal:   true,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"customer_id": "c-1", "total_amount": int64(128)}}, result.Entries)
+		assert.Equal(t, int64(1), result.Total)
 	})
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]any{{"customer_id": "c-1", "total_amount": int64(128)}}, result.Entries)
-	assert.Equal(t, int64(1), result.Total)
+
+	t.Run("sorts by group field", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+		connector := &SQLServerConnector{connected: true, db: db}
+		resource := &interfaces.Resource{
+			SourceIdentifier: "sales.orders",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "customer", OriginalName: "customer_id"},
+				{Name: "amount", OriginalName: "order_amount"},
+			},
+		}
+		mock.ExpectQuery(
+			`SELECT \[customer_id\], SUM\(\[order_amount\]\) AS \[total_amount\] FROM \[sales\]\.\[orders\] `+
+				`GROUP BY \[customer_id\] ORDER BY \[customer_id\] ASC OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY`,
+		).WithArgs(0, 10).WillReturnRows(
+			sqlmock.NewRows([]string{"customer_id", "total_amount"}).AddRow("c-1", 128),
+		)
+
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+			GroupBy:     []*interfaces.GroupByItem{{Property: "customer"}},
+			Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: "total_amount"},
+			Sort:        []*interfaces.SortField{{Field: "customer"}},
+			Limit:       10,
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"customer_id": "c-1", "total_amount": int64(128)}}, result.Entries)
+	})
+
+	t.Run("rejects sort by non-grouped field", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+		connector := &SQLServerConnector{connected: true, db: db}
+		resource := &interfaces.Resource{
+			SourceIdentifier: "sales.orders",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "customer", OriginalName: "customer_id"},
+				{Name: "amount", OriginalName: "order_amount"},
+				{Name: "employee", OriginalName: "employee_name"},
+			},
+		}
+
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+			GroupBy:     []*interfaces.GroupByItem{{Property: "customer"}},
+			Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum", Alias: "total_amount"},
+			Sort:        []*interfaces.SortField{{Field: "employee"}},
+			Limit:       10,
+		})
+
+		require.ErrorContains(t, err, "aggregate sort field must be a group field or aggregation alias")
+		assert.Nil(t, result)
+	})
 }
 
 func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {

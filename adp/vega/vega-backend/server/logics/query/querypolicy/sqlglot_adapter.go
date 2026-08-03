@@ -272,6 +272,8 @@ try:
         if statement.args.get("for_") is not None:
             reject("SQL Server FOR JSON/XML queries are not supported")
         limit = statement.args.get("limit")
+        if statement.args.get("offset") is not None or isinstance(limit, exp.Fetch):
+            reject("SQL Server OFFSET/FETCH queries are not supported")
         limit_options = limit.args.get("limit_options") if limit is not None else None
         if limit_options is not None and (
             limit_options.args.get("percent") or limit_options.args.get("with_ties")
@@ -279,6 +281,8 @@ try:
             reject("SQL Server TOP PERCENT and WITH TIES are not supported")
 
     for node in statement.walk():
+        if dialect == "tsql" and isinstance(node, exp.NextValueFor):
+            reject("SQL Server NEXT VALUE FOR is not read-only")
         if type(node).__name__ in FORBIDDEN_NODE_NAMES:
             reject("unsupported SQL construct: " + type(node).__name__)
         if isinstance(node, exp.Func):
