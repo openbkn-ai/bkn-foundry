@@ -109,7 +109,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 		})
 		assertCatalogDisabledError(t, err)
 	})
-	unsafeTSQLTests := []struct {
+	rejectedTSQLTests := []struct {
 		name              string
 		sql               string
 		hasTableReference bool
@@ -119,9 +119,13 @@ func TestRawQueryServiceExecute(t *testing.T) {
 		{name: "ddl", sql: "DROP TABLE {{resource-1}}", hasTableReference: true},
 		{name: "dml", sql: "UPDATE {{resource-1}} SET status = 'closed'", hasTableReference: true},
 		{name: "multiple statements", sql: "SELECT * FROM {{resource-1}}; DELETE FROM {{resource-1}}", hasTableReference: true},
+		{name: "top with ties", sql: "SELECT TOP (10) WITH TIES id FROM {{resource-1}} ORDER BY score", hasTableReference: true},
+		{name: "top percent", sql: "SELECT TOP (10) PERCENT id FROM {{resource-1}} ORDER BY score", hasTableReference: true},
+		{name: "for json", sql: "SELECT id FROM {{resource-1}} ORDER BY id FOR JSON PATH", hasTableReference: true},
+		{name: "for xml", sql: "SELECT id FROM {{resource-1}} FOR XML PATH", hasTableReference: true},
 	}
-	for _, test := range unsafeTSQLTests {
-		t.Run("rejects unsafe tsql before connector creation: "+test.name, func(t *testing.T) {
+	for _, test := range rejectedTSQLTests {
+		t.Run("rejects tsql before connector creation: "+test.name, func(t *testing.T) {
 			requireRawQuerySQLGlotRuntime(t)
 
 			var connectorCreations atomic.Int64

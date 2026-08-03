@@ -68,7 +68,7 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 		})
 	}
 
-	unsafeTSQLTests := []struct {
+	rejectedTSQLTests := []struct {
 		name string
 		sql  string
 	}{
@@ -81,9 +81,13 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 		{name: "alter", sql: "ALTER TABLE orders ADD note NVARCHAR(100)"},
 		{name: "drop", sql: "DROP TABLE orders"},
 		{name: "multiple statements", sql: "SELECT * FROM orders; DELETE FROM orders"},
+		{name: "top with ties", sql: "SELECT TOP (10) WITH TIES id FROM orders ORDER BY score"},
+		{name: "top percent", sql: "SELECT TOP (10) PERCENT id FROM orders ORDER BY score"},
+		{name: "for json", sql: "SELECT id FROM orders ORDER BY id FOR JSON PATH"},
+		{name: "for xml", sql: "SELECT id FROM orders FOR XML PATH"},
 	}
-	for _, test := range unsafeTSQLTests {
-		t.Run("rejects unsafe tsql statement: "+test.name, func(t *testing.T) {
+	for _, test := range rejectedTSQLTests {
+		t.Run("rejects tsql statement: "+test.name, func(t *testing.T) {
 			err := adapter.ValidateSQL(context.Background(), test.sql, "tsql")
 			require.Error(t, err)
 
@@ -91,6 +95,10 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 			require.ErrorAs(t, err, &validationErr)
 		})
 	}
+	t.Run("accepts numeric tsql top", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateSQL(context.Background(),
+			"SELECT TOP (10) id FROM orders ORDER BY id", "tsql"))
+	})
 
 	t.Run("honors canceled context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())

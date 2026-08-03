@@ -268,6 +268,16 @@ try:
     if statement.args.get("into") is not None or statement.args.get("locks"):
         reject("SELECT INTO and locking reads are not supported")
 
+    if dialect == "tsql":
+        if statement.args.get("for_") is not None:
+            reject("SQL Server FOR JSON/XML queries are not supported")
+        limit = statement.args.get("limit")
+        limit_options = limit.args.get("limit_options") if limit is not None else None
+        if limit_options is not None and (
+            limit_options.args.get("percent") or limit_options.args.get("with_ties")
+        ):
+            reject("SQL Server TOP PERCENT and WITH TIES are not supported")
+
     for node in statement.walk():
         if type(node).__name__ in FORBIDDEN_NODE_NAMES:
             reject("unsupported SQL construct: " + type(node).__name__)
