@@ -85,6 +85,10 @@ spec:
               - name: BKN_TRACE_DEFAULT_TENANT_ID
                 value: {{ .Values.observability.lifecycle.default_tenant_id | quote }}
             {{- end}}
+            {{- if .Values.observability.lifecycle.default_business_domain }}
+              - name: BKN_TRACE_DEFAULT_BUSINESS_DOMAIN
+                value: {{ .Values.observability.lifecycle.default_business_domain | quote }}
+            {{- end}}
             {{- if .Values.observability.lifecycle.gateway_token_secret_name }}
               - name: BKN_TRACE_QUERY_GATEWAY_TOKEN
                 valueFrom:

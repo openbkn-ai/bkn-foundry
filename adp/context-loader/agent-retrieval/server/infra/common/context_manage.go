@@ -40,6 +40,7 @@ const (
 	HeaderBusinessDomain      = "x-business-domain"
 	HeaderBKNEventObservedAt  = "bkn-event-observed-at"
 	envDefaultTenantID        = "BKN_TRACE_DEFAULT_TENANT_ID"
+	envDefaultBusinessDomain  = "BKN_TRACE_DEFAULT_BUSINESS_DOMAIN"
 )
 
 type traceContextKey string
@@ -172,9 +173,15 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	observedAt := strings.TrimSpace(getHeader(HeaderBKNEventObservedAt))
 	_, observedAtErr := time.Parse(time.RFC3339Nano, observedAt)
 	return TraceContext{
-		RequestID:          requestID,
-		TenantID:           sanitizeBusinessTraceID(firstNonEmpty(getHeader(HeaderTenantID), os.Getenv(envDefaultTenantID))),
-		BusinessDomain:     firstNonEmpty(getHeader(HeaderBusinessDomain), parseBaggage(getHeader(HeaderBaggage))["business_domain"]),
+		RequestID: requestID,
+		TenantID:  sanitizeBusinessTraceID(firstNonEmpty(getHeader(HeaderTenantID), os.Getenv(envDefaultTenantID))),
+		// A trusted inbound domain always wins; the deployment default only keeps
+		// single-domain installs working for clients that carry no domain at all.
+		BusinessDomain: firstNonEmpty(
+			getHeader(HeaderBusinessDomain),
+			parseBaggage(getHeader(HeaderBaggage))["business_domain"],
+			os.Getenv(envDefaultBusinessDomain),
+		),
 		Baggage:            parseBaggage(getHeader(HeaderBaggage)),
 		ConversationID:     sanitizeBusinessTraceID(getHeader(HeaderBKNConversationID)),
 		InteractionID:      sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID)),

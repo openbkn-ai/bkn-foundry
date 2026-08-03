@@ -275,6 +275,35 @@ func (c *LifecycleClient) EnsureOperation(
 	return result, apiErr, err
 }
 
+// EnsureCurrentConversation resolves the caller's current conversation for an
+// external key, creating it only when none is active. Core keys this by owner,
+// so two callers never share a conversation even with an identical key.
+func (c *LifecycleClient) EnsureCurrentConversation(
+	ctx context.Context,
+	externalConversationKey string,
+) (Conversation, *APIError, error) {
+	var conversation Conversation
+	apiErr, err := c.do(ctx, http.MethodPost, "/conversations:ensure-current", map[string]any{
+		"external_conversation_key": externalConversationKey,
+	}, &conversation)
+	return conversation, apiErr, err
+}
+
+// StartInteraction opens an interaction, or returns the existing one when the
+// same idempotency key is replayed. Core resolves the key before it rejects a
+// second active interaction, so concurrent callers converge instead of racing.
+func (c *LifecycleClient) StartInteraction(
+	ctx context.Context,
+	conversationID, idempotencyKey, question string,
+) (Interaction, *APIError, error) {
+	var interaction Interaction
+	path := "/conversations/" + url.PathEscape(conversationID) + "/interactions"
+	apiErr, err := c.do(ctx, http.MethodPost, path, map[string]any{
+		"idempotency_key": idempotencyKey, "question": question,
+	}, &interaction)
+	return interaction, apiErr, err
+}
+
 func (c *LifecycleClient) CompleteAttempt(
 	ctx context.Context,
 	input FinishAttemptInput,

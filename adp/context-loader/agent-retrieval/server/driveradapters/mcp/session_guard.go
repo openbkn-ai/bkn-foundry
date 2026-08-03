@@ -65,52 +65,68 @@ func guardBusinessToolCall(
 	ensure ensureOperationFunc,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
 ) func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-	return guardBusinessToolCallWithCompletion(ensure, nil, next)
+	return guardBusinessToolCallWithCompletion(ensure, nil, nil, next)
 }
 
 func guardBusinessToolCallWithCompletion(
 	ensure ensureOperationFunc,
 	complete completeOperationFunc,
+	autoClient *bkntrace.LifecycleClient,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
 ) func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 	return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		arguments := req.GetArguments()
 		rawContext, _ := arguments["bkn_context"].(map[string]any)
 		conversationID, _ := rawContext["conversation_id"].(string)
-		if conversationID == "" {
-			return lifecycleToolError(lifecycleError{
-				Code:           "conversation_required",
-				Message:        "conversation_id is required",
-				RequiredAction: "create_conversation",
-			}), nil
-		}
 		interactionID, _ := rawContext["interaction_id"].(string)
-		if interactionID == "" {
-			return lifecycleToolError(lifecycleError{
-				Code:           "interaction_required",
-				Message:        "interaction_id is required",
-				RequiredAction: "start_interaction",
-			}), nil
-		}
 		operationKey, _ := rawContext["operation_key"].(string)
-		if operationKey == "" {
-			return lifecycleToolError(lifecycleError{
-				Code:           "operation_required",
-				Message:        "operation_key is required",
-				RequiredAction: "ensure_operation",
-			}), nil
-		}
 		if ensure == nil {
 			return nil, fmt.Errorf("lifecycle operation client is not configured")
 		}
-		intent := operationIntent{
-			Context: bknContext{
+		var businessContext bknContext
+		if conversationID == "" && interactionID == "" && operationKey == "" {
+			resolved, lifecycleErr, err := resolveAutoSession(ctx, autoClient, req, arguments)
+			if err != nil {
+				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			}
+			if lifecycleErr != nil {
+				return lifecycleToolError(*lifecycleErr), nil
+			}
+			businessContext = resolved
+		} else {
+			// A half-filled context is still an error: the missing field would have
+			// to be invented, and an invented parent turns the receipt into a claim
+			// about causality that never happened.
+			switch {
+			case conversationID == "":
+				return lifecycleToolError(lifecycleError{
+					Code:           "conversation_required",
+					Message:        "conversation_id is required",
+					RequiredAction: "create_conversation",
+				}), nil
+			case interactionID == "":
+				return lifecycleToolError(lifecycleError{
+					Code:           "interaction_required",
+					Message:        "interaction_id is required",
+					RequiredAction: "start_interaction",
+				}), nil
+			case operationKey == "":
+				return lifecycleToolError(lifecycleError{
+					Code:           "operation_required",
+					Message:        "operation_key is required",
+					RequiredAction: "ensure_operation",
+				}), nil
+			}
+			businessContext = bknContext{
 				ConversationID:    conversationID,
 				InteractionID:     interactionID,
 				OperationKey:      operationKey,
 				ParentOperationID: stringValue(rawContext["parent_operation_id"]),
 				CausationEventIDs: stringSliceValue(rawContext["causation_event_ids"]),
-			},
+			}
+		}
+		intent := operationIntent{
+			Context:  businessContext,
 			ToolName: req.Params.Name,
 			Input:    arguments,
 		}

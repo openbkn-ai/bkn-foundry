@@ -255,6 +255,40 @@ func TestTraceContextUsesConfiguredTenantOnlyWhenInboundTenantIsMissing(t *testi
 	}
 }
 
+func TestTraceContextUsesConfiguredBusinessDomainOnlyWhenInboundDomainIsMissing(t *testing.T) {
+	t.Setenv("BKN_TRACE_DEFAULT_TENANT_ID", "openbkn-local")
+	t.Setenv("BKN_TRACE_DEFAULT_BUSINESS_DOMAIN", "bd_public")
+
+	bare := SetTraceContextToCtx(context.Background(), TraceContextFromHeaders(func(string) string { return "" }))
+	traceContext, ok := GetTraceContextFromCtx(bare)
+	if !ok || traceContext.BusinessDomain != "bd_public" {
+		t.Fatalf("default business domain = %q, want bd_public", traceContext.BusinessDomain)
+	}
+	if traceContext.Baggage["business_domain"] != "bd_public" {
+		t.Fatalf("default business domain must reach outbound baggage: %v", traceContext.Baggage)
+	}
+
+	trusted := TraceContextFromHeaders(func(key string) string {
+		if key == HeaderBusinessDomain {
+			return "bd_from_gateway"
+		}
+		return ""
+	})
+	if trusted.BusinessDomain != "bd_from_gateway" {
+		t.Fatalf("inbound business domain was overwritten: %q", trusted.BusinessDomain)
+	}
+
+	baggageOnly := TraceContextFromHeaders(func(key string) string {
+		if key == HeaderBaggage {
+			return "business_domain=bd_from_baggage"
+		}
+		return ""
+	})
+	if baggageOnly.BusinessDomain != "bd_from_baggage" {
+		t.Fatalf("baggage business domain must outrank the deployment default: %q", baggageOnly.BusinessDomain)
+	}
+}
+
 func TestCallerCorrelationIDsAreValidatedWithoutGeneration(t *testing.T) {
 	convey.Convey("valid caller ids are propagated and invalid ids are dropped", t, func() {
 		headers := map[string]string{

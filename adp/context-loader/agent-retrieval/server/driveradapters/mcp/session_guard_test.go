@@ -369,6 +369,7 @@ func TestSessionGuardFinishPendingPreservesStableReceipt(t *testing.T) {
 					Retryable: true, RequiredAction: "poll_receipt",
 				}, nil
 		},
+		nil,
 		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			return mcpsdk.NewToolResultStructured(map[string]any{"answer": "ok"}, `{"answer":"ok"}`), nil
 		},
@@ -439,6 +440,7 @@ func TestSessionGuardCompletesAttemptAndReturnsDurableReceipt(t *testing.T) {
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "completed"},
 			}, nil, nil
 		},
+		nil,
 		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			return mcpsdk.NewToolResultStructured(map[string]any{"answer": "ok"}, `{"answer":"ok"}`), nil
 		},
@@ -479,6 +481,7 @@ func TestSessionGuardPersistsFailedAttemptAndReturnsReceipt(t *testing.T) {
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "failed"},
 			}, nil, nil
 		},
+		nil,
 		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			result := mcpsdk.NewToolResultStructured(map[string]any{"error": "bad input"}, "bad input")
 			result.IsError = true
@@ -523,6 +526,7 @@ func TestSessionGuardConvertsDownstreamGoErrorToFailedReceipt(t *testing.T) {
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "failed"},
 			}, nil, nil
 		},
+		nil,
 		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			return nil, errors.New("downstream unavailable")
 		},
@@ -562,6 +566,7 @@ func TestSessionGuardConvertsDownstreamPanicToFailedReceipt(t *testing.T) {
 				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "failed"},
 			}, nil, nil
 		},
+		nil,
 		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			panic("sensitive downstream detail")
 		},

@@ -45,6 +45,7 @@ func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandle
 			return guardBusinessToolCallWithCompletion(
 				ensureOperationAdapter(client),
 				completeOperationAdapter(client),
+				client,
 				next,
 			)(ctx, req)
 		}
