@@ -402,12 +402,12 @@ onboard_upsert_cm_embedded_yaml() {
 onboard_rollout_restart() {
     local ns="$1"
     local name="$2"
-    if kubectl get statefulset "${name}" -n "${ns}" >/dev/null 2>&1; then
-        kubectl rollout restart "statefulset/${name}" -n "${ns}" 2>/dev/null || onboard_log_warn "statefulset/${name} missing or not restartable"
-        kubectl rollout status "statefulset/${name}" -n "${ns}" --timeout=300s 2>/dev/null || true
-    elif kubectl get deployment "${name}" -n "${ns}" >/dev/null 2>&1; then
+    if kubectl get deployment "${name}" -n "${ns}" >/dev/null 2>&1; then
         kubectl rollout restart "deployment/${name}" -n "${ns}" 2>/dev/null || onboard_log_warn "deployment/${name} missing or not restartable"
         kubectl rollout status "deployment/${name}" -n "${ns}" --timeout=300s 2>/dev/null || true
+    elif kubectl get statefulset "${name}" -n "${ns}" >/dev/null 2>&1; then
+        kubectl rollout restart "statefulset/${name}" -n "${ns}" 2>/dev/null || onboard_log_warn "statefulset/${name} missing or not restartable"
+        kubectl rollout status "statefulset/${name}" -n "${ns}" --timeout=300s 2>/dev/null || true
     else
         onboard_log_warn "${name} missing or not restartable"
     fi

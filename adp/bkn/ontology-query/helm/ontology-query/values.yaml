@@ -140,6 +140,7 @@ bknTrace:
   producerOutbox:
     enabled: false
     workerEnabled: false
+    producerStreamID: "ontology-query"
     applicationPrincipalID: "ontology-query"
     queryGatewayTokenSecretName: ""
     queryGatewayTokenSecretKey: "query-gateway-token"

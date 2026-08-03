@@ -14,6 +14,58 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
+func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("new sql mock: %v", err)
+	}
+	defer db.Close()
+
+	repository := &Repository{
+		db: db,
+		config: Config{
+			ProducerID:       "bkn-backend",
+			ProducerStreamID: "bkn-backend",
+		},
+		dialect: dialectMariaDB,
+	}
+	now := time.Now().UTC()
+	owner := Owner{
+		TenantID: "t1", BusinessDomainID: "d1", ApplicationPrincipalID: "bkn-backend",
+		EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1",
+	}
+	event := Event{
+		EventID: "evt-1", EventType: "knowledge.read.observed", ConversationID: "c1", InteractionID: "i1",
+		StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`),
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).
+		WithArgs("bkn-backend", "bkn-backend").
+		WillReturnRows(sqlmock.NewRows([]string{"current_epoch", "next_sequence"}).AddRow(uint64(3), uint64(7)))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE "+tableStream+" SET next_sequence = ?, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ?")).
+		WithArgs(uint64(8), sqlmock.AnyArg(), "bkn-backend", "bkn-backend").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO "+tableOutbox)).
+		WithArgs(
+			"evt-1", sqlmock.AnyArg(), "knowledge.read.observed", "3.0.0", "t1", "bkn-backend", "bkn-backend",
+			uint64(3), uint64(7), sqlmock.AnyArg(), StatusPending, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	got, err := repository.Enqueue(context.Background(), event, owner)
+	if err != nil {
+		t.Fatalf("Enqueue() error = %v", err)
+	}
+	if got.ProducerEpoch != 3 || got.ProducerSequence != 7 {
+		t.Fatalf("Enqueue() = epoch %d sequence %d, want 3/7", got.ProducerEpoch, got.ProducerSequence)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClaimHeadOfLineBlocksLaterSequenceDuringBackoff(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

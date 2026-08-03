@@ -40,6 +40,17 @@ func testRequestContext() RequestContext {
 	}
 }
 
+func TestProducerStreamIDUsesEnvOrModuleDefault(t *testing.T) {
+	t.Setenv("BKN_TRACE_PRODUCER_STREAM_ID", "custom-stream")
+	if got := producerStreamID(); got != "custom-stream" {
+		t.Fatalf("producerStreamID() = %q, want custom-stream", got)
+	}
+	t.Setenv("BKN_TRACE_PRODUCER_STREAM_ID", "  ")
+	if got := producerStreamID(); got != ModuleName {
+		t.Fatalf("producerStreamID() = %q, want %q", got, ModuleName)
+	}
+}
+
 func TestBuildSchemaReadEventsRejectsMissingReplayEnvelope(t *testing.T) {
 	req := testRequestContext()
 	req.ObservedAt = ""

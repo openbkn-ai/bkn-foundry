@@ -102,6 +102,9 @@ type Config struct {
 	CoreRequestTimeout time.Duration
 	LeaseDuration      time.Duration
 	PollInterval       time.Duration
+	// BumpEpochOnStart increments producer_epoch when a delivery worker starts.
+	// API-only writers must leave this false and read the current epoch from DB.
+	BumpEpochOnStart bool
 }
 
 type databaseDialect string
@@ -161,7 +164,13 @@ func NewRepository(db *sql.DB, config Config) (*Repository, error) {
 		return nil, err
 	}
 	r := &Repository{db: db, config: config, dialect: dialect}
-	epoch, err := r.acquireEpoch(context.Background(), time.Now().UTC())
+	now := time.Now().UTC()
+	var epoch uint64
+	if config.BumpEpochOnStart {
+		epoch, err = r.acquireEpoch(context.Background(), now)
+	} else {
+		epoch, err = r.loadCurrentEpoch(context.Background(), now)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -192,8 +201,8 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 		return Event{}, err
 	}
 	defer tx.Rollback()
-	var next uint64
-	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT next_sequence FROM %s WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE", tableStream), r.config.ProducerID, r.config.ProducerStreamID).Scan(&next); err != nil {
+	var epoch, next uint64
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT current_epoch, next_sequence FROM %s WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE", tableStream), r.config.ProducerID, r.config.ProducerStreamID).Scan(&epoch, &next); err != nil {
 		return Event{}, err
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("UPDATE %s SET next_sequence = ?, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ?", tableStream), next+1, time.Now().UTC(), r.config.ProducerID, r.config.ProducerStreamID); err != nil {
@@ -202,7 +211,7 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 	event.SchemaVersion = "3.0.0"
 	event.ProducerID = r.config.ProducerID
 	event.ProducerStreamID = r.config.ProducerStreamID
-	event.ProducerEpoch = r.epoch
+	event.ProducerEpoch = epoch
 	event.ProducerSequence = next
 	if event.EmittedAt.IsZero() {
 		event.EmittedAt = time.Now().UTC()
@@ -334,6 +343,29 @@ func (r *Repository) Complete(ctx context.Context, record *Record, status, error
 	}
 	changed, err := result.RowsAffected()
 	return changed == 1, err
+}
+
+func (r *Repository) loadCurrentEpoch(ctx context.Context, now time.Time) (uint64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	ensureArgs := []any{r.config.ProducerID, r.config.ProducerStreamID, now, now}
+	if r.dialect != dialectDM8 {
+		ensureArgs = append(ensureArgs, r.config.ProducerID, r.config.ProducerStreamID)
+	}
+	if _, err := tx.ExecContext(ctx, r.ensureStreamStateSQL(), ensureArgs...); err != nil {
+		return 0, err
+	}
+	var epoch uint64
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT current_epoch FROM %s WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE", tableStream), r.config.ProducerID, r.config.ProducerStreamID).Scan(&epoch); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return epoch, nil
 }
 
 func (r *Repository) acquireEpoch(ctx context.Context, now time.Time) (uint64, error) {

@@ -1,7 +1,7 @@
 # bkn-backend BKN Trace 接入合同
 
-> 状态：BKN Trace 2.1 生产者实施基线
-> 更新时间：2026-07-26
+> 状态：BKN Trace 3.0 Producer Outbox 实施基线
+> 更新时间：2026-08-03
 > 权威依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
 
 ## 一、模块责任
@@ -51,12 +51,15 @@ metric:<kn_id>:<metric_id>
 
 ## 四、可靠性与安全
 
-- 上报最多尝试三次，HTTP 非 2xx 视为失败；队列满和最终失败必须记录可观测日志。
-- 上报异步且失败开放，不改变业务响应。
-- 禁止完整 SQL、参数、行数据、schema 原文、prompt、工具输入输出、依赖响应正文、数据库错误原文、整业务对象、完整 ID 列表、凭据、Cookie、token、连接串和对象存储裸 URL。
+- 启用 `BKN_TRACE_OUTBOX_ENABLED=true` 后，3.0 事实先写入本地 Producer Outbox，再由 Worker 异步投递 Core；HTTP 响应不等待 Core ACK。
+- Outbox 使用 **Deployment + 固定 `producer_stream_id`**（`BKN_TRACE_PRODUCER_STREAM_ID`，默认 `bkn-backend`），不依赖 Pod 名或 StatefulSet ordinal。
+- **单 Pod**：同一进程可同时写 Outbox 并运行 Worker（`BKN_TRACE_OUTBOX_WORKER_ENABLED=true`）。
+- **多 Pod**：API Pod 只写（`workerEnabled=false`），单独 1 个 Worker Pod 投递（`workerEnabled=true`）；所有副本共用同一 `producer_stream_id`，序号由 DB `FOR UPDATE` 分配。
+- Worker 进程启动时递增 `producer_epoch`；写路径在 Enqueue 事务内读取当前 epoch，避免 API 滚动发布误增 epoch。
+- 队列满和最终失败必须记录可观测日志；禁止完整 SQL、参数、行数据、schema 原文、prompt、工具输入输出、依赖响应正文、数据库错误原文、整业务对象、完整 ID 列表、凭据、Cookie、token、连接串和对象存储裸 URL。
 - 数据库与依赖错误只记录类型、SHA-256、长度和稳定操作名；SQL 只记录 hash、长度和参数数量；批量操作只记录请求数量和影响行数。
 - `server/common` 的静态门禁扫描全部 driven adapter，拒绝直接原样错误日志和典型响应正文日志格式。
-- 当前没有持久 outbox；进程退出可能丢失内存中事件，这是已知残余风险。
+- 未启用 Outbox 或未跑 DB migration 时，不产出 3.0 事实；仅设置 ingest URL 会记录 WARN 并禁用生产。
 
 ## 五、验收
 
@@ -70,4 +73,17 @@ metric:<kn_id>:<metric_id>
 
 ## 六、已知限制
 
-schema 不可变版本和持久 outbox 尚未接入；当前引用统一为 `unversioned`。跨模块图组装、快照和展示由 BKN Trace 核心负责。
+schema 不可变版本尚未接入；当前引用统一为 `unversioned`。跨模块图组装、快照和展示由 BKN Trace 核心负责。
+
+## 七、Producer Outbox 部署要点
+
+| 环境变量 | 说明 |
+| --- | --- |
+| `BKN_TRACE_OUTBOX_ENABLED` | 总开关 |
+| `BKN_TRACE_OUTBOX_WORKER_ENABLED` | 本进程是否运行投递 Worker |
+| `BKN_TRACE_PRODUCER_STREAM_ID` | 逻辑 stream ID，全副本一致 |
+| `BKN_TRACE_EVIDENCE_INGEST_URL` | Core ingest 地址 |
+| `BKN_TRACE_EVIDENCE_INGEST_TOKEN` | ingest 认证 |
+| `BKN_TRACE_QUERY_GATEWAY_TOKEN` | Core query gateway 认证 |
+
+启用前需执行 data-migrator：`bkn-backend-trace-outbox`。

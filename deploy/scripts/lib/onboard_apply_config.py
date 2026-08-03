@@ -236,7 +236,7 @@ def main() -> int:
 
 
 def _rollout_restart(namespace: str, name: str) -> None:
-    for kind in ("statefulset", "deployment"):
+    for kind in ("deployment", "statefulset"):
         check = subprocess.run(
             ["kubectl", "get", kind, name, "-n", namespace],
             stdout=subprocess.DEVNULL,

@@ -1,15 +1,17 @@
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: {{ .Values.moduleName }}
   namespace: {{ .Values.namespace }}
   labels:
     module: {{ .Values.moduleName }}
 spec:
-  serviceName: {{ .Values.moduleName }}
   replicas: {{ .Values.replicaCount }}
-  updateStrategy:
+  strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
   selector:
     matchLabels:
       module: {{ .Values.moduleName }}
@@ -107,6 +109,8 @@ spec:
             value: {{ .Values.bknTrace.producerOutbox.enabled | quote }}
           - name: BKN_TRACE_OUTBOX_WORKER_ENABLED
             value: {{ .Values.bknTrace.producerOutbox.workerEnabled | quote }}
+          - name: BKN_TRACE_PRODUCER_STREAM_ID
+            value: {{ .Values.bknTrace.producerOutbox.producerStreamID | quote }}
           - name: BKN_TRACE_APPLICATION_PRINCIPAL_ID
             value: {{ .Values.bknTrace.producerOutbox.applicationPrincipalID | quote }}
           {{- if .Values.bknTrace.producerOutbox.queryGatewayTokenSecretName }}

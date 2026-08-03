@@ -1,7 +1,7 @@
 # ontology-query BKN Trace 接入合同
 
-> 状态：BKN Trace 2.1 生产者实施基线
-> 更新时间：2026-07-25
+> 状态：BKN Trace 3.0 Producer Outbox 实施基线
+> 更新时间：2026-08-03
 > 权威依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
 
 ## 一、模块责任
@@ -32,7 +32,12 @@
 
 ## 四、可靠性与安全
 
-上报最多三次，HTTP 非 2xx 判失败；队列满和最终失败写日志。上报异步且失败开放。禁止 SQL、参数、查询正文、行数据、PII、prompt、工具输入输出、凭据和裸 URL。当前没有持久 outbox，进程退出可能丢失内存事件。
+- 启用 `BKN_TRACE_OUTBOX_ENABLED=true` 后，3.0 事实先写入本地 Producer Outbox，再由 Worker 异步投递 Core。
+- Outbox 使用 **Deployment + 固定 `producer_stream_id`**（`BKN_TRACE_PRODUCER_STREAM_ID`，默认 `ontology-query`）；`producer_id` 仍为 `bkn-ontology`。
+- 单 Pod 可同时写并投递；多 Pod 时 API 只写、单独 Worker 投递，共用同一 stream ID。
+- Worker 启动递增 epoch；Enqueue 在事务内读取当前 epoch。
+- 禁止 SQL、参数、查询正文、行数据、PII、prompt、工具输入输出、凭据和裸 URL。
+- 未启用 Outbox 或未跑 migration 时不产出 3.0 事实。
 
 ## 五、验收
 
@@ -43,4 +48,8 @@
 
 ## 六、已知限制
 
-数据快照版本和持久 outbox 尚未接入，当前为 `unversioned`；全局证据图由 BKN Trace 核心组装。
+数据快照版本尚未接入，当前为 `unversioned`；全局证据图由 BKN Trace 核心组装。
+
+## 七、Producer Outbox 部署要点
+
+与 `bkn-backend` 相同模式：`producerStreamID=ontology-query`，migration 名为 `ontology-query-trace-outbox`。

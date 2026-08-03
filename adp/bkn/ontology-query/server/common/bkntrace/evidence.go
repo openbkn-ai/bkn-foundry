@@ -44,7 +44,7 @@ const (
 	envOutboxDeliveredDays     = "BKN_TRACE_OUTBOX_DELIVERED_RETENTION_DAYS"
 	envOutboxAbandonedDays     = "BKN_TRACE_OUTBOX_ABANDONED_RETENTION_DAYS"
 	envQueryGatewayToken       = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
-	envPodName                 = "POD_NAME"
+	envProducerStreamID        = "BKN_TRACE_PRODUCER_STREAM_ID"
 )
 
 const maxInFlightEvidenceBatches = 64
@@ -192,14 +192,12 @@ func ConfigureProducerOutbox(db *sql.DB) (*outbox.Worker, error) {
 		producerOutboxMu.Unlock()
 		return nil, nil
 	}
-	streamID, err := statefulSetStreamID(strings.TrimSpace(os.Getenv(envPodName)))
-	if err != nil {
-		return nil, err
-	}
+	workerEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxWorkerEnabled)), "true")
 	repository, err := outbox.NewRepository(db, outbox.Config{
-		ProducerID: ModuleName, ProducerStreamID: streamID, DatabaseType: strings.TrimSpace(os.Getenv("DB_TYPE")), IngestURL: evidenceIngestURL(),
+		ProducerID: ModuleName, ProducerStreamID: producerStreamID(), DatabaseType: strings.TrimSpace(os.Getenv("DB_TYPE")), IngestURL: evidenceIngestURL(),
 		IngestToken: strings.TrimSpace(os.Getenv(envEvidenceIngestToken)), QueryGatewayToken: strings.TrimSpace(os.Getenv(envQueryGatewayToken)),
 		CoreRequestTimeout: evidenceTimeout(), LeaseDuration: 30 * time.Second, PollInterval: 250 * time.Millisecond,
+		BumpEpochOnStart: workerEnabled,
 	})
 	if err != nil {
 		return nil, err
@@ -207,10 +205,17 @@ func ConfigureProducerOutbox(db *sql.DB) (*outbox.Worker, error) {
 	producerOutboxMu.Lock()
 	producerOutbox = repository
 	producerOutboxMu.Unlock()
-	if !strings.EqualFold(strings.TrimSpace(os.Getenv(envOutboxWorkerEnabled)), "true") {
+	if !workerEnabled {
 		return nil, nil
 	}
 	return outbox.NewWorker(repository), nil
+}
+
+func producerStreamID() string {
+	if streamID := strings.TrimSpace(os.Getenv(envProducerStreamID)); streamID != "" {
+		return streamID
+	}
+	return "ontology-query"
 }
 
 func WarnIfLegacyEvidenceMisconfigured() {
@@ -221,19 +226,6 @@ func WarnIfLegacyEvidenceMisconfigured() {
 		"WARN: %s is set but %s is not true; BKN Trace evidence production is disabled until producer outbox is enabled and migrated",
 		envEvidenceIngestURL, envOutboxEnabled,
 	)
-}
-
-func statefulSetStreamID(podName string) (string, error) {
-	parts := strings.Split(strings.TrimSpace(podName), "-")
-	if len(parts) < 2 || parts[len(parts)-1] == "" {
-		return "", fmt.Errorf("%s must be a StatefulSet pod name", envPodName)
-	}
-	for _, value := range parts[len(parts)-1] {
-		if value < '0' || value > '9' {
-			return "", fmt.Errorf("%s must end with a StatefulSet ordinal", envPodName)
-		}
-	}
-	return ModuleName + "-" + parts[len(parts)-1], nil
 }
 
 func HashValue(value any) string {

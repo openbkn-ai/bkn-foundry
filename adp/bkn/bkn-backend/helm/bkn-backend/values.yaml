@@ -167,6 +167,7 @@ bknTrace:
   producerOutbox:
     enabled: false
     workerEnabled: false
+    producerStreamID: "bkn-backend"
     applicationPrincipalID: "bkn-backend"
     queryGatewayTokenSecretName: ""
     queryGatewayTokenSecretKey: "query-gateway-token"
