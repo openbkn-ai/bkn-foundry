@@ -17,10 +17,170 @@ import (
 
 // BuildPagedSQL applies SQL Server paging syntax to a validated query.
 func (c *SQLServerConnector) BuildPagedSQL(sql string, offset, limit int) string {
-	return fmt.Sprintf(
-		"SELECT * FROM (%s) AS _raw_query_page ORDER BY (SELECT 1) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
-		sql, offset, limit,
-	)
+	sql, queryOption := splitTopLevelQueryOption(sql)
+	orderStart, offsetStart := topLevelOrderBy(sql)
+	if orderStart < 0 {
+		if !hasTopLevelKeyword(sql, "top") {
+			return appendQueryOption(fmt.Sprintf(
+				"%s\nORDER BY (SELECT 1) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", sql, offset, limit,
+			), queryOption)
+		}
+		return appendQueryOption(fmt.Sprintf(
+			"SELECT * FROM (%s\n) AS _raw_query_page ORDER BY (SELECT 1) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+			sql, offset, limit,
+		), queryOption)
+	}
+	if !hasTopLevelKeyword(sql[:orderStart], "top") && offsetStart < 0 {
+		return appendQueryOption(fmt.Sprintf(
+			"%s\nOFFSET %d ROWS FETCH NEXT %d ROWS ONLY", sql, offset, limit,
+		), queryOption)
+	}
+
+	outerOrderEnd := len(sql)
+	if offsetStart >= 0 {
+		outerOrderEnd = offsetStart
+	}
+	outerOrder := strings.TrimSpace(sql[orderStart:outerOrderEnd])
+	return appendQueryOption(fmt.Sprintf(
+		"SELECT * FROM (%s\n) AS _raw_query_page %s OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+		sql, outerOrder, offset, limit,
+	), queryOption)
+}
+
+// BuildCountSQL removes a top-level ORDER BY when it only affects presentation.
+// SQL Server rejects such an ORDER BY inside a derived table. TOP and OFFSET
+// queries retain it because ordering changes the selected row set in those cases.
+func (c *SQLServerConnector) BuildCountSQL(sql string) string {
+	sql, queryOption := splitTopLevelQueryOption(sql)
+	orderStart, offsetStart := topLevelOrderBy(sql)
+	if orderStart >= 0 && offsetStart < 0 && !hasTopLevelKeyword(sql[:orderStart], "top") {
+		sql = strings.TrimSpace(sql[:orderStart])
+	}
+	return appendQueryOption(fmt.Sprintf(
+		"SELECT COUNT(*) AS _raw_query_total_count FROM (%s\n) AS _raw_query_total", sql,
+	), queryOption)
+}
+
+type sqlToken struct {
+	text  string
+	start int
+}
+
+func topLevelOrderBy(statement string) (int, int) {
+	tokens := topLevelSQLTokens(statement)
+	orderStart := -1
+	for i := 0; i+1 < len(tokens); i++ {
+		if tokens[i].text == "order" && tokens[i+1].text == "by" {
+			orderStart = tokens[i].start
+		}
+	}
+	if orderStart < 0 {
+		return -1, -1
+	}
+	for _, token := range tokens {
+		if token.start > orderStart && token.text == "offset" {
+			return orderStart, token.start
+		}
+	}
+	return orderStart, -1
+}
+
+func hasTopLevelKeyword(statement, keyword string) bool {
+	for _, token := range topLevelSQLTokens(statement) {
+		if token.text == keyword {
+			return true
+		}
+	}
+	return false
+}
+
+func splitTopLevelQueryOption(statement string) (string, string) {
+	for _, token := range topLevelSQLTokens(statement) {
+		if token.text == "option" {
+			return strings.TrimSpace(statement[:token.start]), strings.TrimSpace(statement[token.start:])
+		}
+	}
+	return statement, ""
+}
+
+func appendQueryOption(statement, queryOption string) string {
+	if queryOption == "" {
+		return statement
+	}
+	return statement + "\n" + queryOption
+}
+
+func topLevelSQLTokens(statement string) []sqlToken {
+	tokens := make([]sqlToken, 0)
+	depth := 0
+	for i := 0; i < len(statement); {
+		switch {
+		case strings.HasPrefix(statement[i:], "--"):
+			if end := strings.IndexByte(statement[i+2:], '\n'); end >= 0 {
+				i += end + 3
+			} else {
+				return tokens
+			}
+		case strings.HasPrefix(statement[i:], "/*"):
+			if end := strings.Index(statement[i+2:], "*/"); end >= 0 {
+				i += end + 4
+			} else {
+				return tokens
+			}
+		case statement[i] == '\'' || statement[i] == '"':
+			quote := statement[i]
+			i++
+			for i < len(statement) {
+				if statement[i] != quote {
+					i++
+					continue
+				}
+				if i+1 < len(statement) && statement[i+1] == quote {
+					i += 2
+					continue
+				}
+				i++
+				break
+			}
+		case statement[i] == '[':
+			i++
+			for i < len(statement) {
+				if statement[i] != ']' {
+					i++
+					continue
+				}
+				if i+1 < len(statement) && statement[i+1] == ']' {
+					i += 2
+					continue
+				}
+				i++
+				break
+			}
+		case statement[i] == '(':
+			depth++
+			i++
+		case statement[i] == ')':
+			if depth > 0 {
+				depth--
+			}
+			i++
+		case isSQLWordByte(statement[i]):
+			start := i
+			for i < len(statement) && isSQLWordByte(statement[i]) {
+				i++
+			}
+			if depth == 0 {
+				tokens = append(tokens, sqlToken{text: strings.ToLower(statement[start:i]), start: start})
+			}
+		default:
+			i++
+		}
+	}
+	return tokens
+}
+
+func isSQLWordByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '_'
 }
 
 // ExecuteRawSQL executes a validated read-only SQL statement.

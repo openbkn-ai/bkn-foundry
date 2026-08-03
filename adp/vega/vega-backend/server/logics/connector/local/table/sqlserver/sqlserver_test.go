@@ -154,12 +154,68 @@ func TestSQLServerConnectorNew(t *testing.T) {
 
 func TestSQLServerConnectorBuildPagedSQL(t *testing.T) {
 	connector := &SQLServerConnector{}
-	query := connector.BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10)
-	assert.Equal(t,
-		"SELECT * FROM (SELECT id FROM dbo.orders) AS _raw_query_page ORDER BY (SELECT 1) OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
-		query,
-	)
-	assert.NotContains(t, strings.ToUpper(query), " LIMIT ")
+	t.Run("adds neutral order when query has no top-level order", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT id FROM dbo.orders", 20, 10)
+		assert.Equal(t,
+			"SELECT id FROM dbo.orders\nORDER BY (SELECT 1) OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
+			query,
+		)
+		assert.NotContains(t, strings.ToUpper(query), " LIMIT ")
+	})
+	t.Run("preserves top-level order", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT id FROM dbo.orders ORDER BY id DESC", 20, 10)
+		assert.Equal(t,
+			"SELECT id FROM dbo.orders ORDER BY id DESC\nOFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
+			query,
+		)
+		assert.NotContains(t, query, "FROM (SELECT")
+	})
+	t.Run("ignores nested and commented order tokens", func(t *testing.T) {
+		query := connector.BuildPagedSQL(
+			"SELECT id, (SELECT TOP 1 note FROM audit ORDER BY created_at) AS note FROM dbo.orders /* ORDER BY ignored */ ORDER BY id",
+			0, 5,
+		)
+		assert.Equal(t,
+			"SELECT id, (SELECT TOP 1 note FROM audit ORDER BY created_at) AS note FROM dbo.orders /* ORDER BY ignored */ ORDER BY id\nOFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY",
+			query,
+		)
+	})
+	t.Run("keeps top query in a legal derived table", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT TOP (20) id FROM dbo.orders ORDER BY id", 5, 5)
+		assert.Equal(t,
+			"SELECT * FROM (SELECT TOP (20) id FROM dbo.orders ORDER BY id\n) AS _raw_query_page ORDER BY id OFFSET 5 ROWS FETCH NEXT 5 ROWS ONLY",
+			query,
+		)
+	})
+	t.Run("places query option after paging", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT id FROM dbo.orders ORDER BY id OPTION (RECOMPILE)", 0, 5)
+		assert.Equal(t,
+			"SELECT id FROM dbo.orders ORDER BY id\nOFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY\nOPTION (RECOMPILE)",
+			query,
+		)
+	})
+}
+
+func TestSQLServerConnectorBuildCountSQL(t *testing.T) {
+	connector := &SQLServerConnector{}
+	t.Run("removes presentation-only order", func(t *testing.T) {
+		assert.Equal(t,
+			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders\n) AS _raw_query_total",
+			connector.BuildCountSQL("SELECT id FROM dbo.orders ORDER BY id"),
+		)
+	})
+	t.Run("retains top order because it selects the row set", func(t *testing.T) {
+		assert.Equal(t,
+			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT TOP (20) id FROM dbo.orders ORDER BY id\n) AS _raw_query_total",
+			connector.BuildCountSQL("SELECT TOP (20) id FROM dbo.orders ORDER BY id"),
+		)
+	})
+	t.Run("moves query option to the outer count", func(t *testing.T) {
+		assert.Equal(t,
+			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders\n) AS _raw_query_total\nOPTION (RECOMPILE)",
+			connector.BuildCountSQL("SELECT id FROM dbo.orders ORDER BY id OPTION (RECOMPILE)"),
+		)
+	})
 }
 
 func TestSQLServerConnectorListTables(t *testing.T) {

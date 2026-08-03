@@ -71,6 +71,9 @@ type TableConnector interface {
 	// BuildPagedSQL wraps a validated read-only SQL statement with the
 	// connector-specific offset/limit syntax.
 	BuildPagedSQL(sql string, offset, limit int) string
+	// BuildCountSQL wraps a validated read-only SQL statement with the
+	// connector-specific total-count syntax.
+	BuildCountSQL(sql string) string
 	// ExecuteRawSQL 执行统一查询链路已校验的只读 SQL。
 	ExecuteRawSQL(ctx context.Context, sql string) (*RawQueryResponse, error)
 }

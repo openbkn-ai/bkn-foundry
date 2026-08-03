@@ -246,6 +246,11 @@ func (c *OracleConnector) BuildPagedSQL(sql string, offset, limit int) string {
 	)
 }
 
+// BuildCountSQL applies Oracle total-count syntax to a validated query.
+func (c *OracleConnector) BuildCountSQL(sql string) string {
+	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) _raw_query_total", sql)
+}
+
 // ExecuteRawSQL executes a validated read-only SQL statement for Raw Query.
 func (c *OracleConnector) ExecuteRawSQL(ctx context.Context, statement string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {

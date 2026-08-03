@@ -65,6 +65,11 @@ func (c *PostgresqlConnector) BuildPagedSQL(sql string, offset, limit int) strin
 	return fmt.Sprintf("SELECT * FROM (%s) AS _raw_query_page LIMIT %d OFFSET %d", sql, limit, offset)
 }
 
+// BuildCountSQL applies PostgreSQL total-count syntax to a validated query.
+func (c *PostgresqlConnector) BuildCountSQL(sql string) string {
+	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", sql)
+}
+
 // ExecuteRawSQL 执行原始SQL查询
 func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {

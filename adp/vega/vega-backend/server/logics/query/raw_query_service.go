@@ -134,7 +134,7 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 			return nil, err
 		}
 	}
-	result, err := rqs.executeSQL(queryCtx, prepared.catalog, prepared.sql, interfaces.PagingModeSingle, &rawSQLPaging{
+	result, err := rqs.executeSQL(queryCtx, prepared.catalog, prepared.sql, interfaces.PagingModeSingle, &rawSQLBuildOptions{
 		offset: req.Paging.Offset,
 		limit:  req.Paging.Limit,
 	})
@@ -330,7 +330,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
 
-	result, err := rqs.executeSQL(pageCtx, catalog, session.CompiledSQL, interfaces.PagingModeCursor, &rawSQLPaging{
+	result, err := rqs.executeSQL(pageCtx, catalog, session.CompiledSQL, interfaces.PagingModeCursor, &rawSQLBuildOptions{
 		offset: session.Offset,
 		limit:  session.Limit + 1,
 	})
@@ -705,8 +705,7 @@ func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (
 }
 
 func (rqs *rawQueryService) executeSQLTotalCount(ctx context.Context, catalog *interfaces.Catalog, sql string) (int64, error) {
-	countSQL := fmt.Sprintf("SELECT COUNT(*) AS %s FROM (%s) AS _raw_query_total", rawQueryTotalCountColumn, sql)
-	result, err := rqs.executeSQL(ctx, catalog, countSQL, interfaces.PagingModeSingle, nil)
+	result, err := rqs.executeSQL(ctx, catalog, sql, interfaces.PagingModeSingle, &rawSQLBuildOptions{count: true})
 	if err != nil {
 		return 0, err
 	}
@@ -917,14 +916,15 @@ func replacePlaceholderInSQLCode(sql, placeholder, replacement, inputDialect str
 	return output.String()
 }
 
-type rawSQLPaging struct {
+type rawSQLBuildOptions struct {
 	offset int
 	limit  int
+	count  bool
 }
 
 // executeSQL 执行 SQL 查询并记录分页模式。
 func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.Catalog, sql string,
-	pagingMode interfaces.PagingMode, paging *rawSQLPaging) (*interfaces.RawQueryResponse, error) {
+	pagingMode interfaces.PagingMode, buildOptions *rawSQLBuildOptions) (*interfaces.RawQueryResponse, error) {
 	// 创建connector
 	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
@@ -939,8 +939,12 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
 	}
-	if paging != nil {
-		sql = tableConnector.BuildPagedSQL(sql, paging.offset, paging.limit)
+	if buildOptions != nil {
+		if buildOptions.count {
+			sql = tableConnector.BuildCountSQL(sql)
+		} else {
+			sql = tableConnector.BuildPagedSQL(sql, buildOptions.offset, buildOptions.limit)
+		}
 	}
 	logger.Infof("Executing query - %s, paging_mode: %s, catalog: %s", SafeQuerySummary(sql), pagingMode, catalog.Name)
 	result, err := tableConnector.ExecuteRawSQL(ctx, sql)

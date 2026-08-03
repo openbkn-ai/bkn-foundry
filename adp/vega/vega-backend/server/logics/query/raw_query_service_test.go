@@ -490,7 +490,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		}, nil)
 
 		result, err := (&rawQueryService{}).executeSQL(context.Background(), catalog,
-			"SELECT id FROM dbo.orders", interfaces.PagingModeSingle, &rawSQLPaging{offset: 20, limit: 10})
+			"SELECT id FROM dbo.orders", interfaces.PagingModeSingle, &rawSQLBuildOptions{offset: 20, limit: 10})
 
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
@@ -534,6 +534,8 @@ func TestRawQueryServiceExecuteSQLTotalCount(t *testing.T) {
 		connector := mock_interfaces.NewMockTableConnector(ctrl)
 		useRawQueryTableConnector(t, connector)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		connector.EXPECT().BuildCountSQL("SELECT id FROM dbo.orders").Return(
+			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total")
 		connector.EXPECT().ExecuteRawSQL(gomock.Any(),
 			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders) AS _raw_query_total").
 			Return(&interfaces.RawQueryResponse{
