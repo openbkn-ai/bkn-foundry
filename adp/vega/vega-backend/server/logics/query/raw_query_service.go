@@ -867,7 +867,11 @@ func quotedResourceSourceIdentifier(resource *interfaces.Resource, dialect strin
 	schema := strings.TrimSpace(resource.Schema)
 	table := sourceIdentifier
 	if schema != "" {
-		if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 &&
+		prefixLength := len(schema) + 1
+		if len(sourceIdentifier) >= prefixLength &&
+			strings.EqualFold(sourceIdentifier[:prefixLength], schema+".") {
+			table = sourceIdentifier[prefixLength:]
+		} else if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 &&
 			strings.EqualFold(strings.TrimSpace(sourceIdentifier[:separator]), schema) {
 			table = sourceIdentifier[separator+1:]
 		}

@@ -1077,6 +1077,23 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM [sales data].[Order.Archive]]]", got)
 	})
+
+	t.Run("quotes schema containing dots", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &rawQueryService{rs: rs}
+		rs.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{
+			ID:               "r1",
+			Schema:           "sales.archive",
+			SourceIdentifier: "sales.archive.orders",
+		}, nil)
+
+		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
+			"SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{Name: "catalog"}, "tsql")
+
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM [sales.archive].[orders]", got)
+	})
 }
 
 func TestRawQueryServiceCheckSameDataSource(t *testing.T) {

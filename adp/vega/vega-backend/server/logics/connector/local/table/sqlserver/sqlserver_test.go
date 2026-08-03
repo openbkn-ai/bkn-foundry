@@ -246,12 +246,23 @@ func TestSQLServerConnectorBuildPagedSQL(t *testing.T) {
 			query,
 		)
 	})
-	t.Run("keeps top query in a legal derived table", func(t *testing.T) {
-		query := connector.BuildPagedSQL("SELECT TOP (20) id FROM dbo.orders ORDER BY id", 5, 5)
+	t.Run("rewrites literal top and keeps source order in the same scope", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT TOP (20) t.id FROM dbo.orders t ORDER BY t.created_at", 5, 5)
 		assert.Equal(t,
-			"SELECT * FROM (SELECT TOP (20) id FROM dbo.orders ORDER BY id\n) AS _raw_query_page ORDER BY id OFFSET 5 ROWS FETCH NEXT 5 ROWS ONLY",
+			"SELECT t.id FROM dbo.orders t ORDER BY t.created_at\nOFFSET 5 ROWS FETCH NEXT 5 ROWS ONLY",
 			query,
 		)
+	})
+	t.Run("caps page at literal top limit", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT TOP 20 id FROM dbo.orders ORDER BY id", 15, 10)
+		assert.Equal(t,
+			"SELECT id FROM dbo.orders ORDER BY id\nOFFSET 15 ROWS FETCH NEXT 5 ROWS ONLY",
+			query,
+		)
+	})
+	t.Run("returns an empty top query after its limit", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT TOP (20) id FROM dbo.orders ORDER BY id", 20, 5)
+		assert.Equal(t, "SELECT TOP (0) id FROM dbo.orders ORDER BY id", query)
 	})
 	t.Run("places query option after paging", func(t *testing.T) {
 		query := connector.BuildPagedSQL("SELECT id FROM dbo.orders ORDER BY id OPTION (RECOMPILE)", 0, 5)
@@ -374,6 +385,14 @@ func TestQualifiedResourceTable(t *testing.T) {
 		}
 
 		assert.Equal(t, "[sales data].[Order.Archive]]]", qualifiedResourceTable(resource))
+	})
+	t.Run("preserves dots in schema name", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			Schema:           "sales.archive",
+			SourceIdentifier: "sales.archive.orders",
+		}
+
+		assert.Equal(t, "[sales.archive].[orders]", qualifiedResourceTable(resource))
 	})
 }
 

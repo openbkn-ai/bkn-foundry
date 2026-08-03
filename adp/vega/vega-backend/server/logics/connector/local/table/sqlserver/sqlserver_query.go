@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ func (c *SQLServerConnector) BuildPagedSQL(sql string, offset, limit int) string
 	sql, queryOption := splitTopLevelQueryOption(sql)
 	orderStart, offsetStart := topLevelOrderBy(sql)
 	if orderStart < 0 {
-		if !hasTopLevelKeyword(sql, "top") {
+		if topLevelTopClause(sql) < 0 {
 			return appendQueryOption(fmt.Sprintf(
 				"%s\nORDER BY (SELECT 1) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", sql, offset, limit,
 			), queryOption)
@@ -31,10 +32,16 @@ func (c *SQLServerConnector) BuildPagedSQL(sql string, offset, limit int) string
 			sql, offset, limit,
 		), queryOption)
 	}
-	if !hasTopLevelKeyword(sql[:orderStart], "top") && offsetStart < 0 {
+	topStart := topLevelTopClause(sql[:orderStart])
+	if topStart < 0 && offsetStart < 0 {
 		return appendQueryOption(fmt.Sprintf(
 			"%s\nOFFSET %d ROWS FETCH NEXT %d ROWS ONLY", sql, offset, limit,
 		), queryOption)
+	}
+	if offsetStart < 0 {
+		if pagedSQL, ok := rewriteLiteralTopPaging(sql, topStart, offset, limit); ok {
+			return appendQueryOption(pagedSQL, queryOption)
+		}
 	}
 
 	outerOrderEnd := len(sql)
@@ -48,13 +55,89 @@ func (c *SQLServerConnector) BuildPagedSQL(sql string, offset, limit int) string
 	), queryOption)
 }
 
+// rewriteLiteralTopPaging replaces a numeric TOP cap with an equivalent
+// OFFSET/FETCH cap. Keeping the ORDER BY in the original query scope allows it
+// to reference source aliases and columns that are not part of the projection.
+func rewriteLiteralTopPaging(statement string, topStart, offset, limit int) (string, bool) {
+	if topStart < 0 {
+		return "", false
+	}
+
+	topLimit, topEnd, ok := parseLiteralTop(statement, topStart)
+	if !ok {
+		return "", false
+	}
+	if offset >= topLimit {
+		return statement[:topStart] + "TOP (0) " + statement[topEnd:], true
+	}
+
+	pageLimit := min(limit, topLimit-offset)
+	withoutTop := statement[:topStart] + statement[topEnd:]
+	return fmt.Sprintf("%s\nOFFSET %d ROWS FETCH NEXT %d ROWS ONLY", withoutTop, offset, pageLimit), true
+}
+
+func parseLiteralTop(statement string, topStart int) (int, int, bool) {
+	index := topStart + len("top")
+	index = skipSQLSpaces(statement, index)
+	parenthesized := index < len(statement) && statement[index] == '('
+	if parenthesized {
+		index++
+		index = skipSQLSpaces(statement, index)
+	}
+
+	digitsStart := index
+	for index < len(statement) && statement[index] >= '0' && statement[index] <= '9' {
+		index++
+	}
+	if digitsStart == index {
+		return 0, 0, false
+	}
+	topLimit, err := strconv.Atoi(statement[digitsStart:index])
+	if err != nil {
+		return 0, 0, false
+	}
+
+	index = skipSQLSpaces(statement, index)
+	if parenthesized {
+		if index >= len(statement) || statement[index] != ')' {
+			return 0, 0, false
+		}
+		index++
+		index = skipSQLSpaces(statement, index)
+	}
+	if hasSQLWordAt(statement, index, "percent") || hasSQLWordAt(statement, index, "with") {
+		return 0, 0, false
+	}
+	return topLimit, index, true
+}
+
+func skipSQLSpaces(statement string, index int) int {
+	for index < len(statement) {
+		switch statement[index] {
+		case ' ', '\t', '\r', '\n':
+			index++
+		default:
+			return index
+		}
+	}
+	return index
+}
+
+func hasSQLWordAt(statement string, index int, word string) bool {
+	end := index + len(word)
+	if end > len(statement) || !strings.EqualFold(statement[index:end], word) {
+		return false
+	}
+	return end == len(statement) || !isSQLWordByte(statement[end])
+}
+
 // BuildCountSQL removes a top-level ORDER BY when it only affects presentation.
 // SQL Server rejects such an ORDER BY inside a derived table. TOP and OFFSET
 // queries retain it because ordering changes the selected row set in those cases.
 func (c *SQLServerConnector) BuildCountSQL(sql string) string {
 	sql, queryOption := splitTopLevelQueryOption(sql)
 	orderStart, offsetStart := topLevelOrderBy(sql)
-	if orderStart >= 0 && offsetStart < 0 && !hasTopLevelKeyword(sql[:orderStart], "top") {
+	if orderStart >= 0 && offsetStart < 0 && topLevelTopClause(sql[:orderStart]) < 0 {
 		sql = strings.TrimSpace(sql[:orderStart])
 	}
 	return appendQueryOption(fmt.Sprintf(
@@ -86,13 +169,22 @@ func topLevelOrderBy(statement string) (int, int) {
 	return orderStart, -1
 }
 
-func hasTopLevelKeyword(statement, keyword string) bool {
-	for _, token := range topLevelSQLTokens(statement) {
-		if token.text == keyword {
-			return true
+func topLevelTopClause(statement string) int {
+	tokens := topLevelSQLTokens(statement)
+	for index, token := range tokens {
+		if token.text != "select" {
+			continue
 		}
+		index++
+		if index < len(tokens) && (tokens[index].text == "all" || tokens[index].text == "distinct") {
+			index++
+		}
+		if index < len(tokens) && tokens[index].text == "top" {
+			return tokens[index].start
+		}
+		return -1
 	}
-	return false
+	return -1
 }
 
 func splitTopLevelQueryOption(statement string) (string, string) {
@@ -460,7 +552,11 @@ func qualifiedResourceTable(resource *interfaces.Resource) string {
 	schema := strings.TrimSpace(resource.Schema)
 	table := sourceIdentifier
 	if schema != "" {
-		if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 &&
+		prefixLength := len(schema) + 1
+		if len(sourceIdentifier) >= prefixLength &&
+			strings.EqualFold(sourceIdentifier[:prefixLength], schema+".") {
+			table = sourceIdentifier[prefixLength:]
+		} else if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 &&
 			strings.EqualFold(strings.TrimSpace(sourceIdentifier[:separator]), schema) {
 			table = sourceIdentifier[separator+1:]
 		}
