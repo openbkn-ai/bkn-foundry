@@ -1,4 +1,4 @@
-package safelog
+package table
 
 import (
 	"crypto/sha256"
