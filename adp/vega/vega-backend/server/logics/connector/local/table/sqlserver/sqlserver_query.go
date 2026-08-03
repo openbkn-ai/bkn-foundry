@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -219,7 +220,7 @@ func (c *SQLServerConnector) ExecuteRawSQL(ctx context.Context, statement string
 		}
 		entry := make(map[string]any, len(columns))
 		for i, name := range columns {
-			entry[name] = values[i]
+			entry[name] = normalizeQueryValue(values[i], types[i].DatabaseTypeName())
 		}
 		result.Entries = append(result.Entries, entry)
 	}
@@ -481,6 +482,10 @@ func scanQueryRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, err
+	}
 	result := &interfaces.QueryResult{Columns: columns, Entries: make([]map[string]any, 0)}
 	for rows.Next() {
 		values, pointers := make([]any, len(columns)), make([]any, len(columns))
@@ -492,7 +497,7 @@ func scanQueryRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 		}
 		entry := make(map[string]any, len(columns))
 		for i, column := range columns {
-			entry[column] = values[i]
+			entry[column] = normalizeQueryValue(values[i], types[i].DatabaseTypeName())
 		}
 		result.Entries = append(result.Entries, entry)
 	}
@@ -501,4 +506,18 @@ func scanQueryRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 	}
 	result.Total = int64(len(result.Entries))
 	return result, nil
+}
+
+func normalizeQueryValue(value any, nativeType string) any {
+	switch TypeMapping[strings.ToLower(strings.TrimSpace(nativeType))] {
+	case interfaces.DataType_Decimal:
+		if raw, ok := value.([]byte); ok {
+			return string(raw)
+		}
+	case interfaces.DataType_Time:
+		if timestamp, ok := value.(time.Time); ok {
+			return timestamp.Format("15:04:05.9999999")
+		}
+	}
+	return value
 }

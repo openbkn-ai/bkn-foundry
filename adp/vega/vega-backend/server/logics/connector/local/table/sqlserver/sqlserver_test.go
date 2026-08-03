@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	sq "github.com/Masterminds/squirrel"
@@ -284,6 +285,26 @@ func TestSQLServerConnectorExecuteRawSQL(t *testing.T) {
 		require.Len(t, result.Entries, 1)
 		assert.Equal(t, binaryValue, result.Entries[0]["payload"])
 	})
+	t.Run("normalizes decimal and time values", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+		connector := &SQLServerConnector{connected: true, db: db}
+		workTime := time.Date(1, time.January, 1, 9, 30, 0, 123000000, time.UTC)
+		mock.ExpectQuery("SELECT salary, work_time FROM dbo.employees").WillReturnRows(
+			sqlmock.NewRowsWithColumnDefinition(
+				sqlmock.NewColumn("salary").OfType("DECIMAL", []byte{}),
+				sqlmock.NewColumn("work_time").OfType("TIME", time.Time{}),
+			).AddRow([]byte("18000.50"), workTime),
+		)
+
+		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT salary, work_time FROM dbo.employees")
+
+		require.NoError(t, err)
+		require.Len(t, result.Entries, 1)
+		assert.Equal(t, "18000.50", result.Entries[0]["salary"])
+		assert.Equal(t, "09:30:00.123", result.Entries[0]["work_time"])
+	})
 }
 
 func TestScanQueryRows(t *testing.T) {
@@ -304,6 +325,28 @@ func TestScanQueryRows(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result.Entries, 1)
 		assert.Equal(t, binaryValue, result.Entries[0]["payload"])
+	})
+	t.Run("normalizes decimal and time values", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+		workTime := time.Date(1, time.January, 1, 8, 45, 0, 0, time.UTC)
+		mock.ExpectQuery("SELECT salary, work_time FROM dbo.employees").WillReturnRows(
+			sqlmock.NewRowsWithColumnDefinition(
+				sqlmock.NewColumn("salary").OfType("numeric", []byte{}),
+				sqlmock.NewColumn("work_time").OfType("time", time.Time{}),
+			).AddRow([]byte("99.50"), workTime),
+		)
+		rows, err := db.QueryContext(context.Background(), "SELECT salary, work_time FROM dbo.employees")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, rows.Close()) }()
+
+		result, err := scanQueryRows(rows)
+
+		require.NoError(t, err)
+		require.Len(t, result.Entries, 1)
+		assert.Equal(t, "99.50", result.Entries[0]["salary"])
+		assert.Equal(t, "08:45:00", result.Entries[0]["work_time"])
 	})
 }
 
