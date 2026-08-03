@@ -137,16 +137,27 @@ func guardBusinessToolCallWithCompletion(
 		// interaction terminal once its lease lapses, and caps one interaction at
 		// 128 operations. Both surface here, from operations:ensure — not from
 		// resolving the session — so the rebuild has to wrap this call.
-		if autoSession && err == nil && isStaleAutoSession(lifecycleErr) {
+		// Each idle gap leaves one more dead interaction behind, and the walk has
+		// to start from the one that just failed rather than from a fixed point:
+		// the base start key keeps resolving to the connection's first
+		// interaction, so a salt pinned to it would never reach past generation
+		// two. Bounded, because a walk that never ends is a worse failure than a
+		// call that reports it could not recover.
+		for attempt := 0; autoSession && err == nil && isStaleAutoSession(lifecycleErr) &&
+			attempt < autoSessionMaxRebuilds; attempt++ {
 			rebuilt, rebuildErr, resolveErr := resolveAutoSession(
 				ctx, autoClient, req, arguments,
 				autoSessionRetry{afterInteractionID: businessContext.InteractionID},
 			)
-			if resolveErr == nil && rebuildErr == nil {
-				businessContext = rebuilt
-				intent.Context = rebuilt
-				ensured, lifecycleErr, err = ensure(ctx, intent)
+			if resolveErr != nil || rebuildErr != nil {
+				break
 			}
+			if rebuilt.InteractionID == businessContext.InteractionID {
+				break
+			}
+			businessContext = rebuilt
+			intent.Context = rebuilt
+			ensured, lifecycleErr, err = ensure(ctx, intent)
 		}
 		if err != nil {
 			return lifecycleToolError(lifecycleAvailabilityError(err)), nil

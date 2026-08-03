@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"sync"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -44,6 +45,52 @@ const (
 // so concurrent callers that all hit the same dead interaction derive the same
 // replacement key and converge on one new interaction instead of racing.
 type autoSessionRetry struct{ afterInteractionID string }
+
+// autoSessionMaxRebuilds bounds how many dead generations one call will walk
+// past. A connection accumulates one dead interaction per idle gap, and each
+// rebuild costs two Core round trips, so the walk has to end somewhere; the
+// remembered key means a healthy connection never walks at all.
+const autoSessionMaxRebuilds = 3
+
+// autoSessionKeys remembers the start key that last worked for an MCP session.
+// Without it every call after the first rebuild would replay the base key, get
+// the long-dead first interaction back, and pay a failed ensure before
+// rebuilding again — and the walk would grow by one generation per idle gap.
+//
+// Sessions end without telling this service, so entries are aged out by
+// rotation rather than deletion: the live map is retired to previous once it
+// fills, bounding the whole cache at twice the cap.
+var autoSessionKeys = &rotatingKeyCache{cap: 2048}
+
+type rotatingKeyCache struct {
+	mu       sync.Mutex
+	cap      int
+	live     map[string]string
+	previous map[string]string
+}
+
+func (c *rotatingKeyCache) get(sessionID string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if key, ok := c.live[sessionID]; ok {
+		return key, true
+	}
+	key, ok := c.previous[sessionID]
+	return key, ok
+}
+
+func (c *rotatingKeyCache) put(sessionID, key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.live == nil {
+		c.live = make(map[string]string, 64)
+	}
+	if len(c.live) >= c.cap {
+		c.previous = c.live
+		c.live = make(map[string]string, 64)
+	}
+	c.live[sessionID] = key
+}
 
 // isStaleAutoSession reports whether an auto session died between calls in a way
 // the client cannot see or repair. Core declares an interaction terminal once
@@ -92,8 +139,9 @@ func resolveAutoSession(
 	if apiErr != nil {
 		return bknContext{}, lifecycleErrorPtr(*apiErr), nil
 	}
+	startKey := autoInteractionKey(sessionID, retry)
 	interaction, apiErr, err := client.StartInteraction(
-		ctx, conversation.ConversationID, autoInteractionKey(sessionID, retry),
+		ctx, conversation.ConversationID, startKey,
 	)
 	if err != nil {
 		return bknContext{}, nil, err
@@ -101,6 +149,7 @@ func resolveAutoSession(
 	if apiErr != nil {
 		return bknContext{}, lifecycleErrorPtr(*apiErr), nil
 	}
+	autoSessionKeys.put(sessionID, startKey)
 	return bknContext{
 		ConversationID: conversation.ConversationID,
 		InteractionID:  interaction.InteractionID,
@@ -119,11 +168,19 @@ func autoSessionID(ctx context.Context) string {
 	return strings.TrimSpace(session.SessionID())
 }
 
+// autoInteractionKey picks the start key for this attempt: the one that last
+// worked for the session, or a fresh salt derived from the interaction that just
+// died. Walking forward from the dead one matters — the base key resolves to the
+// first interaction ever opened on this connection for as long as the connection
+// lives, so a salt fixed to it would only ever reach the second generation.
 func autoInteractionKey(sessionID string, retry autoSessionRetry) string {
-	if retry.afterInteractionID == "" {
-		return autoSessionKeyPrefix + sessionID
+	if retry.afterInteractionID != "" {
+		return autoSessionKeyPrefix + sessionID + ":after:" + retry.afterInteractionID
 	}
-	return autoSessionKeyPrefix + sessionID + ":after:" + retry.afterInteractionID
+	if remembered, ok := autoSessionKeys.get(sessionID); ok {
+		return remembered
+	}
+	return autoSessionKeyPrefix + sessionID
 }
 
 // autoOperationKey makes a replayed identical call idempotent within the

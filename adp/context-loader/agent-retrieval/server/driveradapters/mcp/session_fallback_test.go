@@ -340,6 +340,91 @@ func TestFallbackRebuildsTheSessionWhenCoreReportsItStale(t *testing.T) {
 	}
 }
 
+func TestFallbackWalksPastSeveralDeadGenerations(t *testing.T) {
+	// One dead interaction accumulates per idle gap. The salt has to advance from
+	// whichever interaction just failed: the base start key keeps resolving to the
+	// connection's first interaction for as long as the connection lives, so a
+	// salt pinned to it would stall at generation two and the connection would be
+	// stuck until the client reconnected.
+	core := newFakeCore(t)
+	dead := map[string]bool{
+		"int-for-mcp:session-walk":                                true,
+		"int-for-mcp:session-walk:after:int-for-mcp:session-walk": true,
+	}
+	var seen []bknContext
+	guarded := guardBusinessToolCallWithCompletion(
+		func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+			seen = append(seen, intent.Context)
+			if dead[intent.Context.InteractionID] {
+				return nil, &lifecycleError{
+					Code: "interaction_terminal", Message: "lease expired",
+					RequiredAction: "start_interaction",
+				}, nil
+			}
+			return &operationResult{Created: true, Execute: true}, nil, nil
+		},
+		nil, core.client(),
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultStructured(map[string]any{"ok": true}, `{"ok":true}`), nil
+		},
+	)
+
+	result, err := guarded(contextWithSession("session-walk"), contextlessBusinessRequest())
+	if err != nil {
+		t.Fatalf("guard returned protocol error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("two dead generations must still be walked past: %#v", result.StructuredContent)
+	}
+	if len(seen) != 3 {
+		t.Fatalf("expected two rebuilds then success, got %d attempts: %#v", len(seen), seen)
+	}
+	if dead[seen[2].InteractionID] {
+		t.Fatalf("final attempt still landed on a dead interaction: %#v", seen[2])
+	}
+}
+
+func TestFallbackRemembersTheWorkingKeyForTheSession(t *testing.T) {
+	// Without this the call after a rebuild would replay the base key, get the
+	// long-dead first interaction back, and pay a failed ensure before rebuilding
+	// again — every call, forever.
+	core := newFakeCore(t)
+	deadFirst := "int-for-mcp:session-remember"
+	var seen []bknContext
+	guarded := guardBusinessToolCallWithCompletion(
+		func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+			seen = append(seen, intent.Context)
+			if intent.Context.InteractionID == deadFirst {
+				return nil, &lifecycleError{
+					Code: "interaction_terminal", Message: "lease expired",
+					RequiredAction: "start_interaction",
+				}, nil
+			}
+			return &operationResult{Created: true, Execute: true}, nil, nil
+		},
+		nil, core.client(),
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultStructured(map[string]any{"ok": true}, `{"ok":true}`), nil
+		},
+	)
+
+	ctx := contextWithSession("session-remember")
+	for range 3 {
+		if _, err := guarded(ctx, contextlessBusinessRequest()); err != nil {
+			t.Fatalf("guard returned protocol error: %v", err)
+		}
+	}
+	// One failed attempt on the first call, then straight to the live interaction.
+	if len(seen) != 4 {
+		t.Fatalf("expected one recovery then two clean calls, got %d: %#v", len(seen), seen)
+	}
+	for _, entry := range seen[1:] {
+		if entry.InteractionID == deadFirst {
+			t.Fatalf("a later call replayed the dead interaction: %#v", seen)
+		}
+	}
+}
+
 func TestExplicitContextIsNeverRebuiltOnStaleErrors(t *testing.T) {
 	// A caller that owns its conversation owns the recovery too. Silently moving
 	// its work onto a service-invented interaction would attribute that work to a
