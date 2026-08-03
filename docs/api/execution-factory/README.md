@@ -133,24 +133,33 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
   改动时请人工核对，或用 `x-contract-probe` 把只读 GET 纳入契约巡检
   （机制见 [`tools/README.md`](../tools/README.md)）。
 
+### 实机验证覆盖
+
+在开发 VM（`parallels@10.211.55.4`，已升到 main 最新的
+`0.1.3-main…sha185a9c2`）跑契约巡检，**91 条里 33 条完成字段级比对、缺口 0**：
+
+```bash
+make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=parallels@10.211.55.4 \
+     CONTRACT_ARGS="--include-probe-post --token $TOKEN"
+```
+
+未比对的 58 条分三类，都不是「验过没问题」，接手时请自行核对：
+
+| 类别 | 条数 | 说明 |
+|---|---|---|
+| 写操作 / 未标只读 | 49 | 注册、编辑、删除、发布、执行等，工具按设计不发送 |
+| 缺路径参数 | 7 | 环境里没有对应数据（如没有算子版本、没有 MCP 工具名） |
+| 环境相关失败 | 2 | 如 `/tool-box/market/tools` 需要必填的 `tool_name` |
+
 ### 实际被调用的有多少
 
-拿测试服 `14.103.77.23` 上该服务 pod 近 3 天的访问日志比对过：**91 条里有 31 条
-被真实打到**，其余 59 条在该环境没有流量。这**不等于「没用」**——那是一个测试
-环境，写操作（注册算子、建工具箱、发布技能）与市场、历史版本、索引重建等功能
-本就低频或未被使用。此处只作为「哪些是热路径」的参考：
+另在测试服 `14.103.77.23` 用该服务 pod 近 3 天访问日志比对过：91 条里 31 条被真实
+打到。**这不等于其余「没用」**——那是测试环境，写操作与市场、历史版本、索引重建
+本就低频。只作热路径参考：`GET /tool-box/list` 265 次、`GET /skills` 87、
+`GET /operator/category` 74、`GET /mcp/list` 67。
 
-| 被打得最多 | 次数 |
-|---|---|
-| `GET /tool-box/list` | 265 |
-| `GET /skills` | 87 |
-| `GET /operator/category` | 74 |
-| `GET /mcp/list` | 67 |
-| `GET /tool-box/{box_id}/tool/{tool_id}` | 40 |
-
-日志里还有 40 条打到内部面 `internal-v1`（工具代理调用与 `function/exec`），
-那是集群内 bkn-agent / context-loader 走 ClusterIP 的调用，不经 Ingress，
-也不在本文档范围。
+日志里另有 40 条打到内部面 `internal-v1`（集群内 bkn-agent / context-loader 走
+ClusterIP 调工具代理与 `function/exec`），不经 Ingress，也不在本文档范围。
 
 仍不收录的两个面：内部面 `internal-v1`（刻意不挂 Ingress，见上节）与能力面
 `/api/capabilities-lab/v1`。

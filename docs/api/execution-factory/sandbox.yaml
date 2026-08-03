@@ -119,7 +119,7 @@ paths:
         query:
           limit: 5
         provides:
-          ef_session_id: items[0].id
+          id: items[0].id
       description: |
         列出沙箱会话，支持按状态、来源、运行时过滤。排障时先用
         `abnormal_only=true` 收敛到异常会话，再用 `GET /sandbox/sessions/{id}` 看详情。

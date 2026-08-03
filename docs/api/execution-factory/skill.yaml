@@ -91,7 +91,7 @@ paths:
         query:
           page_size: 3
         provides:
-          ef_skill_id: data[0].skill_id
+          skill_id: data[0].skill_id
       description: 按业务域分页列出技能，支持按名称、状态、分类、创建人过滤。
       parameters:
         - $ref: '#/components/parameters/Page'
@@ -617,16 +617,32 @@ paths:
       operationId: getSkillManagementContent
       description: |
         `/content` 的管理态版本：读的是**当前草稿**，含尚未发布的改动。
-        Studio 的编辑页用它。结构与消费态一致。
+        Studio 的编辑页用它。
+
+        **响应结构与消费态不同**，比 `/content` 多了 `name` / `description` /
+        `version` / `source` / `file_type`，以及 `response_mode=content` 时的
+        `content` 正文——编辑页要一次拿全，不想再跑一趟详情接口。
       parameters:
         - $ref: '#/components/parameters/SkillID'
+        - name: response_mode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - url
+              - content
+            default: url
+          description: |
+            `url`（默认）只给包地址与文件清单；`content` 额外把技能正文塞进
+            `content` 字段，省一次取文件的往返。
       responses:
         '200':
-          description: 草稿的文件清单与包地址
+          description: 草稿的元数据、文件清单与包地址
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SkillContent'
+                $ref: '#/components/schemas/ManagementSkillContent'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -795,7 +811,7 @@ paths:
         query:
           page_size: 3
         provides:
-          ef_index_task_id: data[0].task_id
+          task_id: data[0].task_id
       description: |
         分页列出索引构建任务。
 
@@ -1334,6 +1350,41 @@ components:
           description: 技能包的访问地址。
         status:
           $ref: '#/components/schemas/BizStatus'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillFileSummary'
+          description: 包内文件清单。
+
+    ManagementSkillContent:
+      type: object
+      description: |
+        管理态内容响应。比消费态的 `SkillContent` 多带元数据，供编辑页一次取全。
+      properties:
+        skill_id:
+          type: string
+        name:
+          type: string
+          description: 技能名称。
+        description:
+          type: string
+          description: 技能描述。
+        version:
+          type: string
+          description: 当前草稿版本。
+        status:
+          $ref: '#/components/schemas/BizStatus'
+        source:
+          type: string
+          description: 来源。
+        file_type:
+          $ref: '#/components/schemas/SkillFileType'
+        url:
+          type: string
+          description: 技能包的访问地址。
+        content:
+          type: string
+          description: 技能正文。仅 `response_mode=content` 时返回。
         files:
           type: array
           items:

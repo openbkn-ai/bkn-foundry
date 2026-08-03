@@ -176,7 +176,7 @@ paths:
         query:
           page_size: 3
         provides:
-          ef_operator_id: data[0].operator_id
+          operator_id: data[0].operator_id
       description: |
         按业务域分页列出算子，支持按名称、状态、分类、创建人、算子类型过滤。
 

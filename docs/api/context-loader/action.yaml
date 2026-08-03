@@ -559,7 +559,11 @@ components:
           type: string
           description: 失败原因；成功时不返回。
         result:
-          description: 工具返回的原始结果；失败时可能不返回。
+          type: object
+          additionalProperties: true
+          description: |
+            工具返回的原始结果，**结构完全由该工具决定**，平台不做约束也不做裁剪
+            ——可能是一个状态串，也可能是整张 schema。失败时可能不返回。
 
     ActionExecutionList:
       type: object

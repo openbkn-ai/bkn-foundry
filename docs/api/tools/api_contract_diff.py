@@ -150,7 +150,9 @@ class SpecLoader:
         if schema.get("type") == "array" or "items" in schema:
             # 记下数组形态本身。oneOf 分支里的数组(如 mapping_rules 的 direct
             # 形态)否则只会留下父级的 object 记录,和实际的 `key[]` 对不上。
-            if prefix:
+            # prefix 为空 = 响应根就是数组(如 GET /operator/category),此时
+            # actual_paths 会产出一条裸 "[]",文档侧不记就会误报「文档未声明」。
+            if True:
                 out.setdefault(prefix + "[]",
                                ((schema.get("items") or {}).get("type", "object"),
                                 required))
@@ -550,22 +552,30 @@ def dig(body, path):
 
 
 def run_probes(execu, host_of, headers, ops, found, args):
-    """按 order 分批发送标注了 x-contract-probe 的只读 POST。
+    """按 order 分批发送标注了 x-contract-probe 的只读端点。
 
     每批的响应既参与字段比对,也按 provides 抽出 id 喂给后续批次
     (list_knowledge_networks 给出 kn_id,get_kn_detail 再给出 ot_id …)。
-    结果直接写回 op:成功写 actual,失败写 skip,与 GET 路径一致。
+    结果直接写回 op:成功写 actual,失败写 skip,与普通 GET 路径一致。
+
+    GET 也走这里:provides 需要「先跑完前一批、再拼下一批」的分批语义,而普通
+    GET 路径是一次性并发,拿不到上一条的产出。因此凡标了 probe 的都归这条路径,
+    GET 无条件放行(本来就允许发),POST 仍需 --include-probe-post。
     """
     cand = [o for o in ops
-            if o["method"] == "POST" and isinstance(o.get("probe"), dict)
+            if isinstance(o.get("probe"), dict)
             and o["probe"].get("readonly") is True
-            and o["doc_fields"] is not None]
+            and o["doc_fields"] is not None
+            and o["method"] in ("GET", "POST")]
     if not cand:
         return found
     if not args.include_probe_post:
-        for o in cand:
+        blocked = [o for o in cand if o["method"] == "POST"]
+        for o in blocked:
             o["skip"] = "未开启 --include-probe-post(该端点已标注 readonly probe)"
-        return found
+        cand = [o for o in cand if o["method"] == "GET"]
+        if not cand:
+            return found
 
     for order in sorted({int(o["probe"].get("order", 1)) for o in cand}):
         batch = [o for o in cand if int(o["probe"].get("order", 1)) == order]
@@ -582,13 +592,17 @@ def run_probes(execu, host_of, headers, ops, found, args):
             if miss:
                 op["skip"] = "缺少探测参数 " + ",".join(sorted(set(miss)))
                 continue
-            url = op["url"]
+            url, unresolved = fill_path(op["url"], found, op.get("params"))
+            if unresolved:
+                op["skip"] = "缺少路径参数 " + ",".join(unresolved)
+                continue
             if query:
                 url += ("&" if "?" in url else "?") + "&".join(
                     f"{k}={v}" for k, v in query.items())
             rid = f"probe{order}:{i}"
-            reqs.append({"id": rid, "method": "POST", "url": host + url,
-                         "headers": dict(headers), "body": body})
+            reqs.append({"id": rid, "method": op["method"], "url": host + url,
+                         "headers": dict(headers),
+                         "body": body if op["method"] == "POST" else None})
             index[rid] = op
             op["req_url"] = url
         if not reqs:
@@ -622,16 +636,27 @@ def service_scope(url):
     return "/".join(parts[:3]) + "/" if len(parts) > 3 else "/api/"
 
 
-def fill_path(url, found):
-    """用作用域最长匹配的值填充 URL 中的 {param};返回 (url, 未解析参数)。"""
+def fill_path(url, found, params=None):
+    """用作用域最长匹配的值填充 URL 中的 {param};返回 (url, 未解析参数)。
+
+    发现不到时退回该路径参数自身声明的 example / default / enum —— 像
+    template_type(枚举只有 python)、package_name(example: requests)这类
+    取值不依赖环境数据的参数,没必要因为「列表里没有」而整条跳过。
+    """
+    by_name = {p.get("name"): p for p in (params or [])
+               if p.get("in") == "path"}
     missing = []
     for name in re.findall(r"\{([^}]+)\}", url):
         cands = [(len(scope), val) for scope, n, val in found
                  if n == name and url.startswith(scope)]
-        if not cands:
-            missing.append(name)
-            continue
-        url = url.replace("{" + name + "}", str(max(cands)[1]))
+        if cands:
+            val = str(max(cands)[1])
+        else:
+            val = sample_value(by_name.get(name, {}))
+            if val is None:
+                missing.append(name)
+                continue
+        url = url.replace("{" + name + "}", val)
     return url, missing
 
 
@@ -649,6 +674,7 @@ DEFAULT_HOSTS = {
     # 本工具只发 GET，因此实际会全部跳过；这条映射是为 GET /mcp/info 及后续可能新增的
     # GET 端点预留，不代表 context-loader 已被覆盖。
     "/api/agent-retrieval/": "http://agent-retrieval:30779",
+    "/api/agent-operator-integration/": "http://agent-operator-integration:9000",
 }
 
 
@@ -719,7 +745,7 @@ def main():
         readonly_post = op["method"] == "POST" and op["override"] and args.include_query_post
         if op["method"] != "GET" and not readonly_post:
             continue
-        url, missing = fill_path(op["url"], ids)
+        url, missing = fill_path(op["url"], ids, op.get("params"))
         if missing:
             op["skip"] = "缺少路径参数 " + ",".join(missing)
             continue
