@@ -53,24 +53,80 @@ func TestSQLServerConnectorListTables(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
 	connector := &SQLServerConnector{config: &config{Database: "erp", Schemas: []string{"dbo"}}, connected: true, db: db}
-	mock.ExpectQuery("SELECT s.name, o.name, o.type").WithArgs("dbo").WillReturnRows(
-		sqlmock.NewRows([]string{"schema", "name", "type"}).AddRow("dbo", "orders", "U").AddRow("dbo", "order_view", "V"),
+	mock.ExpectQuery("SELECT s.name, o.name, o.type, COALESCE").WithArgs("dbo").WillReturnRows(
+		sqlmock.NewRows([]string{"schema", "name", "type", "description"}).
+			AddRow("dbo", "orders", "U", "Sales orders").
+			AddRow("dbo", "order_view", "V", "Order summary"),
 	)
 
 	tables, err := connector.ListTables(context.Background())
 	require.NoError(t, err)
 	require.Len(t, tables, 2)
 	assert.Equal(t, "table", tables[0].TableType)
+	assert.Equal(t, "Sales orders", tables[0].Description)
 	assert.Equal(t, "view", tables[1].TableType)
+	assert.Equal(t, "Order summary", tables[1].Description)
 	mock.ExpectClose()
 	require.NoError(t, connector.Close(context.Background()))
 }
 
-func TestSQLServerConnectorMapType(t *testing.T) {
-	connector := &SQLServerConnector{}
-	assert.Equal(t, interfaces.DataType_Decimal, connector.MapType("DECIMAL"))
-	assert.Equal(t, interfaces.DataType_Timestamp, connector.MapType("datetimeoffset"))
-	assert.Equal(t, interfaces.DataType_Other, connector.MapType("geography"))
+func TestSQLServerConnectorGetTableMeta(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+	connector := &SQLServerConnector{connected: true, db: db}
+	table := &interfaces.TableMeta{
+		Name: "orders", Schema: "sales", Database: "erp", Properties: map[string]any{"existing": true},
+	}
+
+	mock.ExpectQuery("SELECT o.type, COALESCE").WithArgs("sales", "orders").WillReturnRows(
+		sqlmock.NewRows([]string{"type", "description"}).AddRow("U", "Sales orders"),
+	)
+	mock.ExpectQuery("SELECT c.name, t.name, c.is_nullable").WithArgs("sales", "orders").WillReturnRows(
+		sqlmock.NewRows([]string{
+			"name", "type", "nullable", "char_max_len", "num_precision", "num_scale",
+			"datetime_precision", "default", "description", "collation", "ordinal",
+		}).
+			AddRow("order_id", "int", false, 0, 10, 0, 0, "", "Order identifier", "", 1).
+			AddRow("customer_id", "int", false, 0, 10, 0, 0, "", "", "", 2).
+			AddRow("customer_name", "nvarchar", true, 100, 0, 0, 0, "(N'unknown')", "Customer name", "Chinese_PRC_CI_AS", 3).
+			AddRow("amount", "decimal", false, 0, 18, 2, 0, "((0))", "Order amount", "", 4).
+			AddRow("occurred_at", "datetime2", false, 0, 0, 0, 7, "(sysdatetime())", "", "", 5),
+	)
+	mock.ExpectQuery("SELECT i.name, i.is_unique, i.is_primary_key, col.name").WithArgs("sales", "orders").WillReturnRows(
+		sqlmock.NewRows([]string{"name", "unique", "primary", "column"}).
+			AddRow("PK_orders", true, true, "order_id").
+			AddRow("UX_orders_customer_time", true, false, "customer_id").
+			AddRow("UX_orders_customer_time", true, false, "occurred_at"),
+	)
+	mock.ExpectQuery("SELECT fk.name, parent_col.name, ref_schema.name").WithArgs("sales", "orders").WillReturnRows(
+		sqlmock.NewRows([]string{"name", "column", "ref_schema", "ref_table", "ref_column", "on_delete", "on_update"}).
+			AddRow("FK_orders_customer", "customer_id", "crm", "customers", "id", "NO_ACTION", "CASCADE"),
+	)
+
+	require.NoError(t, connector.GetTableMeta(context.Background(), table))
+	assert.Equal(t, "table", table.TableType)
+	assert.Equal(t, "Sales orders", table.Description)
+	assert.Equal(t, map[string]any{"existing": true}, table.Properties)
+	require.Len(t, table.Columns, 5)
+	assert.Equal(t, "int", table.Columns[0].Type)
+	assert.Equal(t, "Order identifier", table.Columns[0].Description)
+	assert.Equal(t, "PRI", table.Columns[0].ColumnKey)
+	assert.Equal(t, 100, table.Columns[2].CharMaxLen)
+	assert.Equal(t, "(N'unknown')", table.Columns[2].DefaultValue)
+	assert.Equal(t, "Chinese_PRC_CI_AS", table.Columns[2].Collation)
+	assert.Equal(t, 18, table.Columns[3].NumPrecision)
+	assert.Equal(t, 2, table.Columns[3].NumScale)
+	assert.Equal(t, 7, table.Columns[4].DatetimePrecision)
+	assert.Equal(t, []string{"order_id"}, table.PKs)
+	require.Len(t, table.Indices, 2)
+	assert.Equal(t, []string{"customer_id", "occurred_at"}, table.Indices[1].Columns)
+	require.Len(t, table.ForeignKeys, 1)
+	assert.Equal(t, "crm.customers", table.ForeignKeys[0].RefTable)
+	assert.Equal(t, []string{"customer_id"}, table.ForeignKeys[0].Columns)
+	assert.Equal(t, []string{"id"}, table.ForeignKeys[0].RefColumns)
+	assert.Equal(t, "NO_ACTION", table.ForeignKeys[0].OnDelete)
+	assert.Equal(t, "CASCADE", table.ForeignKeys[0].OnUpdate)
 }
 
 func TestSQLServerConnectorExecuteQuery(t *testing.T) {

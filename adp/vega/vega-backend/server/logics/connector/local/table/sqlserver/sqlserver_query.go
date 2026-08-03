@@ -7,6 +7,7 @@ package sqlserver
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -14,6 +15,66 @@ import (
 
 	"vega-backend/interfaces"
 )
+
+// BuildPagedSQL applies SQL Server paging syntax to a validated query.
+func (c *SQLServerConnector) BuildPagedSQL(sql string, offset, limit int) string {
+	return fmt.Sprintf(
+		"SELECT * FROM (%s) AS _raw_query_page ORDER BY (SELECT 1) OFFSET %d ROWS FETCH NEXT %d ROWS ONLY",
+		sql, offset, limit,
+	)
+}
+
+// ExecuteRawSQL executes a validated read-only SQL statement.
+func (c *SQLServerConnector) ExecuteRawSQL(ctx context.Context, statement string) (*interfaces.RawQueryResponse, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("connect failed: %w", err)
+	}
+	rows, err := c.db.QueryContext(ctx, statement)
+	if err != nil {
+		return nil, fmt.Errorf("execute query failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, err
+	}
+	result := &interfaces.RawQueryResponse{
+		Columns: make([]interfaces.ColumnInfo, len(columns)),
+		Entries: make([]map[string]any, 0),
+	}
+	for i, name := range columns {
+		result.Columns[i] = interfaces.ColumnInfo{Name: name, Type: c.MapType(types[i].DatabaseTypeName())}
+	}
+	for rows.Next() {
+		values := make([]any, len(columns))
+		destinations := make([]any, len(columns))
+		for i := range values {
+			destinations[i] = &values[i]
+		}
+		if err := rows.Scan(destinations...); err != nil {
+			return nil, err
+		}
+		entry := make(map[string]any, len(columns))
+		for i, name := range columns {
+			if value, ok := values[i].([]byte); ok {
+				entry[name] = string(value)
+			} else {
+				entry[name] = values[i]
+			}
+		}
+		result.Entries = append(result.Entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	total := int64(len(result.Entries))
+	result.TotalCount = &total
+	return result, nil
+}
 
 // ExecuteQuery executes a parameterized table query.
 func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
@@ -202,4 +263,48 @@ func buildSQLServerHaving(having *interfaces.HavingClause, expression string) (s
 	default:
 		return nil, fmt.Errorf("unsupported HAVING operation: %s", having.Operation)
 	}
+}
+
+func qualifiedTable(identifier string) string {
+	parts := strings.Split(identifier, ".")
+	quoted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		quoted = append(quoted, quoteIdentifier(strings.TrimSpace(part)))
+	}
+	return strings.Join(quoted, ".")
+}
+
+func quoteIdentifier(identifier string) string {
+	return "[" + strings.ReplaceAll(identifier, "]", "]]") + "]"
+}
+
+func scanQueryRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	result := &interfaces.QueryResult{Columns: columns, Entries: make([]map[string]any, 0)}
+	for rows.Next() {
+		values, pointers := make([]any, len(columns)), make([]any, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, err
+		}
+		entry := make(map[string]any, len(columns))
+		for i, column := range columns {
+			if value, ok := values[i].([]byte); ok {
+				entry[column] = string(value)
+			} else {
+				entry[column] = values[i]
+			}
+		}
+		result.Entries = append(result.Entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result.Total = int64(len(result.Entries))
+	return result, nil
 }
