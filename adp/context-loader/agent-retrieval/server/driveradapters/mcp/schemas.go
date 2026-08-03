@@ -367,7 +367,10 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 			"bkn_start_interaction，operation_key 由调用方自取且同一次逻辑调用重试时须保持不变。" +
 			"三者必须同时提供或同时省略：省略时本服务按当前 MCP 连接自动归并会话，" +
 			"调用可直接执行，但证据链只能追溯到连接级而非具体的用户提问；" +
-			"半数提供会被拒绝，因为缺失字段只能凭空生成，会让回执声称一条从未发生的因果关系。",
+			"半数提供会被拒绝，因为缺失字段只能凭空生成，会让回执声称一条从未发生的因果关系。" +
+			"自动会话在连接空闲超过 5 分钟租约后由本服务自动重建，无需客户端干预；" +
+			"单次交互最多承载 128 个操作，达到上限后需等待约 5 分钟由服务端回收，" +
+			"其间该连接的调用会返回 operation_required，恢复后自动继续。",
 		"properties": map[string]any{
 			"conversation_id": map[string]any{"type": "string"},
 			"interaction_id":  map[string]any{"type": "string"},
