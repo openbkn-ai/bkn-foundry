@@ -7,7 +7,7 @@ info:
 
     本端点执行经服务端校验和资源绑定的原生查询，**不做结构化 filter 解析**：
 
-    - SQL 引擎（mysql / postgresql / clickhouse / 达梦 / oracle）→ `query` 字段为 SQL 字符串
+    - SQL 引擎（mysql / postgresql / sqlserver / clickhouse / 达梦 / oracle）→ `query` 字段为 SQL 字符串
     - 索引引擎（opensearch / elasticsearch）→ `query` 字段为 DSL JSON 对象
 
     与 `POST /resources/{id}/data`（[resource-data.yaml](resource-data.yaml)）的分工：
@@ -47,9 +47,13 @@ paths:
         **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
         - SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
+        - SQL Server T-SQL：`{"query":"SELECT TOP (20) * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"tsql"}`
         - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
 
         实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
+        SQL Server Catalog 的目标方言固定为 `tsql`；客户端可直接提交 `tsql`，也可提交受支持的其它 SQL
+        输入方言，由服务端转换为 T-SQL。无论输入方言为何，`EXEC`、`SELECT INTO`、DDL/DML 和多语句
+        都会在访问数据库前被拒绝。
 
         **SQL 语法边界**：只接受单条顶层 `SELECT`。支持同一 Catalog 内的 `JOIN`、
         `WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询不被
@@ -176,7 +180,7 @@ components:
           oneOf:
             - type: string
               description: |
-                SQL 字符串（mysql / postgresql 等）。仅允许单条顶层 `SELECT`；支持同一
+                SQL 字符串（mysql / postgresql / sqlserver 等）。仅允许单条顶层 `SELECT`；支持同一
                 Catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。
                 不支持 WITH/CTE、集合运算、多语句、SELECT INTO、锁定读取、DML/DDL、
                 事务、权限或过程类语句。子查询须由输入方言与连接器支持；窗口函数和其他
@@ -191,13 +195,16 @@ components:
             - sql
             - dsl
         input_dialect:
-          description: SQL 输入方言；SQL 省略时默认 `postgres`。DSL 首发必须是 `opensearch`。
+          description: |
+            输入方言。SQL 省略时默认 `postgres`；SQL Server 原生 T-SQL 使用 `tsql`。
+            SQL Server Catalog 的执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。
           type: string
-          examples:
+          enum:
             - postgres
             - mysql
             - trino
             - duckdb
+            - tsql
             - opensearch
         paging:
           allOf:

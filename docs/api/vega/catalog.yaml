@@ -5,8 +5,41 @@ info:
   description: |
     Vega Backend Catalog（数据目录）API。
 
-    Catalog 是一个数据源连接的抽象，对应一个物理数据源（MySQL / OpenSearch / S3 等）
+    Catalog 是一个数据源连接的抽象，对应一个物理数据源（MySQL / SQL Server / OpenSearch / S3 等）
     或逻辑目录（虚拟视图）。资源（`Resource`）按 catalog 归属注册。
+
+    **SQL Server 连接器（`connector_type: sqlserver`）**
+
+    ```json
+    {
+      "connector_type": "sqlserver",
+      "connector_config": {
+        "host": "sqlserver.example.com",
+        "port": 1433,
+        "username": "vega_reader",
+        "password": "<encrypted-password>",
+        "database": "sales",
+        "schemas": ["dbo", "reporting"],
+        "options": {
+          "encrypt": true,
+          "trustservercertificate": false,
+          "hostnameincertificate": "sqlserver.example.com",
+          "connection timeout": 30,
+          "app name": "vega-backend"
+        }
+      }
+    }
+    ```
+
+    - `host`、`port`、`username`、`password`、`database` 必填；`schemas` 为空时发现当前账号可见的非系统 schema。
+    - `options` 仅允许 `encrypt`、`trustservercertificate`、`hostnameincertificate`、
+      `connection timeout` 和 `app name`（名称不区分大小写）；其中前两项必须是 boolean。
+    - 推荐使用独立只读账号，并授予目标数据库的连接、元数据查看和查询权限。例如：
+      `GRANT CONNECT TO [vega_reader]`、`GRANT VIEW DEFINITION TO [vega_reader]`，以及
+      `ALTER ROLE [db_datareader] ADD MEMBER [vega_reader]`；不要授予 `db_datawriter`、`db_ddladmin` 或 `db_owner`。
+    - TLS 可通过上述驱动参数启用；`trustservercertificate: true` 会跳过服务端证书校验，只适合受控测试环境。
+      当前未提供自定义 CA 文件配置，TLS 成功与失败路径尚待真实 SQL Server 环境验收。
+    - 一个 Catalog 只连接一个 database，并在其中按 schema 发现对象；不支持跨数据库发现、CDC 和 Windows 集成认证。
 
     **可检索业务 KV（`extensions`，Issue #382，方案 B）**
 
@@ -655,8 +688,10 @@ components:
           description: 是否为内部 Catalog
           type: boolean
         connector_type:
-          description: 连接器类型标识（参见 connector-type.yaml）
+          description: 连接器类型标识（参见 connector-type.yaml）；SQL Server 使用 `sqlserver`
           type: string
+          examples:
+            - sqlserver
         connector_config:
           description: 连接器配置（结构由 ConnectorType.field_config 决定）
           type: object
@@ -745,12 +780,24 @@ components:
           description: 是否启用；未传按 false 处理。PUT 不允许切换该字段，启停切换请使用专用 enable/disable 接口。
           type: boolean
         connector_type:
-          description: 连接器类型标识；必须是已注册且 enabled 的类型
+          description: 连接器类型标识；必须是已注册且 enabled 的类型，SQL Server 使用 `sqlserver`
           type: string
+          examples:
+            - sqlserver
         connector_config:
           description: 连接器配置；字段由 ConnectorType.field_config 决定
           type: object
           additionalProperties: true
+          examples:
+            - host: sqlserver.example.com
+              port: 1433
+              username: vega_reader
+              password: <encrypted-password>
+              database: sales
+              schemas: [dbo, reporting]
+              options:
+                encrypt: true
+                trustservercertificate: false
         internal:
           description: 仅 POST 创建 logical Catalog 时可设为 `true`；与非空 `connector_type` 同时提供返回 400。省略时为 `false`，PUT 时忽略。
           type: boolean
@@ -849,12 +896,24 @@ components:
         - connector_config
       properties:
         connector_type:
-          description: 已注册且 enabled 的连接器类型标识
+          description: 已注册且 enabled 的连接器类型标识；SQL Server 使用 `sqlserver`
           type: string
+          examples:
+            - sqlserver
         connector_config:
           description: 用于本次探测的连接器配置；字段由 ConnectorType.field_config 决定
           type: object
           additionalProperties: true
+          examples:
+            - host: sqlserver.example.com
+              port: 1433
+              username: vega_reader
+              password: <encrypted-password>
+              database: sales
+              schemas: [dbo, reporting]
+              options:
+                encrypt: true
+                trustservercertificate: false
     CatalogHealthStatusEntry:
       description: catalog 健康状态条目
       type: object
