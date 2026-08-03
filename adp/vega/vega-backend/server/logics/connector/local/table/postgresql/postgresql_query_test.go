@@ -99,7 +99,7 @@ func TestPostgresqlConvertValue(t *testing.T) {
 	})
 }
 
-func TestPostgresqlBuildConnString(t *testing.T) {
+func TestPostgresqlConnectorConnectionString(t *testing.T) {
 	t.Run("postgresql build conn string", func(t *testing.T) {
 		connector := &PostgresqlConnector{
 			config: &postgresqlConfig{
@@ -115,13 +115,13 @@ func TestPostgresqlBuildConnString(t *testing.T) {
 			},
 		}
 
-		got := connector.buildConnString()
+		got := connector.connectionString()
 
 		assert.Contains(t, got, "postgres://user:pa%20ss@postgres:5432/app?")
 		assert.Contains(t, got, "search_path=public")
 		assert.Contains(t, got, "sslmode=require")
 
 		connector.config.Options = nil
-		assert.Contains(t, connector.buildConnString(), "sslmode=disable")
+		assert.Contains(t, connector.connectionString(), "sslmode=disable")
 	})
 }

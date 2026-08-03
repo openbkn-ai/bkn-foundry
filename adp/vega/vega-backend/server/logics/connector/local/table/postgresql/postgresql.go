@@ -11,7 +11,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	_ "github.com/lib/pq"
@@ -148,11 +150,11 @@ func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Co
 	}, nil
 }
 
-func (c *PostgresqlConnector) buildConnString() string {
+func (c *PostgresqlConnector) connectionString() string {
 	u := &url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.config.Username, c.config.Password),
-		Host:   fmt.Sprintf("%s:%d", c.config.Host, c.config.Port),
+		Host:   net.JoinHostPort(c.config.Host, strconv.Itoa(c.config.Port)),
 		Path:   "/" + strings.TrimPrefix(c.config.Database, "/"),
 	}
 	q := u.Query()
@@ -174,7 +176,7 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := sql.Open("postgres", c.buildConnString())
+	db, err := sql.Open("postgres", c.connectionString())
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/mitchellh/mapstructure"
@@ -151,14 +153,7 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 	}, nil
 }
 
-// Connect establishes connection to MariaDB database.
-// 如果 Config.Database 为空，则连接到实例级别（不指定数据库）。
-func (c *MariaDBConnector) Connect(ctx context.Context) error {
-	if c.connected {
-		return nil
-	}
-
-	// Build DSN
+func (c *MariaDBConnector) connectionString() string {
 	values := url.Values{}
 	values.Set("charset", "utf8mb4")
 	values.Set("parseTime", "true")
@@ -168,11 +163,21 @@ func (c *MariaDBConnector) Connect(ctx context.Context) error {
 		values.Set(k, fmt.Sprintf("%v", v))
 	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/?%s",
-		c.config.Username, c.config.Password, c.config.Host, c.config.Port,
+	return fmt.Sprintf("%s:%s@tcp(%s)/?%s",
+		c.config.Username,
+		c.config.Password,
+		net.JoinHostPort(c.config.Host, strconv.Itoa(c.config.Port)),
 		values.Encode())
+}
 
-	db, err := sql.Open("mysql", dsn)
+// Connect establishes connection to MariaDB database.
+// 如果 Config.Database 为空，则连接到实例级别（不指定数据库）。
+func (c *MariaDBConnector) Connect(ctx context.Context) error {
+	if c.connected {
+		return nil
+	}
+
+	db, err := sql.Open("mysql", c.connectionString())
 	if err != nil {
 		return err
 	}

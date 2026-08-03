@@ -67,6 +67,22 @@ func TestSQLServerConnectorNew(t *testing.T) {
 	assert.Equal(t, "true", connectionURL.Query().Get("encrypt"))
 	assert.Equal(t, "false", connectionURL.Query().Get("trustservercertificate"))
 
+	t.Run("builds IPv6 connection URL", func(t *testing.T) {
+		connector, err := builder.New(interfaces.ConnectorConfig{
+			"host":     "2001:db8::1",
+			"port":     1433,
+			"username": "reader",
+			"password": "secret",
+			"database": "erp",
+		})
+		require.NoError(t, err)
+
+		connectionURL, err := url.Parse(connector.(*SQLServerConnector).connectionString())
+		require.NoError(t, err)
+		assert.Equal(t, "2001:db8::1", connectionURL.Hostname())
+		assert.Equal(t, "1433", connectionURL.Port())
+	})
+
 	invalidConfigs := []struct {
 		name         string
 		config       interfaces.ConnectorConfig

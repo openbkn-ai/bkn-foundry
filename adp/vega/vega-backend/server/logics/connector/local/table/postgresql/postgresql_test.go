@@ -9,6 +9,7 @@ package postgresql
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -111,6 +112,17 @@ func TestPostgresqlConnectorNew(t *testing.T) {
 		assert.Nil(t, connector)
 		assert.ErrorContains(t, err, "duplicate element")
 	})
+}
+
+func TestPostgresqlConnectorConnectionStringSupportsIPv6(t *testing.T) {
+	connector := &PostgresqlConnector{config: &postgresqlConfig{
+		Host: "2001:db8::1", Port: 5432, Username: "user", Password: "secret", Database: "app",
+	}}
+
+	connectionURL, err := url.Parse(connector.connectionString())
+	require.NoError(t, err)
+	assert.Equal(t, "2001:db8::1", connectionURL.Hostname())
+	assert.Equal(t, "5432", connectionURL.Port())
 }
 
 func TestPostgresqlConnectorValidateSchemas(t *testing.T) {

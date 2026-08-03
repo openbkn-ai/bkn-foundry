@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -171,7 +172,7 @@ func (c *SQLServerConnector) connectionString() string {
 	u := &url.URL{
 		Scheme: "sqlserver",
 		User:   url.UserPassword(c.config.Username, c.config.Password),
-		Host:   c.config.Host + ":" + strconv.Itoa(c.config.Port),
+		Host:   net.JoinHostPort(c.config.Host, strconv.Itoa(c.config.Port)),
 	}
 	q := u.Query()
 	q.Set("database", c.config.Database)

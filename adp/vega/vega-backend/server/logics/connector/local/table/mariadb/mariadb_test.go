@@ -102,6 +102,14 @@ func TestMariaDBConnectorNew(t *testing.T) {
 	})
 }
 
+func TestMariaDBConnectorConnectionStringSupportsIPv6(t *testing.T) {
+	connector := &MariaDBConnector{config: &mariadbConfig{
+		Host: "2001:db8::1", Port: 3306, Username: "root", Password: "secret",
+	}}
+
+	assert.Contains(t, connector.connectionString(), "@tcp([2001:db8::1]:3306)/")
+}
+
 func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app", "audit"})

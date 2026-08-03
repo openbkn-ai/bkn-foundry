@@ -126,6 +126,9 @@ WHERE s.name=@p1 AND o.name=@p2 AND o.type IN ('U','V')`, table.Schema, table.Na
 }
 
 func (c *SQLServerConnector) fetchColumns(ctx context.Context, table *interfaces.TableMeta) error {
+	// Keep the declared user type in Type/OriginalType. SQL Server alias types are
+	// currently unsupported by TypeMapping and are intentionally mapped to other;
+	// bt is only used to derive the underlying type's length and precision metadata.
 	rows, err := c.db.QueryContext(ctx, `SELECT c.name, t.name, c.is_nullable,
 CASE
   WHEN COALESCE(bt.name,t.name) IN ('nchar','nvarchar') AND c.max_length=-1 THEN -1
