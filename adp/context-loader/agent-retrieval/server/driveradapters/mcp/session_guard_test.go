@@ -146,14 +146,14 @@ func TestSessionGuardDistinguishesUninstalledAndUnavailableCore(t *testing.T) {
 		{
 			name:     "not configured",
 			ensure:   ensureOperationAdapter(bkntrace.NewLifecycleClient("", nil)),
-			wantCode: "feature_not_installed", wantAction: "install_enterprise_implementation",
+			wantCode: "feature_not_installed", wantAction: "",
 		},
 		{
 			name: "runtime unavailable",
 			ensure: func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 				return nil, nil, errors.New("connection refused")
 			},
-			wantCode: "feature_not_installed", wantAction: "install_enterprise_implementation",
+			wantCode: "feature_not_installed", wantAction: "",
 		},
 	}
 	for _, test := range tests {

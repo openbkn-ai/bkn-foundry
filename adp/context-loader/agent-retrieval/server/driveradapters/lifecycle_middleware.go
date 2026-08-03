@@ -204,19 +204,28 @@ func lifecycleUnavailableError(client *bkntrace.LifecycleClient) bkntrace.APIErr
 	if client == nil || !client.Enabled() {
 		message = "BKN Trace Core is not configured"
 	}
-	return bkntrace.APIError{
-		Code: "feature_not_installed", Message: message,
-		RequiredAction: "install_enterprise_implementation",
-	}
+	// No required_action. It used to say "install_enterprise_implementation",
+	// which a community deployment shipped to every caller whose trace core was
+	// simply unconfigured — a paid surface announcing itself from the image that
+	// is supposed to prove it is not there (ee-design.md §4.4). What the caller
+	// needs is that the dependency is unavailable; which product answers it is
+	// the operator's business, and the operator reads logs.
+	return bkntrace.APIError{Code: "feature_not_installed", Message: message}
 }
 
 func lifecycleHTTPStatus(code string) int {
 	switch code {
 	case "conversation_required", "interaction_required", "operation_required":
 		return http.StatusBadRequest
-	case "conversation_not_found", "resource_not_disclosed":
+	// capability_not_licensed belongs with these, not with permission_denied:
+	// a licence gap must be indistinguishable from the resource not existing,
+	// while a permission gap is told plainly (ee-design.md §4.5 — 缺证书 →
+	// 装作没有；缺权限 → 明确拒绝). Sharing an arm with permission_denied made
+	// an entitlement boundary answer like an authorization one, which is the
+	// one distinction the two-binary contract depends on.
+	case "conversation_not_found", "resource_not_disclosed", "capability_not_licensed":
 		return http.StatusNotFound
-	case "conversation_owner_mismatch", "permission_denied", "capability_not_licensed":
+	case "conversation_owner_mismatch", "permission_denied":
 		return http.StatusForbidden
 	case "feature_not_installed":
 		return http.StatusNotImplemented

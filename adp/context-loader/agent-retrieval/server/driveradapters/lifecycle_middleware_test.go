@@ -378,11 +378,22 @@ func TestLifecycleHTTPStatusPreservesProtocolSemantics(t *testing.T) {
 		"permission_denied":           http.StatusForbidden,
 		"feature_not_installed":       http.StatusNotImplemented,
 		"receipt_pending":             http.StatusConflict,
+		// A licence gap is hidden, not refused. This code was never covered
+		// here, which is how it sat in the same arm as permission_denied.
+		"capability_not_licensed": http.StatusNotFound,
 	}
 	for code, want := range tests {
 		if got := lifecycleHTTPStatus(code); got != want {
 			t.Errorf("lifecycleHTTPStatus(%q) = %d, want %d", code, got, want)
 		}
+	}
+
+	// The distinction the two-binary contract rests on: an entitlement gap must
+	// not be reported the way an authorization gap is. Asserting the two codes
+	// separately above would still pass if someone merged the arms again, so
+	// assert the inequality itself.
+	if lifecycleHTTPStatus("capability_not_licensed") == lifecycleHTTPStatus("permission_denied") {
+		t.Error("缺证书与缺权限返回了同一个状态码——档位边界会被当成授权边界识别出来")
 	}
 }
 

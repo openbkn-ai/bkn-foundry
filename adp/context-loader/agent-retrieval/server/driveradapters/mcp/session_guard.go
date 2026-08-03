@@ -203,10 +203,9 @@ func lifecycleAvailabilityError(err error) lifecycleError {
 	if errors.Is(err, bkntrace.ErrFeatureNotInstalled) {
 		message = "BKN Trace Core is not configured"
 	}
-	return lifecycleError{
-		Code: "feature_not_installed", Message: message,
-		RequiredAction: "install_enterprise_implementation",
-	}
+	// See the HTTP twin in driveradapters/lifecycle_middleware.go: the caller is
+	// told the dependency is unavailable, not which product to buy.
+	return lifecycleError{Code: "feature_not_installed", Message: message}
 }
 
 func operationIdentity(operation any) (string, int) {
