@@ -86,16 +86,27 @@ func TestClaimAfterFreezePanics(t *testing.T) {
 	}
 }
 
-func TestClaimWithoutLicensePanics(t *testing.T) {
+func TestClaimWithoutLicenseIsAllowed(t *testing.T) {
 	reset()
 	SetGate(only(FeatureRBACBasic))
 
-	// ee is expected to check its license before registering; reaching Claim
-	// for an unlicensed feature means that check was skipped.
-	got := mustPanic(t, "unlicensed Claim", func() { Claim(FeaturePermObjectLevel, "ee") })
-	msg, _ := got.(string)
-	if !strings.Contains(msg, "without a license") {
-		t.Fatalf("panic message should say the license is missing, got %q", msg)
+	// Registration is unconditional. Refusing to record an unlicensed
+	// implementation is what makes a certificate installed later unable to
+	// switch it on: the socket is frozen before the certificate arrives, so the
+	// only remedy left is a restart. The licence is judged per request instead.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Claim must not refuse an unlicensed feature: %v", r)
+		}
+	}()
+	Claim(FeaturePermObjectLevel, "ee")
+
+	if !registeredLocked(FeaturePermObjectLevel) {
+		t.Fatal("the claim should be recorded even though the feature is unlicensed")
+	}
+	// …and recorded is still not usable: that judgement stays with the licence.
+	if Usable(FeaturePermObjectLevel) {
+		t.Fatal("an unlicensed feature must not report as usable just because it is registered")
 	}
 }
 

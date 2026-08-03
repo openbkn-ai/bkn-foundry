@@ -154,13 +154,27 @@ func TestRegisterNilPanics(t *testing.T) {
 	Register(nil)
 }
 
-func TestRegisterWithoutLicensePanics(t *testing.T) {
+// Registering while unlicensed has to work, or a certificate installed after
+// boot could never switch the capability on without a restart.
+func TestRegisterWithoutLicenseIsAllowedAndStaysInactive(t *testing.T) {
 	on := false
 	licensed(t, &on)
+
 	defer func() {
-		if recover() == nil {
-			t.Fatal("registering without a license should panic — ee must check first")
+		if r := recover(); r != nil {
+			t.Fatalf("Register must not refuse while unlicensed: %v", r)
 		}
 	}()
 	Register(&fake{})
+
+	// Registered, but the licence still decides — Available() is that judgement.
+	// Flipping the licence must take effect
+	// with no further registration — that is the property the panic prevented.
+	if Available() {
+		t.Fatal("an unlicensed registration must not be active")
+	}
+	on = true
+	if !Available() {
+		t.Fatal("installing the licence must activate the already-registered implementation")
+	}
 }

@@ -142,15 +142,26 @@ func Enabled(f Feature) bool {
 // Typed sockets call it from their own Register; callers outside this package
 // tree should not.
 //
-// Three deliberate panics, all of them assembly bugs that must surface at
-// startup rather than silently:
+// Two deliberate panics, both assembly bugs that must surface at startup
+// rather than silently:
 //
 //   - claiming a feature twice: the second implementation would overwrite the
 //     first without a trace
 //   - claiming after Freeze: the capability set is already published and some
 //     call sites have already judged against the old one
-//   - claiming an unlicensed feature: ee is expected to check its license
-//     before registering, so reaching here means the check was skipped
+//
+// Claiming an UNLICENSED feature used to be the third, on the reasoning that ee
+// should check its licence before registering. That rule turned out to cause
+// the bug it looked like it was preventing: an implementation that only
+// registers when a licence is already present cannot be switched on by a
+// certificate installed afterwards, because the socket is frozen by the time
+// the certificate arrives. The customer then has to restart the service to fix
+// a licensing mistake, on their own site.
+//
+// So registration is unconditional and the licence is judged per request, at
+// the point of use — the same rule comm-go's entitlement/socket states for the
+// sockets built after this one. Callers that still self-check before
+// registering are not wrong, only unable to hot-activate.
 func Claim(f Feature, impl string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -159,9 +170,6 @@ func Claim(f Feature, impl string) {
 	}
 	if prev, dup := claimed[f]; dup {
 		panic(fmt.Sprintf("extension: %s already registered by %s, cannot re-register with %s", f, prev, impl))
-	}
-	if !gate.Enabled(f) {
-		panic(fmt.Sprintf("extension: %s registered by %s without a license for it — check the license before registering", f, impl))
 	}
 	claimed[f] = impl
 	assembly = append(assembly, fmt.Sprintf("%s=%s", f, impl))

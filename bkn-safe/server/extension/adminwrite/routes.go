@@ -12,10 +12,10 @@ import (
 )
 
 // Routes mounts the rbac_basic write endpoints onto g, each behind core's RBAC
-// permission check (via svc.RequirePermission). It is a Mounter — the ee build
-// wraps it with a RequireFeature("rbac_basic") group so the license layer sits
-// in front; the community build never registers any mounter, so these routes do
-// not exist there (404).
+// permission check (via svc.RequirePermission). It is a Mounter — the socket
+// wraps it with its own licence group so that layer sits in front of RBAC; the
+// community build never registers any mounter, so these routes do not exist
+// there (404). Both refusals are the same 404, which is the point.
 //
 // The handlers are deliberately thin: bind JSON, call the guarded Services
 // operation, map the sentinel error to a status. Every security rule
