@@ -7,7 +7,9 @@ package sqlserver
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -56,10 +58,18 @@ func (c *SQLServerConnector) convertFilterCondition(ctx context.Context, conditi
 		if len(value.Value) != 2 {
 			return nil, fmt.Errorf("out_range condition requires exactly 2 values")
 		}
-		if interfaces.DataType_IsDate(value.Lfield.Type) {
+		if usesUnixMilliseconds(value.Lfield.Type) {
+			lower, err := sqlServerDateComparison(value.Lfield.OriginalName, "<", value.Value[0])
+			if err != nil {
+				return nil, err
+			}
+			upper, err := sqlServerDateComparison(value.Lfield.OriginalName, ">", value.Value[1])
+			if err != nil {
+				return nil, err
+			}
 			return sq.Or{
-				sqlServerDateComparison(value.Lfield.OriginalName, "<", value.Value[0]),
-				sqlServerDateComparison(value.Lfield.OriginalName, ">", value.Value[1]),
+				lower,
+				upper,
 			}, nil
 		}
 		return sq.Or{sq.Lt{quoteIdentifier(value.Lfield.OriginalName): value.Value[0]},
@@ -121,8 +131,8 @@ func binaryCondition(cfg *interfaces.FilterCondCfg, left, right *interfaces.Prop
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return nil, fmt.Errorf("value_from %q is not supported", cfg.ValueFrom)
 	}
-	if interfaces.DataType_IsDate(left.Type) {
-		return sqlServerDateComparison(left.OriginalName, operator, value), nil
+	if usesUnixMilliseconds(left.Type) {
+		return sqlServerDateComparison(left.OriginalName, operator, value)
 	}
 	return sq.Expr(quoteIdentifier(left.OriginalName)+" "+operator+" ?", value), nil
 }
@@ -158,10 +168,18 @@ func betweenCondition(field *interfaces.Property, values []any) (sq.Sqlizer, err
 	if len(values) != 2 {
 		return nil, fmt.Errorf("between condition requires exactly 2 values")
 	}
-	if interfaces.DataType_IsDate(field.Type) {
+	if usesUnixMilliseconds(field.Type) {
+		lower, err := sqlServerDateComparison(field.OriginalName, ">=", values[0])
+		if err != nil {
+			return nil, err
+		}
+		upper, err := sqlServerDateComparison(field.OriginalName, "<=", values[1])
+		if err != nil {
+			return nil, err
+		}
 		return sq.And{
-			sqlServerDateComparison(field.OriginalName, ">=", values[0]),
-			sqlServerDateComparison(field.OriginalName, "<=", values[1]),
+			lower,
+			upper,
 		}, nil
 	}
 	return sq.And{
@@ -170,11 +188,33 @@ func betweenCondition(field *interfaces.Property, values []any) (sq.Sqlizer, err
 	}, nil
 }
 
-func sqlServerDateComparison(field, operator string, value any) sq.Sqlizer {
-	return sq.Expr(
-		quoteIdentifier(field)+" "+operator+" DATEADD_BIG(millisecond, ?, CONVERT(datetime2, '1970-01-01T00:00:00', 126))",
-		value,
-	)
+func usesUnixMilliseconds(dataType string) bool {
+	return interfaces.DataType_IsDate(dataType) && dataType != interfaces.DataType_Time
+}
+
+func sqlServerDateComparison(field, operator string, value any) (sq.Sqlizer, error) {
+	milliseconds, err := unixMilliseconds(value)
+	if err != nil {
+		return nil, err
+	}
+	return sq.Expr(quoteIdentifier(field)+" "+operator+" ?", time.UnixMilli(milliseconds).UTC()), nil
+}
+
+func unixMilliseconds(value any) (int64, error) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), nil
+	case int64:
+		return typed, nil
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) ||
+			typed < float64(math.MinInt64) || typed >= -float64(math.MinInt64) || typed != math.Trunc(typed) {
+			return 0, fmt.Errorf("date condition value must be unix milliseconds")
+		}
+		return int64(typed), nil
+	default:
+		return 0, fmt.Errorf("date condition value must be unix milliseconds")
+	}
 }
 
 func beforeCondition(field *interfaces.Property, values []any) (sq.Sqlizer, error) {
@@ -184,6 +224,9 @@ func beforeCondition(field *interfaces.Property, values []any) (sq.Sqlizer, erro
 	interval, ok := numericInterval(values[0])
 	if !ok {
 		return nil, fmt.Errorf("condition [before] interval value should be a number")
+	}
+	if interval > math.MaxInt32 {
+		return nil, fmt.Errorf("condition [before] interval exceeds SQL Server DATEADD range")
 	}
 	unit, ok := values[1].(string)
 	if !ok {

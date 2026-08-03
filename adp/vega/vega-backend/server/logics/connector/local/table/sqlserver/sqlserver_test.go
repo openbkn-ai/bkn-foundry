@@ -6,6 +6,7 @@ package sqlserver
 
 import (
 	"context"
+	"math"
 	"net/url"
 	"strings"
 	"testing"
@@ -536,7 +537,8 @@ func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
 	status := &interfaces.Property{Name: "status", OriginalName: "order_status", Type: interfaces.DataType_String}
 	tags := &interfaces.Property{Name: "tags", OriginalName: "order_tags", Type: interfaces.DataType_String}
 	createdAt := &interfaces.Property{Name: "created_at", OriginalName: "created_at", Type: interfaces.DataType_Datetime}
-	fields := map[string]*interfaces.Property{"status": status, "tags": tags, "created_at": createdAt}
+	workTime := &interfaces.Property{Name: "work_time", OriginalName: "work_time", Type: interfaces.DataType_Time}
+	fields := map[string]*interfaces.Property{"status": status, "tags": tags, "created_at": createdAt, "work_time": workTime}
 	tests := []struct {
 		name        string
 		condition   interfaces.FilterCondition
@@ -580,8 +582,16 @@ func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
 			condition: &filter_condition.BetweenCond{
 				Cfg: constCfg, Lfield: createdAt, Value: []any{float64(1000), float64(2000)},
 			},
-			containsSQL: []string{"[created_at] >= DATEADD_BIG(millisecond, @p1", "[created_at] <= DATEADD_BIG(millisecond, @p2"},
-			args:        []any{float64(1000), float64(2000)},
+			containsSQL: []string{"[created_at] >= @p1", "[created_at] <= @p2"},
+			args:        []any{time.UnixMilli(1000).UTC(), time.UnixMilli(2000).UTC()},
+		},
+		{
+			name: "time value does not use unix milliseconds",
+			condition: &filter_condition.EqualCond{
+				Cfg: constCfg, Lfield: workTime, Value: "09:00:00",
+			},
+			containsSQL: []string{"[work_time] = @p1"},
+			args:        []any{"09:00:00"},
 		},
 		{
 			name:        "exist",
@@ -617,6 +627,20 @@ func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
 			assert.Equal(t, test.args, args)
 		})
 	}
+	t.Run("rejects invalid unix milliseconds", func(t *testing.T) {
+		_, err := (&SQLServerConnector{}).convertFilterCondition(context.Background(), &filter_condition.EqualCond{
+			Cfg: constCfg, Lfield: createdAt, Value: "2026-08-03",
+		}, fields)
+
+		require.ErrorContains(t, err, "date condition value must be unix milliseconds")
+	})
+	t.Run("rejects before interval outside DATEADD range", func(t *testing.T) {
+		_, err := (&SQLServerConnector{}).convertFilterCondition(context.Background(), &filter_condition.BeforeCond{
+			Cfg: constCfg, Lfield: createdAt, Value: []any{float64(math.MaxInt32) + 1, "day"},
+		}, fields)
+
+		require.ErrorContains(t, err, "interval exceeds SQL Server DATEADD range")
+	})
 }
 
 func TestBuildSQLServerProjection(t *testing.T) {
