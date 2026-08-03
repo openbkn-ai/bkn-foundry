@@ -1037,10 +1037,12 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 
 		rs.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{
 			ID:               "r1",
+			Schema:           "schema",
 			SourceIdentifier: "schema.table_one",
 		}, nil)
 		rs.EXPECT().GetByID(gomock.Any(), "r2").Return(&interfaces.Resource{
 			ID:               "r2",
+			Schema:           "schema",
 			SourceIdentifier: "schema.table_two",
 		}, nil)
 
@@ -1052,7 +1054,28 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 		)
 
 		require.NoError(t, err)
-		assert.Equal(t, "select * from schema.table_one join schema.table_two on schema.table_one.id = schema.table_two.id", got)
+		assert.Equal(t, `select * from "schema"."table_one" join "schema"."table_two" on "schema"."table_one".id = "schema"."table_two".id`, got)
+	})
+
+	t.Run("quotes tsql special identifiers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &rawQueryService{rs: rs}
+		rs.EXPECT().GetByID(gomock.Any(), "r1").Return(&interfaces.Resource{
+			ID:               "r1",
+			Schema:           "sales data",
+			SourceIdentifier: "sales data.Order.Archive]",
+		}, nil)
+
+		got, err := svc.replaceResourceIDWithSchemaTable(context.Background(),
+			"SELECT * FROM {{r1}}",
+			[]string{"r1"},
+			&interfaces.Catalog{Name: "catalog"},
+			"tsql",
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM [sales data].[Order.Archive]]]", got)
 	})
 }
 

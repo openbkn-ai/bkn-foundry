@@ -112,6 +112,12 @@ func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
 			"postgres", []string{"public.orders", "public.customers"},
 		))
 	})
+	t.Run("accepts quoted tsql special identifiers", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateTableReferences(context.Background(),
+			"SELECT * FROM [sales data].[Order.Archive]]]",
+			"tsql", []string{"[sales data].[Order.Archive]]]"},
+		))
+	})
 	t.Run("rejects unbound physical table", func(t *testing.T) {
 		err := adapter.ValidateTableReferences(context.Background(),
 			"SELECT * FROM public.orders JOIN private.secret_customers ON true",

@@ -85,7 +85,7 @@ func (c *SQLServerConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Con
 		return nil, fmt.Errorf("port %d is out of valid range (%d-%d)", value.Port, portMin, portMax)
 	}
 	seen := make(map[string]struct{}, len(value.Schemas))
-	for _, schema := range value.Schemas {
+	for index, schema := range value.Schemas {
 		schema = strings.TrimSpace(schema)
 		if schema == "" {
 			return nil, fmt.Errorf("schema must not be empty")
@@ -94,6 +94,7 @@ func (c *SQLServerConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Con
 			return nil, fmt.Errorf("duplicate element found in schemas: %s", schema)
 		}
 		seen[strings.ToLower(schema)] = struct{}{}
+		value.Schemas[index] = schema
 	}
 	options, err := normalizeOptions(value.Options)
 	if err != nil {
@@ -118,10 +119,52 @@ func normalizeOptions(options map[string]any) (map[string]any, error) {
 			if _, ok := value.(bool); !ok {
 				return nil, fmt.Errorf("sqlserver option %s must be a boolean", name)
 			}
+		case msdsn.HostNameInCertificate, msdsn.AppName:
+			if _, ok := value.(string); !ok {
+				return nil, fmt.Errorf("sqlserver option %s must be a string", name)
+			}
+		case msdsn.ConnectionTimeout:
+			timeout, ok := connectionTimeout(value)
+			if !ok {
+				return nil, fmt.Errorf("sqlserver option %s must be a non-negative integer", name)
+			}
+			value = timeout
 		}
 		normalized[name] = value
 	}
 	return normalized, nil
+}
+
+func connectionTimeout(value any) (uint64, bool) {
+	switch timeout := value.(type) {
+	case int:
+		return uint64(timeout), timeout >= 0
+	case int8:
+		return uint64(timeout), timeout >= 0
+	case int16:
+		return uint64(timeout), timeout >= 0
+	case int32:
+		return uint64(timeout), timeout >= 0
+	case int64:
+		return uint64(timeout), timeout >= 0
+	case uint:
+		return uint64(timeout), true
+	case uint8:
+		return uint64(timeout), true
+	case uint16:
+		return uint64(timeout), true
+	case uint32:
+		return uint64(timeout), true
+	case uint64:
+		return timeout, true
+	case float32:
+		converted := float64(timeout)
+		return uint64(converted), converted >= 0 && converted == float64(uint64(converted))
+	case float64:
+		return uint64(timeout), timeout >= 0 && timeout == float64(uint64(timeout))
+	default:
+		return 0, false
+	}
 }
 
 func (c *SQLServerConnector) connectionString() string {

@@ -27,11 +27,12 @@ func TestSQLServerConnectorNew(t *testing.T) {
 		"username": "reader",
 		"password": "secret",
 		"database": "erp",
-		"schemas":  []string{"dbo"},
+		"schemas":  []string{" dbo ", " reporting "},
 	})
 	require.NoError(t, err)
 	got := connector.(*SQLServerConnector)
 	assert.Equal(t, "sqlserver", got.config.Host)
+	assert.Equal(t, []string{"dbo", "reporting"}, got.config.Schemas)
 	connectionURL, err := url.Parse(got.connectionString())
 	require.NoError(t, err)
 	assert.Equal(t, "erp", connectionURL.Query().Get("database"))
@@ -57,7 +58,7 @@ func TestSQLServerConnectorNew(t *testing.T) {
 		"encrypt":                true,
 		"trustservercertificate": false,
 		"hostnameincertificate":  "db.internal",
-		"connection timeout":     10,
+		"connection timeout":     uint64(10),
 		"app name":               "vega",
 	}, connector.(*SQLServerConnector).config.Options)
 	connectionURL, err = url.Parse(connector.(*SQLServerConnector).connectionString())
@@ -142,6 +143,54 @@ func TestSQLServerConnectorNew(t *testing.T) {
 			},
 			errorContain: "sqlserver option trustservercertificate must be a boolean",
 		},
+		{
+			name: "host name in certificate must be string",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"hostnameincertificate": true},
+			},
+			errorContain: "sqlserver option hostnameincertificate must be a string",
+		},
+		{
+			name: "app name must be string",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"app name": []string{"vega"}},
+			},
+			errorContain: "sqlserver option app name must be a string",
+		},
+		{
+			name: "connection timeout must be integer",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"connection timeout": 1.5},
+			},
+			errorContain: "sqlserver option connection timeout must be a non-negative integer",
+		},
+		{
+			name: "connection timeout must be non-negative",
+			config: interfaces.ConnectorConfig{
+				"host":     "sqlserver",
+				"port":     1433,
+				"username": "reader",
+				"password": "secret",
+				"database": "erp",
+				"options":  map[string]any{"connection timeout": -1},
+			},
+			errorContain: "sqlserver option connection timeout must be a non-negative integer",
+		},
 	}
 	for _, test := range invalidConfigs {
 		t.Run(test.name, func(t *testing.T) {
@@ -215,6 +264,57 @@ func TestSQLServerConnectorBuildCountSQL(t *testing.T) {
 			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders\n) AS _raw_query_total\nOPTION (RECOMPILE)",
 			connector.BuildCountSQL("SELECT id FROM dbo.orders ORDER BY id OPTION (RECOMPILE)"),
 		)
+	})
+}
+
+func TestSQLServerConnectorExecuteRawSQL(t *testing.T) {
+	t.Run("preserves binary values", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+		connector := &SQLServerConnector{connected: true, db: db}
+		binaryValue := []byte{0xff, 0xfe, 0x01}
+		mock.ExpectQuery("SELECT payload FROM dbo.documents").WillReturnRows(
+			sqlmock.NewRows([]string{"payload"}).AddRow(binaryValue),
+		)
+
+		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT payload FROM dbo.documents")
+
+		require.NoError(t, err)
+		require.Len(t, result.Entries, 1)
+		assert.Equal(t, binaryValue, result.Entries[0]["payload"])
+	})
+}
+
+func TestScanQueryRows(t *testing.T) {
+	t.Run("preserves binary values", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+		binaryValue := []byte{0x00, 0xff, 0x7f}
+		mock.ExpectQuery("SELECT payload FROM dbo.documents").WillReturnRows(
+			sqlmock.NewRows([]string{"payload"}).AddRow(binaryValue),
+		)
+		rows, err := db.QueryContext(context.Background(), "SELECT payload FROM dbo.documents")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, rows.Close()) }()
+
+		result, err := scanQueryRows(rows)
+
+		require.NoError(t, err)
+		require.Len(t, result.Entries, 1)
+		assert.Equal(t, binaryValue, result.Entries[0]["payload"])
+	})
+}
+
+func TestQualifiedResourceTable(t *testing.T) {
+	t.Run("quotes schema and preserves dots in table name", func(t *testing.T) {
+		resource := &interfaces.Resource{
+			Schema:           "sales data",
+			SourceIdentifier: "sales data.Order.Archive]",
+		}
+
+		assert.Equal(t, "[sales data].[Order.Archive]]]", qualifiedResourceTable(resource))
 	})
 }
 
@@ -354,21 +454,131 @@ func TestSQLServerConnectorExecuteAggregateQuery(t *testing.T) {
 }
 
 func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
-	property := &interfaces.Property{Name: "status", OriginalName: "order_status"}
-	condition := &filter_condition.EqualCond{
-		Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}},
-		Lfield: property,
-		Value:  "paid",
+	constCfg := &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}}
+	status := &interfaces.Property{Name: "status", OriginalName: "order_status", Type: interfaces.DataType_String}
+	tags := &interfaces.Property{Name: "tags", OriginalName: "order_tags", Type: interfaces.DataType_String}
+	createdAt := &interfaces.Property{Name: "created_at", OriginalName: "created_at", Type: interfaces.DataType_Datetime}
+	fields := map[string]*interfaces.Property{"status": status, "tags": tags, "created_at": createdAt}
+	tests := []struct {
+		name        string
+		condition   interfaces.FilterCondition
+		containsSQL []string
+		args        []any
+	}{
+		{
+			name: "equal",
+			condition: &filter_condition.EqualCond{
+				Cfg: constCfg, Lfield: status, Value: "paid",
+			},
+			containsSQL: []string{"[order_status] = @p1"},
+			args:        []any{"paid"},
+		},
+		{
+			name: "contain",
+			condition: &filter_condition.ContainCond{
+				Cfg: constCfg, Lfield: tags, Value: []any{"priority", "paid"},
+			},
+			containsSQL: []string{"STRING_SPLIT(CAST([order_tags] AS nvarchar(max)), ',')", "_split.value = @p1", "_split.value = @p2", " AND "},
+			args:        []any{"priority", "paid"},
+		},
+		{
+			name: "not contain",
+			condition: &filter_condition.NotContainCond{
+				Cfg: constCfg, Lfield: tags, Value: []any{"priority", "paid"},
+			},
+			containsSQL: []string{"NOT EXISTS (SELECT 1 FROM STRING_SPLIT", ") OR NOT EXISTS (SELECT 1 FROM STRING_SPLIT"},
+			args:        []any{"priority", "paid"},
+		},
+		{
+			name: "prefix escapes wildcard",
+			condition: &filter_condition.PrefixCond{
+				Cfg: constCfg, Lfield: status, Value: "paid%",
+			},
+			containsSQL: []string{`[order_status] LIKE @p1 ESCAPE '\'`},
+			args:        []any{`paid\%%`},
+		},
+		{
+			name: "between datetime converts unix milliseconds",
+			condition: &filter_condition.BetweenCond{
+				Cfg: constCfg, Lfield: createdAt, Value: []any{float64(1000), float64(2000)},
+			},
+			containsSQL: []string{"[created_at] >= DATEADD_BIG(millisecond, @p1", "[created_at] <= DATEADD_BIG(millisecond, @p2"},
+			args:        []any{float64(1000), float64(2000)},
+		},
+		{
+			name:        "exist",
+			condition:   &filter_condition.ExistCond{Cfg: constCfg, Lfield: status},
+			containsSQL: []string{"[order_status] IS NOT NULL"},
+		},
+		{
+			name: "before",
+			condition: &filter_condition.BeforeCond{
+				Cfg: constCfg, Lfield: createdAt, Value: []any{float64(2), "day"},
+			},
+			containsSQL: []string{"[created_at] < DATEADD(day, -@p1, SYSDATETIME())"},
+			args:        []any{int64(2)},
+		},
+		{
+			name: "current month",
+			condition: &filter_condition.CurrentCond{
+				Cfg: constCfg, Lfield: createdAt, Value: "month",
+			},
+			containsSQL: []string{"DATETRUNC(month, [created_at]) = DATETRUNC(month, SYSDATETIME())"},
+		},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			converted, err := (&SQLServerConnector{}).convertFilterCondition(context.Background(), test.condition, fields)
+			require.NoError(t, err)
+			query, args, err := sq.StatementBuilder.PlaceholderFormat(sq.AtP).
+				Select("*").From("[dbo].[orders]").Where(converted).ToSql()
+			require.NoError(t, err)
+			for _, fragment := range test.containsSQL {
+				assert.Contains(t, query, fragment)
+			}
+			assert.Equal(t, test.args, args)
+		})
+	}
+}
 
-	converted, err := (&SQLServerConnector{}).convertFilterCondition(
-		context.Background(), condition, map[string]*interfaces.Property{"status": property},
-	)
-	require.NoError(t, err)
-	query, args, err := sq.StatementBuilder.PlaceholderFormat(sq.AtP).
-		Select("*").From("[dbo].[orders]").Where(converted).ToSql()
-	require.NoError(t, err)
-	assert.Equal(t, "SELECT * FROM [dbo].[orders] WHERE [order_status] = @p1", query)
-	assert.Equal(t, []any{"paid"}, args)
-	assert.NotContains(t, query, "paid")
+func TestBuildSQLServerProjection(t *testing.T) {
+	createdAt := &interfaces.Property{Name: "created_at", OriginalName: "created_time", Type: interfaces.DataType_Datetime}
+	fields := map[string]*interfaces.Property{"created_at": createdAt}
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{createdAt}}
+	t.Run("builds calendar interval with datetrunc", func(t *testing.T) {
+		projection, groupFields, _, _, aggregate, err := buildSQLServerProjection(resource, &interfaces.ResourceDataQueryParams{
+			GroupBy: []*interfaces.GroupByItem{{Property: "created_at", CalendarInterval: "month"}},
+		}, fields)
+
+		require.NoError(t, err)
+		assert.True(t, aggregate)
+		assert.Equal(t, []string{"DATETRUNC(month, [created_time]) AS [created_at]"}, projection)
+		assert.Equal(t, []string{"DATETRUNC(month, [created_time])"}, groupFields)
+	})
+	t.Run("adds count projection for count having", func(t *testing.T) {
+		projection, _, alias, expression, aggregate, err := buildSQLServerProjection(resource, &interfaces.ResourceDataQueryParams{
+			Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 1},
+		}, fields)
+
+		require.NoError(t, err)
+		assert.True(t, aggregate)
+		assert.Equal(t, []string{"COUNT(*) AS [__value]"}, projection)
+		assert.Equal(t, "__value", alias)
+		assert.Equal(t, "COUNT(*)", expression)
+	})
+}
+
+func TestBuildSQLServerHaving(t *testing.T) {
+	t.Run("supports in", func(t *testing.T) {
+		condition, err := buildSQLServerHaving(&interfaces.HavingClause{
+			Field: "__value", Operation: "in", Value: []any{10, 20},
+		}, "SUM([amount])")
+		require.NoError(t, err)
+		query, args, err := sq.StatementBuilder.PlaceholderFormat(sq.AtP).
+			Select("customer_id").From("orders").GroupBy("customer_id").Having(condition).ToSql()
+
+		require.NoError(t, err)
+		assert.Contains(t, query, "HAVING SUM([amount]) IN (@p1,@p2)")
+		assert.Equal(t, []any{10, 20}, args)
+	})
 }

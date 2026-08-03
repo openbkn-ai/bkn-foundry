@@ -219,11 +219,7 @@ func (c *SQLServerConnector) ExecuteRawSQL(ctx context.Context, statement string
 		}
 		entry := make(map[string]any, len(columns))
 		for i, name := range columns {
-			if value, ok := values[i].([]byte); ok {
-				entry[name] = string(value)
-			} else {
-				entry[name] = values[i]
-			}
+			entry[name] = values[i]
 		}
 		result.Entries = append(result.Entries, entry)
 	}
@@ -257,7 +253,7 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 
 	builder := sq.StatementBuilder.PlaceholderFormat(sq.AtP).
 		Select(selectFields...).
-		From(qualifiedTable(resource.SourceIdentifier))
+		From(qualifiedResourceTable(resource))
 	var condition sq.Sqlizer
 	if params.ActualFilterCond != nil {
 		var err error
@@ -283,6 +279,12 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 			sortExpression := ""
 			if ok {
 				sortExpression = quoteIdentifier(property.OriginalName)
+				for _, group := range params.GroupBy {
+					if group.Property == sort.Field && group.CalendarInterval != "" {
+						sortExpression = quoteIdentifier(group.Property)
+						break
+					}
+				}
 			} else if isAggregate && sort.Field == aggregateAlias {
 				sortExpression = quoteIdentifier(aggregateAlias)
 			} else {
@@ -321,7 +323,7 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 		countBuilder := sq.StatementBuilder.
 			PlaceholderFormat(sq.AtP).
 			Select("COUNT(1)").
-			From(qualifiedTable(resource.SourceIdentifier))
+			From(qualifiedResourceTable(resource))
 		if condition != nil {
 			countBuilder = countBuilder.Where(condition)
 		}
@@ -338,7 +340,7 @@ func (c *SQLServerConnector) ExecuteQuery(ctx context.Context, resource *interfa
 
 func buildSQLServerProjection(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams,
 	fields map[string]*interfaces.Property) ([]string, []string, string, string, bool, error) {
-	if len(params.GroupBy) == 0 && params.Aggregation == nil {
+	if len(params.GroupBy) == 0 && params.Aggregation == nil && params.Having == nil {
 		selected := params.OutputFields
 		if len(selected) == 0 {
 			selected = make([]string, 0, len(resource.SchemaDefinition))
@@ -360,16 +362,23 @@ func buildSQLServerProjection(resource *interfaces.Resource, params *interfaces.
 	projection := make([]string, 0, len(params.GroupBy)+1)
 	groupFields := make([]string, 0, len(params.GroupBy))
 	for _, group := range params.GroupBy {
-		if group.CalendarInterval != "" {
-			return nil, nil, "", "", false, fmt.Errorf("sqlserver calendar_interval %q is not supported", group.CalendarInterval)
-		}
 		property, ok := fields[group.Property]
 		if !ok {
 			return nil, nil, "", "", false, fmt.Errorf("group field is not defined by resource schema: %s", group.Property)
 		}
 		field := quoteIdentifier(property.OriginalName)
-		projection = append(projection, field)
-		groupFields = append(groupFields, field)
+		if group.CalendarInterval == "" {
+			projection = append(projection, field)
+			groupFields = append(groupFields, field)
+			continue
+		}
+		datePart, err := sqlServerDatePart(group.CalendarInterval)
+		if err != nil {
+			return nil, nil, "", "", false, err
+		}
+		expression := "DATETRUNC(" + datePart + ", " + field + ")"
+		projection = append(projection, expression+" AS "+quoteIdentifier(group.Property))
+		groupFields = append(groupFields, expression)
 	}
 
 	alias, expression := "", ""
@@ -392,6 +401,10 @@ func buildSQLServerProjection(resource *interfaces.Resource, params *interfaces.
 			alias = "__value"
 		}
 		projection = append(projection, expression+" AS "+quoteIdentifier(alias))
+	} else if params.Having != nil && params.Having.Field == "count(*)" {
+		alias = "__value"
+		expression = "COUNT(*)"
+		projection = append(projection, expression+" AS "+quoteIdentifier(alias))
 	}
 	if len(projection) == 0 {
 		return nil, nil, "", "", false, fmt.Errorf("aggregate query has no projection")
@@ -403,34 +416,60 @@ func buildSQLServerHaving(having *interfaces.HavingClause, expression string) (s
 	if having == nil {
 		return nil, nil
 	}
-	if having.Field != "__value" || expression == "" {
-		return nil, fmt.Errorf("HAVING requires aggregation field __value")
+	fieldExpression := expression
+	if having.Field == "count(*)" {
+		fieldExpression = "COUNT(*)"
+	} else if having.Field != "__value" || expression == "" {
+		return nil, fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
 	operators := map[string]string{"==": "=", "!=": "<>", ">": ">", ">=": ">=", "<": "<", "<=": "<="}
 	if operator, ok := operators[having.Operation]; ok {
-		return sq.Expr(expression+" "+operator+" ?", having.Value), nil
+		return sq.Expr(fieldExpression+" "+operator+" ?", having.Value), nil
 	}
 	values, ok := having.Value.([]any)
-	if !ok || len(values) != 2 {
+	if !ok || len(values) == 0 {
+		return nil, fmt.Errorf("HAVING operation %s requires an array value", having.Operation)
+	}
+	if having.Operation == "in" || having.Operation == "not_in" {
+		placeholders := make([]string, len(values))
+		for index := range placeholders {
+			placeholders[index] = "?"
+		}
+		operator := " IN ("
+		if having.Operation == "not_in" {
+			operator = " NOT IN ("
+		}
+		return sq.Expr(fieldExpression+operator+strings.Join(placeholders, ",")+")", values...), nil
+	}
+	if len(values) != 2 {
 		return nil, fmt.Errorf("HAVING operation %s requires two values", having.Operation)
 	}
 	switch having.Operation {
 	case "range":
-		return sq.Expr(expression+" BETWEEN ? AND ?", values[0], values[1]), nil
+		return sq.Expr(fieldExpression+" BETWEEN ? AND ?", values[0], values[1]), nil
 	case "out_range":
-		return sq.Expr(expression+" NOT BETWEEN ? AND ?", values[0], values[1]), nil
+		return sq.Expr(fieldExpression+" NOT BETWEEN ? AND ?", values[0], values[1]), nil
 	default:
 		return nil, fmt.Errorf("unsupported HAVING operation: %s", having.Operation)
 	}
 }
 
-func qualifiedTable(identifier string) string {
-	parts := strings.Split(identifier, ".")
-	quoted := make([]string, 0, len(parts))
-	for _, part := range parts {
-		quoted = append(quoted, quoteIdentifier(strings.TrimSpace(part)))
+func qualifiedResourceTable(resource *interfaces.Resource) string {
+	sourceIdentifier := strings.TrimSpace(resource.SourceIdentifier)
+	schema := strings.TrimSpace(resource.Schema)
+	table := sourceIdentifier
+	if schema != "" {
+		if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 &&
+			strings.EqualFold(strings.TrimSpace(sourceIdentifier[:separator]), schema) {
+			table = sourceIdentifier[separator+1:]
+		}
+	} else if separator := strings.IndexByte(sourceIdentifier, '.'); separator >= 0 {
+		schema, table = sourceIdentifier[:separator], sourceIdentifier[separator+1:]
 	}
-	return strings.Join(quoted, ".")
+	if schema == "" {
+		return quoteIdentifier(strings.TrimSpace(table))
+	}
+	return quoteIdentifier(schema) + "." + quoteIdentifier(strings.TrimSpace(table))
 }
 
 func quoteIdentifier(identifier string) string {
@@ -453,11 +492,7 @@ func scanQueryRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 		}
 		entry := make(map[string]any, len(columns))
 		for i, column := range columns {
-			if value, ok := values[i].([]byte); ok {
-				entry[column] = string(value)
-			} else {
-				entry[column] = values[i]
-			}
+			entry[column] = values[i]
 		}
 		result.Entries = append(result.Entries, entry)
 	}
