@@ -161,6 +161,35 @@ func GetTraceContextFromCtx(ctx context.Context) (TraceContext, bool) {
 	return traceContext, ok
 }
 
+// CopyRequestScopedValues carries this service's per-request values from the
+// HTTP request context onto another context, keeping that context's own values
+// intact. The MCP transport builds a context holding the client session before
+// it hands control to this service; replacing that context wholesale would drop
+// the session, so the values move in this direction instead.
+func CopyRequestScopedValues(from, onto context.Context) context.Context {
+	if from == nil {
+		return onto
+	}
+	if onto == nil {
+		return from
+	}
+	for _, key := range []any{
+		keyTraceContext,
+		XLangKey,
+		interfaces.KeyAccountAuthContext,
+		interfaces.KeyResponseFormat,
+		interfaces.IsPublic,
+	} {
+		if value := from.Value(key); value != nil {
+			onto = context.WithValue(onto, key, value)
+		}
+	}
+	if spanContext := trace.SpanContextFromContext(from); spanContext.IsValid() {
+		onto = trace.ContextWithSpanContext(onto, spanContext)
+	}
+	return onto
+}
+
 func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	requestID := strings.TrimSpace(getHeader(HeaderBKNRequestID))
 	if requestID == "" {

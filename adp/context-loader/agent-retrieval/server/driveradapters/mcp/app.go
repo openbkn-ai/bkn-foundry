@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
@@ -101,8 +102,12 @@ func NewMCPHandler() http.Handler {
 func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
 	srv, _ := newMCPServer(lifecycleClient)
 	return server.NewStreamableHTTPServer(srv,
+		// The incoming ctx already carries the MCP client session; returning
+		// r.Context() outright would drop it, and the session-level lifecycle
+		// fallback would see every call as sessionless. Carry the gin
+		// middleware's values across instead of replacing the whole context.
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
-			return r.Context()
+			return common.CopyRequestScopedValues(r.Context(), ctx)
 		}),
 		server.WithEndpointPath(endpointPath),
 	)

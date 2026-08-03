@@ -289,6 +289,40 @@ func TestTraceContextUsesConfiguredBusinessDomainOnlyWhenInboundDomainIsMissing(
 	}
 }
 
+func TestCopyRequestScopedValuesKeepsTheTargetContextIntact(t *testing.T) {
+	type transportKey struct{}
+	// Stands in for the MCP client session the transport puts on the context
+	// before this service sees it. Replacing that context instead of copying
+	// onto it is what made the session-level fallback see every call as
+	// sessionless while the unit tests stayed green.
+	transport := context.WithValue(context.Background(), transportKey{}, "session-1")
+
+	request := SetTraceContextToCtx(context.Background(), TraceContext{
+		TenantID: "tenant-1", BusinessDomain: "bd_public",
+	})
+	request = SetAccountAuthContextToCtx(request, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+	})
+	request = SetPublicAPIToCtx(request, true)
+
+	merged := CopyRequestScopedValues(request, transport)
+
+	if merged.Value(transportKey{}) != "session-1" {
+		t.Fatal("the transport's own context values were dropped")
+	}
+	traceContext, ok := GetTraceContextFromCtx(merged)
+	if !ok || traceContext.BusinessDomain != "bd_public" {
+		t.Fatalf("request trace context did not survive the copy: %#v", traceContext)
+	}
+	auth, ok := GetAccountAuthContextFromCtx(merged)
+	if !ok || auth.AccountID != "user-1" {
+		t.Fatalf("request auth context did not survive the copy: %#v", auth)
+	}
+	if !IsPublicAPIFromCtx(merged) {
+		t.Fatal("public API marker did not survive the copy")
+	}
+}
+
 func TestCallerCorrelationIDsAreValidatedWithoutGeneration(t *testing.T) {
 	convey.Convey("valid caller ids are propagated and invalid ids are dropped", t, func() {
 		headers := map[string]string{
