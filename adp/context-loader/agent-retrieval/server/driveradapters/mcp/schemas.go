@@ -369,8 +369,11 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 			"调用可直接执行，但证据链只能追溯到连接级而非具体的用户提问；" +
 			"半数提供会被拒绝，因为缺失字段只能凭空生成，会让回执声称一条从未发生的因果关系。" +
 			"自动会话在连接空闲超过 5 分钟租约后由本服务自动重建，无需客户端干预；" +
-			"单次交互最多承载 128 个操作，达到上限后需等待约 5 分钟由服务端回收，" +
-			"其间该连接的调用会返回 operation_required，恢复后自动继续。",
+			"但租约刚过期、服务端尚未回收旧交互的窗口内（默认最长 30 秒）调用会返回 " +
+			"interaction_terminal，对该错误码重试一次即可。" +
+			"单次交互最多承载 128 个操作，达到上限后需等待最长 5 分钟由服务端回收，" +
+			"其间调用返回 operation_required，恢复后自动继续。" +
+			"断开重连会分配新的会话，此前的因果链不再延续。",
 		"properties": map[string]any{
 			"conversation_id": map[string]any{"type": "string"},
 			"interaction_id":  map[string]any{"type": "string"},
