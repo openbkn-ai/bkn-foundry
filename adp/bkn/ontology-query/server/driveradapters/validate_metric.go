@@ -236,84 +236,6 @@ func validateMetricHaving(ctx context.Context, h *interfaces.MetricHaving) error
 	}
 }
 
-// validateConditionRecursive 与 bkn-backend validateCond 一致，用于指标公式中 and/or 子条件树。
-func validateConditionRecursive(ctx context.Context, cfg *cond.CondCfg) error {
-	if cfg == nil {
-		return nil
-	}
-	if cfg.Operation == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-			WithErrorDetails("condition operation is required")
-	}
-	if _, exists := cond.OperationMap[cfg.Operation]; !exists {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-			WithErrorDetails("unsupported condition operation")
-	}
-
-	switch cfg.Operation {
-	case cond.OperationAnd, cond.OperationOr, cond.OperationKNN:
-		if len(cfg.SubConds) > cond.MaxSubCondition {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails(fmt.Sprintf("the number of sub_conditions exceeds %d", cond.MaxSubCondition))
-		}
-		for _, subCond := range cfg.SubConds {
-			if err := validateConditionRecursive(ctx, subCond); err != nil {
-				return err
-			}
-		}
-	default:
-		if cfg.Operation != cond.OperationMultiMatch && cfg.Name == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails("condition field name is required")
-		}
-	}
-
-	switch cfg.Operation {
-	case cond.OperationEq, cond.OperationNotEq, cond.OperationGt, cond.OperationGte, cond.OperationLt, cond.OperationLte,
-		cond.OperationLike, cond.OperationNotLike, cond.OperationPrefix, cond.OperationNotPrefix, cond.OperationRegex,
-		cond.OperationMatch, cond.OperationMatchPhrase, cond.OperationCurrent, cond.OperationMultiMatch:
-		if _, ok := cfg.Value.([]any); ok {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails(fmt.Sprintf("[%s] operation's value should be a single value", cfg.Operation))
-		}
-		if cfg.Operation == cond.OperationLike || cfg.Operation == cond.OperationNotLike ||
-			cfg.Operation == cond.OperationPrefix || cfg.Operation == cond.OperationNotPrefix {
-			if _, ok := cfg.Value.(string); !ok {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-					WithErrorDetails("[like not_like prefix not_prefix] operation's value should be a string")
-			}
-		}
-		if cfg.Operation == cond.OperationRegex {
-			_, ok := cfg.Value.(string)
-			if !ok {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-					WithErrorDetails("[regex] operation's value should be a string")
-			}
-		}
-	case cond.OperationIn, cond.OperationNotIn:
-		arr, ok := cfg.Value.([]any)
-		if !ok {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails("[in not_in] operation's value must be an array")
-		}
-		if len(arr) <= 0 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails("[in not_in] operation's value should contain at least 1 value")
-		}
-	case cond.OperationRange, cond.OperationOutRange, cond.OperationBefore, cond.OperationBetween:
-		v, ok := cfg.Value.([]any)
-		if !ok {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails("[range, out_range] operation's value must be an array")
-		}
-		if len(v) != 2 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails("[range, out_range] operation's value must contain 2 values")
-		}
-	}
-	return nil
-}
-
 func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 	if cfg == nil {
 		return nil
@@ -334,10 +256,11 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 				WithErrorDetails(fmt.Sprintf("the number of sub_conditions exceeds %d", cond.MaxSubCondition))
 		}
 		for _, subCond := range cfg.SubConds {
-			if err := validateConditionRecursive(ctx, subCond); err != nil {
+			if err := validateMetricCond(ctx, subCond); err != nil {
 				return err
 			}
 		}
+		return nil
 	default:
 		if cfg.Name == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).

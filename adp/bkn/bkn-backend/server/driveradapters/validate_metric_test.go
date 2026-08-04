@@ -14,6 +14,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
+	cond "bkn-backend/common/condition"
+	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
 
@@ -96,5 +98,41 @@ func Test_ValidateMetricRequests(t *testing.T) {
 			err := ValidateMetricRequests(ctx, []*interfaces.MetricDefinition{e, e}, true)
 			So(err, ShouldNotBeNil)
 		})
+	})
+}
+
+func Test_validateMetricCond(t *testing.T) {
+	ctx := context.Background()
+
+	Convey("validateMetricCond accepts and/or composite conditions\n", t, func() {
+		err := validateMetricCond(ctx, &cond.CondCfg{
+			Operation: cond.OperationAnd,
+			SubConds: []*cond.CondCfg{
+				{Field: "warehouse", Operation: cond.OperationIn, ValueOptCfg: cond.ValueOptCfg{Value: []any{"昆山成品仓"}}},
+				{Field: "stock_status", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: "可用"}},
+			},
+		})
+		So(err, ShouldBeNil)
+	})
+
+	Convey("validateMetricCond accepts single atomic condition\n", t, func() {
+		err := validateMetricCond(ctx, &cond.CondCfg{
+			Field:       "status",
+			Operation:   cond.OperationEq,
+			ValueOptCfg: cond.ValueOptCfg{Value: "Active"},
+		})
+		So(err, ShouldBeNil)
+	})
+
+	Convey("validateMetricCond rejects knn in metric condition tree\n", t, func() {
+		err := validateMetricCond(ctx, &cond.CondCfg{
+			Operation: cond.OperationAnd,
+			SubConds: []*cond.CondCfg{
+				{Field: "warehouse", Operation: cond.OperationKNN, ValueOptCfg: cond.ValueOptCfg{Value: "x"}},
+			},
+		})
+		So(err, ShouldNotBeNil)
+		httpErr := err.(*rest.HTTPError)
+		So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportConditionOperation)
 	})
 }

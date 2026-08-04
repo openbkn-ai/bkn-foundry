@@ -134,4 +134,53 @@ func Test_validateMetricDryRunForExecution_alignedWithBknSave(t *testing.T) {
 		err := validateMetricDryRunForExecution(ctx, body)
 		So(err, ShouldBeNil)
 	})
+
+	Convey("dry-run accepts and/or composite metric condition\n", t, func() {
+		body := &interfaces.MetricDryRunRequest{
+			MetricConfig: &interfaces.MetricDefinition{
+				MetricType: interfaces.MetricTypeAtomic,
+				ScopeType:  interfaces.ScopeTypeObjectType,
+				ScopeRef:   "ot1",
+				UnitType:   "numUnit",
+				Unit:       "none",
+				CalculationFormula: &interfaces.MetricCalculationFormula{
+					Condition: &cond.CondCfg{
+						Operation: cond.OperationAnd,
+						SubConds: []*cond.CondCfg{
+							{Name: "warehouse", Operation: cond.OperationIn, ValueOptCfg: cond.ValueOptCfg{Value: []any{"昆山成品仓"}}},
+							{Name: "stock_status", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: "可用"}},
+						},
+					},
+					Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},
+				},
+			},
+		}
+		err := validateMetricDryRunForExecution(ctx, body)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("dry-run rejects knn in metric condition tree\n", t, func() {
+		body := &interfaces.MetricDryRunRequest{
+			MetricConfig: &interfaces.MetricDefinition{
+				MetricType: interfaces.MetricTypeAtomic,
+				ScopeType:  interfaces.ScopeTypeObjectType,
+				ScopeRef:   "ot1",
+				UnitType:   "numUnit",
+				Unit:       "none",
+				CalculationFormula: &interfaces.MetricCalculationFormula{
+					Condition: &cond.CondCfg{
+						Operation: cond.OperationAnd,
+						SubConds: []*cond.CondCfg{
+							{Name: "warehouse", Operation: cond.OperationKNN, ValueOptCfg: cond.ValueOptCfg{Value: "x"}},
+						},
+					},
+					Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},
+				},
+			},
+		}
+		err := validateMetricDryRunForExecution(ctx, body)
+		So(err, ShouldNotBeNil)
+		httpErr := err.(*rest.HTTPError)
+		So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_Condition)
+	})
 }
