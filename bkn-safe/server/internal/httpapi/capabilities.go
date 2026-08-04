@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/licverify"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
@@ -19,15 +20,23 @@ import (
 // refuse them.
 type capabilitiesResponse struct {
 	// Licensed reports whether a valid licence is in force right now. False
-	// covers "never installed", "expired past grace" and "failed verification"
-	// alike, because the product behaves identically in all three. It exists so
-	// a frontend does not have to enumerate State values to work that out — one
-	// that does will get it wrong the day a new State appears.
+	// covers "never installed", "expired past grace" (State fallback_community)
+	// and "failed verification" alike, because the product behaves identically
+	// in all three. It exists so a frontend does not have to enumerate State
+	// values to work that out — one that does will get it wrong the day a new
+	// State appears.
+	//
+	// It is derived from the same predicate the gate uses (State ∈ {valid,
+	// grace}, see license.Service.FeatureEnabled), not from the presence of a
+	// payload: an expired certificate still has one, and reporting that as
+	// licensed would put the frontend back in exactly the state this field was
+	// added to prevent — a full menu where every call refuses.
 	Licensed bool `json:"licensed"`
 	// Edition is the tier in force, and "community" whenever Licensed is false:
 	// a deployment without a valid certificate behaves as community, and there
 	// is deliberately no separate "unlicensed" tier. State carries the detail
-	// (valid, grace, expired, trial, unlicensed) for the activation banner.
+	// (valid, grace, fallback_community, trial, unlicensed, invalid) for the
+	// activation banner.
 	Edition string `json:"edition"`
 	State   string `json:"state"`
 	// Features is what the license carries — including enterprise features
@@ -68,10 +77,19 @@ func registerCapabilities(g *gin.RouterGroup, svc *license.Service) {
 			Extensions:   extension.Registered(),
 		}
 
+		// Same predicate as the gate: a licence is in force only while the
+		// certificate verifies and has not run past its grace window. Features
+		// and limits are read from the payload regardless — support needs to see
+		// what the installed certificate carries even when it no longer grants
+		// anything, and Licensed already says it grants nothing.
 		if svc != nil {
-			if snap := svc.State(); snap.Payload != nil {
-				resp.Licensed = true
-				resp.Edition = string(snap.Payload.Edition)
+			snap := svc.State()
+			inForce := snap.State == licverify.StateValid || snap.State == licverify.StateGrace
+			if snap.Payload != nil {
+				if inForce {
+					resp.Licensed = true
+					resp.Edition = string(snap.Payload.Edition)
+				}
 				if snap.Payload.Features != nil {
 					resp.Features = snap.Payload.Features
 				}
