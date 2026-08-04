@@ -318,9 +318,10 @@ func buildRequestSummary(
 		for _, event := range trace.Events {
 			if strings.HasPrefix(event.EventID, "receipt:") {
 				durability, _ := summaryStringField(event.Payload, "evidence_durability")
-				if durability == "durable" {
+				switch durability {
+				case "durable":
 					hasDurableReceipt = true
-				} else if durability == "failed" {
+				case "failed":
 					receiptPartialReasons["evidence_durability_failed"] = struct{}{}
 				}
 				for _, reason := range summaryStringValues(event.Payload["partial_reasons"]) {
