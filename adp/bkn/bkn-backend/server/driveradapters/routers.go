@@ -135,6 +135,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// 指标
 		apiV1.POST("/knowledge-networks/:kn_id/metrics", r.verifyJsonContentType(), r.HandleMetricGetOverrideByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/metrics/validation", r.verifyJsonContentType(), r.ValidateMetricsByEx)
+		// SDK/CLI compatibility alias (@openbkn/bkn-sdk uses /metrics/validate)
+		apiV1.POST("/knowledge-networks/:kn_id/metrics/validate", r.verifyJsonContentType(), r.ValidateMetricsByEx)
 		apiV1.DELETE("/knowledge-networks/:kn_id/metrics/:metric_ids", r.DeleteMetricsByIDsByEx)
 		apiV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByEx)
@@ -211,6 +213,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// 指标（内部）
 		apiInV1.POST("/knowledge-networks/:kn_id/metrics", r.verifyJsonContentType(), r.HandleMetricGetOverrideByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/metrics/validation", r.verifyJsonContentType(), r.ValidateMetricsByIn)
+		// SDK/CLI compatibility alias (@openbkn/bkn-sdk uses /metrics/validate)
+		apiInV1.POST("/knowledge-networks/:kn_id/metrics/validate", r.verifyJsonContentType(), r.ValidateMetricsByIn)
 		apiInV1.DELETE("/knowledge-networks/:kn_id/metrics/:metric_ids", r.DeleteMetricsByIDsByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByIn)
