@@ -4,6 +4,31 @@ openapi: 3.0.2
 info:
   title: BKN Metrics
   version: 0.1.0
+  description: |
+    BKN 原生指标的**建模 CRUD**（创建 / 列表 / 校验 / 更新 / 删除）。
+
+    ## Supported matrix（当前实现）
+
+    | 能力 | 状态 | 说明 |
+    |------|------|------|
+    | `metric_type=atomic` + `scope_type=object_type` | 可写 / 可查 | strict 模式写入与 ontology-query 执行均支持 |
+    | 定义内 `calculation_formula.condition`（含 and/or 复合） | 可写 | 与 ontology-query `Condition` 同构；查询侧合并语义见 query 文档 |
+    | `time_dimension` / `having` / `analysis_dimensions` | 部分可用 | 字段可落库；端到端查询能力以 ontology-query 实测为准 |
+    | `metric_type=derived` / `composite` | **future** | schema 已预留枚举；strict 写入与 dry-run **拒绝**（仅 atomic） |
+    | `scope_type=subgraph` | **future** | schema 已预留；写入与 dry-run **仅接受** `object_type` |
+
+    ## 查询 / 试算（不在本文件）
+
+    指标数据查询与试算在 **ontology-query**，不在 bkn-backend CRUD：
+
+    - 查询已落库指标：`POST /api/ontology-query/v1/knowledge-networks/{kn_id}/metrics/{metric_id}/data`
+    - 试算（不落库）：`POST /api/ontology-query/v1/knowledge-networks/{kn_id}/metrics/dry-run`
+    - 请求体：`MetricQueryRequestBody`（含查询时 `condition` / `analysis_dimensions` / `time` / `having` / `limit`）
+
+    契约见 [`ontology-query.yaml`](../ontology-query/ontology-query.yaml)
+    （paths：`.../metrics/{metric_id}/data`、`.../metrics/dry-run`；schemas：`MetricQueryRequestBody`、`MetricDryRun`）。
+
+    产品侧注意：对象**实例**页的「执行」面向逻辑属性；对象类级总量指标应走上述 metric data / dry-run，而非实例执行入口。
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics:
     get:
@@ -64,12 +89,17 @@ paths:
             type: string
           in: query
         - name: scope_type
-          description: 按指标作用域类型过滤（如 object_type / relation_type）
+          description: |
+            按指标作用域类型过滤。当前实现仅写入 `object_type`；
+            `subgraph` 为 future（见 info.description Supported matrix）。
           schema:
             type: string
+            enum:
+              - object_type
+              - subgraph
           in: query
         - name: scope_ref
-          description: 按指标作用域所指向的概念 ID 过滤
+          description: 按指标作用域所指向的概念 ID 过滤（如 object_type 的对象类 ID）
           schema:
             type: string
           in: query
@@ -85,7 +115,9 @@ paths:
       description: |
         与对象类 `POST .../object-types` 一致：通过请求头 `x-http-method-override` 区分语义。
         - `POST`：批量创建，请求体为 `ReqMetrics`（`entries` 数组）。
+          strict 模式下仅接受 `metric_type=atomic` 且 `scope_type=object_type`（见 info.description）。
         - `GET`：概念/条件检索（cursor 分页），请求体与对象类检索相同，复用 `FirstQueryWithCursor` / `PageTurnQueryWithCursor`（见 `object-type.yaml` 中 `override--get`）。
+        创建成功后查数 / 试算请使用 ontology-query 的 metrics data / dry-run（见 info.description）。
       requestBody:
         required: true
         content:
@@ -601,18 +633,24 @@ components:
           $ref: "#/components/schemas/MetricUnit"
         metric_type:
           type: string
-          description: 指标类型；当前仅 atomic 允许写入
+          description: |
+            指标类型。枚举预留 `derived` / `composite`（future）；
+            **strict 写入与 ontology-query dry-run 当前仅接受 `atomic`**。
           enum:
             - atomic
             - derived
             - composite
         scope_type:
           type: string
+          description: |
+            统计主体类型。`subgraph` 为 future；
+            **写入与 dry-run 当前仅接受 `object_type`**。
           enum:
             - object_type
             - subgraph
         scope_ref:
           type: string
+          description: 统计主体引用；当 scope_type=object_type 时为对象类 ID
         time_dimension:
           $ref: "#/components/schemas/MetricTimeDimension"
         calculation_formula:
@@ -648,14 +686,24 @@ components:
           $ref: "#/components/schemas/MetricUnit"
         metric_type:
           type: string
+          description: |
+            指标类型。枚举预留 `derived` / `composite`（future）；
+            **strict 写入当前仅接受 `atomic`**。
           enum:
             - atomic
             - derived
             - composite
         scope_type:
           type: string
+          description: |
+            统计主体类型。`subgraph` 为 future；
+            **写入当前仅接受 `object_type`**。
+          enum:
+            - object_type
+            - subgraph
         scope_ref:
           type: string
+          description: 统计主体引用；当 scope_type=object_type 时为对象类 ID
         time_dimension:
           $ref: "#/components/schemas/MetricTimeDimension"
         calculation_formula:
@@ -683,6 +731,9 @@ components:
           $ref: "#/components/schemas/MetricUnit"
         metric_type:
           type: string
+          description: |
+            指标类型。枚举预留 `derived` / `composite`（future）；
+            **strict 更新当前仅接受 `atomic`**。
           enum:
             - atomic
             - derived
