@@ -106,14 +106,40 @@ openbkn vega resource delete <resource_id> [<resource_id> ...] [-y]
 
 For dataset-type resources, manage indexed documents and async build jobs:
 
-```bash
-openbkn vega dataset create-docs <resource_id> -d '[{"id":"doc1",...},...]'
-openbkn vega dataset update-docs <resource_id> -d '[{"id":"doc1",...},...]'
-openbkn vega dataset delete-docs <resource_id> <doc_id> [<doc_id> ...]
-openbkn vega dataset delete-docs-query <resource_id> -d '{"filter":...}'
+**Build a local index** (full text and/or vector) for a table or dataset resource.
+Index configuration is owned by the *resource* — `index_config` (build key, default
+analyzer/model) plus per-field `features` — and the build task snapshots it at creation.
+`dataset build` writes both halves: it PUTs the resource, then creates and starts the task.
 
-openbkn vega dataset build <resource_id> [--mode full|incremental|realtime]
+```bash
+openbkn vega dataset build <resource_id> --mode batch|streaming \
+  [--execute-type full|incremental] \
+  [--build-key-fields <col>[,<col>...]] \
+  [--fulltext-fields <col>[,...]] [--fulltext-analyzer <name>] \
+  [--embedding-fields <col>[,...]] [--embedding-model <model-name>] \
+  [--wait] [--timeout <seconds>]
+
 openbkn vega dataset build-status <resource_id> <task_id>
+openbkn vega dataset build-list [--resource-id <id>] [--catalog-id <id>] [--active]
+openbkn vega dataset build-start <task_id> [--reset]
+openbkn vega dataset build-stop <task_id>
+openbkn vega dataset build-delete <task_id> [<task_id> ...]
+```
+
+- `--embedding-model` takes the model **name**; a raw model id is rejected.
+- A resource with no `index_config.build_key_fields` is rejected with HTTP 400, which is
+  why `--build-key-fields` is required the first time you build a resource.
+- Building changes how the resource reads: Vega serves a table resource from its local
+  index as soon as one exists, and queries the source database only while it does not.
+  Source updates become visible on the next build.
+
+Document-level management (dataset resources) has no CLI subcommand; drive the API directly:
+
+```bash
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST -d '[{...}]'
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X PUT  -d '[{...}]'
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_id> -X PUT -d '{...}'
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_ids> -X DELETE
 ```
 
 ### Structured query and SQL (vega-backend)

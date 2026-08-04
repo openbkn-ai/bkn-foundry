@@ -106,14 +106,39 @@ openbkn vega resource delete <resource_id> [<resource_id> ...] [-y]
 
 针对 dataset 类资源，管理索引文档与异步构建任务：
 
-```bash
-openbkn vega dataset create-docs <resource_id> -d '[{"id":"doc1",...},...]'
-openbkn vega dataset update-docs <resource_id> -d '[{"id":"doc1",...},...]'
-openbkn vega dataset delete-docs <resource_id> <doc_id> [<doc_id> ...]
-openbkn vega dataset delete-docs-query <resource_id> -d '{"filter":...}'
+**构建本地索引**（全文与/或向量），适用于 table 与 dataset 类资源。索引配置归属于
+**资源**（`index_config` 给出构建键与默认分析器/模型，字段级 `features` 给出每个字段建哪种
+索引），构建任务在创建时对其做快照。`dataset build` 一条命令完成两步：先 PUT 资源写配置，
+再创建并启动构建任务。
 
-openbkn vega dataset build <resource_id> [--mode full|incremental|realtime]
+```bash
+openbkn vega dataset build <resource_id> --mode batch|streaming \
+  [--execute-type full|incremental] \
+  [--build-key-fields <列>[,<列>...]] \
+  [--fulltext-fields <列>[,...]] [--fulltext-analyzer <分析器>] \
+  [--embedding-fields <列>[,...]] [--embedding-model <模型名>] \
+  [--wait] [--timeout <秒>]
+
 openbkn vega dataset build-status <resource_id> <task_id>
+openbkn vega dataset build-list [--resource-id <id>] [--catalog-id <id>] [--active]
+openbkn vega dataset build-start <task_id> [--reset]
+openbkn vega dataset build-stop <task_id>
+openbkn vega dataset build-delete <task_id> [<task_id> ...]
+```
+
+- `--embedding-model` 传的是模型**名称**，传模型 ID 会被拒绝。
+- 资源上没有 `index_config.build_key_fields` 时创建构建任务返回 400，因此首次为某个资源
+  建索引必须带 `--build-key-fields`。
+- 建索引会改变该资源的读取路径：表资源一旦有本地索引，Vega 就从索引读，只有在没有索引时
+  才回源库实时查；源库的更新要到下次构建才可见。
+
+文档级管理（dataset 资源）没有对应的 CLI 子命令，直接调 API：
+
+```bash
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST -d '[{...}]'
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X PUT  -d '[{...}]'
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_id> -X PUT -d '{...}'
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_ids> -X DELETE
 ```
 
 ### 结构化查询与 SQL 查询（vega-backend）
