@@ -22,6 +22,7 @@ from app.interfaces import logics
 from app.logs.stand_log import StandLogger
 from app.utils.bkntrace import evidence as bkntrace_evidence
 from app.utils.observability.observability_log import get_logger
+from app.utils import openai_error
 
 from app.utils.str_util import generate_random_string, has_common_substring
 
@@ -61,7 +62,7 @@ class BKNTraceModelMixin:
 
 
 def emit_model_result(client, messages, params, result):
-    failed = isinstance(result, dict) and "detail" in result
+    failed = openai_error.is_error(result)
     usage = result.get("usage", {}) if isinstance(result, dict) else {}
     client._emit_bkn_trace_evidence(
         messages=messages,
@@ -77,9 +78,13 @@ def emit_model_result(client, messages, params, result):
 async def trace_model_stream(client, stream, messages, params):
     digest = hashlib.sha256()
     emitted = False
+    failed = False
     try:
         async for chunk in stream:
             terminal = _is_terminal_model_chunk(chunk)
+            # 错误帧一出，流就在这儿断了，收尾时不能再记 success
+            if openai_error.is_error_frame(chunk):
+                failed = True
             if not terminal:
                 digest.update(str(chunk).encode("utf-8"))
             else:
@@ -95,11 +100,23 @@ async def trace_model_stream(client, stream, messages, params):
             error_category="model_provider_error",
         )
         raise
-    if not emitted:
+    if emitted:
+        return
+    if failed:
+        client._emit_bkn_trace_evidence(
+            messages=messages, params=params, status="failed",
+            error_category="model_provider_error",
+        )
+    else:
         client._emit_bkn_trace_evidence(
             messages=messages, params=params, status="success",
             output={"stream_hash": "sha256:" + digest.hexdigest()},
         )
+
+
+async def sleep_before_retry(retry_time, total=3):
+    """上游瞬态错误（429/502/503/504）重试前的退避：剩余次数越少等得越久。"""
+    await asyncio.sleep(0.5 * max(1, total - retry_time))
 
 
 def _is_terminal_model_chunk(chunk):
@@ -254,9 +271,10 @@ class OpenAIClientRequest(BKNTraceModelMixin):
 
     async def chat_completion(self, messages, user_id, func_module, cache=False):  # 写一版直接请求url的，便于传入工具
         if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-            error_dict = ModelError.copy()
-            error_dict["description"] = error_dict["detail"] = error_dict["solution"] = "千循大模型只支持最后一条消息role为user"
-            return error_dict
+            return openai_error.with_http_status(
+                openai_error.build_error("千循大模型只支持最后一条消息role为user",
+                                         error_type="invalid_request_error"),
+                400)
         start_time = time.time()
         params = {
             "messages": messages,
@@ -311,12 +329,10 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                     )
                     return result
                 else:
-                    tmp_map = result
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    if "detail" in tmp_map.keys():
-                        error_dict["detail"] = tmp_map["detail"]
-                    if "error" in tmp_map.keys() and "message" in tmp_map["error"].keys():
-                        error_dict["detail"] = tmp_map["error"]["message"]
+                    error_dict = openai_error.with_http_status(
+                        openai_error.from_upstream(result, resp.status),
+                        resp.status,
+                        openai_error.retry_after_seconds(resp.status, resp.headers))
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
@@ -333,9 +349,10 @@ class OpenAIClientRequest(BKNTraceModelMixin):
 
     async def chat_completion_stream_openai(self, messages, user_id, return_info, func_module, cache=False):
         if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-            error_dict = ModelError.copy()
-            error_dict["description"] = error_dict["detail"] = error_dict["solution"] = "千循大模型只支持最后一条消息role为user"
-            yield error_dict
+            yield openai_error.error_frame(openai_error.build_error(
+                "千循大模型只支持最后一条消息role为user",
+                error_type="invalid_request_error"))
+            return
         retry_time = 3
         while retry_time > 0:
             retry_time -= 1
@@ -377,15 +394,21 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                     async with session.post(url, json=params, headers=headers, ssl=False) as response:
                         response.encoding = 'utf-8'
                         if response.status != 200:
-                            error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                            error_dict["description"] = error_dict["detail"] = await response.text()
+                            info = await response.text()
+                            if openai_error.is_retryable(response.status) and retry_time > 0:
+                                StandLogger.warn(
+                                    f"upstream {response.status} retryable, "
+                                    f"model={self.api_model}, left={retry_time}")
+                                await sleep_before_retry(retry_time)
+                                continue
                             self._emit_bkn_trace_evidence(
                                 messages=messages,
                                 params=params,
                                 status="failed",
                                 error_category="model_provider_error",
                             )
-                            yield "--error--" + json.dumps(error_dict, ensure_ascii=False)
+                            yield openai_error.error_frame(
+                                openai_error.from_upstream(info, response.status))
                             return
                         ans = ""
                         async for chunk in response.content:
@@ -476,10 +499,9 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                                 # yield "--end--"
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
-                    yield json.dumps(error_dict, ensure_ascii=False)
+                    error_dict = openai_error.from_exception(
+                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
+                    yield openai_error.error_frame(error_dict)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     if get_logger():
                         get_logger().info(
@@ -509,6 +531,9 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                     status="failed",
                     error_category="internal_error",
                 )
+                # 先把合规错误帧送出去，调用方才有话可说；再抛，保留可观测性
+                yield openai_error.error_frame(openai_error.build_error(
+                    str(e) or "模型服务内部错误", error_type="server_error"))
                 raise e
 
 def prompt(ai_system, ai_user, ai_assistant, ai_history):
@@ -671,13 +696,10 @@ class BaiduTianchenClient(BKNTraceModelMixin):
                     }
                     return res
                 else:
-                    tmp_map = result
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    if "detail" in tmp_map.keys():
-                        error_dict["detail"] = tmp_map["detail"]
-                    if "error" in tmp_map.keys() and "message" in tmp_map["error"].keys():
-                        error_dict["detail"] = tmp_map["error"]["message"]
-                    return error_dict
+                    return openai_error.with_http_status(
+                        openai_error.from_upstream(result, resp.status),
+                        resp.status,
+                        openai_error.retry_after_seconds(resp.status, resp.headers))
 
     async def chat_completion_stream_openai(self, messages, user_id, return_info, cache=False):
         StandLogger.info_log("messages: " + json.dumps(messages, ensure_ascii=False))
@@ -725,9 +747,15 @@ class BaiduTianchenClient(BKNTraceModelMixin):
                     async with session.post(url, json=params, headers=headers, ssl=False) as response:
                         response.encoding = 'utf-8'
                         if response.status != 200:
-                            error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                            error_dict["description"] = error_dict["detail"] = await response.text()
-                            yield "--error--" + json.dumps(error_dict, ensure_ascii=False)
+                            info = await response.text()
+                            if openai_error.is_retryable(response.status) and retry_time > 0:
+                                StandLogger.warn(
+                                    f"upstream {response.status} retryable, "
+                                    f"model={self.api_model}, left={retry_time}")
+                                await sleep_before_retry(retry_time)
+                                continue
+                            yield openai_error.error_frame(
+                                openai_error.from_upstream(info, response.status))
                             return
                         ans = ""
                         prompt_tokens = completion_tokens = 0
@@ -815,10 +843,9 @@ class BaiduTianchenClient(BKNTraceModelMixin):
                         return
         except aiohttp.ClientError as e:
             if retry_time <= 0:
-                error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                error_dict["detail"] = str(e)
-                yield json.dumps(error_dict, ensure_ascii=False)
+                error_dict = openai_error.from_exception(
+                    e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
+                yield openai_error.error_frame(error_dict)
                 StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                 return
             else:
@@ -826,6 +853,8 @@ class BaiduTianchenClient(BKNTraceModelMixin):
                 await asyncio.sleep(1)
         except Exception as e:
             StandLogger.error(e.args)
+            yield openai_error.error_frame(openai_error.build_error(
+                str(e) or "模型服务内部错误", error_type="server_error"))
             raise e
 
     async def chat_completion_stream(self, messages, user_id, return_info, cache=False):
@@ -957,13 +986,10 @@ class BaiduClient(BKNTraceModelMixin):
                 res = await resp.text()
                 result = json.loads(res)
                 if resp.status != 200:
-                    tmp_map = result
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    if "detail" in tmp_map.keys():
-                        error_dict["detail"] = tmp_map["detail"]
-                    if "error" in tmp_map.keys() and "message" in tmp_map["error"].keys():
-                        error_dict["detail"] = tmp_map["error"]["message"]
-                    return error_dict
+                    return openai_error.with_http_status(
+                        openai_error.from_upstream(result, resp.status),
+                        resp.status,
+                        openai_error.retry_after_seconds(resp.status, resp.headers))
                 access_token = result["access_token"]
         start_time = time.time()
         system = None
@@ -1029,18 +1055,15 @@ class BaiduClient(BKNTraceModelMixin):
                             f'"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
                     return res
                 else:
-                    tmp_map = result
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    if "detail" in tmp_map.keys():
-                        error_dict["detail"] = tmp_map["detail"]
-                    if "error" in tmp_map.keys() and "message" in tmp_map["error"].keys():
-                        error_dict["detail"] = tmp_map["error"]["message"]
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                    return error_dict
+                    return openai_error.with_http_status(
+                        openai_error.from_upstream(result, resp.status),
+                        resp.status,
+                        openai_error.retry_after_seconds(resp.status, resp.headers))
 
     async def chat_completion_stream_openai(self, messages, user_id, return_info, func_module, cache=False):
         token_yield = False
@@ -1058,12 +1081,8 @@ class BaiduClient(BKNTraceModelMixin):
                     async with session.post(url, headers=headers, ssl=False) as access_res:
                         if access_res.status != 200:
                             tmp_map = await access_res.json()
-                            error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                            if "detail" in tmp_map.keys():
-                                error_dict["detail"] = tmp_map["detail"]
-                            if "error" in tmp_map.keys() and "message" in tmp_map["error"].keys():
-                                error_dict["detail"] = tmp_map["error"]["message"]
-                            yield "--error--" + json.dumps(error_dict, ensure_ascii=False)
+                            yield openai_error.error_frame(
+                                openai_error.from_upstream(tmp_map, access_res.status))
                             return
                         access_info = await access_res.json()
                         access_token = access_info["access_token"]
@@ -1102,9 +1121,15 @@ class BaiduClient(BKNTraceModelMixin):
                     async with session.post(url, json=params, headers=headers, ssl=False) as response:
                         response.encoding = 'utf-8'
                         if response.status != 200:
-                            error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                            error_dict["description"] = error_dict["detail"] = await response.text()
-                            yield "--error--" + json.dumps(error_dict, ensure_ascii=False)
+                            info = await response.text()
+                            if openai_error.is_retryable(response.status) and retry_time > 0:
+                                StandLogger.warn(
+                                    f"upstream {response.status} retryable, "
+                                    f"model={self.api_model}, left={retry_time}")
+                                await sleep_before_retry(retry_time)
+                                continue
+                            yield openai_error.error_frame(
+                                openai_error.from_upstream(info, response.status))
                             return
                         ans = ""
                         prompt_tokens = completion_tokens = 0
@@ -1201,29 +1226,27 @@ class BaiduClient(BKNTraceModelMixin):
                         return
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
+                    error_dict = openai_error.from_exception(
+                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                    yield json.dumps(error_dict, ensure_ascii=False)
+                    yield openai_error.error_frame(error_dict)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
                     await asyncio.sleep(1)
             except Exception as e:
-                error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                error_dict["detail"] = str(e)
                 if get_logger():
                     get_logger().info(
                         f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                yield json.dumps(error_dict, ensure_ascii=False)
+                yield openai_error.error_frame(openai_error.build_error(
+                    str(e) or "模型服务内部错误", error_type="server_error"))
                 return
 
     async def chat_completion_stream(self, messages, user_id, return_info, cache=False):
@@ -1365,10 +1388,11 @@ class OtherClient(BKNTraceModelMixin):
             retry_time -= 1
             try:
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-                    error_dict = ModelError.copy()
-                    error_dict["description"] = error_dict["detail"] = error_dict[
-                        "solution"] = "千循大模型只支持最后一条消息role为user"
-                    return error_dict
+                    return openai_error.with_http_status(
+                        openai_error.build_error(
+                            "千循大模型只支持最后一条消息role为user",
+                            error_type="invalid_request_error"),
+                        400)
                 start_time = time.time()
                 params = {
                     "messages": messages,
@@ -1447,18 +1471,16 @@ class OtherClient(BKNTraceModelMixin):
                                     f'"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
                             return result
                         else:
-                            tmp_map = result
-                            error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                            if "detail" in tmp_map.keys():
-                                error_dict["detail"] = tmp_map["detail"]
-                            if "error" in tmp_map.keys() and "message" in tmp_map["error"].keys():
-                                error_dict["detail"] = tmp_map["error"]["message"]
                             if get_logger():
                                 get_logger().info(
                                     f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                                     f'"prompt_tokens":0,"completion_tokens":0,'
                                     f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                            return error_dict
+                            return openai_error.with_http_status(
+                                openai_error.from_upstream(result, resp.status),
+                                resp.status,
+                                openai_error.retry_after_seconds(
+                                    resp.status, resp.headers))
             except Exception as e:
                 StandLogger.error(e.args)
                 if get_logger():
@@ -1479,10 +1501,10 @@ class OtherClient(BKNTraceModelMixin):
             try:
                 chunk_id = ""
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-                    error_dict = ModelError.copy()
-                    error_dict["description"] = error_dict["detail"] = error_dict[
-                        "solution"] = "千循大模型只支持最后一条消息role为user"
-                    yield json.dumps(error_dict, ensure_ascii=False)
+                    yield openai_error.error_frame(openai_error.build_error(
+                        "千循大模型只支持最后一条消息role为user",
+                        error_type="invalid_request_error"))
+                    return
                 token_len = 0
                 params = {
                     "messages": messages,
@@ -1520,15 +1542,20 @@ class OtherClient(BKNTraceModelMixin):
                         response.encoding = 'utf-8'
                         if response.status != 200:
                             info = await response.text()
-                            error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                            error_dict["description"] = error_dict["detail"] = info
                             StandLogger.error(f"error:{info},headers={headers},api_url={self.api_url},payload={params}")
+                            if openai_error.is_retryable(response.status) and retry_time > 0:
+                                StandLogger.warn(
+                                    f"upstream {response.status} retryable, "
+                                    f"model={self.api_model}, left={retry_time}")
+                                await sleep_before_retry(retry_time)
+                                continue
                             log_info = logics.AddModelUsedAudit(
                                 model_id=self.model_id, user_id=user_id, input_tokens=0,
                                 output_tokens=0, first_time=0.0, total_time=0.0,
                                 status="failed")
                             await add_llm_model_call_log(log_info)
-                            yield json.dumps(error_dict, ensure_ascii=False)
+                            yield openai_error.error_frame(
+                                openai_error.from_upstream(info, response.status))
                             return
                         ans = ""
                         think_str = ""
@@ -1729,10 +1756,9 @@ class OtherClient(BKNTraceModelMixin):
                         output_tokens=0, first_time=0.0, total_time=0.0,
                         status="failed")
                     await add_llm_model_call_log(log_info)
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
-                    yield json.dumps(error_dict, ensure_ascii=False)
+                    error_dict = openai_error.from_exception(
+                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
+                    yield openai_error.error_frame(error_dict)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     if get_logger():
                         get_logger().info(
@@ -1751,14 +1777,13 @@ class OtherClient(BKNTraceModelMixin):
                     output_tokens=0, first_time=0.0, total_time=0.0,
                     status="failed")
                 await add_llm_model_call_log(log_info)
-                error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                error_dict["detail"] = str(e)
                 if get_logger():
                     get_logger().info(
                         f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                yield json.dumps(error_dict, ensure_ascii=False)
+                yield openai_error.error_frame(openai_error.build_error(
+                    str(e) or "模型服务内部错误", error_type="server_error"))
                 return
 
     async def chat_completion_stream(self, messages, user_id, return_info, model_data):
@@ -2093,18 +2118,15 @@ class ClaudeClient(BKNTraceModelMixin):
                             f'"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
                     return format_res
                 else:
-                    tmp_map = res
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    if "detail" in tmp_map.keys():
-                        error_dict["detail"] = tmp_map["detail"]
-                    if "error" in tmp_map.keys() and "message" in tmp_map["error"].keys():
-                        error_dict["detail"] = tmp_map["error"]["message"]
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                    return error_dict
+                    return openai_error.with_http_status(
+                        openai_error.from_upstream(res, resp.status),
+                        resp.status,
+                        openai_error.retry_after_seconds(resp.status, resp.headers))
 
     async def chat_completion_stream_openai(self, messages, user_id, func_module, cache=False):
         system = None
@@ -2184,9 +2206,8 @@ class ClaudeClient(BKNTraceModelMixin):
             async with session.post(self.api_url, json=params, headers=headers, ssl=False) as response:
                 response.encoding = 'utf-8'
                 if response.status != 200:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = error_dict["detail"] = await response.text()
-                    yield "--error--" + json.dumps(error_dict, ensure_ascii=False)
+                    yield openai_error.error_frame(openai_error.from_upstream(
+                        await response.text(), response.status))
                     return
                 chunk_id = None
                 chunk_model = None

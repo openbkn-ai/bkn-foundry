@@ -7,6 +7,7 @@ from app.utils.llm_utils import openai_series_stream, OpenAIClientRequest
 from app.utils.permission_manager import permission_manager
 from app.utils.param_verify_utils import *
 from app.utils.reshape_utils import *
+from app.utils import openai_error
 from sse_starlette import EventSourceResponse
 import time
 
@@ -14,6 +15,27 @@ eng_dict = {
     "名称已存在，请修改": "Name already exists, please modify",
     "名称已被其他用户占用，请修改": "The name is already taken by another user, please change it"
 }
+
+
+def openai_error_response(error_body, status, headers=None):
+    """OpenAI 兼容面上的错误响应：body 必须是 {"error": {...}}。
+
+    上游状态码由 llm_utils 通过私有键带过来（有就用，没有就用传入的 status），
+    序列化前 pop 掉，不会漏进 body。
+    """
+    resolved = openai_error.pop_http_status(error_body, status)
+    retry_after = openai_error.pop_retry_after(error_body)
+    resp_headers = dict(headers or {})
+    if retry_after is not None:
+        resp_headers["Retry-After"] = str(retry_after)
+    return JSONResponse(status_code=resolved, content=error_body,
+                        headers=resp_headers or None)
+
+
+def envelope_error_response(envelope, status, headers=None):
+    """内部 envelope（参数/权限/配额等）翻成 OpenAI 错误体后再出门。"""
+    return openai_error_response(
+        openai_error.from_envelope(envelope, status), status, headers)
 
 
 async def used_model_openai(request, user_id, language, func_module, trace_headers=None, role=None, private=True):
@@ -25,7 +47,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
             error_dict["detail"] = "stream " + error_dict["detail"]
             StandLogger.error(error_dict["detail"])
-            return JSONResponse(status_code=400, content=error_dict)
+            return envelope_error_response(error_dict, 400)
 
     model_name = request["model"]
     model_id = request["model_id"]
@@ -62,9 +84,9 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                     model_info = llm_model_dao.get_data_from_default_model()
                 if len(model_info) == 0:
                     if not is_default:
-                        return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                        return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 400)
                     else:
-                        return JSONResponse(status_code=400, content=ModelFactory_DedaultModel_NotExist)
+                        return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
                 # 重新设置缓存，使用JSON格式
                 await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
         else:
@@ -75,16 +97,17 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 model_info = llm_model_dao.get_data_from_default_model()
             if len(model_info) == 0:
                 if not is_default:
-                    return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                    return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 400)
                 else:
-                    return JSONResponse(status_code=400, content=ModelFactory_DedaultModel_NotExist)
+                    return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
             # 设置缓存，使用JSON格式
             import json
             await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
     except Exception as e:
         StandLogger.error(e.args)
-        DataBaseError["detail"] = str(e)
-        return JSONResponse(status_code=500, content=DataBaseError)
+        error_dict = DataBaseError.copy()
+        error_dict["detail"] = str(e)
+        return envelope_error_response(error_dict, 500)
     model_data = model_info[0]
     model_series = model_data["f_model_series"]
     context_size = model_data["f_max_model_len"]
@@ -100,7 +123,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             user_id=user_id, resource_id=model_id, operations="execute",
             resource_type="large_model", role=role)
         if not permission:
-            return JSONResponse(status_code=403, content=NotPermissionError)
+            return envelope_error_response(NotPermissionError, 403)
     trace_context = bkntrace_evidence.build_request_context(trace_headers, account_id=user_id, account_type="user")
     trace_receipt_headers = bkntrace_evidence.model_receipt_headers(trace_context)
     if quota:
@@ -123,12 +146,12 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
         if len(model_quota_info) == 0 or model_quota_info[0]["remaining_input_tokens"] <= 0 or model_quota_info[0][
             "remaining_output_tokens"] <= 0:
             error_dict = ModelQuotaControllerUserModelConfigNoLeftSpaceError.copy()
-            return JSONResponse(status_code=400, content=error_dict)
+            return envelope_error_response(error_dict, 400)
 
     if request["max_tokens"] > context_size * 1000:
         error_dict = ModelFactory_Router_ParamError_FormatError_Error.copy()
         error_dict["detail"] = f"max_tokens超过最大值{context_size}k"
-        return JSONResponse(status_code=400, content=error_dict)
+        return envelope_error_response(error_dict, 400)
     messages = request["messages"]
     message = messages[len(messages) - 1]["content"]
     history_dia = []
@@ -178,13 +201,14 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                     ping=3600, headers=trace_receipt_headers)
             else:
                 res = await openai_client.chat_completion(messages, user_id, func_module, request["cache"])
-                if "detail" in res.keys():
-                    return JSONResponse(status_code=500, content=res)
+                if openai_error.is_error(res):
+                    return openai_error_response(res, 502)
                 else:
                     return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
             StandLogger.error(e.args)
-            return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)
+            return envelope_error_response(
+                ModelFactory_ModelController_Model_ConnectError_Error, 502)
     elif model_series.lower() == "claude":
         config = json.loads(model_data["f_model_config"].replace("'", '"'))
         from app.utils.llm_utils import ClaudeClient
@@ -214,13 +238,14 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             else:
                 res = await claude_client.chat_completion(messages, user_id, func_module, request["cache"])
                 llm_utils.emit_model_result(claude_client, messages, request, res)
-                if "detail" in res.keys():
-                    return JSONResponse(status_code=500, content=res)
+                if openai_error.is_error(res):
+                    return openai_error_response(res, 502)
                 else:
                     return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
             StandLogger.error(e.args)
-            return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)
+            return envelope_error_response(
+                ModelFactory_ModelController_Model_ConnectError_Error, 502)
     elif model_series.lower() == "baidu":
         config = json.loads(model_data["f_model_config"].replace("'", '"'))
         from app.utils.llm_utils import BaiduClient
@@ -248,8 +273,8 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
         else:
             res = await baidu_client.chat_completion(messages, user_id, func_module, request["cache"])
             llm_utils.emit_model_result(baidu_client, messages, request, res)
-            if "detail" in res.keys():
-                return JSONResponse(status_code=500, content=res)
+            if openai_error.is_error(res):
+                return openai_error_response(res, 502)
             else:
                 return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
     elif model_series.lower() == "baidu_tianchen":
@@ -280,12 +305,13 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             else:
                 res = await baidu_tianchen_client.chat_completion(messages, user_id, request["cache"])
                 llm_utils.emit_model_result(baidu_tianchen_client, messages, request, res)
-                if "detail" in res.keys():
-                    return JSONResponse(status_code=500, content=res)
+                if openai_error.is_error(res):
+                    return openai_error_response(res, 502)
                 else:
                     return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
-            return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)
+            return envelope_error_response(
+                ModelFactory_ModelController_Model_ConnectError_Error, 502)
     else:
         config = json.loads(model_data["f_model_config"].replace("'", '"'))
         from app.utils.llm_utils import OtherClient
@@ -317,10 +343,11 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             else:
                 res = await other_client.chat_completion(messages, user_id, func_module)
                 llm_utils.emit_model_result(other_client, messages, request, res)
-                if "detail" in res.keys():
-                    return JSONResponse(status_code=500, content=res)
+                if openai_error.is_error(res):
+                    return openai_error_response(res, 502)
                 else:
                     return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
             StandLogger.error(f"call llmModelError {config['api_model']} error params={messages},error={e}")
-            return JSONResponse(status_code=500, content=ModelFactory_ModelController_Model_ConnectError_Error)
+            return envelope_error_response(
+                ModelFactory_ModelController_Model_ConnectError_Error, 502)

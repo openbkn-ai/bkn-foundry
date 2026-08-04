@@ -1,2 +1,34 @@
 # 依赖
 1.	该服务负责大模型和小模型api调用，和mf-model-manager使用同一个基础镜像和数据库
+
+## OpenAI 兼容面的错误契约
+
+`/v1/chat/completions`（公开路由与 S2S `private` 路由）对外声明为 OpenAI 兼容，
+调用方（`@ai-sdk/openai-compatible`、`openai-python`、LangChain）解析响应时用的是
+`union(chunkSchema, errorSchema)`：要么顶层有 `choices`，要么顶层有 `error`。
+因此该路由上**所有失败出口**——SSE 帧与 JSON body——都必须是：
+
+```json
+{"error": {"message": "...", "type": "...", "param": null, "code": "..."}}
+```
+
+规则：
+
+- **不套 envelope。** 模型工厂自家的 `{code, description, detail, solution, link}`
+  两边都不匹配，客户端会抛 `TypeValidationError` 并把原始 body 冒给终端用户（#620）。
+- **上游已合规就原样透传。** 上游返回的 `{"error": {...}}` 直接带下去，不要
+  JSON 字符串化后塞进别的字段——那会逼调用方 `JSON.parse` 两次。
+- **状态码跟随上游语义。** 4xx 透传，5xx 收敛成 `503`，连不上是 `502`；
+  限流/不可用带 `Retry-After`。映射与判定集中在 `app/utils/openai_error.py`。
+- **流式先发错误帧再断流。** SSE 已开流后才出错的，发一帧
+  `data: {"error": {...}}` 然后结束，不要把错误塞在 chunk 的位置上。
+  注意：`EventSourceResponse` 的响应头在生成器执行前就已刷出，
+  所以流式场景的 HTTP 状态码恒为 200，错误只能靠错误帧表达。
+- **瞬态错误先重试。** 上游 429/502/503/504 走退避重试（`sleep_before_retry`），
+  重试用完才报错；4xx 参数类错误不重试。
+
+内部 envelope（参数校验、权限、配额等）经
+`llm_controller.envelope_error_response()` 翻成上述形状后再出门，原 `code`
+落到 OpenAI 的 `code` 字段，机器可读的身份不丢。
+
+回归测试见 `app/test/test_openai_error.py` 与 `app/test/test_llm_error_contract.py`。
