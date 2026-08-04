@@ -68,20 +68,19 @@ func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context) (*interfaces
 	if !mfa.appSetting.ServerSetting.DefaultSmallModelEnabled {
 		return nil, nil
 	}
-	// 优先取接口式系统默认(运行时可配，mf-model-manager 单一真相源，带 TTL 缓存)
+	// 部署显式配置优先。配置了名称但查不到时直接报错，避免静默使用
+	// 系统默认而掩盖配置错误。
+	if defaultModelName := mfa.appSetting.ServerSetting.DefaultSmallModelName; defaultModelName != "" {
+		return mfa.GetModelByName(ctx, defaultModelName)
+	}
+
+	// 未配置部署级默认时，才使用 mf-model-manager 的系统默认（带 TTL 缓存）。
 	model, err := mfa.getDefaultModelFromAPI(ctx, interfaces.SMALL_MODEL_TYPE_EMBEDDING)
 	if err != nil {
 		logger.Errorf("Get default embedding model from mf-model-manager failed: %s", common.SafeErrorSummary(err))
 		return nil, fmt.Errorf("get default embedding model failed: %w", err)
 	}
-	if model != nil {
-		return model, nil
-	}
-	// 兜底：接口未配置默认时，回退到本地配置的默认模型名(兼容旧部署/迁移期)
-	if defaultModelName := mfa.appSetting.ServerSetting.DefaultSmallModelName; defaultModelName != "" {
-		return mfa.GetModelByName(ctx, defaultModelName)
-	}
-	return nil, nil
+	return model, nil
 }
 
 // getDefaultModelFromAPI 调 mf-model-manager 取某 model_type 下的系统默认小模型，带进程内 TTL 缓存。
@@ -118,9 +117,9 @@ func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, model
 		return nil, fmt.Errorf("get default model request failed: %w", err)
 	}
 	if respCode == http.StatusNotFound {
-		// 兼容 mf-model-manager 尚未升级(无 get_default 端点)：当作未配置默认，由 GetDefaultModel 回退 DefaultSmallModelName。
+		// 兼容 mf-model-manager 尚未升级（无 get_default 端点）：当作未配置系统默认。
 		// 缓存 nil 避免版本错配窗口期反复打 404。
-		logger.Warnf("get_default endpoint returned 404 (mf-model-manager not upgraded?), fallback to configured default")
+		logger.Warnf("get_default endpoint returned 404 (mf-model-manager not upgraded?), no system default available")
 		mfa.defaultCacheMu.Lock()
 		if mfa.defaultCache == nil {
 			mfa.defaultCache = make(map[string]*cachedDefault)

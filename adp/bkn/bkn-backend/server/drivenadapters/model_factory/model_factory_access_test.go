@@ -220,21 +220,40 @@ func Test_modelFactoryAccess_GetDefaultModel(t *testing.T) {
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
 		mfa := newTestModelFactoryAccess(appSetting, mockHTTPClient)
 
-		Convey("Success getting default model", func() {
+		Convey("Configured model takes precedence over the system default", func() {
 			model := interfaces.SmallModel{
-				ModelID:   "model1",
+				ModelID:   "configured-model",
 				ModelName: "default-model",
 			}
 			respData, _ := sonic.Marshal(model)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusOK, respData, nil)
-
+				DoAndReturn(func(_ context.Context, url string, _ any, _ map[string]string) (int, []byte, error) {
+					So(url, ShouldContainSubstring, "/small-model/get_by_name?model_name=default-model")
+					return http.StatusOK, respData, nil
+				})
 			result, err := mfa.GetDefaultModel(ctx)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
-			So(result.ModelName, ShouldEqual, "default-model")
+			So(result.ModelID, ShouldEqual, "configured-model")
+		})
+
+		Convey("Uses the system default only when no configured model name exists", func() {
+			appSetting.ServerSetting.DefaultSmallModelName = ""
+			model := interfaces.SmallModel{ModelID: "system-model", ModelName: "system-default"}
+			respData, _ := sonic.Marshal(model)
+
+			mockHTTPClient.EXPECT().
+				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, url string, _ any, _ map[string]string) (int, []byte, error) {
+					So(url, ShouldContainSubstring, "/small-model/get_default?model_type=embedding")
+					return http.StatusOK, respData, nil
+				})
+
+			result, err := mfa.GetDefaultModel(ctx)
+			So(err, ShouldBeNil)
+			So(result.ModelID, ShouldEqual, "system-model")
 		})
 
 		Convey("Default model disabled", func() {
@@ -252,10 +271,13 @@ func Test_modelFactoryAccess_GetDefaultModel(t *testing.T) {
 			So(result, ShouldBeNil)
 		})
 
-		Convey("GetModelByName failed", func() {
+		Convey("Configured model lookup failure does not fall back to the system default", func() {
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(0, []byte(""), errors.New("network error"))
+				DoAndReturn(func(_ context.Context, url string, _ any, _ map[string]string) (int, []byte, error) {
+					So(url, ShouldContainSubstring, "/small-model/get_by_name?model_name=default-model")
+					return 0, []byte(""), errors.New("network error")
+				})
 
 			result, err := mfa.GetDefaultModel(ctx)
 			So(err, ShouldNotBeNil)
