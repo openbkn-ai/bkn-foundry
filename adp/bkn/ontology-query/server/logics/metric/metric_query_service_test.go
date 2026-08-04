@@ -108,6 +108,73 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 	})
 }
 
+func Test_mergeConditions(t *testing.T) {
+	Convey("mergeConditions combines non-nil trees with AND\n", t, func() {
+		a := &cond.CondCfg{Operation: cond.OperationEq, Name: "warehouse", ValueOptCfg: cond.ValueOptCfg{Value: "wh-1"}}
+		b := &cond.CondCfg{Operation: cond.OperationEq, Name: "stock_status", ValueOptCfg: cond.ValueOptCfg{Value: "可用"}}
+
+		So(mergeConditions(nil, nil), ShouldBeNil)
+		So(mergeConditions(a, nil), ShouldEqual, a)
+		So(mergeConditions(nil, b), ShouldEqual, b)
+
+		merged := mergeConditions(a, b)
+		So(merged.Operation, ShouldEqual, cond.OperationAnd)
+		So(merged.SubConds, ShouldHaveLength, 2)
+		So(merged.SubConds[0], ShouldEqual, a)
+		So(merged.SubConds[1], ShouldEqual, b)
+	})
+}
+
+func Test_buildResourceDataQueryParams_conditionMerge(t *testing.T) {
+	Convey("buildResourceDataQueryParams merges definition and query-time conditions with AND\n", t, func() {
+		ctx := context.Background()
+		svc := &metricQueryService{appSetting: &common.AppSetting{}}
+		ot := interfaces.ObjectType{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				DataProperties: []cond.DataProperty{
+					{Name: "warehouse", Type: dtype.DATATYPE_STRING, MappedField: cond.Field{Name: "warehouse_res"}},
+					{Name: "stock_status", Type: dtype.DATATYPE_STRING, MappedField: cond.Field{Name: "stock_status_res"}},
+					{Name: "amount", Type: dtype.DATATYPE_DOUBLE, MappedField: cond.Field{Name: "amount_res"}},
+				},
+			},
+		}
+		def := &interfaces.MetricDefinition{
+			CalculationFormula: &interfaces.MetricCalculationFormula{
+				Condition: &cond.CondCfg{
+					Operation: cond.OperationIn,
+					Name:      "warehouse",
+					ValueOptCfg: cond.ValueOptCfg{Value: []any{"昆山成品仓"}},
+				},
+				Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},
+			},
+		}
+
+		Convey("empty query body uses definition condition only\n", func() {
+			params, _, err := svc.buildResourceDataQueryParams(ctx, def, &interfaces.MetricQueryRequest{}, ot)
+			So(err, ShouldBeNil)
+			So(params.FilterCondition["operation"], ShouldEqual, cond.OperationIn)
+			So(params.FilterCondition["field"], ShouldEqual, "warehouse_res")
+		})
+
+		Convey("query-time condition ANDs with definition condition\n", func() {
+			params, _, err := svc.buildResourceDataQueryParams(ctx, def, &interfaces.MetricQueryRequest{
+				Condition: &cond.CondCfg{
+					Operation: cond.OperationEq,
+					Name:      "stock_status",
+					ValueOptCfg: cond.ValueOptCfg{
+						Value: "可用",
+					},
+				},
+			}, ot)
+			So(err, ShouldBeNil)
+			So(params.FilterCondition["operation"], ShouldEqual, cond.OperationAnd)
+			subs, ok := params.FilterCondition["sub_conditions"].([]any)
+			So(ok, ShouldBeTrue)
+			So(len(subs), ShouldEqual, 2)
+		})
+	})
+}
+
 func Test_metricQueryService_buildResourceDataQueryParams_analysisDimensions(t *testing.T) {
 	Convey("buildResourceDataQueryParams pushes analysis_dimensions to group_by\n", t, func() {
 		ctx := context.Background()

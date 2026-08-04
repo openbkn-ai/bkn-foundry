@@ -2766,6 +2766,26 @@ paths:
   /api/ontology-query/v1/knowledge-networks/{kn_id}/metrics/{metric_id}/data:
     post:
       summary: 查询指标数据（BKN 原生指标）
+      description: |
+        查询已落库的 **object_type 作用域 atomic 指标**（定义见 bkn-backend `MetricDefinition`）。
+
+        ## 定义内过滤 vs 查询时过滤
+
+        执行时将以下条件 **按 AND 合并**（不是覆盖）后下推到 Vega/resource：
+
+        1. `MetricDefinition.calculation_formula.condition`（定义内口径，稳定 KPI）
+        2. 本请求体 `condition`（查询时下钻 / 临时收窄）
+        3. 由 `time` 或 `time_dimension.default_range_policy` 推导的时间范围条件（instant / 趋势查询时）
+
+        合并规则：`merged = AND(definition.condition, request.condition, timeCondition)`；任一侧为空则省略。
+
+        ## analysis_dimensions 与 group_by
+
+        - `calculation_formula.group_by`：定义内的**固定分组基线**，每次查询都会参与 group_by。
+        - `analysis_dimensions`（请求体）：在指标 `analysis_dimensions` 白名单内的**追加下钻维度**，按请求顺序接在 group_by 之后；未知维度名忽略。
+        - 趋势查询（`time.instant=false` 且提供 `time.step`）会额外追加时间分桶维度。
+
+        建模 CRUD 与能力矩阵见 [`bkn-metrics.yaml`](../bkn/bkn-metrics.yaml)；对象类级总量指标应使用本接口，而非对象实例页的 logic-property 执行入口。
       parameters:
         - name: kn_id
           in: path
@@ -2797,6 +2817,31 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/MetricQueryRequestBody"
+            examples:
+              对象类总量（无查询时过滤）:
+                summary: 仅使用定义内 condition；body 可为空对象
+                value: {}
+              查询时单条件过滤:
+                summary: 与定义内 condition AND 合并
+                value:
+                  condition:
+                    operation: eq
+                    field: product_code
+                    value: P-001
+              查询时下钻 analysis_dimensions:
+                summary: 在定义 group_by 基线上追加分组维
+                value:
+                  analysis_dimensions:
+                    - warehouse_id
+                    - stock_status
+              趋势查询（time 窗口）:
+                summary: instant=false 时需提供 start/end/step；与定义 time_dimension 配合
+                value:
+                  time:
+                    start: 1735689600000
+                    end: 1738368000000
+                    instant: false
+                    step: day
       responses:
         "200":
           description: ok
@@ -2804,6 +2849,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MetricData"
+              examples:
+                标量总量:
+                  summary: 无分组时的单序列结果
+                  value:
+                    model:
+                      unit_type: numUnit
+                      unit: none
+                    datas:
+                      - labels: {}
+                        times: []
+                        values: [431]
+                    step: ""
+                    is_variable: false
+                    is_calendar: false
+                分组下钻:
+                  summary: 带 analysis_dimensions 时的多序列
+                  value:
+                    model:
+                      unit_type: numUnit
+                      unit: none
+                    datas:
+                      - labels:
+                          warehouse_id: wh-east
+                        times: []
+                        values: [120]
+                      - labels:
+                          warehouse_id: wh-west
+                        times: []
+                        values: [85]
+                    step: ""
+                    is_variable: false
+                    is_calendar: false
         "400":
           description: bad request
           content:
@@ -5338,7 +5415,13 @@ components:
 
     MetricQueryRequestBody:
       description: |
-        指标查询请求体（metric_id 在路径）。与 uniquery MetricQuery 对齐的时间/分析等 + BKN Condition；含 limit 截断序列条数；不含 scope_context。
+        指标查询请求体（`metric_id` 在路径）。与 uniquery MetricQuery 对齐的时间/分析等 + BKN Condition；含 `limit` 截断序列条数；不含 scope_context。
+
+        **condition 合并**：与 `MetricDefinition.calculation_formula.condition` 及时间推导条件 **AND** 合并，详见
+        `POST .../metrics/{metric_id}/data` 的 operation description。
+
+        **analysis_dimensions**：仅可引用指标定义中 `analysis_dimensions[].name` 已声明的维度；在
+        `calculation_formula.group_by` 之后按请求顺序追加 group_by。
       type: object
       properties:
         time:

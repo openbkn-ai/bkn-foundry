@@ -27,6 +27,8 @@ info:
 
     契约见 [`ontology-query.yaml`](../ontology-query/ontology-query.yaml)
     （paths：`.../metrics/{metric_id}/data`、`.../metrics/dry-run`；schemas：`MetricQueryRequestBody`、`MetricDryRun`）。
+    **condition 合并、analysis_dimensions 与 group_by 关系**见 ontology-query 中
+    `POST .../metrics/{metric_id}/data` 的 description 与 `MetricQueryRequestBody` schema 说明。
 
     产品侧注意：对象**实例**页的「执行」面向逻辑属性；对象类级总量指标应走上述 metric data / dry-run，而非实例执行入口。
 paths:
