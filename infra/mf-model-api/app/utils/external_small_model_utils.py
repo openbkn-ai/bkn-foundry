@@ -9,6 +9,15 @@ from app.core.config import base_config
 from app.logs.stand_log import StandLogger
 
 
+class UpstreamModelError(Exception):
+    """Provider error with an HTTP status suitable for gateway mapping."""
+
+    def __init__(self, status, detail):
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
+
+
 class BaiduTianchenClient:
     def __init__(self, url, ClientId, OperationCode):
         self.url = url
@@ -250,6 +259,87 @@ class InnerClient:
         self.adapter = adapter
         self.adapter_code = adapter_code
 
+    def _is_volcengine_embedding(self):
+        # Only the vision family uses Ark's multimodal embeddings endpoint.
+        # Other Doubao embedding models retain the OpenAI-compatible text body.
+        return self.model_name.startswith("doubao-embedding-vision-")
+
+    def _embedding_params(self, texts):
+        """Build the provider-specific embedding request body."""
+        if self._is_volcengine_embedding():
+            return {
+                "model": self.model_name,
+                "input": [
+                    text if isinstance(text, dict) else {"type": "text", "text": text}
+                    for text in texts
+                ],
+                "dimensions": 1024,
+            }
+        return {
+            "model": self.model_name,
+            "input": texts,
+        }
+
+    def _normalize_volcengine_embedding_response(self, result):
+        """Normalize Ark's single-object data field to the OpenAI-style list."""
+        if self._is_volcengine_embedding() and isinstance(result.get("data"), dict):
+            result["data"] = [result["data"]]
+        return result
+
+    def _validate_volcengine_embedding_response(self, result, expected_count=1):
+        """Validate the response shape consumed by mf-model-api callers."""
+        result = self._normalize_volcengine_embedding_response(result)
+        data = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(data, list) or len(data) != expected_count:
+            raise ValueError(
+                f"Invalid Volcengine embedding response: expected {expected_count} vectors")
+        if not all(
+                isinstance(item, dict) and isinstance(item.get("embedding"), list) and
+                len(item["embedding"]) > 0
+                for item in data):
+            raise ValueError("Invalid Volcengine embedding response: invalid embedding data")
+        return result
+
+    async def _post_embedding(self, session, texts):
+        async with session.post(
+                self.url,
+                json=self._embedding_params(texts), headers=self.headers, ssl=False) as resp:
+            res = await resp.text()
+            if resp.status != 200:
+                StandLogger.error(
+                    f"call embeddingError,model_name={self.model_name},status={resp.status}")
+                raise UpstreamModelError(resp.status, res)
+            return json.loads(res)
+
+    async def _volcengine_text_embeddings(self, texts):
+        """Ark permits one text item per multimodal request; preserve batch semantics locally."""
+        if not texts:
+            raise ValueError("Volcengine embedding input must not be empty")
+
+        async with aiohttp.ClientSession(timeout=base_config.aiohttp_timeout) as session:
+            results = []
+            for index, text in enumerate(texts):
+                result = self._validate_volcengine_embedding_response(
+                    await self._post_embedding(session, [text]))
+                item = result["data"][0]
+                item["index"] = index
+                results.append((result, item))
+
+        response = results[0][0]
+        response["data"] = [item for _, item in results]
+        usage = response.get("usage")
+        if isinstance(usage, dict):
+            response["usage"] = {
+                key: sum(
+                    result.get("usage", {}).get(key, 0)
+                    for result, _ in results
+                    if isinstance(result.get("usage"), dict) and
+                    isinstance(result["usage"].get(key, 0), (int, float))
+                ) if isinstance(value, (int, float)) else value
+                for key, value in usage.items()
+            }
+        return response
+
     async def embedding(self, texts):
         if self.adapter and self.adapter_code:
             try:
@@ -264,22 +354,13 @@ class InnerClient:
             except Exception as e:
                 raise Exception(f"Adapter execution failed: {str(e)}")
 
-        # 原有逻辑
-        params = {
-            "model": self.model_name,
-            "input": texts
-        }
+        if self._is_volcengine_embedding() and all(isinstance(text, str) for text in texts):
+            return await self._volcengine_text_embeddings(texts)
+
         async with aiohttp.ClientSession(timeout=base_config.aiohttp_timeout) as session:
-            async with session.post(
-                    self.url,
-                    json=params, headers=self.headers, ssl=False) as resp:
-                if resp.status != 200:
-                    error_msg = await resp.text()
-                    StandLogger.error(
-                        f"call embeddingError,model_name={self.model_name},error_detail={error_msg},body={texts},status={resp.status}")
-                    raise Exception(error_msg)
-                res = await resp.text()
-                result = json.loads(res)
+            result = await self._post_embedding(session, texts)
+        if self._is_volcengine_embedding():
+            return self._validate_volcengine_embedding_response(result)
         return result
 
     async def reranker(self, query, documents):
@@ -330,10 +411,7 @@ class InnerClient:
                 raise Exception(f"Adapter execution failed: {str(e)}")
 
         else:
-            params = {
-                "model": self.model_name,
-                "input": texts
-            }
+            params = self._embedding_params(texts)
             async with aiohttp.ClientSession(timeout=base_config.aiohttp_timeout) as session:
                 async with session.post(
                         self.url,
@@ -343,7 +421,7 @@ class InnerClient:
                     if resp.status != 200:
                         raise Exception(resp.content)
                     res = await resp.text()
-                    result = json.loads(res)
+                    result = self._normalize_volcengine_embedding_response(json.loads(res))
         required_keys = ["object", "data", "model", "usage"]
         if not all(key in result for key in required_keys):
             raise ValueError(f"Invalid adapter response format, missing one of: {required_keys}")

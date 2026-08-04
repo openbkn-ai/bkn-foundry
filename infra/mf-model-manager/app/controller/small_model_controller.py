@@ -7,7 +7,7 @@ from app.core.config import base_config
 from app.dao.small_model_dao import small_model_dao
 from app.interfaces import dbaccess, logics
 from app.logs.stand_log import StandLogger
-from app.utils.external_small_model_utils import BaiduClient, BaishengClient, InnerClient, BaiduTianchenClient
+from app.utils.external_small_model_utils import BaiduClient, BaishengClient, InnerClient, BaiduTianchenClient, UpstreamModelError
 from app.utils.observability.observability_log import get_logger
 from app.utils.param_verify_utils import *
 from app.utils.reshape_utils import *
@@ -102,14 +102,14 @@ async def test_model(request, userId, language, role):
                     config_info['api_key'] = config_info_old.get("api_key", "")
                 model_type = request.model_type
                 api_model = config_info.get("api_model", "")
-                adapter = request.adapter,
+                adapter = request.adapter
                 adapter_code = request.adapter_code
                 embedding_dim = request.embedding_dim
         else:
             config_info = request.model_config
             model_type = request.model_type
             api_model = config_info.get("api_model", "")
-            adapter = request.adapter,
+            adapter = request.adapter
             adapter_code = request.adapter_code
             embedding_dim = request.embedding_dim
         try:
@@ -572,6 +572,15 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
                 f'"prompt_tokens":{prompt_tokens},"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
         return res_dict
 
+    except UpstreamModelError as e:
+        status_code = e.status if e.status in (400, 401, 403, 404, 422, 429) else 502
+        error_dict = ModelFactory_ExternalSmallModel_Used_ConnectError.copy()
+        error_dict["detail"] = f"模型服务调用失败（HTTP {e.status}）"
+        if get_logger():
+            get_logger().info(
+                f'{{"model_name":{model_name},"resourece_type":"embeddings","user_id":{userId},'
+                f'"prompt_tokens":0,"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
+        return JSONResponse(status_code=status_code, content=error_dict)
     except Exception as e:
         StandLogger.error(
             f"call embeddingError,model_name={model_name},error_detail={e},body={texts}")
