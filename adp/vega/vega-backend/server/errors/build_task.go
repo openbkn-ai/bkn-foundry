@@ -18,6 +18,7 @@ const (
 	VegaBackend_BuildTask_InvalidParameter_Mode           = "VegaBackend.BuildTask.InvalidParameter.Mode"
 	VegaBackend_BuildTask_InvalidParameter_BuildKeyFields = "VegaBackend.BuildTask.InvalidParameter.BuildKeyFields"
 	VegaBackend_BuildTask_InvalidParameter_Analyzer       = "VegaBackend.BuildTask.InvalidParameter.Analyzer"
+	VegaBackend_BuildTask_InvalidParameter_EmbeddingModel = "VegaBackend.BuildTask.InvalidParameter.EmbeddingModel"
 
 	// 404 Not Found
 	VegaBackend_BuildTask_NotFound = "VegaBackend.BuildTask.NotFound"
@@ -46,6 +47,7 @@ var BuildTaskErrCodeList = []string{
 	VegaBackend_BuildTask_InvalidParameter_Mode,
 	VegaBackend_BuildTask_InvalidParameter_BuildKeyFields,
 	VegaBackend_BuildTask_InvalidParameter_Analyzer,
+	VegaBackend_BuildTask_InvalidParameter_EmbeddingModel,
 
 	// 404 Not Found
 	VegaBackend_BuildTask_NotFound,

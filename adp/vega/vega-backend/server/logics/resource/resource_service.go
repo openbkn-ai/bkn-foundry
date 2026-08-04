@@ -1057,9 +1057,6 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 	if err := validateIndexConfigBuildKeyFields(ctx, schema, indexConfig); err != nil {
 		return err
 	}
-	if rs.mfs == nil {
-		return nil
-	}
 	defaultEmbeddingModel := ""
 	if indexConfig != nil {
 		defaultEmbeddingModel = strings.TrimSpace(indexConfig.DefaultEmbeddingModel)
@@ -1073,6 +1070,12 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
 			}
+
+			fieldName := prop.Name
+			if feature.RefProperty != "" {
+				fieldName = feature.RefProperty
+			}
+
 			modelName := ""
 			if feature.Config != nil {
 				if value, ok := feature.Config["embedding_model"].(string); ok {
@@ -1083,20 +1086,18 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 				modelName = defaultEmbeddingModel
 			}
 			if modelName == "" {
-				modelName = interfaces.DEFAULT_EMBEDDING_MODEL
-			}
-			if _, ok := checkedModels[modelName]; ok {
-				continue
-			}
-			if _, err := rs.mfs.GetModelByName(ctx, modelName); err != nil {
-				fieldName := prop.Name
-				if feature.RefProperty != "" {
-					fieldName = feature.RefProperty
-				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-					WithErrorDetails(fmt.Sprintf("embedding model %q for field %q not found", modelName, fieldName))
+					WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", fieldName))
 			}
-			checkedModels[modelName] = struct{}{}
+
+			if _, ok := checkedModels[modelName]; !ok {
+				if _, err := rs.mfs.GetModelByName(ctx, modelName); err != nil {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+						WithErrorDetails(fmt.Sprintf("embedding model %q for field %q not found", modelName, fieldName))
+				}
+
+				checkedModels[modelName] = struct{}{}
+			}
 		}
 	}
 	return nil

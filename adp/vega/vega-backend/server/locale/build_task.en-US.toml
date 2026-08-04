@@ -23,6 +23,11 @@ Description = "Unavailable full-text analyzer"
 Solution = "Choose an analyzer installed in OpenSearch, or update the affected field to use the resource default"
 ErrorLink = "No solution"
 
+[VegaBackend.BuildTask.InvalidParameter.EmbeddingModel]
+Description = "Missing embedding model for vector field"
+Solution = "Set config.embedding_model on the vector feature or index_config.default_embedding_model on the resource"
+ErrorLink = "No solution"
+
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "Invalid build task state transition"
 Solution = "Check current task status; start requires status in {init, stopped}; stop requires status == running"

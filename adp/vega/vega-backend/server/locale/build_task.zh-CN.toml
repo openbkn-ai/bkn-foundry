@@ -23,6 +23,11 @@ Description = "全文分词器不可用"
 Solution = "请选择 OpenSearch 已安装的分词器，或将受影响字段改为使用资源默认分词器"
 ErrorLink = "暂无"
 
+[VegaBackend.BuildTask.InvalidParameter.EmbeddingModel]
+Description = "向量字段缺少嵌入模型"
+Solution = "请为向量特征配置 config.embedding_model，或在资源上配置 index_config.default_embedding_model"
+ErrorLink = "暂无"
+
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "构建任务状态转移非法"
 Solution = "检查当前状态；start 要求 status 为 init 或 stopped；stop 要求 status 为 running"
