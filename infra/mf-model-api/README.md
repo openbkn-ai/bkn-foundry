@@ -34,6 +34,11 @@
 - **瞬态错误先重试。** 上游 429/502/503/504 走退避重试（`sleep_before_retry`），
   重试用完才报错；4xx 参数类错误不重试。
 
+兼容面覆盖到**框架层**：请求体在 pydantic 就被打回的那类走 FastAPI 的
+`RequestValidationError` 处理器，同样按路径转成 OpenAI 错误体（`app/routers/__init__.py`
+的 `_is_openai_compat`）。该处理器是全服务共用的——小模型、模型管理等端点不是
+兼容面，继续用 envelope，改这里千万别一刀切。
+
 内部 envelope（参数校验、权限、配额等）经
 `llm_controller.envelope_error_response()` 翻成上述形状后再出门，原 `code`
 落到 OpenAI 的 `code` 字段，机器可读的身份不丢。
