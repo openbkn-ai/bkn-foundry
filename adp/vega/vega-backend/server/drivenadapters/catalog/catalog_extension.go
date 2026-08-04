@@ -12,9 +12,9 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 
-	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/drivenadapters/entityextension"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // catalogExtCol 列表/计数在带 extensions JOIN 时为列名加 t_catalog. 前缀，避免歧义

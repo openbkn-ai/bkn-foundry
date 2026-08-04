@@ -9,7 +9,7 @@ package common
 import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
-	"vega-backend/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/version"
 )
 
 const (

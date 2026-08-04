@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"vega-backend/interfaces"
-	"vega-backend/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/filter_condition"
 )
 
 func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {

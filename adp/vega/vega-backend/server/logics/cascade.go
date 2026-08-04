@@ -11,8 +11,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // CascadeDeleteBuildTasks 删除 filter 命中的所有构建任务及其本地索引，

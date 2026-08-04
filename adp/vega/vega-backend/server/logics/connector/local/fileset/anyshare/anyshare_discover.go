@@ -18,7 +18,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // ListFilesets discovers one level of files/folders per configured roots (see design doc).

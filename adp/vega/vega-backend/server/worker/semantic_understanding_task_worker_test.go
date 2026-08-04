@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"vega-backend/interfaces"
-	vmock "vega-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	vmock "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
 )
 
 func semanticUnderstandingWorkerTask(t *testing.T, taskID string) *asynq.Task {

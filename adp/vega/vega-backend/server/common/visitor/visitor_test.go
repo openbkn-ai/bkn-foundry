@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func TestGenerateVisitor(t *testing.T) {

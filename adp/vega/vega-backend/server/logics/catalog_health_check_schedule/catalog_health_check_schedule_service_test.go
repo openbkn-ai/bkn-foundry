@@ -21,9 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	vmock "vega-backend/interfaces/mock"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	vmock "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
 )
 
 func newCatalogHealthCheckScheduleServiceForTest(t *testing.T) *catalogHealthCheckScheduleService {

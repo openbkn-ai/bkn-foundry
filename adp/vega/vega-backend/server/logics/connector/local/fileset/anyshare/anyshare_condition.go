@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"vega-backend/interfaces"
-	"vega-backend/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/filter_condition"
 )
 
 // FilterResult represents the result of processing a filter condition

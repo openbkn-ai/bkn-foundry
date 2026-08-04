@@ -20,9 +20,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/drivenadapters/entityextension"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func TestResourceAccessCreate(t *testing.T) {

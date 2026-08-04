@@ -6,9 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
 
-	"vega-backend/common"
-	"vega-backend/common/visitor"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common/visitor"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 type NoopAuthService struct {

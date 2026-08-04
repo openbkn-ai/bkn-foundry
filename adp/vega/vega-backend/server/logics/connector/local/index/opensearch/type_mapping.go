@@ -8,7 +8,7 @@
 package opensearch
 
 import (
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // TypeMapping maps OpenSearch native types to VEGA types.

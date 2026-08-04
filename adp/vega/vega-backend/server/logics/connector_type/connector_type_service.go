@@ -18,12 +18,12 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
-	"vega-backend/common"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/connector/factory"
-	"vega-backend/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/permission"
 )
 
 var (
@@ -108,6 +108,15 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 			WithErrorDetails(err.Error())
 	}
 	if ct == nil {
+		// A connector contributed by the enterprise code line has no
+		// t_connector_type row, so the database always misses it; its record
+		// comes from the extension socket instead, and only while the licence
+		// covers it. Under-licensed falls through to the same 404 an unknown
+		// type gets — deliberately, so the paid surface is not advertised by
+		// the shape of the refusal.
+		ct = extensionConnectorType(tp)
+	}
+	if ct == nil {
 		span.SetStatus(codes.Error, "Connector type not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_ConnectorType_NotFound)
 	}
@@ -142,6 +151,18 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
+
+	// Connectors contributed by the enterprise code line have no row in
+	// t_connector_type, so the query above cannot see them. They are merged in
+	// here, and only the ones the licence in force covers — which is what makes
+	// the catalogue follow the certificate without a restart, in both
+	// directions.
+	//
+	// They join before the permission filter rather than after, so a paid type
+	// is subject to exactly the same authorization as a built-in one. Nothing
+	// about being paid should make a type visible to a user who may not see
+	// connector types.
+	connectorTypesArr = append(connectorTypesArr, licensedExtensionTypes(params)...)
 
 	// 处理资源id
 	types := make([]string, 0)

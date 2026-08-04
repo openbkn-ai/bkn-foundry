@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"vega-backend/interfaces"
-	vmock "vega-backend/interfaces/mock"
-	"vega-backend/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	vmock "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
 )
 
 func TestUpdateResourceIndexName(t *testing.T) {

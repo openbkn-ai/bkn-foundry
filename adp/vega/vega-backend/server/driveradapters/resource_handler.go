@@ -10,10 +10,10 @@ package driveradapters
 import (
 	"context"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common/visitor"
 	"net/http"
 	"strings"
-	"vega-backend/common"
-	"vega-backend/common/visitor"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/audit"
@@ -23,8 +23,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // ========== ListResources ==========

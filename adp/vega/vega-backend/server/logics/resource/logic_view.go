@@ -20,9 +20,9 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	fcond "vega-backend/logics/filter_condition"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	fcond "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/filter_condition"
 )
 
 // 创建和更新视图的一些通用操作

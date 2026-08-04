@@ -19,7 +19,7 @@ ENV GOPROXY=${GOPROXY_URL}
 RUN set -ex; \
     cd /go/src; \
     go mod download -x; \
-    export flags="-X 'vega-backend/version.ServerVersion=${SERVER_VERSION}'"; \
+    export flags="-X 'github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/version.ServerVersion=${SERVER_VERSION}'"; \
     CGO_ENABLED=1 go build -ldflags "-s -w $flags" -o ./bin/vega-backend-server;
 
 ########################### Stage 1 ########################

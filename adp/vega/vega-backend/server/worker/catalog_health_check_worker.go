@@ -13,11 +13,11 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/robfig/cron/v3"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/catalog"
-	catalog_health_check_schedule "vega-backend/logics/catalog_health_check_schedule"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/catalog"
+	catalog_health_check_schedule "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/catalog_health_check_schedule"
 )
 
 const (

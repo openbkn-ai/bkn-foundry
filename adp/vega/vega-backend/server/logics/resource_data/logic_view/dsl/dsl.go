@@ -15,8 +15,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	"vega-backend/interfaces"
-	"vega-backend/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/filter_condition"
 )
 
 // logicViewDSLGenerator 用于生成DSL

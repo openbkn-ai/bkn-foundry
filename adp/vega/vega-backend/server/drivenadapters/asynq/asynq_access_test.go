@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"vega-backend/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
 )
 
 func TestAsynqAccessCreateClient(t *testing.T) {

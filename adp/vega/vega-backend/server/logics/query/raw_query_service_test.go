@@ -21,13 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	mock_interfaces "vega-backend/interfaces/mock"
-	"vega-backend/logics/connector/factory"
-	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
-	"vega-backend/logics/query/querypolicy"
-	"vega-backend/logics/query/sqlglot"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/factory"
+	opensearchconnector "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/local/index/opensearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/query/querypolicy"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/query/sqlglot"
 )
 
 // NewRawQueryServiceWithDeps 创建SQL查询服务（用于测试）

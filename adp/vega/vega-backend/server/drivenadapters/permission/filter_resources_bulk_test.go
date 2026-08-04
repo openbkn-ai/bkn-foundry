@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // bknSafeStub mocks the two bkn-safe authz endpoints the adapter uses and counts

@@ -15,10 +15,11 @@ import (
 
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/connector/remote"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	extconn "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/extension/connector"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/remote"
 )
 
 var (
@@ -148,6 +149,15 @@ func (cf *ConnectorFactory) SetConnectorEnabled(ctx context.Context, tp string, 
 func (cf *ConnectorFactory) CreateConnectorInstance(ctx context.Context, tp string, cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
+
+	// A paid connector the licence in force does not cover has to be
+	// indistinguishable from a type this build never had: same error, same
+	// wording, so a caller cannot tell an under-licensed enterprise image from
+	// a community one by probing. Checked here rather than at install time
+	// because the licence can change while the process runs.
+	if extconn.Registered(tp) && !extconn.Allowed(tp) {
+		return nil, fmt.Errorf("connector %s not found", tp)
+	}
 
 	if connector, ok := cf.connectors[tp]; ok {
 		if !connector.GetEnabled() {

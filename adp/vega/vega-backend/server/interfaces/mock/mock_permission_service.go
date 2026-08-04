@@ -11,8 +11,8 @@ package mock_interfaces
 
 import (
 	context "context"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 	reflect "reflect"
-	interfaces "vega-backend/interfaces"
 
 	gomock "go.uber.org/mock/gomock"
 )

@@ -10,10 +10,10 @@ package driveradapters
 import (
 	"context"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
 	"net/http"
 	"strconv"
 	"strings"
-	"vega-backend/common"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/audit"
@@ -23,8 +23,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // ListConnectorTypes handles GET /api/vega-backend/v1/connector-types

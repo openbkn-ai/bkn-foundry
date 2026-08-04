@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 type InCond struct {

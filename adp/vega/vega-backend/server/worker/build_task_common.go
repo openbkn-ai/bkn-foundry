@@ -19,10 +19,10 @@ import (
 	"github.com/mohae/deepcopy"
 	"github.com/segmentio/kafka-go"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/build_task"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/build_task"
 )
 
 func getIndexName(resourceID, buildTaskID string) string {

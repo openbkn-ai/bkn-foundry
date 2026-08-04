@@ -16,9 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	"vega-backend/common"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // parseBuildTaskListParams 解析并校验 GET /build-tasks 的全部 query:

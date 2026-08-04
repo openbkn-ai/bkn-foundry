@@ -15,8 +15,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/robfig/cron/v3"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 var (

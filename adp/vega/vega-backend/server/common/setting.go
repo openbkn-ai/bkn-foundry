@@ -24,7 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/spf13/viper"
 
-	"vega-backend/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/version"
 )
 
 // ServerSetting server配置项

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"vega-backend/interfaces"
-	mock_interfaces "vega-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
 )
 
 func TestCascadeDeleteBuildTasks(t *testing.T) {

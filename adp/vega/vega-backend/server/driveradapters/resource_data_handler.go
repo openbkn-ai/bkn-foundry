@@ -23,10 +23,10 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/trace"
 
-	"vega-backend/common/visitor"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	resourcelogic "vega-backend/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common/visitor"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	resourcelogic "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/resource"
 )
 
 // PostResourceDataByEx handles POST /api/vega-backend/v1/resources/:id/data (External).

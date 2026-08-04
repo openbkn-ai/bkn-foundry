@@ -13,8 +13,8 @@ import (
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func ValidateConnectorTypeReq(ctx context.Context, req *interfaces.ConnectorTypeReq) error {

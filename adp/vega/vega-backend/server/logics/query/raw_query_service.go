@@ -22,17 +22,17 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	"vega-backend/common"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	"vega-backend/logics/catalog"
-	"vega-backend/logics/connector/factory"
-	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
-	"vega-backend/logics/connector/local/table/mariadb"
-	"vega-backend/logics/connector/local/table/postgresql"
-	"vega-backend/logics/query/querypolicy"
-	"vega-backend/logics/query/sqlglot"
-	resourcelogic "vega-backend/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/factory"
+	opensearchconnector "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/local/index/opensearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/local/table/mariadb"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/local/table/postgresql"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/query/querypolicy"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/query/sqlglot"
+	resourcelogic "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/resource"
 )
 
 var (

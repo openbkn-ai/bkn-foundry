@@ -20,12 +20,12 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/bkn_agent"
-	"vega-backend/logics/resource"
-	"vega-backend/logics/semantic_understanding_task"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/bkn_agent"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/semantic_understanding_task"
 )
 
 var semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)

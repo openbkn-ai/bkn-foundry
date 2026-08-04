@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"vega-backend/interfaces"
-	"vega-backend/logics/extensions"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/extensions"
 )
 
 func TestValidateCatalogRequest(t *testing.T) {

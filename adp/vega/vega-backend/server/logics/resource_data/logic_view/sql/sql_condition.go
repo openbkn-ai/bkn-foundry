@@ -13,8 +13,8 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 
-	"vega-backend/interfaces"
-	"vega-backend/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/filter_condition"
 )
 
 var Special = strings.NewReplacer(`\`, `\\\\`, `'`, `\'`, `%`, `\%`, `_`, `\_`)

@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 	"go.opentelemetry.io/otel/trace"
-	"vega-backend/interfaces"
 )
 
 type evidenceRoundTripFunc func(*http.Request) (*http.Response, error)

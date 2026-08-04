@@ -9,9 +9,9 @@ package user_mgmt
 import (
 	"context"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
 )
 
 type UserMgmtServiceImpl struct {

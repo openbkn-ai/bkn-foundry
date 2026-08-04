@@ -17,10 +17,10 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	"vega-backend/common/visitor"
-	"vega-backend/errors"
-	"vega-backend/interfaces"
-	"vega-backend/logics/query"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common/visitor"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/query"
 )
 
 // RawQueryByEx handles POST /api/vega-backend/v1/resources/query (External)

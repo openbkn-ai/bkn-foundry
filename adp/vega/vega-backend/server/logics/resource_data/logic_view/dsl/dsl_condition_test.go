@@ -9,7 +9,7 @@ package dsl
 import (
 	"context"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func dslConditionCfg(name string, operation string, valueFrom string, value any) *interfaces.FilterCondCfg {

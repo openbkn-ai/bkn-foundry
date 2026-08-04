@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
-	mock_interfaces "vega-backend/interfaces/mock"
+	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
 )
 
 func TestDrivenAccessSetters(t *testing.T) {

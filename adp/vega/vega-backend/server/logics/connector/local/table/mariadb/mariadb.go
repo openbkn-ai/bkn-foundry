@@ -16,7 +16,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/mitchellh/mapstructure"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 type mariadbConfig struct {

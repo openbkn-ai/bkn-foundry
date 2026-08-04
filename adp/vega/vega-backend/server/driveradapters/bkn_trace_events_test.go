@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"vega-backend/common/bkntrace"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func TestResourceDataArtifactContentPreservesActualQueryAndBusinessResult(t *testing.T) {

@@ -14,8 +14,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/robfig/cron/v3"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func ValidateDiscoverScheduleRequest(ctx context.Context, req *interfaces.DiscoverScheduleRequest) error {

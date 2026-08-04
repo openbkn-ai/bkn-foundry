@@ -17,7 +17,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	_ "github.com/sijms/go-ora/v2"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 type oracleConfig struct {

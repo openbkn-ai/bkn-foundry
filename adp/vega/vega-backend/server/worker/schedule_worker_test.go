@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	vmock "vega-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	vmock "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
 )
 
 func TestScheduleWorkerScheduleLifecycle(t *testing.T) {

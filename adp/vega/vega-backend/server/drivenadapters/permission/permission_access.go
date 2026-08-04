@@ -19,8 +19,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 var (

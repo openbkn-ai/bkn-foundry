@@ -17,7 +17,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/mitchellh/mapstructure"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 type postgresqlConfig struct {

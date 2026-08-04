@@ -17,7 +17,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // GetMetadata returns the metadata for the catalog.

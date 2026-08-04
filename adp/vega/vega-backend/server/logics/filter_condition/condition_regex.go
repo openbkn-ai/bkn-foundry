@@ -12,7 +12,7 @@ import (
 
 	"github.com/dlclark/regexp2"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 type RegexCond struct {

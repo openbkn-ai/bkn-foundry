@@ -16,8 +16,8 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
-	"vega-backend/interfaces"
-	"vega-backend/logics/connector/local/table/safelog"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/local/table/safelog"
 )
 
 // convertValue converts []byte to string for MariaDB driver compatibility

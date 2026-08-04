@@ -26,17 +26,17 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/catalog_health_check_schedule"
-	"vega-backend/logics/connector/factory"
-	"vega-backend/logics/extensions"
-	"vega-backend/logics/local_index"
-	"vega-backend/logics/permission"
-	"vega-backend/logics/user_mgmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/drivenadapters/entityextension"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/catalog_health_check_schedule"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/extensions"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/local_index"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/user_mgmt"
 )
 
 const (

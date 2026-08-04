@@ -4,180 +4,29 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
+// Command vega-backend is the community build of vega-backend.
+//
+// Startup lives in server/app so that the enterprise build — which is the same
+// service plus the paid capabilities in the openbkn-ee repository — can insert
+// its assembly step between Boot and Run without forking this file. Everything
+// this command does, that one does too; it simply has nothing to assemble.
 package main
 
 import (
-	"context"
-	"net/http"
-	"os/signal"
-	"strconv"
-	"syscall"
-	"time"
+	"github.com/openbkn-ai/bkn-comm-go/logger"
+	_ "go.uber.org/automaxprocs"
 	_ "unicode/utf8"
 
-	"github.com/gin-gonic/gin"
-	libdb "github.com/openbkn-ai/bkn-comm-go/db"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
-	_ "go.uber.org/automaxprocs"
-
-	"vega-backend/common"
-	"vega-backend/drivenadapters/asynq"
-	"vega-backend/drivenadapters/auth"
-	"vega-backend/drivenadapters/bkn_agent"
-	"vega-backend/drivenadapters/build_task"
-	"vega-backend/drivenadapters/catalog"
-	"vega-backend/drivenadapters/catalog_health_check_schedule"
-	"vega-backend/drivenadapters/connector_type"
-	"vega-backend/drivenadapters/discover_schedule"
-	"vega-backend/drivenadapters/discover_task"
-	"vega-backend/drivenadapters/kafka"
-	"vega-backend/drivenadapters/model_factory"
-	"vega-backend/drivenadapters/permission"
-	"vega-backend/drivenadapters/resource"
-	"vega-backend/drivenadapters/semantic_understanding_task"
-	"vega-backend/drivenadapters/user_mgmt"
-	"vega-backend/driveradapters"
-	"vega-backend/logics"
-	"vega-backend/logics/connector/factory"
-	logicsDiscoverSchedule "vega-backend/logics/discover_schedule"
-	logicsDiscoverTask "vega-backend/logics/discover_task"
-	"vega-backend/worker"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/app"
 )
 
-type mgrService struct {
-	appSetting    *common.AppSetting
-	otelProviders *otel.Providers
-	restHandler   driveradapters.RestHandler
-}
-
-func (server *mgrService) start() {
-	logger.Info("Server Starting")
-
-	// 创建 gin.engine 并注册 API
-	engine := gin.New()
-
-	server.restHandler.RegisterPublic(engine)
-	logger.Info("Server Register API Success")
-
-	// 监听中断信号（SIGINT、SIGTERM）
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	// 在收到信号的时候，会自动触发 ctx 的 Done ，这个 stop 是不再捕获注册的信号的意思，算是一种释放资源。
-	defer stop()
-
-	// 初始化 http 服务
-	s := &http.Server{
-		Addr:           ":" + strconv.Itoa(server.appSetting.ServerSetting.HttpPort),
-		Handler:        engine,
-		ReadTimeout:    server.appSetting.ServerSetting.ReadTimeOut * time.Second,
-		WriteTimeout:   server.appSetting.ServerSetting.WriteTimeout * time.Second,
-		MaxHeaderBytes: 1 << 20,
-	}
-
-	// 启动 http 服务
-	go func() {
-		err := s.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
-			logger.Fatalf("s.ListenAndServe err:%v", err)
-		}
-	}()
-
-	logger.Infof("Server Started on Port:%d", server.appSetting.ServerSetting.HttpPort)
-
-	<-ctx.Done()
-
-	// 设置系统最后处理时间
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	// 停止 http 服务
-	logger.Info("Server Start Shutdown")
-	if err := s.Shutdown(ctx); err != nil {
-		logger.Fatalf("Server Shutdown:%v", err)
-	}
-
-	server.otelProviders.Shutdown(ctx)
-
-	logger.Info("Server Exited")
-}
-
 func main() {
-	logger.Info("Server Initializing")
-
-	// 初始化服务配置
-	appSetting := common.NewSetting()
-	logger.Info("Server Init Setting Success")
-
-	// 设置错误码语言
-	rest.SetLang(appSetting.ServerSetting.Language)
-	logger.Info("Server Set Language Success")
-
-	// 设置 gin 运行模式
-	gin.SetMode(appSetting.ServerSetting.RunMode)
-	logger.Infof("Server RunMode: %s", appSetting.ServerSetting.RunMode)
-
-	logger.Infof("Server Start By Port:%d", appSetting.ServerSetting.HttpPort)
-
-	otelProviders, err := otel.InitOTel(context.Background(), &appSetting.OtelSetting)
+	a, err := app.Boot(app.Options{})
 	if err != nil {
-		logger.Fatalf("Failed to initialize OpenTelemetry provider: %v", err)
+		logger.Fatalf("boot: %v", err)
 	}
 
-	// 初始化数据库连接
-	db := libdb.NewDB(&appSetting.DBSetting)
-	logics.SetDB(db)
-
-	// Set顺序按字母升序排序
-	if common.GetAuthEnabled() {
-		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
-		logics.SetPermissionAccess(permission.MaybeShadow(permission.NewPermissionAccess(appSetting)))
-		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
+	if err := a.Run(); err != nil {
+		logger.Fatalf("run: %v", err)
 	}
-
-	logics.SetAsynqAccess(asynq.NewAsynqAccess(appSetting))
-	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))
-	logics.SetCatalogAccess(catalog.NewCatalogAccess(appSetting))
-	logics.SetCatalogHealthCheckScheduleAccess(catalog_health_check_schedule.NewCatalogHealthCheckScheduleAccess(appSetting))
-	logics.SetConnectorTypeAccess(connector_type.NewConnectorTypeAccess(appSetting))
-	logics.SetDiscoverScheduleAccess(discover_schedule.NewDiscoverScheduleAccess(appSetting))
-	logics.SetDiscoverTaskAccess(discover_task.NewDiscoverTaskAccess(appSetting))
-	logics.SetKafkaAccess(kafka.NewKafkaAccess(appSetting))
-	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
-	logics.SetResourceAccess(resource.NewResourceAccess(appSetting))
-	logics.SetBknAgentAccess(bkn_agent.NewBknAgentAccess(appSetting))
-	logics.SetSemanticUnderstandingTaskAccess(semantic_understanding_task.NewSemanticUnderstandingTaskAccess(appSetting))
-
-	// 初始化 Connector Factory 并注册内置的 Local Connector Builder
-	factory.Init(appSetting)
-	logger.Info("VEGA Manager Init Connector Factory Success")
-
-	// 初始化并启动统一的 TaskWorkerManger，处理所有类型的任务
-	taskWorkerMgr := worker.NewTaskWorkerManager(appSetting)
-	taskWorkerMgr.Start()
-	logger.Info("VEGA Manager Init Task Worker Success")
-
-	// 初始化并启动调度器
-	dts := logicsDiscoverTask.NewDiscoverTaskService(appSetting)
-	dss := logicsDiscoverSchedule.NewDiscoverScheduleService(appSetting, dts)
-	sw := worker.NewScheduleWorker(appSetting, dss)
-	if err := sw.Start(); err != nil {
-		logger.Fatalf("Failed to start scheduler: %v", err)
-	}
-	logger.Info("VEGA Manager Init Scheduler Success")
-	defer sw.Stop()
-
-	chcw := worker.NewCatalogHealthCheckWorker(appSetting)
-	if err := chcw.Start(); err != nil {
-		logger.Fatalf("Failed to start catalog health check worker: %v", err)
-	}
-	logger.Info("VEGA Manager Init Catalog Health Check Worker Success")
-
-	// 创建并启动服务
-	server := &mgrService{
-		appSetting:    appSetting,
-		otelProviders: otelProviders,
-		restHandler:   driveradapters.NewRestHandler(appSetting, sw),
-	}
-	server.start()
 }

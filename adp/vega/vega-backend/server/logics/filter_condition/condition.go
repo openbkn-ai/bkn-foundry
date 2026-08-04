@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // 将过滤条件拼接到 dsl 请求的 query 部分

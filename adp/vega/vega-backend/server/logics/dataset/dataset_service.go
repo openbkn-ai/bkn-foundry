@@ -12,12 +12,12 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
-	"vega-backend/common"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/catalog"
-	"vega-backend/logics/local_index"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/local_index"
 )
 
 var (

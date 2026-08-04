@@ -28,14 +28,14 @@ import (
 	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
-	"vega-backend/common"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/catalog"
-	resourcelogic "vega-backend/logics/resource"
-	"vega-backend/logics/resource_data"
-	"vega-backend/logics/user_mgmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/catalog"
+	resourcelogic "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/resource_data"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/user_mgmt"
 )
 
 var (

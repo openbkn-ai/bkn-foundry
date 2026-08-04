@@ -9,7 +9,7 @@ package catalog_health_check_schedule
 import (
 	"fmt"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func validateRequest(req *interfaces.CatalogHealthCheckScheduleRequest) error {

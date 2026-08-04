@@ -10,11 +10,11 @@ package driveradapters
 import (
 	"context"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common/visitor"
 	"net/http"
 	"strconv"
 	"strings"
-	"vega-backend/common"
-	"vega-backend/common/visitor"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/audit"
@@ -25,8 +25,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func parseAllowUnhealthy(ctx context.Context, c *gin.Context) (bool, error) {

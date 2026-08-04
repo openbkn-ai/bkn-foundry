@@ -18,7 +18,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	libdb "github.com/openbkn-ai/bkn-comm-go/db"
 
-	"vega-backend/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
 )
 
 const tableName = "t_entity_extension"

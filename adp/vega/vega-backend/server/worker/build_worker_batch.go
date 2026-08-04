@@ -16,15 +16,15 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/segmentio/kafka-go"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/build_task"
-	"vega-backend/logics/catalog"
-	"vega-backend/logics/connector/factory"
-	"vega-backend/logics/filter_condition"
-	"vega-backend/logics/local_index"
-	"vega-backend/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/build_task"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/local_index"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/resource"
 )
 
 // batchBuildWorker handles build tasks.

@@ -23,12 +23,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-	mock_interfaces "vega-backend/interfaces/mock"
-	"vega-backend/logics/connector/factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/drivenadapters/entityextension"
+	verrors "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	mock_interfaces "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/factory"
 )
 
 // mockCipher 实现 kwcrypto.Cipher 接口用于测试

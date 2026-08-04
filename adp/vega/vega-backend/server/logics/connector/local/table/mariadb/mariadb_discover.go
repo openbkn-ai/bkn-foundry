@@ -17,7 +17,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	_ "github.com/go-sql-driver/mysql"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // ListTables 返回数据库中的所有表。

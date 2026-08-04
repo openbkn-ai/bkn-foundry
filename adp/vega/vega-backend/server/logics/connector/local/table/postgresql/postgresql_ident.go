@@ -9,7 +9,7 @@ package postgresql
 import (
 	"strings"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // pgQuoteIdent 双引号转义 PostgreSQL 标识符。

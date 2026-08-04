@@ -18,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*interfaces.QueryResult, error) {

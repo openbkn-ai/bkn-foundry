@@ -9,7 +9,7 @@ package postgresql
 import (
 	"strings"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // TypeMapping 将 PostgreSQL udt_name / 常见 data_type 映射到 VEGA 类型。

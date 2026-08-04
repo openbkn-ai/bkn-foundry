@@ -18,13 +18,13 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/segmentio/kafka-go"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	"vega-backend/logics"
-	"vega-backend/logics/build_task"
-	"vega-backend/logics/local_index"
-	model_factory "vega-backend/logics/model_factory"
-	"vega-backend/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/build_task"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/local_index"
+	model_factory "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/model_factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/resource"
 )
 
 // embeddingWorker handles embedding tasks.

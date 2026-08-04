@@ -10,7 +10,7 @@ package errors
 import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
-	"vega-backend/locale"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/locale"
 )
 
 // 公共错误码

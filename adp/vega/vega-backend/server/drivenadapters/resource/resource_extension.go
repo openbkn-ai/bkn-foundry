@@ -12,9 +12,9 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 
-	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/drivenadapters/entityextension"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 func resourceExtCol(params interfaces.ResourcesQueryParams, col string) string {

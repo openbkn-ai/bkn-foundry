@@ -6,7 +6,7 @@
 
 package filter_condition
 
-import "vega-backend/interfaces"
+import "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 
 const (
 	OperationAnd = "and"

@@ -15,7 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/rs/xid"
 
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 type cursorSessionManager struct {

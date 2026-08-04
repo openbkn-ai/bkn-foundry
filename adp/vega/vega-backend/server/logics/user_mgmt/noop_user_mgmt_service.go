@@ -9,8 +9,8 @@ package user_mgmt
 import (
 	"context"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
 )
 
 // NoopUserMgmtService 空用户管理服务（认证禁用时使用）

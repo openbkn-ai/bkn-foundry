@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"sync"
 
-	"vega-backend/common"
-	"vega-backend/interfaces"
-	opensearchConnector "vega-backend/logics/connector/local/index/opensearch"
-	"vega-backend/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/interfaces"
+	opensearchConnector "github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/connector/local/index/opensearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/vega/vega-backend/server/logics/filter_condition"
 )
 
 var (
