@@ -7,7 +7,7 @@ from app.utils.llm_utils import openai_series_stream, OpenAIClientRequest
 from app.utils.permission_manager import permission_manager
 from app.utils.param_verify_utils import *
 from app.utils.reshape_utils import *
-from app.utils import openai_error
+from app.utils import log_redact, openai_error
 from sse_starlette import EventSourceResponse
 import time
 
@@ -348,6 +348,8 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 else:
                     return JSONResponse(status_code=200, content=res, headers=trace_receipt_headers)
         except Exception as e:
-            StandLogger.error(f"call llmModelError {config['api_model']} error params={messages},error={e}")
+            StandLogger.error(
+                f"call llmModelError {config['api_model']} error "
+                f"request={log_redact.messages_digest(messages)},error={e}")
             return envelope_error_response(
                 ModelFactory_ModelController_Model_ConnectError_Error, 502)

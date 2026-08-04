@@ -39,3 +39,21 @@
 落到 OpenAI 的 `code` 字段，机器可读的身份不丢。
 
 回归测试见 `app/test/test_openai_error.py` 与 `app/test/test_llm_error_contract.py`。
+
+## 日志纪律
+
+调第三方模型时，请求头带的是**供应商 api_key**，请求体带的是**用户的完整对话
+内容**。这两样整体拼进日志就顺着采集链路离开了本服务，而日志的读权限模型跟凭据
+管理、业务数据管理都不是一套（#636）。
+
+往日志里放请求上下文一律经 `app/utils/log_redact.py`：
+
+- `safe_headers(headers)` —— `Authorization` / `api-key` / `Cookie` 等只留掩码
+  （保留 `Bearer` 方案前缀与前 4 位，够认出是哪把 key，不够拿去用），其余原样
+- `request_digest(params)` —— 请求体压成 model / stream / 消息条数 / 字符数 /
+  role 序列 / 采样参数，**不含任何 `content`**
+- `messages_digest(messages)` —— 只有 messages 在手时的简写
+
+要复现问题用摘要里的 model 与参数，配合调用方自己的 trace，不要靠日志回放用户
+原文。回归见 `app/test/test_log_redact.py`（含一条断言直接扫源码，防止泄露点
+被重新写回来）。

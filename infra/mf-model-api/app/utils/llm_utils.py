@@ -22,7 +22,7 @@ from app.interfaces import logics
 from app.logs.stand_log import StandLogger
 from app.utils.bkntrace import evidence as bkntrace_evidence
 from app.utils.observability.observability_log import get_logger
-from app.utils import openai_error
+from app.utils import log_redact, openai_error
 
 from app.utils.str_util import generate_random_string, has_common_substring
 
@@ -1546,7 +1546,11 @@ class OtherClient(BKNTraceModelMixin):
                         response.encoding = 'utf-8'
                         if response.status != 200:
                             info = await response.text()
-                            StandLogger.error(f"error:{info},headers={headers},api_url={self.api_url},payload={params}")
+                            StandLogger.error(
+                                f"upstream {response.status} error:{info},"
+                                f"headers={log_redact.safe_headers(headers)},"
+                                f"api_url={self.api_url},"
+                                f"request={log_redact.request_digest(params)}")
                             if openai_error.is_retryable(response.status) and retry_time > 0:
                                 StandLogger.warn(
                                     f"upstream {response.status} retryable, "
@@ -1753,7 +1757,9 @@ class OtherClient(BKNTraceModelMixin):
                         return
             except aiohttp.ClientError as e:
                 StandLogger.error(
-                    f"call llmModelError {self.api_model} error payload={params},headers={headers},error={e}")
+                    f"call llmModelError {self.api_model} error "
+                    f"request={log_redact.request_digest(params)},"
+                    f"headers={log_redact.safe_headers(headers)},error={e}")
                 if retry_time <= 0:
                     log_info = logics.AddModelUsedAudit(
                         model_id=self.model_id, user_id=user_id, input_tokens=0,
@@ -1776,7 +1782,9 @@ class OtherClient(BKNTraceModelMixin):
                     await asyncio.sleep(1)
             except Exception as e:
                 StandLogger.error(
-                    f"call llmModelError {self.api_model} error payload={params},headers={headers},error={e}")
+                    f"call llmModelError {self.api_model} error "
+                    f"request={log_redact.request_digest(params)},"
+                    f"headers={log_redact.safe_headers(headers)},error={e}")
                 log_info = logics.AddModelUsedAudit(
                     model_id=self.model_id, user_id=user_id, input_tokens=0,
                     output_tokens=0, first_time=0.0, total_time=0.0,
