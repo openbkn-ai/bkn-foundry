@@ -53,6 +53,11 @@
 - `request_digest(params)` —— 请求体压成 model / stream / 消息条数 / 字符数 /
   role 序列 / 采样参数，**不含任何 `content`**
 - `messages_digest(messages)` —— 只有 messages 在手时的简写
+- `safe_url(url)` —— 只留 scheme+host+path，query 一律抹掉（百度 oauth 把
+  `client_secret` 拼在 query 里，`OtherClient.api_url` 又是管理员自由填的）
+
+**成功路径同样适用**：原来 `BaiduTianchenClient` 每次调用都会把完整 `messages`
+以 INFO 落盘一次，比出错才触发的那几处流得更狠，一并换成摘要了。
 
 要复现问题用摘要里的 model 与参数，配合调用方自己的 trace，不要靠日志回放用户
 原文。回归见 `app/test/test_log_redact.py`（含一条断言直接扫源码，防止泄露点

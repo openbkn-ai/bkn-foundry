@@ -1,7 +1,13 @@
 """日志脱敏（#636）：凭据与用户内容不得离开本服务进入日志链路。"""
+import os
+import re
+
 import pytest
 
 from app.utils import log_redact
+
+# 相对测试文件定位源码，不依赖 pytest 的启动目录
+_APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 REAL_KEY = "sk-abcdef0123456789abcdef0123456789"
 
@@ -103,14 +109,59 @@ class TestRequestDigest:
         assert "身份证" not in str(digest)
 
 
-class TestCallSites:
-    """光有 helper 不算修好——泄露点必须真的换掉了"""
+class TestSafeUrl:
+    def test_query_is_stripped(self):
+        """百度 oauth 把 client_secret 拼在 query 里，OtherClient 的 api_url
+        又是管理员自由填的——不能假设 query 里没有凭据"""
+        url = ("https://aip.baidubce.com/oauth/2.0/token"
+               "?grant_type=client_credentials&client_id=ak&client_secret=sk-xyz")
+        safe = log_redact.safe_url(url)
+        assert safe == "https://aip.baidubce.com/oauth/2.0/token?***"
+        assert "sk-xyz" not in safe
 
-    def test_no_raw_headers_or_payload_in_logs(self):
-        for path in ("app/utils/llm_utils.py",
-                     "app/controller/llm_controller.py"):
-            with open(path, encoding="utf-8") as f:
-                src = f.read()
-            assert "headers={headers}" not in src, path
-            assert "payload={params}" not in src, path
-            assert "params={messages}" not in src, path
+    def test_plain_url_untouched(self):
+        url = "https://api.example.com/v1/chat/completions"
+        assert log_redact.safe_url(url) == url
+
+    @pytest.mark.parametrize("value", ["", None, 123])
+    def test_degenerate(self, value):
+        assert log_redact.safe_url(value) == ""
+
+
+class TestCallSites:
+    """光有 helper 不算修好——泄露点必须真的换掉了。
+
+    按模式匹配而非字面量，`headers={headers!r}` 这类改写也拦得住。
+    """
+
+    SOURCES = ("utils/llm_utils.py", "controller/llm_controller.py")
+
+    # 把「原始变量直接进 f-string」的写法一网打尽
+    RAW_PATTERNS = (
+        r"\{headers[!:}]",
+        r"\{params[!:}]",
+        r"\{messages[!:}]",
+        r"json\.dumps\(messages",
+    )
+
+    @pytest.mark.parametrize("rel", SOURCES)
+    def test_no_raw_context_in_log_calls(self, rel):
+        with open(os.path.join(_APP_ROOT, rel), encoding="utf-8") as f:
+            lines = f.readlines()
+
+        offenders = []
+        for i, line in enumerate(lines, 1):
+            # 只看日志调用所在的行及其续行（f-string 常被折行）
+            window = "".join(lines[max(0, i - 4):i])
+            if not re.search(r"(StandLogger|get_logger\(\))\.[a-z_]+\(", window):
+                continue
+            for pattern in self.RAW_PATTERNS:
+                if re.search(pattern, line):
+                    offenders.append(f"{rel}:{i}: {line.strip()}")
+        assert not offenders, "原始上下文直接进日志：\n" + "\n".join(offenders)
+
+    def test_guard_actually_catches_regressions(self):
+        """守卫本身得有区分度，否则全绿只是错觉"""
+        import re as _re
+        bad = 'StandLogger.error(f"x headers={headers}")'
+        assert any(_re.search(p, bad) for p in self.RAW_PATTERNS)

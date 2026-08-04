@@ -40,6 +40,19 @@ def safe_headers(headers):
     }
 
 
+def safe_url(url):
+    """URL 脱敏：只留 scheme+host+path，query 一律抹掉。
+
+    本服务里 URL 拼凭据是有先例的（百度 oauth 的 `client_id`/`client_secret`、
+    `?access_token=`），而 `OtherClient.api_url` 是管理员在 f_model_config 里自由
+    填的，无法假设里面没有 key。排障要的是「打的哪个 host、哪个 path」。
+    """
+    if not isinstance(url, str) or not url:
+        return ""
+    base, sep, _query = url.partition("?")
+    return f"{base}?***" if sep else base
+
+
 def _message_chars(messages):
     total = 0
     for m in messages:
