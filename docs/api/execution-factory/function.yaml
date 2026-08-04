@@ -463,17 +463,52 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: 当前账户没有算子的 create 权限
+          description: |
+            当前账户没有算子的 create 权限。
+
+            注意：模型侧的鉴权失败**不会**表现为 403——mf-model-api 与模型厂商
+            之间的 401/403/404 一律收敛成 502，避免被误读成调用方凭据失效。
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '429':
+          description: |
+            大模型上游限流。响应体为 OpenAI 形态，`error.type` 为
+            `rate_limit_exceeded`；带 `Retry-After` 头时按其退避重试。
+          headers:
+            Retry-After:
+              description: 建议的重试等待秒数。
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorOpenAI'
         '500':
-          description: 大模型调用失败
+          description: 算子服务自身内部错误（大模型调用失败见 429 / 502 / 503）
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+        '502':
+          description: |
+            连不上大模型服务，或模型厂商侧的认证/寻址失败。响应体为 OpenAI 形态，
+            `error.type` 为 `api_connection_error` / `authentication_error` /
+            `permission_error` / `not_found_error`。属运维侧问题（供应商 key、
+            模型地址），与调用方凭据无关。
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorOpenAI'
+        '503':
+          description: |
+            大模型上游暂时不可用（供应商繁忙、5xx）。响应体为 OpenAI 形态，
+            `error.type` 为 `service_unavailable_error`，稍后重试即可。
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorOpenAI'
 
   /ai_generate/prompt/{type}:
     get:

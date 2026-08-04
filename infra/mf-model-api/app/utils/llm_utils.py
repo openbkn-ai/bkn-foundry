@@ -70,7 +70,7 @@ def emit_model_result(client, messages, params, result):
         status="failed" if failed else "success",
         input_token_count=usage.get("prompt_tokens", 0),
         output_token_count=usage.get("completion_tokens", 0),
-        output=result,
+        output=openai_error.public_copy(result),
         error_category="model_provider_error" if failed else "",
     )
 
@@ -82,8 +82,9 @@ async def trace_model_stream(client, stream, messages, params):
     try:
         async for chunk in stream:
             terminal = _is_terminal_model_chunk(chunk)
-            # 错误帧一出，流就在这儿断了，收尾时不能再记 success
-            if openai_error.is_error_frame(chunk):
+            # 错误帧一出，流就在这儿断了，收尾时不能再记 success。
+            # '"error"' 预过滤：正常 chunk 不用为此付一次 json.loads
+            if '"error"' in str(chunk) and openai_error.is_error_frame(chunk):
                 failed = True
             if not terminal:
                 digest.update(str(chunk).encode("utf-8"))
@@ -342,7 +343,7 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                         messages=messages,
                         params=params,
                         status="failed",
-                        output=error_dict,
+                        output=openai_error.public_copy(error_dict),
                         error_category="model_provider_error",
                     )
                     return error_dict
@@ -500,9 +501,10 @@ class OpenAIClientRequest(BKNTraceModelMixin):
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
                     error_dict = openai_error.from_exception(
-                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
+                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
                     yield openai_error.error_frame(error_dict)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"connect failed, model={self.api_model}: {e}")
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
@@ -533,7 +535,7 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                 )
                 # 先把合规错误帧送出去，调用方才有话可说；再抛，保留可观测性
                 yield openai_error.error_frame(openai_error.build_error(
-                    str(e) or "模型服务内部错误", error_type="server_error"))
+                    "模型服务内部错误", error_type="server_error"))
                 raise e
 
 def prompt(ai_system, ai_user, ai_assistant, ai_history):
@@ -842,19 +844,19 @@ class BaiduTianchenClient(BKNTraceModelMixin):
                         await add_llm_model_call_log(log_info)
                         return
         except aiohttp.ClientError as e:
-            if retry_time <= 0:
-                error_dict = openai_error.from_exception(
-                    e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
-                yield openai_error.error_frame(error_dict)
-                StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
-                return
-            else:
-                StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
-                await asyncio.sleep(1)
+            # 注意 try 在 while 外面（709 行），这里没有回到循环的路径——原来
+            # retry_time > 0 时只 sleep 完就让生成器结束，客户端拿到一个 200、
+            # 零帧、无 [DONE] 的哑流。无论还剩几次都发帧再断。
+            error_dict = openai_error.from_exception(
+                e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
+            yield openai_error.error_frame(error_dict)
+            StandLogger.error(
+                f"connect failed, model={self.api_model}: {e}")
+            return
         except Exception as e:
-            StandLogger.error(e.args)
+            StandLogger.error(f"internal error, model={self.api_model}: {e}")
             yield openai_error.error_frame(openai_error.build_error(
-                str(e) or "模型服务内部错误", error_type="server_error"))
+                "模型服务内部错误", error_type="server_error"))
             raise e
 
     async def chat_completion_stream(self, messages, user_id, return_info, cache=False):
@@ -1227,26 +1229,28 @@ class BaiduClient(BKNTraceModelMixin):
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
                     error_dict = openai_error.from_exception(
-                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
+                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
                     yield openai_error.error_frame(error_dict)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"connect failed, model={self.api_model}: {e}")
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
                     await asyncio.sleep(1)
             except Exception as e:
+                StandLogger.error(f"internal error, model={self.api_model}: {e}")
                 if get_logger():
                     get_logger().info(
                         f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
                 yield openai_error.error_frame(openai_error.build_error(
-                    str(e) or "模型服务内部错误", error_type="server_error"))
+                    "模型服务内部错误", error_type="server_error"))
                 return
 
     async def chat_completion_stream(self, messages, user_id, return_info, cache=False):
@@ -1757,9 +1761,10 @@ class OtherClient(BKNTraceModelMixin):
                         status="failed")
                     await add_llm_model_call_log(log_info)
                     error_dict = openai_error.from_exception(
-                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用: {e}")
+                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
                     yield openai_error.error_frame(error_dict)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"connect failed, model={self.api_model}: {e}")
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
@@ -1783,7 +1788,7 @@ class OtherClient(BKNTraceModelMixin):
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
                 yield openai_error.error_frame(openai_error.build_error(
-                    str(e) or "模型服务内部错误", error_type="server_error"))
+                    "模型服务内部错误", error_type="server_error"))
                 return
 
     async def chat_completion_stream(self, messages, user_id, return_info, model_data):

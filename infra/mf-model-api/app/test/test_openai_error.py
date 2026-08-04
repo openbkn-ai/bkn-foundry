@@ -47,6 +47,29 @@ class TestFromUpstream:
         body = openai_error.from_upstream("", 502)
         assert body["error"]["message"] == "模型服务调用失败"
 
+    def test_unknown_dict_shape_does_not_leak_whole_body(self):
+        """形态未知的 body 常带回显请求/内部 trace id/网关节点名，不整段外泄"""
+        body = openai_error.from_upstream(
+            {"trace_id": "abc", "node": "gw-internal-3",
+             "request": {"api_key": "sk-secret"}}, 500)
+        assert body["error"]["message"] == "模型服务调用失败"
+        assert "sk-secret" not in json.dumps(body)
+        assert "gw-internal-3" not in json.dumps(body)
+
+    def test_empty_upstream_message_falls_back(self):
+        body = openai_error.from_upstream(
+            '{"error":{"message":"","code":"x"}}', 500)
+        assert body["error"]["message"] == "模型服务调用失败"
+
+    def test_html_error_page_falls_back(self):
+        body = openai_error.from_upstream(
+            "<html><head><title>502 Bad Gateway</title></head></html>", 502)
+        assert body["error"]["message"] == "模型服务调用失败"
+
+    def test_overlong_plain_body_falls_back(self):
+        body = openai_error.from_upstream("x" * 900, 500)
+        assert body["error"]["message"] == "模型服务调用失败"
+
     def test_accepts_dict(self):
         body = openai_error.from_upstream({"detail": "boom"}, 500)
         assert body["error"]["message"] == "boom"
@@ -61,12 +84,28 @@ class TestFromUpstream:
 
 class TestStatusMapping:
     @pytest.mark.parametrize("upstream,expected", [
-        (429, 429), (400, 400), (401, 401), (403, 403), (404, 404),
+        (429, 429), (400, 400), (408, 408), (413, 413), (422, 422),
         (500, 503), (502, 503), (503, 503), (504, 503),
         (418, 400), (None, 502),
     ])
     def test_http_status_for(self, upstream, expected):
         assert openai_error.http_status_for(upstream) == expected
+
+    @pytest.mark.parametrize("upstream", [401, 403, 404])
+    def test_dependency_auth_status_never_leaks(self, upstream):
+        """上游 401/403/404 说的是「本服务 ↔ 模型厂商」，透传会被调用方读成
+        自己的凭据/权限问题（本服务自己的 403 是「无该模型 execute 权限」）"""
+        assert openai_error.http_status_for(upstream) == 502
+
+    @pytest.mark.parametrize("upstream,expected_type", [
+        (401, "authentication_error"),
+        (403, "permission_error"),
+        (404, "not_found_error"),
+    ])
+    def test_real_cause_survives_in_error_type(self, upstream, expected_type):
+        """状态码收敛了，真实原因仍留给排障的人"""
+        body = openai_error.from_upstream("nope", upstream)
+        assert body["error"]["type"] == expected_type
 
     def test_busy_is_never_200(self):
         """#620 的核心：上游忙不能对外报成功"""
@@ -98,6 +137,15 @@ class TestPrivateKeys:
         assert openai_error.pop_http_status(body) == 429
         assert openai_error.pop_retry_after(body) == 7
         assert set(body) == {"error"}
+
+    def test_public_copy_strips_private_keys(self):
+        """evidence 会持久化，私有传参不能跟着落库"""
+        body = openai_error.with_http_status(
+            openai_error.build_error("busy"), 429, retry_after=5)
+        public = openai_error.public_copy(body)
+        assert set(public) == {"error"}
+        # 原对象不动，HTTP 出口那份仍拿得到状态码
+        assert openai_error.pop_http_status(body) == 429
 
     def test_defaults_when_absent(self):
         body = openai_error.build_error("boom")

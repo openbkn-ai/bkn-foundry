@@ -15,12 +15,20 @@ import json
 
 DEFAULT_ERROR_TYPE = "server_error"
 
+# 非 JSON 上游 body 直接当 message 的长度上限，超了就走固定文案
+_MAX_PLAIN_MESSAGE = 500
+
 # 上游这些状态码属于瞬态，值得退避重试；其余（4xx 参数/鉴权类）重试没有意义
 RETRYABLE_STATUS = (429, 502, 503, 504)
 
-# 上游状态码 -> 本服务对外状态码。4xx 语义由上游决定，原样透传；
-# 5xx 一律收敛成 503（对调用方而言就是「网关后面的模型暂时不可用」）
-_PASSTHROUGH_STATUS = (400, 401, 403, 404, 408, 413, 422, 429)
+# 只有真正描述「调用方这次请求本身有问题」的 4xx 才透传。
+# 401/403/404 不在其中：它们描述的是「本服务 ↔ 模型厂商」那一层的认证结果，
+# 透出去会被调用方读成自己的凭据/权限出了问题（本服务自己的 403 表示
+# 「无该模型 execute 权限」，同一端点上两种含义分不开），一律收敛成 502。
+_PASSTHROUGH_STATUS = (400, 408, 413, 422, 429)
+
+# 上游这几个码属于「依赖侧的认证/寻址问题」，对调用方而言就是网关后面出了事
+_DEPENDENCY_AUTH_STATUS = (401, 403, 404)
 
 _TYPE_BY_STATUS = {
     400: "invalid_request_error",
@@ -52,11 +60,19 @@ def error_type_for_status(status):
 
 
 def http_status_for(status):
-    """上游状态码映射成本服务的响应状态码。"""
+    """上游状态码映射成本服务的响应状态码。
+
+    401/403/404 描述的是本服务与模型厂商之间的认证结果，不能透传——调用方会
+    读成自己的凭据/权限出了问题，被踢去重新登录，而真正该做的是运维换供应商
+    key。这类收敛成 502「网关后面的依赖有问题」，真实原因留在 `error.type`
+    里给排障的人看。
+    """
     if status is None:
         return 502
     if status in _PASSTHROUGH_STATUS:
         return status
+    if status in _DEPENDENCY_AUTH_STATUS:
+        return 502
     if 400 <= status < 500:
         return 400
     if status >= 500:
@@ -109,9 +125,11 @@ def from_upstream(payload, status=None, fallback="模型服务调用失败"):
     data = _loads(payload)
 
     if data is None:
-        text = payload if isinstance(payload, str) else None
-        message = text.strip() if text and text.strip() else fallback
-        return build_error(message, error_type=error_type)
+        text = payload.strip() if isinstance(payload, str) else ""
+        # 非 JSON 的 body 可能是网关的 HTML 错误页或一大段堆栈，别原样端给用户
+        if not text or text.startswith("<") or len(text) > _MAX_PLAIN_MESSAGE:
+            text = fallback
+        return build_error(text, error_type=error_type)
 
     upstream_error = data.get("error")
     if isinstance(upstream_error, dict) and upstream_error.get("message"):
@@ -135,9 +153,9 @@ def from_upstream(payload, status=None, fallback="模型服务调用失败"):
                 value, error_type=error_type,
                 code=data.get("code") or data.get("error_code"))
 
-    return build_error(
-        json.dumps(data, ensure_ascii=False) if data else fallback,
-        error_type=error_type, code=data.get("code"))
+    # 一个已知字段都没命中：上游 body 形态未知，可能带回显请求、内部 trace id、
+    # 网关节点名。不整段外泄，只给固定文案；原文由调用处落日志。
+    return build_error(fallback, error_type=error_type, code=data.get("code"))
 
 
 def from_envelope(envelope, status):
@@ -195,6 +213,14 @@ def pop_retry_after(error_body):
     if not isinstance(error_body, dict):
         return None
     return error_body.pop(_RETRY_AFTER_KEY, None)
+
+
+def public_copy(payload):
+    """剥掉私有键的副本。BKN Trace evidence 会持久化，别把内部传参落进去。"""
+    if not isinstance(payload, dict):
+        return payload
+    return {k: v for k, v in payload.items()
+            if k not in (_HTTP_STATUS_KEY, _RETRY_AFTER_KEY)}
 
 
 def error_frame(error_body):
