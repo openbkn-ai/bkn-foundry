@@ -17,6 +17,11 @@ action_intent: add
 |--------------|
 | exchange_server |
 
+### Affect Object
+
+| Affect Object | Affect Description |
+|---------------|--------------------|
+
 ### Impact Contracts
 
 ```yaml

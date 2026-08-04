@@ -40,6 +40,11 @@ action_intent: add
 |--------------|
 | data_domain |
 
+### Affect Object
+
+| Affect Object | Affect Description |
+|---------------|--------------------|
+
 ### Impact Contracts
 
 ```yaml

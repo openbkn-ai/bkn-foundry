@@ -25,7 +25,6 @@ tags: [备份, 验证, 灾备]
 
 ```yaml
 kind: atomic
-
 atomic:
   condition:
     field: is_verified
@@ -47,3 +46,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | exchange_server_id | Exchange服务器 |
+

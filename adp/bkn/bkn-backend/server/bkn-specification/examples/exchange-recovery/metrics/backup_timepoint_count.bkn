@@ -25,7 +25,6 @@ tags: [备份, 时间点, 验证, 灾备]
 
 ```yaml
 kind: atomic
-
 atomic:
   condition:
     field: is_verified
@@ -42,7 +41,7 @@ atomic:
       direction: desc
   having:
     field: __value
-    operation: ">="
+    operation: '>='
     value: 2
 ```
 
@@ -57,3 +56,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | exchange_server_id | Exchange服务器 |
+

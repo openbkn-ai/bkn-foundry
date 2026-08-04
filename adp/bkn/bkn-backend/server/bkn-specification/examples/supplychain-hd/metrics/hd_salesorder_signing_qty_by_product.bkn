@@ -25,7 +25,6 @@ tags: [供应链, 销售, HD]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: signing_quantity
@@ -47,3 +46,4 @@ atomic:
 |------|--------------|
 | product_code | 产品编码 |
 | product_name | 产品名称 |
+

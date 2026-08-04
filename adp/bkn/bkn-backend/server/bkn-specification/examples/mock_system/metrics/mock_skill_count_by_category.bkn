@@ -25,7 +25,6 @@ tags: [mock_system, 技能, 人才]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: id
@@ -49,3 +48,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | category | 技能分类 |
+

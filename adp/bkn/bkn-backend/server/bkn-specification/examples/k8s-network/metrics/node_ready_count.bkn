@@ -25,12 +25,11 @@ tags: [Kubernetes, Node, 基础设施]
 
 ```yaml
 kind: atomic
-
 atomic:
   condition:
     field: node_status
     operation: ==
-    value: "Ready"
+    value: Ready
   aggregation:
     property: id
     aggr: count
@@ -47,3 +46,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | node_kubelet_version | Kubelet版本 |
+

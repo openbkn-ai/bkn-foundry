@@ -15,6 +15,11 @@ action_intent: delete
 |--------------|
 | department |
 
+### Affect Object
+
+| Affect Object | Affect Description |
+|---------------|--------------------|
+
 ### Trigger Condition
 
 

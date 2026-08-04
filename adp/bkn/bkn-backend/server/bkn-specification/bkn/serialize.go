@@ -67,7 +67,7 @@ func SerializeMetric(m *BknMetric) string {
 
 	sb.WriteString("### Time Dimension\n\n")
 	sb.WriteString("| Property | Default Range Policy |\n")
-	sb.WriteString("|----------|------------------------|\n")
+	sb.WriteString("|----------|----------------------|\n")
 	for _, row := range m.TimeDimensions {
 		sb.WriteString(fmt.Sprintf("| %s | %s |\n", row.Property, row.Policy))
 	}

@@ -25,7 +25,6 @@ tags: [mock_system, 人力, 入职]
 
 ```yaml
 kind: atomic
-
 atomic:
   condition:
     field: status
@@ -47,3 +46,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | name | 姓名 |
+

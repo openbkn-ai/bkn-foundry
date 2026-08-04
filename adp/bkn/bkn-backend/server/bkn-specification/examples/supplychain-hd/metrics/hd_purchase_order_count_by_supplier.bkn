@@ -25,7 +25,6 @@ tags: [供应链, 采购, HD]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: billno
@@ -50,3 +49,4 @@ atomic:
 |------|--------------|
 | supplier_number | 供应商编码 |
 | supplier_name | 供应商名称 |
+

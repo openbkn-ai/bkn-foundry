@@ -2,7 +2,7 @@
 type: metric
 id: pod_running_count
 name: Running 状态 Pod 数量
-tags: [Kubernetes, Pod, 可用性] 
+tags: [Kubernetes, Pod, 可用性]
 ---
 
 ## Metric: Running 状态 Pod 数量
@@ -25,12 +25,11 @@ tags: [Kubernetes, Pod, 可用性]
 
 ```yaml
 kind: atomic
-
 atomic:
   condition:
     field: pod_status
     operation: ==
-    value: "Running"
+    value: Running
   aggregation:
     property: id
     aggr: count
@@ -48,3 +47,4 @@ atomic:
 |------|--------------|
 | pod_namespace | 命名空间 |
 | pod_node_name | 所在节点 |
+

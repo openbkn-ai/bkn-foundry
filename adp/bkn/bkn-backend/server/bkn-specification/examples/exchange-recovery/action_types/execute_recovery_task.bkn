@@ -17,6 +17,11 @@ action_intent: add
 |--------------|
 | recovery_task |
 
+### Affect Object
+
+| Affect Object | Affect Description |
+|---------------|--------------------|
+
 ### Impact Contracts
 
 ```yaml

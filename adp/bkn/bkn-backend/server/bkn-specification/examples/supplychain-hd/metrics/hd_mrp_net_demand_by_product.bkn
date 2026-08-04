@@ -25,7 +25,6 @@ tags: [供应链, MRP, HD]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: material_demand_quantity
@@ -47,3 +46,4 @@ atomic:
 |------|--------------|
 | finished_product_code | 成品料号 |
 | main_material | 物料编码 |
+

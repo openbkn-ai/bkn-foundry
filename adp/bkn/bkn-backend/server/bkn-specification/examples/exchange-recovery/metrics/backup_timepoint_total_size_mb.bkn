@@ -25,7 +25,6 @@ tags: [备份, 存储, 灾备]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: snapshot_size
@@ -43,3 +42,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | exchange_server_id | Exchange服务器 |
+

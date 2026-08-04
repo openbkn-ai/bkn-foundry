@@ -25,7 +25,6 @@ tags: [Kubernetes, Service, 网络]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: id
@@ -47,3 +46,4 @@ atomic:
 |------|--------------|
 | service_type | Service类型 |
 | service_namespace | 命名空间 |
+
