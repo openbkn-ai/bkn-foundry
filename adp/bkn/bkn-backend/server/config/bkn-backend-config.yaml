@@ -4,7 +4,9 @@ server:
   language: zh-CN
   readTimeOut: 600
   writeTimeOut: 600
-  defaultSmallModelName: embedding
+  # Leave empty to use mf-model-manager's system default. Set a model name
+  # here only when this BKN deployment must explicitly override it.
+  defaultSmallModelName: ""
   defaultSmallModelEnabled: false
 log:
   logLevel: debug
