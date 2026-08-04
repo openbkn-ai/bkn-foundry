@@ -189,6 +189,33 @@ func Test_ToBKNMetricDefinition_RoundTrip_KeyFields(t *testing.T) {
 	})
 }
 
+func Test_MetricCondition_CompositeRoundTrip(t *testing.T) {
+	Convey("metric composite condition round-trips through BKN conversion\n", t, func() {
+		orig := &cond.CondCfg{
+			Operation: cond.OperationAnd,
+			SubConds: []*cond.CondCfg{
+				{Field: "warehouse", Operation: cond.OperationIn, ValueOptCfg: cond.ValueOptCfg{Value: []any{"昆山成品仓"}}},
+				{Field: "stock_status", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: "可用"}},
+			},
+		}
+
+		bknCond := condCfgToMetricCondition(orig)
+		So(bknCond, ShouldNotBeNil)
+		So(bknCond.Operation, ShouldEqual, cond.OperationAnd)
+		So(bknCond.SubConds, ShouldHaveLength, 2)
+		So(bknCond.SubConds[0].Field, ShouldEqual, "warehouse")
+		So(bknCond.SubConds[1].Field, ShouldEqual, "stock_status")
+
+		back := metricConditionToCondCfg(bknCond)
+		So(back.Operation, ShouldEqual, orig.Operation)
+		So(back.SubConds, ShouldHaveLength, 2)
+		So(back.SubConds[0].Field, ShouldEqual, "warehouse")
+		So(back.SubConds[0].Operation, ShouldEqual, cond.OperationIn)
+		So(back.SubConds[1].Field, ShouldEqual, "stock_status")
+		So(back.SubConds[1].Operation, ShouldEqual, cond.OperationEq)
+	})
+}
+
 // ── ObjectType ───────────────────────────────────────────────────────────────
 
 func Test_ToADPObjectType(t *testing.T) {

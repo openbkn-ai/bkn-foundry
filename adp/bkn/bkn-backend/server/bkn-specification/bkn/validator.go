@@ -566,6 +566,29 @@ func validateMetricConditionField(result *ValidationResult, table, column, field
 	}
 }
 
+func validateMetricCondition(result *ValidationResult, table, column string, c *MetricCondition) {
+	if c == nil {
+		return
+	}
+	op := strings.TrimSpace(strings.ToLower(c.Operation))
+	if op == "" {
+		appendError(result, table, column, "invalid_metric_condition", "operation must not be empty")
+		return
+	}
+	if op == "and" || op == "or" {
+		if len(c.SubConds) == 0 {
+			appendError(result, table, column, "invalid_metric_condition",
+				fmt.Sprintf("[%s] requires at least 1 sub_cond", c.Operation))
+			return
+		}
+		for i, sub := range c.SubConds {
+			validateMetricCondition(result, table, fmt.Sprintf("%s.sub_conds[%d]", column, i), sub)
+		}
+		return
+	}
+	validateMetricConditionField(result, table, column+".field", c.Field)
+}
+
 func validateMetricPropertyRef(result *ValidationResult, table, column, field string) {
 	field = strings.TrimSpace(field)
 	if field == "" {
@@ -619,7 +642,7 @@ func validateMetricDeep(result *ValidationResult, table string, met *BknMetric, 
 		}
 	}
 	if a.Condition != nil {
-		validateMetricConditionField(result, table, "condition.field", a.Condition.Field)
+		validateMetricCondition(result, table, "condition", a.Condition)
 	}
 	for i, g := range a.GroupBy {
 		col := fmt.Sprintf("group_by[%d].property", i)

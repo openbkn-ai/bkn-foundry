@@ -139,9 +139,10 @@ type MetricAtomic struct {
 
 // MetricCondition is a row-level filter (no object_type_id).
 type MetricCondition struct {
-	Field     string `yaml:"field"`
-	Operation string `yaml:"operation"`
-	Value     any    `yaml:"value,omitempty"`
+	Field     string             `yaml:"field,omitempty"`
+	Operation string             `yaml:"operation"`
+	SubConds  []*MetricCondition `yaml:"sub_conds,omitempty"`
+	Value     any                `yaml:"value,omitempty"`
 }
 
 // MetricAggregation is required for atomic metrics.

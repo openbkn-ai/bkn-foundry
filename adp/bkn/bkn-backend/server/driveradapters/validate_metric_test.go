@@ -135,4 +135,14 @@ func Test_validateMetricCond(t *testing.T) {
 		httpErr := err.(*rest.HTTPError)
 		So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_UnsupportConditionOperation)
 	})
+
+	Convey("validateMetricCond rejects empty sub_conditions for and/or\n", t, func() {
+		err := validateMetricCond(ctx, &cond.CondCfg{
+			Operation: cond.OperationAnd,
+			SubConds:  []*cond.CondCfg{},
+		})
+		So(err, ShouldNotBeNil)
+		httpErr := err.(*rest.HTTPError)
+		So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_InvalidParameter_Condition)
+	})
 }

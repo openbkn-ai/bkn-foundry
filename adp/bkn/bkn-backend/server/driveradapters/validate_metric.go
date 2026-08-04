@@ -334,6 +334,10 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 	// 指标的过滤条件不支持模糊查询和语义查询操作符
 	switch cfg.Operation {
 	case cond.OperationAnd, cond.OperationOr:
+		if len(cfg.SubConds) == 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Condition).
+				WithErrorDetails(fmt.Sprintf("[%s] operation requires at least 1 sub_condition", cfg.Operation))
+		}
 		if len(cfg.SubConds) > cond.MaxSubCondition {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
 				WithErrorDetails(fmt.Sprintf("The number of subConditions exceeds %d", cond.MaxSubCondition))

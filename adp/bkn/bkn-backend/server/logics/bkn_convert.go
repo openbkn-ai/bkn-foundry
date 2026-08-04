@@ -204,24 +204,32 @@ func metricConditionToCondCfg(c *bknsdk.MetricCondition) *cond.CondCfg {
 	if c == nil {
 		return nil
 	}
-	return &cond.CondCfg{
+	out := &cond.CondCfg{
 		Field:     c.Field,
 		Operation: c.Operation,
 		ValueOptCfg: cond.ValueOptCfg{
 			Value: c.Value,
 		},
 	}
+	for _, subCond := range c.SubConds {
+		out.SubConds = append(out.SubConds, metricConditionToCondCfg(subCond))
+	}
+	return out
 }
 
 func condCfgToMetricCondition(c *cond.CondCfg) *bknsdk.MetricCondition {
 	if c == nil {
 		return nil
 	}
-	return &bknsdk.MetricCondition{
+	out := &bknsdk.MetricCondition{
 		Field:     c.Field,
 		Operation: c.Operation,
 		Value:     c.Value,
 	}
+	for _, subCond := range c.SubConds {
+		out.SubConds = append(out.SubConds, condCfgToMetricCondition(subCond))
+	}
+	return out
 }
 
 func metricHavingToADP(h *bknsdk.MetricHaving) *interfaces.MetricHaving {

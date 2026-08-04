@@ -183,4 +183,27 @@ func Test_validateMetricDryRunForExecution_alignedWithBknSave(t *testing.T) {
 		httpErr := err.(*rest.HTTPError)
 		So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_Condition)
 	})
+
+	Convey("dry-run rejects empty sub_conditions for and/or\n", t, func() {
+		body := &interfaces.MetricDryRunRequest{
+			MetricConfig: &interfaces.MetricDefinition{
+				MetricType: interfaces.MetricTypeAtomic,
+				ScopeType:  interfaces.ScopeTypeObjectType,
+				ScopeRef:   "ot1",
+				UnitType:   "numUnit",
+				Unit:       "none",
+				CalculationFormula: &interfaces.MetricCalculationFormula{
+					Condition: &cond.CondCfg{
+						Operation: cond.OperationOr,
+						SubConds:  []*cond.CondCfg{},
+					},
+					Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},
+				},
+			},
+		}
+		err := validateMetricDryRunForExecution(ctx, body)
+		So(err, ShouldNotBeNil)
+		httpErr := err.(*rest.HTTPError)
+		So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_Condition)
+	})
 }

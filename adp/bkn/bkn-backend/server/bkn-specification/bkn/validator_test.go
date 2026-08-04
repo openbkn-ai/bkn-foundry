@@ -410,6 +410,37 @@ func TestValidateNetwork_MetricObjectTypeMissingScopeRefRejected(t *testing.T) {
 	assert.True(t, found, "expected invalid_metric_scope_ref (required), got %+v", res.Errors)
 }
 
+func TestValidateNetwork_MetricCompositeConditionOK(t *testing.T) {
+	net := testNetworkWithMetric("object_type", "ot1")
+	net.Metrics[0].Formula.Atomic.Condition = &MetricCondition{
+		Operation: "and",
+		SubConds: []*MetricCondition{
+			{Field: "k", Operation: "eq", Value: "v"},
+			{Field: "status", Operation: "in", Value: []any{"a"}},
+		},
+	}
+	res := ValidateNetwork(net)
+	assert.True(t, res.OK(), "errors: %+v", res.Errors)
+}
+
+func TestValidateNetwork_MetricEmptySubCondsRejected(t *testing.T) {
+	net := testNetworkWithMetric("object_type", "ot1")
+	net.Metrics[0].Formula.Atomic.Condition = &MetricCondition{
+		Operation: "and",
+		SubConds:  []*MetricCondition{},
+	}
+	res := ValidateNetwork(net)
+	assert.False(t, res.OK())
+	var found bool
+	for _, e := range res.Errors {
+		if e.Code == "invalid_metric_condition" && strings.Contains(e.Message, "sub_cond") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected invalid_metric_condition for empty sub_conds, got %+v", res.Errors)
+}
+
 func TestValidateNetwork_MockSystem(t *testing.T) {
 	dir := filepath.Join(testExamplesDir(t), "mock_system")
 	net, err := LoadNetwork(dir)

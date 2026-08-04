@@ -251,6 +251,10 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 
 	switch cfg.Operation {
 	case cond.OperationAnd, cond.OperationOr:
+		if len(cfg.SubConds) == 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
+				WithErrorDetails(fmt.Sprintf("[%s] operation requires at least 1 sub_condition", cfg.Operation))
+		}
 		if len(cfg.SubConds) > cond.MaxSubCondition {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
 				WithErrorDetails(fmt.Sprintf("the number of sub_conditions exceeds %d", cond.MaxSubCondition))
