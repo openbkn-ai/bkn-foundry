@@ -29,13 +29,14 @@ components:
         name: Administrator
     BKNContext:
       type: object
+      additionalProperties: false
       description: |
         BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。
 
-        三个必填子字段中，前两个是服务端签发的句柄、不可自拟：
+        两个必填子字段均为服务端签发的句柄、不可自拟：
 
-        - `conversation_id`：调用 Context Loader 的 MCP 工具
-          `bkn_create_conversation` 取得
+        - `conversation_id`：首轮调用 Context Loader MCP 工具
+          `bkn_start_interaction` 取得
         - `interaction_id`：调用 Context Loader 的 MCP 工具
           `bkn_start_interaction` 取得
 
@@ -43,15 +44,14 @@ components:
         `/api/agent-observability/v1` 会话接口只接受集群内可信服务的网关凭据，
         不接受 OAuth token 或 `bak_` AppKey，外部调用方直接调用会得到
         `401 permission_denied`。
-        - `operation_key`：调用方自取的字符串，同一次逻辑调用重试时必须保持不变；
-          服务端据此做幂等，重发不会重复执行，两次不同调用必须给不同值
-
-        MCP 面的同名字段为可选——省略时按 MCP 连接自动归并会话，详见 mcp.yaml。
-        REST 面没有连接的概念，无从归并，因此必填。
+        Context Loader 按请求关联信息、工具名和规范化输入服务端派生 Operation
+        幂等标识；调用方不得提交 `operation_key`。网络重试应复用
+        `bkn-request-id`，或提供同一次逻辑调用稳定不变的
+        `X-OpenBKN-Client-Invocation-Id` 请求头。该提示只用于幂等，不参与身份、
+        权限或数据隔离判定。
       required:
         - conversation_id
         - interaction_id
-        - operation_key
       properties:
         conversation_id:
           type: string
@@ -61,10 +61,6 @@ components:
           type: string
           description: 交互（一轮问答）ID，服务端签发。
           example: int_0ab58662974fe9edcfb4ae3e77e43502
-        operation_key:
-          type: string
-          description: 调用方自取的稳定标识，用于幂等。
-          example: search_schema:order-fulfillment:1
         parent_operation_id:
           type: string
           description: 触发本次调用的上游操作 ID，用于表达因果边。
@@ -73,3 +69,23 @@ components:
           items:
             type: string
           description: 触发本次调用的事件 ID 列表，用于表达因果边。
+        business_refs:
+          type: array
+          maxItems: 64
+          description: 当前调用已知的规范化业务对象、数据或逻辑引用。
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - ref_type
+              - ref_id
+            properties:
+              ref_type:
+                type: string
+                description: 业务引用类型，例如 object_type、property 或 data_resource。
+              ref_id:
+                type: string
+                description: 规范化业务引用 ID；除 data_resource 外必须属于当前知识网络。
+              version:
+                type: string
+                description: 引用版本；省略时为 unversioned。

@@ -147,10 +147,14 @@ func (g *Guard) Finish(
 		TraceID:     spanContext.TraceID().String(),
 		Retryable:   retryable,
 	}
+	// Declared references are part of the caller's governed operation context,
+	// not a by-product of evidence delivery. Keep them in the receipt even while
+	// observed evidence is still awaiting a durable acknowledgement.
+	input.BusinessRefs = declaredBusinessRefsFromContext(ctx)
 	if durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx); durable {
 		input.EvidenceDurability = "durable"
 		input.ObservedEvidenceRefs = evidenceRefs
-		input.BusinessRefs = mergeBusinessRefs(declaredBusinessRefsFromContext(ctx), businessRefs)
+		input.BusinessRefs = mergeBusinessRefs(input.BusinessRefs, businessRefs)
 	}
 	finishContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer cancel()

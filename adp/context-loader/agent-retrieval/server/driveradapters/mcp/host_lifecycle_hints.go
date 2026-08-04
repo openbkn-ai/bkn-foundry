@@ -20,7 +20,7 @@ import (
 
 const (
 	hostConversationKeyHeader = "X-OpenBKN-Host-Conversation-Key"
-	clientInvocationIDHeader  = "X-OpenBKN-Client-Invocation-Id"
+	clientInvocationIDHeader  = common.HeaderBKNClientInvocationID
 	hostConversationKeyMeta   = "openbkn.ai/host-conversation-key"
 	clientInvocationIDMeta    = "openbkn.ai/client-invocation-id"
 	maxHostLifecycleHintBytes = 256

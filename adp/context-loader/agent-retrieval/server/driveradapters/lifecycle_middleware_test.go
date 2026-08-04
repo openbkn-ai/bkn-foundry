@@ -167,6 +167,8 @@ func TestRegisteredOperatorAndMCPProxyRoutesCannotBypassLifecycle(t *testing.T) 
 func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) {
 	var mu sync.Mutex
 	var finishActions []string
+	var operationKeys []string
+	var finishedBusinessRefs [][]bkntrace.BusinessRef
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/agent-observability/v1/interactions/int-1":
@@ -175,6 +177,16 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 				LeaseToken: "lease-1", LeaseEpoch: 1,
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			var body struct {
+				OperationKey string `json:"operation_key"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if !strings.HasPrefix(body.OperationKey, "http:") {
+				t.Errorf("REST operation key must be server-derived: %#v", body)
+			}
+			mu.Lock()
+			operationKeys = append(operationKeys, body.OperationKey)
+			mu.Unlock()
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Created: true,
 				Execute: true,
@@ -186,10 +198,11 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			})
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/attempts/1:"):
 			var body struct {
-				ReceiptID   string `json:"receipt_id"`
-				PayloadHash string `json:"payload_hash"`
-				RequestID   string `json:"request_id"`
-				TraceID     string `json:"trace_id"`
+				ReceiptID    string                 `json:"receipt_id"`
+				PayloadHash  string                 `json:"payload_hash"`
+				RequestID    string                 `json:"request_id"`
+				TraceID      string                 `json:"trace_id"`
+				BusinessRefs []bkntrace.BusinessRef `json:"business_refs"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if body.ReceiptID != "receipt-rest-1" || body.PayloadHash == "" ||
@@ -199,6 +212,7 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			action := pathAction(r.URL.Path)
 			mu.Lock()
 			finishActions = append(finishActions, action)
+			finishedBusinessRefs = append(finishedBusinessRefs, body.BusinessRefs)
 			mu.Unlock()
 			status := "completed"
 			if action == "fail" {
@@ -243,7 +257,8 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			})
 			request := httptest.NewRequest(http.MethodPost, "/kn/execute_action", bytes.NewBufferString(`{
 				"query":"value",
-				"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1","operation_key":"logical-1"}
+				"kn_id":"kn-demo",
+				"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1","business_refs":[{"ref_type":"object_type","ref_id":"object:kn-demo:order"}]}
 			}`))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
@@ -257,9 +272,14 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			}
 			mu.Lock()
 			gotAction := finishActions[len(finishActions)-1]
+			gotOperationKey := operationKeys[len(operationKeys)-1]
+			gotBusinessRefs := finishedBusinessRefs[len(finishedBusinessRefs)-1]
 			mu.Unlock()
 			if gotAction != test.wantAction {
 				t.Fatalf("finish action = %q, want %q", gotAction, test.wantAction)
+			}
+			if gotOperationKey == "" || len(gotBusinessRefs) != 1 || gotBusinessRefs[0].RefID != "object:kn-demo:order" {
+				t.Fatalf("derived operation or declared refs not preserved: key=%q refs=%#v", gotOperationKey, gotBusinessRefs)
 			}
 		})
 	}
@@ -297,7 +317,7 @@ func TestLifecycleMiddlewarePendingReplaySkipsOperatorSideEffect(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodPost, "/kn/run_sql", bytes.NewBufferString(`{
 		"sql":"select side_effect()",
-		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1","operation_key":"logical-pending"}
+		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1"}
 	}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -312,6 +332,71 @@ func TestLifecycleMiddlewarePendingReplaySkipsOperatorSideEffect(t *testing.T) {
 		errorValue["code"] != "receipt_pending" ||
 		errorValue["required_action"] != "poll_receipt" {
 		t.Fatalf("unexpected pending replay response: status=%d body=%#v", response.Code, body)
+	}
+}
+
+func TestLifecycleMiddlewareRejectsUnsupportedContextAndInvalidBusinessRefs(t *testing.T) {
+	gintest := []struct {
+		name string
+		body string
+		code string
+	}{
+		{
+			name: "caller supplied operation key",
+			body: `{"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1","operation_key":"caller-defined"}}`,
+			code: "invalid_business_context",
+		},
+		{
+			name: "cross knowledge network business ref",
+			body: `{"kn_id":"kn-demo","bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1","business_refs":[{"ref_type":"object_type","ref_id":"object:other-kn:order"}]}}`,
+			code: "invalid_business_ref",
+		},
+	}
+	for _, test := range gintest {
+		t.Run(test.name, func(t *testing.T) {
+			downstreamCalls := 0
+			router := gin.New()
+			router.Use(trustedLifecycleHTTPContext())
+			router.Use(middlewareLifecycle(inProcessLifecycleClient(t)))
+			router.POST("/kn/search_schema", func(c *gin.Context) {
+				downstreamCalls++
+				c.JSON(http.StatusOK, gin.H{"unsafe": true})
+			})
+			request := httptest.NewRequest(http.MethodPost, "/kn/search_schema", bytes.NewBufferString(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			var envelope struct {
+				Error bkntrace.APIError `json:"error"`
+			}
+			_ = json.Unmarshal(response.Body.Bytes(), &envelope)
+			if response.Code != http.StatusBadRequest || downstreamCalls != 0 || envelope.Error.Code != test.code {
+				t.Fatalf("invalid context reached downstream: status=%d calls=%d error=%#v", response.Code, downstreamCalls, envelope.Error)
+			}
+		})
+	}
+}
+
+func TestManagedHTTPOperationKeyUsesInvocationHintForStableRetry(t *testing.T) {
+	context := bkntrace.BusinessContext{ConversationID: "conv-1", InteractionID: "int-1"}
+	inputHash := "sha256:input"
+	build := func(invocationID string) string {
+		request := httptest.NewRequest(http.MethodPost, "/kn/search_schema", http.NoBody)
+		request.Header.Set(common.HeaderBKNClientInvocationID, invocationID)
+		ctx := common.SetTraceContextToCtx(request.Context(), common.TraceContext{RequestID: "req_rest_lifecycle_0001"})
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = request.WithContext(ctx)
+		key, apiErr := managedHTTPOperationKey(c, "search_schema", context, inputHash)
+		if apiErr != nil {
+			t.Fatalf("derive operation key: %#v", apiErr)
+		}
+		return key
+	}
+	if first, second := build("call-1"), build("call-1"); first != second {
+		t.Fatalf("retry changed operation key: first=%q second=%q", first, second)
+	}
+	if first, second := build("call-1"), build("call-2"); first == second {
+		t.Fatalf("distinct invocation hints reused operation key: %q", first)
 	}
 }
 
@@ -355,7 +440,7 @@ func TestLifecycleMiddlewareFinalizesPanicsAndLetsRecoveryReturn500(t *testing.T
 	router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
 	router.POST("/kn/execute_action", func(*gin.Context) { panic("downstream panic") })
 	request := httptest.NewRequest(http.MethodPost, "/kn/execute_action", bytes.NewBufferString(`{
-		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1","operation_key":"panic-1"}
+		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1"}
 	}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()

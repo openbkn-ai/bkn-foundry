@@ -266,7 +266,7 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 			http.MethodPost,
 			"/api/agent-retrieval/v1/kn/semantic-search?response_format=toon",
 			bytes.NewBufferString(`{
-				"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route","operation_key":"route-semantic"}
+						"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route"}
 			}`),
 		)
 		setRouteLifecycleHeaders(req)

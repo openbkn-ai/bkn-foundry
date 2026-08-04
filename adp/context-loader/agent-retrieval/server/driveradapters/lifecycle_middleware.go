@@ -48,20 +48,28 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
-		businessContext, apiErr := parseHTTPBusinessContext(input)
+		businessContext, apiErr := parseHTTPBusinessContext(input, httpKnowledgeNetworkID(c, input))
 		if apiErr != nil {
 			writeLifecycleHTTPError(c, lifecycleHTTPStatus(apiErr.Code), *apiErr)
 			return
 		}
 		delete(input, "bkn_context")
+		toolName := lifecycleHTTPToolName(c)
+		inputHash := normalizedHTTPInputHash(input, businessContext)
+		operationKey, apiErr := managedHTTPOperationKey(c, toolName, businessContext, inputHash)
+		if apiErr != nil {
+			writeLifecycleHTTPError(c, lifecycleHTTPStatus(apiErr.Code), *apiErr)
+			return
+		}
+		businessContext.OperationKey = operationKey
 		downstreamBody, _ := json.Marshal(input)
 		c.Request.Body = io.NopCloser(bytes.NewReader(downstreamBody))
 		c.Request.ContentLength = int64(len(downstreamBody))
 
 		ctx, state, disposition, coreErr, err := guard.Begin(c.Request.Context(), bkntrace.GuardIntent{
 			Context:             businessContext,
-			ToolName:            lifecycleHTTPToolName(c),
-			NormalizedInputHash: normalizedHTTPInputHash(input, businessContext),
+			ToolName:            toolName,
+			NormalizedInputHash: inputHash,
 		})
 		if err != nil {
 			writeLifecycleHTTPError(c, http.StatusServiceUnavailable, lifecycleUnavailableError(client))
@@ -143,12 +151,20 @@ func isLifecycleBusinessRequest(request *http.Request) bool {
 		(strings.Contains(request.URL.Path, "/mcp/proxy/") && strings.HasSuffix(request.URL.Path, "/call"))
 }
 
-func parseHTTPBusinessContext(input map[string]any) (bkntrace.BusinessContext, *bkntrace.APIError) {
+func parseHTTPBusinessContext(input map[string]any, currentKNID string) (bkntrace.BusinessContext, *bkntrace.APIError) {
 	raw, _ := input["bkn_context"].(map[string]any)
+	for field := range raw {
+		if field != "conversation_id" && field != "interaction_id" &&
+			field != "parent_operation_id" && field != "causation_event_ids" && field != "business_refs" {
+			return bkntrace.BusinessContext{}, &bkntrace.APIError{
+				Code: "invalid_business_context", Message: "bkn_context contains an unsupported field",
+				RequiredAction: "correct_bkn_context",
+			}
+		}
+	}
 	value := bkntrace.BusinessContext{
 		ConversationID:    httpString(raw["conversation_id"]),
 		InteractionID:     httpString(raw["interaction_id"]),
-		OperationKey:      httpString(raw["operation_key"]),
 		ParentOperationID: httpString(raw["parent_operation_id"]),
 		CausationEventIDs: httpStringSlice(raw["causation_event_ids"]),
 	}
@@ -163,14 +179,71 @@ func parseHTTPBusinessContext(input map[string]any) (bkntrace.BusinessContext, *
 			Code: "interaction_required", Message: "interaction_id is required",
 			RequiredAction: "start_interaction",
 		}
-	case value.OperationKey == "":
-		return value, &bkntrace.APIError{
-			Code: "operation_required", Message: "operation_key is required",
-			RequiredAction: "ensure_operation",
-		}
-	default:
-		return value, nil
 	}
+	refs, apiErr := bkntrace.ParseBusinessRefs(raw["business_refs"], currentKNID)
+	if apiErr != nil {
+		return value, apiErr
+	}
+	value.BusinessRefs = refs
+	return value, nil
+}
+
+func httpKnowledgeNetworkID(c *gin.Context, input map[string]any) string {
+	if value := httpString(input["kn_id"]); value != "" {
+		return value
+	}
+	return strings.TrimSpace(c.GetHeader("X-Kn-ID"))
+}
+
+// managedHTTPOperationKey derives the idempotency identity from trusted
+// request correlation. A caller may supply an opaque invocation header to
+// preserve the identity across a transport retry; it is never accepted in the
+// request body and is not used for authorization.
+func managedHTTPOperationKey(
+	c *gin.Context,
+	toolName string,
+	businessContext bkntrace.BusinessContext,
+	inputHash string,
+) (string, *bkntrace.APIError) {
+	invocationID := strings.TrimSpace(c.GetHeader(common.HeaderBKNClientInvocationID))
+	if invocationID != "" {
+		if !validHTTPLifecycleHint(invocationID) {
+			return "", &bkntrace.APIError{
+				Code: "lifecycle_hint_invalid", Message: "X-OpenBKN-Client-Invocation-Id must be printable ASCII without spaces and at most 256 bytes",
+				RequiredAction: "fix_host_lifecycle_hint",
+			}
+		}
+		return hashHTTPOperationKey("http-invocation", businessContext, toolName, hashLifecyclePayload([]byte(invocationID))), nil
+	}
+	requestID := ""
+	if traceContext, ok := common.GetTraceContextFromCtx(c.Request.Context()); ok {
+		requestID = traceContext.RequestID
+	}
+	return hashHTTPOperationKey("http-request", businessContext, toolName, requestID+"\x00"+inputHash), nil
+}
+
+func hashHTTPOperationKey(scope string, businessContext bkntrace.BusinessContext, toolName, identity string) string {
+	payload, _ := json.Marshal(struct {
+		Scope          string
+		ConversationID string
+		InteractionID  string
+		ToolName       string
+		Identity       string
+	}{scope, businessContext.ConversationID, businessContext.InteractionID, toolName, identity})
+	sum := sha256.Sum256(payload)
+	return "http:" + hex.EncodeToString(sum[:16])
+}
+
+func validHTTPLifecycleHint(value string) bool {
+	if len(value) > 256 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		if value[index] < 0x21 || value[index] > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 func lifecycleHTTPToolName(c *gin.Context) string {
@@ -215,7 +288,7 @@ func lifecycleUnavailableError(client *bkntrace.LifecycleClient) bkntrace.APIErr
 
 func lifecycleHTTPStatus(code string) int {
 	switch code {
-	case "conversation_required", "interaction_required", "operation_required":
+	case "conversation_required", "interaction_required", "operation_required", "invalid_business_context", "invalid_business_ref", "lifecycle_hint_invalid":
 		return http.StatusBadRequest
 	// capability_not_licensed belongs with these, not with permission_denied:
 	// a licence gap must be indistinguishable from the resource not existing,
