@@ -23,6 +23,11 @@ action_intent: modify
 |--------------|
 | pod |
 
+### Affect Object
+
+| Affect Object | Affect Description |
+|---------------|--------------------|
+
 ### Impact Contracts
 
 ```yaml

@@ -37,16 +37,7 @@ func TestMain(m *testing.M) {
 // socket and moves this list is the bug this file exists to catch.
 var communityTools = []string{
 	// 追踪生命周期工具（bkntrace 适配层直接挂到 server 上，不走 toolBuilder）
-	"bkn_cancel_interaction",
-	"bkn_close_conversation",
-	"bkn_complete_interaction",
-	"bkn_create_conversation",
-	"bkn_fail_interaction",
-	"bkn_get_operation",
-	"bkn_get_receipt",
-	"bkn_handoff_interaction",
-	"bkn_resume_conversation",
-	"bkn_retry_operation",
+	"bkn_finish_interaction",
 	"bkn_start_interaction",
 	// 知识网络工具
 	"describe_resource",

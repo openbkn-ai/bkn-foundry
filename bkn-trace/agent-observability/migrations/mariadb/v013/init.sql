@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_conversations (
     tenant_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     business_domain_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     application_principal_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+	agent_name VARCHAR(128) NOT NULL DEFAULT '',
     effective_subject_type VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     effective_subject_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     delegation_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
@@ -30,6 +31,9 @@ CREATE TABLE IF NOT EXISTS bkn_trace_conversations (
         tenant_id, business_domain_id, updated_at, conversation_id
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+ALTER TABLE bkn_trace_conversations
+	ADD COLUMN IF NOT EXISTS agent_name VARCHAR(128) NOT NULL DEFAULT '' AFTER application_principal_id;
 
 CREATE TABLE IF NOT EXISTS bkn_trace_idempotency_records (
     idempotency_record_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

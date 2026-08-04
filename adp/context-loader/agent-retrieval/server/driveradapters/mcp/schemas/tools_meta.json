@@ -1,47 +1,11 @@
 {
-  "bkn_create_conversation": {
-    "name": "bkn_create_conversation",
-    "description": "建立或取回当前的业务对话，返回 conversation_id。业务级溯源的第一步；仅当调用方持有真实业务对话（如 Agent 与用户的一轮完整会话）时才需要调用。通用 MCP 客户端可跳过——省略 bkn_context 时本服务按当前连接自动归并。"
-  },
-  "bkn_resume_conversation": {
-    "name": "bkn_resume_conversation",
-    "description": "按 Core 返回的 conversation_id 恢复一个仍然活跃的业务对话。用于进程重启或跨连接续接同一轮业务对话。"
+  "bkn_finish_interaction": {
+    "name": "bkn_finish_interaction",
+    "description": "Submit the current Interaction result and final answer. This does not close the Conversation."
   },
   "bkn_start_interaction": {
     "name": "bkn_start_interaction",
-    "description": "在活跃对话中开启一次交互（一轮问答），返回 interaction_id 与租约。一个对话同时只允许一次活跃交互。租约默认 5 分钟，每次业务调用自动续期。"
-  },
-  "bkn_complete_interaction": {
-    "name": "bkn_complete_interaction",
-    "description": "以收口清单正常完结交互，声明这一轮回答由哪些操作与回执支撑。需要提交上一步拿到的 lease_token 与 lease_epoch。"
-  },
-  "bkn_fail_interaction": {
-    "name": "bkn_fail_interaction",
-    "description": "以收口清单将交互标记为失败。需要提交 lease_token 与 lease_epoch。"
-  },
-  "bkn_cancel_interaction": {
-    "name": "bkn_cancel_interaction",
-    "description": "以收口清单取消交互。需要提交 lease_token 与 lease_epoch。"
-  },
-  "bkn_handoff_interaction": {
-    "name": "bkn_handoff_interaction",
-    "description": "以收口清单移交交互（转人工或转其他执行者）。需要提交 lease_token 与 lease_epoch。"
-  },
-  "bkn_close_conversation": {
-    "name": "bkn_close_conversation",
-    "description": "关闭业务对话。要求其下没有活跃交互，须先完结或取消当前交互。"
-  },
-  "bkn_get_operation": {
-    "name": "bkn_get_operation",
-    "description": "查询某次操作的权威状态与是否可重试。用于确认一次业务调用的最终结果。"
-  },
-  "bkn_retry_operation": {
-    "name": "bkn_retry_operation",
-    "description": "为可重试的失败操作创建下一次尝试。仅对标记为 retryable 的失败操作有效。"
-  },
-  "bkn_get_receipt": {
-    "name": "bkn_get_receipt",
-    "description": "按 receipt_id 轮询一张权威的持久化回执。业务调用返回 receipt_pending 时用它确认最终落库结果。"
+    "description": "Start one managed Interaction. Omit conversation_id on the first turn; reuse the returned conversation_id on later turns."
   },
   "search_schema": {
     "name": "search_schema",
@@ -65,7 +29,7 @@
   },
   "execute_action": {
     "name": "execute_action",
-    "description": "执行行动。先用 get_action_info 获取行动的 dynamic_params schema，再填入真实动态参数值触发执行（异步，返回 execution_id）。同一 kn + 行动类型 + 实例集合在窗口期内重复提交会返回 409，不要重试，改用 get_action_execution 查询已有 execution。"
+    "description": "执行行动。先用 get_action_info 获取行动的 dynamic_params schema，再填入真实动态参数值触发执行（异步，返回 execution_id）。同一 kn + 行动类型 + 实例集合与 dynamic_params 在窗口期内重复提交会返回 409，不要重试，改用 get_action_execution 查询已有 execution。"
   },
   "get_action_execution": {
     "name": "get_action_execution",

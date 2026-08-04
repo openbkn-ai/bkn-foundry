@@ -42,13 +42,14 @@ var (
 )
 
 type APIError struct {
-	Code           string `json:"code"`
-	Message        string `json:"message"`
-	CurrentStatus  string `json:"current_status,omitempty"`
-	Retryable      bool   `json:"retryable"`
-	RequiredAction string `json:"required_action,omitempty"`
-	RequestID      string `json:"request_id,omitempty"`
-	RetryAfterMS   int    `json:"retry_after_ms"`
+	Code                 string `json:"code"`
+	Message              string `json:"message"`
+	CurrentStatus        string `json:"current_status,omitempty"`
+	CurrentInteractionID string `json:"current_interaction_id,omitempty"`
+	Retryable            bool   `json:"retryable"`
+	RequiredAction       string `json:"required_action,omitempty"`
+	RequestID            string `json:"request_id,omitempty"`
+	RetryAfterMS         int    `json:"retry_after_ms"`
 }
 
 type errorEnvelope struct {
@@ -236,6 +237,20 @@ func (c *LifecycleClient) Enabled() bool {
 	return c != nil && c.baseURL != ""
 }
 
+func (c *LifecycleClient) EnsureCurrentConversation(
+	ctx context.Context,
+	externalConversationKey string,
+	idempotencyKeys ...string,
+) (Conversation, *APIError, error) {
+	var conversation Conversation
+	body := map[string]any{"external_conversation_key": externalConversationKey}
+	if len(idempotencyKeys) > 0 && strings.TrimSpace(idempotencyKeys[0]) != "" {
+		body["idempotency_key"] = idempotencyKeys[0]
+	}
+	apiErr, err := c.do(ctx, http.MethodPost, "/conversations:ensure-current", body, &conversation)
+	return conversation, apiErr, err
+}
+
 func (c *LifecycleClient) EnsureOperation(
 	ctx context.Context,
 	input EnsureOperationInput,
@@ -273,20 +288,6 @@ func (c *LifecycleClient) EnsureOperation(
 		"/interactions/" + url.PathEscape(input.InteractionID) + "/operations:ensure"
 	apiErr, err = c.do(ctx, http.MethodPost, path, body, &result)
 	return result, apiErr, err
-}
-
-// EnsureCurrentConversation resolves the caller's current conversation for an
-// external key, creating it only when none is active. Core keys this by owner,
-// so two callers never share a conversation even with an identical key.
-func (c *LifecycleClient) EnsureCurrentConversation(
-	ctx context.Context,
-	externalConversationKey string,
-) (Conversation, *APIError, error) {
-	var conversation Conversation
-	apiErr, err := c.do(ctx, http.MethodPost, "/conversations:ensure-current", map[string]any{
-		"external_conversation_key": externalConversationKey,
-	}, &conversation)
-	return conversation, apiErr, err
 }
 
 // StartInteraction opens an interaction, or returns the existing one when the

@@ -5,6 +5,7 @@ from app.controller import small_model_controller
 from app.dao.small_model_dao import small_model_dao
 from app.interfaces import logics
 from app.logs.stand_log import StandLogger
+from app.utils import external_small_model_utils
 import asyncio
 import json
 
@@ -35,6 +36,133 @@ class TestAddModel(TestCase):
         res = loop.run_until_complete(
             small_model_controller.add_model(para, "1", "zh", "user"))
         self.assertEqual(isinstance(json.loads(res.body)["id"], str), True)
+
+
+class TestVolcengineMultimodalEmbeddingRequest(TestCase):
+    class _Response:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def text(self):
+            return json.dumps({
+                "object": "list",
+                "data": {"embedding": [0.1] * 1024, "object": "embedding"},
+                "model": "doubao-embedding-vision-251215",
+                "usage": {"prompt_tokens": 1, "total_tokens": 1},
+            })
+
+    class _Session:
+        def __init__(self):
+            self.post_args = None
+            self.post_kwargs = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, *args, **kwargs):
+            self.post_args = args
+            self.post_kwargs = kwargs
+            return TestVolcengineMultimodalEmbeddingRequest._Response()
+
+    def setUp(self) -> None:
+        self.ClientSession = external_small_model_utils.aiohttp.ClientSession
+
+    def tearDown(self) -> None:
+        external_small_model_utils.aiohttp.ClientSession = self.ClientSession
+        StandLogger.stand_log_shutdown()
+
+    def test_model_test_uses_ark_multimodal_text_input(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        session = self._Session()
+        external_small_model_utils.aiohttp.ClientSession = mock.Mock(return_value=session)
+        request = logics.TestSmallModel(
+            model_name="doubao-embedding-vision-251215",
+            model_type="embedding",
+            model_config={
+                "api_url": "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+                "api_model": "doubao-embedding-vision-251215",
+                "api_key": "test-key",
+            },
+            batch_size=10,
+            max_tokens=4096,
+            embedding_dim=1024,
+            change=True,
+        )
+
+        result = loop.run_until_complete(
+            small_model_controller.test_model(request, "1", "zh", "user"))
+
+        self.assertEqual(json.loads(result.body)["status"], "ok")
+        self.assertEqual(session.post_kwargs["json"], {
+            "model": "doubao-embedding-vision-251215",
+            "input": [{"type": "text", "text": "hello"}],
+            "dimensions": 1024,
+        })
+
+    def test_non_vision_doubao_embedding_uses_text_request(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        session = self._Session()
+        external_small_model_utils.aiohttp.ClientSession = mock.Mock(return_value=session)
+        client = external_small_model_utils.InnerClient(
+            url="https://ark.cn-beijing.volces.com/api/v3/embeddings",
+            model_name="doubao-embedding-250615",
+            api_key="test-key",
+        )
+
+        loop.run_until_complete(client.embedding(["hello"]))
+
+        self.assertEqual(session.post_kwargs["json"], {
+            "model": "doubao-embedding-250615",
+            "input": ["hello"],
+        })
+
+    def test_model_test_passes_adapter_as_boolean(self):
+        captured = {}
+
+        class _Client:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            async def test_embedding(self, texts):
+                return {
+                    "object": "list",
+                    "data": [{"embedding": [0.1] * 1024}],
+                    "model": "doubao-embedding-vision-251215",
+                    "usage": {"prompt_tokens": 1, "total_tokens": 1},
+                }
+
+        request = logics.TestSmallModel(
+            model_name="doubao-embedding-vision-251215",
+            model_type="embedding",
+            model_config={
+                "api_url": "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+                "api_model": "doubao-embedding-vision-251215",
+                "api_key": "test-key",
+            },
+            adapter=False,
+            batch_size=10,
+            max_tokens=4096,
+            embedding_dim=1024,
+            change=True,
+        )
+
+        with mock.patch.object(small_model_controller, "InnerClient", _Client):
+            result = asyncio.run(
+                small_model_controller.test_model(request, "1", "zh", "user"))
+
+        self.assertEqual(json.loads(result.body)["status"], "ok")
+        self.assertIs(captured["adapter"], False)
+        self.assertEqual(captured["embedding_dim"], 1024)
 
 
 class TestEditModel(TestCase):

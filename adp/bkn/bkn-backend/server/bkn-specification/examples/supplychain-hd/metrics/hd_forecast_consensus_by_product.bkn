@@ -25,7 +25,6 @@ tags: [供应链, 预测, HD]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: consensus_demand
@@ -46,3 +45,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | product_code | 产品编码 |
+

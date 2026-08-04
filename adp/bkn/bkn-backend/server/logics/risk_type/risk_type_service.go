@@ -30,6 +30,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
+	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/permission"
 )
 
@@ -45,7 +46,7 @@ type riskTypeService struct {
 	ps         interfaces.PermissionService
 	uma        interfaces.UserMgmtAccess
 	vba        interfaces.VegaBackendAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 }
 
 func NewRiskTypeService(appSetting *common.AppSetting) interfaces.RiskTypeService {
@@ -57,7 +58,7 @@ func NewRiskTypeService(appSetting *common.AppSetting) interfaces.RiskTypeServic
 			ps:         permission.NewPermissionService(appSetting),
 			uma:        logics.UMA,
 			vba:        logics.VBA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 		}
 	})
 	return rts
@@ -430,7 +431,7 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 		return nil
 	}
 
-	if rts.appSetting.ServerSetting.DefaultSmallModelEnabled && rts.mfa != nil {
+	if rts.appSetting.ServerSetting.DefaultSmallModelEnabled && rts.mfs != nil {
 		words := []string{}
 		for _, riskType := range riskTypes {
 			arr := []string{riskType.RTName}
@@ -440,13 +441,13 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 			words = append(words, word)
 		}
 
-		dftModel, err := rts.mfa.GetDefaultModel(ctx)
+		dftModel, err := rts.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
-		vectors, err := rts.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := rts.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取风险类向量失败")
@@ -518,14 +519,14 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 		filterCondition, err = cond.ConvertCondCfgToFilterCondition(ctx, query.ActualCondition,
 			interfaces.CONCPET_QUERY_FIELD,
 			func(ctx context.Context, word string) ([]*cond.VectorResp, error) {
-				if !rts.appSetting.ServerSetting.DefaultSmallModelEnabled || rts.mfa == nil {
+				if !rts.appSetting.ServerSetting.DefaultSmallModelEnabled || rts.mfs == nil {
 					err = errors.New(cond.DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR)
 					span.SetStatus(codes.Error, err.Error())
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := rts.mfa.GetDefaultModel(ctx)
+				dftModel, err := rts.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
@@ -533,7 +534,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				result, err := rts.mfa.GetVector(ctx, dftModel, []string{word})
+				result, err := rts.mfs.GetVector(ctx, dftModel, []string{word})
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取风险类向量失败")

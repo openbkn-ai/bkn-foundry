@@ -34,7 +34,12 @@ type fakeHub struct {
 	mu       sync.Mutex
 	licence  string // empty means "none installed" → 404
 	requests int
-	appKeys  []string
+	// authz records the Authorization header of every request. The endpoint is
+	// tokenless, so the assertion on this is that it stays empty — kept as a
+	// test rather than a comment because a credential quietly reappearing here
+	// is exactly the regression that would put every consuming service back to
+	// waiting on an issuer/rotation/revocation story.
+	authz []string
 	// conditional records, per request, whether the client sent a validator.
 	// After the hub reports 404 the client must have dropped its cached ETag,
 	// so the next fetch is unconditional — otherwise recovery depends on text
@@ -71,7 +76,7 @@ func (h *fakeHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.requests++
-	h.appKeys = append(h.appKeys, r.Header.Get("Authorization"))
+	h.authz = append(h.authz, r.Header.Get("Authorization"))
 	h.conditional = append(h.conditional, r.Header.Get("If-None-Match") != "")
 
 	if h.status != 0 {
@@ -116,7 +121,6 @@ func newTestGate(t *testing.T, hub *fakeHub, keys map[string]ed25519.PublicKey) 
 
 	g, err := NewHubGate(HubConfig{
 		BaseURL: srv.URL,
-		AppKey:  "bak_test",
 		Keys:    keys,
 		Logf:    func(string, ...any) {},
 	})
@@ -137,8 +141,10 @@ func TestHubGateFetchesAndVerifies(t *testing.T) {
 	if !snap.Licensed || snap.Edition != licverify.EditionEnterprise {
 		t.Fatalf("snapshot = %+v, want licensed enterprise", snap)
 	}
-	if hub.appKeys[0] != "Bearer bak_test" {
-		t.Fatalf("Authorization = %q, want a bearer AppKey — the endpoint is not anonymous", hub.appKeys[0])
+	// No credential travels with the fetch: the distribution endpoint is
+	// tokenless by design, and a service needs BKN_SAFE_URL and nothing else.
+	if hub.authz[0] != "" {
+		t.Fatalf("Authorization = %q, want none — the endpoint is tokenless and the client must not require a credential to reach it", hub.authz[0])
 	}
 }
 
@@ -263,7 +269,7 @@ func TestHubGateNeedsVerificationKeys(t *testing.T) {
 	// A build with no key table cannot verify anything, so fetching would be
 	// theatre. Fail loudly at construction instead of running as an
 	// enterprise-looking process that trusts whatever it is handed.
-	_, err := NewHubGate(HubConfig{BaseURL: "http://example.invalid", AppKey: "k"})
+	_, err := NewHubGate(HubConfig{BaseURL: "http://example.invalid"})
 	if err == nil {
 		t.Fatal("expected a refusal when no verification keys are configured")
 	}

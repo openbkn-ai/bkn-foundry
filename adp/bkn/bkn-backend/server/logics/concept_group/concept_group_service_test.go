@@ -824,12 +824,12 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				},
 			}
 			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &conceptGroupService{
 				appSetting: appSettingWithVector,
 				vba:        vbaWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			conceptGroup := &interfaces.ConceptGroup{
@@ -849,8 +849,8 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, conceptGroup)
@@ -863,11 +863,11 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &conceptGroupService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			conceptGroup := &interfaces.ConceptGroup{
@@ -877,7 +877,7 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -889,11 +889,11 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &conceptGroupService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			conceptGroup := &interfaces.ConceptGroup{
@@ -903,8 +903,8 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)

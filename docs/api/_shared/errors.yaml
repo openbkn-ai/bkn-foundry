@@ -55,6 +55,15 @@ components:
         判断来源看 `code` 前缀：`Public.*` 与服务自己的前缀
         （`agentRetrieval.*` / `AgentOperatorIntegration.*`，注意后者首字母大写）
         是本服务产生的。
+
+        **例外：来自 mf-model-api 的错误不适用上面的 `code` 前缀判定。**
+        `mf-model-api` 的 `/v1/chat/completions` 是 OpenAI 兼容面，失败一律返回
+        OpenAI 错误体 `{"error": {"message", "type", "param", "code"}}`，顶层
+        没有 `code`（原来的业务码挪进了 `error.code`）。凡是走大模型调用的端点
+        （如 execution-factory 的 `/ai_generate/*`），透传出来的就是这个形态：
+        顶层有 `error` 对象即表示错误来自模型调用链路，用 `error.message`
+        取文案、`error.type` 取分类（`rate_limit_exceeded` /
+        `service_unavailable_error` / `invalid_request_error` 等）。
       type: object
       properties:
         code:
@@ -75,6 +84,49 @@ components:
           description: 指向错误详情文档的链接；无对应文档时为「无」。
         details:
           description: 详细内容，类型不固定（字符串或对象）。
+
+    ErrorOpenAI:
+      description: |
+        OpenAI 兼容的错误响应体。`mf-model-api` 的 `/v1/chat/completions` 只返回
+        这一种形态，凡是把大模型调用结果往上抛的端点（如 execution-factory 的
+        `/ai_generate/function/{type}`）也原样透传。
+
+        与 `ErrorCompact` 的关键差异：**顶层只有 `error` 一个字段**，业务码在
+        `error.code` 里，没有 `solution` / `link`。判断错误是否来自模型调用链路，
+        看顶层有没有 `error` 对象即可。
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+              description: 人类可读的错误说明，可直接展示给用户。
+              example: Service is too busy. Please try again later.
+            type:
+              type: string
+              nullable: true
+              description: |
+                错误分类。常见取值：`rate_limit_exceeded`（上游限流）、
+                `service_unavailable_error`（上游暂时不可用）、
+                `invalid_request_error`（请求本身有问题）、
+                `authentication_error` / `permission_error`（本服务与模型厂商
+                之间的认证问题，**不代表调用方凭据有问题**）、
+                `api_connection_error`（连不上模型服务）、`server_error`。
+              example: service_unavailable_error
+            param:
+              nullable: true
+              description: 出问题的参数名；无则为 null。
+            code:
+              nullable: true
+              description: |
+                机器可读错误码。上游给了就透传上游的；本服务产生的错误则是原
+                envelope 的业务码（如 `ModelFactory.ModelController.Model.ConnectError`）。
+              example: service_unavailable_error
 
     ErrorAgentRetrieval:
       description: |

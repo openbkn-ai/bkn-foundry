@@ -25,7 +25,6 @@ tags: [Exchange, 邮箱, 灾备]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: mailbox_count
@@ -44,3 +43,4 @@ atomic:
 |------|--------------|
 | data_domain_id | 数据域 |
 | status | 服务器状态 |
+

@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -18,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestBusinessToolSchemasAdvertiseOptionalBKNContext(t *testing.T) {
+func TestBusinessToolSchemasRequireManagedBKNContext(t *testing.T) {
 	rawMeta, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		t.Fatalf("read registered tool metadata: %v", err)
@@ -40,15 +39,13 @@ func TestBusinessToolSchemasAdvertiseOptionalBKNContext(t *testing.T) {
 			if err := json.Unmarshal(input, &schema); err != nil {
 				t.Fatalf("decode %s input schema: %v", toolKey, err)
 			}
-			// Advertised on every business tool, demanded on none. A required
-			// field an MCP client cannot legitimately fill just teaches it to
-			// invent IDs that Core rejects; omitting the whole object is the
-			// supported path and falls back to the client's MCP session.
+			// Every business tool is protected by the managed interaction gate.
+			// Clients must use the authority IDs returned by bkn_start_interaction.
 			if _, ok := schema.Properties["bkn_context"]; !ok {
 				t.Fatalf("%s must advertise bkn_context", toolKey)
 			}
-			if containsString(schema.Required, "bkn_context") {
-				t.Fatalf("%s must not demand bkn_context", toolKey)
+			if !containsString(schema.Required, "bkn_context") {
+				t.Fatalf("%s must require bkn_context", toolKey)
 			}
 
 			var contextSchema struct {
@@ -59,14 +56,36 @@ func TestBusinessToolSchemasAdvertiseOptionalBKNContext(t *testing.T) {
 			if err := json.Unmarshal(schema.Properties["bkn_context"], &contextSchema); err != nil {
 				t.Fatalf("decode %s bkn_context schema: %v", toolKey, err)
 			}
-			for _, field := range []string{"conversation_id", "interaction_id", "operation_key"} {
+			for _, field := range []string{"conversation_id", "interaction_id"} {
 				if _, ok := contextSchema.Properties[field]; !ok || !containsString(contextSchema.Required, field) {
 					t.Fatalf("%s bkn_context must require %s", toolKey, field)
 				}
 			}
-			for _, field := range []string{"parent_operation_id", "causation_event_ids"} {
+			for _, field := range []string{"parent_operation_id", "causation_event_ids", "business_refs"} {
 				if _, ok := contextSchema.Properties[field]; !ok {
 					t.Fatalf("%s bkn_context must declare optional %s", toolKey, field)
+				}
+			}
+			var businessRefs struct {
+				Type     string `json:"type"`
+				MaxItems int    `json:"maxItems"`
+				Items    struct {
+					AdditionalProperties any                        `json:"additionalProperties"`
+					Properties           map[string]json.RawMessage `json:"properties"`
+					Required             []string                   `json:"required"`
+				} `json:"items"`
+			}
+			if err := json.Unmarshal(contextSchema.Properties["business_refs"], &businessRefs); err != nil {
+				t.Fatalf("decode %s business_refs schema: %v", toolKey, err)
+			}
+			if businessRefs.Type != "array" || businessRefs.MaxItems != 64 ||
+				businessRefs.Items.AdditionalProperties != false ||
+				!sameStringSet(businessRefs.Items.Required, []string{"ref_type", "ref_id"}) {
+				t.Fatalf("%s business_refs must be a bounded closed declaration: %#v", toolKey, businessRefs)
+			}
+			for _, field := range []string{"ref_type", "ref_id", "version"} {
+				if _, ok := businessRefs.Items.Properties[field]; !ok {
+					t.Fatalf("%s business_refs item must declare %s", toolKey, field)
 				}
 			}
 		})
@@ -106,9 +125,12 @@ func TestModuleOpenAPIRequiresManagedBKNContext(t *testing.T) {
 			contextSchema, ok := document.Components.Schemas["BKNContext"]
 			if !ok || !sameStringSet(
 				contextSchema.Required,
-				[]string{"conversation_id", "interaction_id", "operation_key"},
+				[]string{"conversation_id", "interaction_id"},
 			) {
 				t.Fatalf("BKNContext contract is missing or incomplete: %#v", contextSchema)
+			}
+			if _, ok := contextSchema.Properties["business_refs"]; !ok {
+				t.Fatalf("BKNContext must document optional business_refs: %#v", contextSchema)
 			}
 			request, ok := document.Components.Schemas[requestSchema]
 			if !ok || !containsString(request.Required, "bkn_context") {
@@ -150,16 +172,8 @@ func TestLifecycleCapabilityDiscoveryDoesNotRequireBusinessContext(t *testing.T)
 
 func TestLifecycleToolsExposeExactCoreOutputSchemas(t *testing.T) {
 	tests := map[string][]string{
-		"bkn_create_conversation":  {"conversation_id", "owner", "external_conversation_key", "generation", "status", "one_shot", "row_version", "created_at", "updated_at"},
-		"bkn_resume_conversation":  {"conversation_id", "owner", "external_conversation_key", "generation", "status", "one_shot", "row_version", "created_at", "updated_at"},
-		"bkn_close_conversation":   {"conversation_id", "owner", "external_conversation_key", "generation", "status", "one_shot", "row_version", "created_at", "updated_at"},
-		"bkn_start_interaction":    {"interaction_id", "conversation_id", "ordinal", "execution_status", "evidence_status", "lease_token", "lease_epoch", "lease_version", "lease_expires_at", "row_version", "created_at", "updated_at"},
-		"bkn_complete_interaction": {"interaction_id", "conversation_id", "ordinal", "execution_status", "evidence_status", "lease_token", "lease_epoch", "lease_version", "lease_expires_at", "row_version", "created_at", "updated_at"},
-		"bkn_fail_interaction":     {"interaction_id", "conversation_id", "ordinal", "execution_status", "evidence_status", "lease_token", "lease_epoch", "lease_version", "lease_expires_at", "row_version", "created_at", "updated_at"},
-		"bkn_cancel_interaction":   {"interaction_id", "conversation_id", "ordinal", "execution_status", "evidence_status", "lease_token", "lease_epoch", "lease_version", "lease_expires_at", "row_version", "created_at", "updated_at"},
-		"bkn_handoff_interaction":  {"interaction_id", "conversation_id", "ordinal", "execution_status", "evidence_status", "lease_token", "lease_epoch", "lease_version", "lease_expires_at", "row_version", "created_at", "updated_at"},
-		"bkn_get_operation":        {"operation_id", "conversation_id", "interaction_id", "operation_key", "tool_name", "normalized_input_hash", "attempt", "attempt_status", "retryable", "row_version", "created_at", "updated_at"},
-		"bkn_get_receipt":          {"receipt_id", "schema_version", "owner", "conversation_id", "interaction_id", "operation_id", "attempt", "operation_key", "tool_name", "normalized_input_hash", "receipt_status", "evidence_durability", "required", "request_id", "trace_id", "causation_event_ids", "observed_evidence_refs", "business_refs", "artifact_refs", "partial_reasons", "row_version", "issued_at", "payload_hash"},
+		"bkn_start_interaction":  {"interaction_id", "conversation_id", "execution_status"},
+		"bkn_finish_interaction": {"interaction_id", "conversation_id", "execution_status", "evidence_status"},
 	}
 	for tool, required := range tests {
 		_, output := loadToolSchemas(tool)
@@ -181,33 +195,38 @@ func TestLifecycleToolsExposeExactCoreOutputSchemas(t *testing.T) {
 			}
 		}
 	}
-	for _, tool := range []string{"bkn_retry_operation"} {
-		_, output := loadToolSchemas(tool)
-		var result struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-			Required   []string                   `json:"required"`
-		}
-		_ = json.Unmarshal(output, &result)
-		for _, field := range []string{"operation", "receipt", "created", "execute"} {
-			if _, ok := result.Properties[field]; !ok || !containsString(result.Required, field) {
-				t.Fatalf("%s output must require %s: %s", tool, field, output)
-			}
-		}
-	}
 }
 
-func TestStartInteractionLeaseSecondsMatchesOptionalCoreField(t *testing.T) {
+func TestStartInteractionHidesCoreLeaseField(t *testing.T) {
 	input, _ := loadToolSchemas("bkn_start_interaction")
 	var schema struct {
 		Properties map[string]json.RawMessage `json:"properties"`
 		Required   []string                   `json:"required"`
 	}
 	_ = json.Unmarshal(input, &schema)
-	if _, ok := schema.Properties["lease_seconds"]; !ok {
-		t.Fatal("start interaction must expose optional lease_seconds")
+	if _, ok := schema.Properties["lease_seconds"]; ok {
+		t.Fatal("ordinary agents must not manage lease_seconds")
 	}
-	if containsString(schema.Required, "lease_seconds") {
-		t.Fatalf("lease_seconds is optional in Core request: %s", input)
+}
+
+func TestStartInteractionDeclaresOptionalBoundedAgentName(t *testing.T) {
+	input, _ := loadToolSchemas("bkn_start_interaction")
+	var schema struct {
+		Properties map[string]struct {
+			Type      string `json:"type"`
+			MaxLength int    `json:"maxLength"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(input, &schema); err != nil {
+		t.Fatalf("decode start schema: %v", err)
+	}
+	agentName, ok := schema.Properties["agent_name"]
+	if !ok || agentName.Type != "string" || agentName.MaxLength != 128 {
+		t.Fatalf("agent_name must be an optional bounded display declaration: %s", input)
+	}
+	if containsString(schema.Required, "agent_name") {
+		t.Fatalf("agent_name must remain optional: %s", input)
 	}
 }
 
@@ -242,25 +261,6 @@ func TestLifecycleSchemaUsesRegisteredIssue541ErrorsAndCoreTypes(t *testing.T) {
 		}
 	}
 
-	outputs := map[string]string{
-		"bkn_create_conversation": "sessionvo.Conversation",
-		"bkn_start_interaction":   "sessionvo.Interaction",
-		"bkn_get_operation":       "sessionvo.Operation",
-		"bkn_get_receipt":         "sessionvo.Receipt",
-		"bkn_retry_operation":     "httphandler.operationResult",
-	}
-	for tool, definition := range outputs {
-		_, rawOutput := loadToolSchemas(tool)
-		var mcpSchema map[string]any
-		if err := json.Unmarshal(rawOutput, &mcpSchema); err != nil {
-			t.Fatalf("decode %s output: %v", tool, err)
-		}
-		want := freezeSchema(core.Definitions[definition], core.Definitions, map[string]bool{})
-		got := freezeSchema(mcpSchema, core.Definitions, map[string]bool{})
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("%s recursively drifted from %s:\ngot=%#v\nwant=%#v", tool, definition, got, want)
-		}
-	}
 }
 
 func TestLifecycleSwaggerPathsRequestsAndResponsesAreStructurallyFrozen(t *testing.T) {
@@ -352,17 +352,8 @@ func TestLifecycleSwaggerPathsRequestsAndResponsesAreStructurallyFrozen(t *testi
 
 func TestLifecycleMCPInputRequiredFieldsMatchCorePathAndBody(t *testing.T) {
 	expected := map[string][]string{
-		"bkn_create_conversation":  {"external_conversation_key"},
-		"bkn_resume_conversation":  {"conversation_id"},
-		"bkn_start_interaction":    {"conversation_id", "idempotency_key", "question"},
-		"bkn_complete_interaction": {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason", "answer"},
-		"bkn_fail_interaction":     {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason"},
-		"bkn_cancel_interaction":   {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason"},
-		"bkn_handoff_interaction":  {"interaction_id", "terminal_idempotency_key", "lease_token", "lease_epoch", "completion_manifest_version", "completion_reason"},
-		"bkn_close_conversation":   {"conversation_id"},
-		"bkn_get_operation":        {"operation_id"},
-		"bkn_retry_operation":      {"operation_id"},
-		"bkn_get_receipt":          {"receipt_id"},
+		"bkn_start_interaction":  {"question"},
+		"bkn_finish_interaction": {"interaction_id", "outcome"},
 	}
 	for tool, want := range expected {
 		input, _ := loadToolSchemas(tool)

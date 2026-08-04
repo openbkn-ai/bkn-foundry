@@ -6,6 +6,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/PaesslerAG/jsonpath v0.1.1
+	github.com/agiledragon/gomonkey/v2 v2.14.0
 	github.com/bytedance/sonic v1.15.2
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/fsnotify/fsnotify v1.10.1

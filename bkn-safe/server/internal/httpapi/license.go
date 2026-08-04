@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/licverify"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 )
@@ -127,13 +126,21 @@ func importLicense(c *gin.Context, svc *license.Service) {
 	c.JSON(http.StatusOK, licenseDetail(svc))
 }
 
-// registerLicenseInternal mounts the in-cluster distribution surface. It is
-// NOT anonymous (upstream hard rule): callers authenticate with an AppKey —
-// the existing service-identity mechanism. What is distributed is the signed
-// license text; modules verify it locally and never trust these answers for
-// gating.
-func registerLicenseInternal(r *gin.Engine, svc *license.Service, keysStore *auth.APIKeyStore) {
-	g := r.Group("/api/safe/v1/internal/license", RequireAppKey(keysStore))
+// registerLicenseInternal mounts the in-cluster distribution surface: the whole
+// group is tokenless and ClusterIP-only, the same trust face as /authz and
+// /api-keys/introspect.
+//
+// What travels here is the signed license text and two weak views of it.
+// Modules verify the text locally against a key compiled into their own binary
+// and never gate on these answers, so this endpoint hands out evidence, not
+// verdicts — an impersonated hub can withhold a license but cannot manufacture
+// one. Requiring a per-service credential would therefore not protect gating
+// integrity; it would only keep the text from being read anonymously inside the
+// customer's own cluster, at the price of an issuer, a rotation story and a
+// revocation signal nobody had defined. The boundary is the network (see the
+// chart's networkPolicy), not a bearer token.
+func registerLicenseInternal(r *gin.Engine, svc *license.Service) {
+	g := r.Group("/api/safe/v1/internal/license")
 
 	// GET /current — the raw .lic + ETag. Modules poll with If-None-Match
 	// (≤5 min upstream contract); 304 keeps steady-state traffic body-free.
@@ -184,26 +191,6 @@ func registerLicenseInternal(r *gin.Engine, svc *license.Service, keysStore *aut
 		}
 		c.JSON(http.StatusOK, resp)
 	})
-}
-
-// RequireAppKey authenticates service callers by AppKey (Authorization:
-// Bearer bak_...). Any active key passes — this fences the surface off from
-// anonymous traffic, it is not a per-caller authorization scheme.
-func RequireAppKey(keysStore *auth.APIKeyStore) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		tok := bearerToken(c)
-		if tok == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer AppKey"})
-			return
-		}
-		v, err := keysStore.Verify(c.Request.Context(), tok)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid AppKey"})
-			return
-		}
-		c.Set(ctxAccessorID, v.OwnerID)
-		c.Next()
-	}
 }
 
 // licenseStatus is the weak-judgement view shared by the internal status

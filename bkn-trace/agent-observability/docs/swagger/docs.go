@@ -67,14 +67,14 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Page size, 1..200",
-                        "name": "limit",
+                        "description": "Page number, starting at 1",
+                        "name": "page",
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Opaque pagination cursor",
-                        "name": "cursor",
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "page_size",
                         "in": "query"
                     },
                     {
@@ -167,14 +167,14 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Page size, 1..200",
-                        "name": "limit",
+                        "description": "Page number, starting at 1",
+                        "name": "page",
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Opaque pagination cursor",
-                        "name": "cursor",
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "page_size",
                         "in": "query"
                     },
                     {
@@ -326,14 +326,14 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Page size, 1..200",
-                        "name": "limit",
+                        "description": "Page number, starting at 1",
+                        "name": "page",
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "Opaque pagination cursor",
-                        "name": "cursor",
+                        "type": "integer",
+                        "description": "Page size, 1..200",
+                        "name": "page_size",
                         "in": "query"
                     },
                     {
@@ -1743,6 +1743,89 @@ const docTemplate = `{
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/httphandler.terminalInteractionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}/finish": {
+            "post": {
+                "description": "Derives the current lease and closure manifest from authoritative Operations and Receipts. Ordinary Agents do not submit concurrency or closure internals.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Finish one Interaction through the Agent-facing facade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Managed finish request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.managedFinishInteractionRequest"
                         }
                     }
                 ],
@@ -3349,6 +3432,9 @@ const docTemplate = `{
                 "bkn.request.id": {
                     "type": "string"
                 },
+                "conclusion_scope": {
+                    "type": "string"
+                },
                 "data": {
                     "$ref": "#/definitions/evidencevo.BusinessGraphData"
                 },
@@ -3375,7 +3461,13 @@ const docTemplate = `{
         "evidencevo.ConversationSummary": {
             "type": "object",
             "properties": {
+                "agent_name": {
+                    "type": "string"
+                },
                 "agent_or_app": {
+                    "type": "string"
+                },
+                "application_principal_id": {
                     "type": "string"
                 },
                 "business_domain": {
@@ -3389,6 +3481,9 @@ const docTemplate = `{
                 },
                 "duration_ms": {
                     "type": "integer"
+                },
+                "effective_subject_id": {
+                    "type": "string"
                 },
                 "error_summary": {
                     "type": "string"
@@ -3445,6 +3540,12 @@ const docTemplate = `{
                 },
                 "next_cursor": {
                     "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
                 },
                 "partial": {
                     "type": "boolean"
@@ -3588,6 +3689,9 @@ const docTemplate = `{
                 "bkn.request.id": {
                     "type": "string"
                 },
+                "conclusion_scope": {
+                    "type": "string"
+                },
                 "data": {
                     "$ref": "#/definitions/evidencevo.EvidenceChainData"
                 },
@@ -3687,7 +3791,13 @@ const docTemplate = `{
         "evidencevo.InteractionListSummary": {
             "type": "object",
             "properties": {
+                "agent_name": {
+                    "type": "string"
+                },
                 "agent_or_app": {
+                    "type": "string"
+                },
+                "application_principal_id": {
                     "type": "string"
                 },
                 "business_domain": {
@@ -3701,6 +3811,9 @@ const docTemplate = `{
                 },
                 "duration_ms": {
                     "type": "integer"
+                },
+                "effective_subject_id": {
+                    "type": "string"
                 },
                 "error_summary": {
                     "type": "string"
@@ -3749,6 +3862,12 @@ const docTemplate = `{
         "evidencevo.InteractionSummary": {
             "type": "object",
             "properties": {
+                "agent_name": {
+                    "type": "string"
+                },
+                "application_principal_id": {
+                    "type": "string"
+                },
                 "completed_at": {
                     "type": "string"
                 },
@@ -3758,7 +3877,25 @@ const docTemplate = `{
                 "duration_ms": {
                     "type": "integer"
                 },
+                "effective_subject_id": {
+                    "type": "string"
+                },
+                "error_summary": {
+                    "type": "string"
+                },
+                "evidence_completeness": {
+                    "type": "string"
+                },
                 "interaction_id": {
+                    "type": "string"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "question_preview": {
                     "type": "string"
                 },
                 "requests": {
@@ -3766,6 +3903,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/evidencevo.RequestSummary"
                     }
+                },
+                "result_preview": {
+                    "type": "string"
                 },
                 "started_at": {
                     "type": "string"
@@ -3793,6 +3933,12 @@ const docTemplate = `{
                 "next_cursor": {
                     "type": "string"
                 },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
                 "partial": {
                     "type": "boolean"
                 },
@@ -3816,7 +3962,13 @@ const docTemplate = `{
                 "action_summary": {
                     "$ref": "#/definitions/evidencevo.ActionSummary"
                 },
+                "agent_name": {
+                    "type": "string"
+                },
                 "agent_or_app": {
+                    "type": "string"
+                },
+                "application_principal_id": {
                     "type": "string"
                 },
                 "business_domain": {
@@ -3831,11 +3983,17 @@ const docTemplate = `{
                 "completed_at": {
                     "type": "string"
                 },
+                "controlled_summary": {
+                    "type": "string"
+                },
                 "conversation_id": {
                     "type": "string"
                 },
                 "duration_ms": {
                     "type": "integer"
+                },
+                "effective_subject_id": {
+                    "type": "string"
                 },
                 "error_summary": {
                     "type": "string"
@@ -3873,6 +4031,9 @@ const docTemplate = `{
                 "request_id": {
                     "type": "string"
                 },
+                "result_count": {
+                    "type": "integer"
+                },
                 "result_preview": {
                     "type": "string"
                 },
@@ -3901,6 +4062,12 @@ const docTemplate = `{
                 },
                 "next_cursor": {
                     "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
                 },
                 "partial": {
                     "type": "boolean"
@@ -4018,7 +4185,13 @@ const docTemplate = `{
         "evidencevo.TraceSummary": {
             "type": "object",
             "properties": {
+                "agent_name": {
+                    "type": "string"
+                },
                 "agent_or_app": {
+                    "type": "string"
+                },
+                "application_principal_id": {
                     "type": "string"
                 },
                 "business_domain": {
@@ -4032,6 +4205,9 @@ const docTemplate = `{
                 },
                 "duration_ms": {
                     "type": "integer"
+                },
+                "effective_subject_id": {
+                    "type": "string"
                 },
                 "error_summary": {
                     "type": "string"
@@ -4047,6 +4223,9 @@ const docTemplate = `{
                 },
                 "span_count": {
                     "type": "integer"
+                },
+                "span_count_status": {
+                    "type": "string"
                 },
                 "started_at": {
                     "type": "string"
@@ -4070,6 +4249,12 @@ const docTemplate = `{
                 },
                 "next_cursor": {
                     "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
                 },
                 "partial": {
                     "type": "boolean"
@@ -4439,6 +4624,8 @@ const docTemplate = `{
                         "interaction_required",
                         "interaction_in_progress",
                         "interaction_terminal",
+                        "agent_name_conflict",
+                        "agent_name_invalid",
                         "operation_required",
                         "idempotency_conflict",
                         "event_payload_conflict",
@@ -4453,6 +4640,9 @@ const docTemplate = `{
                         "resource_not_disclosed",
                         "internal_error"
                     ]
+                },
+                "current_interaction_id": {
+                    "type": "string"
                 },
                 "current_status": {
                     "type": "string"
@@ -4479,6 +4669,33 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "$ref": "#/definitions/httphandler.lifecycleError"
+                }
+            }
+        },
+        "httphandler.managedFinishInteractionRequest": {
+            "type": "object",
+            "required": [
+                "idempotency_key",
+                "outcome"
+            ],
+            "properties": {
+                "answer_artifact_ref": {
+                    "type": "string"
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "idempotency_key": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
                 }
             }
         },
@@ -4536,11 +4753,18 @@ const docTemplate = `{
                 "idempotency_key"
             ],
             "properties": {
+                "agent_name": {
+                    "type": "string",
+                    "maxLength": 128
+                },
                 "idempotency_key": {
                     "type": "string"
                 },
                 "lease_seconds": {
                     "type": "integer"
+                },
+                "request_hash": {
+                    "type": "string"
                 }
             }
         },
@@ -4973,6 +5197,9 @@ const docTemplate = `{
                 "updated_at"
             ],
             "properties": {
+                "agent_name": {
+                    "type": "string"
+                },
                 "closed_at": {
                     "type": "string"
                 },

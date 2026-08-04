@@ -98,25 +98,25 @@ reachable from the platform/sandbox, such as `http://<host>:8765` on an internal
 network. The default `http://127.0.0.1:8765` is only guaranteed for the local
 verifier; `127.0.0.1` inside the platform sandbox is not your laptop.
 
-## Bonus — change business → KN rebuild → routing follows
+## Bonus — change business data → routing follows
 
 Run `./run.sh --bonus`. The script POSTs to the mock business backend's admin
 endpoint to re-bind MAT-002 from `supplier_expedite` to the newly registered
 `standard_replenish` Skill ID. This updates `materials.bound_skill_id` in
-MySQL, which drives the `applicable_skill` direct-mapping FK. It then triggers
-`openbkn bkn build` to refresh the underlying Vega resource snapshot, then
-re-routes MAT-002. The next `find_skills` call returns the new candidate set and
-the route switches to `standard_replenish` — without any prompt edit or redeploy.
+MySQL, which drives the `applicable_skill` direct-mapping FK. It then re-routes
+MAT-002: the next `find_skills` call returns the new candidate set and the route
+switches to `standard_replenish` — without any prompt edit or redeploy.
 
-> **Why the rebuild — and why it's not a platform requirement:** This example
-> uses Vega's **batch-mode** dataview, which serves graph queries from a
-> snapshot taken at build time. Direct-mapping relations like
-> `applicable_skill` are computed live at query time, but the underlying data
-> is the snapshot — so MySQL UPDATEs only surface after the next build. Vega
-> also supports a **streaming-mode** resource (Debezium CDC over Kafka) where
-> updates propagate in seconds with no manual rebuild; that's the production
-> path. We use batch here so the demo runs with just one MySQL — no Kafka,
-> no Debezium, no extra infra.
+> **Why no rebuild step:** every object type here binds to a Vega **resource**,
+> and this example never builds a local index for those resources — so ontology
+> queries hit the source database on each call, and a MySQL UPDATE is visible to
+> the next `find_skills` immediately. There is no KN-level build to run either;
+> that API was retired.
+>
+> Note the flip side: building a resource index (`openbkn vega dataset build`,
+> as examples 01/02 do) switches that resource's reads over to the build
+> snapshot. Doing that here would break exactly this scenario — the re-binding
+> would stay invisible until the next build.
 
 ## How it works (deeper read)
 

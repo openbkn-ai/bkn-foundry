@@ -41,7 +41,7 @@ func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 		handler.RegisterRouter(routerGroup)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/kn/search_schema", bytes.NewBufferString(`{
-			"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route","operation_key":"route-search"}
+			"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route"}
 		}`))
 		setRouteLifecycleHeaders(req)
 		w := httptest.NewRecorder()

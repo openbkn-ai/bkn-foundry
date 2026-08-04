@@ -7,15 +7,393 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
 type capturingProjectionSource struct {
 	result    iprojectionsource.Result
 	resultFor func(iprojectionsource.Query) iprojectionsource.Result
 	queries   []iprojectionsource.Query
+}
+
+type fixedTraceStatsSource map[string]int
+
+func (source fixedTraceStatsSource) CountSpansByTraceIDs(_ context.Context, _ []string) (map[string]int, error) {
+	return source, nil
+}
+
+func TestSummaryOffsetClampsOverflowingPage(t *testing.T) {
+	options := evidencevo.SummaryQueryOptions{Page: int(^uint(0) >> 1), Limit: MaxSummaryQueryLimit}
+	if offset := summaryOffset(options, 10); offset != 10 {
+		t.Fatalf("overflowing page offset = %d, want end of result set", offset)
+	}
+}
+
+func TestListConversationsUsesCanonicalSessionStatus(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_done", "trace_done", "conversation_active", "interaction_done",
+		"2026-08-03T08:00:00Z", "查询库存", "库存 1756", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	terminalAt := time.Date(2026, 8, 3, 8, 0, 3, 0, time.UTC)
+	err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_active", Status: sessionvo.ConversationActive,
+			CreatedAt: time.Date(2026, 8, 3, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 3, 8, 2, 0, 0, time.UTC),
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_done", ConversationID: "conversation_active",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+			CreatedAt: time.Date(2026, 8, 3, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: terminalAt, TerminalAt: &terminalAt,
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	service := New(
+		evidenceStore,
+		WithProjectionSource(evidenceStore),
+		WithSessionStore(sessions),
+	)
+
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list conversations: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].Status != "active" || page.Entries[0].CompletedAt != "" {
+		t.Fatalf("child request completion must not close the conversation: %+v", page.Entries[0])
+	}
+	if page.Entries[0].DurationMS != 3000 {
+		t.Fatalf("active conversation must retain completed interaction duration: %+v", page.Entries[0])
+	}
+}
+
+func TestListConversationsSumsCompletedInteractionDurations(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_first", "trace_first", "conversation_supply", "interaction_first",
+		"2026-08-03T08:00:00Z", "查询库存", "库存 1756", "acct_demo",
+	)
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_second", "trace_second", "conversation_supply", "interaction_second",
+		"2026-08-03T08:10:00Z", "查询采购订单", "采购订单 23 张", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	firstTerminalAt := time.Date(2026, 8, 3, 8, 0, 2, 0, time.UTC)
+	secondTerminalAt := time.Date(2026, 8, 3, 8, 10, 3, 0, time.UTC)
+	err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_supply", Status: sessionvo.ConversationActive,
+			CreatedAt: time.Date(2026, 8, 3, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 3, 8, 11, 0, 0, time.UTC),
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_first", ConversationID: "conversation_supply",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+			CreatedAt: time.Date(2026, 8, 3, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: firstTerminalAt, TerminalAt: &firstTerminalAt,
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_second", ConversationID: "conversation_supply",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+			CreatedAt: time.Date(2026, 8, 3, 8, 10, 0, 0, time.UTC),
+			UpdatedAt: secondTerminalAt, TerminalAt: &secondTerminalAt,
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed canonical session: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list conversations: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].DurationMS != 5000 {
+		t.Fatalf("conversation duration must sum completed interactions, got: %+v", page.Entries[0])
+	}
+}
+
+func TestListConversationsFiltersAfterApplyingCanonicalSessionStatus(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_done", "trace_done", "conversation_active", "interaction_done",
+		"2026-08-03T08:00:00Z", "查询库存", "库存 1756", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_active", Status: sessionvo.ConversationActive,
+			CreatedAt: time.Date(2026, 8, 3, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 3, 8, 2, 0, 0, time.UTC),
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20, Status: "active",
+	})
+
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].Status != "active" {
+		t.Fatalf("canonical conversation status must drive filtering: page=%+v err=%v", page, err)
+	}
+}
+
+func TestListConversationsSeparatesAgentDisplayNameFromTrustedIdentity(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_identity", "trace_identity", "conversation_identity", "interaction_identity",
+		"2026-08-04T08:00:00Z", "查询库存", "库存 1756", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	owner := sessionvo.Owner{
+		TenantID: "tenant_demo", BusinessDomainID: "bd_demo",
+		ApplicationPrincipalID: "266c6a42-6131-4d62-8f39-853e7093701c",
+		EffectiveSubjectType:   sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+	}
+	err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_identity", AgentName: "供应链分析助手", Owner: owner,
+			Status: sessionvo.ConversationActive, CreatedAt: time.Date(2026, 8, 4, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 4, 8, 2, 0, 0, time.UTC),
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list conversations: page=%+v err=%v", page, err)
+	}
+	entry := page.Entries[0]
+	if entry.AgentName != "供应链分析助手" ||
+		entry.ApplicationPrincipalID != owner.ApplicationPrincipalID ||
+		entry.EffectiveSubjectID != owner.EffectiveSubjectID {
+		t.Fatalf("display and trusted identity must remain separate: %+v", entry)
+	}
+}
+
+func TestListConversationsUsesWeakestCanonicalInteractionEvidence(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_complete", "trace_complete", "conversation_supply", "interaction_complete",
+		"2026-08-04T08:00:00Z", "查询六月需求", "需求总量 11594", "acct_demo",
+	)
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_partial", "trace_partial", "conversation_supply", "interaction_partial",
+		"2026-08-04T08:01:00Z", "查询销售订单", "共有 1441 张", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_supply", Status: sessionvo.ConversationActive,
+			CreatedAt: time.Date(2026, 8, 4, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 4, 8, 2, 0, 0, time.UTC),
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_complete", ConversationID: "conversation_supply",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_partial", ConversationID: "conversation_supply",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidencePartial,
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed canonical session: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list conversations: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].EvidenceCompleteness != "partial" {
+		t.Fatalf("conversation must expose its weakest canonical interaction evidence: %+v", page.Entries[0])
+	}
+}
+
+func TestCanonicalInteractionStateKeepsFailedCallSeparateFromCompletedTurn(t *testing.T) {
+	sessions := sessionstore.New()
+	terminalAt := time.Date(2026, 8, 4, 8, 2, 0, 0, time.UTC)
+	err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_inventory", ConversationID: "conversation_supply",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+			CreatedAt: time.Date(2026, 8, 4, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: terminalAt, TerminalAt: &terminalAt,
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed interaction: %v", err)
+	}
+	service := New(nil, WithSessionStore(sessions))
+	entries := []evidencevo.InteractionListSummary{{
+		InteractionID: "interaction_inventory", Status: "error",
+		EvidenceCompleteness: "partial", ErrorSummary: "one OpenBKN call failed",
+	}}
+
+	if err := service.applyCanonicalInteractionState(context.Background(), entries); err != nil {
+		t.Fatalf("apply canonical state: %v", err)
+	}
+
+	if entries[0].Status != "completed" || entries[0].EvidenceCompleteness != "complete" {
+		t.Fatalf("turn state must come from the managed interaction: %+v", entries[0])
+	}
+	if entries[0].ErrorSummary != "one OpenBKN call failed" {
+		t.Fatalf("failed child call must remain diagnosable: %+v", entries[0])
+	}
+}
+
+func TestAggregateRequestGroupDoesNotDowngradeBusinessEvidenceForAuxiliaryGap(t *testing.T) {
+	base, _ := aggregateRequestGroup([]evidencevo.RequestSummary{
+		{
+			RequestID: "req_business", Status: "completed", EvidenceCompleteness: "complete",
+			QuestionPreview: "查询库存", ResultPreview: "库存 1756",
+		},
+		{
+			RequestID: "req_discovery", Status: "completed", EvidenceCompleteness: "partial",
+			ToolName:       "list_knowledge_networks",
+			PartialReasons: []string{"supporting_evidence_unavailable"},
+		},
+	})
+
+	if base.EvidenceCompleteness != "complete" || len(base.PartialReasons) != 0 {
+		t.Fatalf("auxiliary discovery must not downgrade business evidence: %+v", base)
+	}
+}
+
+func TestAggregateRequestGroupDoesNotReportAvailableInteractionContentAsMissing(t *testing.T) {
+	base, _ := aggregateRequestGroup([]evidencevo.RequestSummary{
+		{
+			RequestID: "req_search", Status: "completed", EvidenceCompleteness: "partial",
+			InteractionQuestion: "查询 7 月需求预测", InteractionResult: "需求总量 4586",
+			PartialReasons: []string{"question_content_unavailable", "result_content_unavailable"},
+		},
+	})
+
+	if base.QuestionPreview != "查询 7 月需求预测" || base.ResultPreview != "需求总量 4586" {
+		t.Fatalf("interaction content must remain readable: %+v", base)
+	}
+	if base.EvidenceCompleteness != "complete" || len(base.PartialReasons) != 0 {
+		t.Fatalf("available interaction content must clear operation-local absence reasons: %+v", base)
+	}
+}
+
+func TestAggregateRequestGroupKeepsIndependentEvidenceGap(t *testing.T) {
+	base, _ := aggregateRequestGroup([]evidencevo.RequestSummary{
+		{
+			RequestID: "req_search", Status: "error", EvidenceCompleteness: "partial",
+			InteractionQuestion: "查询 7 月需求预测", InteractionResult: "需求总量 4586",
+			PartialReasons: []string{
+				"question_content_unavailable",
+				"result_content_unavailable",
+				"supporting_evidence_unavailable",
+			},
+		},
+	})
+
+	if base.EvidenceCompleteness != "partial" ||
+		len(base.PartialReasons) != 1 || base.PartialReasons[0] != "supporting_evidence_unavailable" {
+		t.Fatalf("independent evidence gaps must survive content reconciliation: %+v", base)
+	}
+}
+
+func TestListRequestsAddsResolvedBusinessSummaryWithoutGatingAccess(t *testing.T) {
+	store := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, store, "req_inventory", "trace_inventory", "conversation_supply_chain", "interaction_inventory",
+		"2026-08-03T08:00:00Z", "查询物料库存", "库存 1756", "acct_demo",
+	)
+	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{{
+		RefID: "object:kn_demo:item", Visibility: "visible",
+		Display: &evidencevo.BusinessDisplay{Name: "物料库存", ResolutionStatus: "resolved"},
+	}}}
+	service := New(store, WithProjectionSource(store), WithBusinessResolver(resolver))
+
+	page, err := service.ListRequests(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list requests: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].ControlledSummary != "物料库存" {
+		t.Fatalf("controlled summary = %q, want resolved business name", page.Entries[0].ControlledSummary)
+	}
+	if len(resolver.requests) != 1 {
+		t.Fatalf("business display refs must be resolved in one batch: %+v", resolver.requests)
+	}
+}
+
+func TestListRequestsSummarizesSchemaDiscoveryWithKnowledgeNetworkName(t *testing.T) {
+	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{
+		{RefID: "action_type:kn_supply:create_po", Visibility: "visible", Display: &evidencevo.BusinessDisplay{Name: "发起采购订单"}},
+		{RefID: "kn:kn_supply", Visibility: "visible", Display: &evidencevo.BusinessDisplay{Name: "HD供应链业务知识网络_v3"}},
+		{RefID: "object:kn_supply:sales_order", Visibility: "visible", Display: &evidencevo.BusinessDisplay{Name: "销售订单"}},
+	}}
+	service := New(nil, WithBusinessResolver(resolver))
+	requests := []evidencevo.RequestSummary{{
+		ToolName: "search_schema",
+		BusinessRefs: []string{
+			"action_type:kn_supply:create_po",
+			"kn:kn_supply",
+			"object:kn_supply:sales_order",
+		},
+	}}
+
+	service.enrichRequestBusinessSummaries(context.Background(), requests, summaryScope("acct_demo"))
+
+	if requests[0].ControlledSummary != "HD供应链业务知识网络_v3" {
+		t.Fatalf("schema discovery summary = %q, want knowledge network name", requests[0].ControlledSummary)
+	}
+}
+
+func TestListTraceSummariesUsesAuthoritativeSpanStats(t *testing.T) {
+	store := evidencestore.New()
+	seedSummaryRequest(t, store, "req_spans", "trace_spans", "2026-08-03T08:00:00Z", "问题", "结果", "cursor", "bd_demo", "acct_demo")
+	service := New(
+		store,
+		WithProjectionSource(store),
+		WithTraceStatsSource(fixedTraceStatsSource{"trace_spans": 16}),
+	)
+
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list traces: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].SpanCount != 16 || page.Entries[0].SpanCountStatus != "available" {
+		t.Fatalf("trace summary must use the trace store span count: %+v", page.Entries[0])
+	}
 }
 
 func (s *capturingProjectionSource) LoadExecutionProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
@@ -47,6 +425,20 @@ func TestListRequestsUsesStableCursorPagination(t *testing.T) {
 	third, err := service.ListRequests(context.Background(), options)
 	if err != nil || len(third.Entries) != 1 || third.Entries[0].RequestID != "req_old" || third.NextCursor != nil {
 		t.Fatalf("unexpected third page: %+v err=%v", third, err)
+	}
+}
+
+func TestListRequestsSupportsPageNumberPagination(t *testing.T) {
+	store := evidencestore.New()
+	seedSummaryRequest(t, store, "req_old", "trace_old", "2026-07-26T08:00:00Z", "旧问题", "旧结果", "agent-a", "bd_demo", "acct_demo")
+	seedSummaryRequest(t, store, "req_new", "trace_new", "2026-07-26T09:00:00Z", "新问题", "新结果", "agent-a", "bd_demo", "acct_demo")
+	service := NewWithProjectionSource(store, store)
+
+	page, err := service.ListRequests(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 1, Page: 2,
+	})
+	if err != nil || page.Page != 2 || page.PageSize != 1 || page.Total != 2 || len(page.Entries) != 1 || page.Entries[0].RequestID != "req_old" {
+		t.Fatalf("unexpected numbered request page: %+v err=%v", page, err)
 	}
 }
 
@@ -320,8 +712,8 @@ func TestListRequestsKeepsRecordAuthorizedBusinessRefsWithoutResolverAuthorizati
 	if containsSummaryValue(summary.BusinessRefs, "object:kn_hidden:item") {
 		t.Fatalf("producer-hidden refs must remain hidden: %+v", summary)
 	}
-	if len(resolver.requests) != 0 {
-		t.Fatalf("summary access must not depend on resolver authorization: %+v", resolver.requests)
+	if len(resolver.requests) != 1 || summary.ControlledSummary != "" {
+		t.Fatalf("resolver may enrich display but must not expose unauthorized names or gate the record: requests=%+v summary=%+v", resolver.requests, summary)
 	}
 
 	keywordPage, err := service.ListRequests(context.Background(), evidencevo.SummaryQueryOptions{
@@ -381,8 +773,8 @@ func TestListRequestsResolvesAllSummaryBusinessRefsOncePerQuery(t *testing.T) {
 	if err != nil || len(page.Entries) != 1 {
 		t.Fatalf("expected authorized summary: page=%+v err=%v", page, err)
 	}
-	if len(resolver.requests) != 0 {
-		t.Fatalf("request summary must not invoke resolver as an authorization gate: %+v", resolver.requests)
+	if len(resolver.requests) != 1 || len(resolver.requests[0].Refs) != 2 {
+		t.Fatalf("request summary must resolve all display refs in one batch: %+v", resolver.requests)
 	}
 }
 
@@ -566,7 +958,7 @@ func TestExactRequestSummaryAndTraceLookupFallsBackToReceiptProjection(t *testin
 	}
 }
 
-func TestExactRequestSummaryEnrichesReceiptWithInteractionContent(t *testing.T) {
+func TestExactRequestSummaryKeepsInteractionContentOutOfOperation(t *testing.T) {
 	receipt := evidencevo.NormalizedTrace{
 		TraceID: "trace_enriched", RequestID: "req_enriched", ConversationID: "conversation_supply_chain",
 		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
@@ -611,9 +1003,11 @@ func TestExactRequestSummaryEnrichesReceiptWithInteractionContent(t *testing.T) 
 	if err != nil || !found {
 		t.Fatalf("exact request lookup failed: request=%+v found=%v err=%v", request, found, err)
 	}
-	if request.QuestionPreview != "六月预测是多少？" || request.ResultPreview != "合计 11594" ||
-		request.EvidenceCompleteness != "complete" {
-		t.Fatalf("exact request must inherit its interaction content: %+v", request)
+	if request.QuestionPreview != "" || request.ResultPreview != "" {
+		t.Fatalf("exact request must not expose interaction content as operation input or result: %+v", request)
+	}
+	if request.InteractionQuestion != "六月预测是多少？" || request.InteractionResult != "合计 11594" {
+		t.Fatalf("interaction content must remain available for interaction aggregation: %+v", request)
 	}
 	if request.StartedAt != "2026-08-02T09:00:01Z" || request.CompletedAt != "2026-08-02T09:00:02Z" || request.DurationMS != 1000 {
 		t.Fatalf("interaction enrichment must not overwrite operation timing: %+v", request)

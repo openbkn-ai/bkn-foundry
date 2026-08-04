@@ -3,11 +3,19 @@
 # 01-db-to-qa: From Database to Intelligent Q&A
 #
 # End-to-end flow (Vega catalog model):
-#   MySQL → Vega Catalog → Discover → Knowledge Network → Real-time Query → Semantic Search
+#   MySQL → Vega Catalog → Discover → Knowledge Network → Search Index →
+#   Real-time Query → Semantic Search
 #
 # Note: this example uses the Vega catalog/connector model (vega-backend), NOT the
-# legacy data-connection datasource flow. Object types bind to Vega *resource* IDs
-# and are queried in real time — no `bkn build` needed.
+# legacy data-connection datasource flow. Object types bind to Vega *resource* IDs.
+#
+# Reading a table resource takes one of two paths, and Step 3 decides which:
+#   - no local index  → Vega queries the source database on every call (live)
+#   - local index built → Vega serves the build snapshot from OpenSearch, and a
+#     later UPDATE in the source database stays invisible until the next build
+# Full-text and vector search require that index, so Step 3 builds one per
+# resource (DO_INDEX=0 keeps the live path). There is no KN-level `bkn build` —
+# that API was retired.
 # =============================================================================
 set -euo pipefail
 
@@ -53,6 +61,13 @@ DB_PORT="${DB_PORT:-3306}"
 DB_NAME="${DB_NAME:?Set DB_NAME in .env}"
 DB_USER="${DB_USER:?Set DB_USER in .env}"
 DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
+
+# Search index (Step 3). DO_INDEX=0 skips it; EMBEDDING_MODEL_NAME='' builds
+# full-text only. The name must match a registered embedding small model —
+# Vega resolves models by name, not by id.
+DO_INDEX="${DO_INDEX:-1}"
+EMBEDDING_MODEL_NAME="${EMBEDDING_MODEL_NAME-text-embedding-v4}"
+INDEX_TIMEOUT="${INDEX_TIMEOUT:-300}"
 
 # MySQL client binary (Step 0 seeds locally; only `openbkn` talks to the platform)
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
@@ -206,7 +221,7 @@ print(json.dumps({'entries': [{'branch': 'main', 'name': name,
     openbkn --json bkn object-type create "$kn" --body "$body" >/dev/null 2>&1
 }
 
-# Object types bound to Vega resources (real-time, no bkn build).
+# Object types bound to Vega resources (queried live through Vega).
 # PK/DK per the seed schema (see README).
 if [ -n "$BOM_RES" ]; then
     ot_create "$KN_ID" 物料BOM "$BOM_RES" material_code material_name \
@@ -217,9 +232,76 @@ if [ -n "$PO_RES" ]; then
         && echo "  + Object type 采购订单 → $PO_RES"
 fi
 
-# ── Step 3: Explore schema ──────────────────────────────────────────────────
+# ── Step 3: Build the search index (full text + vector) ─────────────────────
+# Vector and full-text search need an index: a Vega BuildTask copies the
+# resource's rows into OpenSearch and vectorises the fields named here.
+#
+# This also changes how the object type reads. Vega serves a table resource from
+# its local index as soon as one exists, and falls back to querying the source
+# database only while it does not — so after this step the rows you see are the
+# build snapshot, and a later UPDATE in MySQL stays invisible until the resource
+# is rebuilt. Run with DO_INDEX=0 to keep the live path (and lose search).
+#
+# Index configuration is owned by the Vega *resource* — `index_config`
+# (build key, default analyzer/model) plus per-field `features`. The build task
+# only snapshots it, so `openbkn vega dataset build` writes the resource first
+# and then creates + starts the task. A resource with no
+# `index_config.build_key_fields` is rejected with HTTP 400.
+build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields> <label>
+    local rid="$1" key="$2" ft="$3" ef="$4" label="$5"
+    local -a args=(--json vega dataset build "$rid"
+        --mode batch --execute-type full
+        --build-key-fields "$key" --fulltext-fields "$ft"
+        --wait --timeout "$INDEX_TIMEOUT")
+    if [ -n "$EMBEDDING_MODEL_NAME" ] && [ -n "$ef" ]; then
+        args+=(--embedding-fields "$ef" --embedding-model "$EMBEDDING_MODEL_NAME")
+    fi
+    debug "build index: openbkn ${args[*]}"
+    # Keep stderr: the API error is the only thing that explains a failed build
+    # (a field missing from the resource schema, an unregistered model, ...).
+    local out err rc=0
+    err=$(mktemp); out=$(openbkn "${args[@]}" 2>"$err") || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "  $label: index build failed" >&2
+        sed 's/^/    /' "$err" >&2
+        rm -f "$err"
+        return 0
+    fi
+    rm -f "$err"
+    printf '%s' "$out" | python3 -c "import json,sys
+d=json.load(sys.stdin)
+h=d.get('index_health') or {}
+print('  $label: status=%s synced=%s vectorized=%s fulltext=%s embedding=%s' % (
+    d.get('status','?'), d.get('synced_count','?'), d.get('vectorized_count','?'),
+    h.get('fulltext','none'), h.get('embedding','none')))" 2>/dev/null \
+        || echo "  $label: index build returned an unexpected payload: $out" >&2
+}
+
 echo ""
-echo "=== Step 3: Explore Knowledge Network schema ==="
+echo "=== Step 3: Build search index (full text + vector) ==="
+if [ "$DO_INDEX" != "1" ]; then
+    echo "  skipped (DO_INDEX=0)"
+else
+    # Vega resolves the embedding model by name. Drop to full-text only when the
+    # configured name is not registered, instead of failing the whole example.
+    if [ -n "$EMBEDDING_MODEL_NAME" ]; then
+        if ! openbkn --json model small list 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin); es=d.get('data') or d.get('entries') or []
+sys.exit(0 if any(e.get('model_name')=='$EMBEDDING_MODEL_NAME' and e.get('model_type')=='embedding' for e in es) else 1)" 2>/dev/null; then
+            echo "  note: embedding model '$EMBEDDING_MODEL_NAME' is not registered — building full-text only."
+            echo "        Register one (openbkn model small add ...) or set EMBEDDING_MODEL_NAME to its name."
+            EMBEDDING_MODEL_NAME=""
+        fi
+    fi
+    [ -n "$BOM_RES" ] && build_index "$BOM_RES" material_code \
+        material_name,bom_material_code material_name 物料BOM
+    [ -n "$PO_RES" ] && build_index "$PO_RES" id \
+        material_name,supplier_name,org_name material_name,supplier_name 采购订单
+fi
+
+# ── Step 4: Explore schema ──────────────────────────────────────────────────
+echo ""
+echo "=== Step 4: Explore Knowledge Network schema ==="
 OT_LIST=$(openbkn --json bkn object-type list "$KN_ID" 2>/dev/null || echo '{}')
 echo "$OT_LIST" | python3 -c "import json,sys
 d=json.load(sys.stdin); es=d.get('entries',d if isinstance(d,list) else [])
@@ -229,9 +311,14 @@ FIRST_OT=$(echo "$OT_LIST" | python3 -c "import json,sys
 d=json.load(sys.stdin); es=d.get('entries',d if isinstance(d,list) else [])
 print(es[0].get('id','') if es else '')")
 
-# ── Step 4: Query real data through the knowledge network ────────────────────
+# ── Step 5: Query real data through the knowledge network ────────────────────
 echo ""
-echo "=== Step 4: Query data (real-time via Vega) ==="
+if [ "$DO_INDEX" = "1" ]; then
+    echo "=== Step 5: Query data (via Vega — served from the Step 3 index snapshot) ==="
+    echo "  Source-database updates appear here only after the resource is rebuilt."
+else
+    echo "=== Step 5: Query data (via Vega — live from the source database) ==="
+fi
 if [ -n "$FIRST_OT" ]; then
     echo "  Sample rows from first object type:"
     # openbkn 0.1.0 `object-type query` misses the X-HTTP-Method-Override
@@ -245,15 +332,30 @@ for r in rows[:3]:
     print('    -', ' | '.join(vals[:4]))" 2>/dev/null || echo "    (query returned no rows)"
 fi
 
-# ── Step 5: Semantic search over the knowledge network ───────────────────────
+# ── Step 6: Semantic search over the knowledge network ───────────────────────
 echo ""
-echo "=== Step 5: Semantic search ==="
+echo "=== Step 6: Semantic search ==="
 echo "  Semantic search: \"物料\""
-openbkn --json bkn search "$KN_ID" "物料" 2>/dev/null | python3 -c "import json,sys
+# Report what the platform actually said. Some builds put the retrieval APIs
+# behind a conversation lifecycle: they answer `conversation_required`, which a
+# bare "0 results" line would hide.
+openbkn --json bkn search "$KN_ID" "物料" 2>&1 | python3 -c "import json,sys
+raw=sys.stdin.read()
+start=raw.find('{')
 try:
-  d=json.load(sys.stdin); cs=d.get('concepts',d.get('entries',[]))
-  print(f'    {len(cs)} concept(s) matched')
-except Exception: print('    (no search index for real-time resources)')" 2>/dev/null || true
+  d=json.loads(raw[start:]) if start>=0 else {}
+except Exception:
+  d={}
+err=d.get('error') if isinstance(d.get('error'), dict) else None
+if err:
+  print('    request rejected: %s — %s' % (err.get('code','?'), err.get('message','')))
+  if err.get('code')=='conversation_required':
+    print('    (this platform gates /kn retrieval behind a conversation; the index built above is unaffected)')
+elif 'concepts' in d or 'entries' in d:
+  cs=d.get('concepts', d.get('entries') or [])
+  print('    %d concept(s) matched' % len(cs))
+else:
+  print('    (semantic search returned no usable payload)')" 2>/dev/null || true
 
 echo ""
 echo "=== Example complete ==="

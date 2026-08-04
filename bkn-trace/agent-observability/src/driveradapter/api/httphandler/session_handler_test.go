@@ -142,7 +142,7 @@ func TestLifecycleValueValidationReturnsRegisteredGuidedError(t *testing.T) {
 	var envelope lifecycleTestErrorEnvelope
 	decodeLifecycleResponse(t, response, &envelope)
 	if envelope.Error.Code != "conversation_required" ||
-		envelope.Error.RequiredAction != "create_conversation" {
+		envelope.Error.RequiredAction != "bkn_start_interaction" {
 		t.Fatalf("unexpected guided error: %#v", envelope.Error)
 	}
 }
@@ -289,6 +289,91 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 	}
 }
 
+func TestManagedFinishDerivesLeaseAndClosureManifest(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"managed-finish","idempotency_key":"ensure-managed"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+
+	interactionResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"start-managed"}`)
+	var interaction sessionvo.Interaction
+	decodeLifecycleResponse(t, interactionResponse, &interaction)
+
+	finishResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/finish",
+		`{"outcome":"completed","idempotency_key":"finish-managed","answer_artifact_ref":"artifact:answer","reason":"answer_returned"}`)
+	if finishResponse.Code != http.StatusOK {
+		t.Fatalf("managed finish: %d %s", finishResponse.Code, finishResponse.Body.String())
+	}
+	var finished sessionvo.Interaction
+	decodeLifecycleResponse(t, finishResponse, &finished)
+	if finished.ExecutionStatus != sessionvo.InteractionCompleted || finished.ClosureManifest == nil {
+		t.Fatalf("unexpected managed finish: %#v", finished)
+	}
+	if finished.ClosureManifest.AnswerArtifactRef != "artifact:answer" ||
+		len(finished.ClosureManifest.ExpectedOperations) != 0 ||
+		len(finished.ClosureManifest.ExpectedReceipts) != 0 {
+		t.Fatalf("closure was not derived from authoritative state: %#v", finished.ClosureManifest)
+	}
+
+	replay := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/finish",
+		`{"outcome":"completed","idempotency_key":"finish-managed","answer_artifact_ref":"artifact:answer","reason":"answer_returned"}`)
+	if replay.Code != http.StatusOK {
+		t.Fatalf("managed finish replay: %d %s", replay.Code, replay.Body.String())
+	}
+
+	changedReplay := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/finish",
+		`{"outcome":"completed","idempotency_key":"finish-managed","answer_artifact_ref":"artifact:changed","reason":"answer_returned"}`)
+	if changedReplay.Code != http.StatusConflict {
+		t.Fatalf("changed managed finish replay must conflict: %d %s", changedReplay.Code, changedReplay.Body.String())
+	}
+}
+
+func TestStartInteractionConflictReturnsAuthoritativeActiveInteraction(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"active-recovery","idempotency_key":"ensure-active-recovery"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+
+	first := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"start-active-1"}`)
+	var active sessionvo.Interaction
+	decodeLifecycleResponse(t, first, &active)
+
+	conflict := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"start-active-2"}`)
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("second active interaction must conflict: %d %s", conflict.Code, conflict.Body.String())
+	}
+	var envelope lifecycleTestErrorEnvelope
+	decodeLifecycleResponse(t, conflict, &envelope)
+	if envelope.Error.Code != "interaction_in_progress" ||
+		envelope.Error.RequiredAction != "bkn_finish_interaction" ||
+		envelope.Error.CurrentInteractionID != active.ID {
+		t.Fatalf("active interaction recovery guidance is incomplete: %#v", envelope.Error)
+	}
+}
+
 func TestEnsureOperationHTTPReportsCreatedAndReplay(t *testing.T) {
 	t.Parallel()
 
@@ -398,9 +483,10 @@ func TestConversationLookupDoesNotDiscloseMissingVersusAnotherOwner(t *testing.T
 
 type lifecycleTestErrorEnvelope struct {
 	Error struct {
-		Code           string `json:"code"`
-		Message        string `json:"message"`
-		RequiredAction string `json:"required_action"`
+		Code                 string `json:"code"`
+		Message              string `json:"message"`
+		RequiredAction       string `json:"required_action"`
+		CurrentInteractionID string `json:"current_interaction_id"`
 	} `json:"error"`
 }
 

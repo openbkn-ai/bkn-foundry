@@ -98,6 +98,7 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rdto.LogListResponse{
 		Data: result.Records, NextCursor: nextCursor, Partial: result.Partial,
 		Count: rdto.LogCount{Value: &count, Accuracy: accuracy}, SourceStatus: result.SourceStatus,
+		Pagination: rdto.PageMetadata{Page: result.Page, PageSize: result.PageSize},
 		RequestTraceContext: rdto.RequestTraceContext{
 			RequestID: requestID, CurrentTraceID: currentTraceID, RelatedTraceIDs: relatedTraceIDs,
 		},
@@ -260,6 +261,16 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
 	}
+	page, err := parseBoundedInteger(values.Get("page"), 1, 1, 100, "page")
+	if err != nil {
+		return observabilityvo.LogQuery{}, err
+	}
+	if rawPageSize := strings.TrimSpace(values.Get("page_size")); rawPageSize != "" {
+		limit, err = parseBoundedInteger(rawPageSize, 50, 1, 200, "page_size")
+		if err != nil {
+			return observabilityvo.LogQuery{}, err
+		}
+	}
 	severity, err := parseBoundedInteger(values.Get("severity_min"), 0, 1, 24, "severity_min")
 	if err != nil {
 		return observabilityvo.LogQuery{}, err
@@ -300,7 +311,7 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 		ConversationID: values.Get("conversation_id"), InteractionID: values.Get("interaction_id"),
 		OperationID: values.Get("operation_id"), RequestID: values.Get("request_id"),
 		TraceID: traceID, SpanID: spanID, FailedOnly: failedOnly,
-		Limit: limit, Cursor: values.Get("cursor"),
+		Limit: limit, Page: page, Cursor: values.Get("cursor"),
 	}, nil
 }
 

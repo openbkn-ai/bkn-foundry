@@ -7,12 +7,18 @@
 package logics
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
 
+	"bkn-backend/common"
 	"bkn-backend/interfaces"
+	mock_interfaces "bkn-backend/interfaces/mock"
+	"bkn-backend/logics/model_factory"
 )
 
 // ── bknCatalogRequest ─────────────────────────────────────────────────────────
@@ -53,6 +59,83 @@ func TestBKNConceptDatasetIncludesEmptyIndexConfig(t *testing.T) {
 	if config, ok := indexConfig.(map[string]any); !ok || len(config) != 0 {
 		t.Fatalf("index_config = %#v, want empty object", indexConfig)
 	}
+}
+
+func TestInitPassesResolvedEmbeddingModelToVega(t *testing.T) {
+	Convey("Init passes the resolved embedding model when creating the dataset (issue #625)\n", t, func() {
+		ctrl := gomock.NewController(t)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
+		vegaBackend := mock_interfaces.NewMockVegaBackendAccess(ctrl)
+		previousVBA := VBA
+		VBA = vegaBackend
+		patches := gomonkey.ApplyFunc(model_factory.NewModelFactoryService, func(_ *common.AppSetting, _ interfaces.ModelFactoryAccess) interfaces.ModelFactoryService { return mfs })
+		Reset(func() {
+			patches.Reset()
+			VBA = previousVBA
+		})
+
+		ctx := context.Background()
+		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+			ModelName:    "text-embedding-v4",
+			EmbeddingDim: 1024,
+		}, nil)
+		vegaBackend.EXPECT().GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID).Return(&interfaces.Catalog{ID: interfaces.BKN_CATALOG_ID}, nil)
+		vegaBackend.EXPECT().GetResourceByID(ctx, interfaces.BKN_DATASET_ID).Return(nil, nil)
+		vegaBackend.EXPECT().CreateResource(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, resource *interfaces.VegaResource) error {
+			So(resource.IndexConfig, ShouldNotBeNil)
+			So(resource.IndexConfig.DefaultFulltextAnalyzer, ShouldEqual, "standard")
+			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
+			return nil
+		})
+
+		err := Init(ctx, &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}})
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestInitPassesResolvedEmbeddingModelWhenRecreatingDataset(t *testing.T) {
+	Convey("Init passes the resolved embedding model when recreating the dataset (issue #625)\n", t, func() {
+		ctrl := gomock.NewController(t)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
+		vegaBackend := mock_interfaces.NewMockVegaBackendAccess(ctrl)
+		previousVBA := VBA
+		VBA = vegaBackend
+		patches := gomonkey.ApplyFunc(model_factory.NewModelFactoryService, func(_ *common.AppSetting, _ interfaces.ModelFactoryAccess) interfaces.ModelFactoryService { return mfs })
+		Reset(func() {
+			patches.Reset()
+			VBA = previousVBA
+		})
+
+		ctx := context.Background()
+		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+			ModelName:    "text-embedding-v4",
+			EmbeddingDim: 1024,
+		}, nil)
+		vegaBackend.EXPECT().GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID).Return(&interfaces.Catalog{ID: interfaces.BKN_CATALOG_ID}, nil)
+		vegaBackend.EXPECT().GetResourceByID(ctx, interfaces.BKN_DATASET_ID).Return(&interfaces.VegaResource{
+			ID:               interfaces.BKN_DATASET_ID,
+			SchemaDefinition: []*interfaces.Property{{Name: "stale"}},
+		}, nil)
+		vegaBackend.EXPECT().DeleteResource(ctx, interfaces.BKN_DATASET_ID).Return(nil)
+		vegaBackend.EXPECT().CreateResource(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, resource *interfaces.VegaResource) error {
+			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
+			return nil
+		})
+
+		err := Init(ctx, &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}})
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestBKNConceptDatasetRequest(t *testing.T) {
+	Convey("Dataset request keeps the global template immutable\n", t, func() {
+		request := bknConceptDatasetRequest(nil, "text-embedding-v4")
+
+		So(request, ShouldNotEqual, interfaces.BKN_CONCEPT_DATASET)
+		So(request.IndexConfig.DefaultFulltextAnalyzer, ShouldEqual, "standard")
+		So(request.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
+		So(interfaces.BKN_CONCEPT_DATASET.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "")
+	})
 }
 
 // ── comparePropertyFeature ────────────────────────────────────────────────────

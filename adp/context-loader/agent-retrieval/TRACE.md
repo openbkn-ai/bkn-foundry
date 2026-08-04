@@ -14,31 +14,30 @@
 
 ## 二、受管生命周期
 
-所有 REST 和 MCP 业务工具调用都必须属于 active Conversation 和 active Interaction，并提供一个 Interaction 内唯一的 `operation_key`：
+所有 REST 和 MCP 业务工具调用都必须属于 active Conversation 和 active Interaction：
 
 ```json
 {
   "bkn_context": {
     "conversation_id": "conv_...",
     "interaction_id": "int_...",
-    "operation_key": "agent-defined-logical-call-key",
     "parent_operation_id": "op_...",
     "causation_event_ids": ["evt_..."]
   }
 }
 ```
 
-- Conversation 和 Interaction 必须通过 BKN Trace 3.0 生命周期 API 或对应 MCP 工具创建，`Mcp-Session-Id` 不能替代业务 Conversation。
+- Conversation 和 Interaction 必须通过 `bkn_start_interaction` 创建，`Mcp-Session-Id` 不能替代业务 Conversation。
 - 缺少、无效、越权、过期或终态上下文时，Context Loader 返回稳定错误码、`required_action` 和安全提示，下游业务调用次数必须为 0。
 - Context Loader 使用可信认证上下文确定 tenant、business domain、application principal 和 effective subject；调用方不能在 JSON 中覆盖 Owner。
-- `operation_key` 与规范化输入共同保证幂等。相同 key、不同输入返回 `idempotency_conflict`；已有 pending Receipt 返回 `receipt_pending`，不得重复执行下游副作用。
+- Context Loader 从可信请求关联、工具名和规范化输入派生 Operation 幂等标识。网络重试复用 `bkn-request-id`，或携带稳定的 `X-OpenBKN-Client-Invocation-Id`；已有 pending Receipt 返回 `receipt_pending`，不得重复执行下游副作用。
 
 ## 三、下游子调用合同
 
 Core 为每次受管业务工具调用分配稳定 `operation_id`、`attempt` 和 `receipt_id`。Context Loader 把这些可信标识写入当前 Context，再传播给 BKN、ontology、Vega、模型或 Operator 子调用。
 
-- 同一逻辑调用的网络重试复用 `operation_key`，响应丢失后先查询 Operation/Receipt，不重新执行下游调用。
-- 只有上一 Attempt 是 retryable failed 时，才能调用 `bkn_retry_operation` 创建 `ready` 状态的下一 Attempt；随后必须以同一 `operation_key` 重调原业务工具，由 Core 原子领取执行权并转为 `pending`。只有首次领取者执行下游，其他并发调用返回 `receipt_pending`。
+- 同一逻辑调用的网络重试复用 `bkn-request-id` 或 `X-OpenBKN-Client-Invocation-Id`，响应丢失后先查询 Operation/Receipt，不重新执行下游调用。
+- 只有上一 Attempt 是 retryable failed 时，受信 Context Loader 适配器才可创建下一 Attempt 并重新调原业务工具。只有首次领取者执行下游，其他并发调用返回 `receipt_pending`。
 - `created` 只表示 Operation 是否首次创建，`execute` 表示本次 ensure 是否获得当前 Attempt 的执行权；调用方不得用 `created` 推断是否执行。
 - Attempt 的终结由 Context Loader 可信适配器根据实际下游结果完成。第三方 Agent 只能查询 Operation/Receipt，不能提交 `payload_hash`、`outcome` 或直接终结 Receipt。
 - `conversation_id`、`interaction_id`、`operation_id`、`attempt`、business domain 和因果标识随可信内部调用传播。
@@ -83,9 +82,9 @@ Core 为每次受管业务工具调用分配稳定 `operation_id`、`attempt` �
 ## 七、验收
 
 - Given 缺少或无效受管上下文，When 调用任一业务工具，Then 返回稳定生命周期错误且下游调用次数为 0。
-- Given 相同 `operation_key + normalized_input_hash` 重放，When Receipt 已终态，Then 返回原 Receipt 且下游调用次数仍为 1。
+- Given 相同受管调用关联和规范化输入重放，When Receipt 已终态，Then 返回原 Receipt 且下游调用次数仍为 1。
 - Given 下游返回错误或 panic，When Context Loader 完成 Attempt，Then Receipt 进入 failed，不遗留永久 pending，也不向调用方泄露 panic 细节。
-- Given retryable failed Attempt，When 显式创建下一 Attempt 并以同一 `operation_key` 重调业务工具，Then 新 Attempt 只执行一次；并发重放只返回 pending Receipt。
+- Given retryable failed Attempt，When 受信适配器创建下一 Attempt 并重调业务工具，Then 新 Attempt 只执行一次；并发重放只返回 pending Receipt。
 - Given 第三方 Agent 获取 pending Receipt，When 枚举生命周期工具，Then 不存在允许其自行声明平台输出和终态的 finalize 工具。
 - Given 未收到 Core durable ACK，When 成功完成 Attempt，Then Receipt 为 completed + pending。
 - Given 没有有效 OTel Span 且同一 request 重放，When 完成 Attempt，Then使用相同合成 trace ID；不同 request 使用不同 ID。

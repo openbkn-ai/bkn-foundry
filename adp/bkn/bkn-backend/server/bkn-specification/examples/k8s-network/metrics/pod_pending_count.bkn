@@ -25,12 +25,11 @@ tags: [Kubernetes, Pod, 调度]
 
 ```yaml
 kind: atomic
-
 atomic:
   condition:
     field: pod_status
     operation: ==
-    value: "Pending"
+    value: Pending
   aggregation:
     property: id
     aggr: count
@@ -48,3 +47,4 @@ atomic:
 |------|--------------|
 | pod_namespace | 命名空间 |
 | pod_node_name | 所在节点 |
+

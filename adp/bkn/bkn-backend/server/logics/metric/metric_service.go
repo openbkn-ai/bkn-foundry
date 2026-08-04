@@ -31,6 +31,7 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
 )
@@ -48,7 +49,7 @@ type metricService struct {
 	ps         interfaces.PermissionService
 	uma        interfaces.UserMgmtService
 	vba        interfaces.VegaBackendAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ots        interfaces.ObjectTypeService
 }
 
@@ -62,7 +63,7 @@ func NewMetricService(appSetting *common.AppSetting) interfaces.MetricService {
 			ps:         permission.NewPermissionService(appSetting),
 			uma:        logics.UMA,
 			vba:        logics.VBA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ots:        object_type.NewObjectTypeService(appSetting),
 		}
 	})
@@ -77,7 +78,7 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 		return nil
 	}
 
-	if ms.appSetting.ServerSetting.DefaultSmallModelEnabled && ms.mfa != nil {
+	if ms.appSetting.ServerSetting.DefaultSmallModelEnabled && ms.mfs != nil {
 		words := make([]string, 0, len(metrics))
 		for _, m := range metrics {
 			arr := []string{m.Name}
@@ -86,13 +87,13 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 			word := strings.Join(arr, "\n")
 			words = append(words, word)
 		}
-		dftModel, err := ms.mfa.GetDefaultModel(ctx)
+		dftModel, err := ms.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
-		vectors, err := ms.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := ms.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取指标向量失败")
@@ -665,13 +666,13 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 						berrors.BknBackend_Metric_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := ms.mfa.GetDefaultModel(ctx)
+				dftModel, err := ms.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_Metric_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				result, err := ms.mfa.GetVector(ctx, dftModel, []string{word})
+				result, err := ms.mfs.GetVector(ctx, dftModel, []string{word})
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "vector embedding failed")

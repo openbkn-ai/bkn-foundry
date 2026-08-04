@@ -360,7 +360,8 @@ func stringConfigValue(config map[string]any, key string) string {
 
 func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embeddingModel string, embeddingFields string, modelDimensions int) (string, int, error) {
 	if embeddingModel == "" && embeddingFields != "" {
-		embeddingModel = interfaces.DEFAULT_EMBEDDING_MODEL
+		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel).
+			WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", embeddingFields))
 	}
 	if embeddingModel == "" {
 		return "", modelDimensions, nil

@@ -371,8 +371,9 @@ func TestDirectKnowledgeReadExposesBusinessRefsWithoutFabricatingClaim(t *testin
 	if len(chain.Data.BusinessRefs) != 1 || chain.Data.BusinessRefs[0]["ref_id"] != "object:supplychain:forecast" {
 		t.Fatalf("knowledge business refs missing from evidence chain: %+v", chain.Data.BusinessRefs)
 	}
-	if len(chain.Data.Claims) != 0 || !chain.Partial || !contains(chain.PartialReasons, "missing_claim") {
-		t.Fatalf("root fact must stay claim-free and explicit about partiality: %+v", chain)
+	if len(chain.Data.Claims) != 0 || chain.Partial || contains(chain.PartialReasons, "missing_claim") ||
+		chain.ConclusionScope != "interaction" {
+		t.Fatalf("operation fact must stay claim-free and attribute its conclusion to the interaction: %+v", chain)
 	}
 
 	graph, found, err := service.GetBusinessGraphByTraceID(
@@ -388,8 +389,27 @@ func TestDirectKnowledgeReadExposesBusinessRefsWithoutFabricatingClaim(t *testin
 		!graphHasEdgeType(graph.Data.Edges, "uses_business_ref") {
 		t.Fatalf("root fact business story missing: %+v", graph.Data)
 	}
-	if contains(graph.PartialReasons, "missing_business_refs") || !contains(graph.PartialReasons, "missing_claim") {
+	if contains(graph.PartialReasons, "missing_business_refs") || contains(graph.PartialReasons, "missing_claim") ||
+		graph.ConclusionScope != "interaction" {
 		t.Fatalf("root fact partial reasons are misleading: %+v", graph.PartialReasons)
+	}
+}
+
+func TestClaimedTraceOwnsItsConclusion(t *testing.T) {
+	trace := queryTrace("trace_claim_scope", "req_claim_scope")
+	service := New(&fakeStore{traces: []evidencevo.NormalizedTrace{trace}})
+
+	chain, found, err := service.GetEvidenceChainByTraceID(
+		context.Background(), trace.TraceID, evidencevo.EvidenceQueryOptions{},
+	)
+	if err != nil || !found || chain.ConclusionScope != "trace" {
+		t.Fatalf("claimed evidence chain must own its conclusion: chain=%+v found=%v err=%v", chain, found, err)
+	}
+	graph, found, err := service.GetBusinessGraphByTraceID(
+		context.Background(), trace.TraceID, evidencevo.EvidenceQueryOptions{},
+	)
+	if err != nil || !found || graph.ConclusionScope != "trace" {
+		t.Fatalf("claimed business graph must own its conclusion: graph=%+v found=%v err=%v", graph, found, err)
 	}
 }
 
@@ -1643,6 +1663,39 @@ func TestGetBusinessGraphByRequestIDFallsBackToAuthorizedProjection(t *testing.T
 	}
 	if len(source.queries) != 1 || source.queries[0].RequestID != "req_graph_projection" {
 		t.Fatalf("projection fallback must remain request-scoped: %+v", source.queries)
+	}
+}
+
+func TestTraceEvidenceReadsFallBackToAuthorizedCoreProjection(t *testing.T) {
+	trace := queryTrace("trace_core_projection", "req_core_projection")
+	source := &capturingProjectionSource{result: iprojectionsource.Result{
+		Traces: []evidencevo.NormalizedTrace{trace},
+	}}
+	service := NewWithProjectionSource(&fakeStore{}, source)
+	options := evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
+		BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+	}}
+
+	if _, found, err := service.GetEvidenceChainByTraceID(context.Background(), trace.TraceID, options); err != nil || !found {
+		t.Fatalf("trace evidence chain must recover from the authorized core projection: found=%v err=%v", found, err)
+	}
+	if _, found, err := service.GetBusinessGraphByTraceID(context.Background(), trace.TraceID, options); err != nil || !found {
+		t.Fatalf("trace business graph must recover from the authorized core projection: found=%v err=%v", found, err)
+	}
+	if _, found, err := service.GetSnapshotPreviewByTraceID(context.Background(), trace.TraceID, options); err != nil || !found {
+		t.Fatalf("trace snapshot preview must recover from the authorized core projection: found=%v err=%v", found, err)
+	}
+	if _, found, err := service.GetEvidenceNodeByTraceID(context.Background(), trace.TraceID, "claim:claim_visible", options); err != nil || !found {
+		t.Fatalf("trace evidence node must recover from the authorized core projection: found=%v err=%v", found, err)
+	}
+
+	if len(source.queries) != 4 {
+		t.Fatalf("each trace read must use the projection fallback: %+v", source.queries)
+	}
+	for _, query := range source.queries {
+		if query.TraceID != trace.TraceID || query.Scope != options.Scope || query.Limit != MaxEvidenceQueryLimit {
+			t.Fatalf("trace projection fallback must remain trace-scoped and authorized: %+v", query)
+		}
 	}
 }
 

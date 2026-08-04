@@ -32,6 +32,7 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/user_mgmt"
@@ -46,7 +47,7 @@ type relationTypeService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	cga        interfaces.ConceptGroupAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ots        interfaces.ObjectTypeService
 	ps         interfaces.PermissionService
 	rta        interfaces.RelationTypeAccess
@@ -60,7 +61,7 @@ func NewRelationTypeService(appSetting *common.AppSetting) interfaces.RelationTy
 			appSetting: appSetting,
 			db:         logics.DB,
 			cga:        logics.CGA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ots:        object_type.NewObjectTypeService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
 			rta:        logics.RTA,
@@ -763,13 +764,13 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 			words = append(words, word)
 		}
 
-		dftModel, err := rts.mfa.GetDefaultModel(ctx)
+		dftModel, err := rts.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
-		vectors, err := rts.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := rts.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取关系类向量失败")
@@ -854,7 +855,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 						berrors.BknBackend_RelationType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := rts.mfa.GetDefaultModel(ctx)
+				dftModel, err := rts.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
@@ -862,7 +863,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 						berrors.BknBackend_RelationType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				result, err := rts.mfa.GetVector(ctx, dftModel, []string{word})
+				result, err := rts.mfs.GetVector(ctx, dftModel, []string{word})
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取业务知识网络向量失败")

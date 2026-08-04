@@ -8,7 +8,6 @@ package interfaces
 
 const (
 	SMALL_MODEL_TYPE_EMBEDDING = "embedding"
-	DEFAULT_EMBEDDING_MODEL    = "embedding"
 )
 
 type VectorResp struct {

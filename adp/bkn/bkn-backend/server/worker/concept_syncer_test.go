@@ -35,6 +35,31 @@ func TestNewConceptSyncer(t *testing.T) {
 	})
 }
 
+func TestConceptSyncerGetDefaultModelCachesForSyncRound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mfs := bmock.NewMockModelFactoryService(ctrl)
+	model := &interfaces.SmallModel{ModelID: "model-1"}
+	mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(model, nil).Times(2)
+	cs := &ConceptSyncer{mfs: mfs}
+
+	first, err := cs.getDefaultModel(context.Background())
+	if err != nil {
+		t.Fatalf("first getDefaultModel() error = %v", err)
+	}
+	second, err := cs.getDefaultModel(context.Background())
+	if err != nil {
+		t.Fatalf("second getDefaultModel() error = %v", err)
+	}
+	if first != model || second != model {
+		t.Fatalf("cached model = %v, want %v", second, model)
+	}
+
+	cs.resetDefaultModelCache()
+	if _, err := cs.getDefaultModel(context.Background()); err != nil {
+		t.Fatalf("next-round getDefaultModel() error = %v", err)
+	}
+}
+
 func TestConceptSyncerQueryAllDatasetEntriesUsesCursor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -492,12 +517,12 @@ func TestConceptSyncer_insertDatasetDataForKN(t *testing.T) {
 		}
 
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			vba:        vba,
-			mfa:        mfa,
+			mfs:        mfs,
 		}
 
 		kn := &interfaces.KN{
@@ -586,12 +611,12 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 			},
 		}
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			vba:        vba,
-			mfa:        mfa,
+			mfs:        mfs,
 		}
 
 		kn := &interfaces.KN{
@@ -611,8 +636,8 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 		}
 
 		Convey("Success inserting KN data with vector\n", func() {
-			mfa.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
+			mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
 			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
@@ -620,23 +645,23 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 		})
 
 		Convey("Failed when GetDefaultModel returns error\n", func() {
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Failed when GetVector returns error\n", func() {
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Failed when InsertData returns error\n", func() {
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
 			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error")).AnyTimes()
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
@@ -720,12 +745,12 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 			},
 		}
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			vba:        vba,
-			mfa:        mfa,
+			mfs:        mfs,
 		}
 
 		Convey("Success inserting object types with vector\n", func() {
@@ -750,8 +775,8 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
 			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
@@ -770,7 +795,7 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -788,8 +813,8 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -808,8 +833,8 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 			}
 			vectors := []*cond.VectorResp{}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -892,12 +917,12 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 			},
 		}
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			vba:        vba,
-			mfa:        mfa,
+			mfs:        mfs,
 		}
 
 		Convey("Success inserting relation types with vector\n", func() {
@@ -922,8 +947,8 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
@@ -942,7 +967,7 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -960,8 +985,8 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -980,8 +1005,8 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 			}
 			vectors := []*cond.VectorResp{}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -1064,12 +1089,12 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 			},
 		}
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			vba:        vba,
-			mfa:        mfa,
+			mfs:        mfs,
 		}
 
 		Convey("Success inserting action types with vector\n", func() {
@@ -1094,8 +1119,8 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
@@ -1114,7 +1139,7 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -1132,8 +1157,8 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -1152,8 +1177,8 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 			}
 			vectors := []*cond.VectorResp{}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -1232,12 +1257,12 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 			},
 		}
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			vba:        vba,
-			mfa:        mfa,
+			mfs:        mfs,
 		}
 
 		Convey("Success inserting concept groups with vector\n", func() {
@@ -1260,8 +1285,8 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
@@ -1278,7 +1303,7 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, errors.New("model error"))
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldNotBeNil)
@@ -1294,8 +1319,8 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("vector error"))
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldNotBeNil)
@@ -1312,8 +1337,8 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 			}
 			vectors := []*cond.VectorResp{}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldNotBeNil)

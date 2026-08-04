@@ -47,13 +47,14 @@ Keep attribution and the share-alike notice on derived data. **Pin a revision** 
 
 1. **Install the BKN Foundry platform** (k8s + bkn-backend + ontology-query + vega-backend + mf-model-* + opensearch + minio + mariadb). Use `deploy/onboard.sh` from the repo root — see [deploy/README.md](../../deploy/README.md). Recommended `0.8.0+` (fixes the `_score` resource-path bug and the toolbox-import write bug).
 2. **Authenticate the CLI**: `openbkn auth login https://<your-platform-url>` (writes `~/.bkn/`).
-3. **Register an embedding model** (vector index needs it; keyword-only build works without it):
+3. **Register an embedding model** (the vector index needs it; the full-text index builds without it):
    ```bash
    openbkn model small add --name text-embedding-v4-cn \
      --type embedding --batch-size 10 --max-tokens 512 --embedding-dim 1024 \
      --model-config-file <emb.json>
    ```
-   `EMBEDDING_MODEL_NAME` in `.env` is resolved to `model_id` at runtime (default `text-embedding-v4-cn`).
+   `EMBEDDING_MODEL_NAME` in `.env` (default `text-embedding-v4-cn`) is passed to the build
+   by **name** — Vega resolves embedding models by name and rejects a raw model id.
 4. **Wire BKN to the embedding model** (only needed for KN-level semantic search; this example doesn't rely on it):
    ```bash
    sudo bash deploy/onboard.sh --enable-bkn-search \
@@ -159,8 +160,8 @@ Every number comes straight from the 27 `wc_*` tables you imported in step 2 —
 | `import-csv` → MySQL **Error 1118** | Step 2 pre-creates `wc_matches` / `wc_team_appearances` with VARCHAR(255) via the local `mysql` CLI. Without that client installed you must pre-create them manually or relax column types. |
 | Vega `discover` fails | Set `VEGA_CATALOG_ID` then `./run.sh --from 4`. |
 | Fewer than 27 Resources | `databases` in connector config incomplete, or discover didn't finish — adjust `VEGA_MYSQL_DATABASES` and rerun step 3. |
-| Step 5 index build skipped for a large table | Expected on platform 0.7.0 — `vega-backend` has a batch-sync cursor bug on tables `>2× batch_size` (8 event tables). Those tables stay queryable via `vega_sql_execute`. Fixed in 0.8.0+. |
-| Step 5 `embedding model … not registered` | Either register one (see setup checklist) or set `DO_INDEX=0` / `EMBEDDING_MODEL_NAME=` (empty) — script then builds keyword-only indexes. |
+| Step 5 `⊘ build_failed` for a table | The API error is printed underneath the line. Most common cause: a field named in the index plan is absent from that resource's schema. The table stays queryable via `vega_sql_execute`. |
+| Step 5 `embedding model … not registered` | Either register one (see setup checklist) or set `DO_INDEX=0` / `EMBEDDING_MODEL_NAME=` (empty) — the script then builds full-text-only indexes. |
 | `tool upload` / `toolbox publish` fails in step 6 | Confirm the CLI is logged in and `vega_sql_execute.openapi.json` is present; set `FORCE_TOOLBOX_REIMPORT=1` to delete + re-import a stale same-name toolbox. |
 
 ## Differences from Example 02

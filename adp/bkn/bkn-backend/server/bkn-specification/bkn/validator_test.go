@@ -20,8 +20,7 @@ func testExamplesDir(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	// sdk/golang/bkn/validator_test.go -> ../../../examples
-	return filepath.Join(filepath.Dir(file), "..", "..", "..", "examples")
+	return filepath.Join(filepath.Dir(file), "..", "examples")
 }
 
 func TestValidateNetwork_ValidK8s(t *testing.T) {

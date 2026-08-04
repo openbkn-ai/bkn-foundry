@@ -1,5 +1,5 @@
 # BKN Directory Checksum
-# generated: 2026-08-01T14:39:48+08:00
+# generated: 2026-08-04T17:17:22+08:00
 SKILL.md  sha256:d88bd5ba972bca41
 metric:hd_forecast_consensus_by_product  sha256:e73c7a7840428dec
 metric:hd_inventory_available_qty_by_org  sha256:3484ca0e822dbac2

@@ -25,7 +25,6 @@ tags: [供应链, 库存, HD]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: available_inventory_qty
@@ -47,3 +46,4 @@ atomic:
 |------|--------------|
 | inventory_org | 库存组织 |
 | inventory_uom | 库存单位 |
+

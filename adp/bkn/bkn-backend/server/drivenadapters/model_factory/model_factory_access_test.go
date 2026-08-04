@@ -212,52 +212,38 @@ func Test_modelFactoryAccess_GetDefaultModel(t *testing.T) {
 		appSetting := &common.AppSetting{
 			ModelFactoryManagerUrl: "http://test-mf-manager",
 			ModelFactoryAPIUrl:     "http://test-mf-api",
-			ServerSetting: common.ServerSetting{
-				DefaultSmallModelEnabled: true,
-				DefaultSmallModelName:    "default-model",
-			},
 		}
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
 		mfa := newTestModelFactoryAccess(appSetting, mockHTTPClient)
 
-		Convey("Success getting default model", func() {
+		Convey("Gets the system default model from the API", func() {
 			model := interfaces.SmallModel{
-				ModelID:   "model1",
+				ModelID:   "system-model",
 				ModelName: "default-model",
 			}
 			respData, _ := sonic.Marshal(model)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusOK, respData, nil)
-
-			result, err := mfa.GetDefaultModel(ctx)
+				DoAndReturn(func(_ context.Context, url string, _ any, _ map[string]string) (int, []byte, error) {
+					So(url, ShouldContainSubstring, "/small-model/get_default?model_type=embedding")
+					return http.StatusOK, respData, nil
+				})
+			result, err := mfa.GetDefaultModel(ctx, interfaces.SMALL_MODEL_TYPE_EMBEDDING)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
-			So(result.ModelName, ShouldEqual, "default-model")
+			So(result.ModelID, ShouldEqual, "system-model")
 		})
 
-		Convey("Default model disabled", func() {
-			appSetting2 := &common.AppSetting{
-				ModelFactoryManagerUrl: "http://test-mf-manager",
-				ModelFactoryAPIUrl:     "http://test-mf-api",
-				ServerSetting: common.ServerSetting{
-					DefaultSmallModelEnabled: false,
-				},
-			}
-			mfa2 := newTestModelFactoryAccess(appSetting2, mockHTTPClient)
-
-			result, err := mfa2.GetDefaultModel(ctx)
-			So(err, ShouldBeNil)
-			So(result, ShouldBeNil)
-		})
-
-		Convey("GetModelByName failed", func() {
+		Convey("Returns API errors", func() {
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(0, []byte(""), errors.New("network error"))
+				DoAndReturn(func(_ context.Context, url string, _ any, _ map[string]string) (int, []byte, error) {
+					So(url, ShouldContainSubstring, "/small-model/get_default?model_type=embedding")
+					return 0, []byte(""), errors.New("network error")
+				})
 
-			result, err := mfa.GetDefaultModel(ctx)
+			result, err := mfa.GetDefaultModel(ctx, interfaces.SMALL_MODEL_TYPE_EMBEDDING)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})
@@ -299,22 +285,11 @@ func Test_modelFactoryAccess_GetVector(t *testing.T) {
 				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(http.StatusOK, respData, nil)
 
-			result, err := mfa.GetVector(ctx, model, words)
+			result, err := mfa.GetVector(ctx, model.ModelID, words)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(len(result), ShouldEqual, 3)
 		})
 
-		Convey("Nil model", func() {
-			result, err := mfa.GetVector(ctx, nil, words)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
-
-		Convey("Empty words", func() {
-			result, err := mfa.GetVector(ctx, model, []string{})
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 0)
-		})
 	})
 }

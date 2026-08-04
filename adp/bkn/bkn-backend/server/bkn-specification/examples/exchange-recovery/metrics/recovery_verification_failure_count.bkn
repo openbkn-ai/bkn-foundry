@@ -25,12 +25,11 @@ tags: [验证, 可用性, 灾备]
 
 ```yaml
 kind: atomic
-
 atomic:
   condition:
     field: verification_result
     operation: ==
-    value: "失败"
+    value: 失败
   aggregation:
     property: id
     aggr: count
@@ -48,3 +47,4 @@ atomic:
 |------|--------------|
 | verification_method | 验证方法 |
 | exchange_server_id | Exchange服务器 |
+

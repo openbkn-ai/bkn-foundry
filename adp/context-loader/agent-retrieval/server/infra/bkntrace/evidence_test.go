@@ -100,6 +100,39 @@ func TestRecordInteractionArtifactPersistsGovernedContentAndLedgerLink(t *testin
 	}
 }
 
+func TestRecordInteractionArtifactSeparatesApplicationDisplayFromPrincipal(t *testing.T) {
+	var artifactBody map[string]any
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if r.URL.Path == "/api/agent-observability/v1/evidence/artifacts" {
+			_ = json.Unmarshal(body, &artifactBody)
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(testServer.Close)
+	t.Setenv(envEvidenceIngestURL, testServer.URL+"/api/agent-observability/v1/evidence/events")
+	t.Setenv(envEvidenceIngestToken, "test-ingest-token")
+	ctx := common.SetApplicationDisplayNameToCtx(testTraceContext(), "Cursor")
+
+	if _, err := RecordInteractionArtifact(ctx, "conversation-1", "interaction-1", InteractionArtifactQuestion, "查询库存"); err != nil {
+		t.Fatalf("record interaction artifact: %v", err)
+	}
+	if artifactBody["agent_or_app"] != "Cursor" {
+		t.Fatalf("agent_or_app = %v, want Cursor", artifactBody["agent_or_app"])
+	}
+	if artifactBody["application_principal_id"] != "acct_demo" {
+		t.Fatalf("application principal changed: %#v", artifactBody)
+	}
+}
+
+func TestAgentOrAppFallsBackToApplicationPrincipal(t *testing.T) {
+	if got := agentOrApp(eventContext{applicationID: "app-001"}); got != "app-001" {
+		t.Fatalf("agent_or_app fallback = %q, want application principal", got)
+	}
+}
+
 func TestRecordInteractionArtifactIsOptionalWhenEvidenceIsDisabled(t *testing.T) {
 	t.Setenv(envEvidenceIngestURL, "")
 
@@ -176,8 +209,12 @@ func TestBuildSearchSchemaEventsReplayIsStable(t *testing.T) {
 }
 
 func TestBuildRunSQLEventsRecordsBusinessDataSourcesWithoutLeakingSQLOrRows(t *testing.T) {
+	ctx := withDeclaredBusinessRefs(testTraceContext(), []BusinessRef{{
+		RefType: "object_type", RefID: "object:supplychain_hd0202:bkn_supply_forecast",
+		BusinessDomainID: "domain-1", Version: "schema-v3",
+	}})
 	events := BuildRunSQLEvents(
-		testTraceContext(),
+		ctx,
 		"SELECT demand_no, quantity FROM {{.forecast_resource}} WHERE month = '2026-06'",
 		[]string{"forecast_resource"},
 		&interfaces.VegaRawQueryResp{
@@ -198,6 +235,12 @@ func TestBuildRunSQLEventsRecordsBusinessDataSourcesWithoutLeakingSQLOrRows(t *t
 	text := string(raw)
 	if !strings.Contains(text, `"ref_id":"resource:forecast_resource"`) {
 		t.Fatalf("missing resource reference: %s", text)
+	}
+	if !strings.Contains(text, `"ref_id":"object:supplychain_hd0202:bkn_supply_forecast"`) {
+		t.Fatalf("missing declared business reference: %s", text)
+	}
+	if !strings.Contains(text, `"version_status":"versioned"`) {
+		t.Fatalf("declared version was not mapped to version_status: %s", text)
 	}
 	for _, leaked := range []string{"SELECT demand_no", "2026-06", "DF-SECRET-001", "11594"} {
 		if strings.Contains(text, leaked) {
@@ -705,6 +748,10 @@ func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 		if !ok || len(refs) != 1 {
 			t.Fatalf("business_refs=%#v, want one typed ref", event["business_refs"])
 		}
+		ref, ok := refs[0].(map[string]any)
+		if !ok || ref["version"] != "schema-v3" {
+			t.Fatalf("business ref version=%#v, want actual source version", refs[0])
+		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
 	payload := batch{
@@ -723,6 +770,9 @@ func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 				"ref_id": "resource:forecast_resource", "ref_type": "data_resource",
 				"version_status": "unversioned",
 			}}},
+		}},
+		DeclaredBusinessRefs: []BusinessRef{{
+			RefType: "data_resource", RefID: "resource:forecast_resource", Version: "schema-v3",
 		}},
 	}
 	if err := postBatch("http://trace.local", time.Second, payload); err != nil {

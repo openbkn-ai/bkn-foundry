@@ -43,6 +43,18 @@ service:
     health: 13133
     metrics: 8888
 
+probes:
+  liveness:
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
 monitoring:
   prometheusRule:
     enabled: false

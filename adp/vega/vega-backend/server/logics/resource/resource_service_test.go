@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -568,6 +569,39 @@ func TestResourceServiceCreate(t *testing.T) {
 		}
 		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
 			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+		}
+	})
+	t.Run("create rejects vector feature without an embedding model", func(t *testing.T) {
+		rs, _, mockPS, _, _, mockCS, _ := newTestService(t)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID:        "cat1",
+			Name:             "table",
+			Category:         interfaces.ResourceCategoryTable,
+			SourceIdentifier: "public.orders",
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "title",
+				Features: []interfaces.PropertyFeature{{
+					FeatureType: interfaces.PropertyFeatureType_Vector,
+					RefProperty: "title",
+				}},
+			}},
+		})
+
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			t.Fatalf("expected HTTPError, got %T", err)
+		}
+		if httpErr.HTTPCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+		}
+		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+		}
+		if !strings.Contains(httpErr.Error(), "embedding model is required") {
+			t.Fatalf("expected actionable missing-model error, got %v", httpErr)
 		}
 	})
 	t.Run("create internal catalog resource uses internal auth type", func(t *testing.T) {

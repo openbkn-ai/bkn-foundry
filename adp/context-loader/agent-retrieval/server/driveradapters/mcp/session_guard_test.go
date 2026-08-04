@@ -56,7 +56,7 @@ func TestSessionGuardMissingConversationFailsClosed(t *testing.T) {
 		t.Fatalf("expected error envelope, got %#v", structured)
 	}
 	if errValue["code"] != "conversation_required" ||
-		errValue["required_action"] != "create_conversation" ||
+		errValue["required_action"] != "bkn_start_interaction" ||
 		errValue["retryable"] != false {
 		t.Fatalf("unexpected lifecycle error: %#v", errValue)
 	}
@@ -92,8 +92,39 @@ func TestSessionGuardMissingInteractionFailsClosed(t *testing.T) {
 		t.Fatalf("fail-closed requires zero calls, got core=%d downstream=%d", coreCalls, downstreamCalls)
 	}
 	errValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
-	if errValue["code"] != "interaction_required" || errValue["required_action"] != "start_interaction" {
+	if errValue["code"] != "interaction_required" || errValue["required_action"] != "bkn_start_interaction" {
 		t.Fatalf("unexpected lifecycle error: %#v", errValue)
+	}
+}
+
+func TestManagedOperationKeyUsesStableHostInvocationAcrossRequests(t *testing.T) {
+	request := businessToolRequest("session-a", "conv-1", "int-1", "ignored")
+	request.Params.Meta = &mcpsdk.Meta{AdditionalFields: map[string]any{
+		clientInvocationIDMeta: "cursor-tool-call-1",
+	}}
+	first := managedOperationKey(
+		common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "request-a"}),
+		request, "conv-1", "int-1", request.GetArguments(), "cursor-tool-call-1",
+	)
+	request.Header.Set("Mcp-Session-Id", "session-b")
+	second := managedOperationKey(
+		common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "request-b"}),
+		request, "conv-1", "int-1", request.GetArguments(), "cursor-tool-call-1",
+	)
+	if first != second {
+		t.Fatalf("stable host invocation changed operation key: %q != %q", first, second)
+	}
+	changedArguments := map[string]any{
+		"query": "另一个问题",
+		"bkn_context": map[string]any{
+			"conversation_id": "conv-1", "interaction_id": "int-1",
+		},
+	}
+	changed := managedOperationKey(
+		context.Background(), request, "conv-1", "int-1", changedArguments, "cursor-tool-call-1",
+	)
+	if first != changed {
+		t.Fatalf("same host invocation must reach Core conflict detection: %q != %q", first, changed)
 	}
 }
 
@@ -590,7 +621,8 @@ func TestSessionGuardConvertsDownstreamPanicToFailedReceipt(t *testing.T) {
 }
 
 func validBusinessToolRequest() mcpsdk.CallToolRequest {
-	return mcpsdk.CallToolRequest{
+	request := mcpsdk.CallToolRequest{
+		Header: http.Header{},
 		Params: mcpsdk.CallToolParams{
 			Name: "search_schema",
 			Arguments: map[string]any{"bkn_context": map[string]any{
@@ -599,6 +631,85 @@ func validBusinessToolRequest() mcpsdk.CallToolRequest {
 				"operation_key":   "op-key-1",
 			}},
 		},
+	}
+	request.Header.Set("X-Kn-ID", "kn_demo")
+	return request
+}
+
+func TestSessionGuardAcceptsCanonicalBusinessRefsForCurrentKnowledgeNetwork(t *testing.T) {
+	request := validBusinessToolRequest()
+	request.Params.Arguments.(map[string]any)["bkn_context"].(map[string]any)["business_refs"] = []any{
+		map[string]any{
+			"ref_type": "object_type", "ref_id": "object:kn_demo:customer",
+		},
+	}
+	var seen operationIntent
+	result, err := guardBusinessToolCall(
+		func(_ context.Context, intent operationIntent) (*operationResult, *lifecycleError, error) {
+			seen = intent
+			return &operationResult{}, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultText("ok"), nil
+		},
+	)(trustedSessionGuardContext(), request)
+	if err != nil || result.IsError {
+		t.Fatalf("canonical business refs rejected: result=%#v err=%v", result, err)
+	}
+	if len(seen.Context.BusinessRefs) != 1 ||
+		seen.Context.BusinessRefs[0].RefID != "object:kn_demo:customer" ||
+		seen.Context.BusinessRefs[0].Version != "unversioned" {
+		t.Fatalf("business refs not propagated: %#v", seen.Context.BusinessRefs)
+	}
+}
+
+func TestSessionGuardRejectsCrossKnowledgeNetworkBusinessRefBeforeExecution(t *testing.T) {
+	request := validBusinessToolRequest()
+	request.Params.Arguments.(map[string]any)["bkn_context"].(map[string]any)["business_refs"] = []any{
+		map[string]any{"ref_type": "object_type", "ref_id": "object:other_kn:customer"},
+	}
+	coreCalls, downstreamCalls := 0, 0
+	result, err := guardBusinessToolCall(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			coreCalls++
+			return &operationResult{}, nil, nil
+		},
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			downstreamCalls++
+			return mcpsdk.NewToolResultText("unexpected"), nil
+		},
+	)(trustedSessionGuardContext(), request)
+	if err != nil {
+		t.Fatalf("guard returned protocol error: %v", err)
+	}
+	if coreCalls != 0 || downstreamCalls != 0 {
+		t.Fatalf("invalid refs reached execution: core=%d downstream=%d", coreCalls, downstreamCalls)
+	}
+	errorValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+	if errorValue["code"] != "invalid_business_ref" || errorValue["required_action"] != "correct_business_refs" {
+		t.Fatalf("unexpected validation error: %#v", errorValue)
+	}
+}
+
+func TestParseBusinessRefsRejectsMalformedDeclarations(t *testing.T) {
+	tests := map[string]any{
+		"unknown field": []any{map[string]any{
+			"ref_type": "object_type", "ref_id": "object:kn_demo:customer", "display_hint": "untrusted",
+		}},
+		"empty identifier segment": []any{map[string]any{
+			"ref_type": "object_type", "ref_id": "object:kn_demo:",
+		}},
+		"oversized identifier": []any{map[string]any{
+			"ref_type": "object_type", "ref_id": "object:kn_demo:" + strings.Repeat("x", 1024),
+		}},
+	}
+	for name, declarations := range tests {
+		t.Run(name, func(t *testing.T) {
+			refs, validationErr := parseBusinessRefs(declarations, "kn_demo")
+			if validationErr == nil || len(refs) != 0 || validationErr.Code != "invalid_business_ref" {
+				t.Fatalf("malformed declaration accepted: refs=%#v error=%#v", refs, validationErr)
+			}
+		})
 	}
 }
 
@@ -630,7 +741,8 @@ func TestSessionGuardUsesOnlyExplicitContextAcrossTransportSessions(t *testing.T
 	if len(seen) != 3 ||
 		seen[0].ConversationID != "conv-a" ||
 		seen[1].ConversationID != "conv-b" ||
-		seen[2].OperationKey != "logical-c" {
+		seen[2].ConversationID != "conv-a" ||
+		seen[2].InteractionID != "int-a" {
 		t.Fatalf("guard inferred or mixed transport context: %#v", seen)
 	}
 }
@@ -683,13 +795,13 @@ func businessToolRequest(sessionID, conversationID, interactionID, operationKey 
 }
 
 func TestLifecycleRequestDropsCallerSuppliedOwnerIdentity(t *testing.T) {
-	_, _, body := lifecycleRequest("bkn_create_conversation", map[string]any{
-		"external_conversation_key": "external-1",
-		"idempotency_key":           "create-1",
-		"tenant_id":                 "forged-tenant",
-		"business_domain_id":        "forged-domain",
-		"application_principal_id":  "forged-app",
-		"effective_subject_id":      "forged-user",
+	_, _, body := lifecycleRequest("bkn_start_interaction", map[string]any{
+		"conversation_id":          "conversation-1",
+		"idempotency_key":          "create-1",
+		"tenant_id":                "forged-tenant",
+		"business_domain_id":       "forged-domain",
+		"application_principal_id": "forged-app",
+		"effective_subject_id":     "forged-user",
 	})
 	for _, field := range []string{
 		"tenant_id", "business_domain_id", "application_principal_id", "effective_subject_id",

@@ -25,7 +25,6 @@ tags: [Kubernetes, Pod, 容量]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: id
@@ -49,3 +48,4 @@ atomic:
 | Name | Display Name |
 |------|--------------|
 | pod_namespace | 命名空间 |
+

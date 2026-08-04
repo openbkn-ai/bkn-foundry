@@ -32,6 +32,7 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/user_mgmt"
@@ -48,7 +49,7 @@ type actionTypeService struct {
 	aoa        interfaces.AgentOperatorAccess
 	ata        interfaces.ActionTypeAccess
 	cga        interfaces.ConceptGroupAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ots        interfaces.ObjectTypeService
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
@@ -63,7 +64,7 @@ func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeSe
 			ata:        logics.ATA,
 			aoa:        logics.AOA,
 			cga:        logics.CGA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ots:        object_type.NewObjectTypeService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
@@ -800,13 +801,13 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 			words = append(words, word)
 		}
 
-		dftModel, err := ats.mfa.GetDefaultModel(ctx)
+		dftModel, err := ats.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
-		vectors, err := ats.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := ats.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取行动类向量失败")
@@ -911,7 +912,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 						berrors.BknBackend_ActionType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := ats.mfa.GetDefaultModel(ctx)
+				dftModel, err := ats.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
@@ -919,7 +920,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 						berrors.BknBackend_ActionType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				result, err := ats.mfa.GetVector(ctx, dftModel, []string{word})
+				result, err := ats.mfs.GetVector(ctx, dftModel, []string{word})
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取业务知识网络向量失败")

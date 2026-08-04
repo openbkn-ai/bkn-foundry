@@ -609,34 +609,34 @@ step_5_push_bkn() {
     echo "  KN=$kn_id" >&2
 }
 
-# Lookup embedding model_id by name (registered via mf-model-manager / onboard.sh)
-_lookup_embedding_model_id() {
-    local model_name="${1:-text-embedding-v4-cn}"
+# Is <name> registered as an embedding small model? Vega resolves embedding
+# models by NAME (a raw model id is rejected unless dimensions are supplied), so
+# the name is what gets passed through to the build.
+_embedding_model_registered() {
+    local model_name="$1"
+    [ -n "$model_name" ] || return 1
     "${KWEAV[@]}" model small list 2>/dev/null | _extract_cli_json | \
-        jq -r --arg n "$model_name" '
-            (.data // .entries // [])[] |
-            select(.model_name == $n and .model_type == "embedding") |
-            .model_id' 2>/dev/null | head -1
+        jq -e --arg n "$model_name" \
+            'any((.data // .entries // [])[]; .model_name == $n and .model_type == "embedding")' \
+        >/dev/null 2>&1
 }
 
-# Tables that benefit from vector embedding are defined inline in
-# _build_vega_indexes (the `vec = {...}` dict in the Python heredoc below).
-
+# Per-table index plan. Column 2 = full-text fields, column 3 = vector fields
+# (blank vector = full-text only). Fields must exist in the resource schema.
 _build_vega_indexes() {
     [ -f "$MAPPING_TMP" ] || { echo "  warn: $MAPPING_TMP missing — step 4 must run first; skipping indexes." >&2; return 0; }
 
-    local emodel
-    emodel="$(_lookup_embedding_model_id "${EMBEDDING_MODEL_NAME:-text-embedding-v4-cn}")"
-    if [ -z "$emodel" ]; then
-        echo "  warn: embedding model '${EMBEDDING_MODEL_NAME:-text-embedding-v4-cn}' not registered;" >&2
-        echo "        vector tables will be built keyword-only (no embedding)." >&2
-    else
-        echo "  embedding model_id=$emodel" >&2
+    local emodel="${EMBEDDING_MODEL_NAME-text-embedding-v4-cn}"
+    if [ -n "$emodel" ] && ! _embedding_model_registered "$emodel"; then
+        echo "  warn: embedding model '$emodel' is not registered;" >&2
+        echo "        tables will be built full-text only (no vector index)." >&2
+        emodel=""
     fi
+    [ -n "$emodel" ] && echo "  embedding model=$emodel" >&2
 
-    # Build a temp tsv: table\tresource_id\tembedding_fields(or blank)
+    # Build a temp tsv: table\tresource_id\tfulltext_fields\tembedding_fields
     local plan; plan="$(mktemp -t wc_index_plan.XXXXXX.tsv)"
-    EMODEL="$emodel" MAPPING="$MAPPING_TMP" python3 - >"$plan" <<'PY'
+    MAPPING="$MAPPING_TMP" python3 - >"$plan" <<'PY'
 import json, os
 with open(os.environ["MAPPING"]) as f:
     mapping = json.load(f)
@@ -648,45 +648,37 @@ for placeholder, rid in mapping.items():
     if tbl.endswith(SUFFIX):
         tbl = tbl[:-len(SUFFIX)]
     table_to_rid[tbl] = rid
-vec = {
-    "awards": "award_name",
-    "tournaments": "tournament_name,host_country",
-    "teams": "team_name",
-    "stadiums": "stadium_name,city_name",
-    "managers": "family_name,given_name",
-    "referees": "family_name,given_name,country_name",
-    "players": "family_name,given_name",
-}
-# 0.7.0 vega-backend has a cursor-advance bug in batch sync: tables with rows > 2*batch_size
-# loop forever inserting the same batch. List them so we can warn but still attempt.
-runaway_risk = {
-    "bookings", "goals", "substitutions", "player_appearances",
-    "players", "squads", "manager_appearances", "team_appearances",
+# table -> (fulltext fields, vector fields)
+plan = {
+    "awards": ("award_name", "award_name"),
+    "tournaments": ("tournament_name,host_country", "tournament_name,host_country"),
+    "teams": ("team_name,federation_name,region_name", "team_name"),
+    "stadiums": ("stadium_name,city_name,country_name", "stadium_name,city_name"),
+    "managers": ("family_name,given_name,country_name", "family_name,given_name"),
+    "referees": ("family_name,given_name,country_name", "family_name,given_name,country_name"),
+    "players": ("family_name,given_name", "family_name,given_name"),
 }
 for tbl, rid in sorted(table_to_rid.items()):
-    if tbl not in vec:
+    if tbl not in plan:
         continue
-    ef = vec[tbl]
-    flag = "RISK" if tbl in runaway_risk else "OK"
-    print(f"{tbl}\t{rid}\t{ef}\t{flag}")
+    ft, vec = plan[tbl]
+    print(f"{tbl}\t{rid}\t{ft}\t{vec}")
 PY
 
-    # Pre-fetch ALL build tasks once. 0.8.0 moved the route from nested
-    # /resources/buildtask to top-level /build-tasks. Try new path first, fall
-    # back to old. Both ignore the ?resource_id= filter on their respective
-    # versions, so we filter client-side via jq.
+    # Pre-fetch ALL build tasks once and filter client-side; the list endpoint
+    # is cheap enough and one call beats one per resource.
     local all_tasks_json
     all_tasks_json="$("${KWEAV[@]}" call "/api/vega-backend/v1/build-tasks?limit=500" 2>/dev/null | _extract_cli_json 2>/dev/null || true)"
-    if [ -z "$all_tasks_json" ] || ! printf '%s' "$all_tasks_json" | jq -e '.entries // .data' >/dev/null 2>&1; then
-        all_tasks_json="$("${KWEAV[@]}" call "/api/vega-backend/v1/resources/buildtask?limit=500" 2>/dev/null | _extract_cli_json 2>/dev/null || echo '{"entries":[]}')"
-    fi
     [ -z "$all_tasks_json" ] && all_tasks_json='{"entries":[]}'
 
-    # For each resource, check if a build task already exists; if not, create + start one.
-    # Tolerate failures (warn-not-fail), since the 0.7.0 batch-sync cursor bug can stall
-    # large tables. Those tables are still queryable via vega_sql_execute (step 6's tool).
+    # For each resource: reuse a live task, else configure the resource's index
+    # and create + start a new one. `vega dataset build` does both halves —
+    # index configuration is owned by the resource (index_config + per-field
+    # features) and the build task only snapshots it, so a resource with no
+    # index_config.build_key_fields is rejected with HTTP 400.
+    # Warn-not-fail: a stalled table stays queryable via vega_sql_execute (step 6).
     local created=0 reused=0 skipped=0
-    while IFS=$'\t' read -r tbl rid ef risk; do
+    while IFS=$'\t' read -r tbl rid ft ef; do
         [ -z "$rid" ] && continue
         local existing
         existing="$(printf '%s' "$all_tasks_json" | jq -r --arg r "$rid" \
@@ -701,47 +693,27 @@ PY
             esac
         fi
 
-        # Build body
-        local body
-        if [ -n "$ef" ] && [ -n "$emodel" ]; then
-            body="$(jq -cn --arg ef "$ef" --arg em "$emodel" \
-                '{mode:"batch",build_key_fields:"key_id",embedding_fields:$ef,embedding_model:$em,model_dimensions:1024}')"
+        local -a args=(vega dataset build "$rid"
+            --mode batch --execute-type full
+            --build-key-fields key_id --fulltext-fields "$ft")
+        local kind="fulltext"
+        if [ -n "$emodel" ] && [ -n "$ef" ]; then
+            args+=(--embedding-fields "$ef" --embedding-model "$emodel")
+            kind="fulltext+vector"
+        fi
+        # Keep stderr: the API error is the only thing that explains a failed
+        # build (a field missing from the resource schema, an unregistered
+        # embedding model, ...). Warn-not-fail, so print it and move on.
+        local berr; berr="$(mktemp -t wc_index_err.XXXXXX)"
+        if "${KWEAV[@]}" "${args[@]}" >/dev/null 2>"$berr"; then
+            printf "  %-25s create+start (%s)\n" "$tbl" "$kind" >&2
+            created=$((created+1))
         else
-            body='{"mode":"batch","build_key_fields":"key_id"}'
-        fi
-
-        # Create the task. 0.8.0 uses POST /build-tasks with resource_id in body;
-        # 0.7.0 uses POST /resources/buildtask/<rid>. Try new path first.
-        local tid="" create_raw
-        local body_v08
-        body_v08="$(printf '%s' "$body" | jq -c --arg rid "$rid" '. + {resource_id: $rid}')"
-        create_raw="$("${KWEAV[@]}" call "/api/vega-backend/v1/build-tasks" -X POST -d "$body_v08" 2>/dev/null || true)"
-        if [ -n "$create_raw" ]; then
-            tid="$(printf '%s' "$create_raw" | _extract_cli_json 2>/dev/null | jq -r '.task_id // .id // empty' 2>/dev/null | head -1 || true)"
-        fi
-        if [ -z "$tid" ]; then
-            # Fallback to 0.7.0 nested path
-            create_raw="$("${KWEAV[@]}" call "/api/vega-backend/v1/resources/buildtask/$rid" -X POST -d "$body" 2>/dev/null || true)"
-            if [ -n "$create_raw" ]; then
-                tid="$(printf '%s' "$create_raw" | _extract_cli_json 2>/dev/null | jq -r '.task_id // empty' 2>/dev/null | head -1 || true)"
-            fi
-        fi
-        if [ -z "$tid" ]; then
-            printf "  %-25s ⊘ create_skipped (existing or API error)\n" "$tbl" >&2
+            printf "  %-25s ⊘ build_failed\n" "$tbl" >&2
+            sed 's/^/      /' "$berr" >&2
             skipped=$((skipped+1))
-            continue
         fi
-
-        # Start the task. 0.8.0: POST /build-tasks/<tid>/start; 0.7.0: PUT /resources/buildtask/<rid>/<tid>/status.
-        if ! "${KWEAV[@]}" call "/api/vega-backend/v1/build-tasks/$tid/start" \
-                -X POST -d '{"execute_type":"full"}' >/dev/null 2>&1; then
-            "${KWEAV[@]}" call "/api/vega-backend/v1/resources/buildtask/$rid/$tid/status" \
-                -X PUT -d '{"status":"running","execute_type":"full"}' >/dev/null 2>&1 || true
-        fi
-        local kind="keyword"; [ -n "$ef" ] && [ -n "$emodel" ] && kind="vector"
-        local warn=""; [ "$risk" = "RISK" ] && warn="  (⚠ may loop on 0.7.0 — query via vega_sql_execute)"
-        printf "  %-25s create+start (%s)%s\n" "$tbl" "$kind" "$warn" >&2
-        created=$((created+1))
+        rm -f "$berr"
     done <"$plan"
     rm -f "$plan"
 

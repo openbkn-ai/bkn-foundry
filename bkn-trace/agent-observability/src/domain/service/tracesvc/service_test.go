@@ -54,6 +54,28 @@ func TestGetTraceGraphByTraceIDBuildsTreeStatusAndDuration(t *testing.T) {
 	}
 }
 
+func TestCountSpansByTraceIDsUsesOneAggregationQuery(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(`{
+		"aggregations":{"by_trace":{"buckets":[
+			{"key":"trace_a","span_count":{"value":16}},
+			{"key":"trace_b","span_count":{"value":3}}
+		]}}
+	}`)}
+	service := New(port)
+
+	counts, err := service.CountSpansByTraceIDs(context.Background(), []string{"trace_a", "trace_b", "trace_a", ""})
+	if err != nil {
+		t.Fatalf("count spans: %v", err)
+	}
+	if counts["trace_a"] != 16 || counts["trace_b"] != 3 || len(counts) != 2 {
+		t.Fatalf("unexpected counts: %+v", counts)
+	}
+	query := string(port.query)
+	if !strings.Contains(query, `"size":0`) || !strings.Contains(query, `"terms":{"traceId":["trace_a","trace_b"]}`) {
+		t.Fatalf("expected one bounded terms aggregation query, got %s", query)
+	}
+}
+
 func TestGetTraceGraphByTraceIDSupportsSS4OFlatSpanDocuments(t *testing.T) {
 	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphSS4OFlatSearchResult())}
 	service := New(port)
@@ -129,6 +151,25 @@ func TestGetTraceGraphByTraceIDMarksOrphanSpanPartial(t *testing.T) {
 	}
 	if response.Page.NodeCount != 1 || response.Page.EdgeCount != 0 {
 		t.Fatalf("orphan span must not create dangling edge: %+v", response.Page)
+	}
+}
+
+func TestGetTraceGraphByTraceIDTreatsMissingServerParentAsExternalEntry(t *testing.T) {
+	port := &fakeTracePort{result: opensearchvo.SearchResult(traceGraphExternalEntrySearchResult())}
+	service := New(port)
+
+	response, found, err := service.GetTraceGraphByTraceID(context.Background(), "trace_graph_external_entry")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected trace graph to be found")
+	}
+	if response.Partial || contains(response.PartialReasons, "orphan_span") {
+		t.Fatalf("external server parent must not make the OpenBKN trace partial: %+v", response)
+	}
+	if response.Page.NodeCount != 1 || response.Page.EdgeCount != 0 {
+		t.Fatalf("external entry must remain a root without a dangling edge: %+v", response.Page)
 	}
 }
 
@@ -289,6 +330,39 @@ func traceGraphOrphanSearchResult() []byte {
                       "parentSpanId": "missing_parent",
                       "name": "worker.step",
                       "kind": "INTERNAL",
+                      "startTimeUnixNano": "10",
+                      "endTimeUnixNano": "20",
+                      "status": {"code": "STATUS_CODE_OK"}
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}`)
+}
+
+func traceGraphExternalEntrySearchResult() []byte {
+	return []byte(`{
+  "hits": {
+    "hits": [
+      {
+        "_source": {
+          "resourceSpans": [
+            {
+              "scopeSpans": [
+                {
+                  "spans": [
+                    {
+                      "traceId": "trace_graph_external_entry",
+                      "spanId": "openbkn_entry",
+                      "parentSpanId": "third_party_agent_parent",
+                      "name": "POST /api/agent-retrieval/v1/mcp/*path",
+                      "kind": "SERVER",
                       "startTimeUnixNano": "10",
                       "endTimeUnixNano": "20",
                       "status": {"code": "STATUS_CODE_OK"}

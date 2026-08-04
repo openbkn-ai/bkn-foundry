@@ -13,6 +13,8 @@ const (
 	CodeInteractionInProgress     ErrorCode = "interaction_in_progress"
 	CodeInteractionRequired       ErrorCode = "interaction_required"
 	CodeInteractionTerminal       ErrorCode = "interaction_terminal"
+	CodeAgentNameConflict         ErrorCode = "agent_name_conflict"
+	CodeAgentNameInvalid          ErrorCode = "agent_name_invalid"
 	CodeOperationRequired         ErrorCode = "operation_required"
 	CodeIdempotencyConflict       ErrorCode = "idempotency_conflict"
 	CodeReceiptPending            ErrorCode = "receipt_pending"
@@ -22,9 +24,10 @@ const (
 )
 
 type DomainError struct {
-	Code          ErrorCode
-	Message       string
-	CurrentStatus string
+	Code                 ErrorCode
+	Message              string
+	CurrentStatus        string
+	CurrentInteractionID string
 }
 
 func (e *DomainError) Error() string {

@@ -15,6 +15,11 @@ action_intent: add
 |--------------|
 | employee |
 
+### Affect Object
+
+| Affect Object | Affect Description |
+|---------------|--------------------|
+
 ### Impact Contracts
 
 ```yaml

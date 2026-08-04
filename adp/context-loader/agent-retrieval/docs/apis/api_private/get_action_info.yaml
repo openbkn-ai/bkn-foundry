@@ -104,20 +104,38 @@ components:
   schemas:
     BKNContext:
       type: object
-      required: [conversation_id, interaction_id, operation_key]
+      required: [conversation_id, interaction_id]
       properties:
         conversation_id:
           type: string
         interaction_id:
           type: string
-        operation_key:
-          type: string
         parent_operation_id:
           type: string
         causation_event_ids:
           type: array
+          maxItems: 64
           items:
             type: string
+        business_refs:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/BusinessRef'
+      additionalProperties: false
+
+    BusinessRef:
+      type: object
+      required: [ref_type, ref_id]
+      additionalProperties: false
+      properties:
+        ref_type:
+          type: string
+          enum: [knowledge_network, object_type, object_instance, property, relation_type, data_resource, metric, logic, function, action_type, action_instance]
+        ref_id:
+          type: string
+        version:
+          type: string
     ActionRecallRequest:
       type: object
       required:

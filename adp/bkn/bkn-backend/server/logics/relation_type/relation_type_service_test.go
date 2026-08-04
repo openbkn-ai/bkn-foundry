@@ -1169,12 +1169,12 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &relationTypeService{
 				appSetting: appSettingWithVector,
 				vba:        vbaWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			relationTypes := []*interfaces.RelationType{
@@ -1198,8 +1198,8 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, relationTypes)
@@ -1212,11 +1212,11 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &relationTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			relationTypes := []*interfaces.RelationType{
@@ -1230,7 +1230,7 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -1242,11 +1242,11 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &relationTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			relationTypes := []*interfaces.RelationType{
@@ -1260,8 +1260,8 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -1273,11 +1273,11 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &relationTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			relationTypes := []*interfaces.RelationType{
@@ -1292,8 +1292,8 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 			}
 			vectors := []*cond.VectorResp{}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldNotBeNil)

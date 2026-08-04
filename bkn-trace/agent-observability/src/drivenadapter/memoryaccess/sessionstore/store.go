@@ -83,6 +83,10 @@ func (tx memoryTransaction) FindConversation(conversationID string) (sessionvo.C
 	return conversation, found
 }
 
+func (tx memoryTransaction) PeekConversation(conversationID string) (sessionvo.Conversation, bool) {
+	return tx.FindConversation(conversationID)
+}
+
 func (tx memoryTransaction) FindIdempotency(
 	scope string,
 	owner sessionvo.Owner,
@@ -136,8 +140,7 @@ func (tx memoryTransaction) FindInteractionByStartKey(
 	idempotencyKey string,
 ) (sessionvo.Interaction, bool) {
 	for _, interaction := range tx.s.interactions {
-		if interaction.ConversationID == conversationID &&
-			interaction.StartIdempotencyKey == idempotencyKey {
+		if interaction.ConversationID == conversationID && interaction.StartIdempotencyKey == idempotencyKey {
 			return interaction, true
 		}
 	}

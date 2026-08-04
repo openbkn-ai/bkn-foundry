@@ -132,6 +132,20 @@ func documentEnsureOperation() {}
 //nolint:unused // Swag parses this annotation carrier during documentation generation.
 func documentGetInteraction() {}
 
+// @Summary Finish one Interaction through the Agent-facing facade
+// @Description Derives the current lease and closure manifest from authoritative Operations and Receipts. Ordinary Agents do not submit concurrency or closure internals.
+// @Tags lifecycle
+// @Accept json
+// @Produce json
+// @Param interaction_id path string true "Interaction ID"
+// @Param request body managedFinishInteractionRequest true "Managed finish request"
+// @Success 200 {object} sessionvo.Interaction
+// @Failure 400,401,403,404,409,422,500 {object} lifecycleErrorEnvelope
+// @Router /interactions/{interaction_id}/finish [post]
+//
+//nolint:unused // Swag parses this annotation carrier during documentation generation.
+func documentManagedFinishInteraction() {}
+
 // @Summary Complete one managed Interaction
 // @Tags lifecycle
 // @Accept json

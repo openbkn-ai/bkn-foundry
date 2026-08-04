@@ -44,13 +44,14 @@ type lifecycleErrorEnvelope struct {
 }
 
 type lifecycleError struct {
-	Code           string `json:"code" enums:"conversation_required,conversation_not_found,conversation_closed,conversation_expired,conversation_owner_mismatch,interaction_required,interaction_in_progress,interaction_terminal,operation_required,idempotency_conflict,event_payload_conflict,producer_sequence_conflict,invalid_evidence_event,receipt_pending,terminal_conflict,closure_manifest_invalid,feature_not_installed,capability_not_licensed,permission_denied,resource_not_disclosed,internal_error"`
-	Message        string `json:"message"`
-	CurrentStatus  string `json:"current_status,omitempty"`
-	Retryable      bool   `json:"retryable"`
-	RequiredAction string `json:"required_action,omitempty"`
-	RequestID      string `json:"request_id,omitempty"`
-	RetryAfterMS   int    `json:"retry_after_ms"`
+	Code                 string `json:"code" enums:"conversation_required,conversation_not_found,conversation_closed,conversation_expired,conversation_owner_mismatch,interaction_required,interaction_in_progress,interaction_terminal,agent_name_conflict,agent_name_invalid,operation_required,idempotency_conflict,event_payload_conflict,producer_sequence_conflict,invalid_evidence_event,receipt_pending,terminal_conflict,closure_manifest_invalid,feature_not_installed,capability_not_licensed,permission_denied,resource_not_disclosed,internal_error"`
+	Message              string `json:"message"`
+	CurrentStatus        string `json:"current_status,omitempty"`
+	CurrentInteractionID string `json:"current_interaction_id,omitempty"`
+	Retryable            bool   `json:"retryable"`
+	RequiredAction       string `json:"required_action,omitempty"`
+	RequestID            string `json:"request_id,omitempty"`
+	RetryAfterMS         int    `json:"retry_after_ms"`
 }
 
 type ensureConversationRequest struct {
@@ -61,6 +62,8 @@ type ensureConversationRequest struct {
 
 type startInteractionRequest struct {
 	IdempotencyKey string `json:"idempotency_key" binding:"required"`
+	RequestHash    string `json:"request_hash,omitempty"`
+	AgentName      string `json:"agent_name,omitempty" binding:"omitempty,max=128"`
 	LeaseSeconds   int64  `json:"lease_seconds"`
 }
 
@@ -104,6 +107,14 @@ type terminalInteractionRequest struct {
 	ExpectedReceipts       []expectedReceiptRequest   `json:"expected_receipts,omitempty"`
 	AssemblerDeadline      *time.Time                 `json:"assembler_deadline,omitempty"`
 	CompletionReason       string                     `json:"completion_reason" binding:"required"`
+}
+
+type managedFinishInteractionRequest struct {
+	Outcome           string   `json:"outcome" binding:"required"`
+	IdempotencyKey    string   `json:"idempotency_key" binding:"required"`
+	AnswerArtifactRef string   `json:"answer_artifact_ref,omitempty"`
+	Claims            []string `json:"claims,omitempty"`
+	Reason            string   `json:"reason,omitempty"`
 }
 
 type expectedOperationRequest struct {
@@ -301,6 +312,7 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 		}
 		value, err := h.service.StartInteraction(r.Context(), sessionsvc.StartInteractionCommand{
 			Owner: owner, ConversationID: parts[0], IdempotencyKey: request.IdempotencyKey,
+			RequestHash: request.RequestHash, AgentName: request.AgentName,
 			LeaseDuration: time.Duration(request.LeaseSeconds) * time.Second,
 		})
 		h.writeLifecycleResult(w, r, value, err, http.StatusCreated)
@@ -348,6 +360,10 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 		writeLifecycleError(w, r, http.StatusNotFound, "interaction_required", "interaction route was not found")
 		return
 	}
+	if parts[1] == "finish" {
+		h.handleManagedFinish(w, r, owner, parts[0])
+		return
+	}
 	var request terminalInteractionRequest
 	if err := decodeLifecycleBody(w, r, &request); err != nil {
 		writeLifecycleError(w, r, http.StatusBadRequest, "interaction_required", err.Error())
@@ -378,6 +394,56 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 		},
 	})
 	h.writeLifecycleResult(w, r, value, err, http.StatusOK)
+}
+
+func (h *SessionHandler) handleManagedFinish(
+	w http.ResponseWriter,
+	r *http.Request,
+	owner sessionvo.Owner,
+	interactionID string,
+) {
+	var request managedFinishInteractionRequest
+	if err := decodeLifecycleBody(w, r, &request); err != nil {
+		writeLifecycleError(w, r, http.StatusBadRequest, "interaction_required", err.Error())
+		return
+	}
+	status, valid := managedOutcomeStatus(request.Outcome)
+	if !valid {
+		writeLifecycleError(w, r, http.StatusUnprocessableEntity, "interaction_required", "unsupported finish outcome")
+		return
+	}
+	if status == sessionvo.InteractionCompleted && request.AnswerArtifactRef == "" {
+		writeLifecycleError(w, r, http.StatusUnprocessableEntity, "closure_manifest_invalid", "completed outcome requires an answer artifact")
+		return
+	}
+	reason := request.Reason
+	if reason == "" {
+		reason = request.Outcome
+	}
+	value, err := h.service.TerminateInteraction(r.Context(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interactionID, Status: status,
+		TerminalIdempotencyKey: request.IdempotencyKey, DeriveManifest: true,
+		Manifest: sessionvo.ClosureManifest{
+			Version: "3.0.0", AnswerArtifactRef: request.AnswerArtifactRef,
+			Claims: request.Claims, CompletionReason: reason,
+		},
+	})
+	h.writeLifecycleResult(w, r, value, err, http.StatusOK)
+}
+
+func managedOutcomeStatus(outcome string) (sessionvo.InteractionStatus, bool) {
+	switch outcome {
+	case "completed":
+		return sessionvo.InteractionCompleted, true
+	case "failed":
+		return sessionvo.InteractionFailed, true
+	case "cancelled":
+		return sessionvo.InteractionCanceled, true
+	case "handed_off":
+		return sessionvo.InteractionHandedOff, true
+	default:
+		return "", false
+	}
 }
 
 // GetInteractionBusinessGraph returns one authorized immutable business-semantic assembly.
@@ -618,7 +684,8 @@ func writeSessionDomainError(w http.ResponseWriter, r *http.Request, err error) 
 	status, action, retryable := lifecycleErrorContract(domainErr.Code)
 	writeJSON(w, status, lifecycleErrorEnvelope{Error: lifecycleError{
 		Code: string(domainErr.Code), Message: domainErr.Message,
-		CurrentStatus: domainErr.CurrentStatus, Retryable: retryable,
+		CurrentStatus: domainErr.CurrentStatus, CurrentInteractionID: domainErr.CurrentInteractionID,
+		Retryable:      retryable,
 		RequiredAction: action, RequestID: requestIDFromRequest(r),
 	}})
 }
@@ -634,29 +701,33 @@ func writeLifecycleError(w http.ResponseWriter, r *http.Request, status int, cod
 func lifecycleErrorContract(code sessionsvc.ErrorCode) (int, string, bool) {
 	switch code {
 	case sessionsvc.CodeConversationRequired:
-		return http.StatusBadRequest, "create_conversation", false
+		return http.StatusBadRequest, "bkn_start_interaction", false
 	case sessionsvc.CodeConversationNotFound:
-		return http.StatusNotFound, "create_or_resume_conversation", false
+		return http.StatusNotFound, "bkn_start_interaction", false
 	case sessionsvc.CodeConversationClosed:
-		return http.StatusConflict, "create_conversation", false
+		return http.StatusConflict, "bkn_start_interaction", false
 	case sessionsvc.CodeConversationExpired:
-		return http.StatusConflict, "create_or_resume_conversation", false
+		return http.StatusConflict, "bkn_start_interaction", false
 	case sessionsvc.CodeConversationOwnerMismatch:
 		return http.StatusForbidden, "use_authorized_conversation", false
 	case sessionsvc.CodeInteractionRequired:
-		return http.StatusBadRequest, "start_interaction", false
+		return http.StatusBadRequest, "bkn_start_interaction", false
 	case sessionsvc.CodeInteractionInProgress:
-		return http.StatusConflict, "complete_or_cancel_interaction", false
+		return http.StatusConflict, "bkn_finish_interaction", false
 	case sessionsvc.CodeInteractionTerminal:
-		return http.StatusConflict, "start_interaction", false
+		return http.StatusConflict, "bkn_start_interaction", false
+	case sessionsvc.CodeAgentNameConflict:
+		return http.StatusConflict, "reuse_conversation_agent_name", false
+	case sessionsvc.CodeAgentNameInvalid:
+		return http.StatusUnprocessableEntity, "fix_agent_name", false
 	case sessionsvc.CodeOperationRequired:
 		return http.StatusBadRequest, "ensure_operation", false
 	case sessionsvc.CodeIdempotencyConflict:
 		return http.StatusConflict, "use_new_idempotency_key", false
 	case sessionsvc.CodeReceiptPending:
-		return http.StatusConflict, "poll_receipt", true
+		return http.StatusConflict, "retry_same_business_tool", true
 	case sessionsvc.CodeTerminalConflict:
-		return http.StatusConflict, "get_interaction", false
+		return http.StatusConflict, "reuse_authoritative_interaction", false
 	case sessionsvc.CodeClosureManifestInvalid:
 		return http.StatusUnprocessableEntity, "fix_closure_manifest", false
 	case sessionsvc.CodeResourceNotDisclosed:

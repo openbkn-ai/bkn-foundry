@@ -15,16 +15,20 @@ import (
 
 	"bkn-backend/common"
 	"bkn-backend/interfaces"
+	"bkn-backend/logics/model_factory"
 )
 
 func Init(ctx context.Context, appSetting *common.AppSetting) error {
 	logger.Info("Init BKN Dataset Start")
 
 	var vectorDim = 768 // default dimension
+	var defaultEmbeddingModel string
+
+	mfs := model_factory.NewModelFactoryService(appSetting, MFA)
 
 	// Check if small model is enabled
 	if appSetting.ServerSetting.DefaultSmallModelEnabled {
-		smallModel, err := MFA.GetDefaultModel(ctx)
+		smallModel, err := mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel err:%v", err)
 			return err
@@ -34,6 +38,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 			return errors.New("GetDefaultModel return nil")
 		}
 		vectorDim = smallModel.EmbeddingDim
+		defaultEmbeddingModel = smallModel.ModelName
 		logger.Infof("Small model enabled, vector dimension: %d", vectorDim)
 	}
 
@@ -71,8 +76,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 		// Create dataset
 		logger.Infof("Dataset %s not found, creating...", interfaces.BKN_DATASET_NAME)
 
-		dataset = interfaces.BKN_CONCEPT_DATASET
-		dataset.SchemaDefinition = expectedSchema
+		dataset = bknConceptDatasetRequest(expectedSchema, defaultEmbeddingModel)
 		err = VBA.CreateResource(ctx, dataset)
 		if err != nil {
 			logger.Errorf("CreateResource err:%v", err)
@@ -90,9 +94,9 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 				logger.Errorf("DeleteResource err:%v", err)
 				return err
 			}
+
 			// Create dataset again
-			dataset = interfaces.BKN_CONCEPT_DATASET
-			dataset.SchemaDefinition = expectedSchema
+			dataset = bknConceptDatasetRequest(expectedSchema, defaultEmbeddingModel)
 			err = VBA.CreateResource(ctx, dataset)
 			if err != nil {
 				logger.Errorf("CreateResource err:%v", err)
@@ -106,6 +110,20 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 
 	logger.Info("Init BKN Dataset Success")
 	return nil
+}
+
+// bknConceptDatasetRequest builds an independent resource request for the BKN
+// concept dataset. A vector schema requires Vega to resolve an embedding model
+// at creation time, so propagate the model selected by BKN instead of allowing
+// Vega to fall back to its legacy "embedding" model name.
+func bknConceptDatasetRequest(schema []*interfaces.Property, defaultEmbeddingModel string) *interfaces.VegaResource {
+	request := *interfaces.BKN_CONCEPT_DATASET
+	request.SchemaDefinition = schema
+	request.IndexConfig = &interfaces.VegaResourceIndexConfig{
+		DefaultFulltextAnalyzer: "standard",
+		DefaultEmbeddingModel:   defaultEmbeddingModel,
+	}
+	return &request
 }
 
 // bknCatalogRequest builds the create request for the BKN logical namespace catalog.

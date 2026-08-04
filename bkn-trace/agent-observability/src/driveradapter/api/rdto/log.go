@@ -7,6 +7,11 @@ type LogCount struct {
 	Accuracy string `json:"accuracy"`
 }
 
+type PageMetadata struct {
+	Page     int `json:"page"`
+	PageSize int `json:"page_size"`
+}
+
 type RequestTraceContext struct {
 	RequestID       *string  `json:"request_id"`
 	CurrentTraceID  *string  `json:"current_trace_id,omitempty"`
@@ -18,6 +23,7 @@ type LogListResponse struct {
 	NextCursor          *string                        `json:"next_cursor"`
 	Partial             bool                           `json:"partial"`
 	Count               LogCount                       `json:"count"`
+	Pagination          PageMetadata                   `json:"pagination"`
 	SourceStatus        []observabilityvo.SourceStatus `json:"source_status"`
 	RequestTraceContext RequestTraceContext            `json:"request_trace_context"`
 }

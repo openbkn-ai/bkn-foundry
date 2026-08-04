@@ -851,12 +851,12 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &actionTypeService{
 				appSetting: appSettingWithVector,
 				vba:        vbaWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			actionTypes := []*interfaces.ActionType{
@@ -880,8 +880,8 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, actionTypes)
@@ -895,11 +895,11 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &actionTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			actionTypes := []*interfaces.ActionType{
@@ -913,7 +913,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -925,11 +925,11 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &actionTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			actionTypes := []*interfaces.ActionType{
@@ -943,8 +943,8 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -956,11 +956,11 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &actionTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			actionTypes := []*interfaces.ActionType{
@@ -975,8 +975,8 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 			}
 			vectors := []*cond.VectorResp{}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)

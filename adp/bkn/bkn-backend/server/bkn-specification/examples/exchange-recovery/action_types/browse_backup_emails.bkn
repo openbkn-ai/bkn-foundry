@@ -32,6 +32,11 @@ action_intent: add
 |--------------|
 | backup_timepoint |
 
+### Affect Object
+
+| Affect Object | Affect Description |
+|---------------|--------------------|
+
 ### Impact Contracts
 
 ```yaml

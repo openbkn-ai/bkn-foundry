@@ -25,7 +25,6 @@ tags: [恢复任务, 灾备]
 
 ```yaml
 kind: atomic
-
 atomic:
   aggregation:
     property: id
@@ -45,3 +44,4 @@ atomic:
 | task_status | 任务状态 |
 | recovery_type | 恢复类型 |
 | recovery_destination | 恢复目的地 |
+

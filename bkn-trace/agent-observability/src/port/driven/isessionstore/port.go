@@ -10,6 +10,7 @@ import (
 type Transaction interface {
 	Now() time.Time
 	FindCurrentConversation(owner sessionvo.Owner, externalKey string) (sessionvo.Conversation, bool)
+	PeekConversation(conversationID string) (sessionvo.Conversation, bool)
 	FindConversation(conversationID string) (sessionvo.Conversation, bool)
 	FindIdempotency(scope string, owner sessionvo.Owner, externalKey, idempotencyKey string) (sessionvo.IdempotencyRecord, bool)
 	ListConversations(owner sessionvo.Owner, limit int) []sessionvo.Conversation

@@ -22,11 +22,10 @@ import (
 )
 
 // allExampleDirs returns all example directories that contain a network.bkn file.
-// Tests run from sdk/golang/tests/; examples are at ../../../examples.
 func allExampleDirs(t *testing.T) []string {
 	t.Helper()
 
-	examplesDir := filepath.Join("..", "..", "..", "examples")
+	examplesDir := filepath.Join("..", "examples")
 	entries, err := os.ReadDir(examplesDir)
 	require.NoError(t, err, "read examples dir")
 
@@ -110,10 +109,8 @@ func extractTarToDir(r io.Reader, destDir string) error {
 	return nil
 }
 
-// compareDirs compares a fixed set of paths between srcDir and dstDir:
-// network.bkn, SKILL.md, and the subdirectories action_types, concept_groups,
-// object_types, relation_types. Every file found in srcDir under these paths
-// must exist in dstDir with identical byte content.
+// compareDirs verifies that every exported BKN file is byte-for-byte identical
+// to its canonical fixture counterpart.
 func compareDirs(t *testing.T, srcDir, dstDir string) {
 	t.Helper()
 
@@ -130,7 +127,7 @@ func compareDirs(t *testing.T, srcDir, dstDir string) {
 	for _, target := range targets {
 		srcPath := filepath.Join(srcDir, target)
 		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
-			continue // target not present in this example, skip
+			continue
 		}
 
 		err := filepath.Walk(srcPath, func(path string, info os.FileInfo, err error) error {
@@ -142,10 +139,8 @@ func compareDirs(t *testing.T, srcDir, dstDir string) {
 
 			srcData, err := os.ReadFile(path)
 			require.NoError(t, err, "read source file: %s", rel)
-
 			dstData, err := os.ReadFile(filepath.Join(dstDir, rel))
 			require.NoError(t, err, "file missing in exported tar: %s", rel)
-
 			assert.Equal(t, srcData, dstData, "file content mismatch: %s", rel)
 			return nil
 		})
@@ -196,11 +191,8 @@ func TestLoadFromTar(t *testing.T) {
 	}
 }
 
-// TestRoundTrip_FileContent is the primary round-trip integration test.
-//
-// Flow: PackDirToTar → LoadNetworkFromTar → WriteNetworkToTar → extractTarToDir
-// → compareDirs. Every file in the original directory must have identical byte
-// content in the exported directory.
+// TestRoundTrip_FileContent verifies that an exported network matches the
+// canonical fixture content byte-for-byte.
 func TestRoundTrip_FileContent(t *testing.T) {
 	for _, dir := range allExampleDirs(t) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
@@ -226,7 +218,7 @@ func TestRoundTrip_FileContent(t *testing.T) {
 			require.NoError(t, os.MkdirAll(extractDir, 0755))
 			require.NoError(t, extractTarToDir(&buf, extractDir), "extractTarToDir failed")
 
-			// Step 5: every source file must exist in the export with identical content.
+			// Step 5: every canonical fixture file must be preserved exactly.
 			compareDirs(t, dir, extractDir)
 		})
 	}

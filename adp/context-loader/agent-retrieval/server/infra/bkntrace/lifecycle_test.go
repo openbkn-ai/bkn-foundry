@@ -16,12 +16,58 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
+
+func TestGuardBeginUsesCoreCreatedAtForOperationEvidence(t *testing.T) {
+	createdAt := time.Date(2026, 8, 3, 6, 31, 0, 456000000, time.UTC)
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/api/agent-observability/v1/interactions/int-1":
+			return lifecycleJSONResponse(http.StatusOK, Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1,
+			}), nil
+		case "/api/agent-observability/v1/conversations/conv-1/interactions/int-1/operations:ensure":
+			return lifecycleJSONResponse(http.StatusCreated, OperationResult{
+				Created: true, Execute: true,
+				Operation: Operation{
+					OperationID: "op-1", ConversationID: "conv-1", InteractionID: "int-1",
+					Attempt: 1, AttemptStatus: "pending", CreatedAt: createdAt,
+				},
+				Receipt: Receipt{ReceiptID: "receipt-1", ReceiptStatus: "pending"},
+			}), nil
+		default:
+			return lifecycleJSONResponse(http.StatusNotFound, nil), nil
+		}
+	})
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req_cursor_operation_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
+	})
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+	})
+
+	lifecycleContext, _, _, apiErr, err := NewGuard(client).Begin(ctx, GuardIntent{
+		Context: BusinessContext{
+			ConversationID: "conv-1", InteractionID: "int-1", OperationKey: "schema-1",
+		},
+		ToolName: "search_schema", NormalizedInputHash: "sha256:input",
+	})
+	if err != nil || apiErr != nil {
+		t.Fatalf("begin operation failed: api=%#v err=%v", apiErr, err)
+	}
+	traceContext, _ := common.GetTraceContextFromCtx(lifecycleContext)
+	if !traceContext.ObservedAtProvided || traceContext.ObservedAt != createdAt.Format(time.RFC3339Nano) {
+		t.Fatalf("operation observed time=%q provided=%t, want Core created_at %s",
+			traceContext.ObservedAt, traceContext.ObservedAtProvided, createdAt.Format(time.RFC3339Nano))
+	}
+}
 
 func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "trusted-context-loader-token")
@@ -359,6 +405,19 @@ func TestLifecycleValueTypesPreserveCore30RequiredFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMergeBusinessRefsPreservesDeclaredVersionAndAddsObservedResources(t *testing.T) {
+	refs := mergeBusinessRefs(
+		[]BusinessRef{{RefType: "object_type", RefID: "object:kn_demo:forecast", Version: "schema-v3"}},
+		[]BusinessRef{
+			{RefType: "object_type", RefID: "object:kn_demo:forecast", Version: "versioned"},
+			{RefType: "data_resource", RefID: "resource:forecast", Version: "unversioned"},
+		},
+	)
+	if len(refs) != 2 || refs[0].Version != "schema-v3" || refs[1].RefID != "resource:forecast" {
+		t.Fatalf("merged business refs lost declared identity or observed resource: %#v", refs)
 	}
 }
 

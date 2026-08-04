@@ -125,6 +125,33 @@ func (service *Service) List(
 	profile evidencevo.AccessProfile,
 	query observabilityvo.LogQuery,
 ) (observabilityvo.ListResult, error) {
+	targetPage := normalizeLogPage(query.Page)
+	if query.Cursor != "" || targetPage == 1 {
+		return service.listPage(ctx, profile, query)
+	}
+
+	query.Page = 1
+	var result observabilityvo.ListResult
+	for currentPage := 1; currentPage <= targetPage; currentPage++ {
+		pageResult, err := service.listPage(ctx, profile, query)
+		if err != nil {
+			return observabilityvo.ListResult{}, err
+		}
+		result = pageResult
+		if currentPage == targetPage || pageResult.NextCursor == "" {
+			break
+		}
+		query.Cursor = pageResult.NextCursor
+	}
+	result.Page = targetPage
+	return result, nil
+}
+
+func (service *Service) listPage(
+	ctx context.Context,
+	profile evidencevo.AccessProfile,
+	query observabilityvo.LogQuery,
+) (observabilityvo.ListResult, error) {
 	capabilities := observabilityvo.CapabilitiesFor(profile)
 	if !capabilities.GlobalLogSearch && !query.IsAssociatedDrilldown() {
 		return observabilityvo.ListResult{}, ErrAccessDenied
@@ -157,7 +184,10 @@ func (service *Service) List(
 		queryWatermark = payload.QueryWatermark
 	}
 
-	result := observabilityvo.ListResult{Records: []observabilityvo.LogRecord{}, SourceStatus: []observabilityvo.SourceStatus{}}
+	result := observabilityvo.ListResult{
+		Records: []observabilityvo.LogRecord{}, SourceStatus: []observabilityvo.SourceStatus{},
+		Page: normalizeLogPage(query.Page), PageSize: normalizeLogLimit(query.Limit),
+	}
 	limit := query.Limit
 	if limit <= 0 {
 		limit = 50
@@ -189,6 +219,8 @@ func (service *Service) List(
 	sourceLastRawPosition := make(map[string]observabilityvo.SourcePosition)
 	candidateBatches := make([][]logCandidate, 0, len(visibleSources))
 	sourceHasMore := false
+	var totalCount int64
+	countExact := true
 	for _, sourceResult := range service.searchSources(ctx, visibleSources, sourceQuery, positions) {
 		source := sourceResult.source
 		if sourceResult.status.Status == "not_integrated" {
@@ -206,6 +238,8 @@ func (service *Service) List(
 		page := sourceResult.page
 		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 		sourcePageSizes[source.ID()] = len(page.Records)
+		totalCount += page.Count
+		countExact = countExact && normalizedAccuracy(page.CountAccuracy) == "exact"
 		if len(page.Records) > 0 {
 			sourceLastRawPosition[source.ID()] = positionForRecord(page.Records[len(page.Records)-1])
 		}
@@ -268,9 +302,26 @@ func (service *Service) List(
 		}
 	}
 	result.Partial = failed > 0
-	result.Count = int64(len(result.Records))
-	result.CountExact = !result.Partial && !hasMore
+	result.Count = totalCount
+	result.CountExact = !result.Partial && countExact
 	return result, nil
+}
+
+func normalizeLogPage(page int) int {
+	if page <= 0 {
+		return 1
+	}
+	return page
+}
+
+func normalizeLogLimit(limit int) int {
+	if limit <= 0 {
+		return 50
+	}
+	if limit > 200 {
+		return 200
+	}
+	return limit
 }
 
 func mergeCandidates(batches [][]logCandidate, limit int) []logCandidate {
@@ -575,12 +626,16 @@ func positionID(record observabilityvo.LogRecord) string {
 }
 
 func applyLogTimeWindow(query *observabilityvo.LogQuery, watermark time.Time) error {
+	defaultWindow := 24 * time.Hour
+	if query.IsAssociatedDrilldown() {
+		defaultWindow = 7 * 24 * time.Hour
+	}
 	if query.TimeFrom == nil && query.TimeTo == nil {
 		to := watermark
-		from := to.Add(-time.Hour)
+		from := to.Add(-defaultWindow)
 		query.TimeFrom, query.TimeTo = &from, &to
 	} else if query.TimeFrom == nil {
-		from := query.TimeTo.Add(-time.Hour)
+		from := query.TimeTo.Add(-defaultWindow)
 		query.TimeFrom = &from
 	} else if query.TimeTo == nil {
 		to := watermark

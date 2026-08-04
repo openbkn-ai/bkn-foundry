@@ -6,123 +6,30 @@ info:
     Context Loader 把自己的检索能力同时以 **MCP Server** 形式对外：Cursor、Claude
     Desktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。
 
-    工具集共 27 个，分两类。
-
-    **业务工具 16 个**，各自对应本模块的一条 REST 端点：`search_schema`、
+    普通 Agent 默认只使用两个受管生命周期工具：`bkn_start_interaction`、
+    `bkn_finish_interaction`。首轮 start 只提交问题并由服务内部创建 Conversation，
+    首轮可选声明用于展示的 `agent_name`；名称在 Conversation 内固化，后续轮次省略
+    或保持相同值，不允许中途变更。后续轮次复用服务端返回的 `conversation_id`；finish 只提交当前 Interaction 的
+    结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 `search_schema`、
     `query_object_instance`、`query_instance_subgraph`、`get_logic_properties_values`、
     `get_action_info`、`execute_action`、`get_action_execution`、
     `list_action_executions`、`find_skills`、`run_sql`、`list_knowledge_networks`、
     `get_kn_detail`、`get_object_types`、`get_relation_types`、`list_resources`、
-    `describe_resource`。各工具的语义与参数含义见本目录下对应的 REST 文档。
-    REST 面另有 `/kn/semantic-search` 与 `/kn/kn_search` 两条兼容端点没有对应的 MCP
-    工具，因此 `/kn/*` 合计 18 条。
-
-    **业务溯源工具 11 个**，用于管理 BKN Trace 的会话与交互：
-    `bkn_create_conversation`、`bkn_resume_conversation`、`bkn_close_conversation`、
-    `bkn_start_interaction`、`bkn_complete_interaction`、`bkn_fail_interaction`、
-    `bkn_cancel_interaction`、`bkn_handoff_interaction`、`bkn_get_operation`、
-    `bkn_retry_operation`、`bkn_get_receipt`。只有需要业务级溯源的调用方才用得到，
-    见下方「业务溯源上下文」。
+    `describe_resource`。业务工具必须显式携带服务自描述 schema 中的 `bkn_context`，
+    其中只要求权威返回的 `conversation_id` 和 `interaction_id`；Operation key、租约、
+    重试和 closure manifest 由 Context Loader 与 BKN Trace Core 管理；
+    各工具的语义与参数含义见本目录下对应的 REST 文档。
 
     **接入方式**：Streamable HTTP，端点 `/api/agent-retrieval/v1/mcp`，
     协议流程 `initialize` → `tools/list` → `tools/call`（JSON-RPC 2.0）。
     鉴权与 REST 一致：`Authorization: Bearer <token>`，OAuth access token 或
-    `bak_` 前缀的 AppKey，不需要其他头。
-
-    **业务溯源上下文（`bkn_context`）**
-
-    每个业务工具的入参里都有一个可选的 `bkn_context`，声明这次调用属于哪一轮业务
-    对话。它有三个必填子字段，要么同时提供、要么整体省略，不接受只给一部分——
-    缺失的字段只能凭空生成，会让回执声称一条从未发生的因果关系。
-
-    - `conversation_id`：来自 `bkn_create_conversation` 的返回，不可自拟
-    - `interaction_id`：来自 `bkn_start_interaction` 的返回，不可自拟
-    - `operation_key`：调用方自取的字符串，同一次逻辑调用重试时须保持不变，
-      本服务据此做幂等，重发不会重复执行
-
-    **省略时**（Cursor、Claude Code 等通用 MCP 客户端的默认情形）：本服务按当次
-    MCP 连接自动归并——一条连接对应一个会话，连接内的所有调用归入同一次交互。
-    调用直接可用，无需任何额外配置，但证据链只能追溯到「哪条连接」，
-    追溯不到「哪个用户提问」，且该交互不会收口，拿不到 closure manifest。
-
-    自动会话有两处需要知晓的行为，都不需要客户端干预，但会被观察到：
-
-    - **空闲后自动重建**。交互租约为 5 分钟，每次工具调用自动续期。连接空闲超过
-      租约后，本服务在下一次调用时自动开启新交互并重试，该次调用多出三次内部往返，
-      结果照常返回。连续多段空闲同样能恢复，上限为单次调用重建 3 代（最多九次
-      内部往返）。
-
-      有一段例外窗口：租约刚过期时旧交互仍处于 `active`，须等服务端的回收任务
-      （默认每 30 秒一轮）将其置为终态，新交互才开得出来。恰好落在这段窗口的调用
-      会返回 `interaction_terminal` 而非自动恢复。**调用方应对该错误码重试一次**，
-      回收完成后即可继续，无需重连。
-    - **每 128 次调用有一段恢复窗口**。一次交互最多承载 128 个操作。达到上限后，
-      需等待租约自然过期（最长 5 分钟）再由回收任务收走，其间该连接的工具调用先
-      持续返回 `operation_required`，租约过期后转为上一条所述的 `interaction_terminal`
-      直至回收完成。等待期间的重试不会延长这段窗口，恢复后自动继续，无需重连。
-
-    断开重连会分配新的 MCP 会话，因而开启新的业务对话，此前的因果链不再延续。
-    需要跨重连保持同一条证据链的调用方，应自带 `bkn_context`。
-
-    **自带时**（bkn-agent 等持有真实业务会话的调用方）：先用溯源工具建立会话与
-    交互，再把三个字段带进每次业务调用，最后收口。完整序列如下，箭头标出哪些值
-    来自上一步的响应：
-
-    ```
-    1. bkn_create_conversation
-         external_conversation_key: 调用方自取，用于标识「这一轮业务对话」
-       → conversation_id
-
-    2. bkn_start_interaction
-         conversation_id ←── 第 1 步
-         idempotency_key: 调用方自取，重放该值会取回同一次交互
-         question:        本轮用户提问原文
-       → interaction_id, lease_token, lease_epoch
-
-    3. 每一次业务工具调用（可多次，可并发）
-         bkn_context:
-           conversation_id ←── 第 1 步
-           interaction_id  ←── 第 2 步
-           operation_key:  调用方自取，同一次逻辑调用重试须保持不变
-       → 结果 + bkn_receipt
-
-    4. bkn_complete_interaction
-         interaction_id              ←── 第 2 步
-         lease_token, lease_epoch    ←── 第 2 步
-         terminal_idempotency_key:   调用方自取
-         completion_manifest_version: 收口清单版本
-         completion_reason:          收口原因
-         answer:                     本轮回答
-    ```
-
-    第 4 步的 `bkn_fail_interaction` / `bkn_cancel_interaction` /
-    `bkn_handoff_interaction` 参数同上，仅 `answer` 为 `bkn_complete_interaction`
-    独有。一个对话同时只允许一次活跃交互，因此第 2 步必须等上一次交互收口后才能
-    再次调用。
-
-    其余溯源工具用于事后查询与重试：`bkn_resume_conversation`（按 conversation_id
-    恢复活跃对话）、`bkn_get_operation`（查操作状态与是否可重试）、
-    `bkn_retry_operation`（为可重试的失败操作创建下一次尝试）、`bkn_get_receipt`
-    （按 receipt_id 轮询持久化回执，业务调用返回 `receipt_pending` 时用它确认最终
-    结果）、`bkn_close_conversation`（关闭对话，要求其下无活跃交互）。
-
-    各工具入参的完整 JSON Schema 以 `tools/list` 与 `GET /mcp/info` 的返回为准。
-
-    注意 REST 面没有连接的概念、无从归并，因此那 18 条 `/kn/*` 端点的 `bkn_context`
-    仍为**必填**，与 MCP 面不同。字段定义见
-    `_shared/common.yaml#/components/schemas/BKNContext`，各端点文档已引用该定义。
-
-    只用 REST 的调用方，`conversation_id` 与 `interaction_id` 仍须经本模块的 MCP
-    溯源工具取得（上面第 1、2 步），拿到后再带进 REST 请求（第 3 步），收口同样走
-    MCP（第 4 步）。**不要直接调用 BKN Trace Core 的
-    `/api/agent-observability/v1` 会话接口**：那组路由只接受集群内可信服务的网关
-    凭据，不接受本文档 `security` 声明的 OAuth token 或 `bak_` AppKey，外部调用方
-    会拿到 `401 permission_denied`；其请求体字段集也与上面的序列不同。本模块的溯源
-    工具正是代外部调用方持凭据访问 Core 的那一层。
-
-    **多业务域部署**：单业务域安装无需任何额外请求头。若部署时清空了
-    `observability.lifecycle.default_business_domain`，则每次请求都须带
-    `x-business-domain`，否则调用会被拒绝。
+    `bak_` 前缀的 AppKey。宿主适配器可选使用
+    `X-OpenBKN-Host-Conversation-Key` 和 `X-OpenBKN-Client-Invocation-Id`，或对应的
+    `openbkn.ai/host-conversation-key`、`openbkn.ai/client-invocation-id` MCP `_meta`
+    提示会话关联与调用幂等；`client-invocation-id` 可用于 start 和每一次业务工具调用，
+    同一 ID 重试复用原 Interaction 或 Operation / Receipt，不同输入返回幂等冲突。
+    未提供逐调用提示时，跨连接重试退化为 at-least-once。这些提示不参与身份和权限判定，
+    普通 Agent 参数不得提交。
 
     不想先握手就想知道有哪些工具时，直接 `GET /mcp/info`——它返回完整的工具目录
     （含每个工具的输入输出 schema）与一份可直接粘贴的客户端配置。
@@ -204,6 +111,9 @@ paths:
                     arguments:
                       kn_id: kn_medical
                       query: 药品不良反应
+                      bkn_context:
+                        conversation_id: conv_...
+                        interaction_id: int_...
       responses:
         '200':
           description: JSON-RPC 2.0 响应或 SSE 事件流

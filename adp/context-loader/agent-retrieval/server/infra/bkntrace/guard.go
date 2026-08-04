@@ -24,11 +24,12 @@ const (
 )
 
 type BusinessContext struct {
-	ConversationID    string   `json:"conversation_id"`
-	InteractionID     string   `json:"interaction_id"`
-	OperationKey      string   `json:"operation_key"`
-	ParentOperationID string   `json:"parent_operation_id,omitempty"`
-	CausationEventIDs []string `json:"causation_event_ids,omitempty"`
+	ConversationID    string        `json:"conversation_id"`
+	InteractionID     string        `json:"interaction_id"`
+	OperationKey      string        `json:"operation_key"`
+	ParentOperationID string        `json:"parent_operation_id,omitempty"`
+	CausationEventIDs []string      `json:"causation_event_ids,omitempty"`
+	BusinessRefs      []BusinessRef `json:"business_refs,omitempty"`
 }
 
 type GuardIntent struct {
@@ -93,7 +94,13 @@ func (g *Guard) Begin(
 	traceContext.OperationID = result.Operation.OperationID
 	traceContext.ToolName = intent.ToolName
 	traceContext.Attempt = int(result.Operation.Attempt)
-	return withEvidenceOutcome(common.SetTraceContextToCtx(ctx, traceContext)), state, GuardExecute, nil, nil
+	ctx = common.SetTraceContextToCtx(ctx, traceContext)
+	ctx = common.SetAuthoritativeObservedAtIfMissing(ctx, result.Operation.CreatedAt)
+	trustedRefs := append([]BusinessRef(nil), intent.Context.BusinessRefs...)
+	for index := range trustedRefs {
+		trustedRefs[index].BusinessDomainID = traceContext.BusinessDomain
+	}
+	return withDeclaredBusinessRefs(withEvidenceOutcome(ctx), trustedRefs), state, GuardExecute, nil, nil
 }
 
 func ensureFinishCorrelation(ctx context.Context) (context.Context, error) {
@@ -140,10 +147,14 @@ func (g *Guard) Finish(
 		TraceID:     spanContext.TraceID().String(),
 		Retryable:   retryable,
 	}
+	// Declared references are part of the caller's governed operation context,
+	// not a by-product of evidence delivery. Keep them in the receipt even while
+	// observed evidence is still awaiting a durable acknowledgement.
+	input.BusinessRefs = declaredBusinessRefsFromContext(ctx)
 	if durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx); durable {
 		input.EvidenceDurability = "durable"
 		input.ObservedEvidenceRefs = evidenceRefs
-		input.BusinessRefs = businessRefs
+		input.BusinessRefs = mergeBusinessRefs(input.BusinessRefs, businessRefs)
 	}
 	finishContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer cancel()
@@ -204,6 +215,22 @@ func (g *Guard) Finish(
 		Code: "receipt_pending", Message: "operation receipt finalization is not yet confirmed",
 		Retryable: true, RequiredAction: "poll_receipt",
 	}, nil
+}
+
+func mergeBusinessRefs(preferred, observed []BusinessRef) []BusinessRef {
+	merged := make([]BusinessRef, 0, len(preferred)+len(observed))
+	seen := make(map[string]struct{}, len(preferred)+len(observed))
+	for _, refs := range [][]BusinessRef{preferred, observed} {
+		for _, ref := range refs {
+			key := ref.RefType + "\x00" + ref.RefID
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, ref)
+		}
+	}
+	return merged
 }
 
 func (g *Guard) emitFinalizedOutcome(ctx context.Context, failed bool) {

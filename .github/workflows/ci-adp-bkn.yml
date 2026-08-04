@@ -1,8 +1,6 @@
 name: ci-adp-bkn
 
-# Compile gate for PRs touching adp/bkn. Build-only for now (unit tests assume
-# a working dir / locale paths and fatal-exit under a plain `go test ./...`).
-# Add `go test` once the test harness is CI-ready.
+# Compile and unit-test gate for PRs touching adp/bkn.
 
 on:
   pull_request:
@@ -26,6 +24,10 @@ jobs:
         with:
           go-version-file: adp/bkn/bkn-backend/server/go.mod
       - run: go build ./...
+      - name: Run BKN backend unit tests
+        env:
+          I18N_MODE_UT: "true"
+        run: go test -count=1 -gcflags="all=-l" ./...
 
   ontology-query:
     runs-on: ubuntu-latest

@@ -13,6 +13,7 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 	schema := sessionstore.SchemaSQL()
 	required := []string{
 		"bkn_trace_conversations",
+		"agent_name VARCHAR(128)",
 		"uq_bkn_trace_conversation_generation",
 		"uq_bkn_trace_conversation_current",
 		"bkn_trace_interactions",

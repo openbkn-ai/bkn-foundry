@@ -66,6 +66,7 @@ type LogQuery struct {
 	SpanID           string
 	FailedOnly       bool
 	Limit            int
+	Page             int
 	Cursor           string
 	ScopeFingerprint string
 
@@ -124,6 +125,8 @@ type SourceStatus struct {
 type ListResult struct {
 	Records      []LogRecord
 	NextCursor   string
+	Page         int
+	PageSize     int
 	Partial      bool
 	Count        int64
 	CountExact   bool

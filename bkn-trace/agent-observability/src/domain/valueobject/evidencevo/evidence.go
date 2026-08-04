@@ -443,6 +443,7 @@ type EvidenceQueryResult struct {
 type EvidenceChainResponse struct {
 	TraceID           string            `json:"trace_id"`
 	RequestID         string            `json:"bkn.request.id"`
+	ConclusionScope   string            `json:"conclusion_scope"`
 	Partial           bool              `json:"partial"`
 	PartialReasons    []string          `json:"partial_reason"`
 	VisibilitySummary VisibilitySummary `json:"visibility_summary"`
@@ -486,6 +487,7 @@ type ArtifactLink struct {
 type BusinessGraphResponse struct {
 	TraceID           string            `json:"trace_id"`
 	RequestID         string            `json:"bkn.request.id"`
+	ConclusionScope   string            `json:"conclusion_scope"`
 	Partial           bool              `json:"partial"`
 	PartialReasons    []string          `json:"partial_reason"`
 	VisibilitySummary VisibilitySummary `json:"visibility_summary"`

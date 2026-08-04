@@ -23,7 +23,6 @@ func TestReleaseGateIgnoresTheEnvironment(t *testing.T) {
 	// Left unset it would fire a real 10s-timeout request at their cluster, and
 	// pass or fail depending on whether that bkn-safe happens to hold a licence.
 	t.Setenv("BKN_SAFE_URL", "")
-	t.Setenv("BKN_SAFE_APPKEY", "")
 
 	snap := DefaultGate().Snapshot()
 	if snap.Licensed || snap.Edition != licverify.EditionCommunity {
@@ -32,11 +31,10 @@ func TestReleaseGateIgnoresTheEnvironment(t *testing.T) {
 }
 
 func TestReleaseGateWithoutAHubIsCommunity(t *testing.T) {
-	// A community deployment sets neither variable. That is a legitimate
+	// A community deployment does not set the variable. That is a legitimate
 	// steady state, not a misconfiguration: the process must start and behave
 	// as community rather than refuse to boot.
 	t.Setenv("BKN_SAFE_URL", "")
-	t.Setenv("BKN_SAFE_APPKEY", "")
 
 	g, run := GateWithRunner()
 	if run != nil {

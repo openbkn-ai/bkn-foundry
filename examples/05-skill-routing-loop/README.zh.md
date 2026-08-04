@@ -90,22 +90,20 @@ pip install -r tool_backend/requirements.txt
 `http://127.0.0.1:8765` 只保证本机验收器可访问；平台沙箱里的
 `127.0.0.1` 不是你的笔记本。
 
-## Bonus — 改业务 → KN 重建 → 路由跟着变
+## Bonus — 改业务数据 → 路由跟着变
 
 `./run.sh --bonus` 会调 mock 业务系统的 admin 端点，把 MAT-002 的绑定 Skill
 从 `supplier_expedite` 改成新注册的 `standard_replenish` Skill ID（直接 UPDATE
 `materials.bound_skill_id`，由 `applicable_skill` 的 direct-mapping FK 决定边），
-然后触发一次 `openbkn bkn build` 刷新底层 Vega 资源快照，再重新路由 MAT-002。
-下一次 `find_skills` 拿到的就是新候选集，路由自动切到 `standard_replenish`——
-**没改 prompt、没重新部署任何服务**。
+随后重新路由 MAT-002。下一次 `find_skills` 拿到的就是新候选集，路由自动切到
+`standard_replenish`——**没改 prompt、没重新部署任何服务**。
 
-> **为什么需要重建——以及为什么这不是平台限制：** 这个 example 用的是 Vega 的
-> **batch 模式** dataview，图查询读的是 build 时拍下的资源快照。像
-> `applicable_skill` 这样的 direct-mapping 关系在每次查询时实时计算——但底下
-> 的数据是快照，MySQL UPDATE 要到下一次 build 才会反映出来。Vega 也支持
-> **streaming 模式** 资源（基于 Debezium CDC + Kafka），业务变更秒级生效、
-> 无需手工 rebuild——那才是生产路径。这里用 batch 是为了让 demo 只靠一个
-> MySQL 跑通，不引 Kafka / Debezium / 额外基础设施依赖。
+> **为什么不需要重建：** 这里所有对象类都绑定 Vega **资源**，且本示例不给这些资源建本地
+> 索引，因此本体查询每次都读源库当前数据，MySQL 的 UPDATE 对下一次 `find_skills` 立即可见。
+> 知识网络层面也没有可执行的构建，该接口已下线。
+>
+> 反过来也要注意：一旦给资源建了索引（`openbkn vega dataset build`，示例 01/02 就是这么做的），
+> 该资源的读取会切到构建快照。在本示例里这么做恰好会破坏这一幕——改绑要等到下次重建才可见。
 
 ## 原理细节
 
