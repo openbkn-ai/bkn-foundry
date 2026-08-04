@@ -36,6 +36,9 @@ DB_HOST_SEED="${DB_HOST_SEED:-$DB_HOST}"
 DO_INDEX="${DO_INDEX:-1}"
 EMBEDDING_MODEL_NAME="${EMBEDDING_MODEL_NAME-text-embedding-v4}"
 INDEX_TIMEOUT="${INDEX_TIMEOUT:-300}"
+# Filled in by Step 4; Step 6 reports the read path from what actually built.
+INDEX_OK=0
+INDEX_FAIL=0
 debug() { if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then echo "[debug] $*" >&2; fi; }
 
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
@@ -214,9 +217,11 @@ build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields>
         echo "  $label: index build failed" >&2
         sed 's/^/    /' "$err" >&2
         rm -f "$err"
+        INDEX_FAIL=$((INDEX_FAIL + 1))
         return 0
     fi
     rm -f "$err"
+    INDEX_OK=$((INDEX_OK + 1))
     printf '%s' "$out" | python3 -c "import json,sys
 d=json.load(sys.stdin)
 h=d.get('index_health') or {}
@@ -263,8 +268,14 @@ for e in es: print('    -', e.get('name','?'), e.get('id',''))" 2>/dev/null || t
 
 # ── Step 6: Query instances (via Vega) ───────────────────────────────────────
 echo ""
-if [ "$DO_INDEX" = "1" ]; then
+# Report the path the data actually takes, not the one Step 4 intended: a
+# resource whose build failed still reads live.
+if [ "$INDEX_OK" -gt 0 ] && [ "$INDEX_FAIL" -eq 0 ]; then
     echo "=== Step 6: Query instances (served from the Step 4 index snapshot) ==="
+    echo "  Source-database updates appear here only after the resource is rebuilt."
+elif [ "$INDEX_OK" -gt 0 ]; then
+    echo "=== Step 6: Query instances (mixed read paths) ==="
+    echo "  $INDEX_OK resource(s) serve the Step 4 snapshot; $INDEX_FAIL failed to build and still read live."
 else
     echo "=== Step 6: Query instances (live from the source database) ==="
 fi

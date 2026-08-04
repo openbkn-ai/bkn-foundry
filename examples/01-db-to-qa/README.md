@@ -58,8 +58,10 @@ MySQL Database
 > `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
 >
 > Note: the built index is not yet visible to the knowledge network's semantic layer.
-> Object-type properties do not advertise `match` / `knn` operations, so `bkn search`
-> stays at schema-level concept matching — see the PR notes on `f_index_available`.
+> An object type only advertises `match` / `knn` operations once its `index_available`
+> flag is set, and no code path sets it today — so `bkn search` stays at schema-level
+> concept matching no matter how the resource index turns out. The index is still what
+> Vega itself queries; this only limits KN-level semantic retrieval.
 
 ## Prerequisites
 
