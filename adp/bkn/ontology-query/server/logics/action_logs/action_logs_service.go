@@ -242,7 +242,13 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		})
 	}
 
-	if query.Status != "" {
+	if len(query.Statuses) > 0 {
+		mustConditions = append(mustConditions, map[string]any{
+			"terms": map[string]any{
+				"status": query.Statuses,
+			},
+		})
+	} else if query.Status != "" {
 		mustConditions = append(mustConditions, map[string]any{
 			"term": map[string]any{
 				"status": query.Status,
@@ -254,6 +260,14 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		mustConditions = append(mustConditions, map[string]any{
 			"term": map[string]any{
 				"trigger_type": query.TriggerType,
+			},
+		})
+	}
+
+	if query.InstanceIdentityHash != "" {
+		mustConditions = append(mustConditions, map[string]any{
+			"term": map[string]any{
+				"instance_identity_hash": query.InstanceIdentityHash,
 			},
 		})
 	}
@@ -391,13 +405,14 @@ func (s *actionLogsService) ensureIndexExists(ctx context.Context, indexName str
 						"name": map[string]any{"type": "keyword"},
 					},
 				},
-				"start_time":           map[string]any{"type": "long"},
-				"end_time":             map[string]any{"type": "long"},
-				"duration_ms":          map[string]any{"type": "long"},
-				"results":              map[string]any{"type": "nested"},
-				"dynamic_params":       map[string]any{"type": "object", "enabled": false},
-				"action_source":        map[string]any{"type": "object", "enabled": false},
-				"action_type_snapshot": map[string]any{"type": "object", "enabled": false},
+				"start_time":             map[string]any{"type": "long"},
+				"end_time":               map[string]any{"type": "long"},
+				"duration_ms":            map[string]any{"type": "long"},
+				"instance_identity_hash": map[string]any{"type": "keyword"},
+				"results":                map[string]any{"type": "nested"},
+				"dynamic_params":         map[string]any{"type": "object", "enabled": false},
+				"action_source":          map[string]any{"type": "object", "enabled": false},
+				"action_type_snapshot":   map[string]any{"type": "object", "enabled": false},
 			},
 		},
 	}

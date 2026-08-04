@@ -68,13 +68,16 @@ type actionSchedulerService struct {
 // NewActionSchedulerService creates a singleton instance of ActionSchedulerService
 func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionSchedulerService {
 	assOnce.Do(func() {
-		assService = &actionSchedulerService{
+		svc := &actionSchedulerService{
 			appSetting:  appSetting,
 			omAccess:    logics.OMA,
 			aoAccess:    logics.AOA,
 			logsService: action_logs.NewActionLogsService(appSetting),
 			ots:         object_type.NewObjectTypeService(appSetting),
 		}
+		// Default duplicate strategy: reject same kn + action type + instance set while in-flight within the window.
+		svc.duplicateCheckHook = svc.defaultDuplicateCheck
+		assService = svc
 	})
 	return assService
 }
@@ -150,15 +153,30 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		}
 	}
 
-	// Reserved: Duplicate check hook
+	instanceHash, err := computeInstanceIdentityHash(req.Instances)
+	if err != nil {
+		logger.Errorf("Failed to compute instance identity hash: %v", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
+			WithErrorDetails(fmt.Sprintf("failed to compute instance identity hash: %v", err))
+	}
+	req.InstanceIdentityHash = instanceHash
+
+	// Duplicate check hook (default: reject in-flight same kn + action type + instance set)
 	if s.duplicateCheckHook != nil {
-		proceed, err := s.duplicateCheckHook(ctx, req)
-		if err != nil {
-			return nil, err
+		proceed, dupErr := s.duplicateCheckHook(ctx, req)
+		if dupErr != nil {
+			if httpErr, ok := dupErr.(*rest.HTTPError); ok {
+				return nil, httpErr
+			}
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_QueryExecutionsFailed).
+				WithErrorDetails(dupErr.Error())
 		}
 		if !proceed {
 			return nil, rest.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_DuplicateExecution).
-				WithErrorDetails("Duplicate execution detected")
+				WithErrorDetails(fmt.Sprintf(
+					"Duplicate execution detected for action_type_id=%s within %ds window",
+					req.ActionTypeID, duplicateWindowSeconds,
+				))
 		}
 	}
 
@@ -175,24 +193,25 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	// Create execution record with metadata only (no Results to save space)
 	// Results will be stored incrementally during execution
 	execution := &interfaces.ActionExecution{
-		ID:                 executionID,
-		KNID:               req.KNID,
-		ActionTypeID:       actionType.ATID,
-		ActionTypeName:     actionType.ATName,
-		ActionSourceType:   actionType.ActionSource.Type,
-		ActionSource:       actionType.ActionSource,
-		ObjectTypeID:       actionType.ObjectTypeID,
-		TriggerType:        triggerType,
-		Status:             interfaces.ExecutionStatusPending,
-		TotalCount:         len(req.Instances),
-		SuccessCount:       0,
-		FailedCount:        0,
-		Results:            []interfaces.ObjectExecutionResult{}, // Empty initially to save space
-		DynamicParams:      req.DynamicParams,
-		ExecutorID:         executor.ID, // deprecated, kept for backward compatibility
-		Executor:           executor,    // full executor info
-		StartTime:          now,
-		ActionTypeSnapshot: actionTypeSnapshot, // 保存执行时的行动类配置快照
+		ID:                   executionID,
+		KNID:                 req.KNID,
+		ActionTypeID:         actionType.ATID,
+		ActionTypeName:       actionType.ATName,
+		ActionSourceType:     actionType.ActionSource.Type,
+		ActionSource:         actionType.ActionSource,
+		ObjectTypeID:         actionType.ObjectTypeID,
+		TriggerType:          triggerType,
+		Status:               interfaces.ExecutionStatusPending,
+		TotalCount:           len(req.Instances),
+		SuccessCount:         0,
+		FailedCount:          0,
+		Results:              []interfaces.ObjectExecutionResult{}, // Empty initially to save space
+		DynamicParams:        req.DynamicParams,
+		ExecutorID:           executor.ID, // deprecated, kept for backward compatibility
+		Executor:             executor,    // full executor info
+		StartTime:            now,
+		ActionTypeSnapshot:   actionTypeSnapshot, // 保存执行时的行动类配置快照
+		InstanceIdentityHash: instanceHash,
 	}
 
 	// Save initial execution record (metadata only)

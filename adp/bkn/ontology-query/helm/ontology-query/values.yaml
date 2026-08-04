@@ -6,6 +6,8 @@ env:
   timezone: Asia/Shanghai
   language: en_US.UTF-8
   actionExecutionMaxObjects: 10000  # Maximum objects allowed in a single action execution
+  # Reject duplicate in-flight executes for the same kn + action type + instance set within this window (seconds). 0 disables.
+  actionExecutionDuplicateWindowSeconds: 60
 
 replicaCount: 1
 

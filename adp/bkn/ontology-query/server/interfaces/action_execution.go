@@ -47,6 +47,8 @@ type ActionExecutionRequest struct {
 
 	Instances []ObjectSystemInfo `json:"-"`
 	ObjDatas  []map[string]any   `json:"-"`
+	// InstanceIdentityHash is a stable fingerprint of resolved Instances (set by scheduler before duplicate check).
+	InstanceIdentityHash string `json:"-"`
 }
 
 // ActionExecutionResponse represents the immediate response after submitting execution
@@ -78,10 +80,11 @@ type ActionExecution struct {
 	DynamicParams      map[string]any          `json:"dynamic_params,omitempty"`
 	ExecutorID         string                  `json:"executor_id"`                    // user ID who triggered (deprecated, use Executor instead)
 	Executor           AccountInfo             `json:"executor"`                       // user info who triggered the execution
-	StartTime          int64                   `json:"start_time"`                     // execution start time (Unix milliseconds)
-	EndTime            int64                   `json:"end_time,omitempty"`             // execution end time (Unix milliseconds)
-	DurationMs         int64                   `json:"duration_ms,omitempty"`          // execution duration in milliseconds
-	ActionTypeSnapshot map[string]any          `json:"action_type_snapshot,omitempty"` // 执行时的行动类配置快照（与 manager 返回一致）
+	StartTime            int64                   `json:"start_time"`                       // execution start time (Unix milliseconds)
+	EndTime              int64                   `json:"end_time,omitempty"`               // execution end time (Unix milliseconds)
+	DurationMs           int64                   `json:"duration_ms,omitempty"`            // execution duration in milliseconds
+	ActionTypeSnapshot   map[string]any          `json:"action_type_snapshot,omitempty"`   // 执行时的行动类配置快照（与 manager 返回一致）
+	InstanceIdentityHash string                  `json:"instance_identity_hash,omitempty"` // fingerprint of target instances for duplicate detection
 }
 
 // ObjectExecutionResult represents execution result for a single object
@@ -98,18 +101,20 @@ type ObjectExecutionResult struct {
 
 // ActionLogQuery represents query parameters for execution logs (supports both GET query params and JSON body)
 type ActionLogQuery struct {
-	KNID           string  `json:"-" form:"-"`
-	ActionTypeID   string  `json:"action_type_id,omitempty" form:"action_type_id"`
-	Status         string  `json:"status,omitempty" form:"status"`
-	TriggerType    string  `json:"trigger_type,omitempty" form:"trigger_type"`
-	StartTimeRange []int64 `json:"start_time_range,omitempty"` // [start, end] for JSON body
-	StartTimeFrom  int64   `json:"-" form:"start_time_from"`   // for GET query params
-	StartTimeTo    int64   `json:"-" form:"start_time_to"`     // for GET query params
-	Offset         int     `json:"offset,omitempty" form:"offset"`
-	Limit          int     `json:"limit,omitempty" form:"limit"`
-	NeedTotal      bool    `json:"need_total,omitempty" form:"need_total"`
-	SearchAfter    []any   `json:"search_after,omitempty"`
-	SearchAfterStr string  `json:"-" form:"search_after"` // comma-separated string for GET query params
+	KNID                 string   `json:"-" form:"-"`
+	ActionTypeID         string   `json:"action_type_id,omitempty" form:"action_type_id"`
+	Status               string   `json:"status,omitempty" form:"status"`
+	Statuses             []string `json:"statuses,omitempty"` // when set, OR-match any status (takes precedence over Status)
+	TriggerType          string   `json:"trigger_type,omitempty" form:"trigger_type"`
+	InstanceIdentityHash string   `json:"instance_identity_hash,omitempty"` // exact match on instance fingerprint
+	StartTimeRange       []int64  `json:"start_time_range,omitempty"`      // [start, end] for JSON body
+	StartTimeFrom        int64    `json:"-" form:"start_time_from"`         // for GET query params
+	StartTimeTo          int64    `json:"-" form:"start_time_to"`           // for GET query params
+	Offset               int      `json:"offset,omitempty" form:"offset"`
+	Limit                int      `json:"limit,omitempty" form:"limit"`
+	NeedTotal            bool     `json:"need_total,omitempty" form:"need_total"`
+	SearchAfter          []any    `json:"search_after,omitempty"`
+	SearchAfterStr       string   `json:"-" form:"search_after"` // comma-separated string for GET query params
 }
 
 // ActionLogDetailQuery represents query parameters for single execution log detail
