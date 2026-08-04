@@ -17,48 +17,60 @@ type ActionSummary struct {
 }
 
 type RequestSummary struct {
-	RequestID            string        `json:"request_id"`
-	OperationID          string        `json:"operation_id,omitempty"`
-	OperationKey         string        `json:"operation_key,omitempty"`
-	ToolName             string        `json:"tool_name,omitempty"`
-	ConversationID       string        `json:"conversation_id,omitempty"`
-	InteractionID        string        `json:"interaction_id,omitempty"`
-	StartedAt            string        `json:"started_at,omitempty"`
-	CompletedAt          string        `json:"completed_at,omitempty"`
-	Initiator            string        `json:"initiator,omitempty"`
-	AgentOrApp           string        `json:"agent_or_app,omitempty"`
-	BusinessDomain       string        `json:"business_domain,omitempty"`
-	KnowledgeNetworks    []string      `json:"knowledge_networks,omitempty"`
-	QuestionPreview      string        `json:"question_preview,omitempty"`
-	ResultPreview        string        `json:"result_preview,omitempty"`
-	Status               string        `json:"status"`
-	EvidenceCompleteness string        `json:"evidence_completeness"`
-	PartialReasons       []string      `json:"partial_reasons,omitempty"`
-	BusinessRefs         []string      `json:"business_refs,omitempty"`
-	ActionSummary        ActionSummary `json:"action_summary"`
-	TraceCount           int           `json:"trace_count"`
-	DurationMS           int64         `json:"duration_ms,omitempty"`
-	ErrorSummary         string        `json:"error_summary,omitempty"`
+	RequestID              string        `json:"request_id"`
+	OperationID            string        `json:"operation_id,omitempty"`
+	OperationKey           string        `json:"operation_key,omitempty"`
+	ToolName               string        `json:"tool_name,omitempty"`
+	ControlledSummary      string        `json:"controlled_summary,omitempty"`
+	ConversationID         string        `json:"conversation_id,omitempty"`
+	InteractionID          string        `json:"interaction_id,omitempty"`
+	StartedAt              string        `json:"started_at,omitempty"`
+	CompletedAt            string        `json:"completed_at,omitempty"`
+	Initiator              string        `json:"initiator,omitempty"`
+	AgentOrApp             string        `json:"agent_or_app,omitempty"`
+	AgentName              string        `json:"agent_name,omitempty"`
+	ApplicationPrincipalID string        `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID     string        `json:"effective_subject_id,omitempty"`
+	BusinessDomain         string        `json:"business_domain,omitempty"`
+	KnowledgeNetworks      []string      `json:"knowledge_networks,omitempty"`
+	QuestionPreview        string        `json:"question_preview,omitempty"`
+	ResultPreview          string        `json:"result_preview,omitempty"`
+	ResultCount            *int          `json:"result_count,omitempty"`
+	Status                 string        `json:"status"`
+	EvidenceCompleteness   string        `json:"evidence_completeness"`
+	PartialReasons         []string      `json:"partial_reasons,omitempty"`
+	BusinessRefs           []string      `json:"business_refs,omitempty"`
+	ActionSummary          ActionSummary `json:"action_summary"`
+	TraceCount             int           `json:"trace_count"`
+	DurationMS             int64         `json:"duration_ms,omitempty"`
+	ErrorSummary           string        `json:"error_summary,omitempty"`
+	InteractionQuestion    string        `json:"-"`
+	InteractionResult      string        `json:"-"`
 }
 
 type TraceSummary struct {
-	TraceID        string `json:"trace_id"`
-	RequestID      string `json:"request_id"`
-	ConversationID string `json:"conversation_id,omitempty"`
-	InteractionID  string `json:"interaction_id,omitempty"`
-	StartedAt      string `json:"started_at,omitempty"`
-	CompletedAt    string `json:"completed_at,omitempty"`
-	AgentOrApp     string `json:"agent_or_app,omitempty"`
-	BusinessDomain string `json:"business_domain,omitempty"`
-	RootOperation  string `json:"root_operation,omitempty"`
-	Status         string `json:"status"`
-	SpanCount      int    `json:"span_count"`
-	DurationMS     int64  `json:"duration_ms,omitempty"`
-	ErrorSummary   string `json:"error_summary,omitempty"`
+	TraceID                string `json:"trace_id"`
+	RequestID              string `json:"request_id"`
+	ConversationID         string `json:"conversation_id,omitempty"`
+	InteractionID          string `json:"interaction_id,omitempty"`
+	StartedAt              string `json:"started_at,omitempty"`
+	CompletedAt            string `json:"completed_at,omitempty"`
+	AgentOrApp             string `json:"agent_or_app,omitempty"`
+	AgentName              string `json:"agent_name,omitempty"`
+	ApplicationPrincipalID string `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID     string `json:"effective_subject_id,omitempty"`
+	BusinessDomain         string `json:"business_domain,omitempty"`
+	RootOperation          string `json:"root_operation,omitempty"`
+	Status                 string `json:"status"`
+	SpanCount              int    `json:"span_count"`
+	SpanCountStatus        string `json:"span_count_status"`
+	DurationMS             int64  `json:"duration_ms,omitempty"`
+	ErrorSummary           string `json:"error_summary,omitempty"`
 }
 
 type SummaryQueryOptions struct {
 	Limit                int
+	Page                 int
 	Cursor               string
 	TraceID              string
 	ConversationID       string
@@ -77,6 +89,8 @@ type SummaryQueryOptions struct {
 type RequestSummaryPage struct {
 	Entries        []RequestSummary `json:"entries"`
 	Total          int              `json:"total"`
+	Page           int              `json:"page"`
+	PageSize       int              `json:"page_size"`
 	NextCursor     *string          `json:"next_cursor"`
 	Truncated      bool             `json:"truncated"`
 	Partial        bool             `json:"partial"`
@@ -86,6 +100,8 @@ type RequestSummaryPage struct {
 type TraceSummaryPage struct {
 	Entries        []TraceSummary `json:"entries"`
 	Total          int            `json:"total"`
+	Page           int            `json:"page"`
+	PageSize       int            `json:"page_size"`
 	NextCursor     *string        `json:"next_cursor"`
 	Truncated      bool           `json:"truncated"`
 	Partial        bool           `json:"partial"`
@@ -93,48 +109,56 @@ type TraceSummaryPage struct {
 }
 
 type ConversationSummary struct {
-	ConversationID       string   `json:"conversation_id"`
-	StartedAt            string   `json:"started_at,omitempty"`
-	CompletedAt          string   `json:"completed_at,omitempty"`
-	Initiator            string   `json:"initiator,omitempty"`
-	AgentOrApp           string   `json:"agent_or_app,omitempty"`
-	BusinessDomain       string   `json:"business_domain,omitempty"`
-	KnowledgeNetworks    []string `json:"knowledge_networks,omitempty"`
-	QuestionPreview      string   `json:"question_preview,omitempty"`
-	ResultPreview        string   `json:"result_preview,omitempty"`
-	Status               string   `json:"status"`
-	EvidenceCompleteness string   `json:"evidence_completeness"`
-	PartialReasons       []string `json:"partial_reasons,omitempty"`
-	InteractionCount     int      `json:"interaction_count"`
-	RequestCount         int      `json:"request_count"`
-	TraceCount           int      `json:"trace_count"`
-	DurationMS           int64    `json:"duration_ms,omitempty"`
-	ErrorSummary         string   `json:"error_summary,omitempty"`
+	ConversationID         string   `json:"conversation_id"`
+	StartedAt              string   `json:"started_at,omitempty"`
+	CompletedAt            string   `json:"completed_at,omitempty"`
+	Initiator              string   `json:"initiator,omitempty"`
+	AgentOrApp             string   `json:"agent_or_app,omitempty"`
+	AgentName              string   `json:"agent_name,omitempty"`
+	ApplicationPrincipalID string   `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID     string   `json:"effective_subject_id,omitempty"`
+	BusinessDomain         string   `json:"business_domain,omitempty"`
+	KnowledgeNetworks      []string `json:"knowledge_networks,omitempty"`
+	QuestionPreview        string   `json:"question_preview,omitempty"`
+	ResultPreview          string   `json:"result_preview,omitempty"`
+	Status                 string   `json:"status"`
+	EvidenceCompleteness   string   `json:"evidence_completeness"`
+	PartialReasons         []string `json:"partial_reasons,omitempty"`
+	InteractionCount       int      `json:"interaction_count"`
+	RequestCount           int      `json:"request_count"`
+	TraceCount             int      `json:"trace_count"`
+	DurationMS             int64    `json:"duration_ms,omitempty"`
+	ErrorSummary           string   `json:"error_summary,omitempty"`
 }
 
 type InteractionListSummary struct {
-	InteractionID        string   `json:"interaction_id"`
-	ConversationID       string   `json:"conversation_id,omitempty"`
-	StartedAt            string   `json:"started_at,omitempty"`
-	CompletedAt          string   `json:"completed_at,omitempty"`
-	Initiator            string   `json:"initiator,omitempty"`
-	AgentOrApp           string   `json:"agent_or_app,omitempty"`
-	BusinessDomain       string   `json:"business_domain,omitempty"`
-	KnowledgeNetworks    []string `json:"knowledge_networks,omitempty"`
-	QuestionPreview      string   `json:"question_preview,omitempty"`
-	ResultPreview        string   `json:"result_preview,omitempty"`
-	Status               string   `json:"status"`
-	EvidenceCompleteness string   `json:"evidence_completeness"`
-	PartialReasons       []string `json:"partial_reasons,omitempty"`
-	RequestCount         int      `json:"request_count"`
-	TraceCount           int      `json:"trace_count"`
-	DurationMS           int64    `json:"duration_ms,omitempty"`
-	ErrorSummary         string   `json:"error_summary,omitempty"`
+	InteractionID          string   `json:"interaction_id"`
+	ConversationID         string   `json:"conversation_id,omitempty"`
+	StartedAt              string   `json:"started_at,omitempty"`
+	CompletedAt            string   `json:"completed_at,omitempty"`
+	Initiator              string   `json:"initiator,omitempty"`
+	AgentOrApp             string   `json:"agent_or_app,omitempty"`
+	AgentName              string   `json:"agent_name,omitempty"`
+	ApplicationPrincipalID string   `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID     string   `json:"effective_subject_id,omitempty"`
+	BusinessDomain         string   `json:"business_domain,omitempty"`
+	KnowledgeNetworks      []string `json:"knowledge_networks,omitempty"`
+	QuestionPreview        string   `json:"question_preview,omitempty"`
+	ResultPreview          string   `json:"result_preview,omitempty"`
+	Status                 string   `json:"status"`
+	EvidenceCompleteness   string   `json:"evidence_completeness"`
+	PartialReasons         []string `json:"partial_reasons,omitempty"`
+	RequestCount           int      `json:"request_count"`
+	TraceCount             int      `json:"trace_count"`
+	DurationMS             int64    `json:"duration_ms,omitempty"`
+	ErrorSummary           string   `json:"error_summary,omitempty"`
 }
 
 type ConversationSummaryPage struct {
 	Entries        []ConversationSummary `json:"entries"`
 	Total          int                   `json:"total"`
+	Page           int                   `json:"page"`
+	PageSize       int                   `json:"page_size"`
 	NextCursor     *string               `json:"next_cursor"`
 	Truncated      bool                  `json:"truncated"`
 	Partial        bool                  `json:"partial"`
@@ -144,6 +168,8 @@ type ConversationSummaryPage struct {
 type InteractionSummaryPage struct {
 	Entries        []InteractionListSummary `json:"entries"`
 	Total          int                      `json:"total"`
+	Page           int                      `json:"page"`
+	PageSize       int                      `json:"page_size"`
 	NextCursor     *string                  `json:"next_cursor"`
 	Truncated      bool                     `json:"truncated"`
 	Partial        bool                     `json:"partial"`
@@ -151,14 +177,22 @@ type InteractionSummaryPage struct {
 }
 
 type InteractionSummary struct {
-	InteractionID  string           `json:"interaction_id"`
-	ConversationID string           `json:"conversation_id,omitempty"`
-	StartedAt      string           `json:"started_at,omitempty"`
-	CompletedAt    string           `json:"completed_at,omitempty"`
-	Status         string           `json:"status"`
-	DurationMS     int64            `json:"duration_ms,omitempty"`
-	Requests       []RequestSummary `json:"requests"`
-	Traces         []TraceSummary   `json:"traces"`
+	InteractionID          string           `json:"interaction_id"`
+	ConversationID         string           `json:"conversation_id,omitempty"`
+	AgentName              string           `json:"agent_name,omitempty"`
+	ApplicationPrincipalID string           `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID     string           `json:"effective_subject_id,omitempty"`
+	StartedAt              string           `json:"started_at,omitempty"`
+	CompletedAt            string           `json:"completed_at,omitempty"`
+	QuestionPreview        string           `json:"question_preview,omitempty"`
+	ResultPreview          string           `json:"result_preview,omitempty"`
+	Status                 string           `json:"status"`
+	EvidenceCompleteness   string           `json:"evidence_completeness"`
+	PartialReasons         []string         `json:"partial_reasons,omitempty"`
+	ErrorSummary           string           `json:"error_summary,omitempty"`
+	DurationMS             int64            `json:"duration_ms,omitempty"`
+	Requests               []RequestSummary `json:"requests"`
+	Traces                 []TraceSummary   `json:"traces"`
 }
 
 func BuildExecutionSummaries(traces []NormalizedTrace, artifacts []EvidenceArtifact) ([]RequestSummary, []TraceSummary) {
@@ -248,6 +282,12 @@ func buildRequestSummary(
 	hasTerminalFact := false
 	hasError := false
 	hasRunning := false
+	hasDurableReceipt := false
+	receiptPartialReasons := map[string]struct{}{}
+	rootOperationID := ""
+	rootOperationKey := ""
+	rootToolName := ""
+	var rootResultCount *int
 	traceSummaries := make([]TraceSummary, 0, len(traces))
 	for _, trace := range traces {
 		traceSummary := buildTraceSummary(trace, artifactsForTrace(trace.TraceID, artifacts))
@@ -257,6 +297,8 @@ func buildRequestSummary(
 		mergeStableIdentity(&summary.InteractionID, traceSummary.InteractionID)
 		firstNonEmpty(&summary.BusinessDomain, trace.BusinessDomain)
 		firstNonEmpty(&summary.AgentOrApp, traceSummary.AgentOrApp)
+		firstNonEmpty(&summary.ApplicationPrincipalID, traceSummary.ApplicationPrincipalID)
+		firstNonEmpty(&summary.EffectiveSubjectID, traceSummary.EffectiveSubjectID)
 		mergeStarted(&started, traceSummary.StartedAt)
 		switch traceSummary.Status {
 		case "error":
@@ -274,6 +316,17 @@ func buildRequestSummary(
 			allTracesTerminal = false
 		}
 		for _, event := range trace.Events {
+			if strings.HasPrefix(event.EventID, "receipt:") {
+				durability, _ := summaryStringField(event.Payload, "evidence_durability")
+				if durability == "durable" {
+					hasDurableReceipt = true
+				} else if durability == "failed" {
+					receiptPartialReasons["evidence_durability_failed"] = struct{}{}
+				}
+				for _, reason := range summaryStringValues(event.Payload["partial_reasons"]) {
+					receiptPartialReasons[reason] = struct{}{}
+				}
+			}
 			mergeStableIdentity(&summary.OperationID, event.OperationID)
 			if event.OperationID != "" || event.EventType == "retrieval.completed" {
 				mergeStableIdentity(&summary.ToolName, event.OperationName)
@@ -281,10 +334,30 @@ func buildRequestSummary(
 					mergeStableIdentity(&summary.OperationKey, operationKey)
 				}
 			}
+			if event.EventType == "retrieval.completed" {
+				mergeStableIdentity(&rootOperationID, event.OperationID)
+				mergeStableIdentity(&rootToolName, event.OperationName)
+				if operationKey, _ := summaryStringField(event.Payload, "operation_key"); operationKey != "" {
+					mergeStableIdentity(&rootOperationKey, operationKey)
+				}
+				if resultCount := summaryIntPointer(event.Payload, "candidate_count"); resultCount != nil {
+					rootResultCount = resultCount
+				}
+			}
 			collectBusinessRefs(event.Payload, businessRefs)
 			advanceActionSummary(&summary.ActionSummary, event.EventType)
 		}
 	}
+	if rootOperationID != "" && rootOperationID != "-" {
+		summary.OperationID = rootOperationID
+	}
+	if rootOperationKey != "" && rootOperationKey != "-" {
+		summary.OperationKey = rootOperationKey
+	}
+	if rootToolName != "" && rootToolName != "-" {
+		summary.ToolName = rootToolName
+	}
+	summary.ResultCount = rootResultCount
 
 	hasQuestion := false
 	hasResult := false
@@ -309,16 +382,24 @@ func buildRequestSummary(
 		}
 		switch artifact.ArtifactType {
 		case ArtifactTypeQuestion:
-			if preview := artifactPreview(artifact); preview != "" && !hasQuestion {
-				summary.QuestionPreview = preview
-				hasQuestion = true
+			if preview := artifactPreview(artifact); preview != "" {
+				if interactionScopedArtifact(artifact) {
+					firstNonEmpty(&summary.InteractionQuestion, preview)
+				} else if !hasQuestion {
+					summary.QuestionPreview = preview
+					hasQuestion = true
+				}
 			}
 		case ArtifactTypeResult:
 			if preview := artifactPreview(artifact); preview != "" {
-				summary.ResultPreview = preview
-				hasResult = true
+				if interactionScopedArtifact(artifact) {
+					summary.InteractionResult = preview
+				} else {
+					summary.ResultPreview = preview
+					hasResult = true
+				}
 			}
-			if completed.IsZero() {
+			if !interactionScopedArtifact(artifact) && completed.IsZero() {
 				mergeCompleted(&completed, artifact.ObservedAt)
 			}
 		default:
@@ -327,10 +408,10 @@ func buildRequestSummary(
 	}
 
 	switch {
-	case hasResult && allTracesTerminal:
-		summary.Status = "completed"
 	case hasError:
 		summary.Status = "error"
+	case hasResult && allTracesTerminal:
+		summary.Status = "completed"
 	case allTracesTerminal && hasTerminalFact:
 		summary.Status = "completed"
 	case hasRunning:
@@ -340,6 +421,20 @@ func buildRequestSummary(
 	}
 	hasSupportingEvidence = hasSupportingEvidence || len(businessRefs) > 0
 	switch {
+	case hasDurableReceipt && len(receiptPartialReasons) == 0:
+		summary.EvidenceCompleteness = "complete"
+	case hasDurableReceipt:
+		summary.EvidenceCompleteness = "partial"
+		for reason := range receiptPartialReasons {
+			summary.PartialReasons = append(summary.PartialReasons, reason)
+		}
+		sort.Strings(summary.PartialReasons)
+	case len(receiptPartialReasons) > 0:
+		summary.EvidenceCompleteness = "partial"
+		for reason := range receiptPartialReasons {
+			summary.PartialReasons = append(summary.PartialReasons, reason)
+		}
+		sort.Strings(summary.PartialReasons)
 	case hasQuestion && hasResult && hasSupportingEvidence:
 		summary.EvidenceCompleteness = "complete"
 	case len(artifacts) == 0:
@@ -400,13 +495,68 @@ func buildRequestSummary(
 	return summary, traceSummaries
 }
 
+func summaryStringValues(value any) []string {
+	result := []string{}
+	switch values := value.(type) {
+	case []string:
+		for _, item := range values {
+			if item != "" {
+				result = append(result, item)
+			}
+		}
+	case []any:
+		for _, item := range values {
+			if text, ok := item.(string); ok && text != "" {
+				result = append(result, text)
+			}
+		}
+	}
+	return result
+}
+
+func interactionScopedArtifact(artifact EvidenceArtifact) bool {
+	return artifact.InteractionID != "" && artifact.OperationID == ""
+}
+
+func summaryIntPointer(payload map[string]any, key string) *int {
+	value, exists := payload[key]
+	if !exists {
+		return nil
+	}
+	var result int
+	switch typed := value.(type) {
+	case int:
+		result = typed
+	case int32:
+		result = int(typed)
+	case int64:
+		result = int(typed)
+	case float64:
+		result = int(typed)
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err != nil {
+			return nil
+		}
+		result = int(parsed)
+	default:
+		return nil
+	}
+	if result < 0 {
+		return nil
+	}
+	return &result
+}
+
 func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) TraceSummary {
 	summary := TraceSummary{
 		TraceID: trace.TraceID, RequestID: trace.RequestID,
-		ConversationID: trace.ConversationID,
-		BusinessDomain: trace.BusinessDomain, Status: "unknown",
+		ConversationID:         trace.ConversationID,
+		AgentOrApp:             trace.ApplicationPrincipalID,
+		ApplicationPrincipalID: trace.ApplicationPrincipalID,
+		EffectiveSubjectID:     trace.EffectiveSubjectID,
+		BusinessDomain:         trace.BusinessDomain, Status: "unknown", SpanCountStatus: "unavailable",
 	}
-	spans := map[string]struct{}{}
 	var started, completed time.Time
 	for _, event := range trace.Events {
 		mergeStableIdentity(&summary.InteractionID, event.InteractionID)
@@ -420,10 +570,6 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 		}
 		if event.EventType == "retrieval.completed" {
 			firstNonEmpty(&summary.RootOperation, event.OperationName)
-			firstNonEmpty(&summary.AgentOrApp, event.Producer)
-		}
-		if event.SpanID != "" {
-			spans[event.SpanID] = struct{}{}
 		}
 		if strings.HasPrefix(event.EventID, "artifact-link:") {
 			continue
@@ -451,7 +597,6 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 			}
 		}
 	}
-	summary.SpanCount = len(spans)
 	if !started.IsZero() {
 		summary.StartedAt = started.Format(time.RFC3339Nano)
 	}
@@ -659,7 +804,10 @@ func eventErrorSummary(event EvidenceEvent) string {
 			return value
 		}
 	}
-	return event.EventType
+	if event.EventType == "model.call.failed" || event.EventType == "tool.call.failed" {
+		return event.EventType
+	}
+	return ""
 }
 
 func firstNonEmpty(target *string, value string) {

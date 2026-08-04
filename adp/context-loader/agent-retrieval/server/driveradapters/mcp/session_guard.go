@@ -8,10 +8,13 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"strings"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 
@@ -21,11 +24,12 @@ import (
 )
 
 type bknContext struct {
-	ConversationID    string   `json:"conversation_id"`
-	InteractionID     string   `json:"interaction_id"`
-	OperationKey      string   `json:"operation_key"`
-	ParentOperationID string   `json:"parent_operation_id,omitempty"`
-	CausationEventIDs []string `json:"causation_event_ids,omitempty"`
+	ConversationID    string                 `json:"conversation_id"`
+	InteractionID     string                 `json:"interaction_id"`
+	OperationKey      string                 `json:"operation_key"`
+	ParentOperationID string                 `json:"parent_operation_id,omitempty"`
+	CausationEventIDs []string               `json:"causation_event_ids,omitempty"`
+	BusinessRefs      []bkntrace.BusinessRef `json:"business_refs,omitempty"`
 }
 
 type operationIntent struct {
@@ -43,13 +47,14 @@ type operationResult struct {
 }
 
 type lifecycleError struct {
-	Code           string `json:"code"`
-	Message        string `json:"message"`
-	CurrentStatus  string `json:"current_status,omitempty"`
-	Retryable      bool   `json:"retryable"`
-	RequiredAction string `json:"required_action,omitempty"`
-	RequestID      string `json:"request_id,omitempty"`
-	RetryAfterMS   int    `json:"retry_after_ms"`
+	Code                 string `json:"code"`
+	Message              string `json:"message"`
+	CurrentStatus        string `json:"current_status,omitempty"`
+	CurrentInteractionID string `json:"current_interaction_id,omitempty"`
+	Retryable            bool   `json:"retryable"`
+	RequiredAction       string `json:"required_action,omitempty"`
+	RequestID            string `json:"request_id,omitempty"`
+	RetryAfterMS         int    `json:"retry_after_ms"`
 }
 
 type downstreamRetryableKey struct{}
@@ -65,100 +70,66 @@ func guardBusinessToolCall(
 	ensure ensureOperationFunc,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
 ) func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-	return guardBusinessToolCallWithCompletion(ensure, nil, nil, next)
+	return guardBusinessToolCallWithCompletion(ensure, nil, next)
 }
 
 func guardBusinessToolCallWithCompletion(
 	ensure ensureOperationFunc,
 	complete completeOperationFunc,
-	autoClient *bkntrace.LifecycleClient,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
 ) func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 	return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		arguments := req.GetArguments()
 		rawContext, _ := arguments["bkn_context"].(map[string]any)
 		conversationID, _ := rawContext["conversation_id"].(string)
+		if conversationID == "" {
+			return lifecycleToolError(lifecycleError{
+				Code:           "conversation_required",
+				Message:        "conversation_id is required",
+				RequiredAction: "bkn_start_interaction",
+			}), nil
+		}
 		interactionID, _ := rawContext["interaction_id"].(string)
-		operationKey, _ := rawContext["operation_key"].(string)
+		if interactionID == "" {
+			return lifecycleToolError(lifecycleError{
+				Code:           "interaction_required",
+				Message:        "interaction_id is required",
+				RequiredAction: "bkn_start_interaction",
+			}), nil
+		}
+		hints, hintErr := hostLifecycleHintsFromRequest(req)
+		if hintErr != nil {
+			return lifecycleToolError(lifecycleError{
+				Code: "lifecycle_hint_invalid", Message: hintErr.Error(),
+				RequiredAction: "fix_host_lifecycle_hint",
+			}), nil
+		}
+		operationKey := managedOperationKey(
+			ctx, req, conversationID, interactionID, arguments, hints.ClientInvocationID,
+		)
 		if ensure == nil {
 			return nil, fmt.Errorf("lifecycle operation client is not configured")
 		}
-		var businessContext bknContext
-		autoSession := conversationID == "" && interactionID == "" && operationKey == ""
-		if autoSession {
-			resolved, lifecycleErr, err := resolveAutoSession(ctx, autoClient, req, arguments, autoSessionRetry{})
-			if err != nil {
-				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
-			}
-			if lifecycleErr != nil {
-				return lifecycleToolError(*lifecycleErr), nil
-			}
-			businessContext = resolved
-		} else {
-			// A half-filled context is still an error: the missing field would have
-			// to be invented, and an invented parent turns the receipt into a claim
-			// about causality that never happened.
-			switch {
-			case conversationID == "":
-				return lifecycleToolError(lifecycleError{
-					Code:           "conversation_required",
-					Message:        "conversation_id is required",
-					RequiredAction: "create_conversation",
-				}), nil
-			case interactionID == "":
-				return lifecycleToolError(lifecycleError{
-					Code:           "interaction_required",
-					Message:        "interaction_id is required",
-					RequiredAction: "start_interaction",
-				}), nil
-			case operationKey == "":
-				return lifecycleToolError(lifecycleError{
-					Code:           "operation_required",
-					Message:        "operation_key is required",
-					RequiredAction: "ensure_operation",
-				}), nil
-			}
-			businessContext = bknContext{
+		businessRefs, validationErr := parseBusinessRefs(
+			rawContext["business_refs"],
+			getStringArg(req, "kn_id", getKnIDFromHeader(req)),
+		)
+		if validationErr != nil {
+			return lifecycleToolError(*validationErr), nil
+		}
+		intent := operationIntent{
+			Context: bknContext{
 				ConversationID:    conversationID,
 				InteractionID:     interactionID,
 				OperationKey:      operationKey,
 				ParentOperationID: stringValue(rawContext["parent_operation_id"]),
 				CausationEventIDs: stringSliceValue(rawContext["causation_event_ids"]),
-			}
-		}
-		intent := operationIntent{
-			Context:  businessContext,
+				BusinessRefs:      businessRefs,
+			},
 			ToolName: req.Params.Name,
 			Input:    arguments,
 		}
 		ensured, lifecycleErr, err := ensure(ctx, intent)
-		// An auto session outlives any single call, so it can go stale between
-		// calls in ways the client cannot see or fix: Core declares the
-		// interaction terminal once its lease lapses, and caps one interaction at
-		// 128 operations. Both surface here, from operations:ensure — not from
-		// resolving the session — so the rebuild has to wrap this call.
-		// Each idle gap leaves one more dead interaction behind, and the walk has
-		// to start from the one that just failed rather than from a fixed point:
-		// the base start key keeps resolving to the connection's first
-		// interaction, so a salt pinned to it would never reach past generation
-		// two. Bounded, because a walk that never ends is a worse failure than a
-		// call that reports it could not recover.
-		for attempt := 0; autoSession && err == nil && isStaleAutoSession(lifecycleErr) &&
-			attempt < autoSessionMaxRebuilds; attempt++ {
-			rebuilt, rebuildErr, resolveErr := resolveAutoSession(
-				ctx, autoClient, req, arguments,
-				autoSessionRetry{afterInteractionID: businessContext.InteractionID},
-			)
-			if resolveErr != nil || rebuildErr != nil {
-				break
-			}
-			if rebuilt.InteractionID == businessContext.InteractionID {
-				break
-			}
-			businessContext = rebuilt
-			intent.Context = rebuilt
-			ensured, lifecycleErr, err = ensure(ctx, intent)
-		}
 		if err != nil {
 			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
 		} else if lifecycleErr != nil {
@@ -183,13 +154,8 @@ func guardBusinessToolCallWithCompletion(
 			}
 			operationID, attempt := operationIdentity(ensured.Operation)
 			traceContext, _ := common.GetTraceContextFromCtx(ctx)
-			// Must come from the resolved context, not the raw arguments: under the
-			// session fallback the arguments carry no ids, and writing them back
-			// would blank out what Guard.Begin just established. Evidence events
-			// with an empty interaction_id are rejected by Core in bulk, and the
-			// rejection only warns — the whole evidence trail would vanish silently.
-			traceContext.ConversationID = businessContext.ConversationID
-			traceContext.InteractionID = businessContext.InteractionID
+			traceContext.ConversationID = conversationID
+			traceContext.InteractionID = interactionID
 			traceContext.OperationID = operationID
 			traceContext.Attempt = attempt
 			ctx = common.SetTraceContextToCtx(ctx, traceContext)
@@ -225,6 +191,128 @@ func guardBusinessToolCallWithCompletion(
 			}
 		}
 		return result, nil
+	}
+}
+
+func managedOperationKey(
+	ctx context.Context,
+	req mcpsdk.CallToolRequest,
+	conversationID string,
+	interactionID string,
+	arguments map[string]any,
+	clientInvocationID string,
+) string {
+	if clientInvocationID != "" {
+		payload, _ := json.Marshal(struct {
+			ConversationID string
+			InteractionID  string
+			InvocationKey  string
+		}{conversationID, interactionID, opaqueLifecycleKey("mcp-invocation", clientInvocationID)})
+		sum := sha256.Sum256(payload)
+		return "mcp:" + hex.EncodeToString(sum[:16])
+	}
+	requestID := ""
+	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok {
+		requestID = traceContext.RequestID
+	}
+	payload, _ := json.Marshal(struct {
+		ConversationID string
+		InteractionID  string
+		ToolName       string
+		RequestID      string
+		Input          map[string]any
+	}{conversationID, interactionID, req.Params.Name, requestID, arguments})
+	sum := sha256.Sum256(payload)
+	return "mcp:" + hex.EncodeToString(sum[:16])
+}
+
+var businessRefPrefixes = map[string]string{
+	"knowledge_network": "kn",
+	"object_type":       "object",
+	"object_instance":   "object_instance",
+	"property":          "property",
+	"relation_type":     "relation",
+	"metric":            "metric",
+	"logic":             "logic",
+	"function":          "function",
+	"action_type":       "action_type",
+	"action_instance":   "action_instance",
+	"data_resource":     "resource",
+}
+
+var businessRefMinSegments = map[string]int{
+	"knowledge_network": 2,
+	"object_type":       3,
+	"object_instance":   4,
+	"property":          4,
+	"relation_type":     3,
+	"metric":            3,
+	"logic":             3,
+	"function":          3,
+	"action_type":       3,
+	"action_instance":   4,
+	"data_resource":     2,
+}
+
+func parseBusinessRefs(value any, currentKnID string) ([]bkntrace.BusinessRef, *lifecycleError) {
+	if value == nil {
+		return nil, nil
+	}
+	items, ok := value.([]any)
+	if !ok || len(items) > 64 {
+		return nil, invalidBusinessRefError()
+	}
+	refs := make([]bkntrace.BusinessRef, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		declaration, ok := item.(map[string]any)
+		if !ok {
+			return nil, invalidBusinessRefError()
+		}
+		for field := range declaration {
+			if field != "ref_type" && field != "ref_id" && field != "version" {
+				return nil, invalidBusinessRefError()
+			}
+		}
+		refType := strings.TrimSpace(stringValue(declaration["ref_type"]))
+		refID := strings.TrimSpace(stringValue(declaration["ref_id"]))
+		prefix, registered := businessRefPrefixes[refType]
+		parts := strings.Split(refID, ":")
+		if !registered || len(refID) > 512 || len(parts) < businessRefMinSegments[refType] || parts[0] != prefix {
+			return nil, invalidBusinessRefError()
+		}
+		for _, part := range parts {
+			if strings.TrimSpace(part) == "" {
+				return nil, invalidBusinessRefError()
+			}
+		}
+		if refType != "data_resource" {
+			if currentKnID == "" || len(parts) < 2 || parts[1] != currentKnID {
+				return nil, invalidBusinessRefError()
+			}
+		}
+		version := strings.TrimSpace(stringValue(declaration["version"]))
+		if version == "" {
+			version = "unversioned"
+		}
+		if len(version) > 128 {
+			return nil, invalidBusinessRefError()
+		}
+		key := refType + "\x00" + refID + "\x00" + version
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		refs = append(refs, bkntrace.BusinessRef{RefType: refType, RefID: refID, Version: version})
+	}
+	return refs, nil
+}
+
+func invalidBusinessRefError() *lifecycleError {
+	return &lifecycleError{
+		Code:           "invalid_business_ref",
+		Message:        "business_refs must use canonical identifiers from the current knowledge network",
+		RequiredAction: "correct_business_refs",
 	}
 }
 
@@ -326,11 +414,15 @@ func lifecycleToolError(value lifecycleError) *mcpsdk.CallToolResult {
 	if value.CurrentStatus != "" {
 		errorValue["current_status"] = value.CurrentStatus
 	}
+	if value.CurrentInteractionID != "" {
+		errorValue["current_interaction_id"] = value.CurrentInteractionID
+	}
 	if value.RequestID != "" {
 		errorValue["request_id"] = value.RequestID
 	}
 	envelope := map[string]any{"error": errorValue}
-	result := mcpsdk.NewToolResultStructured(envelope, fmt.Sprintf("%s: %s", value.Code, value.Message))
+	raw, _ := json.Marshal(envelope)
+	result := mcpsdk.NewToolResultStructured(envelope, string(raw))
 	result.IsError = true
 	return result
 }

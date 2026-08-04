@@ -191,7 +191,18 @@
             }
           },
           {
-            "name": "limit",
+            "name": "page",
+            "in": "query",
+            "description": "页码，从 1 开始。服务端使用受控游标保证各页查询范围稳定。",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "page_size",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -199,9 +210,6 @@
               "minimum": 1,
               "maximum": 200
             }
-          },
-          {
-            "$ref": "#/components/parameters/Cursor"
           }
         ],
         "responses": {
@@ -541,7 +549,7 @@
       "TimeFrom": {
         "name": "time_from",
         "in": "query",
-        "description": "包含边界；默认最近 1 小时。",
+        "description": "包含边界；普通检索默认最近 24 小时，携带 Conversation、Interaction、Operation、Request、Trace 或 Span 标识的关联下钻默认最近 7 天。",
         "schema": {
           "type": "string",
           "format": "date-time"
@@ -1574,6 +1582,7 @@
           "data",
           "partial",
           "count",
+          "pagination",
           "source_status",
           "request_trace_context"
         ],
@@ -1595,6 +1604,15 @@
           },
           "count": {
             "$ref": "#/components/schemas/Count"
+          },
+          "pagination": {
+            "type": "object",
+            "required": ["page", "page_size"],
+            "properties": {
+              "page": { "type": "integer", "minimum": 1 },
+              "page_size": { "type": "integer", "minimum": 1, "maximum": 200 }
+            },
+            "additionalProperties": false
           },
           "source_status": {
             "type": "array",

@@ -103,16 +103,17 @@ func NewApp() (*App, error) {
 			)
 		}
 	}
-	var evidenceService *evidencesvc.Service
-	if summaryProjection != nil {
-		evidenceService = evidencesvc.NewWithBusinessResolverAndProjectionSource(
-			evidenceStore, resolver, summaryProjection,
-		)
-	} else if resolver != nil {
-		evidenceService = evidencesvc.NewWithBusinessResolver(evidenceStore, resolver)
-	} else {
-		evidenceService = evidencesvc.New(evidenceStore)
+	evidenceOptions := []evidencesvc.Option{
+		evidencesvc.WithSessionStore(sessionStore),
+		evidencesvc.WithTraceStatsSource(traceQueryService),
 	}
+	if resolver != nil {
+		evidenceOptions = append(evidenceOptions, evidencesvc.WithBusinessResolver(resolver))
+	}
+	if summaryProjection != nil {
+		evidenceOptions = append(evidenceOptions, evidencesvc.WithProjectionSource(summaryProjection))
+	}
+	evidenceService := evidencesvc.New(evidenceStore, evidenceOptions...)
 	accessScopeConfig := conf.NewAccessScopeConfig()
 	accessScopeResolver := bknsafeaccess.New(
 		accessScopeConfig.BKNBaseURL,

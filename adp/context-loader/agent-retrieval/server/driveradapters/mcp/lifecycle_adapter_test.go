@@ -7,21 +7,314 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
+
+func TestLifecycleSuccessTextContainsStructuredIdentifiers(t *testing.T) {
+	target := &bkntrace.Conversation{
+		ConversationID:          "conv-real-1",
+		ExternalConversationKey: "cursor-chat-1",
+		Status:                  "active",
+	}
+
+	result, err := lifecycleCallResult(target, nil, nil)
+	if err != nil || result.IsError {
+		t.Fatalf("lifecycle result failed: result=%#v err=%v", result, err)
+	}
+	text, ok := mcpsdk.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatalf("lifecycle fallback is not text: %#v", result.Content)
+	}
+	var fallback map[string]any
+	if err := json.Unmarshal([]byte(text.Text), &fallback); err != nil {
+		t.Fatalf("lifecycle fallback is not JSON: %q: %v", text.Text, err)
+	}
+	if fallback["conversation_id"] != "conv-real-1" {
+		t.Fatalf("fallback omitted authoritative conversation_id: %#v", fallback)
+	}
+}
+
+func TestStartInteractionWithoutConversationEnsuresManagedConversationFirst(t *testing.T) {
+	var calls []string
+	var ensureBody map[string]any
+	var startBody map[string]any
+	client := &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/api/agent-observability/v1/conversations:ensure-current":
+			if err := json.NewDecoder(r.Body).Decode(&ensureBody); err != nil {
+				t.Fatalf("decode ensure body: %v", err)
+			}
+			return lifecycleAdapterJSONResponse(http.StatusCreated, bkntrace.Conversation{
+				ConversationID: "conv-created-1", Status: "active",
+			}), nil
+		case "/api/agent-observability/v1/conversations/conv-created-1/interactions":
+			if err := json.NewDecoder(r.Body).Decode(&startBody); err != nil {
+				t.Fatalf("decode start body: %v", err)
+			}
+			return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{
+				InteractionID: "int-created-1", ConversationID: "conv-created-1",
+				ExecutionStatus: "active", EvidenceStatus: "pending",
+			}), nil
+		default:
+			return lifecycleAdapterJSONResponse(http.StatusNotFound, map[string]any{
+				"error": map[string]any{"code": "not_found", "message": "not found"},
+			}), nil
+		}
+	})}
+	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "query-token")
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", "")
+
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req_cursor_first_turn_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
+	})
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
+	})
+	result, err := handleLifecycleTool(
+		bkntrace.NewLifecycleClient("http://bkn-trace.test", client),
+		"bkn_start_interaction",
+	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
+		"question": "查询多层 BOM", "agent_name": "供应链分析助手",
+	}}})
+	if err != nil || result.IsError {
+		t.Fatalf("first start failed: result=%#v err=%v", result, err)
+	}
+	if len(calls) < 2 || calls[0] != "POST /api/agent-observability/v1/conversations:ensure-current" ||
+		calls[1] != "POST /api/agent-observability/v1/conversations/conv-created-1/interactions" {
+		t.Fatalf("first start call order = %#v", calls)
+	}
+	if key, _ := ensureBody["external_conversation_key"].(string); key == "" || strings.Contains(key, "查询多层 BOM") {
+		t.Fatalf("server-managed external key must be opaque: %#v", ensureBody)
+	}
+	if startBody["request_hash"] != strings.TrimPrefix(hashBytes([]byte("查询多层 BOM")), "sha256:") {
+		t.Fatalf("start request omitted question fingerprint: %#v", startBody)
+	}
+	if startBody["agent_name"] != "供应链分析助手" {
+		t.Fatalf("start request omitted agent display declaration: %#v", startBody)
+	}
+	structured := result.StructuredContent.(map[string]any)
+	if structured["conversation_id"] != "conv-created-1" || structured["interaction_id"] != "int-created-1" {
+		t.Fatalf("first start omitted authoritative IDs: %#v", structured)
+	}
+}
+
+type lifecycleAdapterRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn lifecycleAdapterRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+func lifecycleAdapterJSONResponse(status int, value any) *http.Response {
+	raw, _ := json.Marshal(value)
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(bytes.NewReader(raw)),
+	}
+}
+
+func TestStartInteractionUsesCoreCreatedAtForServerOwnedQuestionEvidence(t *testing.T) {
+	createdAt := time.Date(2026, 8, 3, 6, 30, 0, 123000000, time.UTC)
+	var artifact map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/agent-observability/v1/conversations/conv-1/interactions":
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1", Ordinal: 1,
+				ExecutionStatus: "active", EvidenceStatus: "pending",
+				LeaseToken: "lease-1", LeaseEpoch: 1, CreatedAt: createdAt,
+			})
+		case "/api/agent-observability/v1/evidence/artifacts":
+			if err := json.NewDecoder(r.Body).Decode(&artifact); err != nil {
+				t.Fatalf("decode artifact: %v", err)
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"created":true}`))
+		case "/api/agent-observability/v1/evidence/events":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"accepted":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
+	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "query-token")
+
+	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: trace.TraceID{1}, SpanID: trace.SpanID{1}, TraceFlags: trace.FlagsSampled,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
+	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
+		RequestID: "req_cursor_native_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
+	})
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	if traceContext.ObservedAtProvided {
+		t.Fatal("test must represent a third-party MCP request without an internal observed-at header")
+	}
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
+	})
+
+	result, err := handleLifecycleTool(
+		bkntrace.NewLifecycleClient(backend.URL, backend.Client()),
+		"bkn_start_interaction",
+	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
+		"conversation_id": "conv-1", "question": "查询 BOM",
+	}}})
+	if err != nil || result.IsError {
+		t.Fatalf("start interaction failed: result=%#v err=%v", result, err)
+	}
+	if got := artifact["observed_at"]; got != createdAt.Format(time.RFC3339Nano) {
+		t.Fatalf("question artifact observed_at=%v, want Core created_at %s", got, createdAt.Format(time.RFC3339Nano))
+	}
+}
+
+func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testing.T) {
+	updatedAt := time.Date(2026, 8, 3, 6, 32, 0, 789000000, time.UTC)
+	var artifact map[string]any
+	var finishBody map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agent-observability/v1/interactions/int-1":
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", EvidenceStatus: "assembling",
+				LeaseToken: "lease-1", LeaseEpoch: 1, UpdatedAt: updatedAt,
+			})
+		case r.URL.Path == "/api/agent-observability/v1/evidence/artifacts":
+			if err := json.NewDecoder(r.Body).Decode(&artifact); err != nil {
+				t.Fatalf("decode artifact: %v", err)
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"created":true}`))
+		case r.URL.Path == "/api/agent-observability/v1/evidence/events":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"accepted":true}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/agent-observability/v1/interactions/int-1/finish":
+			if err := json.NewDecoder(r.Body).Decode(&finishBody); err != nil {
+				t.Fatalf("decode finish body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "completed", EvidenceStatus: "complete", UpdatedAt: updatedAt,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
+	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "query-token")
+
+	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: trace.TraceID{2}, SpanID: trace.SpanID{2}, TraceFlags: trace.FlagsSampled,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
+	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
+		RequestID: "req_cursor_native_0002", TenantID: "tenant-1", BusinessDomain: "domain-1",
+	})
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
+	})
+
+	result, err := handleLifecycleTool(
+		bkntrace.NewLifecycleClient(backend.URL, backend.Client()),
+		"bkn_finish_interaction",
+	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
+		"interaction_id": "int-1", "outcome": "completed",
+		"idempotency_key": "complete-1", "answer": "BOM 查询完成",
+		"claims": []any{map[string]any{"claim_id": "caller-owned"}},
+	}}})
+	if err != nil || result.IsError {
+		t.Fatalf("complete interaction failed: result=%#v err=%v", result, err)
+	}
+	if got := artifact["observed_at"]; got != updatedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("result artifact observed_at=%v, want Core updated_at %s", got, updatedAt.Format(time.RFC3339Nano))
+	}
+	if _, forwarded := finishBody["claims"]; forwarded {
+		t.Fatalf("ordinary MCP finish forwarded caller-owned claims: %#v", finishBody)
+	}
+}
+
+func TestFinishInteractionRetryReusesCommittedResultArtifact(t *testing.T) {
+	evidenceCalls := 0
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agent-observability/v1/interactions/int-1":
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "completed", EvidenceStatus: "complete",
+				LeaseToken: "lease-1", LeaseEpoch: 1,
+				ClosureManifest: &bkntrace.ClosureManifest{
+					Version: "3.0.0", AnswerArtifactRef: "artifact:result-existing",
+				},
+			})
+		case strings.HasPrefix(r.URL.Path, "/api/agent-observability/v1/evidence/"):
+			evidenceCalls++
+			http.Error(w, "must not rewrite committed evidence", http.StatusConflict)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/agent-observability/v1/interactions/int-1/finish":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode terminal retry: %v", err)
+			}
+			if body["answer_artifact_ref"] != "artifact:result-existing" {
+				t.Fatalf("terminal retry did not reuse committed artifact: %#v", body)
+			}
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "completed", EvidenceStatus: "complete",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
+
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+		RequestID: "req_cursor_retry_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
+	})
+	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+	})
+	result, err := handleLifecycleTool(
+		bkntrace.NewLifecycleClient(backend.URL, backend.Client()),
+		"bkn_finish_interaction",
+	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
+		"interaction_id": "int-1", "outcome": "completed",
+		"idempotency_key": "complete-1", "answer": "BOM 查询完成",
+	}}})
+	if err != nil || result.IsError {
+		t.Fatalf("terminal retry failed: result=%#v err=%v", result, err)
+	}
+	if evidenceCalls != 0 {
+		t.Fatalf("terminal retry rewrote evidence %d times", evidenceCalls)
+	}
+}
 
 func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	type finishAttemptBody struct {

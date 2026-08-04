@@ -16,7 +16,6 @@ type Transaction interface {
 	SaveConversation(conversation sessionvo.Conversation)
 	SaveIdempotency(record sessionvo.IdempotencyRecord)
 	FindActiveInteraction(conversationID string) (sessionvo.Interaction, bool)
-	FindInteractionByStartKey(conversationID, idempotencyKey string) (sessionvo.Interaction, bool)
 	PeekInteraction(interactionID string) (sessionvo.Interaction, bool)
 	FindInteraction(interactionID string) (sessionvo.Interaction, bool)
 	NextInteractionOrdinal(conversationID string) uint64

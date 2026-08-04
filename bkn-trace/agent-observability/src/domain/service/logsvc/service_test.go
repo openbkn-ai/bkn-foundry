@@ -426,11 +426,24 @@ func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
 	if len(source.query.AuthorizedCategories) != 3 || len(source.query.AuthorizedKnowledgeNetworkIDs) != 2 {
 		t.Fatalf("role and managed-network scope was not pushed down: %+v", source.query)
 	}
-	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.TimeTo.Sub(*source.query.TimeFrom) != time.Hour {
-		t.Fatalf("default one-hour window was not frozen: %+v", source.query)
+	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.TimeTo.Sub(*source.query.TimeFrom) != 24*time.Hour {
+		t.Fatalf("default 24-hour window was not frozen: %+v", source.query)
 	}
 	if source.query.ObservedBefore == nil || !source.query.ObservedBefore.Equal(*source.query.TimeTo) {
 		t.Fatalf("query watermark was not pushed to the source: %+v", source.query)
+	}
+}
+
+func TestListUsesSevenDayWindowForAssociatedDrilldown(t *testing.T) {
+	source := &capturingSource{}
+	service := New([]Source{source})
+	profile := activeProfile("admin-a", "admin")
+
+	if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{TraceID: "trace-a"}); err != nil {
+		t.Fatalf("associated trace query failed: %v", err)
+	}
+	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.TimeTo.Sub(*source.query.TimeFrom) != 7*24*time.Hour {
+		t.Fatalf("associated drilldown did not use the seven-day window: %+v", source.query)
 	}
 }
 
@@ -548,6 +561,20 @@ func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 	profile.Fingerprint = "sha256:scope-b"
 	if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 2, Cursor: first.NextCursor}); !errors.Is(err, ErrCursorStale) {
 		t.Fatalf("scope-changed cursor must be stale, got %v", err)
+	}
+}
+
+func TestListSupportsPageNumberPaginationWithoutExposingCursors(t *testing.T) {
+	base := time.Now().UTC().Truncate(time.Second)
+	source := &filteredPageSource{pages: [][]observabilityvo.LogRecord{
+		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
+		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
+	}}
+	result, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(
+		context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 1, Page: 2},
+	)
+	if err != nil || result.Page != 2 || result.PageSize != 1 || len(result.Records) != 1 || result.Records[0].LogID != "log-old" {
+		t.Fatalf("unexpected numbered log page: %+v err=%v", result, err)
 	}
 }
 

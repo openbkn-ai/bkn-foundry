@@ -156,12 +156,20 @@ func TestRequestProjectionHydratesArtifactsByReceiptInteraction(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	artifacts := &recordingArtifactProjectionSource{result: iprojectionsource.Result{Artifacts: []evidencevo.EvidenceArtifact{{
-		ArtifactID: "question-1", ArtifactType: evidencevo.ArtifactTypeQuestion,
-		RequestID: "req-lifecycle", TraceID: "22222222222222222222222222222222", InteractionID: "int-1",
-		Content: "6月份有哪些需求预测单？", ObservedAt: "2026-08-02T07:35:25Z",
-		TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
-	}}}}
+	artifacts := &recordingArtifactProjectionSource{result: iprojectionsource.Result{Artifacts: []evidencevo.EvidenceArtifact{
+		{
+			ArtifactID: "question-1", ArtifactType: evidencevo.ArtifactTypeQuestion,
+			RequestID: "req-lifecycle", TraceID: "22222222222222222222222222222222", InteractionID: "int-1",
+			Content: "6月份有哪些需求预测单？", ObservedAt: "2026-08-02T07:35:25Z",
+			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+		},
+		{
+			ArtifactID: "other-operation-data", ArtifactType: evidencevo.ArtifactTypeDataResult,
+			RequestID: "req-2", TraceID: "22222222222222222222222222222223", InteractionID: "int-1",
+			OperationID: "op-2", Content: map[string]any{"total": 11594}, ObservedAt: "2026-08-02T07:35:27Z",
+			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+		},
+	}}}
 	source := opensearchcoreprojection.New(
 		opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", artifacts,
 	)
@@ -177,8 +185,8 @@ func TestRequestProjectionHydratesArtifactsByReceiptInteraction(t *testing.T) {
 	if len(artifacts.queries) != 1 || artifacts.queries[0].InteractionID != "int-1" || artifacts.queries[0].RequestID != "" {
 		t.Fatalf("request artifacts must be hydrated from receipt interaction: %+v", artifacts.queries)
 	}
-	if len(result.Traces) != 1 || len(result.Traces[0].Events) != 2 {
-		t.Fatalf("interaction artifact must be attached to exact request trace: %+v", result.Traces)
+	if len(result.Traces) != 1 || len(result.Traces[0].Events) != 2 || len(result.Artifacts) != 1 {
+		t.Fatalf("only interaction-scoped artifacts may be projected onto another request: traces=%+v artifacts=%+v", result.Traces, result.Artifacts)
 	}
 }
 

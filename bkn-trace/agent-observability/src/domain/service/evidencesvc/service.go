@@ -17,6 +17,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/itracestats"
 )
 
 var (
@@ -213,6 +215,26 @@ type Service struct {
 	artifactStore    iartifactstore.ArtifactStorePort
 	projectionSource iprojectionsource.ProjectionSourcePort
 	businessResolver ibusinessresolver.BusinessResolverPort
+	sessionStore     isessionstore.Store
+	traceStatsSource itracestats.Source
+}
+
+type Option func(*Service)
+
+func WithProjectionSource(source iprojectionsource.ProjectionSourcePort) Option {
+	return func(service *Service) { service.projectionSource = source }
+}
+
+func WithBusinessResolver(resolver ibusinessresolver.BusinessResolverPort) Option {
+	return func(service *Service) { service.businessResolver = resolver }
+}
+
+func WithSessionStore(store isessionstore.Store) Option {
+	return func(service *Service) { service.sessionStore = store }
+}
+
+func WithTraceStatsSource(source itracestats.Source) Option {
+	return func(service *Service) { service.traceStatsSource = source }
 }
 
 const (
@@ -220,13 +242,16 @@ const (
 	MaxEvidenceQueryLimit     = 1000
 )
 
-func New(store ievidencestore.EvidenceStorePort) *Service {
+func New(store ievidencestore.EvidenceStorePort, options ...Option) *Service {
 	service := &Service{store: store}
 	if artifactStore, ok := store.(iartifactstore.ArtifactStorePort); ok {
 		service.artifactStore = artifactStore
 	}
 	if projectionSource, ok := store.(iprojectionsource.ProjectionSourcePort); ok {
 		service.projectionSource = projectionSource
+	}
+	for _, option := range options {
+		option(service)
 	}
 	return service
 }
@@ -419,7 +444,10 @@ func (s *Service) GetEvidenceChainByTraceID(ctx context.Context, traceID string,
 		return evidencevo.EvidenceChainResponse{}, false, err
 	}
 	if len(result.Traces) == 0 {
-		return evidencevo.EvidenceChainResponse{}, false, nil
+		result.Traces, result.Truncated, err = s.projectedTraceTraces(ctx, traceID, options)
+		if err != nil || len(result.Traces) == 0 {
+			return evidencevo.EvidenceChainResponse{}, false, err
+		}
 	}
 	return buildEvidenceChain(result.Traces, result.Truncated), true, nil
 }
@@ -444,7 +472,10 @@ func (s *Service) GetBusinessGraphByTraceID(ctx context.Context, traceID string,
 		return evidencevo.BusinessGraphResponse{}, false, err
 	}
 	if len(result.Traces) == 0 {
-		return evidencevo.BusinessGraphResponse{}, false, nil
+		result.Traces, result.Truncated, err = s.projectedTraceTraces(ctx, traceID, options)
+		if err != nil || len(result.Traces) == 0 {
+			return evidencevo.BusinessGraphResponse{}, false, err
+		}
 	}
 	return s.buildBusinessGraph(ctx, result.Traces, result.Truncated, options.Scope), true, nil
 }
@@ -468,6 +499,12 @@ func (s *Service) GetEvidenceNodeByTraceID(ctx context.Context, traceID string, 
 	if err != nil {
 		return evidencevo.EvidenceNodeResponse{}, false, err
 	}
+	if len(result.Traces) == 0 {
+		result.Traces, result.Truncated, err = s.projectedTraceTraces(ctx, traceID, options)
+		if err != nil || len(result.Traces) == 0 {
+			return evidencevo.EvidenceNodeResponse{}, false, err
+		}
+	}
 	return findEvidenceNode(result.Traces, strings.TrimSpace(nodeID))
 }
 
@@ -485,7 +522,10 @@ func (s *Service) GetSnapshotPreviewByTraceID(ctx context.Context, traceID strin
 		return evidencevo.SnapshotPreviewResponse{}, false, err
 	}
 	if len(result.Traces) == 0 {
-		return evidencevo.SnapshotPreviewResponse{}, false, nil
+		result.Traces, result.Truncated, err = s.projectedTraceTraces(ctx, traceID, options)
+		if err != nil || len(result.Traces) == 0 {
+			return evidencevo.SnapshotPreviewResponse{}, false, err
+		}
 	}
 	return buildSnapshotPreview(result.Traces, result.Truncated), true, nil
 }
@@ -514,6 +554,23 @@ func (s *Service) projectedRequestTraces(
 	}
 	result, err := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
 		Scope: options.Scope, RequestID: strings.TrimSpace(requestID), Limit: MaxEvidenceQueryLimit,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return result.Traces, result.Truncated, nil
+}
+
+func (s *Service) projectedTraceTraces(
+	ctx context.Context,
+	traceID string,
+	options evidencevo.EvidenceQueryOptions,
+) ([]evidencevo.NormalizedTrace, bool, error) {
+	if s.projectionSource == nil {
+		return nil, false, nil
+	}
+	result, err := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
+		Scope: options.Scope, TraceID: strings.TrimSpace(traceID), Limit: MaxEvidenceQueryLimit,
 	})
 	if err != nil {
 		return nil, false, err
@@ -590,7 +647,8 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 		}
 	}
 
-	if len(knownClaims) == 0 {
+	response.ConclusionScope = conclusionScope(traces, knownClaims)
+	if len(knownClaims) == 0 && response.ConclusionScope != "interaction" {
 		partialReasons["missing_claim"] = struct{}{}
 	}
 	for claimID := range claimRefs {
@@ -837,6 +895,7 @@ func (s *Service) buildBusinessGraph(ctx context.Context, traces []evidencevo.No
 			}
 		}
 	}
+	response.ConclusionScope = conclusionScope(traces, knownClaims)
 
 	eventNodes := map[string]string{}
 	operationNodes := map[string][]string{}
@@ -1019,7 +1078,7 @@ func (s *Service) buildBusinessGraph(ctx context.Context, traces []evidencevo.No
 		projectExpandedBusinessEdges(&response, traces, eventNodes, operationNodes, visibleClaims, edges, &edgeIndex)
 	}
 
-	if len(knownClaims) == 0 {
+	if len(knownClaims) == 0 && response.ConclusionScope != "interaction" {
 		partialReasons["missing_claim"] = struct{}{}
 	}
 	if businessRefEvents == 0 {
@@ -1167,6 +1226,20 @@ func hasBusinessExecutionEnvelope(traces []evidencevo.NormalizedTrace) bool {
 		}
 	}
 	return false
+}
+
+func conclusionScope(traces []evidencevo.NormalizedTrace, knownClaims map[string]struct{}) string {
+	if len(knownClaims) > 0 {
+		return "trace"
+	}
+	for _, trace := range traces {
+		for _, event := range trace.Events {
+			if isExecutionFact(event.EventType) && event.InteractionID != "" && event.OperationID != "" {
+				return "interaction"
+			}
+		}
+	}
+	return "trace"
 }
 
 func projectExpandedBusinessNodes(response *evidencevo.BusinessGraphResponse, traces []evidencevo.NormalizedTrace, visibleClaims map[string]struct{}, claimNodes map[string]struct{}) (map[string]string, map[string][]string) {

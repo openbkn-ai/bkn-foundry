@@ -237,6 +237,9 @@ func artifactsForTraces(artifacts []evidencevo.EvidenceArtifact, traces []eviden
 			result = append(result, artifact)
 			continue
 		}
+		if artifact.OperationID != "" {
+			continue
+		}
 		for _, trace := range interactions[artifact.InteractionID] {
 			projected := artifact
 			projected.RequestID = trace.RequestID

@@ -42,13 +42,14 @@ var (
 )
 
 type APIError struct {
-	Code           string `json:"code"`
-	Message        string `json:"message"`
-	CurrentStatus  string `json:"current_status,omitempty"`
-	Retryable      bool   `json:"retryable"`
-	RequiredAction string `json:"required_action,omitempty"`
-	RequestID      string `json:"request_id,omitempty"`
-	RetryAfterMS   int    `json:"retry_after_ms"`
+	Code                 string `json:"code"`
+	Message              string `json:"message"`
+	CurrentStatus        string `json:"current_status,omitempty"`
+	CurrentInteractionID string `json:"current_interaction_id,omitempty"`
+	Retryable            bool   `json:"retryable"`
+	RequiredAction       string `json:"required_action,omitempty"`
+	RequestID            string `json:"request_id,omitempty"`
+	RetryAfterMS         int    `json:"retry_after_ms"`
 }
 
 type errorEnvelope struct {
@@ -234,6 +235,19 @@ func newLifecycleHTTPClient() *http.Client {
 
 func (c *LifecycleClient) Enabled() bool {
 	return c != nil && c.baseURL != ""
+}
+
+func (c *LifecycleClient) EnsureCurrentConversation(
+	ctx context.Context,
+	externalConversationKey string,
+	idempotencyKey string,
+) (Conversation, *APIError, error) {
+	var conversation Conversation
+	apiErr, err := c.do(ctx, http.MethodPost, "/conversations:ensure-current", map[string]any{
+		"external_conversation_key": externalConversationKey,
+		"idempotency_key":           idempotencyKey,
+	}, &conversation)
+	return conversation, apiErr, err
 }
 
 func (c *LifecycleClient) EnsureOperation(

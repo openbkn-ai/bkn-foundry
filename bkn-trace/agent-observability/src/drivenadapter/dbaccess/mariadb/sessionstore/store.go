@@ -256,12 +256,12 @@ func (t *transaction) SaveConversation(conversation sessionvo.Conversation) {
 		_, t.err = t.tx.ExecContext(t.ctx, `
 			INSERT INTO bkn_trace_conversations (
 				conversation_id, tenant_id, business_domain_id, application_principal_id,
-				effective_subject_type, effective_subject_id, delegation_id,
+				agent_name, effective_subject_type, effective_subject_id, delegation_id,
 				external_conversation_key, generation, status, one_shot, row_version,
 				created_at, updated_at, closed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			conversation.ID, conversation.Owner.TenantID, conversation.Owner.BusinessDomainID,
-			conversation.Owner.ApplicationPrincipalID, conversation.Owner.EffectiveSubjectType,
+			conversation.Owner.ApplicationPrincipalID, conversation.AgentName, conversation.Owner.EffectiveSubjectType,
 			conversation.Owner.EffectiveSubjectID, conversation.Owner.DelegationID,
 			conversation.ExternalConversationKey, conversation.Generation, conversation.Status,
 			conversation.OneShot, conversation.RowVersion, conversation.CreatedAt,
@@ -271,9 +271,9 @@ func (t *transaction) SaveConversation(conversation sessionvo.Conversation) {
 		t.err = err
 	default:
 		_, t.err = t.tx.ExecContext(t.ctx, `
-			UPDATE bkn_trace_conversations SET status=?, one_shot=?, row_version=?,
+			UPDATE bkn_trace_conversations SET agent_name=?, status=?, one_shot=?, row_version=?,
 				updated_at=?, closed_at=? WHERE conversation_id=?`,
-			conversation.Status, conversation.OneShot, conversation.RowVersion,
+			conversation.AgentName, conversation.Status, conversation.OneShot, conversation.RowVersion,
 			conversation.UpdatedAt, nullableTime(conversation.ClosedAt), conversation.ID,
 		)
 	}
@@ -285,19 +285,6 @@ func (t *transaction) FindActiveInteraction(conversationID string) (sessionvo.In
 	}
 	return t.scanInteraction(t.tx.QueryRowContext(t.ctx, interactionSelect+`
 		WHERE conversation_id=? AND execution_status='active' LIMIT 1 FOR UPDATE`, conversationID))
-}
-
-func (t *transaction) FindInteractionByStartKey(
-	conversationID string,
-	idempotencyKey string,
-) (sessionvo.Interaction, bool) {
-	if t.err != nil {
-		return sessionvo.Interaction{}, false
-	}
-	return t.scanInteraction(t.tx.QueryRowContext(t.ctx, interactionSelect+`
-		WHERE conversation_id=? AND start_idempotency_key=? FOR UPDATE`,
-		conversationID, idempotencyKey,
-	))
 }
 
 func (t *transaction) FindInteraction(interactionID string) (sessionvo.Interaction, bool) {
@@ -835,7 +822,7 @@ func (t *transaction) SaveAssemblyRevision(revision sessionvo.AssemblyRevision) 
 }
 
 const conversationSelect = `SELECT conversation_id, tenant_id, business_domain_id,
-	application_principal_id, effective_subject_type, effective_subject_id,
+	application_principal_id, agent_name, effective_subject_type, effective_subject_id,
 	COALESCE(delegation_id, ''), external_conversation_key, generation, status,
 	one_shot, row_version, created_at, updated_at, closed_at
 	FROM bkn_trace_conversations`
@@ -861,7 +848,7 @@ func scanConversationRows(row rowScanner) (sessionvo.Conversation, error) {
 	var closedAt sql.NullTime
 	err := row.Scan(
 		&value.ID, &value.Owner.TenantID, &value.Owner.BusinessDomainID,
-		&value.Owner.ApplicationPrincipalID, &value.Owner.EffectiveSubjectType,
+		&value.Owner.ApplicationPrincipalID, &value.AgentName, &value.Owner.EffectiveSubjectType,
 		&value.Owner.EffectiveSubjectID, &value.Owner.DelegationID,
 		&value.ExternalConversationKey, &value.Generation, &value.Status,
 		&value.OneShot, &value.RowVersion, &value.CreatedAt, &value.UpdatedAt, &closedAt,

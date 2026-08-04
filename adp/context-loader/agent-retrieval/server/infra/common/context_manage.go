@@ -47,6 +47,21 @@ type traceContextKey string
 
 const keyTraceContext traceContextKey = "bkn_trace_context"
 
+type applicationDisplayNameKey struct{}
+
+func SetApplicationDisplayNameToCtx(ctx context.Context, name string) context.Context {
+	name = strings.TrimSpace(name)
+	if len(name) > 128 {
+		name = name[:128]
+	}
+	return context.WithValue(ctx, applicationDisplayNameKey{}, name)
+}
+
+func GetApplicationDisplayNameFromCtx(ctx context.Context) (string, bool) {
+	name, ok := ctx.Value(applicationDisplayNameKey{}).(string)
+	return name, ok && name != ""
+}
+
 var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
 
 // TraceContext carries OpenBKN correlation and business causality context.
@@ -154,6 +169,18 @@ func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) contex
 		traceContext.ObservedAtProvided = false
 	}
 	return context.WithValue(ctx, keyTraceContext, traceContext)
+}
+
+// SetAuthoritativeObservedAtIfMissing uses a stable timestamp returned by a
+// trusted OpenBKN lifecycle resource without overriding propagated replay time.
+func SetAuthoritativeObservedAtIfMissing(ctx context.Context, observedAt time.Time) context.Context {
+	traceContext, ok := GetTraceContextFromCtx(ctx)
+	if !ok || traceContext.ObservedAtProvided || observedAt.IsZero() {
+		return ctx
+	}
+	traceContext.ObservedAt = observedAt.UTC().Format(time.RFC3339Nano)
+	traceContext.ObservedAtProvided = true
+	return SetTraceContextToCtx(ctx, traceContext)
 }
 
 func GetTraceContextFromCtx(ctx context.Context) (TraceContext, bool) {

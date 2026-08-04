@@ -63,7 +63,7 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 		panic(path + ": missing input_schema")
 	}
 	if isBusinessTool(toolKey) {
-		wrapper.InputSchema = offerBKNContext(wrapper.InputSchema)
+		wrapper.InputSchema = requireBKNContext(wrapper.InputSchema)
 	}
 	return wrapper.InputSchema, wrapper.OutputSchema
 }
@@ -81,40 +81,19 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 		}
 	}
 	switch toolKey {
-	case "bkn_create_conversation":
-		addString("external_conversation_key", true)
-		addString("idempotency_key", false)
-		properties["one_shot"] = map[string]any{"type": "boolean", "default": false}
-	case "bkn_resume_conversation":
-		addString("conversation_id", true)
 	case "bkn_start_interaction":
-		addString("conversation_id", true)
-		addString("idempotency_key", true)
+		addString("conversation_id", false)
 		addString("question", true)
-		properties["lease_seconds"] = map[string]any{"type": "integer", "minimum": 1}
-	case "bkn_close_conversation":
-		addString("conversation_id", true)
-		addString("idempotency_key", false)
-	case "bkn_get_operation", "bkn_retry_operation":
-		addString("operation_id", true)
-	case "bkn_get_receipt":
-		addString("receipt_id", true)
-	default:
-		addString("interaction_id", true)
-		addString("terminal_idempotency_key", true)
-		addString("lease_token", true)
-		properties["lease_epoch"] = map[string]any{"type": "integer", "minimum": 1}
-		addString("completion_manifest_version", true)
-		addString("completion_reason", true)
-		addString("answer_artifact_ref", false)
-		if toolKey == "bkn_complete_interaction" {
-			addString("answer", true)
+		properties["agent_name"] = map[string]any{
+			"type": "string", "maxLength": 128,
+			"description": "Optional display name declared on the first interaction; later turns omit it or reuse the same value.",
 		}
-		properties["claims"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
-		properties["expected_operations"] = expectedResourceSchema("operation_id")
-		properties["expected_receipts"] = expectedResourceSchema("receipt_id")
-		properties["assembler_deadline"] = map[string]any{"type": "string", "format": "date-time"}
-		required = append(required, "lease_epoch")
+	case "bkn_finish_interaction":
+		addString("interaction_id", true)
+		properties["outcome"] = enumSchema("completed", "failed", "cancelled", "handed_off")
+		required = append(required, "outcome")
+		addString("answer", false)
+		addString("reason", false)
 	}
 	input, _ := json.Marshal(map[string]any{
 		"type": "object", "properties": properties, "required": required,
@@ -126,11 +105,19 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 
 func lifecycleOutputSchema(toolKey string) map[string]any {
 	switch toolKey {
-	case "bkn_create_conversation", "bkn_resume_conversation", "bkn_close_conversation":
-		return conversationOutputSchema()
-	case "bkn_start_interaction", "bkn_complete_interaction", "bkn_fail_interaction",
-		"bkn_cancel_interaction", "bkn_handoff_interaction":
-		return interactionOutputSchema()
+	case "bkn_start_interaction":
+		return closedSchema(map[string]any{
+			"interaction_id":   stringSchema(),
+			"conversation_id":  stringSchema(),
+			"execution_status": enumSchema("active"),
+		}, []string{"interaction_id", "conversation_id", "execution_status"})
+	case "bkn_finish_interaction":
+		return closedSchema(map[string]any{
+			"interaction_id":   stringSchema(),
+			"conversation_id":  stringSchema(),
+			"execution_status": enumSchema("completed", "failed", "canceled", "handed_off", "abandoned"),
+			"evidence_status":  enumSchema("not_applicable", "assembling", "complete", "partial", "failed"),
+		}, []string{"interaction_id", "conversation_id", "execution_status", "evidence_status"})
 	case "bkn_get_operation":
 		return operationOutputSchema()
 	case "bkn_retry_operation":
@@ -341,16 +328,7 @@ func isBusinessTool(toolKey string) bool {
 	return !lifecycle
 }
 
-// offerBKNContext advertises the managed lifecycle context on every business
-// tool without demanding it.
-//
-// It used to be required. A required field an MCP client cannot legitimately
-// fill is worse than an absent one: the client is an LLM reading this schema,
-// and its cheapest way to satisfy "required" is to invent three plausible IDs,
-// which Core then rejects as conversation_not_found. Callers that own a real
-// business conversation (bkn-agent) still send it and keep full business-level
-// traceability; callers that have none now fall back to their MCP session.
-func offerBKNContext(input json.RawMessage) json.RawMessage {
+func requireBKNContext(input json.RawMessage) json.RawMessage {
 	var schema map[string]any
 	if err := json.Unmarshal(input, &schema); err != nil {
 		panic("invalid business tool input schema: " + err.Error())
@@ -360,49 +338,49 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 		properties = map[string]any{}
 		schema["properties"] = properties
 	}
-	properties["bkn_context"] = map[string]any{
-		"type": "object",
-		"description": "BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。" +
-			"conversation_id 来自 bkn_create_conversation，interaction_id 来自 " +
-			"bkn_start_interaction，operation_key 由调用方自取且同一次逻辑调用重试时须保持不变。" +
-			"三者必须同时提供或同时省略：省略时本服务按当前 MCP 连接自动归并会话，" +
-			"调用可直接执行，但证据链只能追溯到连接级而非具体的用户提问；" +
-			"半数提供会被拒绝，因为缺失字段只能凭空生成，会让回执声称一条从未发生的因果关系。" +
-			"自动会话在连接空闲超过 5 分钟租约后由本服务自动重建，无需客户端干预；" +
-			"但租约刚过期、服务端尚未回收旧交互的窗口内（默认最长 30 秒）调用会返回 " +
-			"interaction_terminal，对该错误码重试一次即可。" +
-			"单次交互最多承载 128 个操作，达到上限后需等待最长 5 分钟由服务端回收，" +
-			"其间调用返回 operation_required，恢复后自动继续。" +
-			"断开重连会分配新的会话，此前的因果链不再延续。",
-		"properties": map[string]any{
-			"conversation_id": map[string]any{"type": "string"},
-			"interaction_id":  map[string]any{"type": "string"},
-			"operation_key":   map[string]any{"type": "string"},
-			"parent_operation_id": map[string]any{
-				"type": "string",
-			},
-			"causation_event_ids": map[string]any{
-				"type": "array", "items": map[string]any{"type": "string"},
-			},
-		},
-		"required":             []string{"conversation_id", "interaction_id", "operation_key"},
-		"additionalProperties": false,
-	}
+	properties["bkn_context"] = bknContextInputSchema()
 	required, _ := schema["required"].([]any)
-	kept := make([]any, 0, len(required))
 	for _, value := range required {
-		if value != "bkn_context" {
-			kept = append(kept, value)
+		if value == "bkn_context" {
+			raw, _ := json.Marshal(schema)
+			return raw
 		}
 	}
-	if len(kept) > 0 {
-		schema["required"] = kept
-	} else {
-		delete(schema, "required")
-	}
+	schema["required"] = append(required, "bkn_context")
 	raw, err := json.Marshal(schema)
 	if err != nil {
 		panic("marshal business tool input schema: " + err.Error())
 	}
 	return raw
+}
+
+func bknContextInputSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "BKN Trace managed context. Use only IDs returned by lifecycle tools.",
+		"properties": map[string]any{
+			"conversation_id":     stringSchema(),
+			"interaction_id":      stringSchema(),
+			"parent_operation_id": stringSchema(),
+			"causation_event_ids": map[string]any{
+				"type": "array", "maxItems": 64, "items": stringSchema(),
+			},
+			"business_refs": map[string]any{
+				"type": "array", "maxItems": 64,
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"ref_type": enumSchema(
+							"knowledge_network", "object_type", "object_instance", "property", "relation_type",
+							"data_resource", "metric", "logic", "function", "action_type", "action_instance",
+						),
+						"ref_id": stringSchema(), "version": stringSchema(),
+					},
+					"required": []string{"ref_type", "ref_id"}, "additionalProperties": false,
+				},
+			},
+		},
+		"required":             []string{"conversation_id", "interaction_id"},
+		"additionalProperties": false,
+	}
 }

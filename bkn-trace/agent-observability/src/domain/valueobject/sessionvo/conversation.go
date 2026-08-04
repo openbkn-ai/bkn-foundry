@@ -38,6 +38,7 @@ func (o Owner) Key() string {
 
 type Conversation struct {
 	ID                      string             `json:"conversation_id" binding:"required"`
+	AgentName               string             `json:"agent_name,omitempty"`
 	Owner                   Owner              `json:"owner" binding:"required"`
 	ExternalConversationKey string             `json:"external_conversation_key" binding:"required"`
 	Generation              uint64             `json:"generation" binding:"required"`

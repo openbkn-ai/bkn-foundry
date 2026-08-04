@@ -64,9 +64,10 @@ var (
 )
 
 type batch struct {
-	ContractVersion string         `json:"bkn.trace.schema.version"`
-	Trace           map[string]any `json:"trace"`
-	Events          []Event        `json:"events"`
+	ContractVersion      string         `json:"bkn.trace.schema.version"`
+	Trace                map[string]any `json:"trace"`
+	Events               []Event        `json:"events"`
+	DeclaredBusinessRefs []BusinessRef  `json:"-"`
 }
 
 type eventContext struct {
@@ -77,6 +78,7 @@ type eventContext struct {
 	accountID        string
 	accountType      string
 	applicationID    string
+	applicationName  string
 	subjectType      string
 	tenantID         string
 	businessDomain   string
@@ -150,14 +152,18 @@ func RecordInteractionArtifact(
 		"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
 		"effective_subject_id":     ec.accountID,
 		"application_principal_id": ec.applicationID,
-		"initiator":                "account:" + ec.accountID, "agent_or_app": ec.applicationID,
+		"initiator":                "account:" + ec.accountID, "agent_or_app": ec.applicationName,
+	}
+	eventPayload := map[string]any{artifactField: artifactRef, "content_hash": contentHash}
+	if ec.applicationName != "" {
+		eventPayload["app_ref"] = ec.applicationName
 	}
 	if err := postArtifactWithRetry(evidenceArtifactURL(), evidenceTimeout(), traceBlock, artifact); err != nil {
 		return "", err
 	}
 	event := buildEvent(
 		ec, eventType, "interaction."+string(artifactType),
-		map[string]any{artifactField: artifactRef, "content_hash": contentHash}, "", "",
+		eventPayload, "", "",
 	)
 	event["event_id"] = stableEventID(ec.traceID, ec.interactionID, eventType, 1)
 	if err := postBatchWithRetry(evidenceIngestURL(), evidenceTimeout(), batch{
@@ -284,17 +290,30 @@ func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, re
 	if !ok {
 		return nil
 	}
-	refs := make([]map[string]any, 0, len(resourceIDs))
+	declaredRefs := declaredBusinessRefsFromContext(ctx)
+	refs := make([]map[string]any, 0, len(resourceIDs)+len(declaredRefs))
 	seen := map[string]struct{}{}
+	for _, ref := range declaredRefs {
+		key := ref.RefType + "\x00" + ref.RefID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		refs = append(refs, map[string]any{
+			"ref_id": ref.RefID, "ref_type": ref.RefType, "source_system": "bkn",
+			"validity": "observed", "version_status": businessRefVersionStatus(ref.Version), "visibility": "visible",
+		})
+	}
 	for _, resourceID := range resourceIDs {
 		resourceID = strings.TrimSpace(resourceID)
 		if resourceID == "" {
 			continue
 		}
-		if _, exists := seen[resourceID]; exists {
+		key := "data_resource\x00resource:" + resourceID
+		if _, exists := seen[key]; exists {
 			continue
 		}
-		seen[resourceID] = struct{}{}
+		seen[key] = struct{}{}
 		refs = append(refs, map[string]any{
 			"ref_id":         "resource:" + resourceID,
 			"ref_type":       "data_resource",
@@ -362,9 +381,10 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		traceBlock["bkn.conversation.id"] = ec.conversationID
 	}
 	payload := batch{
-		ContractVersion: ContractVersion,
-		Trace:           traceBlock,
-		Events:          events,
+		ContractVersion:      ContractVersion,
+		Trace:                traceBlock,
+		Events:               events,
+		DeclaredBusinessRefs: declaredBusinessRefsFromContext(ctx),
 	}
 
 	select {
@@ -397,6 +417,31 @@ func withEvidenceOutcome(ctx context.Context) context.Context {
 	return context.WithValue(ctx, evidenceOutcomeContextKey{}, &evidenceOutcome{})
 }
 
+type declaredBusinessRefsContextKey struct{}
+
+func withDeclaredBusinessRefs(ctx context.Context, refs []BusinessRef) context.Context {
+	if len(refs) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, declaredBusinessRefsContextKey{}, append([]BusinessRef(nil), refs...))
+}
+
+func declaredBusinessRefsFromContext(ctx context.Context) []BusinessRef {
+	refs, _ := ctx.Value(declaredBusinessRefsContextKey{}).([]BusinessRef)
+	return refs
+}
+
+func businessRefVersionStatus(version string) string {
+	switch strings.TrimSpace(version) {
+	case "", "unversioned":
+		return "unversioned"
+	case "not_auditable":
+		return "not_auditable"
+	default:
+		return "versioned"
+	}
+}
+
 func evidenceOutcomeFromContext(ctx context.Context) *evidenceOutcome {
 	value, _ := ctx.Value(evidenceOutcomeContextKey{}).(*evidenceOutcome)
 	return value
@@ -425,7 +470,7 @@ func recordDurableEvidenceOutcome(ctx context.Context, payload batch) {
 				seenEvents[eventID] = struct{}{}
 			}
 		}
-		for _, ref := range trace30BusinessRefs(event, stringValue(payload.Trace["business_domain"])) {
+		for _, ref := range trace30BusinessRefs(event, stringValue(payload.Trace["business_domain"]), payload.DeclaredBusinessRefs) {
 			key := ref.RefType + "\x00" + ref.RefID + "\x00" + ref.Version
 			if _, exists := seenRefs[key]; exists {
 				continue
@@ -464,7 +509,7 @@ func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) 
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 	for _, event := range payload.Events {
-		requestPayload, err := trace30EvidenceEvent(payload.Trace, event)
+		requestPayload, err := trace30EvidenceEvent(payload.Trace, event, payload.DeclaredBusinessRefs)
 		if err != nil {
 			return err
 		}
@@ -534,7 +579,7 @@ type trace30OperationEdge struct {
 	ObservedAt  string             `json:"observed_at"`
 }
 
-func trace30EvidenceEvent(traceBlock map[string]any, event Event) (trace30Event, error) {
+func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs []BusinessRef) (trace30Event, error) {
 	envelope, err := json.Marshal(event)
 	if err != nil {
 		return trace30Event{}, err
@@ -547,7 +592,7 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event) (trace30Event,
 	if emittedAt == "" {
 		emittedAt = observedAt
 	}
-	refs := trace30BusinessRefs(event, stringValue(traceBlock["business_domain"]))
+	refs := trace30BusinessRefs(event, stringValue(traceBlock["business_domain"]), declaredRefs)
 	edges := make([]trace30OperationEdge, 0, len(refs))
 	for _, ref := range refs {
 		edges = append(edges, trace30OperationEdge{
@@ -576,19 +621,26 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event) (trace30Event,
 	}, nil
 }
 
-func trace30BusinessRefs(event Event, businessDomain string) []trace30BusinessRef {
+func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []BusinessRef) []trace30BusinessRef {
 	payload, _ := event["payload"].(map[string]any)
 	items, _ := payload["source_refs"].([]map[string]any)
 	refs := make([]trace30BusinessRef, 0, len(items))
+	declaredVersions := make(map[string]string, len(declaredRefs))
+	for _, ref := range declaredRefs {
+		declaredVersions[ref.RefType+"\x00"+ref.RefID] = ref.Version
+	}
 	for _, item := range items {
 		refID := stringValue(item["ref_id"])
 		refType := trace30RefType(stringValue(item["ref_type"]))
 		if refID == "" || refType == "" || businessDomain == "" {
 			continue
 		}
-		version := stringValue(item["version_status"])
+		version := strings.TrimSpace(declaredVersions[refType+"\x00"+refID])
 		if version == "" {
-			version = "observed"
+			version = stringValue(item["version_status"])
+		}
+		if version == "" {
+			version = "unversioned"
 		}
 		refs = append(refs, trace30BusinessRef{
 			RefType: refType, RefID: refID, BusinessDomainID: businessDomain,
@@ -729,6 +781,7 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 	accountID := ""
 	accountType := ""
 	applicationID := ""
+	applicationName, _ := common.GetApplicationDisplayNameFromCtx(ctx)
 	subjectType := "user"
 	if authContext != nil {
 		accountID = strings.TrimSpace(authContext.AccountID)
@@ -756,6 +809,7 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 		accountID:        accountID,
 		accountType:      accountType,
 		applicationID:    applicationID,
+		applicationName:  applicationName,
 		subjectType:      subjectType,
 		tenantID:         strings.TrimSpace(traceContext.TenantID),
 		businessDomain:   strings.TrimSpace(traceContext.BusinessDomain),

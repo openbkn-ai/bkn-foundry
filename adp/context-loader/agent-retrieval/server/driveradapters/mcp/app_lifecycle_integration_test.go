@@ -212,7 +212,6 @@ func callInvalidSQLRound(
 			"bkn_context": map[string]any{
 				"conversation_id": conversationID,
 				"interaction_id":  interactionID,
-				"operation_key":   operationKey,
 			},
 		},
 	}})

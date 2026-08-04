@@ -131,19 +131,6 @@ func (tx memoryTransaction) FindActiveInteraction(conversationID string) (sessio
 	return sessionvo.Interaction{}, false
 }
 
-func (tx memoryTransaction) FindInteractionByStartKey(
-	conversationID string,
-	idempotencyKey string,
-) (sessionvo.Interaction, bool) {
-	for _, interaction := range tx.s.interactions {
-		if interaction.ConversationID == conversationID &&
-			interaction.StartIdempotencyKey == idempotencyKey {
-			return interaction, true
-		}
-	}
-	return sessionvo.Interaction{}, false
-}
-
 func (tx memoryTransaction) FindInteraction(interactionID string) (sessionvo.Interaction, bool) {
 	interaction, found := tx.s.interactions[interactionID]
 	return interaction, found

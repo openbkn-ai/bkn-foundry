@@ -62,6 +62,79 @@ func TestEnsureCurrentConversationIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestStartInteractionSolidifiesConversationAgentName(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "agent-name")
+
+	if _, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "agent-name-first",
+		AgentName: "  供应链分析助手  ",
+	}); err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+
+	stored, err := service.GetConversation(context.Background(), owner, conversation.ID)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if stored.AgentName != "供应链分析助手" {
+		t.Fatalf("agent name = %q, want normalized display declaration", stored.AgentName)
+	}
+	if !stored.Owner.Equal(owner) {
+		t.Fatalf("display declaration must not alter trusted owner: %+v", stored.Owner)
+	}
+}
+
+func TestStartInteractionRejectsConversationAgentNameChange(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "agent-name-conflict")
+	if _, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "agent-name-original",
+		AgentName: "供应链分析助手",
+	}); err != nil {
+		t.Fatalf("start original interaction: %v", err)
+	}
+
+	if _, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "agent-name-changed",
+		AgentName: "另一个 Agent",
+	}); !sessionsvc.IsCode(err, sessionsvc.CodeAgentNameConflict) {
+		t.Fatalf("changed conversation agent name must be rejected, got %v", err)
+	}
+}
+
+func TestStartInteractionReusesConversationAgentNameWhenOmitted(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "agent-name-reuse")
+	started, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "agent-name-reuse-start",
+		AgentName: "供应链分析助手",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+
+	replayed, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "agent-name-reuse-start",
+	})
+	if err != nil || replayed.ID != started.ID {
+		t.Fatalf("omitted agent name must reuse conversation declaration: replay=%+v err=%v", replayed, err)
+	}
+	stored, err := service.GetConversation(context.Background(), owner, conversation.ID)
+	if err != nil || stored.AgentName != "供应链分析助手" {
+		t.Fatalf("conversation agent name changed after omission: conversation=%+v err=%v", stored, err)
+	}
+}
+
 func TestManagedLifecycleRecordsCoreOperationalMetrics(t *testing.T) {
 	t.Parallel()
 
@@ -485,6 +558,30 @@ func TestOnlyOneActiveInteractionAndTerminalIsFenced(t *testing.T) {
 		TerminalIdempotencyKey: "terminal-2", LeaseToken: first.LeaseToken, LeaseEpoch: first.LeaseEpoch,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeTerminalConflict) {
 		t.Fatalf("expected terminal_conflict, got %v", err)
+	}
+}
+
+func TestStartInteractionRejectsChangedPayloadForSameIdempotencyKey(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "start-payload-conflict")
+	command := sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "host-turn-1",
+		RequestHash: "question-hash-a",
+	}
+	first, err := service.StartInteraction(context.Background(), command)
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	replayed, err := service.StartInteraction(context.Background(), command)
+	if err != nil || replayed.ID != first.ID {
+		t.Fatalf("same payload must replay first interaction: replay=%#v err=%v", replayed, err)
+	}
+	command.RequestHash = "question-hash-b"
+	if _, err := service.StartInteraction(context.Background(), command); !sessionsvc.IsCode(err, sessionsvc.CodeIdempotencyConflict) {
+		t.Fatalf("expected idempotency_conflict for changed start payload, got %v", err)
 	}
 }
 
@@ -918,7 +1015,7 @@ func TestTrustedAdapterCanMarkAnyFailedOperationRetryable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure operation: %v", err)
 	}
-	failed, _, err := service.FailOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+	failed, failedReceipt, err := service.FailOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt,
 		ReceiptID: receipt.ID, PayloadHash: "sha256:malicious-true", Retryable: true,
 		RequestID: "req-malicious-true", TraceID: validTraceIDOne,
@@ -928,6 +1025,10 @@ func TestTrustedAdapterCanMarkAnyFailedOperationRetryable(t *testing.T) {
 	}
 	if !failed.Retryable {
 		t.Fatal("Core discarded the trusted adapter retryability observation")
+	}
+	if len(failedReceipt.PartialReasons) != 1 ||
+		failedReceipt.PartialReasons[0] != "evidence_durability_failed" {
+		t.Fatalf("failed evidence durability must carry an objective reason: %#v", failedReceipt)
 	}
 	if _, _, err := service.StartOperationAttempt(context.Background(), sessionsvc.StartAttemptCommand{
 		Owner: owner, OperationID: operation.ID,

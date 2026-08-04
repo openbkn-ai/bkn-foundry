@@ -27,6 +27,65 @@ func (s *TraceQueryService) SearchTraces(ctx context.Context, query json.RawMess
 	return s.traceQueryPort.SearchTraces(ctx, query)
 }
 
+func (s *TraceQueryService) CountSpansByTraceIDs(ctx context.Context, traceIDs []string) (map[string]int, error) {
+	unique := make([]string, 0, len(traceIDs))
+	seen := make(map[string]struct{}, len(traceIDs))
+	for _, traceID := range traceIDs {
+		traceID = strings.TrimSpace(traceID)
+		if traceID == "" {
+			continue
+		}
+		if _, exists := seen[traceID]; exists {
+			continue
+		}
+		seen[traceID] = struct{}{}
+		unique = append(unique, traceID)
+	}
+	sort.Strings(unique)
+	if len(unique) == 0 {
+		return map[string]int{}, nil
+	}
+	query, err := json.Marshal(map[string]any{
+		"size":  0,
+		"query": map[string]any{"terms": map[string]any{"traceId": unique}},
+		"aggs": map[string]any{
+			"by_trace": map[string]any{
+				"terms": map[string]any{"field": "traceId", "size": len(unique)},
+				"aggs": map[string]any{"span_count": map[string]any{
+					"cardinality": map[string]any{"field": "spanId"},
+				}},
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.traceQueryPort.SearchTraces(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Aggregations struct {
+			ByTrace struct {
+				Buckets []struct {
+					Key       string `json:"key"`
+					SpanCount struct {
+						Value float64 `json:"value"`
+					} `json:"span_count"`
+				} `json:"buckets"`
+			} `json:"by_trace"`
+		} `json:"aggregations"`
+	}
+	if err := json.Unmarshal(result, &response); err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int, len(response.Aggregations.ByTrace.Buckets))
+	for _, bucket := range response.Aggregations.ByTrace.Buckets {
+		counts[bucket.Key] = int(bucket.SpanCount.Value)
+	}
+	return counts, nil
+}
+
 func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID string) (oteltracevo.TraceGraphResponse, bool, error) {
 	traceID = strings.TrimSpace(traceID)
 	query, err := json.Marshal(map[string]any{
@@ -227,6 +286,11 @@ func buildTraceGraph(traceID string, records []spanRecord, truncated bool) otelt
 			continue
 		}
 		if _, ok := seen[node.ParentSpanID]; !ok {
+			// A server span may legitimately start at the OpenBKN boundary while
+			// its remote Agent parent is retained only through trace propagation.
+			if strings.EqualFold(node.Kind, "server") {
+				continue
+			}
 			partialReasons["orphan_span"] = struct{}{}
 			continue
 		}

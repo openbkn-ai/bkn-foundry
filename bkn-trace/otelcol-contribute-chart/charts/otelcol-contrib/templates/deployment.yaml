@@ -61,14 +61,12 @@ spec:
             httpGet:
               path: /
               port: health
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /
               port: health
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
       volumes:
         - name: config
           configMap:

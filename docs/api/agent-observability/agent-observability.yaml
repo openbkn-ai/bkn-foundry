@@ -267,6 +267,8 @@ definitions:
     properties:
       bkn.request.id:
         type: string
+      conclusion_scope:
+        type: string
       data:
         $ref: '#/definitions/evidencevo.BusinessGraphData'
       page:
@@ -284,7 +286,11 @@ definitions:
     type: object
   evidencevo.ConversationSummary:
     properties:
+      agent_name:
+        type: string
       agent_or_app:
+        type: string
+      application_principal_id:
         type: string
       business_domain:
         type: string
@@ -294,6 +300,8 @@ definitions:
         type: string
       duration_ms:
         type: integer
+      effective_subject_id:
+        type: string
       error_summary:
         type: string
       evidence_completeness:
@@ -331,6 +339,10 @@ definitions:
         type: array
       next_cursor:
         type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
       partial:
         type: boolean
       partial_reasons:
@@ -426,6 +438,8 @@ definitions:
     properties:
       bkn.request.id:
         type: string
+      conclusion_scope:
+        type: string
       data:
         $ref: '#/definitions/evidencevo.EvidenceChainData'
       page:
@@ -491,7 +505,11 @@ definitions:
     type: object
   evidencevo.InteractionListSummary:
     properties:
+      agent_name:
+        type: string
       agent_or_app:
+        type: string
+      application_principal_id:
         type: string
       business_domain:
         type: string
@@ -501,6 +519,8 @@ definitions:
         type: string
       duration_ms:
         type: integer
+      effective_subject_id:
+        type: string
       error_summary:
         type: string
       evidence_completeness:
@@ -532,18 +552,36 @@ definitions:
     type: object
   evidencevo.InteractionSummary:
     properties:
+      agent_name:
+        type: string
+      application_principal_id:
+        type: string
       completed_at:
         type: string
       conversation_id:
         type: string
       duration_ms:
         type: integer
+      effective_subject_id:
+        type: string
+      error_summary:
+        type: string
+      evidence_completeness:
+        type: string
       interaction_id:
+        type: string
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      question_preview:
         type: string
       requests:
         items:
           $ref: '#/definitions/evidencevo.RequestSummary'
         type: array
+      result_preview:
+        type: string
       started_at:
         type: string
       status:
@@ -561,6 +599,10 @@ definitions:
         type: array
       next_cursor:
         type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
       partial:
         type: boolean
       partial_reasons:
@@ -576,7 +618,11 @@ definitions:
     properties:
       action_summary:
         $ref: '#/definitions/evidencevo.ActionSummary'
+      agent_name:
+        type: string
       agent_or_app:
+        type: string
+      application_principal_id:
         type: string
       business_domain:
         type: string
@@ -586,10 +632,14 @@ definitions:
         type: array
       completed_at:
         type: string
+      controlled_summary:
+        type: string
       conversation_id:
         type: string
       duration_ms:
         type: integer
+      effective_subject_id:
+        type: string
       error_summary:
         type: string
       evidence_completeness:
@@ -614,6 +664,8 @@ definitions:
         type: string
       request_id:
         type: string
+      result_count:
+        type: integer
       result_preview:
         type: string
       started_at:
@@ -633,6 +685,10 @@ definitions:
         type: array
       next_cursor:
         type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
       partial:
         type: boolean
       partial_reasons:
@@ -709,7 +765,11 @@ definitions:
     type: object
   evidencevo.TraceSummary:
     properties:
+      agent_name:
+        type: string
       agent_or_app:
+        type: string
+      application_principal_id:
         type: string
       business_domain:
         type: string
@@ -719,6 +779,8 @@ definitions:
         type: string
       duration_ms:
         type: integer
+      effective_subject_id:
+        type: string
       error_summary:
         type: string
       interaction_id:
@@ -729,6 +791,8 @@ definitions:
         type: string
       span_count:
         type: integer
+      span_count_status:
+        type: string
       started_at:
         type: string
       status:
@@ -744,6 +808,10 @@ definitions:
         type: array
       next_cursor:
         type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
       partial:
         type: boolean
       partial_reasons:
@@ -996,6 +1064,8 @@ definitions:
         - interaction_required
         - interaction_in_progress
         - interaction_terminal
+        - agent_name_conflict
+        - agent_name_invalid
         - operation_required
         - idempotency_conflict
         - event_payload_conflict
@@ -1009,6 +1079,8 @@ definitions:
         - permission_denied
         - resource_not_disclosed
         - internal_error
+        type: string
+      current_interaction_id:
         type: string
       current_status:
         type: string
@@ -1027,6 +1099,24 @@ definitions:
     properties:
       error:
         $ref: '#/definitions/httphandler.lifecycleError'
+    type: object
+  httphandler.managedFinishInteractionRequest:
+    properties:
+      answer_artifact_ref:
+        type: string
+      claims:
+        items:
+          type: string
+        type: array
+      idempotency_key:
+        type: string
+      outcome:
+        type: string
+      reason:
+        type: string
+    required:
+    - idempotency_key
+    - outcome
     type: object
   httphandler.operationResult:
     properties:
@@ -1062,10 +1152,15 @@ definitions:
     type: object
   httphandler.startInteractionRequest:
     properties:
+      agent_name:
+        maxLength: 128
+        type: string
       idempotency_key:
         type: string
       lease_seconds:
         type: integer
+      request_hash:
+        type: string
     required:
     - idempotency_key
     type: object
@@ -1363,6 +1458,8 @@ definitions:
     type: object
   sessionvo.Conversation:
     properties:
+      agent_name:
+        type: string
       closed_at:
         type: string
       conversation_id:
@@ -1837,14 +1934,14 @@ paths:
       description: Returns one authorized business-provenance row per conversation,
         aggregated from real interactions and requests.
       parameters:
+      - description: Page number, starting at 1
+        in: query
+        name: page
+        type: integer
       - description: Page size, 1..200
         in: query
-        name: limit
+        name: page_size
         type: integer
-      - description: Opaque pagination cursor
-        in: query
-        name: cursor
-        type: string
       - description: Started at or after this RFC3339 timestamp
         in: query
         name: from
@@ -1904,14 +2001,14 @@ paths:
       description: Returns one authorized business-provenance row per interaction,
         aggregated from real requests.
       parameters:
+      - description: Page number, starting at 1
+        in: query
+        name: page
+        type: integer
       - description: Page size, 1..200
         in: query
-        name: limit
+        name: page_size
         type: integer
-      - description: Opaque pagination cursor
-        in: query
-        name: cursor
-        type: string
       - description: Conversation ID
         in: query
         name: conversation_id
@@ -2011,14 +2108,14 @@ paths:
       description: Returns stable request summaries generated from authorized evidence
         and artifacts.
       parameters:
+      - description: Page number, starting at 1
+        in: query
+        name: page
+        type: integer
       - description: Page size, 1..200
         in: query
-        name: limit
+        name: page_size
         type: integer
-      - description: Opaque pagination cursor
-        in: query
-        name: cursor
-        type: string
       - description: Caller-owned conversation ID
         in: query
         name: conversation_id
@@ -2991,6 +3088,63 @@ paths:
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
       summary: Fail one managed Interaction
+      tags:
+      - lifecycle
+  /interactions/{interaction_id}/finish:
+    post:
+      consumes:
+      - application/json
+      description: Derives the current lease and closure manifest from authoritative
+        Operations and Receipts. Ordinary Agents do not submit concurrency or closure
+        internals.
+      parameters:
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      - description: Managed finish request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httphandler.managedFinishInteractionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.Interaction'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Finish one Interaction through the Agent-facing facade
       tags:
       - lifecycle
   /interactions/{interaction_id}/handoff:

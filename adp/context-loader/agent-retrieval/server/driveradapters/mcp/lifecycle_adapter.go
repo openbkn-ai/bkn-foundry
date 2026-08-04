@@ -8,6 +8,7 @@ package mcp
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,25 +21,18 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
 var lifecycleToolNames = map[string]struct{}{
-	"bkn_create_conversation":  {},
-	"bkn_resume_conversation":  {},
-	"bkn_start_interaction":    {},
-	"bkn_complete_interaction": {},
-	"bkn_fail_interaction":     {},
-	"bkn_cancel_interaction":   {},
-	"bkn_handoff_interaction":  {},
-	"bkn_close_conversation":   {},
-	"bkn_get_operation":        {},
-	"bkn_retry_operation":      {},
-	"bkn_get_receipt":          {},
+	"bkn_start_interaction":  {},
+	"bkn_finish_interaction": {},
 }
 
 func lifecycleToolMiddleware(client *bkntrace.LifecycleClient) server.ToolHandlerMiddleware {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			ctx = withMCPClientApplication(ctx)
 			if _, lifecycle := lifecycleToolNames[req.Params.Name]; lifecycle {
 				return next(ctx, req)
 			}
@@ -58,7 +52,7 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 			Context: bkntrace.BusinessContext{
 				ConversationID: intent.Context.ConversationID, InteractionID: intent.Context.InteractionID,
 				OperationKey: intent.Context.OperationKey, ParentOperationID: intent.Context.ParentOperationID,
-				CausationEventIDs: intent.Context.CausationEventIDs,
+				CausationEventIDs: intent.Context.CausationEventIDs, BusinessRefs: intent.Context.BusinessRefs,
 			},
 			ToolName:            intent.ToolName,
 			NormalizedInputHash: normalizedBusinessInputHash(intent.Input),
@@ -158,7 +152,34 @@ func handleLifecycleTool(
 	name string,
 ) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		hints, hintErr := hostLifecycleHintsFromRequest(req)
+		if hintErr != nil {
+			return lifecycleToolError(lifecycleError{
+				Code: "lifecycle_hint_invalid", Message: hintErr.Error(),
+				RequiredAction: "fix_host_lifecycle_hint",
+			}), nil
+		}
 		args := req.GetArguments()
+		ensureLifecycleIdempotency(ctx, name, args, hints)
+		if name == "bkn_start_interaction" {
+			args["request_hash"] = strings.TrimPrefix(hashBytes([]byte(stringValue(args["question"]))), "sha256:")
+		}
+		if name == "bkn_start_interaction" &&
+			(stringValue(args["conversation_id"]) == "" || hints.HostConversationKey != "") {
+			conversation, result := ensureManagedConversation(ctx, client, hints)
+			if result != nil {
+				return result, nil
+			}
+			if supplied := stringValue(args["conversation_id"]); supplied != "" &&
+				supplied != conversation.ConversationID {
+				return lifecycleToolError(lifecycleError{
+					Code:           "conversation_context_conflict",
+					Message:        "conversation_id does not match the host conversation mapping",
+					RequiredAction: "use_authoritative_conversation",
+				}), nil
+			}
+			args["conversation_id"] = conversation.ConversationID
+		}
 		operationID := stringValue(args["operation_id"])
 		switch name {
 		case "bkn_get_operation":
@@ -171,7 +192,13 @@ func handleLifecycleTool(
 			target, apiErr, err := client.GetReceipt(ctx, stringValue(args["receipt_id"]))
 			return lifecycleCallResult(target, apiErr, err)
 		}
-		if name == "bkn_complete_interaction" {
+		if name == "bkn_finish_interaction" && stringValue(args["outcome"]) == "completed" {
+			if stringValue(args["answer"]) == "" {
+				return lifecycleToolError(lifecycleError{
+					Code: "closure_manifest_invalid", Message: "completed outcome requires answer",
+					RequiredAction: "provide_answer",
+				}), nil
+			}
 			interactionID := stringValue(args["interaction_id"])
 			var current bkntrace.Interaction
 			apiErr, err := client.Call(
@@ -183,23 +210,29 @@ func handleLifecycleTool(
 			if apiErr != nil {
 				return lifecycleToolError(lifecycleError(*apiErr)), nil
 			}
-			artifactRef, err := bkntrace.RecordInteractionArtifact(
-				ctx, current.ConversationID, current.InteractionID,
-				bkntrace.InteractionArtifactResult, args["answer"],
-			)
-			if err != nil {
-				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			if current.ExecutionStatus != "active" && current.ExecutionStatus != "completed" {
+				return lifecycleToolError(lifecycleError{
+					Code: "terminal_conflict", Message: "another terminal outcome already won",
+					CurrentStatus: current.ExecutionStatus, RequiredAction: "reuse_authoritative_interaction",
+				}), nil
 			}
-			args["answer_artifact_ref"] = artifactRef
+			if current.ExecutionStatus == "completed" && current.ClosureManifest != nil &&
+				current.ClosureManifest.AnswerArtifactRef != "" {
+				args["answer_artifact_ref"] = current.ClosureManifest.AnswerArtifactRef
+			} else {
+				ctx = common.SetAuthoritativeObservedAtIfMissing(ctx, current.UpdatedAt)
+				artifactRef, err := bkntrace.RecordInteractionArtifact(
+					ctx, current.ConversationID, current.InteractionID,
+					bkntrace.InteractionArtifactResult, args["answer"],
+				)
+				if err != nil {
+					return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+				}
+				args["answer_artifact_ref"] = artifactRef
+			}
 		}
 		method, path, body := lifecycleRequest(name, args)
-		var target any
-		switch name {
-		case "bkn_create_conversation", "bkn_resume_conversation", "bkn_close_conversation":
-			target = &bkntrace.Conversation{}
-		default:
-			target = &bkntrace.Interaction{}
-		}
+		target := &bkntrace.Interaction{}
 		apiErr, err := client.Call(ctx, method, path, body, target)
 		if err != nil {
 			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
@@ -207,17 +240,106 @@ func handleLifecycleTool(
 		if apiErr != nil {
 			return lifecycleToolError(lifecycleError(*apiErr)), nil
 		}
-		interaction, interactionTarget := target.(*bkntrace.Interaction)
-		if name == "bkn_start_interaction" && interactionTarget {
+		if name == "bkn_start_interaction" {
+			ctx = common.SetAuthoritativeObservedAtIfMissing(ctx, target.CreatedAt)
 			if _, err := bkntrace.RecordInteractionArtifact(
-				ctx, interaction.ConversationID, interaction.InteractionID,
+				ctx, target.ConversationID, target.InteractionID,
 				bkntrace.InteractionArtifactQuestion, args["question"],
 			); err != nil {
 				return lifecycleToolError(lifecycleAvailabilityError(err)), nil
 			}
 		}
-		return mcpsdk.NewToolResultStructured(target, "managed lifecycle state updated"), nil
+		return lifecycleSuccessResult(agentLifecycleView(name, target))
 	}
+}
+
+func ensureManagedConversation(
+	ctx context.Context,
+	client *bkntrace.LifecycleClient,
+	hints hostLifecycleHints,
+) (bkntrace.Conversation, *mcpsdk.CallToolResult) {
+	externalKey := ""
+	switch {
+	case hints.HostConversationKey != "":
+		externalKey = opaqueLifecycleKey("mcp-host", hints.HostConversationKey)
+	default:
+		var err error
+		externalKey, err = newManagedConversationKey()
+		if err != nil {
+			return bkntrace.Conversation{}, lifecycleToolError(lifecycleAvailabilityError(err))
+		}
+	}
+	idempotencyKey := "mcp-conversation:" + strings.TrimPrefix(hashBytes([]byte(externalKey)), "sha256:")[:32]
+	conversation, apiErr, err := client.EnsureCurrentConversation(ctx, externalKey, idempotencyKey)
+	if err != nil {
+		return bkntrace.Conversation{}, lifecycleToolError(lifecycleAvailabilityError(err))
+	}
+	if apiErr != nil {
+		return bkntrace.Conversation{}, lifecycleToolError(lifecycleError(*apiErr))
+	}
+	return conversation, nil
+}
+
+func opaqueLifecycleKey(prefix string, value string) string {
+	return prefix + ":" + strings.TrimPrefix(hashBytes([]byte(value)), "sha256:")
+}
+
+func newManagedConversationKey() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return "mcp:" + hex.EncodeToString(raw), nil
+}
+
+func agentLifecycleView(name string, target any) any {
+	switch value := target.(type) {
+	case *bkntrace.Interaction:
+		result := map[string]any{
+			"interaction_id":   value.InteractionID,
+			"conversation_id":  value.ConversationID,
+			"execution_status": value.ExecutionStatus,
+		}
+		if name == "bkn_finish_interaction" {
+			result["evidence_status"] = value.EvidenceStatus
+		}
+		return result
+	default:
+		return target
+	}
+}
+
+func ensureLifecycleIdempotency(
+	ctx context.Context,
+	name string,
+	args map[string]any,
+	hints hostLifecycleHints,
+) {
+	if args == nil {
+		return
+	}
+	if name == "bkn_start_interaction" && hints.ClientInvocationID != "" {
+		args["idempotency_key"] = opaqueLifecycleKey("mcp-invocation", hints.ClientInvocationID)
+		return
+	}
+	requestID := ""
+	if name == "bkn_start_interaction" {
+		if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok {
+			requestID = traceContext.RequestID
+		}
+	}
+	stableArgs := make(map[string]any, len(args))
+	for key, value := range args {
+		if key != "idempotency_key" {
+			stableArgs[key] = value
+		}
+	}
+	raw, _ := json.Marshal(struct {
+		Name      string
+		RequestID string
+		Args      map[string]any
+	}{name, requestID, stableArgs})
+	args["idempotency_key"] = "mcp:" + strings.TrimPrefix(hashBytes(raw), "sha256:")[:32]
 }
 
 func lifecycleCallResult(target any, apiErr *bkntrace.APIError, err error) (*mcpsdk.CallToolResult, error) {
@@ -227,31 +349,29 @@ func lifecycleCallResult(target any, apiErr *bkntrace.APIError, err error) (*mcp
 	if apiErr != nil {
 		return lifecycleToolError(lifecycleError(*apiErr)), nil
 	}
-	return mcpsdk.NewToolResultStructured(target, "managed lifecycle state updated"), nil
+	return lifecycleSuccessResult(target)
+}
+
+func lifecycleSuccessResult(target any) (*mcpsdk.CallToolResult, error) {
+	raw, err := json.Marshal(target)
+	if err != nil {
+		return nil, err
+	}
+	return mcpsdk.NewToolResultStructured(target, string(raw)), nil
 }
 
 func lifecycleRequest(name string, args map[string]any) (string, string, map[string]any) {
 	switch name {
-	case "bkn_create_conversation":
-		return http.MethodPost, "/conversations:ensure-current", copyArgs(args,
-			"external_conversation_key", "idempotency_key", "one_shot")
-	case "bkn_resume_conversation":
-		return http.MethodPost, "/conversations:resume-by-id", copyArgs(args, "conversation_id")
 	case "bkn_start_interaction":
 		conversationID := url.PathEscape(stringValue(args["conversation_id"]))
 		return http.MethodPost, "/conversations/" + conversationID + "/interactions",
-			copyArgs(args, "idempotency_key", "lease_seconds")
-	case "bkn_close_conversation":
-		conversationID := url.PathEscape(stringValue(args["conversation_id"]))
-		return http.MethodPost, "/conversations/" + conversationID + "/close",
-			copyArgs(args, "idempotency_key")
-	default:
+			copyArgs(args, "idempotency_key", "request_hash", "agent_name", "lease_seconds")
+	case "bkn_finish_interaction":
 		interactionID := url.PathEscape(stringValue(args["interaction_id"]))
-		action := strings.TrimPrefix(strings.TrimSuffix(name, "_interaction"), "bkn_")
-		body := copyArgs(args, "terminal_idempotency_key", "lease_token", "lease_epoch",
-			"completion_manifest_version", "answer_artifact_ref", "claims",
-			"expected_operations", "expected_receipts", "assembler_deadline", "completion_reason")
-		return http.MethodPost, "/interactions/" + interactionID + "/" + action, body
+		return http.MethodPost, "/interactions/" + interactionID + "/finish",
+			copyArgs(args, "outcome", "idempotency_key", "answer_artifact_ref", "reason")
+	default:
+		return "", "", nil
 	}
 }
 

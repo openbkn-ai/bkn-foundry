@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
@@ -84,6 +86,8 @@ type StartInteractionCommand struct {
 	Owner          sessionvo.Owner
 	ConversationID string
 	IdempotencyKey string
+	RequestHash    string
+	AgentName      string
 	LeaseDuration  time.Duration
 }
 
@@ -95,6 +99,7 @@ type TerminateInteractionCommand struct {
 	LeaseToken             string
 	LeaseEpoch             uint64
 	Manifest               sessionvo.ClosureManifest
+	DeriveManifest         bool
 }
 
 type EnsureOperationCommand struct {
@@ -426,8 +431,17 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 	if command.IdempotencyKey == "" {
 		return sessionvo.Interaction{}, domainError(CodeInteractionRequired, "idempotency key is required")
 	}
+	agentName := strings.TrimSpace(command.AgentName)
+	if utf8.RuneCountInString(agentName) > 128 {
+		return sessionvo.Interaction{}, domainError(CodeAgentNameInvalid, "agent_name must not exceed 128 characters")
+	}
 	var result sessionvo.Interaction
 	created := false
+	requestHash := command.RequestHash
+	if requestHash == "" {
+		requestHash = hashValue(struct{}{})
+	}
+	const idempotencyScope = "interaction.start"
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		conversation, err := ownedConversation(tx, command.Owner, command.ConversationID)
 		if err != nil {
@@ -436,12 +450,40 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 		if err := requireActiveConversation(conversation); err != nil {
 			return err
 		}
-		if existing, found := tx.FindInteractionByStartKey(conversation.ID, command.IdempotencyKey); found {
-			result = existing
+		nextOrdinal := tx.NextInteractionOrdinal(conversation.ID)
+		if conversation.AgentName != "" && agentName != "" && conversation.AgentName != agentName {
+			return domainError(CodeAgentNameConflict, "agent_name does not match the conversation declaration")
+		}
+		if conversation.AgentName == "" && agentName != "" {
+			if nextOrdinal > 1 {
+				return domainError(CodeAgentNameConflict, "agent_name cannot be declared after the first interaction")
+			}
+			conversation.AgentName = agentName
+			conversation.RowVersion++
+			conversation.UpdatedAt = tx.Now()
+			tx.SaveConversation(conversation)
+			if err := s.appendProjection(tx, "conversation", conversation.ID, "conversation.agent_name_declared", conversation); err != nil {
+				return err
+			}
+		}
+		if record, found := tx.FindIdempotency(
+			idempotencyScope, command.Owner, conversation.ID, command.IdempotencyKey,
+		); found {
+			if record.RequestHash != requestHash || record.ResourceType != "interaction" {
+				return domainError(CodeIdempotencyConflict, "idempotency key was already used with a different request")
+			}
+			interaction, found := tx.FindInteraction(record.ResourceID)
+			if !found {
+				return domainError(CodeInteractionRequired, "idempotency result interaction was not found")
+			}
+			result = interaction
 			return nil
 		}
-		if _, found := tx.FindActiveInteraction(conversation.ID); found {
-			return domainError(CodeInteractionInProgress, "the conversation already has an active interaction")
+		if active, found := tx.FindActiveInteraction(conversation.ID); found {
+			return &DomainError{
+				Code: CodeInteractionInProgress, Message: "the conversation already has an active interaction",
+				CurrentStatus: string(active.ExecutionStatus), CurrentInteractionID: active.ID,
+			}
 		}
 		leaseDuration := command.LeaseDuration
 		if leaseDuration <= 0 {
@@ -451,7 +493,7 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 		result = sessionvo.Interaction{
 			ID:                  s.newID("int"),
 			ConversationID:      conversation.ID,
-			Ordinal:             tx.NextInteractionOrdinal(conversation.ID),
+			Ordinal:             nextOrdinal,
 			ExecutionStatus:     sessionvo.InteractionActive,
 			EvidenceStatus:      sessionvo.EvidenceNotApplicable,
 			StartIdempotencyKey: command.IdempotencyKey,
@@ -465,6 +507,11 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 		}
 		created = true
 		tx.SaveInteraction(result)
+		tx.SaveIdempotency(sessionvo.IdempotencyRecord{
+			Scope: idempotencyScope, Owner: command.Owner, ExternalConversationKey: conversation.ID,
+			IdempotencyKey: command.IdempotencyKey, RequestHash: requestHash,
+			ResourceType: "interaction", ResourceID: result.ID, CreatedAt: now,
+		})
 		return s.appendProjection(tx, "interaction", result.ID, "interaction.started", result)
 	})
 	s.observeLifecycleError(err)
@@ -478,7 +525,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	if !validTerminalStatus(command.Status) {
 		return sessionvo.Interaction{}, domainError(CodeInteractionTerminal, "requested status is not terminal")
 	}
-	if command.LeaseToken == "" || command.LeaseEpoch == 0 {
+	if !command.DeriveManifest && (command.LeaseToken == "" || command.LeaseEpoch == 0) {
 		return sessionvo.Interaction{}, domainError(CodeTerminalConflict, "interaction lease token and epoch are required")
 	}
 	if command.TerminalIdempotencyKey == "" {
@@ -489,11 +536,6 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			command.Manifest.SystemPartialReasons, "not_collected_due_to_license",
 		)
 	}
-	payloadHash := hashValue(struct {
-		Status   sessionvo.InteractionStatus
-		Manifest sessionvo.ClosureManifest
-	}{command.Status, command.Manifest})
-
 	var result sessionvo.Interaction
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interactionRef, found := tx.PeekInteraction(command.InteractionID)
@@ -508,6 +550,25 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		if !found || interaction.ConversationID != conversation.ID {
 			return resourceNotDisclosed()
 		}
+		if interaction.IsTerminal() && command.DeriveManifest {
+			if managedTerminalReplayMatches(interaction, command) {
+				result = interaction
+				return nil
+			}
+			return &DomainError{
+				Code: CodeTerminalConflict, Message: "another terminal transition already won",
+				CurrentStatus: string(interaction.ExecutionStatus),
+			}
+		}
+		if command.DeriveManifest {
+			command.LeaseToken = interaction.LeaseToken
+			command.LeaseEpoch = interaction.LeaseEpoch
+			command.Manifest = deriveClosureManifest(tx, interaction.ID, command.Manifest)
+		}
+		payloadHash := hashValue(struct {
+			Status   sessionvo.InteractionStatus
+			Manifest sessionvo.ClosureManifest
+		}{command.Status, command.Manifest})
 		if interaction.IsTerminal() {
 			if interaction.TerminalIdempotencyKey == command.TerminalIdempotencyKey &&
 				interaction.TerminalPayloadHash == payloadHash {
@@ -574,6 +635,59 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	})
 	s.observeLifecycleError(err)
 	return result, err
+}
+
+func managedTerminalReplayMatches(
+	interaction sessionvo.Interaction,
+	command TerminateInteractionCommand,
+) bool {
+	if interaction.TerminalIdempotencyKey != command.TerminalIdempotencyKey ||
+		interaction.ExecutionStatus != command.Status || interaction.ClosureManifest == nil {
+		return false
+	}
+	committed := interaction.ClosureManifest
+	return committed.Version == command.Manifest.Version &&
+		committed.AnswerArtifactRef == command.Manifest.AnswerArtifactRef &&
+		committed.CompletionReason == command.Manifest.CompletionReason &&
+		sameStrings(committed.Claims, command.Manifest.Claims)
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func deriveClosureManifest(
+	tx isessionstore.Transaction,
+	interactionID string,
+	manifest sessionvo.ClosureManifest,
+) sessionvo.ClosureManifest {
+	receipts := tx.ListReceipts(interactionID)
+	requiredByOperation := make(map[string]bool, len(receipts))
+	manifest.ExpectedReceipts = make([]sessionvo.ExpectedReceipt, 0, len(receipts))
+	for _, receipt := range receipts {
+		requiredByOperation[receipt.OperationID] = receipt.Required
+		manifest.ExpectedReceipts = append(manifest.ExpectedReceipts, sessionvo.ExpectedReceipt{
+			ReceiptID: receipt.ID,
+			Required:  receipt.Required,
+		})
+	}
+	operations := tx.ListOperations(interactionID)
+	manifest.ExpectedOperations = make([]sessionvo.ExpectedOperation, 0, len(operations))
+	for _, operation := range operations {
+		manifest.ExpectedOperations = append(manifest.ExpectedOperations, sessionvo.ExpectedOperation{
+			OperationID: operation.ID,
+			Required:    requiredByOperation[operation.ID],
+		})
+	}
+	return manifest
 }
 
 func (s *Service) EnsureOperation(
@@ -911,6 +1025,12 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		currentReceipt.BusinessRefs = cloneBusinessRefs(command.BusinessRefs)
 		currentReceipt.ArtifactRefs = cloneStrings(command.ArtifactRefs)
 		currentReceipt.PartialReasons = cloneStrings(command.PartialReasons)
+		if command.EvidenceDurability == sessionvo.DurabilityFailed {
+			currentReceipt.PartialReasons = appendUnique(
+				currentReceipt.PartialReasons,
+				"evidence_durability_failed",
+			)
+		}
 		currentReceipt.TerminalAt = &now
 		currentReceipt.RowVersion++
 		current.AttemptStatus = sessionvo.AttemptCompleted

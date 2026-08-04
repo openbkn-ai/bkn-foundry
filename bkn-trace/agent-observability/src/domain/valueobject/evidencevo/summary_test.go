@@ -78,6 +78,49 @@ func TestBuildExecutionSummariesExposesConversationAndInteractionIdentity(t *tes
 	}
 }
 
+func TestBuildExecutionSummariesUsesAuthenticatedApplicationInsteadOfDownstreamProducer(t *testing.T) {
+	trace := summaryTrace("trace_application", "req_application", "2026-08-03T08:00:00Z", "2026-08-03T08:00:01Z")
+	trace.ApplicationPrincipalID = "openbkn-sdk"
+	trace.Events[0].EventType = "retrieval.completed"
+	trace.Events[0].OperationName = "context.run_sql"
+	trace.Events[0].Payload = map[string]any{"candidate_count": 1}
+	artifact := summaryArtifact(
+		t,
+		"artifact_downstream",
+		ArtifactTypeDataResult,
+		trace.TraceID,
+		map[string]any{"entries": []any{map[string]any{"id": "row-1"}}},
+	)
+	artifact.RequestID = trace.RequestID
+	artifact.AgentOrApp = "vega-data"
+
+	requests, executions := BuildExecutionSummaries([]NormalizedTrace{trace}, []EvidenceArtifact{artifact})
+
+	if requests[0].AgentOrApp != "openbkn-sdk" || executions[0].AgentOrApp != "openbkn-sdk" {
+		t.Fatalf("authenticated caller application must win over downstream producer: request=%+v trace=%+v", requests[0], executions[0])
+	}
+}
+
+func TestBuildExecutionSummariesKeepsTopLevelOperationWhenChildEvidenceUsesAnotherOperation(t *testing.T) {
+	trace := summaryTrace("trace_nested_operation", "req_nested_operation", "2026-08-03T08:00:00Z", "2026-08-03T08:00:02Z")
+	trace.Events[0].EventType = "retrieval.completed"
+	trace.Events[0].OperationID = "op_context_run_sql"
+	trace.Events[0].OperationName = "context.run_sql"
+	trace.Events = append(trace.Events, EvidenceEvent{
+		EventID: "event_vega_data_query", EventType: "data.query.observed",
+		ObservedAt: "2026-08-03T08:00:01Z", EmittedAt: "2026-08-03T08:00:01Z",
+		TraceID: trace.TraceID, RequestID: trace.RequestID,
+		OperationID: "op_vega_child", OperationName: "data.raw_query",
+		Payload: map[string]any{"query_hash": "sha256:query"},
+	})
+
+	requests, _ := BuildExecutionSummaries([]NormalizedTrace{trace}, nil)
+
+	if len(requests) != 1 || requests[0].OperationID != "op_context_run_sql" || requests[0].ToolName != "context.run_sql" {
+		t.Fatalf("request summary must preserve the top-level OpenBKN operation: %+v", requests)
+	}
+}
+
 func TestBuildExecutionSummariesMarksTwoPointOneWithoutArtifactsContentUnavailable(t *testing.T) {
 	trace := summaryTrace("trace_summary_legacy", "req_summary_legacy", "2026-07-26T08:00:00Z", "2026-07-26T08:00:01Z")
 
@@ -157,6 +200,12 @@ func TestBuildExecutionSummariesCompletesFinishedRetrievalAndDataQueryRequests(t
 			TraceID: "trace_retrieval_completed", RequestID: "req_retrieval_completed",
 			OperationName: "context.search_schema",
 			Payload:       map[string]any{"candidate_count": 1, "truncated": false},
+		}, {
+			EventID: "event_retrieval_completed_duplicate", EventType: "retrieval.completed",
+			ObservedAt: "2026-07-27T09:00:01Z", EmittedAt: "2026-07-27T09:00:01Z",
+			TraceID: "trace_retrieval_completed", RequestID: "req_retrieval_completed",
+			OperationName: "context.search_schema",
+			Payload:       map[string]any{"truncated": false},
 		}},
 	}
 	data := NormalizedTrace{
@@ -186,6 +235,16 @@ func TestBuildExecutionSummariesCompletesFinishedRetrievalAndDataQueryRequests(t
 		[]NormalizedTrace{retrieval, data},
 		[]EvidenceArtifact{result},
 	)
+	var retrievalSummary *RequestSummary
+	for index := range requests {
+		if requests[index].RequestID == retrieval.RequestID {
+			retrievalSummary = &requests[index]
+			break
+		}
+	}
+	if retrievalSummary == nil || retrievalSummary.ResultCount == nil || *retrievalSummary.ResultCount != 1 {
+		t.Fatalf("retrieval result count must be projected and retained: %+v", retrievalSummary)
+	}
 
 	for _, request := range requests {
 		if request.Status != "completed" || request.CompletedAt == "" {
@@ -318,7 +377,7 @@ func TestBuildExecutionSummariesDoesNotCallQuestionAndResultAloneCompleteEvidenc
 	}
 }
 
-func TestBuildExecutionSummariesSeparatesRecoveredToolFailureFromBusinessRunStatus(t *testing.T) {
+func TestBuildExecutionSummariesKeepsRecoveredToolFailureOnOperation(t *testing.T) {
 	trace := summaryTrace(
 		"trace_recovered_tool_failure",
 		"req_summary",
@@ -350,11 +409,174 @@ func TestBuildExecutionSummariesSeparatesRecoveredToolFailureFromBusinessRunStat
 		[]EvidenceArtifact{result},
 	)
 
-	if requests[0].Status != "completed" || requests[0].ResultPreview == "" {
-		t.Fatalf("a reviewed result artifact must complete the business run: %+v", requests[0])
+	if requests[0].Status != "error" || requests[0].ResultPreview == "" {
+		t.Fatalf("an operation result must not hide the operation failure: %+v", requests[0])
 	}
 	if executions[0].Status != "error" || executions[0].ErrorSummary != "RELATION_QUERY_INVALID" {
 		t.Fatalf("the recovered technical failure must remain visible on the trace: %+v", executions[0])
+	}
+}
+
+func TestBuildExecutionSummariesDoesNotCopyInteractionResultIntoOperation(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_failed_operation", RequestID: "req_failed_operation",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		SchemaVersion:  ArtifactContractVersion,
+		ConversationID: "conv_supply_chain",
+		Events: []EvidenceEvent{
+			{
+				EventID: "event_operation_failed", EventType: "tool.result.observed",
+				ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
+				TraceID: "trace_failed_operation", RequestID: "req_failed_operation",
+				InteractionID: "int_supply_chain", OperationID: "op_run_sql", OperationName: "run_sql",
+				Payload: map[string]any{"status": "failed", "error_code": "READ_POLICY_REJECTED"},
+			},
+			{
+				EventID: "event_interaction_result_link", EventType: "claim.created",
+				ObservedAt: "2026-08-04T08:00:02Z", EmittedAt: "2026-08-04T08:00:02Z",
+				TraceID: "trace_failed_operation", RequestID: "req_failed_operation",
+				InteractionID: "int_supply_chain",
+				Payload:       map[string]any{"result_artifact_ref": "artifact:interaction_result"},
+			},
+		},
+	}
+	result := summaryArtifact(
+		t,
+		"interaction_result",
+		ArtifactTypeResult,
+		trace.TraceID,
+		map[string]any{"text": "Agent 改用其他 OpenBKN 能力完成了本轮回答"},
+	)
+	result.RequestID = trace.RequestID
+	result.InteractionID = "int_supply_chain"
+	result.OperationID = ""
+
+	requests, executions := BuildExecutionSummaries([]NormalizedTrace{trace}, []EvidenceArtifact{result})
+
+	if len(requests) != 1 || requests[0].Status != "error" {
+		t.Fatalf("operation failure must not be hidden by the interaction result: %+v", requests)
+	}
+	if requests[0].ResultPreview != "" {
+		t.Fatalf("interaction result must not be copied into an OpenBKN operation: %+v", requests[0])
+	}
+	if len(executions) != 1 || executions[0].Status != "error" {
+		t.Fatalf("failed trace must remain visible: %+v", executions)
+	}
+}
+
+func TestBuildExecutionSummariesExplainsFailedOperationEvidenceWithoutRequiringTurnContent(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_failed_receipt", RequestID: "req_failed_receipt",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		SchemaVersion: ArtifactContractVersion, ConversationID: "conv_supply_chain",
+		Events: []EvidenceEvent{
+			{
+				EventID: "receipt:failed", EventType: "retrieval.completed",
+				ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
+				TraceID: "trace_failed_receipt", RequestID: "req_failed_receipt",
+				InteractionID: "int_supply_chain", OperationID: "op_run_sql", OperationName: "run_sql",
+				Payload: map[string]any{
+					"status": "failed", "evidence_durability": "failed",
+				},
+			},
+		},
+	}
+
+	requests, _ := BuildExecutionSummaries([]NormalizedTrace{trace}, nil)
+
+	if len(requests) != 1 || requests[0].EvidenceCompleteness != "partial" ||
+		len(requests[0].PartialReasons) != 1 ||
+		requests[0].PartialReasons[0] != "evidence_durability_failed" {
+		t.Fatalf("failed operation evidence must use an operation-scoped reason: %+v", requests)
+	}
+	if requests[0].ErrorSummary != "" {
+		t.Fatalf("a terminal receipt event type must not be exposed as an error summary: %+v", requests[0])
+	}
+}
+
+func TestBuildExecutionSummariesKeepsInteractionQuestionOutOfOperation(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_schema_search", RequestID: "req_schema_search",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		SchemaVersion:  ArtifactContractVersion,
+		ConversationID: "conv_supply_chain",
+		Events: []EvidenceEvent{
+			{
+				EventID: "event_schema_search", EventType: "retrieval.completed",
+				ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
+				TraceID: "trace_schema_search", RequestID: "req_schema_search",
+				InteractionID: "int_supply_chain", OperationID: "op_schema_search", OperationName: "search_schema",
+				Payload: map[string]any{
+					"question_artifact_ref": "artifact:interaction_question",
+					"candidate_count":       3,
+				},
+			},
+		},
+	}
+	question := summaryArtifact(
+		t,
+		"interaction_question",
+		ArtifactTypeQuestion,
+		trace.TraceID,
+		map[string]any{"text": "900-000044 是否可生产？"},
+	)
+	question.RequestID = trace.RequestID
+	question.InteractionID = "int_supply_chain"
+	question.OperationID = ""
+
+	requests, _ := BuildExecutionSummaries([]NormalizedTrace{trace}, []EvidenceArtifact{question})
+
+	if len(requests) != 1 || requests[0].QuestionPreview != "" {
+		t.Fatalf("interaction question must not be presented as operation input: %+v", requests)
+	}
+}
+
+func TestBuildExecutionSummariesUsesDurableReceiptAsOperationCompletenessAuthority(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_durable_receipt", RequestID: "req_durable_receipt",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		SchemaVersion: ArtifactContractVersion,
+		Events: []EvidenceEvent{{
+			EventID: "receipt:receipt_durable", EventType: "retrieval.completed",
+			ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
+			TraceID: "trace_durable_receipt", RequestID: "req_durable_receipt",
+			InteractionID: "int_supply_chain", OperationID: "op_search_schema", OperationName: "search_schema",
+			Payload: map[string]any{
+				"status": "completed", "evidence_durability": "durable",
+				"partial_reasons": []string{},
+			},
+		}},
+	}
+
+	requests, _ := BuildExecutionSummaries([]NormalizedTrace{trace}, nil)
+
+	if len(requests) != 1 || requests[0].EvidenceCompleteness != "complete" {
+		t.Fatalf("durable receipt without partial reasons must be complete: %+v", requests)
+	}
+}
+
+func TestBuildExecutionSummariesKeepsReceiptPartialReasons(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_partial_receipt", RequestID: "req_partial_receipt",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		SchemaVersion: ArtifactContractVersion,
+		Events: []EvidenceEvent{{
+			EventID: "receipt:receipt_partial", EventType: "retrieval.completed",
+			ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
+			TraceID: "trace_partial_receipt", RequestID: "req_partial_receipt",
+			InteractionID: "int_supply_chain", OperationID: "op_run_sql", OperationName: "run_sql",
+			Payload: map[string]any{
+				"status": "completed", "evidence_durability": "durable",
+				"partial_reasons": []any{"business_refs_unresolved"},
+			},
+		}},
+	}
+
+	requests, _ := BuildExecutionSummaries([]NormalizedTrace{trace}, nil)
+
+	if len(requests) != 1 || requests[0].EvidenceCompleteness != "partial" ||
+		!containsSummaryReason(requests[0].PartialReasons, "business_refs_unresolved") {
+		t.Fatalf("receipt partial reason must remain visible: %+v", requests)
 	}
 }
 

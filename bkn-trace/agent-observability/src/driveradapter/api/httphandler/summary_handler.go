@@ -43,8 +43,8 @@ func RegisterBusinessProvenanceRoutes(
 // @Description Returns one authorized business-provenance row per conversation, aggregated from real interactions and requests.
 // @Tags business-provenance
 // @Produce json
-// @Param limit query int false "Page size, 1..200"
-// @Param cursor query string false "Opaque pagination cursor"
+// @Param page query int false "Page number, starting at 1"
+// @Param page_size query int false "Page size, 1..200"
 // @Param from query string false "Started at or after this RFC3339 timestamp"
 // @Param to query string false "Started at or before this RFC3339 timestamp"
 // @Param status query string false "Execution status"
@@ -81,8 +81,8 @@ func (h *EvidenceHandler) ListBusinessProvenanceConversations(w http.ResponseWri
 // @Description Returns one authorized business-provenance row per interaction, aggregated from real requests.
 // @Tags business-provenance
 // @Produce json
-// @Param limit query int false "Page size, 1..200"
-// @Param cursor query string false "Opaque pagination cursor"
+// @Param page query int false "Page number, starting at 1"
+// @Param page_size query int false "Page size, 1..200"
 // @Param conversation_id query string false "Conversation ID"
 // @Param from query string false "Started at or after this RFC3339 timestamp"
 // @Param to query string false "Started at or before this RFC3339 timestamp"
@@ -120,8 +120,8 @@ func (h *EvidenceHandler) ListBusinessProvenanceInteractions(w http.ResponseWrit
 // @Description Returns stable request summaries generated from authorized evidence and artifacts.
 // @Tags requests
 // @Produce json
-// @Param limit query int false "Page size, 1..200"
-// @Param cursor query string false "Opaque pagination cursor"
+// @Param page query int false "Page number, starting at 1"
+// @Param page_size query int false "Page size, 1..200"
 // @Param conversation_id query string false "Caller-owned conversation ID"
 // @Param interaction_id query string false "One user interaction ID"
 // @Param from query string false "Started at or after this RFC3339 timestamp"
@@ -329,6 +329,22 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 		KnowledgeNetwork:     strings.TrimSpace(r.URL.Query().Get("knowledge_network")),
 		EvidenceCompleteness: strings.TrimSpace(r.URL.Query().Get("evidence_completeness")),
 		Keyword:              strings.TrimSpace(r.URL.Query().Get("keyword")),
+	}
+	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
+		page, err := strconv.Atoi(rawPage)
+		if err != nil || page <= 0 {
+			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page must be a positive integer"})
+			return evidencevo.SummaryQueryOptions{}, false
+		}
+		options.Page = page
+	}
+	if rawPageSize := strings.TrimSpace(r.URL.Query().Get("page_size")); rawPageSize != "" {
+		pageSize, err := strconv.Atoi(rawPageSize)
+		if err != nil || pageSize <= 0 || pageSize > evidencesvc.MaxSummaryQueryLimit {
+			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page_size must be an integer between 1 and 200"})
+			return evidencevo.SummaryQueryOptions{}, false
+		}
+		options.Limit = pageSize
 	}
 	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
 		limit, err := strconv.Atoi(rawLimit)
