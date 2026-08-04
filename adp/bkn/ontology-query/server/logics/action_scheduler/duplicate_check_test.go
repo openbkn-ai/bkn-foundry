@@ -21,8 +21,8 @@ import (
 	"ontology-query/logics"
 )
 
-func Test_computeInstanceIdentityHash(t *testing.T) {
-	Convey("computeInstanceIdentityHash is stable across order and key order", t, func() {
+func Test_computeDuplicateFingerprint(t *testing.T) {
+	Convey("computeDuplicateFingerprint is stable across order and key order", t, func() {
 		a := []interfaces.ObjectSystemInfo{
 			{InstanceIdentity: map[string]any{"b": "2", "a": "1"}},
 			{InstanceIdentity: map[string]any{"id": "x"}},
@@ -31,9 +31,9 @@ func Test_computeInstanceIdentityHash(t *testing.T) {
 			{InstanceIdentity: map[string]any{"id": "x"}},
 			{InstanceIdentity: map[string]any{"a": "1", "b": "2"}},
 		}
-		ha, err := computeInstanceIdentityHash(a)
+		ha, err := computeDuplicateFingerprint(a, nil)
 		So(err, ShouldBeNil)
-		hb, err := computeInstanceIdentityHash(b)
+		hb, err := computeDuplicateFingerprint(b, nil)
 		So(err, ShouldBeNil)
 		So(ha, ShouldEqual, hb)
 		So(ha, ShouldNotBeEmpty)
@@ -42,9 +42,31 @@ func Test_computeInstanceIdentityHash(t *testing.T) {
 			c := []interfaces.ObjectSystemInfo{
 				{InstanceIdentity: map[string]any{"id": "y"}},
 			}
-			hc, err := computeInstanceIdentityHash(c)
+			hc, err := computeDuplicateFingerprint(c, nil)
 			So(err, ShouldBeNil)
 			So(hc, ShouldNotEqual, ha)
+		})
+
+		Convey("same virtual instance with different dynamic_params produce different hashes", func() {
+			virtual := []interfaces.ObjectSystemInfo{
+				{InstanceIdentity: map[string]any{}},
+			}
+			h1, err := computeDuplicateFingerprint(virtual, map[string]any{"message": "hello"})
+			So(err, ShouldBeNil)
+			h2, err := computeDuplicateFingerprint(virtual, map[string]any{"message": "world"})
+			So(err, ShouldBeNil)
+			So(h1, ShouldNotEqual, h2)
+		})
+
+		Convey("dynamic_params key order does not change fingerprint", func() {
+			inst := []interfaces.ObjectSystemInfo{
+				{InstanceIdentity: map[string]any{"id": "1"}},
+			}
+			h1, err := computeDuplicateFingerprint(inst, map[string]any{"a": 1, "b": 2})
+			So(err, ShouldBeNil)
+			h2, err := computeDuplicateFingerprint(inst, map[string]any{"b": 2, "a": 1})
+			So(err, ShouldBeNil)
+			So(h1, ShouldEqual, h2)
 		})
 	})
 }

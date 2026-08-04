@@ -265,7 +265,9 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("行动执行接口调用失败: %v", err))
+		// Preserve 4xx (e.g. 409 DuplicateExecution) so Agents see "duplicate rejected"
+		// rather than a generic bad-gateway / silent empty success.
+		return nil, classifyQueryError(ctx, err)
 	}
 
 	resp = &interfaces.ExecuteActionsResponse{}

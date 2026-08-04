@@ -398,6 +398,41 @@ func TestQueryObjectInstances_DownstreamNotFoundKeepsCode(t *testing.T) {
 	})
 }
 
+// TestExecuteActions_PreservesConflictStatus ensures 409 DuplicateExecution is not
+// collapsed into a generic bad-gateway, so Agents can distinguish duplicate rejection.
+func TestExecuteActions_PreservesConflictStatus(t *testing.T) {
+	convey.Convey("ExecuteActions preserves 409 from ontology-query", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+		mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
+
+		client := &ontologyQueryClient{logger: mockLogger, baseURL: "http://x", httpClient: mockHTTPClient}
+		ctx := context.Background()
+		req := &interfaces.ExecuteActionsRequest{
+			KnID:               "kn-001",
+			AtID:               "at-001",
+			InstanceIdentities: []map[string]any{{"id": "1"}},
+		}
+
+		wrapped := infraErr.NewHTTPError(ctx, http.StatusConflict, infraErr.ErrExtCommonExternalServerError,
+			`{"error_code":"OntologyQuery.ActionExecution.DuplicateExecution"}`)
+		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusConflict, nil, wrapped)
+
+		_, err := client.ExecuteActions(ctx, req)
+		var he *infraErr.HTTPError
+		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
+		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusConflict)
+		convey.So(strings.Contains(he.Code, "Conflict"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(fmt.Sprintf("%v", he.ErrorDetails), "DuplicateExecution"), convey.ShouldBeTrue)
+	})
+}
+
 // TestQueryObjectInstances_DownstreamServerErrorUntouched 下游 5xx（真服务故障）
 // 与传输错误(无 HTTP 码)保持原样,不误降为 400。
 func TestQueryObjectInstances_DownstreamServerErrorUntouched(t *testing.T) {

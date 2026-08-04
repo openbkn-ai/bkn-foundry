@@ -31,6 +31,10 @@ const (
 )
 
 // duplicateWindowSeconds is the lookback window for in-flight duplicate detection.
+// Semantics (aligned with #530): only pending/running executions whose start_time
+// falls within [now-window, now] are considered. A still-running execution that
+// started earlier than the window is NOT blocked (anti double-click / short retry,
+// not a full job-duration lock). Set to 0 to disable.
 var duplicateWindowSeconds = defaultDuplicateWindowSeconds
 
 func init() {
@@ -42,13 +46,13 @@ func init() {
 	}
 }
 
-// computeInstanceIdentityHash returns a stable SHA-256 hex digest of the resolved instance set.
-// Identity map keys are ordered by encoding/json; instance digests are sorted so request order does not matter.
-func computeInstanceIdentityHash(instances []interfaces.ObjectSystemInfo) (string, error) {
-	if len(instances) == 0 {
-		return "", nil
-	}
-	parts := make([]string, 0, len(instances))
+// computeDuplicateFingerprint returns a stable SHA-256 hex digest of the resolved
+// instance set plus dynamic_params. Instance map keys are ordered by encoding/json;
+// instance digests are sorted so request order does not matter. dynamic_params are
+// included so unbound / virtual-instance actions (empty identity) with different
+// inputs are not incorrectly treated as duplicates.
+func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynamicParams map[string]any) (string, error) {
+	parts := make([]string, 0, len(instances)+1)
 	for _, inst := range instances {
 		b, err := json.Marshal(inst.InstanceIdentity)
 		if err != nil {
@@ -57,11 +61,18 @@ func computeInstanceIdentityHash(instances []interfaces.ObjectSystemInfo) (strin
 		parts = append(parts, string(b))
 	}
 	sort.Strings(parts)
+
+	paramsJSON, err := json.Marshal(dynamicParams)
+	if err != nil {
+		return "", fmt.Errorf("marshal dynamic_params: %w", err)
+	}
+	parts = append(parts, "dynamic_params:"+string(paramsJSON))
+
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// defaultDuplicateCheck rejects when the same kn + action type + instance fingerprint
+// defaultDuplicateCheck rejects when the same kn + action type + fingerprint
 // already has a pending/running execution started within the configured window.
 // Returns (true, nil) to proceed, (false, nil) to reject as duplicate.
 func (s *actionSchedulerService) defaultDuplicateCheck(ctx context.Context, req *interfaces.ActionExecutionRequest) (bool, error) {
@@ -71,9 +82,9 @@ func (s *actionSchedulerService) defaultDuplicateCheck(ctx context.Context, req 
 	hash := req.InstanceIdentityHash
 	if hash == "" {
 		var err error
-		hash, err = computeInstanceIdentityHash(req.Instances)
+		hash, err = computeDuplicateFingerprint(req.Instances, req.DynamicParams)
 		if err != nil {
-			return false, fmt.Errorf("compute instance identity hash: %w", err)
+			return false, fmt.Errorf("compute duplicate fingerprint: %w", err)
 		}
 		if hash == "" {
 			return true, nil

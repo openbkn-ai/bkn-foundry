@@ -47,7 +47,8 @@ type ActionExecutionRequest struct {
 
 	Instances []ObjectSystemInfo `json:"-"`
 	ObjDatas  []map[string]any   `json:"-"`
-	// InstanceIdentityHash is a stable fingerprint of resolved Instances (set by scheduler before duplicate check).
+	// InstanceIdentityHash is a stable fingerprint of resolved Instances + dynamic_params
+	// (set by scheduler before duplicate check).
 	InstanceIdentityHash string `json:"-"`
 }
 
@@ -61,30 +62,30 @@ type ActionExecutionResponse struct {
 
 // ActionExecution represents a single execution request (may contain multiple objects)
 type ActionExecution struct {
-	ID                 string                  `json:"id"` // execution_id
-	KNID               string                  `json:"kn_id"`
-	ActionTypeID       string                  `json:"action_type_id"`
-	ActionTypeName     string                  `json:"action_type_name"`
-	ActionSourceType   string                  `json:"action_source_type"` // "tool" | "mcp"
-	ActionSource       ActionSource            `json:"action_source"`
-	ObjectTypeID       string                  `json:"object_type_id"`
-	TriggerType        string                  `json:"trigger_type"` // "manual" | "scheduled"
-	Status             string                  `json:"status"`       // "pending" | "running" | "completed" | "failed"
-	TotalCount         int                     `json:"total_count"`
-	SuccessCount       int                     `json:"success_count"`
-	FailedCount        int                     `json:"failed_count"`
-	Results            []ObjectExecutionResult `json:"results"`
-	ResultsTotal       int                     `json:"results_total,omitempty"`  // total count of results (for pagination)
-	ResultsOffset      int                     `json:"results_offset,omitempty"` // current offset of results
-	ResultsLimit       int                     `json:"results_limit,omitempty"`  // current limit of results
-	DynamicParams      map[string]any          `json:"dynamic_params,omitempty"`
-	ExecutorID         string                  `json:"executor_id"`                    // user ID who triggered (deprecated, use Executor instead)
-	Executor           AccountInfo             `json:"executor"`                       // user info who triggered the execution
+	ID                   string                  `json:"id"` // execution_id
+	KNID                 string                  `json:"kn_id"`
+	ActionTypeID         string                  `json:"action_type_id"`
+	ActionTypeName       string                  `json:"action_type_name"`
+	ActionSourceType     string                  `json:"action_source_type"` // "tool" | "mcp"
+	ActionSource         ActionSource            `json:"action_source"`
+	ObjectTypeID         string                  `json:"object_type_id"`
+	TriggerType          string                  `json:"trigger_type"` // "manual" | "scheduled"
+	Status               string                  `json:"status"`       // "pending" | "running" | "completed" | "failed"
+	TotalCount           int                     `json:"total_count"`
+	SuccessCount         int                     `json:"success_count"`
+	FailedCount          int                     `json:"failed_count"`
+	Results              []ObjectExecutionResult `json:"results"`
+	ResultsTotal         int                     `json:"results_total,omitempty"`  // total count of results (for pagination)
+	ResultsOffset        int                     `json:"results_offset,omitempty"` // current offset of results
+	ResultsLimit         int                     `json:"results_limit,omitempty"`  // current limit of results
+	DynamicParams        map[string]any          `json:"dynamic_params,omitempty"`
+	ExecutorID           string                  `json:"executor_id"`                      // user ID who triggered (deprecated, use Executor instead)
+	Executor             AccountInfo             `json:"executor"`                         // user info who triggered the execution
 	StartTime            int64                   `json:"start_time"`                       // execution start time (Unix milliseconds)
 	EndTime              int64                   `json:"end_time,omitempty"`               // execution end time (Unix milliseconds)
 	DurationMs           int64                   `json:"duration_ms,omitempty"`            // execution duration in milliseconds
 	ActionTypeSnapshot   map[string]any          `json:"action_type_snapshot,omitempty"`   // 执行时的行动类配置快照（与 manager 返回一致）
-	InstanceIdentityHash string                  `json:"instance_identity_hash,omitempty"` // fingerprint of target instances for duplicate detection
+	InstanceIdentityHash string                  `json:"instance_identity_hash,omitempty"` // fingerprint of instances + dynamic_params for duplicate detection
 }
 
 // ObjectExecutionResult represents execution result for a single object
@@ -106,8 +107,8 @@ type ActionLogQuery struct {
 	Status               string   `json:"status,omitempty" form:"status"`
 	Statuses             []string `json:"statuses,omitempty"` // when set, OR-match any status (takes precedence over Status)
 	TriggerType          string   `json:"trigger_type,omitempty" form:"trigger_type"`
-	InstanceIdentityHash string   `json:"instance_identity_hash,omitempty"` // exact match on instance fingerprint
-	StartTimeRange       []int64  `json:"start_time_range,omitempty"`      // [start, end] for JSON body
+	InstanceIdentityHash string   `json:"instance_identity_hash,omitempty"` // exact match on duplicate fingerprint
+	StartTimeRange       []int64  `json:"start_time_range,omitempty"`       // [start, end] for JSON body
 	StartTimeFrom        int64    `json:"-" form:"start_time_from"`         // for GET query params
 	StartTimeTo          int64    `json:"-" form:"start_time_to"`           // for GET query params
 	Offset               int      `json:"offset,omitempty" form:"offset"`

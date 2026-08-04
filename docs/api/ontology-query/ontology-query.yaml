@@ -2499,12 +2499,16 @@ paths:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
           description: |
             检测到重复执行（`OntologyQuery.ActionExecution.DuplicateExecution`）。
-            同一 kn + 行动类 + 实例集合在窗口期内已有 pending/running 执行时拒绝。
+            同一 kn + 行动类 + 指纹（目标实例集合 + `dynamic_params`）在窗口期内
+            已有 **start_time 落在窗口内** 的 pending/running 执行时拒绝。
+            仍在运行但启动时间早于窗口的执行**不会**被拦截（防连点/短重试，非全程 in-flight 锁）。
             窗口秒数由环境变量 `ACTION_EXECUTION_DUPLICATE_WINDOW_SECONDS` 控制（默认 60；0 关闭）。
       summary: 执行行动类
       description: |
         异步提交行动执行，立即返回 `execution_id`。
-        默认启用防重复：同一知识网络、行动类、目标实例指纹在配置窗口内若已有进行中（pending/running）的执行，则返回 409。
+        默认启用防重复：同一知识网络、行动类、目标实例与 dynamic_params 指纹在配置窗口内
+        若已有进行中（pending/running）且 start_time 落在窗口内的执行，则返回 409。
+
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-executions/{execution_id}:
     summary: 获取行动执行状态
@@ -5261,7 +5265,7 @@ components:
           type: integer
           format: int64
         instance_identity_hash:
-          description: 目标实例集合指纹（用于防重复执行检测）
+          description: 防重复指纹（目标实例集合 + dynamic_params 的稳定摘要）
           type: string
         action_type_snapshot:
           description: 执行时的行动类配置快照（与 bkn-backend 返回一致）

@@ -405,9 +405,11 @@ func (s *actionLogsService) ensureIndexExists(ctx context.Context, indexName str
 						"name": map[string]any{"type": "keyword"},
 					},
 				},
-				"start_time":             map[string]any{"type": "long"},
-				"end_time":               map[string]any{"type": "long"},
-				"duration_ms":            map[string]any{"type": "long"},
+				"start_time":  map[string]any{"type": "long"},
+				"end_time":    map[string]any{"type": "long"},
+				"duration_ms": map[string]any{"type": "long"},
+				// New indexes only. Existing indexes rely on dynamic mapping (text + .keyword);
+				// term queries still match because the fingerprint is a single [0-9a-f] token.
 				"instance_identity_hash": map[string]any{"type": "keyword"},
 				"results":                map[string]any{"type": "nested"},
 				"dynamic_params":         map[string]any{"type": "object", "enabled": false},

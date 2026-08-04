@@ -153,11 +153,11 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		}
 	}
 
-	instanceHash, err := computeInstanceIdentityHash(req.Instances)
+	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams)
 	if err != nil {
-		logger.Errorf("Failed to compute instance identity hash: %v", err)
+		logger.Errorf("Failed to compute duplicate fingerprint: %v", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
-			WithErrorDetails(fmt.Sprintf("failed to compute instance identity hash: %v", err))
+			WithErrorDetails(fmt.Sprintf("failed to compute duplicate fingerprint: %v", err))
 	}
 	req.InstanceIdentityHash = instanceHash
 
