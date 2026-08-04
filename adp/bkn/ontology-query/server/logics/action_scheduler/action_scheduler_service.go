@@ -75,7 +75,7 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 			logsService: action_logs.NewActionLogsService(appSetting),
 			ots:         object_type.NewObjectTypeService(appSetting),
 		}
-		// Default duplicate strategy: reject same kn + action type + instance set while in-flight within the window.
+		// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
 		svc.duplicateCheckHook = svc.defaultDuplicateCheck
 		assService = svc
 	})
@@ -161,7 +161,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	}
 	req.InstanceIdentityHash = instanceHash
 
-	// Duplicate check hook (default: reject in-flight same kn + action type + instance set)
+	// Duplicate check hook (default: reject in-flight same kn + action type + instance set + dynamic_params)
 	if s.duplicateCheckHook != nil {
 		proceed, dupErr := s.duplicateCheckHook(ctx, req)
 		if dupErr != nil {

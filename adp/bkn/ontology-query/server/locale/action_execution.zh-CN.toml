@@ -16,7 +16,7 @@ ErrorLink = "暂无"
 
 [OntologyQuery.ActionExecution.DuplicateExecution]
 Description = "检测到重复执行"
-Solution = "该行动已有正在进行的执行，请等待完成。"
+Solution = "同一行动类、实例集合与 dynamic_params 在防重复窗口内已有进行中的执行，请等待完成或查询已有 execution。"
 ErrorLink = "暂无"
 
 [OntologyQuery.ActionExecution.GetActionTypeFailed]

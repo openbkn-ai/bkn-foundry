@@ -21,7 +21,7 @@
   },
   "execute_action": {
     "name": "execute_action",
-    "description": "Execute an action. First call get_action_info to obtain the action's dynamic_params schema, then fill in the real dynamic parameter values to trigger execution (asynchronous, returns an execution_id). Duplicate submissions for the same kn + action type + instance set within the duplicate window return HTTP 409; do not retry—use get_action_execution to poll the existing execution instead."
+    "description": "Execute an action. First call get_action_info to obtain the action's dynamic_params schema, then fill in the real dynamic parameter values to trigger execution (asynchronous, returns an execution_id). Duplicate submissions for the same kn + action type + instance set + dynamic_params within the duplicate window return HTTP 409; do not retry—use get_action_execution to poll the existing execution instead."
   },
   "get_action_execution": {
     "name": "get_action_execution",

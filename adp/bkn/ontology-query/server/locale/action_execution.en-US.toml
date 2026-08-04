@@ -16,7 +16,7 @@ ErrorLink = "N/A"
 
 [OntologyQuery.ActionExecution.DuplicateExecution]
 Description = "Duplicate execution detected"
-Solution = "An execution for this action is already in progress. Please wait for it to complete."
+Solution = "An in-flight execution already exists for the same action type, instance set, and dynamic_params within the duplicate window. Please wait for it to complete or query the existing execution."
 ErrorLink = "N/A"
 
 [OntologyQuery.ActionExecution.GetActionTypeFailed]
