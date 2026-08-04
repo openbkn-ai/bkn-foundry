@@ -11,13 +11,11 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
-	"go.opentelemetry.io/otel/codes"
 
 	"bkn-backend/common"
 	cond "bkn-backend/common/condition"
@@ -29,23 +27,11 @@ var (
 	mfAccess     interfaces.ModelFactoryAccess
 )
 
-// defaultModelCacheTTL 系统默认模型缓存有效期：避免向量化热路径每次都打 mf-model-manager
-const defaultModelCacheTTL = 60 * time.Second
-
-// cachedDefault 缓存某 model_type 下的系统默认模型(含 nil，表示未配置)
-type cachedDefault struct {
-	model  *interfaces.SmallModel
-	expiry time.Time
-}
-
 type modelFactoryAccess struct {
 	appSetting   *common.AppSetting
 	httpClient   rest.HTTPClient
 	mfManagerUrl string
 	mfAPIUrl     string
-
-	defaultCacheMu sync.RWMutex
-	defaultCache   map[string]*cachedDefault
 }
 
 // NewModelFactoryAccess 创建模型工厂访问实例
@@ -56,43 +42,15 @@ func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactor
 			httpClient:   common.NewHTTPClient(),
 			mfManagerUrl: appSetting.ModelFactoryManagerUrl,
 			mfAPIUrl:     appSetting.ModelFactoryAPIUrl,
-			defaultCache: make(map[string]*cachedDefault),
 		}
 	})
 
 	return mfAccess
 }
 
-func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context) (*interfaces.SmallModel, error) {
-	// DefaultSmallModelEnabled 仍作为部署级开关：是否启用 embedding(KNN/向量化)
-	if !mfa.appSetting.ServerSetting.DefaultSmallModelEnabled {
-		return nil, nil
-	}
-	// 部署显式配置优先。配置了名称但查不到时直接报错，避免静默使用
-	// 系统默认而掩盖配置错误。
-	if defaultModelName := mfa.appSetting.ServerSetting.DefaultSmallModelName; defaultModelName != "" {
-		return mfa.GetModelByName(ctx, defaultModelName)
-	}
-
-	// 未配置部署级默认时，才使用 mf-model-manager 的系统默认（带 TTL 缓存）。
-	model, err := mfa.getDefaultModelFromAPI(ctx, interfaces.SMALL_MODEL_TYPE_EMBEDDING)
-	if err != nil {
-		logger.Errorf("Get default embedding model from mf-model-manager failed: %s", common.SafeErrorSummary(err))
-		return nil, fmt.Errorf("get default embedding model failed: %w", err)
-	}
-	return model, nil
-}
-
-// getDefaultModelFromAPI 调 mf-model-manager 取某 model_type 下的系统默认小模型，带进程内 TTL 缓存。
+// GetDefaultModel 调 mf-model-manager 取某 model_type 下的系统默认小模型。
 // 返回 nil 表示未配置默认(接口返回空对象)。
-func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, modelType string) (*interfaces.SmallModel, error) {
-	// 命中缓存(含已缓存的 nil)
-	mfa.defaultCacheMu.RLock()
-	if c, ok := mfa.defaultCache[modelType]; ok && time.Now().Before(c.expiry) {
-		mfa.defaultCacheMu.RUnlock()
-		return c.model, nil
-	}
-	mfa.defaultCacheMu.RUnlock()
+func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context, modelType string) (*interfaces.SmallModel, error) {
 
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetDefaultModel")
 	defer span.End()
@@ -118,14 +76,7 @@ func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, model
 	}
 	if respCode == http.StatusNotFound {
 		// 兼容 mf-model-manager 尚未升级（无 get_default 端点）：当作未配置系统默认。
-		// 缓存 nil 避免版本错配窗口期反复打 404。
 		logger.Warnf("get_default endpoint returned 404 (mf-model-manager not upgraded?), no system default available")
-		mfa.defaultCacheMu.Lock()
-		if mfa.defaultCache == nil {
-			mfa.defaultCache = make(map[string]*cachedDefault)
-		}
-		mfa.defaultCache[modelType] = &cachedDefault{model: nil, expiry: time.Now().Add(defaultModelCacheTTL)}
-		mfa.defaultCacheMu.Unlock()
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
 		return nil, nil
 	}
@@ -148,13 +99,6 @@ func (mfa *modelFactoryAccess) getDefaultModelFromAPI(ctx context.Context, model
 	if smallModel.ModelID != "" { // 空对象 {} 表示未配置默认
 		model = &smallModel
 	}
-
-	mfa.defaultCacheMu.Lock()
-	if mfa.defaultCache == nil {
-		mfa.defaultCache = make(map[string]*cachedDefault)
-	}
-	mfa.defaultCache[modelType] = &cachedDefault{model: model, expiry: time.Now().Add(defaultModelCacheTTL)}
-	mfa.defaultCacheMu.Unlock()
 
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return model, nil
@@ -266,20 +210,10 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 	return &smallModel, nil
 }
 
-func (mfa *modelFactoryAccess) GetVector(ctx context.Context,
-	model *interfaces.SmallModel, words []string) ([]*cond.VectorResp, error) {
+func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, words []string) ([]*cond.VectorResp, error) {
 
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetVector")
 	defer span.End()
-
-	if model == nil {
-		span.SetStatus(codes.Error, "Model is nil")
-		return []*cond.VectorResp{}, fmt.Errorf("model is nil")
-	}
-	if len(words) == 0 {
-		span.SetStatus(codes.Ok, "")
-		return []*cond.VectorResp{}, nil
-	}
 
 	// 构建请求URL
 	httpUrl := fmt.Sprintf("%s/small-model/embeddings", mfa.mfAPIUrl)
@@ -295,74 +229,39 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
 
-	modelID := model.ModelID
-	maxTokens := model.MaxTokens
-	batchSize := model.BatchSize
+	requestBody := map[string]any{"model": "", "model_id": modelID, "input": words}
 
-	allVectorResps := make([]*cond.VectorResp, 0, len(words))
-	for i := 0; i < len(words); i += batchSize {
-		end := i + batchSize
-		if end > len(words) {
-			end = len(words)
-		}
-		currentWords := words[i:end]
-		for j := 0; j < len(currentWords); j++ {
-			// 计算utf8字符长度
-			runes := []rune(currentWords[j])
-			if len(runes) > maxTokens {
-				currentWords[j] = string(runes[:maxTokens])
-			}
-		}
+	// 发送POST请求获取向量
+	respCode, result, err := mfa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
 
-		// 构建请求体
-		requestBody := map[string]any{
-			"model":    "",
-			"model_id": modelID,
-			"input":    currentWords,
-		}
+	logger.Debugf("GetVector finished, batch_size=[%d], response code is [%d], %s", len(words), respCode, common.SafeErrorSummary(err))
 
-		// 发送POST请求获取向量
-		respCode, result, err := mfa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
-
-		logger.Debugf("GetVector finished, batch_size=[%d], response code is [%d], %s",
-			len(currentWords), respCode, common.SafeErrorSummary(err))
-
-		if err != nil {
-			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get vector failed")
-			common.LogSafeError(ctx, "Get vector request failed", err)
-			return nil, fmt.Errorf("get vector request failed: %w", err)
-		}
-
-		if respCode != 200 {
-			err := fmt.Errorf("get vector request failed with status code: %d", respCode)
-			logger.Debugf("GetVector response: %s", common.SafeTextSummary("response", string(result)))
-			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-			common.LogSafeError(ctx, "Get vector request failed", err)
-			return nil, err
-		}
-
-		// 解析响应数据
-		var response struct {
-			Data []*cond.VectorResp `json:"data"`
-		}
-
-		if err := sonic.Unmarshal(result, &response); err != nil {
-			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal vector response failed")
-			common.LogSafeError(ctx, "Unmarshal vector response failed", err)
-			return nil, fmt.Errorf("unmarshal vector response failed: %w", err)
-		}
-		logger.Debugf("vectorized result length is [%d]", len(response.Data))
-
-		// 检查返回的向量数量是否与输入文本数量一致
-		if len(response.Data) != len(currentWords) {
-			err := fmt.Errorf("vector count mismatch: expected %d, got %d", len(currentWords), len(response.Data))
-			common.LogSafeError(ctx, "Vector count mismatch", err)
-			return nil, err
-		}
-
-		allVectorResps = append(allVectorResps, response.Data...)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get vector failed")
+		common.LogSafeError(ctx, "Get vector request failed", err)
+		return nil, fmt.Errorf("get vector request failed: %w", err)
 	}
 
-	span.SetStatus(codes.Ok, "")
-	return allVectorResps, nil
+	if respCode != 200 {
+		err := fmt.Errorf("get vector request failed with status code: %d", respCode)
+		logger.Debugf("GetVector response: %s", common.SafeTextSummary("response", string(result)))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		common.LogSafeError(ctx, "Get vector request failed", err)
+		return nil, err
+	}
+
+	// 解析响应数据
+	var response struct {
+		Data []*cond.VectorResp `json:"data"`
+	}
+
+	if err := sonic.Unmarshal(result, &response); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal vector response failed")
+		common.LogSafeError(ctx, "Unmarshal vector response failed", err)
+		return nil, fmt.Errorf("unmarshal vector response failed: %w", err)
+	}
+	logger.Debugf("vectorized result length is [%d]", len(response.Data))
+
+	// 检查返回的向量数量是否与输入文本数量一致
+	return response.Data, nil
 }

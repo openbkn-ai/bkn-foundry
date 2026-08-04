@@ -824,12 +824,12 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				},
 			}
 			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &knowledgeNetworkService{
 				appSetting: appSettingWithVector,
 				vba:        vbaWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			kn := &interfaces.KN{
@@ -848,8 +848,8 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, kn)
@@ -862,11 +862,11 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &knowledgeNetworkService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			kn := &interfaces.KN{
@@ -875,7 +875,7 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -887,11 +887,11 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &knowledgeNetworkService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			kn := &interfaces.KN{
@@ -900,8 +900,8 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, kn)
 			So(err, ShouldNotBeNil)

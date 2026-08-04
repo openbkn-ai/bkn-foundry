@@ -15,6 +15,7 @@ import (
 
 	"bkn-backend/common"
 	"bkn-backend/interfaces"
+	"bkn-backend/logics/model_factory"
 )
 
 func Init(ctx context.Context, appSetting *common.AppSetting) error {
@@ -23,9 +24,11 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 	var vectorDim = 768 // default dimension
 	var defaultEmbeddingModel string
 
+	mfs := model_factory.NewModelFactoryService(appSetting, MFA)
+
 	// Check if small model is enabled
 	if appSetting.ServerSetting.DefaultSmallModelEnabled {
-		smallModel, err := MFA.GetDefaultModel(ctx)
+		smallModel, err := mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel err:%v", err)
 			return err

@@ -22,6 +22,7 @@ import (
 	"bkn-backend/common"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
+	"bkn-backend/logics/model_factory"
 )
 
 var (
@@ -33,7 +34,7 @@ type ConceptSyncer struct {
 	appSetting *common.AppSetting
 	ata        interfaces.ActionTypeAccess
 	cga        interfaces.ConceptGroupAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	kna        interfaces.KNAccess
 	vba        interfaces.VegaBackendAccess
 	ota        interfaces.ObjectTypeAccess
@@ -47,7 +48,7 @@ func NewConceptSyncer(appSetting *common.AppSetting) *ConceptSyncer {
 		cSyncer = &ConceptSyncer{
 			appSetting: appSetting,
 			ata:        logics.ATA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			kna:        logics.KNA,
 			cga:        logics.CGA,
 			vba:        logics.VBA,
@@ -487,12 +488,12 @@ func (cs *ConceptSyncer) insertDatasetDataForKN(ctx context.Context, kn *interfa
 		words = append(words, kn.Comment, kn.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := cs.mfa.GetDefaultModel(ctx)
+		defaultModel, err := cs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
 		}
-		vectors, err := cs.mfa.GetVector(ctx, defaultModel, []string{word})
+		vectors, err := cs.mfs.GetVector(ctx, defaultModel, []string{word})
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			return err
@@ -544,12 +545,12 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfa.GetDefaultModel(ctx)
+		dftModel, err := cs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
 		}
-		vectors, err := cs.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := cs.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			return err
@@ -629,12 +630,12 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfa.GetDefaultModel(ctx)
+		dftModel, err := cs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
 		}
-		vectors, err := cs.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := cs.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			return err
@@ -718,12 +719,12 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfa.GetDefaultModel(ctx)
+		dftModel, err := cs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
 		}
-		vectors, err := cs.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := cs.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			return err
@@ -787,12 +788,12 @@ func (cs *ConceptSyncer) insertDatasetDataForConceptGroups(ctx context.Context, 
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfa.GetDefaultModel(ctx)
+		dftModel, err := cs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
 		}
-		vectors, err := cs.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := cs.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			return err
@@ -856,12 +857,12 @@ func (cs *ConceptSyncer) insertDatasetDataForRiskTypes(ctx context.Context, risk
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfa.GetDefaultModel(ctx)
+		dftModel, err := cs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
 		}
-		vectors, err := cs.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := cs.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			return err
@@ -925,12 +926,12 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfa.GetDefaultModel(ctx)
+		dftModel, err := cs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
 		}
-		vectors, err := cs.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := cs.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			return err

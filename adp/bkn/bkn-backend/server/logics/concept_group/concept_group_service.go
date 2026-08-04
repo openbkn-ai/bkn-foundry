@@ -30,6 +30,7 @@ import (
 	"bkn-backend/logics"
 	"bkn-backend/logics/action_type"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/relation_type"
@@ -48,7 +49,7 @@ type conceptGroupService struct {
 	ats        interfaces.ActionTypeService
 	cga        interfaces.ConceptGroupAccess
 	kna        interfaces.KNAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
 	ots        interfaces.ObjectTypeService
 	rta        interfaces.RelationTypeAccess
@@ -67,7 +68,7 @@ func NewConceptGroupService(appSetting *common.AppSetting) interfaces.ConceptGro
 			db:         logics.DB,
 			cga:        logics.CGA,
 			kna:        logics.KNA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
 			ots:        object_type.NewObjectTypeService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
@@ -1046,13 +1047,13 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 		words = append(words, conceptGroup.Comment, conceptGroup.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := cgs.mfa.GetDefaultModel(ctx)
+		defaultModel, err := cgs.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
-		vectors, err := cgs.mfa.GetVector(ctx, defaultModel, []string{word})
+		vectors, err := cgs.mfs.GetVector(ctx, defaultModel, []string{word})
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取概念分组向量失败")

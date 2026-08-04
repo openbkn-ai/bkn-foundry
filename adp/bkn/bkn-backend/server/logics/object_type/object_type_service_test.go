@@ -551,7 +551,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -562,7 +562,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ps:         ps,
 			cga:        cga,
 			vba:        vba,
-			mfa:        mfa,
+			mfs:        mfs,
 			aoa:        aoa,
 		}
 
@@ -1010,7 +1010,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
@@ -1021,7 +1021,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			ps:  ps,
 			ota: ota,
 			vba: vba,
-			mfa: mfa,
+			mfs: mfs,
 			ma:  ma,
 			aoa: aoa,
 			cga: cga,
@@ -1494,7 +1494,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1504,7 +1504,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			ota:        ota,
 			ps:         ps,
 			cga:        cga,
-			mfa:        mfa,
+			mfs:        mfs,
 			vba:        vba,
 		}
 
@@ -1624,7 +1624,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1633,7 +1633,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			db:         db,
 			ota:        ota,
 			ps:         ps,
-			mfa:        mfa,
+			mfs:        mfs,
 			vba:        vba,
 		}
 
@@ -2059,12 +2059,12 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &objectTypeService{
 				appSetting: appSettingWithVector,
 				vba:        vbaWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			objectTypes := []*interfaces.ObjectType{
@@ -2088,8 +2088,8 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 			vbaWithVector.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, objectTypes)
@@ -2102,11 +2102,11 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &objectTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			objectTypes := []*interfaces.ObjectType{
@@ -2120,7 +2120,7 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -2132,11 +2132,11 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &objectTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			objectTypes := []*interfaces.ObjectType{
@@ -2150,8 +2150,8 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -2163,11 +2163,11 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &objectTypeService{
 				appSetting: appSettingWithVector,
-				mfa:        mfa,
+				mfs:        mfs,
 			}
 
 			objectTypes := []*interfaces.ObjectType{
@@ -2182,8 +2182,8 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 			}
 			vectors := []*cond.VectorResp{}
 
-			mfa.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfa.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
 
 			err := serviceWithVector.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -2370,7 +2370,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
 		ma := bmock.NewMockMetricAccess(mockCtrl)
-		mfa := bmock.NewMockModelFactoryAccess(mockCtrl)
+		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 
 		service := &objectTypeService{
@@ -2378,7 +2378,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			cga:        cga,
 			vba:        vba,
 			ma:         ma,
-			mfa:        mfa,
+			mfs:        mfs,
 			ps:         ps,
 		}
 

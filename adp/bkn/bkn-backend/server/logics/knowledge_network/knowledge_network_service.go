@@ -33,6 +33,7 @@ import (
 	"bkn-backend/logics/business_system"
 	"bkn-backend/logics/concept_group"
 	"bkn-backend/logics/metric"
+	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/relation_type"
@@ -56,7 +57,7 @@ type knowledgeNetworkService struct {
 	kna        interfaces.KNAccess
 	ma         interfaces.MetricAccess
 	ms         interfaces.MetricService
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
 	ots        interfaces.ObjectTypeService
 	rta        interfaces.RelationTypeAccess
@@ -81,7 +82,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
 			kna:        logics.KNA,
 			ma:         logics.MA,
 			ms:         metric.NewMetricService(appSetting),
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
 			ots:        object_type.NewObjectTypeService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
@@ -1247,13 +1248,13 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 		words = append(words, kn.Comment, kn.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := kns.mfa.GetDefaultModel(ctx)
+		defaultModel, err := kns.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
-		vectors, err := kns.mfa.GetVector(ctx, defaultModel, []string{word})
+		vectors, err := kns.mfs.GetVector(ctx, defaultModel, []string{word})
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取业务知识网络向量失败")

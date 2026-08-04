@@ -43,18 +43,18 @@ func (m *MockModelFactoryAccess) EXPECT() *MockModelFactoryAccessMockRecorder {
 }
 
 // GetDefaultModel mocks base method.
-func (m *MockModelFactoryAccess) GetDefaultModel(ctx context.Context) (*interfaces.SmallModel, error) {
+func (m *MockModelFactoryAccess) GetDefaultModel(ctx context.Context, modelType string) (*interfaces.SmallModel, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDefaultModel", ctx)
+	ret := m.ctrl.Call(m, "GetDefaultModel", ctx, modelType)
 	ret0, _ := ret[0].(*interfaces.SmallModel)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetDefaultModel indicates an expected call of GetDefaultModel.
-func (mr *MockModelFactoryAccessMockRecorder) GetDefaultModel(ctx any) *gomock.Call {
+func (mr *MockModelFactoryAccessMockRecorder) GetDefaultModel(ctx, modelType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDefaultModel", reflect.TypeOf((*MockModelFactoryAccess)(nil).GetDefaultModel), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDefaultModel", reflect.TypeOf((*MockModelFactoryAccess)(nil).GetDefaultModel), ctx, modelType)
 }
 
 // GetModelByID mocks base method.
@@ -88,16 +88,16 @@ func (mr *MockModelFactoryAccessMockRecorder) GetModelByName(ctx, modelName any)
 }
 
 // GetVector mocks base method.
-func (m *MockModelFactoryAccess) GetVector(ctx context.Context, model *interfaces.SmallModel, words []string) ([]*condition.VectorResp, error) {
+func (m *MockModelFactoryAccess) GetVector(ctx context.Context, modelID string, words []string) ([]*condition.VectorResp, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetVector", ctx, model, words)
+	ret := m.ctrl.Call(m, "GetVector", ctx, modelID, words)
 	ret0, _ := ret[0].([]*condition.VectorResp)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetVector indicates an expected call of GetVector.
-func (mr *MockModelFactoryAccessMockRecorder) GetVector(ctx, model, words any) *gomock.Call {
+func (mr *MockModelFactoryAccessMockRecorder) GetVector(ctx, modelID, words any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVector", reflect.TypeOf((*MockModelFactoryAccess)(nil).GetVector), ctx, model, words)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVector", reflect.TypeOf((*MockModelFactoryAccess)(nil).GetVector), ctx, modelID, words)
 }

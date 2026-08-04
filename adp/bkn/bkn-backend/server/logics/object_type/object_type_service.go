@@ -32,6 +32,7 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 	"bkn-backend/logics/batchindex"
+	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/user_mgmt"
 )
@@ -47,7 +48,7 @@ type objectTypeService struct {
 	aoa        interfaces.AgentOperatorAccess
 	cga        interfaces.ConceptGroupAccess
 	ma         interfaces.MetricAccess
-	mfa        interfaces.ModelFactoryAccess
+	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
@@ -62,7 +63,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			aoa:        logics.AOA,
 			cga:        logics.CGA,
 			ma:         logics.MA,
-			mfa:        logics.MFA,
+			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
@@ -95,7 +96,7 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 	if objectType.DataProperties != nil {
 		for _, prop := range objectType.DataProperties {
 			if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled && prop.IndexConfig.VectorConfig.ModelID != "" {
-				model, err := ots.mfa.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
+				model, err := ots.mfs.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
 				if err != nil {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_ObjectType_InvalidParameter).
@@ -988,7 +989,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	if strictMode {
 		for _, prop := range dataProperties {
 			if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled {
-				model, err := ots.mfa.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
+				model, err := ots.mfs.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
 				if err != nil {
 					return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ObjectType_InternalError_GetSmallModelByIDFailed).
@@ -1434,13 +1435,13 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			words = append(words, word)
 		}
 
-		dftModel, err := ots.mfa.GetDefaultModel(ctx)
+		dftModel, err := ots.mfs.GetDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取默认模型失败")
 			return err
 		}
-		vectors, err := ots.mfa.GetVector(ctx, dftModel, words)
+		vectors, err := ots.mfs.GetVector(ctx, dftModel, words)
 		if err != nil {
 			logger.Errorf("GetVector error: %s", err.Error())
 			span.SetStatus(codes.Error, "获取业务知识网络向量失败")
@@ -1544,7 +1545,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				dftModel, err := ots.mfa.GetDefaultModel(ctx)
+				dftModel, err := ots.mfs.GetDefaultModel(ctx)
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
@@ -1552,7 +1553,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
-				result, err := ots.mfa.GetVector(ctx, dftModel, []string{word})
+				result, err := ots.mfs.GetVector(ctx, dftModel, []string{word})
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取业务知识网络向量失败")

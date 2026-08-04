@@ -29,10 +29,8 @@ type SmallModel struct {
 //
 //go:generate mockgen -source ../interfaces/model_factory_access.go -destination ../interfaces/mock/mock_model_factory_access.go
 type ModelFactoryAccess interface {
-	GetDefaultModel(ctx context.Context) (*SmallModel, error)
-
+	GetDefaultModel(ctx context.Context, modelType string) (*SmallModel, error)
 	GetModelByID(ctx context.Context, modelID string) (*SmallModel, error)
 	GetModelByName(ctx context.Context, modelName string) (*SmallModel, error)
-
-	GetVector(ctx context.Context, model *SmallModel, words []string) ([]*cond.VectorResp, error)
+	GetVector(ctx context.Context, modelID string, words []string) ([]*cond.VectorResp, error)
 }

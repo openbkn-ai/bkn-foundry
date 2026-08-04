@@ -11,12 +11,14 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
 	"bkn-backend/common"
 	"bkn-backend/interfaces"
 	mock_interfaces "bkn-backend/interfaces/mock"
+	"bkn-backend/logics/model_factory"
 )
 
 // ── bknCatalogRequest ─────────────────────────────────────────────────────────
@@ -62,16 +64,18 @@ func TestBKNConceptDatasetIncludesEmptyIndexConfig(t *testing.T) {
 func TestInitPassesResolvedEmbeddingModelToVega(t *testing.T) {
 	Convey("Init passes the resolved embedding model when creating the dataset (issue #625)\n", t, func() {
 		ctrl := gomock.NewController(t)
-		modelFactory := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
 		vegaBackend := mock_interfaces.NewMockVegaBackendAccess(ctrl)
-		previousMFA, previousVBA := MFA, VBA
-		MFA, VBA = modelFactory, vegaBackend
+		previousVBA := VBA
+		VBA = vegaBackend
+		patches := gomonkey.ApplyFunc(model_factory.NewModelFactoryService, func(_ *common.AppSetting, _ interfaces.ModelFactoryAccess) interfaces.ModelFactoryService { return mfs })
 		Reset(func() {
-			MFA, VBA = previousMFA, previousVBA
+			patches.Reset()
+			VBA = previousVBA
 		})
 
 		ctx := context.Background()
-		modelFactory.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
 			ModelName:    "text-embedding-v4",
 			EmbeddingDim: 1024,
 		}, nil)
@@ -92,16 +96,18 @@ func TestInitPassesResolvedEmbeddingModelToVega(t *testing.T) {
 func TestInitPassesResolvedEmbeddingModelWhenRecreatingDataset(t *testing.T) {
 	Convey("Init passes the resolved embedding model when recreating the dataset (issue #625)\n", t, func() {
 		ctrl := gomock.NewController(t)
-		modelFactory := mock_interfaces.NewMockModelFactoryAccess(ctrl)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
 		vegaBackend := mock_interfaces.NewMockVegaBackendAccess(ctrl)
-		previousMFA, previousVBA := MFA, VBA
-		MFA, VBA = modelFactory, vegaBackend
+		previousVBA := VBA
+		VBA = vegaBackend
+		patches := gomonkey.ApplyFunc(model_factory.NewModelFactoryService, func(_ *common.AppSetting, _ interfaces.ModelFactoryAccess) interfaces.ModelFactoryService { return mfs })
 		Reset(func() {
-			MFA, VBA = previousMFA, previousVBA
+			patches.Reset()
+			VBA = previousVBA
 		})
 
 		ctx := context.Background()
-		modelFactory.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
 			ModelName:    "text-embedding-v4",
 			EmbeddingDim: 1024,
 		}, nil)
