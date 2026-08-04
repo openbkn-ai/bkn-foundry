@@ -427,19 +427,13 @@ func (s *Service) applyCanonicalConversationState(
 	}
 	return s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		for index := range entries {
-			conversation, found := tx.FindConversation(entries[index].ConversationID)
+			conversation, found := tx.PeekConversation(entries[index].ConversationID)
 			if !found {
 				continue
 			}
-			applyCanonicalConversationEvidence(
-				&entries[index].EvidenceCompleteness,
-				tx,
-				requestsByConversation[entries[index].ConversationID],
-			)
-			applyCanonicalConversationDuration(
-				&entries[index].DurationMS,
-				tx,
-				requestsByConversation[entries[index].ConversationID],
+			applyCanonicalConversationEvidenceAndDuration(
+				&entries[index].EvidenceCompleteness, &entries[index].DurationMS,
+				tx, requestsByConversation[entries[index].ConversationID],
 			)
 			entries[index].Status = string(conversation.Status)
 			entries[index].AgentName = conversation.AgentName
@@ -459,7 +453,8 @@ func (s *Service) applyCanonicalConversationState(
 	})
 }
 
-func applyCanonicalConversationDuration(
+func applyCanonicalConversationEvidenceAndDuration(
+	evidenceCompleteness *string,
 	durationMS *int64,
 	tx isessionstore.Transaction,
 	requests []evidencevo.RequestSummary,
@@ -472,9 +467,13 @@ func applyCanonicalConversationDuration(
 	}
 	var total int64
 	for interactionID, interactionRequests := range byInteraction {
-		interaction, found := tx.FindInteraction(interactionID)
+		interaction, found := tx.PeekInteraction(interactionID)
 		if found {
 			total += canonicalInteractionDurationMS(interaction)
+			candidate := string(interaction.EvidenceStatus)
+			if canonicalEvidenceRank(candidate) > canonicalEvidenceRank(*evidenceCompleteness) {
+				*evidenceCompleteness = candidate
+			}
 			continue
 		}
 		summary, _ := aggregateRequestGroup(interactionRequests)
@@ -497,31 +496,6 @@ func canonicalInteractionDurationMS(interaction sessionvo.Interaction) int64 {
 		return 0
 	}
 	return terminalAt.Sub(interaction.CreatedAt).Milliseconds()
-}
-
-func applyCanonicalConversationEvidence(
-	evidenceCompleteness *string,
-	tx isessionstore.Transaction,
-	requests []evidencevo.RequestSummary,
-) {
-	seen := map[string]struct{}{}
-	for _, request := range requests {
-		if request.InteractionID == "" {
-			continue
-		}
-		if _, found := seen[request.InteractionID]; found {
-			continue
-		}
-		seen[request.InteractionID] = struct{}{}
-		interaction, found := tx.FindInteraction(request.InteractionID)
-		if !found {
-			continue
-		}
-		candidate := string(interaction.EvidenceStatus)
-		if canonicalEvidenceRank(candidate) > canonicalEvidenceRank(*evidenceCompleteness) {
-			*evidenceCompleteness = candidate
-		}
-	}
 }
 
 func canonicalEvidenceRank(value string) int {
@@ -547,7 +521,7 @@ func (s *Service) applyCanonicalInteractionState(ctx context.Context, entries []
 	}
 	return s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		for index := range entries {
-			interaction, found := tx.FindInteraction(entries[index].InteractionID)
+			interaction, found := tx.PeekInteraction(entries[index].InteractionID)
 			if !found {
 				continue
 			}
@@ -605,7 +579,7 @@ func (s *Service) applyCanonicalRequestIdentity(ctx context.Context, requests []
 			conversation, cached := byConversation[conversationID]
 			if !cached {
 				var found bool
-				conversation, found = tx.FindConversation(conversationID)
+				conversation, found = tx.PeekConversation(conversationID)
 				if !found {
 					continue
 				}
@@ -835,7 +809,7 @@ func (s *Service) GetInteractionSummary(
 	}
 	if s.sessionStore != nil {
 		err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-			interaction, found := tx.FindInteraction(interactionID)
+			interaction, found := tx.PeekInteraction(interactionID)
 			if !found {
 				return nil
 			}
@@ -1355,9 +1329,10 @@ func normalizeSummaryPage(page int) int {
 }
 
 func summaryOffset(options evidencevo.SummaryQueryOptions, length int) int {
-	offset := (normalizeSummaryPage(options.Page) - 1) * normalizeSummaryLimit(options.Limit)
-	if offset > length {
+	page := normalizeSummaryPage(options.Page)
+	limit := normalizeSummaryLimit(options.Limit)
+	if page > 1 && page-1 > length/limit {
 		return length
 	}
-	return offset
+	return (page - 1) * limit
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
+const maxSummaryQueryPage = 100
+
 func RegisterBusinessProvenanceRoutes(
 	mux *http.ServeMux,
 	basePath string,
@@ -332,8 +334,8 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 	}
 	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
 		page, err := strconv.Atoi(rawPage)
-		if err != nil || page <= 0 {
-			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page must be a positive integer"})
+		if err != nil || page <= 0 || page > maxSummaryQueryPage {
+			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page must be an integer between 1 and 100"})
 			return evidencevo.SummaryQueryOptions{}, false
 		}
 		options.Page = page

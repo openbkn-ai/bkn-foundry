@@ -127,6 +127,12 @@ func TestRecordInteractionArtifactSeparatesApplicationDisplayFromPrincipal(t *te
 	}
 }
 
+func TestAgentOrAppFallsBackToApplicationPrincipal(t *testing.T) {
+	if got := agentOrApp(eventContext{applicationID: "app-001"}); got != "app-001" {
+		t.Fatalf("agent_or_app fallback = %q, want application principal", got)
+	}
+}
+
 func TestRecordInteractionArtifactIsOptionalWhenEvidenceIsDisabled(t *testing.T) {
 	t.Setenv(envEvidenceIngestURL, "")
 

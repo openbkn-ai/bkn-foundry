@@ -27,6 +27,13 @@ func (source fixedTraceStatsSource) CountSpansByTraceIDs(_ context.Context, _ []
 	return source, nil
 }
 
+func TestSummaryOffsetClampsOverflowingPage(t *testing.T) {
+	options := evidencevo.SummaryQueryOptions{Page: int(^uint(0) >> 1), Limit: MaxSummaryQueryLimit}
+	if offset := summaryOffset(options, 10); offset != 10 {
+		t.Fatalf("overflowing page offset = %d, want end of result set", offset)
+	}
+}
+
 func TestListConversationsUsesCanonicalSessionStatus(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequest(

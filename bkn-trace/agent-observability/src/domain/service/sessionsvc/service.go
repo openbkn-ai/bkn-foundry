@@ -450,21 +450,8 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 		if err := requireActiveConversation(conversation); err != nil {
 			return err
 		}
-		nextOrdinal := tx.NextInteractionOrdinal(conversation.ID)
 		if conversation.AgentName != "" && agentName != "" && conversation.AgentName != agentName {
 			return domainError(CodeAgentNameConflict, "agent_name does not match the conversation declaration")
-		}
-		if conversation.AgentName == "" && agentName != "" {
-			if nextOrdinal > 1 {
-				return domainError(CodeAgentNameConflict, "agent_name cannot be declared after the first interaction")
-			}
-			conversation.AgentName = agentName
-			conversation.RowVersion++
-			conversation.UpdatedAt = tx.Now()
-			tx.SaveConversation(conversation)
-			if err := s.appendProjection(tx, "conversation", conversation.ID, "conversation.agent_name_declared", conversation); err != nil {
-				return err
-			}
 		}
 		if record, found := tx.FindIdempotency(
 			idempotencyScope, command.Owner, conversation.ID, command.IdempotencyKey,
@@ -479,6 +466,20 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 			result = interaction
 			return nil
 		}
+		// Keep replay semantics for rows created before idempotency records existed.
+		if interaction, found := tx.FindInteractionByStartKey(conversation.ID, command.IdempotencyKey); found {
+			result = interaction
+			return nil
+		}
+		if conversation.AgentName == "" && agentName != "" {
+			conversation.AgentName = agentName
+			conversation.RowVersion++
+			conversation.UpdatedAt = tx.Now()
+			tx.SaveConversation(conversation)
+			if err := s.appendProjection(tx, "conversation", conversation.ID, "conversation.agent_name_declared", conversation); err != nil {
+				return err
+			}
+		}
 		if active, found := tx.FindActiveInteraction(conversation.ID); found {
 			return &DomainError{
 				Code: CodeInteractionInProgress, Message: "the conversation already has an active interaction",
@@ -489,6 +490,7 @@ func (s *Service) StartInteraction(ctx context.Context, command StartInteraction
 		if leaseDuration <= 0 {
 			leaseDuration = 5 * time.Minute
 		}
+		nextOrdinal := tx.NextInteractionOrdinal(conversation.ID)
 		now := tx.Now()
 		result = sessionvo.Interaction{
 			ID:                  s.newID("int"),

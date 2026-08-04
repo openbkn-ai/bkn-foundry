@@ -657,6 +657,68 @@ func TestStartInteractionReplayReturnsOriginalAfterTerminal(t *testing.T) {
 	}
 }
 
+func TestStartInteractionReplaysLegacyStartKeyAfterTerminal(t *testing.T) {
+	t.Parallel()
+
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{})
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "legacy-start-replay")
+	legacy := sessionvo.Interaction{
+		ID:                  "int_legacy_start_replay",
+		ConversationID:      conversation.ID,
+		Ordinal:             1,
+		ExecutionStatus:     sessionvo.InteractionCompleted,
+		EvidenceStatus:      sessionvo.EvidenceComplete,
+		StartIdempotencyKey: "legacy-start-key",
+		CreatedAt:           time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC),
+		UpdatedAt:           time.Date(2026, 8, 1, 9, 0, 1, 0, time.UTC),
+	}
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveInteraction(legacy)
+		return nil
+	}); err != nil {
+		t.Fatalf("seed legacy interaction: %v", err)
+	}
+
+	replayed, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: legacy.StartIdempotencyKey,
+	})
+	if err != nil || replayed.ID != legacy.ID {
+		t.Fatalf("legacy replay = %+v, %v; want %s", replayed, err, legacy.ID)
+	}
+}
+
+func TestStartInteractionBackfillsAgentNameForExistingConversation(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "legacy-agent-name")
+	first, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "legacy-agent-first",
+	})
+	if err != nil {
+		t.Fatalf("start unnamed interaction: %v", err)
+	}
+	if _, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: first.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "legacy-agent-finish", LeaseToken: first.LeaseToken, LeaseEpoch: first.LeaseEpoch,
+		Manifest: sessionvo.ClosureManifest{Version: "1", CompletionReason: "answer_returned"},
+	}); err != nil {
+		t.Fatalf("finish unnamed interaction: %v", err)
+	}
+	if _, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "legacy-agent-second", AgentName: "供应链分析助手",
+	}); err != nil {
+		t.Fatalf("backfill agent name: %v", err)
+	}
+	stored, err := service.GetConversation(context.Background(), owner, conversation.ID)
+	if err != nil || stored.AgentName != "供应链分析助手" {
+		t.Fatalf("conversation agent name = %q, err = %v", stored.AgentName, err)
+	}
+}
+
 func TestConversationPersistsThreeSequentialInteractionRounds(t *testing.T) {
 	t.Parallel()
 

@@ -10,12 +10,14 @@ import (
 type Transaction interface {
 	Now() time.Time
 	FindCurrentConversation(owner sessionvo.Owner, externalKey string) (sessionvo.Conversation, bool)
+	PeekConversation(conversationID string) (sessionvo.Conversation, bool)
 	FindConversation(conversationID string) (sessionvo.Conversation, bool)
 	FindIdempotency(scope string, owner sessionvo.Owner, externalKey, idempotencyKey string) (sessionvo.IdempotencyRecord, bool)
 	ListConversations(owner sessionvo.Owner, limit int) []sessionvo.Conversation
 	SaveConversation(conversation sessionvo.Conversation)
 	SaveIdempotency(record sessionvo.IdempotencyRecord)
 	FindActiveInteraction(conversationID string) (sessionvo.Interaction, bool)
+	FindInteractionByStartKey(conversationID, idempotencyKey string) (sessionvo.Interaction, bool)
 	PeekInteraction(interactionID string) (sessionvo.Interaction, bool)
 	FindInteraction(interactionID string) (sessionvo.Interaction, bool)
 	NextInteractionOrdinal(conversationID string) uint64

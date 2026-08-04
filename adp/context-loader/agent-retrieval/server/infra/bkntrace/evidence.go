@@ -152,7 +152,7 @@ func RecordInteractionArtifact(
 		"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
 		"effective_subject_id":     ec.accountID,
 		"application_principal_id": ec.applicationID,
-		"initiator":                "account:" + ec.accountID, "agent_or_app": ec.applicationName,
+		"initiator":                "account:" + ec.accountID, "agent_or_app": agentOrApp(ec),
 	}
 	eventPayload := map[string]any{artifactField: artifactRef, "content_hash": contentHash}
 	if ec.applicationName != "" {
@@ -172,6 +172,13 @@ func RecordInteractionArtifact(
 		return "", err
 	}
 	return artifactRef, nil
+}
+
+func agentOrApp(ec eventContext) string {
+	if ec.applicationName != "" {
+		return ec.applicationName
+	}
+	return ec.applicationID
 }
 
 func postArtifactWithRetry(

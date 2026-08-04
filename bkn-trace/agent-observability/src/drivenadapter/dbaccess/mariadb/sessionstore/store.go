@@ -160,6 +160,14 @@ func (t *transaction) FindConversation(conversationID string) (sessionvo.Convers
 		WHERE conversation_id=? FOR UPDATE`, conversationID))
 }
 
+func (t *transaction) PeekConversation(conversationID string) (sessionvo.Conversation, bool) {
+	if t.err != nil {
+		return sessionvo.Conversation{}, false
+	}
+	return t.scanConversation(t.tx.QueryRowContext(t.ctx, conversationSelect+`
+		WHERE conversation_id=?`, conversationID))
+}
+
 func (t *transaction) FindIdempotency(
 	scope string,
 	owner sessionvo.Owner,
@@ -285,6 +293,19 @@ func (t *transaction) FindActiveInteraction(conversationID string) (sessionvo.In
 	}
 	return t.scanInteraction(t.tx.QueryRowContext(t.ctx, interactionSelect+`
 		WHERE conversation_id=? AND execution_status='active' LIMIT 1 FOR UPDATE`, conversationID))
+}
+
+func (t *transaction) FindInteractionByStartKey(
+	conversationID string,
+	idempotencyKey string,
+) (sessionvo.Interaction, bool) {
+	if t.err != nil {
+		return sessionvo.Interaction{}, false
+	}
+	return t.scanInteraction(t.tx.QueryRowContext(t.ctx, interactionSelect+`
+		WHERE conversation_id=? AND start_idempotency_key=? FOR UPDATE`,
+		conversationID, idempotencyKey,
+	))
 }
 
 func (t *transaction) FindInteraction(interactionID string) (sessionvo.Interaction, bool) {
