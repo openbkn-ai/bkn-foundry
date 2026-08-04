@@ -172,6 +172,43 @@ func Test_buildResourceDataQueryParams_conditionMerge(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(len(subs), ShouldEqual, 2)
 		})
+
+		Convey("definition, query-time, and time conditions nest as two-level AND\n", func() {
+			defTime := *def
+			defTime.TimeDimension = &interfaces.MetricTimeDimension{Property: "evt_time"}
+			otTime := ot
+			otTime.DataProperties = append(otTime.DataProperties,
+				cond.DataProperty{Name: "evt_time", Type: dtype.DATATYPE_DATETIME, MappedField: cond.Field{Name: "evt_time_res"}},
+			)
+			instant := true
+			start := int64(1_000)
+			end := int64(2_000)
+			params, _, err := svc.buildResourceDataQueryParams(ctx, &defTime, &interfaces.MetricQueryRequest{
+				Condition: &cond.CondCfg{
+					Operation:   cond.OperationEq,
+					Name:        "stock_status",
+					ValueOptCfg: cond.ValueOptCfg{Value: "可用"},
+				},
+				Time: &interfaces.MetricTimeWindow{
+					Start: &start, End: &end, Instant: &instant,
+				},
+			}, otTime)
+			So(err, ShouldBeNil)
+			So(params.FilterCondition["operation"], ShouldEqual, cond.OperationAnd)
+			topSubs, ok := params.FilterCondition["sub_conditions"].([]any)
+			So(ok, ShouldBeTrue)
+			So(len(topSubs), ShouldEqual, 2)
+			defQueryAnd, ok := topSubs[0].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(defQueryAnd["operation"], ShouldEqual, cond.OperationAnd)
+			innerSubs, ok := defQueryAnd["sub_conditions"].([]any)
+			So(ok, ShouldBeTrue)
+			So(len(innerSubs), ShouldEqual, 2)
+			timeLeaf, ok := topSubs[1].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(timeLeaf["operation"], ShouldEqual, cond.OperationRange)
+			So(timeLeaf["field"], ShouldEqual, "evt_time_res")
+		})
 	})
 }
 

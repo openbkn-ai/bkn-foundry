@@ -2777,13 +2777,14 @@ paths:
         2. 本请求体 `condition`（查询时下钻 / 临时收窄）
         3. 由 `time` 或 `time_dimension.default_range_policy` 推导的时间范围条件（instant / 趋势查询时）
 
-        合并规则：`merged = AND(definition.condition, request.condition, timeCondition)`；任一侧为空则省略。
+        合并规则：语义上等价于 `AND(definition.condition, request.condition, timeCondition)`，任一侧为空则省略。
+        实现上为**两层嵌套**（先合并 definition 与 request，再与时间条件 AND），下推 filter 可能出现 `sub_conditions` 嵌套，而非扁平三元组。
 
         ## analysis_dimensions 与 group_by
 
         - `calculation_formula.group_by`：定义内的**固定分组基线**，每次查询都会参与 group_by。
         - `analysis_dimensions`（请求体）：在指标 `analysis_dimensions` 白名单内的**追加下钻维度**，按请求顺序接在 group_by 之后；未知维度名忽略。
-        - 趋势查询（`time.instant=false` 且提供 `time.step`）会额外追加时间分桶维度。
+        - 趋势查询（`time.instant` 为 false **或省略**，且提供 `time.step`）会额外追加时间分桶维度。
 
         建模 CRUD 与能力矩阵见 [`bkn-metrics.yaml`](../bkn/bkn-metrics.yaml)；对象类级总量指标应使用本接口，而非对象实例页的 logic-property 执行入口。
       parameters:
@@ -2851,20 +2852,20 @@ paths:
                 $ref: "#/components/schemas/MetricData"
               examples:
                 标量总量:
-                  summary: 无分组时的单序列结果
+                  summary: 无分组时的 instant 单序列（body 为 {} 时 time.end 缺省，times 为 [0]）
                   value:
                     model:
                       unit_type: numUnit
                       unit: none
                     datas:
                       - labels: {}
-                        times: []
+                        times: [0]
                         values: [431]
                     step: ""
                     is_variable: false
                     is_calendar: false
                 分组下钻:
-                  summary: 带 analysis_dimensions 时的多序列
+                  summary: 带 analysis_dimensions 时的多序列（instant 分支 times 恒为单元素数组）
                   value:
                     model:
                       unit_type: numUnit
@@ -2872,11 +2873,11 @@ paths:
                     datas:
                       - labels:
                           warehouse_id: wh-east
-                        times: []
+                        times: [0]
                         values: [120]
                       - labels:
                           warehouse_id: wh-west
-                        times: []
+                        times: [0]
                         values: [85]
                     step: ""
                     is_variable: false
@@ -2897,6 +2898,10 @@ paths:
   /api/ontology-query/v1/knowledge-networks/{kn_id}/metrics/dry-run:
     post:
       summary: 指标试算（不落库）
+      description: |
+        运行时字段（`time` / `condition` / `analysis_dimensions` 等）与
+        `POST .../metrics/{metric_id}/data` 的 `MetricQueryRequestBody` **合并语义完全一致**；
+        区别仅在于 definition 侧取自请求体 `metric_config`（含 `calculation_formula.condition`），而非落库定义。
       parameters:
         - name: kn_id
           in: path
@@ -5435,6 +5440,7 @@ components:
               format: int64
             instant:
               type: boolean
+              description: 是否 instant 查询；省略等同 false（即趋势查询，须提供 step）
             step:
               type: string
         condition:
@@ -5505,7 +5511,10 @@ components:
             type: object
 
     MetricDryRun:
-      description: 指标试算：metric_config 与 MetricDefinition 同构；运行时字段与 MetricQueryRequestBody 对齐
+      description: |
+        指标试算：`metric_config` 与 MetricDefinition 同构；运行时字段与 `MetricQueryRequestBody` 对齐。
+        **condition 合并**与 `POST .../metrics/{metric_id}/data` 相同——definition 侧取
+        `metric_config.calculation_formula.condition`，再与 body 的 `condition`、时间推导条件 AND 合并。
       type: object
       required:
         - metric_config
