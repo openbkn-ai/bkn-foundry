@@ -154,11 +154,22 @@ func New(deps Deps) *gin.Engine {
 		}
 	}
 
-	// In-cluster license distribution: modules pull the signed text and verify
-	// locally. AppKey-authenticated (not anonymous, unlike /authz — upstream
-	// hard rule for this surface).
-	if deps.License != nil && apiKeys != nil {
-		registerLicenseInternal(r, deps.License, apiKeys)
+	// In-cluster license distribution. The WHOLE /internal/license group is a
+	// tokenless service surface — /current, /status, /capabilities alike — the
+	// same trust face as /authz and /api-keys/introspect above. Anything added to
+	// this group inherits that: if a route would not be safe to answer for any
+	// pod in the cluster, it does not belong here.
+	//
+	// Tokenless is a property of the surface, not a shortcut. Modules pull the
+	// signed text and verify it locally against a key compiled into their own
+	// binary, so the group hands out evidence, not verdicts — withholding it can
+	// deny a licence, serving it cannot manufacture one, and a leaked certificate
+	// confers no power to forge one. The boundary is ClusterIP plus the chart's
+	// networkPolicy, not a bearer token. The alternative was a per-service
+	// credential with no defined issuer, rotation story, or revocation signal —
+	// an unanswered question that blocked every service needing to read a licence.
+	if deps.License != nil {
+		registerLicenseInternal(r, deps.License)
 	}
 
 	// Self-service reads under /api/safe/v1/me — token-gated (RequireUser:

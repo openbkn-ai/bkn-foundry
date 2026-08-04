@@ -27,7 +27,7 @@ import (
 // trusts bkn-safe's judgement, only its delivery — a tampered or impersonated
 // hub can withhold a licence but cannot manufacture one.
 //
-//	GET /api/safe/v1/internal/license/current    (AppKey authenticated)
+//	GET /api/safe/v1/internal/license/current    (tokenless, ClusterIP-only)
 //	200 {"license": "<signed text>", "etag": "..."}   + ETag header
 //	304                                                on If-None-Match
 //	404 {"error": "no license installed"}
@@ -58,9 +58,6 @@ type HubConfig struct {
 	// BaseURL is bkn-safe's in-cluster address, e.g.
 	// http://bkn-safe:8080. Required.
 	BaseURL string
-	// AppKey authenticates this service to the distribution endpoint. The
-	// surface is deliberately not anonymous. Required.
-	AppKey string
 	// Keys are the verification public keys (kid → key), compiled into the
 	// binary. Required — without them nothing can be verified and every fetch
 	// would be pointless.
@@ -101,8 +98,8 @@ type HubGate struct {
 // it serves its first request. A failed first fetch is not an error: the gate
 // starts at community and the background loop keeps trying.
 func NewHubGate(cfg HubConfig) (*HubGate, error) {
-	if cfg.BaseURL == "" || cfg.AppKey == "" {
-		return nil, errors.New("entitlement: hub gate needs BaseURL and AppKey")
+	if cfg.BaseURL == "" {
+		return nil, errors.New("entitlement: hub gate needs BaseURL")
 	}
 	if len(cfg.Keys) == 0 {
 		return nil, errors.New("entitlement: hub gate needs verification keys — a build that cannot verify must not pretend to be licensed")
@@ -237,7 +234,6 @@ func (g *HubGate) fetch() (fetchResult, error) {
 	if err != nil {
 		return fetchResult{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+g.cfg.AppKey)
 	if et := g.currentETag(); et != "" {
 		req.Header.Set("If-None-Match", `"`+et+`"`)
 	}

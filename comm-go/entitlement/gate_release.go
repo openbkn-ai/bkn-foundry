@@ -20,15 +20,16 @@ import (
 // Configuration is only ever about where to fetch the certificate — never about
 // which capabilities are on. That distinction is the whole discipline: the
 // moment a deployment can set something like audit.enabled=true, every gate in
-// the product is decorative. So this reads two values and no more:
+// the product is decorative. So this reads one value and no more:
 //
 //	BKN_SAFE_URL        in-cluster address of the licence hub
-//	BKN_SAFE_APPKEY     service credential for the distribution endpoint
 //
-// Either one missing means the process cannot obtain a licence, and a process
-// that cannot obtain one behaves as community. That is a legitimate steady
-// state — community deployments never set these — so it is not an error and
-// must not stop the service from starting.
+// The distribution endpoint is tokenless (ClusterIP-only, see bkn-safe's
+// httpapi/license.go), so there is no second variable to get wrong. Unset means
+// the process cannot obtain a licence, and a process that cannot obtain one
+// behaves as community. That is a legitimate steady state — community
+// deployments never set it — so it is not an error and must not stop the
+// service from starting.
 //
 // The caller is expected to run the returned gate's Run method in a goroutine;
 // GateWithRunner exists so a caller can do that without type-asserting.
@@ -48,25 +49,19 @@ func DefaultGate() Gate {
 // defaultHubGate resolves the hub configuration, or reports that this
 // deployment has none.
 //
-// Every path that ends in "no gate" is logged except the one that is genuinely
-// normal — neither variable set, i.e. a community deployment. The others look
-// identical from the outside (all paid capability off, no certificate fetched),
-// and without a line in the log an operator cannot tell "this is a community
-// install" from "the helm upgrade dropped BKN_SAFE_APPKEY".
+// Unset is the one path that ends in "no gate" without a log line, because it
+// is the genuinely normal one: a community deployment. Everything else that
+// yields no gate is logged — those cases look identical from the outside (all
+// paid capability off, no certificate fetched), and without a line in the log an
+// operator cannot tell "this is a community install" from a broken build.
 func defaultHubGate() (*HubGate, error) {
-	base, appkey := os.Getenv("BKN_SAFE_URL"), os.Getenv("BKN_SAFE_APPKEY")
-	switch {
-	case base == "" && appkey == "":
-		return nil, nil
-	case base == "" || appkey == "":
-		slog.Warn("entitlement: licence hub is half-configured; running as community",
-			"has_url", base != "", "has_appkey", appkey != "")
+	base := os.Getenv("BKN_SAFE_URL")
+	if base == "" {
 		return nil, nil
 	}
 
 	g, err := NewHubGate(HubConfig{
 		BaseURL: base,
-		AppKey:  appkey,
 		Keys:    keys.Official(),
 	})
 	if err != nil {

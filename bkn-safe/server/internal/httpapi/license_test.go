@@ -26,7 +26,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // newLicenseServer builds a full server with the license surfaces mounted: a
@@ -210,35 +209,32 @@ func TestLicenseActivateOffline(t *testing.T) {
 
 // internal face ---------------------------------------------------------------
 
-func issueAppKey(t *testing.T, db *gorm.DB) string {
-	t.Helper()
-	// Verification resolves the key to its owner, so the owner must exist.
-	if err := db.Create(&model.User{ID: "svc-module", Account: "svc-module", Name: "module", Enabled: true}).Error; err != nil {
-		t.Fatal(err)
-	}
-	plaintext, _, err := auth.NewAPIKeyStore(db).Issue(t.Context(), "svc-module", "module key", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return plaintext
-}
+// TestLicenseInternalIsTokenless pins the trust face of the whole
+// /internal/license group. It is the inverse of the assertion this test used to
+// make, and it is kept as a test rather than a comment because the failure it
+// guards against is someone re-fencing the surface with a service credential:
+// every module that needs a licence would then be blocked again on an issuer, a
+// rotation story and a revocation signal that do not exist. What travels here is
+// signed text verified locally against a compiled-in key, so reading it confers
+// no power to forge it — see registerLicenseInternal.
+func TestLicenseInternalIsTokenless(t *testing.T) {
+	r, _, priv := newLicenseServer(t)
+	adminReq(t, r, http.MethodPost, licAdminBase+"/import",
+		map[string]string{"license": signTestLic(t, priv, nil)})
 
-func TestLicenseInternalRequiresAppKey(t *testing.T) {
-	r, _, _ := newLicenseServer(t)
-	for _, tok := range []string{"", "bak_bogus_bogus"} {
-		w := tokReq(t, r, http.MethodGet, "/api/safe/v1/internal/license/status", nil, tok)
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("token %q = %d, want 401", tok, w.Code)
+	for _, path := range []string{"/current", "/status", "/capabilities"} {
+		w := do(t, r, http.MethodGet, "/api/safe/v1/internal/license"+path, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("unauthenticated GET %s = %d, want 200 — the group is tokenless", path, w.Code)
 		}
 	}
 }
 
 func TestLicenseInternalCurrentAndETag(t *testing.T) {
-	r, db, priv := newLicenseServer(t)
-	key := issueAppKey(t, db)
+	r, _, priv := newLicenseServer(t)
 
-	// No license yet: 404.
-	w := tokReq(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", nil, key)
+	// No license yet: 404 — the absence is a definite answer, not a 401.
+	w := do(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("current with no license = %d, want 404", w.Code)
 	}
@@ -246,7 +242,7 @@ func TestLicenseInternalCurrentAndETag(t *testing.T) {
 	adminReq(t, r, http.MethodPost, licAdminBase+"/import",
 		map[string]string{"license": signTestLic(t, priv, nil)})
 
-	w = tokReq(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", nil, key)
+	w = do(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("current = %d", w.Code)
 	}
@@ -265,7 +261,7 @@ func TestLicenseInternalCurrentAndETag(t *testing.T) {
 	}
 
 	// Conditional poll: 304 without a body.
-	req := tokReq2(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", key, etag)
+	req := condReq(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", etag)
 	if req.Code != http.StatusNotModified {
 		t.Fatalf("If-None-Match = %d, want 304", req.Code)
 	}
@@ -273,7 +269,7 @@ func TestLicenseInternalCurrentAndETag(t *testing.T) {
 	// Re-import (a "renewal"): ETag changes and the poll misses.
 	adminReq(t, r, http.MethodPost, licAdminBase+"/import",
 		map[string]string{"license": signTestLic(t, priv, func(p map[string]any) { p["lic_id"] = "lic-renewed" })})
-	req = tokReq2(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", key, etag)
+	req = condReq(t, r, http.MethodGet, "/api/safe/v1/internal/license/current", etag)
 	if req.Code != http.StatusOK {
 		t.Fatalf("post-renewal poll = %d, want 200", req.Code)
 	}
@@ -283,12 +279,11 @@ func TestLicenseInternalCurrentAndETag(t *testing.T) {
 }
 
 func TestLicenseInternalStatusAndCapabilities(t *testing.T) {
-	r, db, priv := newLicenseServer(t)
-	key := issueAppKey(t, db)
+	r, _, priv := newLicenseServer(t)
 	adminReq(t, r, http.MethodPost, licAdminBase+"/import",
 		map[string]string{"license": signTestLic(t, priv, nil)})
 
-	w := tokReq(t, r, http.MethodGet, "/api/safe/v1/internal/license/status", nil, key)
+	w := do(t, r, http.MethodGet, "/api/safe/v1/internal/license/status", nil)
 	var st struct {
 		State     string `json:"state"`
 		Edition   string `json:"edition"`
@@ -299,7 +294,7 @@ func TestLicenseInternalStatusAndCapabilities(t *testing.T) {
 		t.Fatalf("status = %s", w.Body.String())
 	}
 
-	w = tokReq(t, r, http.MethodGet, "/api/safe/v1/internal/license/capabilities", nil, key)
+	w = do(t, r, http.MethodGet, "/api/safe/v1/internal/license/capabilities", nil)
 	var caps struct {
 		State    string           `json:"state"`
 		Features []string         `json:"features"`
@@ -311,11 +306,11 @@ func TestLicenseInternalStatusAndCapabilities(t *testing.T) {
 	}
 }
 
-// tokReq2 issues an authenticated request with an If-None-Match header.
-func tokReq2(t *testing.T, r *gin.Engine, method, path, token, etag string) *httptest.ResponseRecorder {
+// condReq issues a conditional (If-None-Match) request. No credential: the
+// distribution group is tokenless.
+func condReq(t *testing.T, r *gin.Engine, method, path, etag string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("If-None-Match", etag)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
