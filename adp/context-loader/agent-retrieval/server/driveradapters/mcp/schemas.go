@@ -63,7 +63,7 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 		panic(path + ": missing input_schema")
 	}
 	if isBusinessTool(toolKey) {
-		wrapper.InputSchema = requireBKNContext(wrapper.InputSchema)
+		wrapper.InputSchema = offerBKNContext(wrapper.InputSchema)
 	}
 	return wrapper.InputSchema, wrapper.OutputSchema
 }
@@ -328,7 +328,7 @@ func isBusinessTool(toolKey string) bool {
 	return !lifecycle
 }
 
-func requireBKNContext(input json.RawMessage) json.RawMessage {
+func offerBKNContext(input json.RawMessage) json.RawMessage {
 	var schema map[string]any
 	if err := json.Unmarshal(input, &schema); err != nil {
 		panic("invalid business tool input schema: " + err.Error())

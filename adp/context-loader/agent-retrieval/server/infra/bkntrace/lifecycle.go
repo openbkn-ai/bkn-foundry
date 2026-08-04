@@ -240,13 +240,14 @@ func (c *LifecycleClient) Enabled() bool {
 func (c *LifecycleClient) EnsureCurrentConversation(
 	ctx context.Context,
 	externalConversationKey string,
-	idempotencyKey string,
+	idempotencyKeys ...string,
 ) (Conversation, *APIError, error) {
 	var conversation Conversation
-	apiErr, err := c.do(ctx, http.MethodPost, "/conversations:ensure-current", map[string]any{
-		"external_conversation_key": externalConversationKey,
-		"idempotency_key":           idempotencyKey,
-	}, &conversation)
+	body := map[string]any{"external_conversation_key": externalConversationKey}
+	if len(idempotencyKeys) > 0 && strings.TrimSpace(idempotencyKeys[0]) != "" {
+		body["idempotency_key"] = idempotencyKeys[0]
+	}
+	apiErr, err := c.do(ctx, http.MethodPost, "/conversations:ensure-current", body, &conversation)
 	return conversation, apiErr, err
 }
 
@@ -287,20 +288,6 @@ func (c *LifecycleClient) EnsureOperation(
 		"/interactions/" + url.PathEscape(input.InteractionID) + "/operations:ensure"
 	apiErr, err = c.do(ctx, http.MethodPost, path, body, &result)
 	return result, apiErr, err
-}
-
-// EnsureCurrentConversation resolves the caller's current conversation for an
-// external key, creating it only when none is active. Core keys this by owner,
-// so two callers never share a conversation even with an identical key.
-func (c *LifecycleClient) EnsureCurrentConversation(
-	ctx context.Context,
-	externalConversationKey string,
-) (Conversation, *APIError, error) {
-	var conversation Conversation
-	apiErr, err := c.do(ctx, http.MethodPost, "/conversations:ensure-current", map[string]any{
-		"external_conversation_key": externalConversationKey,
-	}, &conversation)
-	return conversation, apiErr, err
 }
 
 // StartInteraction opens an interaction, or returns the existing one when the

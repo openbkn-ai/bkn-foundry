@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestBusinessToolSchemasAdvertiseOptionalBKNContext(t *testing.T) {
+func TestBusinessToolSchemasRequireManagedBKNContext(t *testing.T) {
 	rawMeta, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		t.Fatalf("read registered tool metadata: %v", err)
@@ -39,15 +39,13 @@ func TestBusinessToolSchemasAdvertiseOptionalBKNContext(t *testing.T) {
 			if err := json.Unmarshal(input, &schema); err != nil {
 				t.Fatalf("decode %s input schema: %v", toolKey, err)
 			}
-			// Advertised on every business tool, demanded on none. A required
-			// field an MCP client cannot legitimately fill just teaches it to
-			// invent IDs that Core rejects; omitting the whole object is the
-			// supported path and falls back to the client's MCP session.
+			// Every business tool is protected by the managed interaction gate.
+			// Clients must use the authority IDs returned by bkn_start_interaction.
 			if _, ok := schema.Properties["bkn_context"]; !ok {
 				t.Fatalf("%s must advertise bkn_context", toolKey)
 			}
-			if containsString(schema.Required, "bkn_context") {
-				t.Fatalf("%s must not demand bkn_context", toolKey)
+			if !containsString(schema.Required, "bkn_context") {
+				t.Fatalf("%s must require bkn_context", toolKey)
 			}
 
 			var contextSchema struct {

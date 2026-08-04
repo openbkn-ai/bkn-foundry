@@ -70,12 +70,13 @@ func guardBusinessToolCall(
 	ensure ensureOperationFunc,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
 ) func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-	return guardBusinessToolCallWithCompletion(ensure, nil, next)
+	return guardBusinessToolCallWithCompletion(ensure, nil, nil, next)
 }
 
 func guardBusinessToolCallWithCompletion(
 	ensure ensureOperationFunc,
 	complete completeOperationFunc,
+	_ *bkntrace.LifecycleClient,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
 ) func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 	return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
