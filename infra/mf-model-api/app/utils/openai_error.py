@@ -196,9 +196,15 @@ _HTTP_STATUS_KEY = "_http_status"
 _RETRY_AFTER_KEY = "_retry_after"
 
 
+# 只有「等一会儿真能好」的结果才配 Retry-After。502 是依赖侧鉴权/寻址问题
+# （上游 401/403/404 收敛而来），重试到天亮也没用，不能诱导调用方退避重试。
+_RETRY_AFTER_STATUS = (429, 503)
+
+
 def with_http_status(error_body, upstream_status, retry_after=None):
-    error_body[_HTTP_STATUS_KEY] = http_status_for(upstream_status)
-    if retry_after is not None:
+    status = http_status_for(upstream_status)
+    error_body[_HTTP_STATUS_KEY] = status
+    if retry_after is not None and status in _RETRY_AFTER_STATUS:
         error_body[_RETRY_AFTER_KEY] = retry_after
     return error_body
 

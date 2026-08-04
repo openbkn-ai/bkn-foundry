@@ -138,6 +138,17 @@ class TestPrivateKeys:
         assert openai_error.pop_retry_after(body) == 7
         assert set(body) == {"error"}
 
+    @pytest.mark.parametrize("upstream,expect_header", [
+        (429, True), (503, True), (500, True),
+        (401, False), (403, False), (404, False), (400, False),
+    ])
+    def test_retry_after_only_when_waiting_helps(self, upstream, expect_header):
+        """上游 401/403/404 收敛成 502 后不能再带 Retry-After——换供应商 key
+        才能好的事，叫客户端退避重试是误导（VM 实测发现）"""
+        body = openai_error.with_http_status(
+            openai_error.build_error("x"), upstream, retry_after=7)
+        assert (openai_error.pop_retry_after(body) == 7) is expect_header
+
     def test_public_copy_strips_private_keys(self):
         """evidence 会持久化，私有传参不能跟着落库"""
         body = openai_error.with_http_status(
