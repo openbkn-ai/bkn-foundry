@@ -18,7 +18,16 @@ import (
 // itself. This endpoint only spares users a menu full of things that would
 // refuse them.
 type capabilitiesResponse struct {
-	// Edition and State come from the license, for the activation banner.
+	// Licensed reports whether a valid licence is in force right now. False
+	// covers "never installed", "expired past grace" and "failed verification"
+	// alike, because the product behaves identically in all three. It exists so
+	// a frontend does not have to enumerate State values to work that out — one
+	// that does will get it wrong the day a new State appears.
+	Licensed bool `json:"licensed"`
+	// Edition is the tier in force, and "community" whenever Licensed is false:
+	// a deployment without a valid certificate behaves as community, and there
+	// is deliberately no separate "unlicensed" tier. State carries the detail
+	// (valid, grace, expired, trial, unlicensed) for the activation banner.
 	Edition string `json:"edition"`
 	State   string `json:"state"`
 	// Features is what the license carries — including enterprise features
@@ -45,6 +54,13 @@ type capabilitiesResponse struct {
 func registerCapabilities(g *gin.RouterGroup, svc *license.Service) {
 	g.GET("/capabilities", func(c *gin.Context) {
 		resp := capabilitiesResponse{
+			// Defaults describe a deployment with no valid certificate, which is
+			// what a community install and an unlicensed enterprise one both are.
+			// Written here rather than left to the zero value: an empty edition
+			// pushes the "does empty mean community?" question onto every caller,
+			// and the callers are frontends that will each answer it differently.
+			Licensed:     false,
+			Edition:      "community",
 			State:        string(licenseStateOrUnlicensed(svc)),
 			Features:     []string{},
 			Capabilities: []string{},
@@ -54,6 +70,7 @@ func registerCapabilities(g *gin.RouterGroup, svc *license.Service) {
 
 		if svc != nil {
 			if snap := svc.State(); snap.Payload != nil {
+				resp.Licensed = true
 				resp.Edition = string(snap.Payload.Edition)
 				if snap.Payload.Features != nil {
 					resp.Features = snap.Payload.Features

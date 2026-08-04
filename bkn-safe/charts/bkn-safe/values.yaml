@@ -18,8 +18,12 @@ service:
 
 # Only the hydra provider pages (login/consent/device) and the self-service
 # change-password endpoint are browser/CLI-facing and go through the ingress.
-# The internal authz/directory APIs (/api/safe/v1/authz, /api/safe/v1/directory)
-# stay ClusterIP, called service-to-service — do NOT expose those at the gateway.
+# The internal APIs (/api/safe/v1/authz, /api/safe/v1/directory,
+# /api/safe/v1/internal/license) stay ClusterIP, called service-to-service — do
+# NOT expose those at the gateway. The licence group is tokenless by design (its
+# boundary is the network, see networkPolicy below), so putting it behind the
+# ingress would publish the certificate and its expiry to anyone who can reach
+# the host.
 # The admin API (/api/safe/v1/admin) IS exposed below, but it is token-gated
 # (RequireAdmin: bearer-token introspection + casbin super-admin check), so it is
 # safe to widen — unlike the raw internal routes, which are unauthenticated.
@@ -50,6 +54,12 @@ ingress:
     # in-service by RequireUser (introspect); the accessor id comes from the
     # token, so a caller can only read its own grants.
     - /api/safe/v1/me
+    # Deployment capability discovery, read on every login to lay out the menu.
+    # Token-gated in-service by RequireUser (introspect only — it describes the
+    # deployment, not the caller) and it decides nothing: enforcement stays at
+    # each gated call site. Without this path the frontend gets the gateway's
+    # own 404 and has to guess what the deployment can do.
+    - /api/safe/v1/capabilities
   # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
   # paired hydra public service (port 4444): token, device authorization,
   # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.
