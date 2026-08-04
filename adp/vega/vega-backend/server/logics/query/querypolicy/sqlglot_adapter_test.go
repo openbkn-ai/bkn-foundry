@@ -227,7 +227,8 @@ func TestExtractTableResourceIDs(t *testing.T) {
 
 func requireSQLGlotRuntime(t *testing.T) {
 	t.Helper()
-	if err := exec.Command("python3", "-c", "import sqlglot").Run(); err != nil {
+	if err := exec.Command("python3", "-c",
+		"import sqlglot; assert callable(getattr(sqlglot, 'parse_one', None))").Run(); err != nil {
 		t.Skip("sqlglot Python runtime is not installed")
 	}
 }

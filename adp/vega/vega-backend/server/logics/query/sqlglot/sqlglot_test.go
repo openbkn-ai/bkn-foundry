@@ -7,6 +7,7 @@ package sqlglot
 
 import (
 	"context"
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,6 +51,7 @@ func TestMapDataSourceTypeToDialect(t *testing.T) {
 
 func TestTranspileSQL(t *testing.T) {
 	t.Run("transpiles postgres input to tsql target dialect", func(t *testing.T) {
+		requireSQLGlotRuntime(t)
 		got, err := TranspileSQL(context.Background(), "SELECT id FROM orders WHERE active = TRUE", "postgres", "tsql")
 
 		require.NoError(t, err)
@@ -58,6 +60,7 @@ func TestTranspileSQL(t *testing.T) {
 	})
 
 	t.Run("transpiles mysql input to tsql target dialect", func(t *testing.T) {
+		requireSQLGlotRuntime(t)
 		got, err := TranspileSQL(context.Background(), "SELECT `id` FROM `orders` LIMIT 10", "mysql", "tsql")
 
 		require.NoError(t, err)
@@ -83,4 +86,12 @@ func TestTranspileSQL(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Nil(t, got)
 	})
+}
+
+func requireSQLGlotRuntime(t *testing.T) {
+	t.Helper()
+	if err := exec.Command("python3", "-c",
+		"import sqlglot; assert callable(getattr(sqlglot, 'transpile', None))").Run(); err != nil {
+		t.Skip("sqlglot Python runtime is not installed")
+	}
 }
