@@ -34,10 +34,15 @@ components:
 
         三个必填子字段中，前两个是服务端签发的句柄、不可自拟：
 
-        - `conversation_id`：调用 `bkn_create_conversation`（MCP）或
-          `POST /api/agent-observability/v1/conversations:ensure-current`（Core）取得
-        - `interaction_id`：调用 `bkn_start_interaction`（MCP）或
-          `POST /api/agent-observability/v1/conversations/{conversation_id}/interactions` 取得
+        - `conversation_id`：调用 Context Loader 的 MCP 工具
+          `bkn_create_conversation` 取得
+        - `interaction_id`：调用 Context Loader 的 MCP 工具
+          `bkn_start_interaction` 取得
+
+        这两个句柄只能经上述 MCP 溯源工具取得。BKN Trace Core 的
+        `/api/agent-observability/v1` 会话接口只接受集群内可信服务的网关凭据，
+        不接受 OAuth token 或 `bak_` AppKey，外部调用方直接调用会得到
+        `401 permission_denied`。
         - `operation_key`：调用方自取的字符串，同一次逻辑调用重试时必须保持不变；
           服务端据此做幂等，重发不会重复执行，两次不同调用必须给不同值
 

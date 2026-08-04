@@ -1845,8 +1845,17 @@ func TestOperationLimitDoesNotKeepAFullInteractionAlive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read interaction after the rejected call: %v", err)
 	}
+	// Assert on LeaseVersion, not LeaseExpiresAt: the in-memory store stamps real
+	// wall-clock time, so two transactions landing in the same tick would make an
+	// expiry comparison pass even if the renewal came back. renewInteractionLease
+	// bumps the version unconditionally, so it registers regardless of clock
+	// resolution.
+	if after.LeaseVersion != before.LeaseVersion {
+		t.Fatalf("a rejected call renewed the lease: version %d → %d",
+			before.LeaseVersion, after.LeaseVersion)
+	}
 	if after.LeaseExpiresAt.After(before.LeaseExpiresAt) {
-		t.Fatalf("a rejected call renewed the lease: before=%s after=%s",
+		t.Fatalf("a rejected call extended the lease: before=%s after=%s",
 			before.LeaseExpiresAt, after.LeaseExpiresAt)
 	}
 
