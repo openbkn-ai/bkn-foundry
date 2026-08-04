@@ -173,9 +173,12 @@ components:
     FindSkillsRequest:
       type: object
       required:
+        - bkn_context
         - kn_id
         - object_type_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。

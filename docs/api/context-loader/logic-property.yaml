@@ -131,12 +131,15 @@ components:
     ResolveLogicPropertiesRequest:
       type: object
       required:
+        - bkn_context
         - kn_id
         - ot_id
         - query
         - _instance_identities
         - properties
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。

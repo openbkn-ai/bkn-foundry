@@ -27,3 +27,44 @@ components:
         id: a0f02238-6cec-11f0-82bb-fa1c4529a151
         type: user
         name: Administrator
+    BKNContext:
+      type: object
+      description: |
+        BKN Trace 业务溯源上下文，声明这次调用属于哪一轮业务对话。REST 面必填。
+
+        三个必填子字段中，前两个是服务端签发的句柄、不可自拟：
+
+        - `conversation_id`：调用 `bkn_create_conversation`（MCP）或
+          `POST /api/agent-observability/v1/conversations:ensure-current`（Core）取得
+        - `interaction_id`：调用 `bkn_start_interaction`（MCP）或
+          `POST /api/agent-observability/v1/conversations/{conversation_id}/interactions` 取得
+        - `operation_key`：调用方自取的字符串，同一次逻辑调用重试时必须保持不变；
+          服务端据此做幂等，重发不会重复执行，两次不同调用必须给不同值
+
+        MCP 面的同名字段为可选——省略时按 MCP 连接自动归并会话，详见 mcp.yaml。
+        REST 面没有连接的概念，无从归并，因此必填。
+      required:
+        - conversation_id
+        - interaction_id
+        - operation_key
+      properties:
+        conversation_id:
+          type: string
+          description: 业务对话 ID，服务端签发。
+          example: conv_8eca1655217a128b16727ce664cd579c
+        interaction_id:
+          type: string
+          description: 交互（一轮问答）ID，服务端签发。
+          example: int_0ab58662974fe9edcfb4ae3e77e43502
+        operation_key:
+          type: string
+          description: 调用方自取的稳定标识，用于幂等。
+          example: search_schema:order-fulfillment:1
+        parent_operation_id:
+          type: string
+          description: 触发本次调用的上游操作 ID，用于表达因果边。
+        causation_event_ids:
+          type: array
+          items:
+            type: string
+          description: 触发本次调用的事件 ID 列表，用于表达因果边。

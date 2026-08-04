@@ -56,10 +56,54 @@ info:
     需要跨重连保持同一条证据链的调用方，应自带 `bkn_context`。
 
     **自带时**（bkn-agent 等持有真实业务会话的调用方）：先用溯源工具建立会话与
-    交互，再把三个字段带进每次业务调用，即可获得完整的业务级溯源。
+    交互，再把三个字段带进每次业务调用，最后收口。完整序列如下，箭头标出哪些值
+    来自上一步的响应：
 
-    注意 REST 面没有连接的概念，因此那 16 个端点的 `bkn_context` 仍为必填，
-    与 MCP 面不同。
+    ```
+    1. bkn_create_conversation
+         external_conversation_key: 调用方自取，用于标识「这一轮业务对话」
+       → conversation_id
+
+    2. bkn_start_interaction
+         conversation_id ←── 第 1 步
+         idempotency_key: 调用方自取，重放该值会取回同一次交互
+         question:        本轮用户提问原文
+       → interaction_id, lease_token, lease_epoch
+
+    3. 每一次业务工具调用（可多次，可并发）
+         bkn_context:
+           conversation_id ←── 第 1 步
+           interaction_id  ←── 第 2 步
+           operation_key:  调用方自取，同一次逻辑调用重试须保持不变
+       → 结果 + bkn_receipt
+
+    4. bkn_complete_interaction
+         interaction_id              ←── 第 2 步
+         lease_token, lease_epoch    ←── 第 2 步
+         terminal_idempotency_key:   调用方自取
+         completion_manifest_version: 收口清单版本
+         completion_reason:          收口原因
+         answer:                     本轮回答
+    ```
+
+    第 4 步的 `bkn_fail_interaction` / `bkn_cancel_interaction` /
+    `bkn_handoff_interaction` 参数同上，仅 `answer` 为 `bkn_complete_interaction`
+    独有。一个对话同时只允许一次活跃交互，因此第 2 步必须等上一次交互收口后才能
+    再次调用。
+
+    其余溯源工具用于事后查询与重试：`bkn_resume_conversation`（按 conversation_id
+    恢复活跃对话）、`bkn_get_operation`（查操作状态与是否可重试）、
+    `bkn_retry_operation`（为可重试的失败操作创建下一次尝试）、`bkn_get_receipt`
+    （按 receipt_id 轮询持久化回执，业务调用返回 `receipt_pending` 时用它确认最终
+    结果）、`bkn_close_conversation`（关闭对话，要求其下无活跃交互）。
+
+    各工具入参的完整 JSON Schema 以 `tools/list` 与 `GET /mcp/info` 的返回为准。
+
+    注意 REST 面没有连接的概念、无从归并，因此那 16 个端点的 `bkn_context` 仍为
+    **必填**，与 MCP 面不同。REST 侧的字段定义见
+    `_shared/common.yaml#/components/schemas/BKNContext`，各端点文档已引用该定义。
+    只用 REST 的调用方同样要走上面那套序列，其中第 1、2、4 步调用 BKN Trace Core
+    的 `/api/agent-observability/v1` 接口，第 3 步换成本模块的 `/kn/*` 端点。
 
     **多业务域部署**：单业务域安装无需任何额外请求头。若部署时清空了
     `observability.lifecycle.default_business_domain`，则每次请求都须带

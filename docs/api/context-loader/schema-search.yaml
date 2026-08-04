@@ -262,8 +262,11 @@ components:
     SearchSchemaRequest:
       type: object
       required:
+        - bkn_context
         - query
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         query:
           type: string
           description: 用户查询问题或关键词。
@@ -336,9 +339,12 @@ components:
     KnSearchCompatRequest:
       type: object
       required:
+        - bkn_context
         - query
         - kn_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         query:
           type: string
           description: 用户查询问题或关键词。
@@ -430,9 +436,12 @@ components:
     SemanticSearchRequest:
       type: object
       required:
+        - bkn_context
         - query
         - kn_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         query:
           type: string
           description: 用户自然语言查询。

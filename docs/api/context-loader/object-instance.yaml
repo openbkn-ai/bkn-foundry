@@ -186,7 +186,11 @@ components:
   schemas:
     QueryObjectInstanceRequest:
       type: object
+      required:
+        - bkn_context
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         condition:
           $ref: '#/components/schemas/Condition'
         filters:

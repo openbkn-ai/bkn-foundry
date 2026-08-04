@@ -290,7 +290,11 @@ components:
   schemas:
     ListKnRequest:
       type: object
+      required:
+        - bkn_context
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         name_pattern:
           type: string
           description: 按名称模糊过滤。
@@ -346,7 +350,11 @@ components:
 
     GetKnDetailRequest:
       type: object
+      required:
+        - bkn_context
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。与 `x-kn-id` 头二选一，本字段优先。
@@ -361,8 +369,11 @@ components:
     DrillRequest:
       type: object
       required:
+        - bkn_context
         - ids
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。与 `x-kn-id` 头二选一，本字段优先。

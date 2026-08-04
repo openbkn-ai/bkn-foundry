@@ -237,7 +237,11 @@ components:
   schemas:
     ListResourcesRequest:
       type: object
+      required:
+        - bkn_context
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         catalog_id:
           type: string
           description: 限定某个 catalog。
@@ -287,8 +291,11 @@ components:
     DescribeResourceRequest:
       type: object
       required:
+        - bkn_context
         - resource_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         resource_id:
           type: string
           description: 资源 ID。
@@ -323,8 +330,11 @@ components:
     RunSQLRequest:
       type: object
       required:
+        - bkn_context
         - sql
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         sql:
           type: string
           description: |

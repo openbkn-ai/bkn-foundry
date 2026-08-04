@@ -307,9 +307,12 @@ components:
     GetActionInfoRequest:
       type: object
       required:
+        - bkn_context
         - kn_id
         - at_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。
@@ -370,9 +373,12 @@ components:
     ExecuteActionRequest:
       type: object
       required:
+        - bkn_context
         - kn_id
         - at_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。
@@ -412,9 +418,12 @@ components:
     GetActionExecutionRequest:
       type: object
       required:
+        - bkn_context
         - kn_id
         - execution_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。
@@ -425,8 +434,11 @@ components:
     ListActionExecutionsRequest:
       type: object
       required:
+        - bkn_context
         - kn_id
       properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
           type: string
           description: 知识网络 ID。
