@@ -1140,7 +1140,7 @@ name: Emp Dept
 func TestParseMetricFile_MockEmployeeOnboarded(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "examples", "mock_system", "metrics", "mock_employee_onboarded_count.bkn")
+	path := filepath.Join(filepath.Dir(file), "..", "examples", "mock_system", "metrics", "mock_employee_onboarded_count.bkn")
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	m, err := ParseMetricFile(string(data), path)

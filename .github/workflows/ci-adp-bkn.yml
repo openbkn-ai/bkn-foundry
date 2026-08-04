@@ -1,7 +1,6 @@
 name: ci-adp-bkn
 
-# Compile and unit-test gate for PRs touching adp/bkn. Run the BKN logic tests
-# explicitly because the full test suite still has fixture-dependent packages.
+# Compile and unit-test gate for PRs touching adp/bkn.
 
 on:
   pull_request:
@@ -25,10 +24,10 @@ jobs:
         with:
           go-version-file: adp/bkn/bkn-backend/server/go.mod
       - run: go build ./...
-      - name: Run BKN logic unit tests
+      - name: Run BKN backend unit tests
         env:
           I18N_MODE_UT: "true"
-        run: go test -count=1 -gcflags="all=-l" ./logics ./logics/model_factory
+        run: go test -count=1 -gcflags="all=-l" ./...
 
   ontology-query:
     runs-on: ubuntu-latest
