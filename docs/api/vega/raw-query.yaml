@@ -53,7 +53,8 @@ paths:
         实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
         SQL Server Catalog 的目标方言固定为 `tsql`；客户端可直接提交 `tsql`，也可提交受支持的其它 SQL
         输入方言，由服务端转换为 T-SQL。无论输入方言为何，`EXEC`、`SELECT INTO`、DDL/DML 和多语句
-        都会在访问数据库前被拒绝。
+        都会在访问数据库前被拒绝。由于 total-count 和部分分页查询需要使用 SQL Server 派生表，计算表达式
+        必须显式指定唯一列别名；通配符不能与其它投影列混用，多表 JOIN 的通配符必须指定表名（例如 `orders.*`）。
 
         **SQL 语法边界**：只接受单条顶层 `SELECT`。支持同一 Catalog 内的 `JOIN`、
         `WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询不被

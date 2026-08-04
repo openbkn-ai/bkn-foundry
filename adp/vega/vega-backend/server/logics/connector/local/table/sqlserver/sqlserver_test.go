@@ -286,6 +286,13 @@ func TestSQLServerConnectorBuildPagedSQL(t *testing.T) {
 			query,
 		)
 	})
+	t.Run("wraps named top projection without order", func(t *testing.T) {
+		query := connector.BuildPagedSQL("SELECT TOP (1) COUNT(*) AS total FROM dbo.orders", 0, 5)
+		assert.Equal(t,
+			"SELECT * FROM (SELECT TOP (1) COUNT(*) AS total FROM dbo.orders\n) AS _raw_query_page ORDER BY (SELECT 1) OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY",
+			query,
+		)
+	})
 }
 
 func TestSQLServerConnectorBuildCountSQL(t *testing.T) {
@@ -306,6 +313,12 @@ func TestSQLServerConnectorBuildCountSQL(t *testing.T) {
 		assert.Equal(t,
 			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT id FROM dbo.orders\n) AS _raw_query_total\nOPTION (RECOMPILE)",
 			connector.BuildCountSQL("SELECT id FROM dbo.orders ORDER BY id OPTION (RECOMPILE)"),
+		)
+	})
+	t.Run("wraps a named aggregate projection", func(t *testing.T) {
+		assert.Equal(t,
+			"SELECT COUNT(*) AS _raw_query_total_count FROM (SELECT COUNT(*) AS total FROM dbo.orders\n) AS _raw_query_total",
+			connector.BuildCountSQL("SELECT COUNT(*) AS total FROM dbo.orders"),
 		)
 	})
 }

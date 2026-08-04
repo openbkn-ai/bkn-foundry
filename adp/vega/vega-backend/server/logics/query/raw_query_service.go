@@ -267,7 +267,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, err
 	}
-	if err := validateSQLPolicy(ctx, replacedSQL, inputDialect, allowedReferences); err != nil {
+	if err := validateSQLPolicy(ctx, replacedSQL, inputDialect, allowedReferences, inputDialect == targetDialect); err != nil {
 		return nil, err
 	}
 	finalSQL := replacedSQL
@@ -285,15 +285,21 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		// The connector executes finalSQL, not the input-dialect SQL validated
 		// above. Revalidate the target-dialect output so the read-only and
 		// table-reference boundaries apply to the executable statement.
-		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, targetReferences); err != nil {
+		if err := validateSQLPolicy(ctx, finalSQL, targetDialect, targetReferences, true); err != nil {
 			return nil, err
 		}
 	}
 	return &preparedSQLQuery{catalog: catalog, resourceIDs: resourceIDs, sql: trimSQLTerminator(finalSQL), warnings: warnings}, nil
 }
 
-func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferences []string) error {
-	if err := rawQueryPolicy.ValidateSQL(ctx, sql, dialect); err != nil {
+func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferences []string, derivedTable bool) error {
+	var err error
+	if derivedTable {
+		err = rawQueryPolicy.ValidateDerivedTable(ctx, sql, dialect)
+	} else {
+		err = rawQueryPolicy.ValidateSQL(ctx, sql, dialect)
+	}
+	if err != nil {
 		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
 			return httpErr
 		}

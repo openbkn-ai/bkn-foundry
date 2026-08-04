@@ -25,6 +25,7 @@ const rejectedPrefix = "READ_ONLY_SQL_REJECTED:"
 type Adapter interface {
 	ExtractTableResourceIDs(ctx context.Context, sql string, inputDialect string) ([]string, error)
 	ValidateSQL(ctx context.Context, sql string, inputDialect string) error
+	ValidateDerivedTable(ctx context.Context, sql string, dialect string) error
 	ValidateTableReferences(ctx context.Context, sql string, inputDialect string, allowedReferences []string) error
 }
 
@@ -50,7 +51,17 @@ func (a *SQLGlotAdapter) ExtractTableResourceIDs(ctx context.Context, sql string
 }
 
 func (a *SQLGlotAdapter) ValidateSQL(ctx context.Context, sql string, inputDialect string) error {
-	cmd := exec.CommandContext(ctx, "python3", "-c", validationScript, sql, inputDialect)
+	return a.validateSQL(ctx, sql, inputDialect, "query")
+}
+
+// ValidateDerivedTable verifies that a validated query can be wrapped in a
+// derived table by the target connector without changing its projection.
+func (a *SQLGlotAdapter) ValidateDerivedTable(ctx context.Context, sql string, dialect string) error {
+	return a.validateSQL(ctx, sql, dialect, "derived_table")
+}
+
+func (a *SQLGlotAdapter) validateSQL(ctx context.Context, sql, dialect, mode string) error {
+	cmd := exec.CommandContext(ctx, "python3", "-c", validationScript, sql, dialect, mode)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -256,6 +267,7 @@ def reject(reason):
 try:
     sql = sys.argv[1]
     dialect = sys.argv[2]
+    mode = sys.argv[3]
     statements = sqlglot.parse(sql, read=dialect)
     if len(statements) != 1:
         reject("exactly one SELECT statement is required")
@@ -283,6 +295,31 @@ try:
             limit_options.args.get("percent") or limit_options.args.get("with_ties")
         ):
             reject("SQL Server TOP PERCENT and WITH TIES are not supported")
+
+    if dialect == "tsql" and mode == "derived_table":
+        # SQL Server requires derived-table result columns to have unique names,
+        # unlike the other supported SQL engines.
+        projection_names = set()
+        wildcard_projections = []
+        for projection in statement.expressions:
+            if projection.is_star:
+                wildcard_projections.append(projection)
+                continue
+
+            output_name = projection.output_name
+            if not output_name:
+                reject("SQL Server computed select expressions require aliases")
+            canonical_name = output_name.casefold()
+            if canonical_name in projection_names:
+                reject("SQL Server select column names must be unique")
+            projection_names.add(canonical_name)
+
+        if wildcard_projections:
+            if len(statement.expressions) != 1:
+                reject("SQL Server wildcard projections cannot be combined with other columns")
+            wildcard = wildcard_projections[0]
+            if isinstance(wildcard, exp.Star) and statement.args.get("joins"):
+                reject("SQL Server joined wildcard projections must be table-qualified")
 
     for node in statement.walk():
         if dialect == "tsql" and isinstance(node, exp.NextValueFor):

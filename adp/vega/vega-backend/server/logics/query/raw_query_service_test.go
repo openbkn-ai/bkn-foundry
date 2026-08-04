@@ -60,8 +60,9 @@ type deadlineInspectingPolicy struct {
 }
 
 type recordingPolicy struct {
-	dialects    []string
-	resourceIDs []string
+	dialects        []string
+	derivedDialects []string
+	resourceIDs     []string
 }
 
 func (p *recordingPolicy) ExtractTableResourceIDs(context.Context, string, string) ([]string, error) {
@@ -70,6 +71,11 @@ func (p *recordingPolicy) ExtractTableResourceIDs(context.Context, string, strin
 
 func (p *recordingPolicy) ValidateSQL(_ context.Context, _ string, dialect string) error {
 	p.dialects = append(p.dialects, dialect)
+	return nil
+}
+
+func (p *recordingPolicy) ValidateDerivedTable(_ context.Context, _ string, dialect string) error {
+	p.derivedDialects = append(p.derivedDialects, dialect)
 	return nil
 }
 
@@ -82,6 +88,11 @@ func (p *recordingPolicy) ValidateTableReferences(context.Context, string, strin
 }
 
 func (p *deadlineInspectingPolicy) ValidateSQL(ctx context.Context, _ string, _ string) error {
+	_, p.sawDeadline = ctx.Deadline()
+	return errors.New("stop after inspecting policy context")
+}
+
+func (p *deadlineInspectingPolicy) ValidateDerivedTable(ctx context.Context, _ string, _ string) error {
 	_, p.sawDeadline = ctx.Deadline()
 	return errors.New("stop after inspecting policy context")
 }
@@ -113,6 +124,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 		name              string
 		sql               string
 		hasTableReference bool
+		needTotal         bool
 	}{
 		{name: "exec", sql: "EXEC('SELECT * FROM {{resource-1}}')"},
 		{name: "select into", sql: "SELECT * INTO archived_orders FROM {{resource-1}}", hasTableReference: true},
@@ -127,6 +139,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 		{name: "offset fetch", sql: "SELECT id FROM {{resource-1}} ORDER BY id OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY", hasTableReference: true},
 		{name: "table lock hint", sql: "SELECT id FROM {{resource-1}} WITH (TABLOCKX)", hasTableReference: true},
 		{name: "non-literal top", sql: "SELECT TOP (5 + 5) id FROM {{resource-1}} ORDER BY id", hasTableReference: true},
+		{name: "unnamed aggregate with total", sql: "SELECT COUNT(*) FROM {{resource-1}}", hasTableReference: true, needTotal: true},
 	}
 	for _, test := range rejectedTSQLTests {
 		t.Run("rejects tsql before connector creation: "+test.name, func(t *testing.T) {
@@ -171,6 +184,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 				QueryFormat:  interfaces.QueryFormatSQL,
 				InputDialect: "tsql",
 				Paging:       interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 10},
+				NeedTotal:    test.needTotal,
 			})
 
 			assertHTTPError(t, err, http.StatusBadRequest)
@@ -373,7 +387,8 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "SELECT * FROM `orders`", prepared.sql)
-		assert.Equal(t, []string{"trino", "mysql"}, policy.dialects)
+		assert.Equal(t, []string{"trino"}, policy.dialects)
+		assert.Equal(t, []string{"mysql"}, policy.derivedDialects)
 	})
 }
 

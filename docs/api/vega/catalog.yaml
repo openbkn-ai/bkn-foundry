@@ -38,6 +38,8 @@ info:
       `GRANT CONNECT TO [vega_reader]`、`GRANT VIEW DEFINITION TO [vega_reader]`，以及
       `ALTER ROLE [db_datareader] ADD MEMBER [vega_reader]`；不要授予 `db_datawriter`、`db_ddladmin` 或 `db_owner`。
     - TLS 可通过上述驱动参数启用；`trustservercertificate: true` 会跳过服务端证书校验，只适合受控测试环境。
+      未配置 `encrypt` 时使用 go-mssqldb v1.9.2 的 `EncryptionOff` 默认行为，即客户端不主动要求全程加密；
+      如需确定启用 TLS，应显式配置 `encrypt: true` 和 `trustservercertificate: false`。
       当前未提供自定义 CA 文件配置，TLS 成功与失败路径尚待真实 SQL Server 环境验收。
     - 一个 Catalog 只连接一个 database，并在其中按 schema 发现对象；不支持跨数据库发现、CDC 和 Windows 集成认证。
 

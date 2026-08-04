@@ -114,6 +114,46 @@ func TestSQLGlotAdapterValidateSQL(t *testing.T) {
 	})
 }
 
+func TestSQLGlotAdapterValidateDerivedTable(t *testing.T) {
+	requireSQLGlotRuntime(t)
+
+	adapter := NewSQLGlotAdapter()
+	for _, test := range []struct {
+		name string
+		sql  string
+	}{
+		{name: "unnamed aggregate projection", sql: "SELECT COUNT(*) FROM orders"},
+		{name: "unnamed expression projection", sql: "SELECT price * quantity FROM orders"},
+		{name: "duplicate projection names", sql: "SELECT id, customer_id AS id FROM orders"},
+		{name: "wildcard combined with another column", sql: "SELECT *, id AS order_id FROM orders"},
+		{name: "unqualified joined wildcard", sql: "SELECT * FROM orders JOIN customers ON orders.customer_id = customers.id"},
+	} {
+		t.Run("rejects tsql: "+test.name, func(t *testing.T) {
+			err := adapter.ValidateDerivedTable(context.Background(), test.sql, "tsql")
+			require.Error(t, err)
+			var validationErr *ReadOnlySQLValidationError
+			require.ErrorAs(t, err, &validationErr)
+		})
+	}
+
+	t.Run("accepts named tsql expressions", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateDerivedTable(context.Background(),
+			"SELECT COUNT(*) AS total, price * quantity AS amount FROM orders", "tsql"))
+	})
+	t.Run("accepts a single-table tsql wildcard", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateDerivedTable(context.Background(),
+			"SELECT * FROM orders", "tsql"))
+	})
+	t.Run("accepts a table-qualified tsql wildcard in a join", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateDerivedTable(context.Background(),
+			"SELECT orders.* FROM orders JOIN customers ON orders.customer_id = customers.id", "tsql"))
+	})
+	t.Run("does not restrict non-tsql projections", func(t *testing.T) {
+		require.NoError(t, adapter.ValidateDerivedTable(context.Background(),
+			"SELECT COUNT(*) FROM orders", "postgres"))
+	})
+}
+
 func TestSQLGlotAdapterValidateTableReferences(t *testing.T) {
 	requireSQLGlotRuntime(t)
 
