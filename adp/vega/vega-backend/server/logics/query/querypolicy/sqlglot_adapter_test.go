@@ -124,6 +124,10 @@ func TestSQLGlotAdapterValidateDerivedTable(t *testing.T) {
 	}{
 		{name: "unnamed aggregate projection", sql: "SELECT COUNT(*) FROM orders"},
 		{name: "unnamed expression projection", sql: "SELECT price * quantity FROM orders"},
+		{name: "unnamed cast projection", sql: "SELECT CAST(price AS INT) FROM orders"},
+		{name: "unnamed try cast projection", sql: "SELECT TRY_CAST(price AS INT) FROM orders"},
+		{name: "unnamed numeric literal projection", sql: "SELECT 1 FROM orders"},
+		{name: "unnamed string literal projection", sql: "SELECT 'value' FROM orders"},
 		{name: "duplicate projection names", sql: "SELECT id, customer_id AS id FROM orders"},
 		{name: "wildcard combined with another column", sql: "SELECT *, id AS order_id FROM orders"},
 		{name: "unqualified joined wildcard", sql: "SELECT * FROM orders JOIN customers ON orders.customer_id = customers.id"},

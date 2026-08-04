@@ -306,8 +306,11 @@ try:
                 wildcard_projections.append(projection)
                 continue
 
-            output_name = projection.output_name
-            if not output_name:
+            if isinstance(projection, exp.Alias):
+                output_name = projection.alias
+            elif isinstance(projection, exp.Column):
+                output_name = projection.name
+            else:
                 reject("SQL Server computed select expressions require aliases")
             canonical_name = output_name.casefold()
             if canonical_name in projection_names:
