@@ -108,29 +108,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# openbkn 0.1.0 has no `bkn build`; create a full-build job via the API and
-# poll the latest job until it reaches a terminal state.
-bkn_build_wait() { # <kn_id> <timeout_s>
-    local kn="$1" timeout="${2:-60}" state
-    openbkn call "/api/bkn-backend/v1/knowledge-networks/$kn/jobs" -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"name\":\"ex05_build_$(date +%s)\",\"job_type\":\"full\"}" >/dev/null 2>&1 || return 1
-    for _ in $(seq 1 $((timeout / 3))); do
-        state=$(openbkn --json call "/api/bkn-backend/v1/knowledge-networks/$kn/jobs?limit=1&direction=desc" 2>/dev/null \
-            | python3 -c "import json,sys
-d=json.load(sys.stdin)
-jobs=d if isinstance(d,list) else d.get('entries',[])
-print((jobs[0].get('state','running') if jobs else 'running').lower())" 2>/dev/null)
-        case "$state" in
-            *success*|*finish*|*complete*) echo "  build state=$state"; return 0 ;;
-            *fail*|*error*|*cancel*) echo "  build state=$state" >&2; return 1 ;;
-        esac
-        sleep 3
-    done
-    echo "  build wait timeout (${timeout}s)" >&2
-    return 1
-}
-
 # ── Step 1: Check MySQL connectivity ─────────────────────────────────────────
 # Vega catalogs connect to an existing DB; CSVs are loaded with the mysql
 # client in Step 4 (the legacy data-connection datasource flow is gone).
@@ -320,14 +297,14 @@ echo "$PUSH_RAW" | grep -q "\"kn_id\"" || { echo "ERROR: bkn push failed" >&2; e
 KN_PUSHED=1
 echo "  ✓ KN: $KN_ID"
 
-# ── Step 7: Build KN ─────────────────────────────────────────────────────────
+# ── Step 7: Confirm the KN reads live data ───────────────────────────────────
 echo ""
-echo "=== Step 7: Build KN (resource-bound OTs query in real time) ==="
-# Object types bind to Vega resources, so data is queried live and no index
-# build is required. Run build best-effort for any non-resource OTs; ignore
-# failures (a resource-only KN may report nothing to build).
-bkn_build_wait "$KN_ID" 60 || true
-echo "  (resource-bound object types are queried in real time — no build needed)"
+echo "=== Step 7: Object types read the source database live ==="
+# Every object type here binds to a Vega resource, so routing reads the current
+# rows on each call — nothing to build. There is no KN-level build API: the old
+# /knowledge-networks/{id}/jobs endpoint was retired, and search indexes are now
+# per-resource Vega BuildTasks (`openbkn vega dataset build`, see examples 01/02).
+echo "  (resource-bound object types are queried in real time — no index needed for routing)"
 
 # ── Step 8: Start mock business backend ──────────────────────────────────────
 echo ""
@@ -491,13 +468,21 @@ if [ "$BONUS" = "1" ]; then
 
     echo ""
     echo "[business system] update MAT-002.bound_skill_id: supplier_expedite → standard_replenish"
-    curl -s -X POST "$TOOL_BACKEND_URL/admin/material-binding" \
+    # Report the backend's own error instead of dying inside `json.tool`: this
+    # call writes to MySQL, so a driver/permission problem surfaces here first.
+    rebind_resp=$(curl -sS -w '\n%{http_code}' -X POST "$TOOL_BACKEND_URL/admin/material-binding" \
         -H "Content-Type: application/json" \
-        -d "{\"sku\":\"MAT-002\",\"bound_skill_id\":\"$STANDARD_REPLENISH_ID\"}" | python3 -m json.tool
-
-    echo ""
-    echo "[KN] rebuild to refresh Vega's batch-mode resource snapshot"
-    bkn_build_wait "$KN_ID" 60
+        -d "{\"sku\":\"MAT-002\",\"bound_skill_id\":\"$STANDARD_REPLENISH_ID\"}" 2>&1)
+    rebind_code="${rebind_resp##*$'\n'}"
+    rebind_body="${rebind_resp%$'\n'*}"
+    if [ "$rebind_code" != "200" ]; then
+        echo "ERROR: /admin/material-binding returned HTTP ${rebind_code:-?}" >&2
+        echo "  response: ${rebind_body:-<empty>}" >&2
+        echo "  mock backend log tail:" >&2
+        tail -20 "$SCRIPT_DIR/.tool_backend.log" >&2
+        exit 1
+    fi
+    echo "$rebind_body" | python3 -m json.tool
 
     echo ""
     echo "--- MAT-002 (re-route after binding change) ---"

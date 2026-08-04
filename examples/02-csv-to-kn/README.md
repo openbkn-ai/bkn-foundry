@@ -18,24 +18,34 @@ to understand your people and projects.
 CSV Files (local)
      │
      ▼
-┌─────────────────────┐     ┌──────────────┐
-│  bkn create-from-csv │────▶│  Knowledge   │
-│  (import + build)    │     │  Network     │
-└─────────────────────┘     └──────┬───────┘
-                                   │
-              ┌────────────────────┴───────────────────┐
-              ▼                                        ▼
-       ┌────────────┐                         ┌──────────────┐
-       │   Schema   │                         │   Subgraph   │
-       │  Explore   │                         │  Traversal   │
-       └────────────┘                         └──────────────┘
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│    MySQL     │────▶│ Vega Catalog │────▶│  Knowledge   │
+│ (mysql load) │     │  (discover)  │     │   Network    │
+└──────────────┘     └──────┬───────┘     └──────┬───────┘
+                            │                    │
+                            ▼                    ▼
+                    ┌──────────────┐     ┌──────────────┐
+                    │ Search index │     │   Schema +   │
+                    │ (text+vector)│     │   instances  │
+                    └──────────────┘     └──────────────┘
 ```
 
-0. **Connect** a MySQL datasource (backing store for the imported tables)
-1. **Import** CSV files and build a Knowledge Network — one command
-2. **Explore** auto-discovered object types and properties
-3. **Query** object instances
-4. **Traverse** the network with subgraph queries (depth 2)
+1. **Load** the CSV files into MySQL with the standard `mysql` client
+2. **Register** a Vega catalog over that database and **discover** its tables
+3. **Build** a Knowledge Network with object types bound to the discovered resources
+4. **Build** the search index (full text + vector) for each resource
+5. **Explore** the object types
+6. **Query** object instances
+
+> Object types bind to Vega *resource* IDs, so instance queries read the source
+> database live. Full-text and vector search are a **separate index**: a Vega
+> BuildTask copies the rows into OpenSearch and vectorises the fields you name
+> (Step 4). Index configuration is owned by the Vega *resource* — `index_config`
+> plus per-field `features` — and the build task snapshots it at creation;
+> `openbkn vega dataset build` writes both halves in one command.
+>
+> Step 4 knobs: `DO_INDEX=0` skips indexing, `EMBEDDING_MODEL_NAME=` (empty)
+> builds full-text only, `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
 
 ### Sample Data
 
@@ -80,12 +90,13 @@ Replace the files in `data/` with your own CSVs. Requirements:
 
 | Command | What it does |
 |---------|-------------|
-| `openbkn ds connect mysql ...` | Register MySQL as backing datasource |
-| `openbkn bkn create-from-csv <ds-id> --files data/*.csv --build` | Import CSVs and build KN in one step |
-| `openbkn bkn object-type list <kn-id>` | List auto-discovered object types |
-| `openbkn bkn object-type query <kn-id> <ot-id> --limit 5` | Query instances |
-| `openbkn bkn subgraph <kn-id> <instance-id> --depth 2` | Network traversal |
-| `openbkn context-loader kn-search "..." --only-schema` | Semantic schema search |
+| `openbkn vega catalog create --connector-type mysql ...` | Register the database as a Vega catalog |
+| `openbkn vega catalog discover <catalog-id> --wait` | Discover its tables as resources |
+| `openbkn vega resource list --catalog-id <catalog-id> --category table` | List the discovered resource IDs |
+| `openbkn bkn object-type create <kn-id> --resource-id <resource-id> ...` | Bind an object type to a resource |
+| `openbkn vega dataset build <resource-id> --mode batch --build-key-fields id --fulltext-fields name --embedding-fields name --embedding-model <name> --wait` | Configure and run the search index |
+| `openbkn vega dataset build-list --resource-id <resource-id>` | Check index build status |
+| `openbkn bkn object-type list <kn-id>` | List object types |
 | `openbkn bkn export <kn-id>` | Export KN definition |
 
 ## Differences from Example 01
@@ -93,9 +104,9 @@ Replace the files in `data/` with your own CSVs. Requirements:
 | | 01-db-to-qa | 02-csv-to-kn |
 |---|---|---|
 | Data source | Existing MySQL database | Local CSV files |
-| Ingestion | `ds connect` + `create-from-ds` | `create-from-csv` (one step) |
+| Ingestion | `seed.sql` into MySQL, then a Vega catalog | CSVs loaded into MySQL, then a Vega catalog |
 | Schema setup | Write SQL seed file | Just bring CSVs |
-| Network feature | Semantic search + Q&A | Subgraph traversal + export |
+| Network feature | Semantic search + Q&A | Multi-table schema + instance queries |
 | Data domain | Supply chain (BOM, orders) | HR (employees, projects) |
 
 ## Cleanup

@@ -36,6 +36,11 @@ DB_CONFIG = {
     "database": os.environ["DB_NAME"],
     "user": os.environ["DB_USER"],
     "password": os.environ["DB_PASS"],
+    # Plain TCP to the demo database. This also avoids the TLS handshake in
+    # older mysql-connector builds (the ones shipped as distro packages),
+    # which call the ssl.wrap_socket that Python 3.12 removed — the
+    # connection would die with AttributeError instead.
+    "ssl_disabled": True,
 }
 
 # run.sh imports CSVs with --table-prefix, so the real table is ex05_<ts>_materials.

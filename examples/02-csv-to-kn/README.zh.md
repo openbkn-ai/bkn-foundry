@@ -16,22 +16,31 @@ HR 总监的员工、部门、项目数据散落在三张表格里。想搞清�
 本地 CSV 文件
      │
      ▼
-┌─────────────────────┐     ┌──────────────┐
-│  bkn create-from-csv │────▶│   知识网络    │
-│  （导入 + 构建）      │     └──────┬───────┘
-└─────────────────────┘            │
-              ┌────────────────────┴───────────────────┐
-              ▼                                        ▼
-       ┌────────────┐                         ┌──────────────┐
-       │  Schema 探索 │                         │   子图遍历   │
-       └────────────┘                         └──────────────┘
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│    MySQL     │────▶│ Vega Catalog │────▶│   知识网络    │
+│（mysql 导入） │     │  （表发现）   │     └──────┬───────┘
+└──────────────┘     └──────┬───────┘            │
+                            ▼                    ▼
+                    ┌──────────────┐     ┌──────────────┐
+                    │  检索索引构建 │     │  Schema 探索  │
+                    │（全文 + 向量）│     │   与实例查询  │
+                    └──────────────┘     └──────────────┘
 ```
 
-0. **连接** MySQL 数据源（用于存放导入的表）
-1. **一条命令**导入 CSV 并构建知识网络
-2. **探索**自动发现的对象类型和属性
-3. **查询**对象实例
-4. **子图遍历**（depth=2，多跳关系查询）
+1. **导入** — 用标准 `mysql` 客户端把 CSV 装进 MySQL
+2. **注册** Vega Catalog 并发现表，得到资源（resource）
+3. **建网** — 对象类绑定发现出的资源
+4. **建检索索引** — 为每个资源建全文与向量索引
+5. **探索**对象类型和属性
+6. **查询**对象实例
+
+> 对象类绑定 Vega **资源** ID，实例查询直接读源库当前数据。全文与向量检索是**另一套索引**：
+> 需要 Vega BuildTask 把数据同步进 OpenSearch 并对指定字段做向量化（Step 4）。索引配置归属于
+> Vega **资源**（`index_config` 与字段级 `features`），构建任务创建时对其做快照；
+> `openbkn vega dataset build` 一条命令写配置并发起构建。
+>
+> Step 4 可调参数：`DO_INDEX=0` 跳过；`EMBEDDING_MODEL_NAME=`（置空）只建全文索引；
+> `INDEX_TIMEOUT`（默认 300 秒）为单个资源的等待上限。
 
 ### 示例数据
 
@@ -76,12 +85,13 @@ vim .env
 
 | 命令 | 作用 |
 |------|------|
-| `openbkn ds connect mysql ...` | 注册 MySQL 数据源 |
-| `openbkn bkn create-from-csv <ds-id> --files data/*.csv --build` | 导入 CSV 并构建知识网络 |
-| `openbkn bkn object-type list <kn-id>` | 列出自动发现的对象类型 |
-| `openbkn bkn object-type query <kn-id> <ot-id> --limit 5` | 查询实例 |
-| `openbkn bkn subgraph <kn-id> <instance-id> --depth 2` | 子图遍历 |
-| `openbkn context-loader kn-search "..." --only-schema` | 语义搜索 |
+| `openbkn vega catalog create --connector-type mysql ...` | 把数据库注册为 Vega catalog |
+| `openbkn vega catalog discover <catalog-id> --wait` | 发现表，生成资源 |
+| `openbkn vega resource list --catalog-id <catalog-id> --category table` | 列出资源 ID |
+| `openbkn bkn object-type create <kn-id> --resource-id <resource-id> ...` | 对象类绑定资源 |
+| `openbkn vega dataset build <resource-id> --mode batch --build-key-fields id --fulltext-fields name --embedding-fields name --embedding-model <模型名> --wait` | 写索引配置并构建检索索引 |
+| `openbkn vega dataset build-list --resource-id <resource-id>` | 查看索引构建状态 |
+| `openbkn bkn object-type list <kn-id>` | 列出对象类型 |
 | `openbkn bkn export <kn-id>` | 导出知识网络定义 |
 
 ## 与示例 01 的区别
@@ -89,9 +99,9 @@ vim .env
 | | 01-db-to-qa | 02-csv-to-kn |
 |---|---|---|
 | 数据来源 | 已有 MySQL 数据库 | 本地 CSV 文件 |
-| 数据导入 | `ds connect` + `create-from-ds` | `create-from-csv`（一步完成） |
+| 数据导入 | `seed.sql` 进 MySQL，再注册 Vega catalog | CSV 装进 MySQL，再注册 Vega catalog |
 | Schema 准备 | 编写 SQL seed 文件 | 直接带 CSV |
-| 网络特性展示 | 语义搜索 + 问答 | **子图遍历** + 导出 |
+| 网络特性展示 | 语义搜索 + 问答 | **多表 Schema** + 实例查询 |
 | 数据领域 | 供应链（BOM、采购订单） | **HR（员工、部门、项目）** |
 
 ## 清理

@@ -32,13 +32,24 @@ MySQL Database
 0. **Seed** sample data into MySQL (`seed.sql` — fictional smart-home supply chain)
 1. **Register** a Vega catalog (MySQL connector) and **discover** its tables
 2. **Create** a Knowledge Network with object types bound to Vega resources
-3. **Explore** the object types
-4. **Query** the data in real time through the knowledge network
-5. **Search** the knowledge network semantically
+3. **Build** the search index (full text + vector) for each resource
+4. **Explore** the object types
+5. **Query** the data in real time through the knowledge network
+6. **Search** the knowledge network semantically
 
 > This example uses the **Vega catalog/connector** model (vega-backend). Object types
-> bind to Vega *resource* IDs and are queried in real time — no `bkn build` step. The
-> legacy `data-connection` datasource flow is not used.
+> bind to Vega *resource* IDs, so structured queries read the source database live.
+> The legacy `data-connection` datasource flow is not used.
+>
+> Full-text and vector search are a **separate index**: a Vega BuildTask copies the
+> resource's rows into OpenSearch and vectorises the fields you name (Step 3). Index
+> configuration is owned by the Vega *resource* — `index_config` (build key, default
+> analyzer/model) plus per-field `features` — and the build task snapshots it at
+> creation. `openbkn vega dataset build` writes both halves in one command. There is
+> no KN-level `bkn build`; that API was retired.
+>
+> Step 3 knobs: `DO_INDEX=0` skips indexing, `EMBEDDING_MODEL_NAME=` (empty) builds
+> full-text only, `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
 
 ## Prerequisites
 
@@ -87,12 +98,20 @@ openbkn call "/api/vega-backend/v1/catalogs/<catalog-id>/enable" -X POST   # cat
 openbkn vega catalog discover <catalog-id> --wait
 openbkn vega resource list --catalog-id <catalog-id> --category table       # → resource IDs
 
-# 2. Build a KN with object types bound to Vega resources (real-time, no build)
+# 2. Build a KN with object types bound to Vega resources (queried live)
 openbkn bkn create --name "my-kn"
 openbkn bkn object-type create <kn-id> --name 物料 --resource-id <resource-id> \
   --primary-key material_code --display-key material_name
 
-# 3. Explore + query + search
+# 3. Build the search index for a resource (writes index_config, then runs the task)
+openbkn vega dataset build <resource-id> --mode batch --execute-type full \
+  --build-key-fields material_code \
+  --fulltext-fields material_name,bom_material_code \
+  --embedding-fields material_name --embedding-model text-embedding-v4 --wait
+#    --embedding-model takes the model NAME (a raw model id is rejected)
+#    check progress later: openbkn vega dataset build-list --resource-id <resource-id>
+
+# 4. Explore + query + search
 openbkn bkn object-type list <kn-id>
 openbkn bkn object-type query <kn-id> <ot-id> '{"limit":5}'
 openbkn bkn search <kn-id> "物料"

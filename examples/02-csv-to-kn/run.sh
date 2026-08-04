@@ -2,12 +2,15 @@
 # =============================================================================
 # 02-csv-to-kn: From CSV Files to Knowledge Network
 #
-# Load local CSVs into MySQL → Vega catalog → Knowledge Network → Query instances
+# Load local CSVs into MySQL → Vega catalog → Knowledge Network → Search Index
+# → Query instances
 #
 # Uses the Vega catalog/connector model (vega-backend). Catalogs connect to an
 # existing database, so the CSVs are first loaded into MySQL with the standard
 # `mysql` client (the legacy `create-from-csv` data-connection import is gone).
-# Object types bind to Vega resource IDs and query in real time — no bkn build.
+# Object types bind to Vega resource IDs, so structured queries read the source
+# database live. Vector and full-text search need an index — Step 4 submits a
+# Vega BuildTask per resource (set DO_INDEX=0 to skip).
 # =============================================================================
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,6 +24,14 @@ DEBUG="${DEBUG:-0}"
 DB_HOST="${DB_HOST:?Set DB_HOST in .env}"; DB_PORT="${DB_PORT:-3306}"
 DB_NAME="${DB_NAME:?Set DB_NAME in .env}"; DB_USER="${DB_USER:?Set DB_USER in .env}"; DB_PASS="${DB_PASS:?Set DB_PASS in .env}"
 DB_HOST_SEED="${DB_HOST_SEED:-$DB_HOST}"
+
+# Search index (Step 4). DO_INDEX=0 skips it; EMBEDDING_MODEL_NAME='' builds
+# full-text only. The name must match a registered embedding small model —
+# Vega resolves models by name, not by id.
+DO_INDEX="${DO_INDEX:-1}"
+EMBEDDING_MODEL_NAME="${EMBEDDING_MODEL_NAME-text-embedding-v4}"
+INDEX_TIMEOUT="${INDEX_TIMEOUT:-300}"
+debug() { if [ "$DEBUG" = "1" ] || [ "$DEBUG" = "true" ]; then echo "[debug] $*" >&2; fi; }
 
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
 if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
@@ -167,17 +178,72 @@ d=json.load(sys.stdin);es=d.get('entries',d if isinstance(d,list) else [])
 DEPT_OT=$(ot_by_name 部门)
 FIRST_OT="$DEPT_OT"
 
-# ── Step 4: Explore schema ───────────────────────────────────────────────────
+# ── Step 4: Build the search index (full text + vector) ──────────────────────
+# Object types read the source database live, so nothing here is needed for the
+# structured query in Step 6. Vector and full-text search are different: a Vega
+# BuildTask has to copy the rows into OpenSearch first.
+#
+# Index configuration lives on the Vega *resource* (`index_config` + per-field
+# `features`); the build task only snapshots it. `openbkn vega dataset build`
+# writes the resource, then creates and starts the task. A resource without
+# `index_config.build_key_fields` is rejected with HTTP 400.
+build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields> <label>
+    local rid="$1" key="$2" ft="$3" ef="$4" label="$5"
+    local -a args=(--json vega dataset build "$rid"
+        --mode batch --execute-type full
+        --build-key-fields "$key" --fulltext-fields "$ft"
+        --wait --timeout "$INDEX_TIMEOUT")
+    if [ -n "$EMBEDDING_MODEL_NAME" ] && [ -n "$ef" ]; then
+        args+=(--embedding-fields "$ef" --embedding-model "$EMBEDDING_MODEL_NAME")
+    fi
+    debug "build index: openbkn ${args[*]}"
+    openbkn "${args[@]}" 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin)
+h=d.get('index_health') or {}
+print('  $label: status=%s synced=%s vectorized=%s fulltext=%s embedding=%s' % (
+    d.get('status','?'), d.get('synced_count','?'), d.get('vectorized_count','?'),
+    h.get('fulltext','none'), h.get('embedding','none')))" 2>/dev/null \
+        || echo "  $label: index build failed (see DEBUG=1 output)"
+}
+
 echo ""
-echo "=== Step 4: Explore schema ==="
+echo "=== Step 4: Build search index (full text + vector) ==="
+if [ "$DO_INDEX" != "1" ]; then
+    echo "  skipped (DO_INDEX=0)"
+else
+    # Vega resolves the embedding model by name; fall back to full-text only
+    # rather than failing the example when that name is not registered.
+    if [ -n "$EMBEDDING_MODEL_NAME" ]; then
+        if ! openbkn --json model small list 2>/dev/null | python3 -c "import json,sys
+d=json.load(sys.stdin); es=d.get('data') or d.get('entries') or []
+sys.exit(0 if any(e.get('model_name')=='$EMBEDDING_MODEL_NAME' and e.get('model_type')=='embedding' for e in es) else 1)" 2>/dev/null; then
+            echo "  note: embedding model '$EMBEDDING_MODEL_NAME' is not registered — building full-text only."
+            EMBEDDING_MODEL_NAME=""
+        fi
+    fi
+    # table : build key : fulltext fields : embedding fields
+    for spec in \
+        "departments:id:name,location:name" \
+        "employees:id:name,role,level:name,role" \
+        "projects:id:name,status:name"; do
+        IFS=: read -r tbl key ft ef <<<"$spec"
+        rid=$(res_id "$tbl")
+        [ -z "$rid" ] && continue
+        build_index "$rid" "$key" "$ft" "$ef" "$tbl"
+    done
+fi
+
+# ── Step 5: Explore schema ───────────────────────────────────────────────────
+echo ""
+echo "=== Step 5: Explore schema ==="
 echo "$OT_LIST" | python3 -c "import json,sys
 d=json.load(sys.stdin);es=d.get('entries',d if isinstance(d,list) else [])
 print(f'  Object types ({len(es)}):')
 for e in es: print('    -', e.get('name','?'), e.get('id',''))" 2>/dev/null || true
 
-# ── Step 5: Query instances (real-time via Vega) ─────────────────────────────
+# ── Step 6: Query instances (real-time via Vega) ─────────────────────────────
 echo ""
-echo "=== Step 5: Query instances ==="
+echo "=== Step 6: Query instances ==="
 qrows() { openbkn --json call "/api/ontology-query/v1/knowledge-networks/$KN_ID/object-types/$1" -X POST -H "X-HTTP-Method-Override: GET" -d "{\"limit\":${2:-5}}" 2>/dev/null | python3 -c "import json,sys
 d=json.load(sys.stdin);rows=d.get('datas',d.get('entries',[]))
 for r in rows: print(', '.join(f'{k}={v}' for k,v in r.items() if not str(k).startswith('_')))" 2>/dev/null; }
