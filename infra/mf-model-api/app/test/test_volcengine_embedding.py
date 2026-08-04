@@ -15,11 +15,17 @@ class _Response:
         return False
 
     async def text(self):
+        if self.status != 200:
+            return json.dumps({"error": {"message": "rate limit exceeded"}})
         return json.dumps({
             "object": "list",
             "data": {"object": "embedding", "embedding": [0.1] * 1024},
             "model": "doubao-embedding-vision-251215",
-            "usage": {"prompt_tokens": 1, "total_tokens": 1},
+            "usage": {
+                "prompt_tokens": 1,
+                "total_tokens": 1,
+                "prompt_tokens_details": {"text_tokens": 1},
+            },
         })
 
 
@@ -48,6 +54,7 @@ def test_volcengine_embedding_uses_multimodal_request_and_normalizes_response(mo
         url="https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
         model_name="doubao-embedding-vision-251215",
         api_key="test-key",
+        embedding_dim=1024,
     )
 
     result = asyncio.run(client.embedding(["Hi, who are you?"]))
@@ -69,6 +76,7 @@ def test_volcengine_embedding_batches_texts_as_single_item_requests(monkeypatch)
         url="https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
         model_name="doubao-embedding-vision-251215",
         api_key="test-key",
+        embedding_dim=1024,
     )
 
     result = asyncio.run(client.embedding(["first", "second"]))
@@ -78,6 +86,9 @@ def test_volcengine_embedding_batches_texts_as_single_item_requests(monkeypatch)
         [{"type": "text", "text": "second"}],
     ]
     assert [item["index"] for item in result["data"]] == [0, 1]
+    assert result["usage"]["prompt_tokens"] == 2
+    assert result["usage"]["total_tokens"] == 2
+    assert result["usage"]["prompt_tokens_details"]["text_tokens"] == 2
 
 
 def test_volcengine_embedding_preserves_upstream_error_status(monkeypatch):
@@ -94,6 +105,30 @@ def test_volcengine_embedding_preserves_upstream_error_status(monkeypatch):
         assert False, "expected an upstream error"
     except external_small_model_utils.UpstreamModelError as error:
         assert error.status == 429
+        assert error.detail == "rate limit exceeded"
+
+
+def test_volcengine_embedding_uses_configured_dimension():
+    client = external_small_model_utils.InnerClient(
+        url="https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+        model_name="doubao-embedding-vision-250615",
+        api_key="test-key",
+        embedding_dim=2048,
+    )
+
+    assert client._embedding_params(["hello"])["dimensions"] == 2048
+
+
+def test_volcengine_embedding_omits_unspecified_dimension():
+    client = external_small_model_utils.InnerClient(
+        url="https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+        model_name="ep-20240604000000-abcde",
+        api_key="test-key",
+    )
+
+    params = client._embedding_params(["hello"])
+    assert "dimensions" not in params
+    assert params["input"] == [{"type": "text", "text": "hello"}]
 
 
 def test_non_vision_doubao_embedding_preserves_openai_text_request(monkeypatch):

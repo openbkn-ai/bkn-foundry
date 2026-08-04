@@ -26,15 +26,12 @@ class TestAddModel(TestCase):
         small_model_dao.name_check = mock.Mock(return_value=[])
         small_model_dao.add_model_info = mock.Mock(return_value=None)
         para = logics.AddExternalSmallModel(
-            model_name="doubao-embedding-vision-251215",
+            model_name="1",
             model_type="embedding",
-            model_config={
-                "api_url": "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
-                "api_model": "doubao-embedding-vision-251215",
-            },
-            batch_size=10,
-            max_tokens=4096,
-            embedding_dim=1024,
+            model_config={"api_url": "http://x", "api_model": "m"},
+            batch_size=16,
+            max_tokens=512,
+            embedding_dim=768,
         )
         res = loop.run_until_complete(
             small_model_controller.add_model(para, "1", "zh", "user"))
@@ -128,6 +125,44 @@ class TestVolcengineMultimodalEmbeddingRequest(TestCase):
             "model": "doubao-embedding-250615",
             "input": ["hello"],
         })
+
+    def test_model_test_passes_adapter_as_boolean(self):
+        captured = {}
+
+        class _Client:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            async def test_embedding(self, texts):
+                return {
+                    "object": "list",
+                    "data": [{"embedding": [0.1] * 1024}],
+                    "model": "doubao-embedding-vision-251215",
+                    "usage": {"prompt_tokens": 1, "total_tokens": 1},
+                }
+
+        request = logics.TestSmallModel(
+            model_name="doubao-embedding-vision-251215",
+            model_type="embedding",
+            model_config={
+                "api_url": "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+                "api_model": "doubao-embedding-vision-251215",
+                "api_key": "test-key",
+            },
+            adapter=False,
+            batch_size=10,
+            max_tokens=4096,
+            embedding_dim=1024,
+            change=True,
+        )
+
+        with mock.patch.object(small_model_controller, "InnerClient", _Client):
+            result = asyncio.run(
+                small_model_controller.test_model(request, "1", "zh", "user"))
+
+        self.assertEqual(json.loads(result.body)["status"], "ok")
+        self.assertIs(captured["adapter"], False)
+        self.assertEqual(captured["embedding_dim"], 1024)
 
 
 class TestEditModel(TestCase):

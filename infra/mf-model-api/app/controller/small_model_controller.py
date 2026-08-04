@@ -76,6 +76,7 @@ async def test_model(request, userId, language, role):
             model_type = model_info[0]["f_model_type"]
             adapter = model_info[0]["f_adapter"]
             adapter_code = model_info[0]["f_adapter_code"]
+            embedding_dim = model_info[0].get("f_embedding_dim")
             api_model = config_info.get("api_model", "")
         else:
             resource_id = "*"
@@ -84,6 +85,7 @@ async def test_model(request, userId, language, role):
             api_model = config_info.get("api_model", "")
             adapter = request.adapter
             adapter_code = request.adapter_code
+            embedding_dim = None
         try:
             # permission = await permission_manager.check_single_permission(user_id=userId, resource_id=resource_id,
             #                                                               operations="execute",
@@ -92,7 +94,8 @@ async def test_model(request, userId, language, role):
             #     return JSONResponse(status_code=403, content=NotPermissionError)
             client = InnerClient(url=config_info.get("api_url", ""), model_name=api_model,
                                  api_key=config_info.get("api_key", ""),
-                                 adapter=adapter, adapter_code=adapter_code)
+                                 adapter=adapter, adapter_code=adapter_code,
+                                 embedding_dim=embedding_dim)
             if model_type == "embedding":
                 texts = ["hello"]
                 await client.test_embedding(texts=texts)
@@ -380,6 +383,13 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
                 return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
             # 设置缓存
             await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
+        # Refresh records written by older mf-model-api instances, whose query did
+        # not include f_embedding_dim. This keeps rolling upgrades dimension-safe.
+        if model_info and "f_embedding_dim" not in model_info[0]:
+            model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
+            if len(model_info) == 0:
+                return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+            await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
         model_info = model_info[0]
         config_info = json.loads(model_info["f_model_config"])
         adapter = model_info["f_adapter"]
@@ -393,7 +403,8 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
             if not permission:
                 return JSONResponse(status_code=403, content=NotPermissionError)
         client = InnerClient(url=config_info.get("api_url", ""), model_name=config_info.get("api_model", ""),
-                             api_key=config_info.get("api_key", ""), adapter=adapter, adapter_code=adapter_code)
+                             api_key=config_info.get("api_key", ""), adapter=adapter, adapter_code=adapter_code,
+                             embedding_dim=model_info.get("f_embedding_dim"))
         res_dict = await client.embedding(texts)
         prompt_tokens = res_dict.get("usage", {}).get("prompt_tokens")
         total_tokens = res_dict.get("usage", {}).get("total_tokens")
@@ -406,7 +417,10 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
     except UpstreamModelError as e:
         status_code = e.status if e.status in (400, 401, 403, 404, 422, 429) else 502
         error_dict = ModelFactory_ExternalSmallModel_Used_ConnectError.copy()
-        error_dict["detail"] = f"模型服务调用失败（HTTP {e.status}）"
+        error_dict["detail"] = e.detail
+        StandLogger.error(
+            f"call embeddingError,model_name={model_name},model_id={model_id},"
+            f"status={e.status},error_detail={e.detail}")
         if get_logger():
             get_logger().info(
                 f'{{"model_name":{model_name},"resourece_type":"embeddings","user_id":{userId},'
@@ -414,7 +428,7 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
         return JSONResponse(status_code=status_code, content=error_dict)
     except Exception as e:
         StandLogger.error(
-            f"call embeddingError,model_name={model_name},model_id={model_id},error_detail={e},body={texts}")
+            f"call embeddingError,model_name={model_name},model_id={model_id},error_detail={e}")
         error_dict = ModelFactory_ExternalSmallModel_UnknownError.copy()
         error_dict["detail"] = str(e)
         if get_logger():

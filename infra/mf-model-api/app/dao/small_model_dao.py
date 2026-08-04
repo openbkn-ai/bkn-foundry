@@ -16,7 +16,7 @@ class SmallModelDao:
 
     @connect_execute_close_db
     def get_model_info_by_id(self, model_id, connection, cursor):
-        sql = """select f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_adapter, f_adapter_code 
+        sql = """select f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_adapter, f_adapter_code, f_embedding_dim
                     from t_small_model where f_model_id = %s"""
 
         cursor.execute(sql, model_id)
@@ -41,7 +41,7 @@ class SmallModelDao:
 
     @connect_execute_close_db
     def get_model_info_by_name_id(self, model_name, model_id, connection, cursor):
-        sql = """select f_model_id, f_model_name, f_model_type, f_model_config,f_adapter,f_adapter_code
+        sql = """select f_model_id, f_model_name, f_model_type, f_model_config,f_adapter,f_adapter_code,f_embedding_dim
                             from t_small_model"""
         if model_name:
             sql += f" where f_model_name = '{model_name}'"
