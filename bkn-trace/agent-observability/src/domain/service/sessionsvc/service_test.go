@@ -1798,3 +1798,66 @@ func mustCreateOptionalOperation(t *testing.T) (*sessionsvc.Service, sessionvo.O
 	}
 	return service, owner, conversation, interaction, operation, receipt
 }
+
+func TestOperationLimitDoesNotKeepAFullInteractionAlive(t *testing.T) {
+	t.Parallel()
+
+	// Renewing the lease before the capacity check leaves a full interaction
+	// holding a fresh lease on every rejected call, so the reaper never sees it
+	// expire and the caller's retries keep it alive indefinitely. The in-memory
+	// store makes that permanent — it has no rollback, so the renewal written by
+	// the failed call survives.
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "operation-limit")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "start-limit",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	for index := range 128 {
+		if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+			OperationKey:        fmt.Sprintf("op-%d", index),
+			ToolName:            "ontology-query",
+			NormalizedInputHash: fmt.Sprintf("sha256:input-%d", index),
+			Required:            true,
+			LeaseToken:          interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		}); err != nil {
+			t.Fatalf("ensure operation %d: %v", index, err)
+		}
+	}
+
+	before, err := service.GetInteraction(context.Background(), owner, interaction.ID)
+	if err != nil {
+		t.Fatalf("read interaction before the rejected call: %v", err)
+	}
+	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "op-over-limit", ToolName: "ontology-query",
+		NormalizedInputHash: "sha256:over-limit", Required: true,
+		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	}); !sessionsvc.IsCode(err, sessionsvc.CodeOperationRequired) {
+		t.Fatalf("expected the 128 operation limit to reject, got %v", err)
+	}
+	after, err := service.GetInteraction(context.Background(), owner, interaction.ID)
+	if err != nil {
+		t.Fatalf("read interaction after the rejected call: %v", err)
+	}
+	if after.LeaseExpiresAt.After(before.LeaseExpiresAt) {
+		t.Fatalf("a rejected call renewed the lease: before=%s after=%s",
+			before.LeaseExpiresAt, after.LeaseExpiresAt)
+	}
+
+	// A replayed key still resolves against a full interaction, and that path
+	// legitimately renews — the caller is finishing work already accounted for.
+	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "op-0", ToolName: "ontology-query",
+		NormalizedInputHash: "sha256:input-0", Required: true,
+		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	}); err != nil {
+		t.Fatalf("replaying an existing operation on a full interaction must still work: %v", err)
+	}
+}

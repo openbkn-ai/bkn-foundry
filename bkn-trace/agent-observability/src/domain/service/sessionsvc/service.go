@@ -635,6 +635,16 @@ func (s *Service) EnsureOperationWithDisposition(
 				return resourceNotDisclosed()
 			}
 		}
+		// Capacity is checked before the lease is renewed, and only for a key that
+		// would create a new operation. Renewing first leaves a full interaction
+		// holding a fresh lease on every rejected call: the reaper then never sees
+		// it expire, and a caller that keeps retrying — as it is documented to —
+		// keeps it alive forever. The in-memory store makes that permanent, since
+		// it has no rollback and keeps the renewal written by the failed call.
+		if _, found := tx.FindOperationByKey(interaction.ID, command.OperationKey); !found &&
+			len(tx.ListOperations(interaction.ID)) >= maxOperationsPerInteraction {
+			return domainError(CodeOperationRequired, "interaction operation limit of 128 was reached")
+		}
 		renewInteractionLease(tx, &interaction)
 		if existing, found := tx.FindOperationByKey(interaction.ID, command.OperationKey); found {
 			if existing.NormalizedInputHash != command.NormalizedInputHash || existing.ToolName != command.ToolName {
@@ -659,9 +669,6 @@ func (s *Service) EnsureOperationWithDisposition(
 			}
 			operation, receipt = existing, existingReceipt
 			return nil
-		}
-		if len(tx.ListOperations(interaction.ID)) >= maxOperationsPerInteraction {
-			return domainError(CodeOperationRequired, "interaction operation limit of 128 was reached")
 		}
 		now := tx.Now()
 		operation = sessionvo.Operation{
