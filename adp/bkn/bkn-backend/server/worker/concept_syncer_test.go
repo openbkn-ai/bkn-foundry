@@ -35,6 +35,31 @@ func TestNewConceptSyncer(t *testing.T) {
 	})
 }
 
+func TestConceptSyncerGetDefaultModelCachesForSyncRound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mfs := bmock.NewMockModelFactoryService(ctrl)
+	model := &interfaces.SmallModel{ModelID: "model-1"}
+	mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(model, nil).Times(2)
+	cs := &ConceptSyncer{mfs: mfs}
+
+	first, err := cs.getDefaultModel(context.Background())
+	if err != nil {
+		t.Fatalf("first getDefaultModel() error = %v", err)
+	}
+	second, err := cs.getDefaultModel(context.Background())
+	if err != nil {
+		t.Fatalf("second getDefaultModel() error = %v", err)
+	}
+	if first != model || second != model {
+		t.Fatalf("cached model = %v, want %v", second, model)
+	}
+
+	cs.resetDefaultModelCache()
+	if _, err := cs.getDefaultModel(context.Background()); err != nil {
+		t.Fatalf("next-round getDefaultModel() error = %v", err)
+	}
+}
+
 func TestConceptSyncerQueryAllDatasetEntriesUsesCursor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

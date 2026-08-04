@@ -41,6 +41,27 @@ type ConceptSyncer struct {
 	rta        interfaces.RelationTypeAccess
 	riskTypeA  interfaces.RiskTypeAccess
 	ma         interfaces.MetricAccess
+
+	cachedDefaultModel *interfaces.SmallModel
+}
+
+// getDefaultModel caches the model for the current sync round. The syncer
+// processes several concept types in one pass, all of which use the same model.
+func (cs *ConceptSyncer) getDefaultModel(ctx context.Context) (*interfaces.SmallModel, error) {
+	if cs.cachedDefaultModel != nil {
+		return cs.cachedDefaultModel, nil
+	}
+
+	model, err := cs.mfs.GetDefaultModel(ctx)
+	if err != nil || model == nil {
+		return model, err
+	}
+	cs.cachedDefaultModel = model
+	return model, nil
+}
+
+func (cs *ConceptSyncer) resetDefaultModelCache() {
+	cs.cachedDefaultModel = nil
 }
 
 func NewConceptSyncer(appSetting *common.AppSetting) *ConceptSyncer {
@@ -107,6 +128,7 @@ func (cs *ConceptSyncer) handleKNs() error {
 	}()
 
 	logger.Debug("[handleKNs] Start")
+	cs.resetDefaultModelCache()
 
 	ctx := context.Background()
 
@@ -488,7 +510,7 @@ func (cs *ConceptSyncer) insertDatasetDataForKN(ctx context.Context, kn *interfa
 		words = append(words, kn.Comment, kn.BKNRawContent)
 		word := strings.Join(words, "\n")
 
-		defaultModel, err := cs.mfs.GetDefaultModel(ctx)
+		defaultModel, err := cs.getDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
@@ -545,7 +567,7 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfs.GetDefaultModel(ctx)
+		dftModel, err := cs.getDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
@@ -630,7 +652,7 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfs.GetDefaultModel(ctx)
+		dftModel, err := cs.getDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
@@ -719,7 +741,7 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfs.GetDefaultModel(ctx)
+		dftModel, err := cs.getDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
@@ -788,7 +810,7 @@ func (cs *ConceptSyncer) insertDatasetDataForConceptGroups(ctx context.Context, 
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfs.GetDefaultModel(ctx)
+		dftModel, err := cs.getDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
@@ -857,7 +879,7 @@ func (cs *ConceptSyncer) insertDatasetDataForRiskTypes(ctx context.Context, risk
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfs.GetDefaultModel(ctx)
+		dftModel, err := cs.getDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
@@ -926,7 +948,7 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 			words = append(words, word)
 		}
 
-		dftModel, err := cs.mfs.GetDefaultModel(ctx)
+		dftModel, err := cs.getDefaultModel(ctx)
 		if err != nil {
 			logger.Errorf("GetDefaultModel error: %s", err.Error())
 			return err
