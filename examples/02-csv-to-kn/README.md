@@ -37,15 +37,20 @@ CSV Files (local)
 5. **Explore** the object types
 6. **Query** object instances
 
-> Object types bind to Vega *resource* IDs, so instance queries read the source
-> database live. Full-text and vector search are a **separate index**: a Vega
-> BuildTask copies the rows into OpenSearch and vectorises the fields you name
-> (Step 4). Index configuration is owned by the Vega *resource* — `index_config`
-> plus per-field `features` — and the build task snapshots it at creation;
-> `openbkn vega dataset build` writes both halves in one command.
+> Object types bind to Vega *resource* IDs. Full-text and vector search need an
+> **index**: a Vega BuildTask copies the rows into OpenSearch and vectorises the
+> fields you name (Step 4). Index configuration is owned by the Vega *resource* —
+> `index_config` plus per-field `features` — and the build task snapshots it at
+> creation; `openbkn vega dataset build` writes both halves in one command.
 >
-> Step 4 knobs: `DO_INDEX=0` skips indexing, `EMBEDDING_MODEL_NAME=` (empty)
-> builds full-text only, `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
+> **Indexing changes how Step 6 reads.** Vega serves a table resource from its
+> local index as soon as one exists, and queries the source database only while it
+> does not. With the default `DO_INDEX=1`, Step 6 returns the build snapshot, and a
+> later `UPDATE` in MySQL is invisible until the resource is rebuilt. Run with
+> `DO_INDEX=0` to keep reads live — at the cost of full-text and vector search.
+>
+> Other Step 4 knobs: `EMBEDDING_MODEL_NAME=` (empty) builds full-text only,
+> `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
 
 ### Sample Data
 

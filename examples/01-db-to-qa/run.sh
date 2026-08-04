@@ -7,10 +7,15 @@
 #   Real-time Query → Semantic Search
 #
 # Note: this example uses the Vega catalog/connector model (vega-backend), NOT the
-# legacy data-connection datasource flow. Object types bind to Vega *resource* IDs,
-# so structured queries read the source database live. Vector and full-text search
-# are a separate index: Step 3 submits a Vega BuildTask per resource (set
-# DO_INDEX=0 to skip). There is no KN-level `bkn build` — that API was retired.
+# legacy data-connection datasource flow. Object types bind to Vega *resource* IDs.
+#
+# Reading a table resource takes one of two paths, and Step 3 decides which:
+#   - no local index  → Vega queries the source database on every call (live)
+#   - local index built → Vega serves the build snapshot from OpenSearch, and a
+#     later UPDATE in the source database stays invisible until the next build
+# Full-text and vector search require that index, so Step 3 builds one per
+# resource (DO_INDEX=0 keeps the live path). There is no KN-level `bkn build` —
+# that API was retired.
 # =============================================================================
 set -euo pipefail
 
@@ -228,16 +233,21 @@ if [ -n "$PO_RES" ]; then
 fi
 
 # ── Step 3: Build the search index (full text + vector) ─────────────────────
-# Structured queries read the source database live, but vector and full-text
-# search need an index. A Vega BuildTask copies the resource's rows into
-# OpenSearch and vectorises the fields named here.
+# Vector and full-text search need an index: a Vega BuildTask copies the
+# resource's rows into OpenSearch and vectorises the fields named here.
+#
+# This also changes how the object type reads. Vega serves a table resource from
+# its local index as soon as one exists, and falls back to querying the source
+# database only while it does not — so after this step the rows you see are the
+# build snapshot, and a later UPDATE in MySQL stays invisible until the resource
+# is rebuilt. Run with DO_INDEX=0 to keep the live path (and lose search).
 #
 # Index configuration is owned by the Vega *resource* — `index_config`
 # (build key, default analyzer/model) plus per-field `features`. The build task
 # only snapshots it, so `openbkn vega dataset build` writes the resource first
 # and then creates + starts the task. A resource with no
 # `index_config.build_key_fields` is rejected with HTTP 400.
-build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields>
+build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields> <label>
     local rid="$1" key="$2" ft="$3" ef="$4" label="$5"
     local -a args=(--json vega dataset build "$rid"
         --mode batch --execute-type full
@@ -247,13 +257,24 @@ build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields>
         args+=(--embedding-fields "$ef" --embedding-model "$EMBEDDING_MODEL_NAME")
     fi
     debug "build index: openbkn ${args[*]}"
-    openbkn "${args[@]}" 2>/dev/null | python3 -c "import json,sys
+    # Keep stderr: the API error is the only thing that explains a failed build
+    # (a field missing from the resource schema, an unregistered model, ...).
+    local out err rc=0
+    err=$(mktemp); out=$(openbkn "${args[@]}" 2>"$err") || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "  $label: index build failed" >&2
+        sed 's/^/    /' "$err" >&2
+        rm -f "$err"
+        return 0
+    fi
+    rm -f "$err"
+    printf '%s' "$out" | python3 -c "import json,sys
 d=json.load(sys.stdin)
 h=d.get('index_health') or {}
 print('  $label: status=%s synced=%s vectorized=%s fulltext=%s embedding=%s' % (
     d.get('status','?'), d.get('synced_count','?'), d.get('vectorized_count','?'),
     h.get('fulltext','none'), h.get('embedding','none')))" 2>/dev/null \
-        || echo "  $label: index build failed (see DEBUG=1 output)"
+        || echo "  $label: index build returned an unexpected payload: $out" >&2
 }
 
 echo ""
@@ -268,7 +289,7 @@ else
 d=json.load(sys.stdin); es=d.get('data') or d.get('entries') or []
 sys.exit(0 if any(e.get('model_name')=='$EMBEDDING_MODEL_NAME' and e.get('model_type')=='embedding' for e in es) else 1)" 2>/dev/null; then
             echo "  note: embedding model '$EMBEDDING_MODEL_NAME' is not registered — building full-text only."
-            echo "        Register one (openbkn model small create ...) or set EMBEDDING_MODEL_NAME to its name."
+            echo "        Register one (openbkn model small add ...) or set EMBEDDING_MODEL_NAME to its name."
             EMBEDDING_MODEL_NAME=""
         fi
     fi
@@ -292,7 +313,12 @@ print(es[0].get('id','') if es else '')")
 
 # ── Step 5: Query real data through the knowledge network ────────────────────
 echo ""
-echo "=== Step 5: Query data (real-time via Vega) ==="
+if [ "$DO_INDEX" = "1" ]; then
+    echo "=== Step 5: Query data (via Vega — served from the Step 3 index snapshot) ==="
+    echo "  Source-database updates appear here only after the resource is rebuilt."
+else
+    echo "=== Step 5: Query data (via Vega — live from the source database) ==="
+fi
 if [ -n "$FIRST_OT" ]; then
     echo "  Sample rows from first object type:"
     # openbkn 0.1.0 `object-type query` misses the X-HTTP-Method-Override

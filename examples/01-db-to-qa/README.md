@@ -9,7 +9,7 @@ Every business question — "Which suppliers are most reliable?" "What's at risk
 means filing a request with the DBA and waiting hours for a custom query.
 
 This example connects that database to a knowledge network. Discover the tables,
-query them in real time, and search across them semantically — all grounded in your actual data.
+query them, and search across them semantically — all grounded in your actual data.
 
 ## What This Example Does
 
@@ -18,7 +18,7 @@ MySQL Database
      │
      ▼
 ┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│ Vega Catalog│────▶│  Knowledge   │────▶│  Real-time      │
+│ Vega Catalog│────▶│  Knowledge   │────▶│  Instance       │
 │ + Discover  │     │  Network     │     │  Query (Vega)   │
 └─────────────┘     └──────────────┘     └─────────────────┘
                            │
@@ -34,22 +34,32 @@ MySQL Database
 2. **Create** a Knowledge Network with object types bound to Vega resources
 3. **Build** the search index (full text + vector) for each resource
 4. **Explore** the object types
-5. **Query** the data in real time through the knowledge network
+5. **Query** the data through the knowledge network
 6. **Search** the knowledge network semantically
 
 > This example uses the **Vega catalog/connector** model (vega-backend). Object types
-> bind to Vega *resource* IDs, so structured queries read the source database live.
-> The legacy `data-connection` datasource flow is not used.
+> bind to Vega *resource* IDs; the legacy `data-connection` datasource flow is not used.
 >
-> Full-text and vector search are a **separate index**: a Vega BuildTask copies the
+> Full-text and vector search need an **index**: a Vega BuildTask copies the
 > resource's rows into OpenSearch and vectorises the fields you name (Step 3). Index
 > configuration is owned by the Vega *resource* — `index_config` (build key, default
 > analyzer/model) plus per-field `features` — and the build task snapshots it at
 > creation. `openbkn vega dataset build` writes both halves in one command. There is
 > no KN-level `bkn build`; that API was retired.
 >
-> Step 3 knobs: `DO_INDEX=0` skips indexing, `EMBEDDING_MODEL_NAME=` (empty) builds
-> full-text only, `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
+> **Indexing changes how the object type reads.** Vega serves a table resource from
+> its local index as soon as one exists, and queries the source database only while
+> it does not. So with the default `DO_INDEX=1`, Step 5 returns the build snapshot,
+> and a later `UPDATE` in MySQL is invisible until the resource is rebuilt
+> (`openbkn vega dataset build <resource-id> --mode batch --execute-type full`).
+> Run with `DO_INDEX=0` to keep reads live — at the cost of full-text and vector search.
+>
+> Other Step 3 knobs: `EMBEDDING_MODEL_NAME=` (empty) builds full-text only,
+> `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
+>
+> Note: the built index is not yet visible to the knowledge network's semantic layer.
+> Object-type properties do not advertise `match` / `knn` operations, so `bkn search`
+> stays at schema-level concept matching — see the PR notes on `f_index_available`.
 
 ## Prerequisites
 
@@ -98,7 +108,7 @@ openbkn call "/api/vega-backend/v1/catalogs/<catalog-id>/enable" -X POST   # cat
 openbkn vega catalog discover <catalog-id> --wait
 openbkn vega resource list --catalog-id <catalog-id> --category table       # → resource IDs
 
-# 2. Build a KN with object types bound to Vega resources (queried live)
+# 2. Build a KN with object types bound to Vega resources
 openbkn bkn create --name "my-kn"
 openbkn bkn object-type create <kn-id> --name 物料 --resource-id <resource-id> \
   --primary-key material_code --display-key material_name

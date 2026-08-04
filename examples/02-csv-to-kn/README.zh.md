@@ -34,12 +34,17 @@ HR 总监的员工、部门、项目数据散落在三张表格里。想搞清�
 5. **探索**对象类型和属性
 6. **查询**对象实例
 
-> 对象类绑定 Vega **资源** ID，实例查询直接读源库当前数据。全文与向量检索是**另一套索引**：
-> 需要 Vega BuildTask 把数据同步进 OpenSearch 并对指定字段做向量化（Step 4）。索引配置归属于
-> Vega **资源**（`index_config` 与字段级 `features`），构建任务创建时对其做快照；
-> `openbkn vega dataset build` 一条命令写配置并发起构建。
+> 对象类绑定 Vega **资源** ID。全文与向量检索需要**一套索引**：由 Vega BuildTask 把数据同步进
+> OpenSearch 并对指定字段做向量化（Step 4）。索引配置归属于 Vega **资源**（`index_config`
+> 与字段级 `features`），构建任务创建时对其做快照；`openbkn vega dataset build` 一条命令
+> 写配置并发起构建。
 >
-> Step 4 可调参数：`DO_INDEX=0` 跳过；`EMBEDDING_MODEL_NAME=`（置空）只建全文索引；
+> **建索引会改变 Step 6 的读取路径。** 表资源一旦有了本地索引，Vega 就改从索引读，只有在没有
+> 索引时才回源库实时查。因此在默认的 `DO_INDEX=1` 下，Step 6 返回的是构建快照，之后在 MySQL 里
+> 执行的 `UPDATE` 要等到资源重建索引才可见。需要保持实时读就用 `DO_INDEX=0`，代价是没有全文与
+> 向量检索。
+>
+> Step 4 其余参数：`EMBEDDING_MODEL_NAME=`（置空）只建全文索引；
 > `INDEX_TIMEOUT`（默认 300 秒）为单个资源的等待上限。
 
 ### 示例数据

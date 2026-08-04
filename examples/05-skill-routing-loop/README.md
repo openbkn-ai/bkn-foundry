@@ -108,11 +108,15 @@ MAT-002: the next `find_skills` call returns the new candidate set and the route
 switches to `standard_replenish` — without any prompt edit or redeploy.
 
 > **Why no rebuild step:** every object type here binds to a Vega **resource**,
-> so ontology queries read the source database on each call — a MySQL UPDATE is
-> visible to the next `find_skills` immediately. There is no KN-level build to
-> run: that API was retired, and the per-resource Vega BuildTask
-> (`openbkn vega dataset build`) only feeds full-text/vector search, which
-> skill routing does not use.
+> and this example never builds a local index for those resources — so ontology
+> queries hit the source database on each call, and a MySQL UPDATE is visible to
+> the next `find_skills` immediately. There is no KN-level build to run either;
+> that API was retired.
+>
+> Note the flip side: building a resource index (`openbkn vega dataset build`,
+> as examples 01/02 do) switches that resource's reads over to the build
+> snapshot. Doing that here would break exactly this scenario — the re-binding
+> would stay invisible until the next build.
 
 ## How it works (deeper read)
 

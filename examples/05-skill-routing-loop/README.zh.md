@@ -98,10 +98,12 @@ pip install -r tool_backend/requirements.txt
 随后重新路由 MAT-002。下一次 `find_skills` 拿到的就是新候选集，路由自动切到
 `standard_replenish`——**没改 prompt、没重新部署任何服务**。
 
-> **为什么不需要重建：** 这里所有对象类都绑定 Vega **资源**，本体查询每次都读源库
-> 当前数据，MySQL 的 UPDATE 对下一次 `find_skills` 立即可见。知识网络层面也没有
-> 可执行的构建：该接口已下线，而资源级的 Vega BuildTask
-> （`openbkn vega dataset build`）只服务全文/向量检索，技能路由并不走这条路径。
+> **为什么不需要重建：** 这里所有对象类都绑定 Vega **资源**，且本示例不给这些资源建本地
+> 索引，因此本体查询每次都读源库当前数据，MySQL 的 UPDATE 对下一次 `find_skills` 立即可见。
+> 知识网络层面也没有可执行的构建，该接口已下线。
+>
+> 反过来也要注意：一旦给资源建了索引（`openbkn vega dataset build`，示例 01/02 就是这么做的），
+> 该资源的读取会切到构建快照。在本示例里这么做恰好会破坏这一幕——改绑要等到下次重建才可见。
 
 ## 原理细节
 

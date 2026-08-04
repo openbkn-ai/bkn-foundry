@@ -160,7 +160,7 @@ Every number comes straight from the 27 `wc_*` tables you imported in step 2 —
 | `import-csv` → MySQL **Error 1118** | Step 2 pre-creates `wc_matches` / `wc_team_appearances` with VARCHAR(255) via the local `mysql` CLI. Without that client installed you must pre-create them manually or relax column types. |
 | Vega `discover` fails | Set `VEGA_CATALOG_ID` then `./run.sh --from 4`. |
 | Fewer than 27 Resources | `databases` in connector config incomplete, or discover didn't finish — adjust `VEGA_MYSQL_DATABASES` and rerun step 3. |
-| Step 5 `⊘ build_failed` for a table | Rerun with `DEBUG=1` to see the API error. Most common cause: a field named in the index plan is absent from that resource's schema. The table stays queryable via `vega_sql_execute`. |
+| Step 5 `⊘ build_failed` for a table | The API error is printed underneath the line. Most common cause: a field named in the index plan is absent from that resource's schema. The table stays queryable via `vega_sql_execute`. |
 | Step 5 `embedding model … not registered` | Either register one (see setup checklist) or set `DO_INDEX=0` / `EMBEDDING_MODEL_NAME=` (empty) — the script then builds full-text-only indexes. |
 | `tool upload` / `toolbox publish` fails in step 6 | Confirm the CLI is logged in and `vega_sql_execute.openapi.json` is present; set `FORCE_TOOLBOX_REIMPORT=1` to delete + re-import a stale same-name toolbox. |
 

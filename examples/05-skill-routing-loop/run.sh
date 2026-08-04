@@ -304,7 +304,7 @@ echo "=== Step 7: Object types read the source database live ==="
 # rows on each call — nothing to build. There is no KN-level build API: the old
 # /knowledge-networks/{id}/jobs endpoint was retired, and search indexes are now
 # per-resource Vega BuildTasks (`openbkn vega dataset build`, see examples 01/02).
-echo "  (resource-bound object types are queried in real time — no index needed for routing)"
+echo "  (no local index on these resources, so every query reads the source database)"
 
 # ── Step 8: Start mock business backend ──────────────────────────────────────
 echo ""
@@ -470,9 +470,11 @@ if [ "$BONUS" = "1" ]; then
     echo "[business system] update MAT-002.bound_skill_id: supplier_expedite → standard_replenish"
     # Report the backend's own error instead of dying inside `json.tool`: this
     # call writes to MySQL, so a driver/permission problem surfaces here first.
+    # `|| true`: a transport-level failure (backend died → curl exit 7) must reach
+    # the diagnostic block below, not trip errexit on the assignment itself.
     rebind_resp=$(curl -sS -w '\n%{http_code}' -X POST "$TOOL_BACKEND_URL/admin/material-binding" \
         -H "Content-Type: application/json" \
-        -d "{\"sku\":\"MAT-002\",\"bound_skill_id\":\"$STANDARD_REPLENISH_ID\"}" 2>&1)
+        -d "{\"sku\":\"MAT-002\",\"bound_skill_id\":\"$STANDARD_REPLENISH_ID\"}" 2>&1) || true
     rebind_code="${rebind_resp##*$'\n'}"
     rebind_body="${rebind_resp%$'\n'*}"
     if [ "$rebind_code" != "200" ]; then

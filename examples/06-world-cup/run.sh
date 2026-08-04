@@ -701,13 +701,19 @@ PY
             args+=(--embedding-fields "$ef" --embedding-model "$emodel")
             kind="fulltext+vector"
         fi
-        if "${KWEAV[@]}" "${args[@]}" >/dev/null 2>&1; then
+        # Keep stderr: the API error is the only thing that explains a failed
+        # build (a field missing from the resource schema, an unregistered
+        # embedding model, ...). Warn-not-fail, so print it and move on.
+        local berr; berr="$(mktemp -t wc_index_err.XXXXXX)"
+        if "${KWEAV[@]}" "${args[@]}" >/dev/null 2>"$berr"; then
             printf "  %-25s create+start (%s)\n" "$tbl" "$kind" >&2
             created=$((created+1))
         else
-            printf "  %-25s ⊘ build_failed (rerun with DEBUG=1 for the API error)\n" "$tbl" >&2
+            printf "  %-25s ⊘ build_failed\n" "$tbl" >&2
+            sed 's/^/      /' "$berr" >&2
             skipped=$((skipped+1))
         fi
+        rm -f "$berr"
     done <"$plan"
     rm -f "$plan"
 
