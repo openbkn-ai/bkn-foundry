@@ -47,7 +47,7 @@ https://<访问地址>/api/agent-retrieval/v1/mcp
 }
 ```
 
-Token 可通过 `openbkn token` 命令获取。配置保存后，Cursor 会自动发现 Context Loader 暴露的 MCP 工具，Agent 在对话中即可直接调用。
+Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会自动发现 Context Loader 暴露的 MCP 工具，Agent 在对话中即可直接调用。
 
 ### 在 Claude Desktop 中配置
 
@@ -68,154 +68,153 @@ Token 可通过 `openbkn token` 命令获取。配置保存后，Cursor 会自�
 
 ### MCP 工具列表
 
-配置完成后，MCP 客户端可获取以下工具：
+配置完成后，MCP 客户端可获取以下工具（以部署实际返回为准，用 `openbkn context info` 查看当前目录）：
 
-| 工具 | 层级 | 说明 |
-|------|------|------|
-| `kn_search` | L1 | 语义搜索知识网络 Schema 与实例 |
-| `kn_schema_search` | L1 | 仅搜索 Schema 元数据（发现候选概念） |
-| `query_object_instance` | L2 | 条件查询对象实例 |
-| `query_instance_subgraph` | L2 | 查询实例的关系子图 |
-| `get_logic_properties` | L3 | 获取逻辑属性（计算字段、派生指标） |
-| `get_action_info` | L3 | 获取行动类信息与参数 Schema |
+| 工具 | 用途 |
+|------|------|
+| `search_schema` | 搜索对象类 / 关系类 / 行动类 / 指标的 Schema |
+| `get_kn_detail` | 取知识网络 Schema，支持 `summary` 骨架与逐层下钻 |
+| `get_object_types` / `get_relation_types` | 按 id 取对象类 / 关系类的完整定义 |
+| `query_object_instance` | 条件查询对象实例 |
+| `query_instance_subgraph` | 沿关系类路径查询实例子图 |
+| `get_logic_properties_values` | 计算逻辑属性（派生字段）取值 |
+| `get_action_info` | 取行动类信息与参数 Schema |
+| `execute_action` | 执行行动类 |
+| `get_action_execution` / `list_action_executions` | 查询行动执行状态与历史 |
+| `find_skills` | 按对象类召回可用 Skill |
+| `list_knowledge_networks` | 列出知识网络 |
+| `list_resources` / `describe_resource` | 列出与描述 Vega 资源 |
+| `run_sql` | 直接对资源执行 SQL |
+| `bkn_start_interaction` / `bkn_finish_interaction` | 会话生命周期（业务可追溯性） |
 
-每个工具调用需要的公共参数：`kn_id`（知识网络 ID）。可通过 `openbkn bkn list` 获取。
+每个工具调用需要 `kn_id`（知识网络 ID），可用 `openbkn bkn list` 获取。
 
 ### 使用 CLI 探测
 
-不配置 MCP 客户端也可以通过 CLI 快速验证 MCP 服务是否正常：
+不配置 MCP 客户端也能用 CLI 验证服务是否正常。CLI 没有「当前知识网络」这种全局配置，`kn-id` 是每条命令的位置参数：
 
 ```bash
-# 设置知识网络
-openbkn context-loader config set --kn-id kn_abc123
+# 查看部署的 MCP 工具目录（全局，不需要 kn-id）
+openbkn context info
 
-# 列出 MCP 工具
-openbkn context-loader tools
+# 查看某个知识网络会话下实际公布的工具
+openbkn context tools <kn-id>
 ```
 
 ---
 
 ## 💻 CLI
 
-#### 配置管理
+命令组是 `openbkn context`（早期的 `openbkn context-loader` 已改名，`config set/use/list/show/remove` 那套也一并取消——`kn-id` 现在是每条命令的位置参数）。取实例数据的几条统一用 `--args '<json>'` 传工具参数。
 
-Context Loader CLI 需先指定目标知识网络：
-
-```bash
-# 设置当前使用的知识网络
-openbkn context-loader config set --kn-id kn_abc123
-
-# 切换到已保存的配置
-openbkn context-loader config use my-config
-
-# 列出所有已保存配置
-openbkn context-loader config list
-
-# 显示当前配置详情
-openbkn context-loader config show
-
-# 删除配置
-openbkn context-loader config remove my-config
-```
-
-#### MCP 内省
-
-查看 Context Loader 暴露的 MCP 能力：
+#### 目录与内省
 
 ```bash
-# 列出所有可用工具（MCP tools）
-openbkn context-loader tools
+# 部署级工具目录（不需要 kn-id）
+openbkn context info
+
+# 某个知识网络会话公布的工具 / 资源 / 提示词
+openbkn context tools <kn-id>
+openbkn context resources <kn-id>
+openbkn context templates <kn-id>
+openbkn context prompts <kn-id>
+openbkn context prompt <kn-id> <name> --args '{"k":"v"}'
+openbkn context resource <kn-id> <uri>
 ```
 
-#### Layer 1 — Schema 搜索
-
-在知识网络的 Schema 层做语义搜索，定位相关对象类与关系类：
+#### Schema 探索
 
 ```bash
-# 全文搜索知识网络 Schema 与实例
-openbkn context-loader kn-search "客户订单关系" --only-schema
+# 语义搜索 Schema（可限定范围与返回上限）
+openbkn context search-schema <kn-id> "客户订单关系"
+openbkn context search-schema <kn-id> "哪些对象类描述了客户" --scope object,relation --max 10
 
-# 仅搜索 Schema 元数据（对象类、关系类定义）
-openbkn context-loader kn-schema-search "哪些对象类描述了客户"
+# 渐进式取 Schema：先要骨架，再按 id 下钻
+openbkn context kn-detail <kn-id> --detail-level summary
+openbkn context object-types <kn-id> ot_customer ot_order
+openbkn context relation-types <kn-id> rt_purchase
 ```
 
-#### Layer 2 — 实例查询
-
-根据 Layer 1 定位到的对象类，查询具体实例数据：
+#### 实例查询
 
 ```bash
 # 条件查询对象实例
-openbkn context-loader query-object-instance '{
-  "kn_id": "kn_abc123",
+openbkn context query-object-instance <kn-id> --args '{
   "object_type_id": "ot_customer",
   "conditions": [
-    {"field": "status", "op": "==", "value": "active"},
-    {"field": "region", "op": "in", "value": ["华东","华北"]}
+    {"field": "status", "operation": "==", "value": "active"}
   ],
-  "logic": "and",
   "limit": 20
 }'
 
-# 查询实例的关系子图
-openbkn context-loader query-instance-subgraph '{
-  "kn_id": "kn_abc123",
-  "instance_id": "cust_001",
-  "depth": 2,
-  "relation_types": ["rt_purchase", "rt_belongs_to"],
+# 沿关系类路径查询实例子图
+openbkn context query-instance-subgraph <kn-id> --args '{
+  "object_type_id": "ot_customer",
+  "instance_identities": [{"id": "cust_001"}],
+  "relation_type_ids": ["rt_purchase"],
   "limit": 50
 }'
 ```
 
-#### Layer 3 — 逻辑属性与动作
-
-获取计算字段和可执行动作信息：
+#### 逻辑属性、行动与技能
 
 ```bash
-# 获取逻辑属性（计算字段、派生属性）
-openbkn context-loader get-logic-properties '{
-  "kn_id": "kn_abc123",
+# 计算逻辑属性取值
+openbkn context get-logic-properties <kn-id> --args '{
   "object_type_id": "ot_customer",
-  "instance_id": "cust_001",
-  "properties": ["lifetime_value", "risk_score"]
+  "instance_identities": [{"id": "cust_001"}],
+  "logic_property_names": ["lifetime_value", "risk_score"]
 }'
 
-# 获取动作信息（该实例可触发的业务动作）
-openbkn context-loader get-action-info '{
-  "kn_id": "kn_abc123",
+# 取该实例可触发的行动类信息
+openbkn context get-action-info <kn-id> --args '{
   "object_type_id": "ot_customer",
-  "instance_id": "cust_001"
+  "instance_identities": [{"id": "cust_001"}]
 }'
+
+# 按对象类召回可用 Skill
+openbkn context find-skills <kn-id> ot_customer --top-k 5
+```
+
+#### 调用任意工具
+
+工具目录会随版本增长，CLI 未必为每个工具都配了子命令。`tool-call` 按名调用任意 MCP 工具，`call-method` 调任意 MCP 方法：
+
+```bash
+openbkn context tool-call <kn-id> run_sql --args '{"sql":"SELECT 1"}'
+openbkn context tool-call <kn-id> execute_action --arg action_type_id=at_notify --arg dry_run=true
+openbkn context call-method <kn-id> tools/list
 ```
 
 #### 端到端流程
 
 ```bash
-# 1. 配置知识网络
-openbkn context-loader config set --kn-id kn_abc123
+KN=<kn-id>
+
+# 1. 看有哪些工具可用
+openbkn context tools "$KN"
 
 # 2. Schema 探索 — 找到相关对象类
-openbkn context-loader kn-schema-search "订单和客户的关系"
+openbkn context search-schema "$KN" "客户" --scope object
 
-# 3. 实例查询 — 获取活跃客户
-openbkn context-loader query-object-instance '{
-  "kn_id": "kn_abc123",
+# 3. 实例查询 — 取活跃客户
+openbkn context query-object-instance "$KN" --args '{
   "object_type_id": "ot_customer",
-  "conditions": [{"field": "status", "op": "==", "value": "active"}],
-  "limit": 5
+  "conditions": [{"field": "status", "operation": "==", "value": "active"}],
+  "limit": 10
 }'
 
-# 4. 子图扩展 — 查看客户的购买关系
-openbkn context-loader query-instance-subgraph '{
-  "kn_id": "kn_abc123",
-  "instance_id": "cust_001",
-  "depth": 1
+# 4. 子图扩展 — 看该客户的购买关系
+openbkn context query-instance-subgraph "$KN" --args '{
+  "object_type_id": "ot_customer",
+  "instance_identities": [{"id": "cust_001"}],
+  "relation_type_ids": ["rt_purchase"]
 }'
 
-# 5. 获取动作信息 — 查看可对该客户执行的操作
-openbkn context-loader get-action-info '{
-  "kn_id": "kn_abc123",
+# 5. 行动信息 — 看可对该客户执行什么
+openbkn context get-action-info "$KN" --args '{
   "object_type_id": "ot_customer",
-  "instance_id": "cust_001"
+  "instance_identities": [{"id": "cust_001"}]
 }'
 ```
 
@@ -232,93 +231,124 @@ const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env
 
 const knId = 'kn-001';
 
-// Layer 1：Schema 搜索 — 用自然语言发现对象类
-const schema = await bkn.context.searchSchema(knId, '客户订单关系');
-console.log('Schema 搜索结果:', schema);
+// 工具目录
+console.log(await bkn.context.info());
+console.log(await bkn.context.tools(knId));
 
-// Layer 2：实例查询 — 根据 Layer 1 找到的对象类查询具体数据
+// Schema 探索
+const schema = await bkn.context.searchSchema(knId, '客户订单关系', { scope: ['object', 'relation'] });
+const skeleton = await bkn.context.knDetail(knId, 'summary');
+const ots = await bkn.context.objectTypes(knId, ['ot_customer']);
+
+// 实例查询
 const instances = await bkn.context.queryObjectInstance(knId, {
-  ot_id: 'ot_customer',
+  object_type_id: 'ot_customer',
+  conditions: [{ field: 'status', operation: '==', value: 'active' }],
   limit: 20,
 });
-console.log('实例:', instances);
 
-// 跨知识网络的语义搜索
-const results = await bkn.kn.search(knId, '高价值客户');
-console.log('搜索命中:', results);
-
-// 子图遍历 — 沿关系类展开（按实例）
+// 子图遍历
 const subgraph = await bkn.context.queryInstanceSubgraph(knId, {
-  ot_id: 'ot_customer',
-  instance_id: 'cust-5521',
-  depth: 2,
+  object_type_id: 'ot_customer',
+  instance_identities: [{ id: 'cust-5521' }],
+  relation_type_ids: ['rt_purchase'],
 });
-console.log('子图:', subgraph);
+
+// 逻辑属性与行动
+const logic = await bkn.context.logicProperties(knId, {
+  object_type_id: 'ot_customer',
+  instance_identities: [{ id: 'cust-5521' }],
+  logic_property_names: ['lifetime_value'],
+});
+const actions = await bkn.context.actionInfo(knId, {
+  object_type_id: 'ot_customer',
+  instance_identities: [{ id: 'cust-5521' }],
+});
+
+// 技能召回
+const skills = await bkn.context.findSkills(knId, 'ot_customer', 5);
+
+// 目录之外的工具：按名调用
+const sql = await bkn.context.toolCall(knId, 'run_sql', { sql: 'SELECT 1' });
 ```
 
 ---
 
 ### curl
 
+REST 面的路径是 `/api/agent-retrieval/v1/kn/<工具名>`，与 MCP 工具同名；健康检查在 `/health` 下，不带 `/api` 前缀。
+
 ```bash
-# 健康检查
-curl -sk "https://<访问地址>/api/agent-retrieval/v1/health" \
-  -H "Authorization: Bearer $(openbkn token)"
+# 健康检查（无需鉴权）
+curl -sk "https://<访问地址>/health/ready"
+curl -sk "https://<访问地址>/health/alive"
 
 # Schema 搜索
-curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn-search" \
-  -H "Authorization: Bearer $(openbkn token)" \
+curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/search_schema" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
-  -d '{
-    "kn_id": "kn_abc123",
-    "query": "客户订单关系",
-    "only_schema": true,
-    "limit": 10
-  }'
+  -d '{"kn_id":"kn_abc123","query":"客户订单关系"}'
 
 # 查询对象实例
-curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/query-object-instance" \
-  -H "Authorization: Bearer $(openbkn token)" \
+curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/query_object_instance" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
     "object_type_id": "ot_customer",
-    "conditions": [
-      {"field": "status", "op": "==", "value": "active"}
-    ],
+    "conditions": [{"field":"status","operation":"==","value":"active"}],
     "limit": 20
   }'
 
 # 查询实例子图
-curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/query-instance-subgraph" \
-  -H "Authorization: Bearer $(openbkn token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kn_id": "kn_abc123",
-    "instance_id": "cust_001",
-    "depth": 2,
-    "relation_types": ["rt_purchase"],
-    "limit": 50
-  }'
-
-# 获取逻辑属性
-curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/get-logic-properties" \
-  -H "Authorization: Bearer $(openbkn token)" \
+curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/query_instance_subgraph" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
     "object_type_id": "ot_customer",
-    "instance_id": "cust_001",
-    "properties": ["lifetime_value", "risk_score"]
+    "instance_identities": [{"id":"cust_001"}],
+    "relation_type_ids": ["rt_purchase"]
   }'
 
-# 获取动作信息
-curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/get-action-info" \
-  -H "Authorization: Bearer $(openbkn token)" \
+# 逻辑属性（注意路径是 logic-property-resolver，不与工具同名）
+curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/logic-property-resolver" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
     "object_type_id": "ot_customer",
-    "instance_id": "cust_001"
+    "instance_identities": [{"id":"cust_001"}],
+    "logic_property_names": ["lifetime_value"]
+  }'
+
+# 行动信息
+curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/get_action_info" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kn_id": "kn_abc123",
+    "object_type_id": "ot_customer",
+    "instance_identities": [{"id":"cust_001"}]
   }'
 ```
+
+> **注意**：部分版本的 context-loader 会对 `/kn/*` 的 POST 请求校验会话上下文，请求体缺少
+> `bkn_context`（`conversation_id` / `interaction_id` / `operation_key`）时返回
+> `400 conversation_required`。该校验在 v0.1.2 发布版中不存在。走 MCP 通道时由服务端按连接
+> 自动归并，不需要调用方自己造。
+
+---
+
+## 已下线命令对照
+
+| 已下线 | 现行做法 |
+| --- | --- |
+| `openbkn context-loader config set/use/list/show/remove` | 取消，`kn-id` 改为每条命令的位置参数 |
+| `openbkn context-loader tools` | `openbkn context tools <kn-id>`（部署级目录用 `openbkn context info`） |
+| `openbkn context-loader kn-search` | `openbkn context search-schema <kn-id> <query>` |
+| `openbkn context-loader kn-schema-search` | 同上，用 `--scope` 限定范围 |
+| `openbkn context-loader query-object-instance '<json>'` | `openbkn context query-object-instance <kn-id> --args '<json>'` |
+| `openbkn context-loader query-instance-subgraph '<json>'` | `openbkn context query-instance-subgraph <kn-id> --args '<json>'` |
+| `openbkn context-loader get-logic-properties '<json>'` | `openbkn context get-logic-properties <kn-id> --args '<json>'` |
+| `openbkn context-loader get-action-info '<json>'` | `openbkn context get-action-info <kn-id> --args '<json>'` |
