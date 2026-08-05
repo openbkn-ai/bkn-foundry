@@ -38,12 +38,20 @@ func normalizeTimestampValue(value any) any {
 	}
 }
 
-// postgresqlTimestampValueExpr converts epoch milliseconds to the field's PostgreSQL timestamp type.
-// The explicit float8 cast prevents PostgreSQL from inferring the parameter as int4
-// from the 1000 literal, which would overflow or truncate millisecond timestamps.
-func postgresqlTimestampValueExpr(field *interfaces.Property) string {
+// postgresqlDateValueExpr builds a parameter expression compatible with the field's PostgreSQL date type.
+func postgresqlDateValueExpr(field *interfaces.Property) string {
+	originalType := strings.ToLower(strings.TrimSpace(field.OriginalType))
+	switch originalType {
+	case "time", "timetz", "time without time zone", "time with time zone":
+		// An epoch instant has no well-defined time-of-day value. Keep time values raw so
+		// PostgreSQL can parse them according to the column type instead of comparing with timestamptz.
+		return "?"
+	}
+
+	// The explicit float8 cast prevents PostgreSQL from inferring the parameter as int4
+	// from the 1000 literal, which would overflow or truncate millisecond timestamps.
 	timestampExpr := "to_timestamp(?::double precision / 1000.0)"
-	switch strings.ToLower(strings.TrimSpace(field.OriginalType)) {
+	switch originalType {
 	case "timestamp", "timestamp without time zone":
 		// Convert the instant to a wall-clock timestamp using the connection session time zone.
 		timestampExpr = "(" + timestampExpr + " AT TIME ZONE current_setting('TimeZone'))"
@@ -54,7 +62,7 @@ func postgresqlTimestampValueExpr(field *interfaces.Property) string {
 // postgresqlDateCompareExpr compares a date column with epoch milliseconds.
 func postgresqlDateCompareExpr(field *interfaces.Property, op string, value any) sq.Sqlizer {
 	return sq.Expr(
-		quoteColumnName(field.OriginalName)+" "+op+" "+postgresqlTimestampValueExpr(field),
+		quoteColumnName(field.OriginalName)+" "+op+" "+postgresqlDateValueExpr(field),
 		normalizeTimestampValue(value),
 	)
 }
@@ -63,7 +71,7 @@ func postgresqlDateSetExpr(field *interfaces.Property, op string, values []any) 
 	valueExprs := make([]string, len(values))
 	args := make([]any, len(values))
 	for i, value := range values {
-		valueExprs[i] = postgresqlTimestampValueExpr(field)
+		valueExprs[i] = postgresqlDateValueExpr(field)
 		args[i] = normalizeTimestampValue(value)
 	}
 	return sq.Expr(

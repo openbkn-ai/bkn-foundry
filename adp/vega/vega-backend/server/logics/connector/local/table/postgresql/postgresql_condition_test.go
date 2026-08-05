@@ -21,6 +21,7 @@ func testFieldsMap() map[string]*interfaces.Property {
 	return map[string]*interfaces.Property{
 		"age":        {Name: "age", OriginalName: "age", Type: interfaces.DataType_Integer},
 		"created_at": {Name: "created_at", OriginalName: "created_at", Type: interfaces.DataType_Datetime},
+		"event_time": {Name: "event_time", OriginalName: "event_time", OriginalType: "time", Type: interfaces.DataType_Time},
 	}
 }
 
@@ -125,6 +126,31 @@ func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone
 			assert.Equal(t, []interface{}{int64(1785295334428)}, args)
 		})
 	}
+}
+
+func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
+	for _, originalType := range []string{"time", "timetz", "time without time zone", "time with time zone"} {
+		t.Run(originalType, func(t *testing.T) {
+			field := &interfaces.Property{
+				OriginalName: "event_time",
+				OriginalType: originalType,
+			}
+
+			sql, args, err := postgresqlDateCompareExpr(field, ">=", "14:30:00").ToSql()
+			require.NoError(t, err)
+			assert.Equal(t, `"event_time" >= ?`, sql)
+			assert.Equal(t, []interface{}{"14:30:00"}, args)
+		})
+	}
+
+	t.Run("keeps time set values raw", func(t *testing.T) {
+		c := &PostgresqlConnector{}
+		cond := mustNewCond(t, "event_time", "in", []any{"14:30:00", "16:45:00"})
+		sql, args := toSQL(t, c, cond)
+
+		assert.Equal(t, `"event_time" IN (?, ?)`, sql)
+		assert.Equal(t, []interface{}{"14:30:00", "16:45:00"}, args)
+	})
 }
 
 func TestConvertDateRangeUsesToTimestamp(t *testing.T) {
