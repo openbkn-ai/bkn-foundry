@@ -433,6 +433,18 @@ _bkn_safe_usable_instance_id() {
 # still wins.
 CORE_RELEASE_EXTRA_SETS=()
 CORE_RELEASE_EXTRA_SET_STRINGS=()
+
+_secret_is_owned_by_release() {
+    local secret_name="$1"
+    local namespace="$2"
+    local release_name="$3"
+    local owner
+    owner="$(kubectl get secret "${secret_name}" -n "${namespace}" \
+        -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}{"|"}{.metadata.annotations.meta\.helm\.sh/release-namespace}{"|"}{.metadata.labels.app\.kubernetes\.io/managed-by}' \
+        2>/dev/null || true)"
+    [[ "${owner}" == "${release_name}|${namespace}|Helm" ]]
+}
+
 _openbkn_release_extra_sets() {
     local release_name="$1"
     local namespace="${2:-${CORE_NAMESPACE}}"
@@ -443,10 +455,14 @@ _openbkn_release_extra_sets() {
             "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
             "evidence.ingestAuth.secretKey=token"
         )
-        if kubectl get secret bkn-trace-evidence-ingest -n "${namespace}" >/dev/null 2>&1; then
-            CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=false")
-        else
+        if ! kubectl get secret bkn-trace-evidence-ingest -n "${namespace}" >/dev/null 2>&1; then
             CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=true")
+        elif _secret_is_owned_by_release bkn-trace-evidence-ingest "${namespace}" "${release_name}"; then
+            # Keep a Secret already managed by this release in the rendered
+            # manifest; otherwise Helm treats the upgrade as a deletion.
+            CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=true")
+        else
+            CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=false")
         fi
     elif [[ "${release_name}" == "bkn-safe" ]]; then
         local initial_pwd

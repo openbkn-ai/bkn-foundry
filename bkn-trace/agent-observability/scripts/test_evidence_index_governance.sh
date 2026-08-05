@@ -24,6 +24,10 @@ if ! grep -A2 -Fq 'name: BKN_TRACE_EVIDENCE_INGEST_TOKEN' <<<"${managed_secret_r
   echo "explicit ingest Secret configuration must retain the legacy token key" >&2
   exit 1
 fi
+if ! grep -Fq '"helm.sh/resource-policy": keep' <<<"${managed_secret_rendered}"; then
+  echo "chart-managed ingest Secret must survive an accidental manifest omission or uninstall" >&2
+  exit 1
+fi
 if ! grep -A1 -Fq "name: BKN_TRACE_PROJECTION_ENABLED
               value: \"false\"" <<<"${default_rendered}"; then
   echo "Core projection must be disabled by default" >&2

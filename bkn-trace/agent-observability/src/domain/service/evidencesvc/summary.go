@@ -491,8 +491,9 @@ func applyCanonicalConversationEvidenceAndDuration(
 		if summary.Status != "running" && summary.Status != "unknown" {
 			total += summary.DurationMS
 		}
-		if canonicalEvidenceRank(summary.EvidenceCompleteness) > canonicalEvidenceRank(canonicalCompleteness) {
-			canonicalCompleteness = summary.EvidenceCompleteness
+		fallbackCompleteness := canonicalFallbackEvidenceCompleteness(summary.EvidenceCompleteness)
+		if canonicalEvidenceRank(fallbackCompleteness) > canonicalEvidenceRank(canonicalCompleteness) {
+			canonicalCompleteness = fallbackCompleteness
 		}
 		for _, reason := range summary.PartialReasons {
 			canonicalReasons[reason] = struct{}{}
@@ -503,6 +504,13 @@ func applyCanonicalConversationEvidenceAndDuration(
 		*partialReasons = sortedSummarySet(canonicalReasons)
 	}
 	*durationMS = total
+}
+
+func canonicalFallbackEvidenceCompleteness(value string) string {
+	if value == "content_unavailable" {
+		return string(sessionvo.EvidencePartial)
+	}
+	return value
 }
 
 func canonicalInteractionDurationMS(interaction sessionvo.Interaction) int64 {

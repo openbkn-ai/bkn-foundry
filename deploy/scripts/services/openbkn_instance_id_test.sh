@@ -31,6 +31,30 @@ config_yaml_top_field() { printf ''; }
 kubectl() {
     local args="$*"
     case "${SCENARIO}" in
+        secret_absent)
+            return 1
+            ;;
+        secret_same_owner)
+            [[ "${args}" == *"-o jsonpath="* ]] && {
+                printf 'agent-observability|openbkn|Helm'
+                return 0
+            }
+            [[ "${args}" == *"get secret bkn-trace-evidence-ingest"* ]] && return 0
+            ;;
+        secret_unowned)
+            [[ "${args}" == *"-o jsonpath="* ]] && {
+                printf '||'
+                return 0
+            }
+            [[ "${args}" == *"get secret bkn-trace-evidence-ingest"* ]] && return 0
+            ;;
+        secret_other_owner)
+            [[ "${args}" == *"-o jsonpath="* ]] && {
+                printf 'shared-secrets|openbkn|Helm'
+                return 0
+            }
+            [[ "${args}" == *"get secret bkn-trace-evidence-ingest"* ]] && return 0
+            ;;
         normal)
             [[ "${args}" == *configmap* ]] && return 1
             [[ "${args}" == *systemUUID* ]] && {
@@ -105,6 +129,24 @@ if [[ "${CORE_RELEASE_EXTRA_SETS[*]:-}" == *"instanceId"* ]]; then
     fail "identity-must-not-use-plain-set: got[${CORE_RELEASE_EXTRA_SETS[*]:-}]"
 else
     ok
+fi
+
+trace_secret_create_setting() {
+    SCENARIO="$1" _openbkn_release_extra_sets agent-observability openbkn >/dev/null 2>&1
+    printf '%s' "${CORE_RELEASE_EXTRA_SETS[*]:-}"
+}
+
+if [[ "$(trace_secret_create_setting secret_absent)" == *"evidence.ingestAuth.createSecret=true"* ]]; then ok; else
+    fail "trace-secret-absent-must-be-created"
+fi
+if [[ "$(trace_secret_create_setting secret_same_owner)" == *"evidence.ingestAuth.createSecret=true"* ]]; then ok; else
+    fail "trace-secret-current-release-must-remain-managed"
+fi
+if [[ "$(trace_secret_create_setting secret_unowned)" == *"evidence.ingestAuth.createSecret=false"* ]]; then ok; else
+    fail "trace-secret-unowned-must-not-be-adopted"
+fi
+if [[ "$(trace_secret_create_setting secret_other_owner)" == *"evidence.ingestAuth.createSecret=false"* ]]; then ok; else
+    fail "trace-secret-other-release-must-not-be-adopted"
 fi
 
 if [[ "${ONE_FAILED}" -eq 0 ]]; then
