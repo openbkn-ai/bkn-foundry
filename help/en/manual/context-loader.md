@@ -83,7 +83,7 @@ Once configured, MCP clients can discover and call these tools (your deployment 
 | `run_sql` | Run SQL directly against a resource |
 | `bkn_start_interaction` / `bkn_finish_interaction` | Session lifecycle (business traceability) |
 
-Every tool call requires `kn_id` (knowledge network ID). Use `openbkn bkn list` to find it.
+Most tool calls require `kn_id` (knowledge network ID) — use `openbkn bkn list` to find it. `list_knowledge_networks` is how you obtain one in the first place, and the two `bkn_*_interaction` tools do not take it.
 
 ### Verify with CLI
 
@@ -227,7 +227,7 @@ openbkn context query-instance-subgraph "$KN" --args '{
   }]
 }'
 
-# 5. Check what can be done to it
+# 5. Fetch one action type's tool definition (at_id comes from step 2)
 openbkn context get-action-info "$KN" --args '{
   "at_id": "at_escalate",
   "_instance_identities": [{"...": "from step 3's _instance_identity"}]

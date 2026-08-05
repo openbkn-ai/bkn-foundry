@@ -87,7 +87,7 @@ Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会
 | `run_sql` | 直接对资源执行 SQL |
 | `bkn_start_interaction` / `bkn_finish_interaction` | 会话生命周期（业务可追溯性） |
 
-每个工具调用需要 `kn_id`（知识网络 ID），可用 `openbkn bkn list` 获取。
+多数工具调用需要 `kn_id`（知识网络 ID），可用 `openbkn bkn list` 获取；`list_knowledge_networks` 本身就是拿 `kn_id` 的入口，`bkn_start_interaction` / `bkn_finish_interaction` 也不需要它。
 
 ### 使用 CLI 探测
 
@@ -229,7 +229,7 @@ openbkn context query-instance-subgraph "$KN" --args '{
   }]
 }'
 
-# 5. 行动信息 — 看可对该客户执行什么
+# 5. 取某个行动类的工具定义（at_id 来自第 2 步的 search-schema）
 openbkn context get-action-info "$KN" --args '{
   "at_id": "at_send_coupon",
   "_instance_identities": [{"...": "取自第 3 步返回的 _instance_identity"}]
@@ -378,7 +378,7 @@ curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/logic-propert
     "properties": ["lifetime_value"]
   }'
 
-# 行动信息
+# 行动信息（给定行动类，返回其工具定义与参数 Schema）
 curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/get_action_info" \
   -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
