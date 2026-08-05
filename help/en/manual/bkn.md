@@ -160,8 +160,10 @@ openbkn bkn push ./supply-chain/
 # 4. List the created network
 openbkn bkn list
 
-# 5. Build indexes
-openbkn bkn build <kn_id> --wait
+# 5. Build search indexes for the bound resources (one per resource)
+openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+  --build-key-fields <pk-column> --fulltext-fields <text-column> \
+  --embedding-fields <text-column> --embedding-model <model-name> --wait
 
 # 6. Verify with semantic search
 openbkn bkn search <kn_id> "materials running low on stock"
@@ -174,20 +176,24 @@ openbkn bkn search <kn_id> "materials running low on stock"
 Instead of writing BKN files, you can generate a knowledge network directly from an existing data source:
 
 ```bash
-# From a database: auto-discover table schemas and build indexes
-openbkn bkn create-from-ds <ds_id> \
+# From a Vega catalog: discovered tables become object types; --build also indexes them
+openbkn bkn create-from-catalog <catalog_id> \
   --name "sales-network" \
   --tables orders,customers,products \
-  --build --timeout 300
+  --build --embedding-model <model-name>
 
 # From CSV files
-openbkn bkn create-from-csv <ds_id> \
+openbkn bkn create-from-csv <catalog_id> \
   --files "./data/*.csv" \
   --name "analytics-network" \
   --build
 ```
 
 ---
+
+Catalog registration and table discovery are covered in [Data Ingestion](datasource.md).
+`--build` submits one Vega build task per resource; index configuration lives on the
+resource — see [VEGA Engine](vega.md).
 
 ## 💻 CLI
 
@@ -200,12 +206,15 @@ openbkn bkn get <kn_id> --export
 openbkn bkn pull <kn_id> ./export-dir/
 ```
 
-### Build and Push
+### Validate and Push
 
 ```bash
-openbkn bkn build <kn_id> --wait --timeout 300
 openbkn bkn validate ./my-network/
 openbkn bkn push ./my-network/ --branch main
+
+# There is no KN-level build API; search indexes are built per resource
+openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+  --build-key-fields <pk-column> --wait
 ```
 
 ### Object Type CRUD
@@ -300,12 +309,16 @@ openbkn bkn action-execution get <kn_id> <execution_id>
 ### End-to-End Example
 
 ```bash
-# 1. Connect a MySQL data source
-openbkn ds connect mysql db.example.com 3306 mydb --account root --password secret
-# → ds_id: ds-abc123
+# 1. Register a MySQL catalog and discover its tables
+CAT=$(openbkn --json vega catalog create --name "ecommerce-db" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"secret","databases":["mydb"]}' \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+openbkn vega catalog enable "$CAT"
+openbkn vega catalog discover "$CAT" --wait
 
-# 2. Create a knowledge network from the data source
-openbkn bkn create-from-ds ds-abc123 --name "ecommerce" --tables orders,customers --build --wait
+# 2. Create a knowledge network from the catalog
+openbkn bkn create-from-catalog "$CAT" --name "ecommerce" --tables orders,customers \
+  --build --embedding-model <model-name>
 
 # 3. Inspect the generated object types
 openbkn bkn object-type list <kn_id>

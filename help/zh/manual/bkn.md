@@ -159,8 +159,10 @@ openbkn bkn push ./supply-chain/
 # 4. 查看已创建的知识网络
 openbkn bkn list
 
-# 5. 构建索引
-openbkn bkn build <kn_id> --wait
+# 5. 为绑定的资源建检索索引（按资源，逐个执行）
+openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+  --build-key-fields <主键列> --fulltext-fields <文本列> \
+  --embedding-fields <文本列> --embedding-model <模型名> --wait
 
 # 6. 语义搜索验证
 openbkn bkn search <kn_id> "库存不足的物料"
@@ -173,18 +175,21 @@ openbkn bkn search <kn_id> "库存不足的物料"
 除了用 Agent 编写 BKN 文件，也可以直接从已有数据源自动生成知识网络：
 
 ```bash
-# 从数据库数据源创建，自动发现表结构并构建索引
-openbkn bkn create-from-ds <ds_id> \
+# 从 Vega Catalog 创建：自动发现的表转为对象类，--build 顺带建检索索引
+openbkn bkn create-from-catalog <catalog_id> \
   --name "销售网络" \
   --tables orders,customers,products \
-  --build --timeout 300
+  --build --embedding-model <模型名>
 
-# 从 CSV 文件批量创建
-openbkn bkn create-from-csv <ds_id> \
+# 从 CSV 文件批量创建（先导入该 Catalog 对应的库，再建网）
+openbkn bkn create-from-csv <catalog_id> \
   --files "./data/*.csv" \
   --name "财务分析网络" \
   --build
 ```
+
+Catalog 的注册与表发现见[数据接入](datasource.md)。`--build` 会为每个资源提交一次 Vega
+构建任务；索引配置归属于资源，细节见 [VEGA 引擎](vega.md)。
 
 ---
 
@@ -199,12 +204,15 @@ openbkn bkn get kn_abc123 --export
 openbkn bkn pull kn_abc123 ./my-network
 ```
 
-### 构建与推送
+### 校验与推送
 
 ```bash
-openbkn bkn build kn_abc123 --wait --timeout 300
 openbkn bkn validate ./my-network
 openbkn bkn push ./my-network --branch main
+
+# 知识网络层面已无 build 接口；检索索引按资源构建
+openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+  --build-key-fields <主键列> --wait
 ```
 
 ### 对象类 CRUD
@@ -287,14 +295,15 @@ openbkn bkn action-execution get kn_abc123 exec_456
 ### 端到端流程
 
 ```bash
-# 1. 连接数据源
-openbkn ds connect --type postgresql \
-  --host db.example.com --port 5432 \
-  --database sales --user admin --password secret \
-  --name "销售数据库"
+# 1. 注册 Vega Catalog 并发现表
+CAT=$(openbkn --json vega catalog create --name "销售数据库" --connector-type postgresql \
+  --connector-config '{"host":"db.example.com","port":5432,"username":"admin","password":"secret","databases":["sales"]}' \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+openbkn vega catalog enable "$CAT"
+openbkn vega catalog discover "$CAT" --wait
 
-# 2. 从数据源创建知识网络
-openbkn bkn create-from-ds ds_001 --name "销售网络" --build --timeout 300
+# 2. 从 Catalog 创建知识网络（--build 顺带建检索索引）
+openbkn bkn create-from-catalog "$CAT" --name "销售网络" --build --embedding-model <模型名>
 
 # 3. 查看生成的对象类
 openbkn bkn object-type list kn_abc123
