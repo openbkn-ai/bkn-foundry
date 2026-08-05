@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
@@ -25,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // stubVerifier maps a bearer token straight to its subject: the token string IS
@@ -61,13 +63,16 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 		t.Fatalf("grant super-admin: %v", err)
 	}
 	users := auth.NewUserStore(db)
-	// Mount the rbac_basic write routes for the test. In production these are
-	// mounted only by the enterprise build (behind RequireFeature); a community
-	// deployment registers no mounter and the routes 404. Core tests register
-	// the raw Routes mounter so they exercise the RBAC + guarded-service chain
-	// exactly as before — the license layer is ee's and is tested there.
+	// Mount the rbac_basic write routes for the test. In production only the
+	// enterprise build registers a mounter; a community deployment registers
+	// none and the routes 404. These tests are about the RBAC + guarded-service
+	// chain, so they register the routes and put the tier in force — the
+	// entitlement layer has its own tests in extension/adminwrite.
 	adminwrite.ResetForTest()
-	adminwrite.RegisterMounter(adminwrite.Routes)
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Licensed: true, Edition: licverify.EditionProfessional}
+	}))
+	adminwrite.RegisterMounter(licverify.EditionProfessional, adminwrite.Routes)
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
 		Audit:         audit.New(db),

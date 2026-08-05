@@ -33,7 +33,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -42,6 +41,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httpapi"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // Options configures Boot. The zero value is what the community entry point
@@ -124,12 +124,17 @@ func Boot(opts Options) (*App, error) {
 		slog.Info("license hub enabled", "instance_fp", licSvc.Fingerprint(), "server_url", cfg.License.ServerURL)
 	}
 
-	// The gate has to be in place before any extension checks its own license.
-	// With no license hub the registry keeps its deny-everything zero value.
+	// The gate has to be in place before any extension consults the licence.
+	// With no license hub the package keeps its zero value: community, not
+	// licensed — which is also the right answer, so there is nothing to install.
+	//
+	// bkn-safe is the cluster's licence holder, not a consumer: it reads its own
+	// verified snapshot instead of fetching one from a hub (ee-design.md §4.1).
+	// A consequence worth knowing before debugging: -tags ee_dev and
+	// OPENBKN_EDITION do NOT affect this service. Its tier comes from a real
+	// certificate or, in tests, from entitlement.SetGateForTest.
 	if licSvc != nil {
-		extension.SetGate(extension.GateFunc(func(f extension.Feature) bool {
-			return licSvc.FeatureEnabled(string(f))
-		}))
+		entitlement.SetGate(license.Gate(licSvc))
 	}
 
 	return &App{
@@ -162,8 +167,8 @@ func (a *App) Addr() string { return a.cfg.HTTPAddr }
 // Run closes the extension registry and serves until the listener fails.
 // Registering an extension after this point panics, by design.
 func (a *App) Run() error {
-	extension.Freeze()
-	slog.Info("extensions assembled", "registered", extension.Registered(), "assembly", extension.Assembly())
+	entitlement.Freeze()
+	slog.Info("extensions assembled", "assembled", entitlement.Assembled())
 
 	r := httpapi.New(a.deps)
 	slog.Info("bkn-safe listening", "addr", a.cfg.HTTPAddr)

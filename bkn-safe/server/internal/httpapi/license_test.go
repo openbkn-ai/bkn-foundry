@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // newLicenseServer builds a full server with the license surfaces mounted: a
@@ -58,6 +59,11 @@ func newLicenseServer(t *testing.T) (*gin.Engine, *gorm.DB, ed25519.PrivateKey) 
 	if err != nil {
 		t.Fatalf("license service: %v", err)
 	}
+	// The same wiring app.Boot does. Without it the tier would stay community no
+	// matter what certificate a test imports, and the capabilities endpoint —
+	// which reads the gate, not the payload — would answer for a deployment
+	// nobody is running.
+	entitlement.SetGateForTest(license.Gate(svc))
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: auth.NewUserStore(db),
 		Audit:         audit.New(db),

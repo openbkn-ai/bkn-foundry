@@ -32,6 +32,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 const rowID = "current"
@@ -132,25 +133,60 @@ func NewWithKeyTable(db *gorm.DB, cfg config.LicenseConfig, aud *audit.Store, ke
 // State returns the current gating snapshot (atomic, hot-path safe).
 func (s *Service) State() licverify.Snapshot { return s.guard.State() }
 
-// FeatureEnabled reports whether the license currently carries a paid feature.
-// It reads the live snapshot on every call and caches nothing, so a hot-reload,
-// an expiry, or a revocation takes effect everywhere without a restart
-// (open-core-gating §2.7 rule 5).
+// Gate turns the hub's own verified snapshot into the tier every paid call site
+// judges against. bkn-safe is the cluster's licence holder, not a consumer, so
+// it wires this instead of running the hub client the other services use
+// (ee-design.md §4.1).
 //
-// Only StateValid and StateGrace carry paid features. Every other state — a
-// license that lapsed past grace, an unverifiable file, a fresh install inside
-// its trial window, an unactivated cluster — resolves to the community feature
-// set. That is a downgrade of paid capability only: community capability is not
-// gated at all, and data stays readable and exportable in every state.
-func (s *Service) FeatureEnabled(name string) bool {
+// It lives here rather than at the call site because there must be exactly one
+// definition of how a certificate becomes a tier. When it was written out at
+// the wiring point, the capabilities endpoint grew a second copy that answered
+// differently for an expired certificate — licensed by one, refused by the
+// other.
+//
+// The returned Gate re-reads State() on every call. Do not memoise it into a
+// bool: an imported, renewed or lapsed certificate has to take effect on the
+// next request, not the next restart.
+func Gate(s *Service) entitlement.Gate {
+	return entitlement.GateFunc(func() entitlement.Snapshot {
+		if s == nil {
+			return entitlement.Snapshot{Edition: licverify.EditionCommunity}
+		}
+		snap := s.guard.State()
+		// Outside valid/grace the certificate grants nothing, even though an
+		// expired one still carries a payload with a paid edition in it.
+		// Reading that edition would hand out capability the licence no longer
+		// covers, which is the exact bug this predicate exists to prevent.
+		if !s.InForce() || snap.Payload == nil {
+			return entitlement.Snapshot{Edition: licverify.EditionCommunity, State: snap.State}
+		}
+		return entitlement.Snapshot{
+			Licensed: true,
+			Edition:  snap.Payload.Edition,
+			State:    snap.State,
+			// Display and audit only. Nothing gates on this (ee-design.md §3.2).
+			Features: snap.Payload.Features,
+		}
+	})
+}
+
+// InForce reports whether the licence currently grants anything. It reads the
+// live snapshot on every call and caches nothing, so a hot-reload, an expiry or
+// a revocation takes effect everywhere without a restart (open-core-gating §2.7
+// rule 5).
+//
+// Only StateValid and StateGrace grant. Every other state — a licence lapsed
+// past grace, an unverifiable file, a fresh install inside its trial window, an
+// unactivated cluster — behaves as community. That is a downgrade of paid
+// capability only: community capability is not gated at all, and data stays
+// readable and exportable in every state.
+//
+// There is deliberately no per-feature form of this. Authorisation is by tier
+// (ee-design.md §3.1); the certificate's features[] is display and audit data,
+// and a FeatureEnabled(key) helper is how fine-grained gating creeps back in.
+func (s *Service) InForce() bool {
 	snap := s.guard.State()
-	if snap.State != licverify.StateValid && snap.State != licverify.StateGrace {
-		return false
-	}
-	if snap.Payload == nil {
-		return false // a valid state always carries a payload; never gate on a nil deref
-	}
-	return snap.Payload.HasFeature(name)
+	return snap.State == licverify.StateValid || snap.State == licverify.StateGrace
 }
 
 // Fingerprint returns this cluster's instance fingerprint. Available with or
@@ -298,8 +334,8 @@ func (s *Service) Run(ctx context.Context) {
 // firstRun is when this deployment first started, in unix seconds. licverify
 // uses it to tell a fresh install (trial: quiet, nothing to do yet) apart from
 // one whose trial window has elapsed (unlicensed: standing prompt to activate).
-// Neither state carries paid capability — FeatureEnabled only honours valid and
-// grace — so this only decides which of the two an admin screen shows.
+// Neither state carries paid capability — InForce only honours valid and grace
+// — so this only decides which of the two an admin screen shows.
 //
 // The timestamp is the oldest user row. bkn-safe seeds the built-in admin at
 // install and there is no path that deletes every user, so the minimum is the

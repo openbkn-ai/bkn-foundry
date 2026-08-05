@@ -34,9 +34,16 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/licverify"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
+
+// Capability is the name this socket registers itself under, and the string the
+// capabilities endpoint reports. It is spelled the same as the licence feature
+// key it grew out of, but nothing reads it from a certificate any more: the
+// tier is what decides (ee-design.md §3.1), and this is a display name.
+const Capability = "rbac_basic"
 
 // Sentinel errors returned by Services. ee maps these to HTTP status; anything
 // else is a 500.
@@ -136,14 +143,14 @@ type Mounter func(g *gin.RouterGroup, svc Services)
 
 var (
 	mounter Mounter
-	// gatedOn is the feature the socket itself enforces per request. Empty
-	// means the caller used the legacy RegisterMounter and is gating inside
-	// its own mounter.
-	gatedOn extension.Feature
+	// minEdition is the lowest tier allowed to reach the write routes. It is
+	// declared once at registration and read on every request; the zero value
+	// only ever survives in a community build, where nothing is mounted.
+	minEdition licverify.Edition
 )
 
-// RegisterMounterGated installs the write-route mounter and tells the socket
-// which feature to enforce. This is the form to use.
+// RegisterMounter installs the write-route mounter and declares the lowest tier
+// that may use it.
 //
 // The socket owns the refusal, not the caller. That is the whole point of the
 // signature: an entitlement gap has to be indistinguishable from the route not
@@ -151,25 +158,18 @@ var (
 // and leaving that decision to each caller means each caller can get it wrong
 // independently. One of them did, and shipped a 403 carrying the feature name.
 //
-// The ee assembly calls this once, before Freeze. A second call, or a call
-// after the socket is frozen, panics — both are assembly bugs.
-func RegisterMounterGated(f extension.Feature, m Mounter) {
-	if f == "" {
-		panic("adminwrite: RegisterMounterGated with an empty feature")
-	}
-	registerMounter(m)
-	gatedOn = f
-}
-
-// RegisterMounter installs a mounter that gates itself.
+// Registration is unconditional — do not check the licence first (ee-design.md
+// §5.4). A mounter installed only when a certificate is already present cannot
+// be switched on by one imported afterwards, because the registry is frozen by
+// then; the customer would have to restart the service on their own site to fix
+// a licensing mistake. What may pass is decided per request, in Gate.
 //
-// Deprecated: use RegisterMounterGated so the socket enforces the tier and
-// produces the refusal. This form is kept only so the enterprise code line can
-// switch over in its own commit rather than breaking the moment core changes;
-// it will be removed once it has no callers.
-func RegisterMounter(m Mounter) { registerMounter(m) }
-
-func registerMounter(m Mounter) {
+// The ee assembly calls this once, before Freeze. A second call, a call after
+// the socket is frozen, and a zero min are all assembly bugs and all panic —
+// the last one because a paid capability registered without a tier would be
+// registered as free, which is the failure this whole mechanism exists to
+// prevent (entitlement.MarkAssembled makes the same check).
+func RegisterMounter(min licverify.Edition, m Mounter) {
 	if m == nil {
 		panic("adminwrite: RegisterMounter(nil)")
 	}
@@ -179,38 +179,51 @@ func registerMounter(m Mounter) {
 	if mounter != nil {
 		panic("adminwrite: mounter already registered")
 	}
+	entitlement.MustBeAssembling("adminwrite")
+	// Records the capability in the process-wide assembly table, which is what
+	// the capabilities endpoint reports as installed. Panics on a zero or
+	// unknown min, so that check is not duplicated here.
+	entitlement.MarkAssembled(Capability, min)
 	mounter = m
+	minEdition = min
 }
 
-// requireFeature hides the routes when the licence does not carry the feature.
+// Gate hides the routes when the licence in force is below the tier declared at
+// registration.
 //
 // 404 with no body, which is byte-for-byte what an unmounted route answers:
 // gin has no NoRoute handler here, so a community build replies "404 page not
 // found" as text/plain. Anything richer — a JSON body, an error code, the
-// feature name — is a fingerprint that tells a prober the paid surface exists
+// capability name — is a fingerprint that tells a prober the paid surface exists
 // in this binary, which is exactly what the two-binary split is meant to deny.
+//
+// The tier is read per request, so a certificate imported after boot takes
+// effect on the next call and a lapsed one goes dark just as fast. Neither
+// needs a restart.
 //
 // The reason still gets recorded, just not to the caller: the log is where an
 // operator finds out this was an entitlement gap rather than a missing route
 // (ee-design.md §7.5 requires the two to be distinguishable server-side).
 func Gate() gin.HandlerFunc {
-	f := gatedOn
-	if f == "" {
-		// Legacy RegisterMounter: the caller gates inside its own mounter, so
-		// the socket has nothing to enforce. Never nil — a caller that wires
-		// Gate() unconditionally must not have to branch on it.
+	min := minEdition
+	if min == "" {
+		// Community build: nothing registered, so Mount will not add any route
+		// under this group and there is nothing to hide. Never nil — a caller
+		// that wires Gate() unconditionally must not have to branch on it.
 		return func(c *gin.Context) { c.Next() }
 	}
 	return func(c *gin.Context) {
-		if extension.Enabled(f) {
+		if entitlement.AtLeast(min) {
 			c.Next()
 			return
 		}
 		// The reason goes to the log, never to the caller. §7.5 requires an
 		// operator to be able to tell an entitlement gap from a missing route;
 		// the caller must not be able to tell them apart at all.
-		slog.Info("adminwrite: route hidden, feature not licensed",
-			"feature", string(f), "method", c.Request.Method, "path", c.Request.URL.Path)
+		slog.Info("adminwrite: route hidden, licence below the required tier",
+			"capability", Capability, "min_edition", string(min),
+			"edition", string(entitlement.Current()),
+			"method", c.Request.Method, "path", c.Request.URL.Path)
 
 		// gin's own answer for an unmounted route, byte for byte: status 404,
 		// Content-Type "text/plain" (gin.MIMEPlain), body "404 page not found"
@@ -263,6 +276,6 @@ func Mounted() bool { return mounter != nil }
 // the exported wrapper.
 func resetForTest() {
 	mounter = nil
-	gatedOn = ""
+	minEdition = ""
 	frozen = false
 }

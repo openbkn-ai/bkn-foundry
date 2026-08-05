@@ -11,9 +11,19 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/licverify"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
+
+// community installs a gate that grants nothing — the tier of an enterprise
+// binary with no certificate, and of a community one always.
+func community(t *testing.T) {
+	t.Helper()
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Edition: licverify.EditionCommunity}
+	}))
+}
 
 // requireAuth stands in for RequireAdmin: it refuses anything without a
 // credential, exactly as the real one does. The tests below mount the gate the
@@ -64,7 +74,7 @@ func serve(t *testing.T, register func(), authHeader string) answer {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	resetForTest()
-	extension.SetGateForTest(extension.GateFunc(func(extension.Feature) bool { return false }))
+	community(t)
 
 	r := gin.New()
 	register()
@@ -98,7 +108,7 @@ func serve(t *testing.T, register func(), authHeader string) answer {
 }
 
 func gatedMounter() {
-	RegisterMounterGated(extension.FeatureRBACBasic, func(g *gin.RouterGroup, _ Services) {
+	RegisterMounter(licverify.EditionProfessional, func(g *gin.RouterGroup, _ Services) {
 		g.POST("/x", func(c *gin.Context) { c.String(http.StatusOK, "served") })
 	})
 }
@@ -135,14 +145,14 @@ func TestGateRunsBeforeAuthentication(t *testing.T) {
 	}
 }
 
-// The licence is judged per request, so installing one activates routes that
-// were registered while unlicensed — no restart, no re-registration.
+// The tier is judged per request, so installing a certificate activates routes
+// that were registered while unlicensed — no restart, no re-registration.
 func TestLicenceInstalledAfterAssemblyActivatesTheRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	resetForTest()
-	on := false
-	extension.SetGateForTest(extension.GateFunc(func(f extension.Feature) bool {
-		return on && f == extension.FeatureRBACBasic
+	edition := licverify.EditionCommunity
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Edition: edition, Licensed: edition != licverify.EditionCommunity}
 	}))
 
 	r := gin.New()
@@ -160,47 +170,96 @@ func TestLicenceInstalledAfterAssemblyActivatesTheRoutes(t *testing.T) {
 	if got := call(); got != http.StatusNotFound {
 		t.Fatalf("装证前 = %d，want 404", got)
 	}
-	on = true
+	edition = licverify.EditionProfessional
 	if got := call(); got != http.StatusOK {
 		t.Fatalf("装证后 = %d，want 200——证书必须无需重启即生效", got)
 	}
-	on = false
+	edition = licverify.EditionCommunity
 	if got := call(); got != http.StatusNotFound {
 		t.Fatalf("撤证后 = %d，want 404——降档必须同样即时", got)
 	}
 }
 
-// The legacy entry point keeps working: Gate() is a no-op, and the caller's own
-// middleware decides. Without this, switching ee over would have to be atomic.
-func TestLegacyRegisterMounterStillMounts(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	resetForTest()
-	extension.SetGateForTest(extension.GateFunc(func(extension.Feature) bool { return false }))
+// A tier above the declared minimum must pass. Without this, an enterprise or
+// industry customer would lose a professional capability by paying more —
+// which is what an == comparison does and AtLeast exists to prevent
+// (ee-design.md §3.1).
+func TestHigherTiersInheritTheCapability(t *testing.T) {
+	for _, ed := range []licverify.Edition{
+		licverify.EditionProfessional,
+		licverify.EditionEnterprise,
+		licverify.EditionIndustry,
+	} {
+		t.Run(string(ed), func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			resetForTest()
+			entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+				return entitlement.Snapshot{Edition: ed, Licensed: true}
+			}))
 
-	r := gin.New()
-	RegisterMounter(func(g *gin.RouterGroup, _ Services) {
-		g.POST("/x", func(c *gin.Context) { c.String(http.StatusOK, "served") })
-	})
-	Mount(r.Group("/admin", Gate(), requireAuth()), nil)
+			r := gin.New()
+			gatedMounter()
+			Mount(r.Group("/admin", Gate(), requireAuth()), nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/x", nil)
-	req.Header.Set("Authorization", "Bearer whatever")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("legacy 入口 = %d，want 200——它自己管门控，插座不该插手", w.Code)
+			req := httptest.NewRequest(http.MethodPost, "/admin/x", nil)
+			req.Header.Set("Authorization", "Bearer whatever")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("%s = %d，want 200——上层档位必须继承下层能力", ed, w.Code)
+			}
+		})
 	}
 }
 
-// resetForTest must not leak assembly state into the next test.
-func TestResetClearsTheGatedFeature(t *testing.T) {
+// A capability registered without a tier would be a paid capability registered
+// as free. The socket delegates that check to MarkAssembled; this test pins
+// that it is in fact reached, so removing the delegation cannot pass silently.
+func TestRegisterWithoutATierPanics(t *testing.T) {
 	resetForTest()
+	community(t)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("零值 MinEdition 必须 panic——否则付费能力会被登记成免费的")
+		}
+	}()
+	RegisterMounter("", func(*gin.RouterGroup, Services) {})
+}
+
+// Registering must also put the capability in the process-wide assembly table.
+//
+// This is the bug that shipped: the socket recorded its mounter and its tier
+// but never registered the capability, so an enterprise binary carrying the
+// write routes reported extensions:[] — the capabilities endpoint could not
+// tell it apart from a community image, and support had no way to distinguish
+// "wrong image" from "wrong certificate".
+func TestRegisteringPutsTheCapabilityInTheAssemblyTable(t *testing.T) {
+	resetForTest()
+	community(t)
 	gatedMounter()
-	if gatedOn == "" {
+
+	for _, cap := range entitlement.Assembled() {
+		if cap.Name != Capability {
+			continue
+		}
+		if cap.MinEdition != licverify.EditionProfessional {
+			t.Fatalf("MinEdition = %q, want professional——档位必须一并登记，运维才知道补哪张证", cap.MinEdition)
+		}
+		return
+	}
+	t.Fatalf("%q 不在装配表里：%v——企业镜像会被报成社区镜像", Capability, entitlement.Assembled())
+}
+
+// resetForTest must not leak assembly state into the next test.
+func TestResetClearsTheDeclaredTier(t *testing.T) {
+	resetForTest()
+	community(t)
+	gatedMounter()
+	if minEdition == "" {
 		t.Fatal("前置条件不成立")
 	}
 	resetForTest()
-	if gatedOn != "" {
-		t.Fatal("resetForTest 没清 gatedOn——下一个测试会继承上一个的装配")
+	if minEdition != "" {
+		t.Fatal("resetForTest 没清 minEdition——下一个测试会继承上一个的装配")
 	}
 }

@@ -9,7 +9,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
+	"github.com/openbkn-ai/licverify"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // fake stands in for the ee implementation. Core must be testable with a fake
@@ -25,15 +27,23 @@ func (f *fake) Decide(_ context.Context, req Request) (Decision, error) {
 	return f.decision, f.err
 }
 
-// licensed installs a gate that turns perm_object_level on or off, and clears
-// the socket, so each test starts from a known assembly state.
+// licensed installs a gate that swings between enterprise and community, and
+// clears the socket, so each test starts from a known assembly state. The
+// pointer lets a test flip the tier mid-run, which is how the hot-activation
+// and lapse cases are written.
 func licensed(t *testing.T, on *bool) {
 	t.Helper()
 	reset()
-	extension.SetGateForTest(extension.GateFunc(func(f extension.Feature) bool {
-		return *on && f == extension.FeaturePermObjectLevel
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		if *on {
+			return entitlement.Snapshot{Licensed: true, Edition: licverify.EditionEnterprise}
+		}
+		return entitlement.Snapshot{Edition: licverify.EditionCommunity}
 	}))
 }
+
+// register plugs a fake in at the tier this capability really costs.
+func register(a Authorizer) { Register(licverify.EditionEnterprise, a) }
 
 func TestCommunityBuildAbstains(t *testing.T) {
 	on := true
@@ -54,7 +64,7 @@ func TestCommunityBuildAbstains(t *testing.T) {
 func TestRegisteredDenyOverridesCoreAllow(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	Register(&fake{decision: Deny})
+	register(&fake{decision: Deny})
 
 	d, err := Decide(context.Background(), Request{AccessorID: "u1", CoreVerdict: true})
 	if err != nil {
@@ -68,7 +78,7 @@ func TestRegisteredDenyOverridesCoreAllow(t *testing.T) {
 func TestRegisteredAllowOverridesCoreDeny(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	Register(&fake{decision: Allow})
+	register(&fake{decision: Allow})
 
 	d, _ := Decide(context.Background(), Request{AccessorID: "u1", CoreVerdict: false})
 	if got := Apply(false, d); !got {
@@ -79,7 +89,7 @@ func TestRegisteredAllowOverridesCoreDeny(t *testing.T) {
 func TestAbstainLeavesCoreVerdictAlone(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	Register(&fake{decision: Abstain})
+	register(&fake{decision: Abstain})
 
 	for _, core := range []bool{true, false} {
 		d, _ := Decide(context.Background(), Request{CoreVerdict: core})
@@ -93,7 +103,7 @@ func TestErrorFailsClosed(t *testing.T) {
 	on := true
 	licensed(t, &on)
 	wantErr := errors.New("ee store unreachable")
-	Register(&fake{decision: Allow, err: wantErr})
+	register(&fake{decision: Allow, err: wantErr})
 
 	d, err := Decide(context.Background(), Request{CoreVerdict: true})
 	if !errors.Is(err, wantErr) {
@@ -107,7 +117,7 @@ func TestErrorFailsClosed(t *testing.T) {
 func TestLapsedLicenseFallsBackToCommunityBehaviour(t *testing.T) {
 	on := true
 	licensed(t, &on)
-	Register(&fake{decision: Deny})
+	register(&fake{decision: Deny})
 
 	if !Available() {
 		t.Fatal("capability should be available while licensed")
@@ -132,7 +142,7 @@ func TestRequestCarriesCoreVerdictToEE(t *testing.T) {
 	on := true
 	licensed(t, &on)
 	f := &fake{decision: Abstain}
-	Register(f)
+	register(f)
 
 	req := Request{AccessorID: "u1", ResourceType: "knowledge_network", ResourceID: "kn1", Op: "view_detail", CoreVerdict: true}
 	if _, err := Decide(context.Background(), req); err != nil {
@@ -151,7 +161,81 @@ func TestRegisterNilPanics(t *testing.T) {
 			t.Fatal("Register(nil) should panic")
 		}
 	}()
-	Register(nil)
+	Register(licverify.EditionEnterprise, nil)
+}
+
+// A capability registered without a tier would be a paid capability registered
+// as free. The socket delegates the check to MarkAssembled; this pins that it
+// is actually reached, so dropping the delegation cannot pass silently.
+func TestRegisterWithoutATierPanics(t *testing.T) {
+	on := true
+	licensed(t, &on)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("零值 MinEdition 必须 panic——否则付费能力会被登记成免费的")
+		}
+	}()
+	Register("", &fake{})
+}
+
+// Registering must also put the capability in the process-wide assembly table,
+// which is what the capabilities endpoint reports as installed. Without it an
+// enterprise binary is indistinguishable from a community one there.
+func TestRegisteringPutsTheCapabilityInTheAssemblyTable(t *testing.T) {
+	on := false
+	licensed(t, &on)
+	register(&fake{})
+
+	for _, cap := range entitlement.Assembled() {
+		if cap.Name != Capability {
+			continue
+		}
+		if cap.MinEdition != licverify.EditionEnterprise {
+			t.Fatalf("MinEdition = %q, want enterprise", cap.MinEdition)
+		}
+		return
+	}
+	t.Fatalf("%q 不在装配表里：%v", Capability, entitlement.Assembled())
+}
+
+// A tier above the declared minimum inherits the capability. An == comparison
+// would cost an industry customer an enterprise capability for paying more
+// (ee-design.md §3.1/§3.3).
+func TestHigherTiersInheritTheCapability(t *testing.T) {
+	for _, ed := range []licverify.Edition{licverify.EditionEnterprise, licverify.EditionIndustry} {
+		t.Run(string(ed), func(t *testing.T) {
+			reset()
+			entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+				return entitlement.Snapshot{Licensed: true, Edition: ed}
+			}))
+			register(&fake{decision: Deny})
+			if !Available() {
+				t.Fatalf("%s 拿不到企业能力——上层档位必须继承下层", ed)
+			}
+		})
+	}
+}
+
+// Professional is a paid tier, and still below this capability's minimum. The
+// fallback is core's own verdict, not a refusal: this socket sits inside a
+// decision, not at a request entry point (ee-design.md §4.4).
+func TestPaidButLowerTierFallsBackToCore(t *testing.T) {
+	reset()
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Licensed: true, Edition: licverify.EditionProfessional}
+	}))
+	register(&fake{decision: Deny})
+
+	if Available() {
+		t.Fatal("专业档不该拿到企业能力")
+	}
+	d, err := Decide(context.Background(), Request{CoreVerdict: true})
+	if err != nil {
+		t.Fatalf("Decide err = %v, want nil", err)
+	}
+	if d != Abstain {
+		t.Fatalf("Decide = %v，want Abstain——档位不够要回落 core 判定", d)
+	}
 }
 
 // Registering while unlicensed has to work, or a certificate installed after
@@ -165,7 +249,7 @@ func TestRegisterWithoutLicenseIsAllowedAndStaysInactive(t *testing.T) {
 			t.Fatalf("Register must not refuse while unlicensed: %v", r)
 		}
 	}()
-	Register(&fake{})
+	register(&fake{})
 
 	// Registered, but the licence still decides — Available() is that judgement.
 	// Flipping the licence must take effect

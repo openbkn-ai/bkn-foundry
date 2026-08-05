@@ -8,10 +8,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/licverify"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // capabilitiesResponse is what the frontend reads to show or hide paid entry
@@ -26,11 +25,11 @@ type capabilitiesResponse struct {
 	// values to work that out — one that does will get it wrong the day a new
 	// State appears.
 	//
-	// It is derived from the same predicate the gate uses (State ∈ {valid,
-	// grace}, see license.Service.FeatureEnabled), not from the presence of a
-	// payload: an expired certificate still has one, and reporting that as
-	// licensed would put the frontend back in exactly the state this field was
-	// added to prevent — a full menu where every call refuses.
+	// It is read straight off the gate every gated call site consults, not
+	// derived from the presence of a payload: an expired certificate still has
+	// one, and reporting that as licensed would put the frontend back in
+	// exactly the state this field was added to prevent — a full menu where
+	// every call refuses.
 	Licensed bool `json:"licensed"`
 	// Edition is the tier in force, and "community" whenever Licensed is false:
 	// a deployment without a valid certificate behaves as community, and there
@@ -39,18 +38,31 @@ type capabilitiesResponse struct {
 	// activation banner.
 	Edition string `json:"edition"`
 	State   string `json:"state"`
-	// Features is what the license carries — including enterprise features
-	// this binary cannot serve. Kept separate from Capabilities so support can
-	// tell "not licensed" apart from "licensed, wrong image".
+	// Features is the raw feature list the certificate carries, for display and
+	// audit reconciliation ONLY.
+	//
+	// NOTHING MAY GATE ON IT — not this service, not another service, and above
+	// all not a frontend, where `features.includes('audit')` has no force at
+	// all and reintroduces fine-grained licensing through the back door. Tiers
+	// are what decide (ee-design.md §3.1/§3.2). To show or hide an entry point,
+	// read Capabilities: it is the server's own answer to "what works right
+	// now", already reconciled against the tier and against what this binary
+	// actually contains.
 	Features []string `json:"features"`
-	// Capabilities is what this binary can actually do right now: a licensed
-	// mode ① feature, or a mode ② feature whose ee implementation is plugged
-	// in. This is the list the frontend should drive off.
+	// Capabilities is what this binary can actually do right now: assembled
+	// into this build AND covered by the tier in force. This is the list the
+	// frontend should drive off.
 	Capabilities []string `json:"capabilities"`
 	// Limits are the numeric caps the license carries.
 	Limits map[string]int64 `json:"limits"`
-	// Extensions lists the enterprise sockets filled in this build. Empty in
-	// every community binary — the code is not there to fill them.
+	// Extensions lists the paid capabilities compiled into this build,
+	// regardless of licence. Empty in every community binary — the code is not
+	// there to register them.
+	//
+	// The pair matters when a customer reports a missing feature: something in
+	// Extensions but not in Capabilities means "right image, wrong certificate";
+	// missing from both means "wrong image". Collapsing the two into one list
+	// loses exactly the distinction support needs.
 	Extensions []string `json:"extensions"`
 }
 
@@ -74,37 +86,43 @@ func registerCapabilities(g *gin.RouterGroup, svc *license.Service) {
 			Features:     []string{},
 			Capabilities: []string{},
 			Limits:       map[string]int64{},
-			Extensions:   extension.Registered(),
+			Extensions:   []string{},
 		}
 
-		// Same predicate as the gate: a licence is in force only while the
-		// certificate verifies and has not run past its grace window. Features
-		// and limits are read from the payload regardless — support needs to see
-		// what the installed certificate carries even when it no longer grants
-		// anything, and Licensed already says it grants nothing.
+		// What this build contains, and what the tier in force actually unlocks.
+		// Derived from the assembly table rather than from the certificate's
+		// features[]: the tier is the only authorisation input (ee-design.md
+		// §3.1), and a feature key in a certificate says nothing about whether
+		// this image carries the code for it. Computed per request, never
+		// cached, so an imported or lapsed certificate shows up immediately.
+		for _, cap := range entitlement.Assembled() {
+			resp.Extensions = append(resp.Extensions, cap.Name)
+			if entitlement.AtLeast(cap.MinEdition) {
+				resp.Capabilities = append(resp.Capabilities, cap.Name)
+			}
+		}
+
+		// Everything the deployment is JUDGED by comes from the gate, not from
+		// the certificate: it is the same value every gated call site reads, so
+		// this endpoint cannot describe a deployment that behaves differently.
+		// The earlier version derived Licensed from "the payload exists", which
+		// answered true for a certificate expired past its grace window while
+		// every gated call refused — a full menu where nothing works, the exact
+		// failure this field was added to prevent.
+		resp.Licensed = entitlement.Licensed()
+		resp.Edition = string(entitlement.Current())
+
+		// Everything DESCRIPTIVE comes from the installed certificate, in force
+		// or not: support needs to see what it carries even when it grants
+		// nothing, and Licensed already says that it grants nothing.
 		if svc != nil {
-			snap := svc.State()
-			inForce := snap.State == licverify.StateValid || snap.State == licverify.StateGrace
-			if snap.Payload != nil {
-				if inForce {
-					resp.Licensed = true
-					resp.Edition = string(snap.Payload.Edition)
-				}
+			if snap := svc.State(); snap.Payload != nil {
 				if snap.Payload.Features != nil {
 					resp.Features = snap.Payload.Features
 				}
 				if snap.Payload.Limits != nil {
 					resp.Limits = snap.Payload.Limits
 				}
-			}
-		}
-
-		// A feature is usable when the license carries it AND, for enterprise
-		// features, the ee code is present. Derived per request rather than
-		// cached, so a lapsed or hot-reloaded license shows up immediately.
-		for _, f := range resp.Features {
-			if extension.Usable(extension.Feature(f)) {
-				resp.Capabilities = append(resp.Capabilities, f)
 			}
 		}
 

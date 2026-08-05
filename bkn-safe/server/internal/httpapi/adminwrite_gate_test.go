@@ -11,15 +11,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
 // routerWithMounter builds the REAL router — the one New() assembles, with
@@ -56,11 +57,13 @@ func routerWithMounter(t *testing.T, register func()) *gin.Engine {
 // enterprise build answered 401 where the community build answers 404, so the
 // paid surface was identifiable with no credential at all.
 func TestUnlicensedWriteRouteIsHiddenFromAnUnauthenticatedProbe(t *testing.T) {
-	extension.SetGateForTest(extension.GateFunc(func(extension.Feature) bool { return false }))
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Edition: licverify.EditionCommunity}
+	}))
 
 	community := routerWithMounter(t, func() {})
 	enterprise := routerWithMounter(t, func() {
-		adminwrite.RegisterMounterGated(extension.FeatureRBACBasic, adminwrite.Routes)
+		adminwrite.RegisterMounter(licverify.EditionProfessional, adminwrite.Routes)
 	})
 
 	probe := func(r *gin.Engine) (int, string) {

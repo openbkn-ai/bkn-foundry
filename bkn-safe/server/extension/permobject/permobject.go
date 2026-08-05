@@ -24,8 +24,16 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension"
+	"github.com/openbkn-ai/licverify"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
+
+// Capability is the name this socket registers itself under, and the string the
+// capabilities endpoint reports. It is spelled the same as the licence feature
+// key it grew out of, but nothing reads it from a certificate any more: the
+// tier is what decides (ee-design.md §3.1), and this is a display name.
+const Capability = "perm_object_level"
 
 // Decision is the ee layer's verdict on top of core's.
 type Decision uint8
@@ -77,25 +85,36 @@ type Authorizer interface {
 // lock-free; it is written once during assembly and only read afterwards.
 var impl atomic.Value // Authorizer
 
-// Register plugs the ee implementation into the socket. It is called from the
-// enterprise assembly entry point (cmd/*-ee).
+// minEdition is the lowest tier allowed to reach the ee implementation. It is
+// declared once at registration and read on every decision.
+var minEdition licverify.Edition
+
+// Register plugs the ee implementation into the socket and declares the lowest
+// tier that may use it. It is called from the enterprise assembly entry point
+// (cmd/*-ee).
 //
-// Registration is UNCONDITIONAL — do not check the licence first. An entry
-// point that registers only when a certificate is already present cannot be
-// switched on by a certificate installed afterwards: the registry is frozen
-// before that certificate arrives, so the only remedy left is restarting the
-// service on the customer's site to fix a licensing mistake. Available() and
-// Decide() re-read the licence on every call, which is where the tier belongs.
+// Registration is UNCONDITIONAL — do not check the licence first (ee-design.md
+// §5.4). An entry point that registers only when a certificate is already
+// present cannot be switched on by a certificate installed afterwards: the
+// registry is frozen before that certificate arrives, so the only remedy left
+// is restarting the service on the customer's site to fix a licensing mistake.
+// Available() and Decide() re-read the tier on every call, which is where it
+// belongs.
 //
-// It panics on a second registration and on registration after the extension
-// registry is frozen — see extension.Claim. Both are assembly bugs that must
-// be loud at startup. Registering while unlicensed used to panic too; that
-// rule is what produced the pattern described above, and it is gone.
-func Register(a Authorizer) {
+// It panics on a nil implementation, a second registration, a registration
+// after the assembly registry is frozen, and a zero min. All four are assembly
+// bugs that must be loud at startup; the last one because a paid capability
+// registered without a tier would be registered as free.
+func Register(min licverify.Edition, a Authorizer) {
 	if a == nil {
 		panic("permobject: Register(nil)")
 	}
-	extension.Claim(extension.FeaturePermObjectLevel, "permobject")
+	entitlement.MustBeAssembling("permobject")
+	// Records the capability in the process-wide assembly table, which is what
+	// the capabilities endpoint reports as installed. Panics on a zero or
+	// unknown min, so that check is not duplicated here.
+	entitlement.MarkAssembled(Capability, min)
+	minEdition = min
 	impl.Store(a)
 }
 
@@ -104,17 +123,23 @@ func Register(a Authorizer) {
 func Registered() bool { return load() != nil }
 
 // Available reports whether the capability is usable right now: plugged in and
-// still licensed. The license half is re-read every call, so an expiry or a
-// hot-reloaded downgrade takes effect without a restart.
+// the licence in force at or above the declared tier. The tier half is re-read
+// every call, so an expiry or a hot-reloaded downgrade takes effect without a
+// restart.
 func Available() bool {
-	return load() != nil && extension.Enabled(extension.FeaturePermObjectLevel)
+	return load() != nil && entitlement.AtLeast(minEdition)
 }
 
-// Decide asks the ee layer for a second opinion. Community builds, unlicensed
-// clusters, and clusters whose license lapsed after startup all get Abstain
-// with a nil error, which leaves core's verdict untouched — the community
-// authorization behaviour is the fallback, exactly as the downgrade path
-// requires.
+// Decide asks the ee layer for a second opinion. Community builds, clusters
+// below the required tier, and clusters whose license lapsed after startup all
+// get Abstain with a nil error, which leaves core's verdict untouched — the
+// community authorization behaviour is the fallback, exactly as the downgrade
+// path requires.
+//
+// Note this is Abstain, not the 404 the HTTP sockets answer with (ee-design.md
+// §4.4). Nothing here is a request entry point: it is one layer inside a
+// decision, and falling back to core's verdict is invisible from outside, so
+// there is no paid surface to hide.
 //
 // An error from the ee layer returns Deny. The socket only ever runs in an
 // enterprise build where the ee layer is the authority on restrictions; a
@@ -123,7 +148,7 @@ func Available() bool {
 // the error rather than treat the denial as a plain policy outcome.
 func Decide(ctx context.Context, req Request) (Decision, error) {
 	a := load()
-	if a == nil || !extension.Enabled(extension.FeaturePermObjectLevel) {
+	if a == nil || !entitlement.AtLeast(minEdition) {
 		return Abstain, nil
 	}
 	d, err := a.Decide(ctx, req)
@@ -156,4 +181,7 @@ func load() Authorizer {
 }
 
 // reset clears the socket. Tests only.
-func reset() { impl = atomic.Value{} }
+func reset() {
+	impl = atomic.Value{}
+	minEdition = ""
+}
