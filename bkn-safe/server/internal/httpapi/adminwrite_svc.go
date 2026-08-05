@@ -36,8 +36,12 @@ func newAdminWriteServices(e *authz.Enforcer, db *gorm.DB) adminwrite.Services {
 }
 
 // RequirePermission hands ee core's RBAC middleware, so a write route keeps the
-// same per-caller check its community read sibling uses. The license layer
-// (RequireFeature) is ee's to add on top.
+// same per-caller check its community read sibling uses.
+//
+// This is the RBAC layer only. The entitlement layer is the socket's — it runs
+// ahead of this one and answers 404, because a missing licence has to look like
+// a route that does not exist while a missing permission is refused outright.
+// ee adds neither; both are core's.
 func (s *adminWriteServices) RequirePermission(resourceType, op string) gin.HandlerFunc {
 	return RequirePermission(s.e, resourceType, op)
 }

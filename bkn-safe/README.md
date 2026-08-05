@@ -101,6 +101,34 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
   `GET /groups/:id/members`、`POST /search-org`、`POST /users`、`PUT /users/:id/password`
 - 健康：`GET /health/ready`、`/health/alive`
 
+## 授权档位（付费能力门控）
+
+付费能力按**档位**放行，不按证书里的 feature key —— 唯一判定入口是
+`entitlement.AtLeast(min)`，`community ⊂ professional ⊂ enterprise ⊂ industry`。
+证书里的 `features[]` 照签，但**只供展示与审计核对，任何代码路径不得据此放行**。
+
+档位不够时端点**伪装不存在**（404，与社区镜像逐字节一致），不是 403 —— 403 等于
+告诉探测者"这里有个付费端点"。升级引导走 `GET /api/safe/v1/capabilities`。
+
+### `-tags ee_dev` 与 `OPENBKN_EDITION` 对 bkn-safe 无效
+
+别的服务能用这两个东西在验证集群上切档位，**bkn-safe 不行**。它是集群的持证方，
+不是消费方：`app.Boot` 把 gate 直接接到自己的 `licSvc`（`license.Gate`），依赖图里
+根本没有那个环境变量桩可供覆盖。
+
+所以 bkn-safe 的档位只有两条路：
+
+| 场景 | 怎么切 |
+|---|---|
+| 集群 / 验证环境 | 导入**真证书**（`POST /api/safe/v1/admin/license/import`） |
+| 单元测试 | `entitlement.SetGateForTest(license.Gate(svc))`，或直接给一个假 gate |
+
+写在这里是因为它必然被踩：设了 `OPENBKN_EDITION=enterprise` 而档位纹丝不动，
+不知道这条的人会先去查环境变量有没有传进容器、再查 gate 有没有装，半天过去了。
+
+设计：bkn-docs `docs/shared/licensing/ee-design.md`、
+`docs/foundry/bkn-safe/design/issue-unknown-bkn-safe-edition-gating.md`。
+
 ## 注意
 
 - **绝不用 gobuffalo/pop** —— pop 按方言名分发，是 hydra 信创 fork 的坑根；GORM 吃 driver 层，openbkn 透明。
