@@ -94,6 +94,10 @@ components:
         与 `ErrorCompact` 的关键差异：**顶层只有 `error` 一个字段**，业务码在
         `error.code` 里，没有 `solution` / `link`。判断错误是否来自模型调用链路，
         看顶层有没有 `error` 对象即可。
+
+        覆盖范围包括请求体校验失败（HTTP 400）：`/v1/chat/completions` 上的参数
+        缺失 / 类型错误也是这个形状，原业务码（`ModelFactory.Router.ParamError.*`）
+        在 `error.code` 里。
       type: object
       required:
         - error
