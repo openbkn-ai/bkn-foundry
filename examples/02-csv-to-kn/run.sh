@@ -237,6 +237,9 @@ print('%s\t  $label: status=%s synced=%s vectorized=%s fulltext=%s embedding=%s'
     }
     status="${line%%$'\t'*}"
     echo "${line#*$'\t'}"
+    # `completed` means the sync finished and the full-text index is live; the
+    # embedding half can still be partial or failed — the printed index_health
+    # is what says whether vector search is usable.
     if [ "$status" = "completed" ]; then
         INDEX_OK=$((INDEX_OK + 1))
     else
@@ -281,8 +284,10 @@ for e in es: print('    -', e.get('name','?'), e.get('id',''))" 2>/dev/null || t
 
 # ── Step 6: Query instances (via Vega) ───────────────────────────────────────
 echo ""
-# Report the path the data actually takes, not the one Step 4 intended: a
-# resource whose build failed still reads live.
+# Report the path the data actually takes, not the one Step 4 intended.
+# `completed` is the only status that means the whole build landed; anything else
+# may still have written a local index name, in which case the resource serves an
+# incomplete snapshot rather than falling back to the source database.
 if [ "$INDEX_OK" -gt 0 ] && [ "$INDEX_FAIL" -eq 0 ]; then
     echo "=== Step 6: Query instances (served from the Step 4 index snapshot) ==="
     echo "  Source-database updates appear here only after the resource is rebuilt."
@@ -293,6 +298,10 @@ elif [ "$INDEX_OK" -gt 0 ]; then
     echo "  check 'openbkn vega dataset build-list' and its index_health before trusting the rows."
 else
     echo "=== Step 6: Query instances (live from the source database) ==="
+    if [ "$INDEX_FAIL" -gt 0 ]; then
+        echo "  No build completed. Resources whose build failed part-way may still serve an"
+        echo "  incomplete snapshot — check 'openbkn vega dataset build-list' and its index_health."
+    fi
 fi
 qrows() { openbkn --json call "/api/ontology-query/v1/knowledge-networks/$KN_ID/object-types/$1" -X POST -H "X-HTTP-Method-Override: GET" -d "{\"limit\":${2:-5}}" 2>/dev/null | python3 -c "import json,sys
 d=json.load(sys.stdin);rows=d.get('datas',d.get('entries',[]))

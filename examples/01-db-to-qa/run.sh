@@ -287,6 +287,9 @@ print('%s\t  $label: status=%s synced=%s vectorized=%s fulltext=%s embedding=%s'
     }
     status="${line%%$'\t'*}"
     echo "${line#*$'\t'}"
+    # `completed` means the sync finished and the full-text index is live; the
+    # embedding half can still be partial or failed — the printed index_health
+    # is what says whether vector search is usable.
     if [ "$status" = "completed" ]; then
         INDEX_OK=$((INDEX_OK + 1))
     else
@@ -330,8 +333,10 @@ print(es[0].get('id','') if es else '')")
 
 # ── Step 5: Query real data through the knowledge network ────────────────────
 echo ""
-# Report the path the data actually takes, not the one Step 3 intended: a
-# resource whose build failed still reads live.
+# Report the path the data actually takes, not the one Step 3 intended.
+# `completed` is the only status that means the whole build landed; anything else
+# may still have written a local index name, in which case the resource serves an
+# incomplete snapshot rather than falling back to the source database.
 if [ "$INDEX_OK" -gt 0 ] && [ "$INDEX_FAIL" -eq 0 ]; then
     echo "=== Step 5: Query data (via Vega — served from the Step 3 index snapshot) ==="
     echo "  Source-database updates appear here only after the resource is rebuilt."
@@ -342,6 +347,10 @@ elif [ "$INDEX_OK" -gt 0 ]; then
     echo "  check 'openbkn vega dataset build-list' and its index_health before trusting the rows."
 else
     echo "=== Step 5: Query data (via Vega — live from the source database) ==="
+    if [ "$INDEX_FAIL" -gt 0 ]; then
+        echo "  No build completed. Resources whose build failed part-way may still serve an"
+        echo "  incomplete snapshot — check 'openbkn vega dataset build-list' and its index_health."
+    fi
 fi
 if [ -n "$FIRST_OT" ]; then
     echo "  Sample rows from first object type:"

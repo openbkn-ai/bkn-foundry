@@ -376,11 +376,12 @@ curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/res-ds/da
   -H "x-http-method-override: POST" \
   -d '[{"id":"doc1","content":"..."}]'
 
-# Dataset 构建任务
+# 索引构建任务（resource_id 必须是 table 类资源；mode 只接受 batch / streaming，
+# execute_type 仅 batch 可用、缺省 full）
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/build-tasks" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
-  -d '{"resource_id":"res-ds","mode":"full"}'
+  -d '{"resource_id":"res_orders_001","mode":"batch","execute_type":"full"}'
 curl -sk "https://<访问地址>/api/vega-backend/v1/build-tasks/<task-id>" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 

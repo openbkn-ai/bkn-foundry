@@ -385,11 +385,12 @@ curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources/res-ds/
   -H "x-http-method-override: POST" \
   -d '[{"id":"doc1","content":"..."}]'
 
-# Dataset build task
+# Index build task (resource_id must be a table resource; mode accepts only
+# batch / streaming, and execute_type is batch-only, defaulting to full)
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/build-tasks" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
-  -d '{"resource_id":"res-ds","mode":"full"}'
+  -d '{"resource_id":"res_orders_001","mode":"batch","execute_type":"full"}'
 curl -sk "https://<access-address>/api/vega-backend/v1/build-tasks/<task-id>" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 
