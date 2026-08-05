@@ -48,9 +48,12 @@ openbkn bkn create-from-csv <catalog_id> \
   --files "materials.csv,inventory.csv" \
   --name "supply-kn" \
   --table-prefix sc_
-# → Imports the CSVs, creates the dataview, the OTs, and runs the index build.
 # → Returns kn_id.
 ```
+
+> **This command does not currently work**: its CSV loading depends on the retired dataflow path.
+> Use the two-step route below (mysql client → re-discover → `create-from-catalog`);
+> `examples/02-csv-to-kn` is a runnable version.
 
 Quick parameter reference:
 
@@ -66,11 +69,7 @@ Quick parameter reference:
 <details>
 <summary>Equivalent two-step path (use this when you want to override primary/display keys)</summary>
 
-```
-
-> **This command does not currently work**: its CSV loading depends on the retired dataflow path.
-> Use the step-by-step route below (mysql client → re-discover → `create-from-catalog`);
-> `examples/02-csv-to-kn` is a runnable version.bash
+```bash
 # 1. Load the CSVs with the mysql client (the platform-side import-csv is retired)
 mysql -h db.example.com -u root -p erp < load_csv.sql
 

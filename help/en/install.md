@@ -263,23 +263,22 @@ Typical flags:
 
 | Flag | Meaning |
 | --- | --- |
-| *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN / Context Loader prompts |
-| `-y` / `--yes` | Auto-accept all prompts: bootstrap, full-auth HTTP defaults (`admin` + the per-install initial password from `bknSafe.initialPassword` in config.yaml), `test` user creation + role sync, `openbkn` relogin as `test`, Context Loader import. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
+| *(none)* | Interactive: walks through Node / `openbkn` install (if missing), auth (single CLI — admin is built in via `openbkn admin`), then model / BKN prompts |
+| `-y` / `--yes` | Auto-accept all prompts: bootstrap, full-auth HTTP defaults (`admin` + the per-install initial password from `bknSafe.initialPassword` in config.yaml), `test` user creation + role sync, `openbkn` relogin as `test`. Skips interactive **model registration**; use `--config=models.yaml` for non-interactive model registration. |
 | `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
-| `--skip-context-loader` | Skip ADP Context Loader toolbox import |
 
 **Full install (auth + business domain):** onboarding treats the cluster as a full-auth install when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
 
-1. **`openbkn auth login`** (`onboard_ensure_kweaver_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` + the per-install initial password (`bknSafe.initialPassword` in config.yaml) (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
-2. **`openbkn` on `PATH`** (`onboard_ensure_kweaver_admin_for_isf`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
-3. **Admin auth** (`onboard_ensure_kweaver_admin_auth_for_isf`) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` + recorded initial-password defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
-4. **User `test`** (`onboard_offer_isf_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
+1. **`openbkn auth login`** (`onboard_ensure_bkn_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` + the per-install initial password (`bknSafe.initialPassword` in config.yaml) (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
+2. **`openbkn` on `PATH`** (`onboard_ensure_bkn_cli`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
+3. **Admin auth** (`onboard_ensure_bkn_auth` (shared by admin and business use)) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` + recorded initial-password defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
+4. **User `test`** (`onboard_provision_bkn_safe_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
 5. **Model registration** (interactive or YAML) — uses **`~/.bkn` as `test`**. The Context Loader built-in toolbox is registered by the platform install flow and is no longer a separate onboard step; see [Quick Start](quick-start.md) for how to verify it.
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
-**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the full-auth-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), and Context Loader (step 5) only runs if the operator deployment is present.
+**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the full-auth-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), 
 
 At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPLETION_REPORT=1`.
 
@@ -296,7 +295,7 @@ flowchart TB
   mode -->|default: interactive; optional -y| p3[onboard_probe] --> ui["Namespace + LLM/embedding (skip-if-already-exists) + BKN patch (only when default actually changes)"] --> r2[Completion report] --> e3([exit 0])
 ```
 
-- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On a **full-auth install**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then **Context Loader** when applicable.
+- **`onboard_probe` runs in all three modes** before BKN-only, YAML, or interactive model registration. On a **full-auth install**, it includes **admin HTTP auth (same `openbkn` defaults)**, **user `test`**, **`openbkn` relogin as `test`**, then model registration.
 - **`-y`** does not set `--config`; it mainly auto-accepts **Node / npm -g** bootstrap and **full-auth** `openbkn` **HTTP** auth defaults where applicable. Under `-y` the interactive model section is skipped (use `--config=models.yaml` to register non-interactively); the completion report still shows what is already on the platform.
 - **Re-runs are safe.** Interactive model registration **detects what is already there** and only asks to add more:
   - **LLM** — if any LLM is already registered, the script asks `Register another LLM now? [y/N]` (default **No**).
@@ -311,20 +310,20 @@ flowchart TB
 ```mermaid
 flowchart TB
   subgraph probe["onboard_probe"]
-    A["onboard_ensure_kweaver_auth\n(openbkn: HTTP default admin + recorded initial password, or browser)"] --> B["kubectl: ns or target namespace"]
+    A["onboard_ensure_bkn_auth\n(openbkn: HTTP default admin + recorded initial password, or browser)"] --> B["kubectl: ns or target namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli (Helm / ns → full-auth?)"]
     D --> E["ensure admin CLI\n(npm -g openbkn on full-auth installs if needed)"]
-    E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
-    F --> G1["onboard_offer_isf_test_user\ncreate or sync test + roles"]
+    E --> F["admin auth (same openbkn defaults)\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
+    F --> G1["onboard_provision_bkn_safe_test_user\ncreate or sync test + roles"]
     G1 --> G2["onboard re-login…\nopenbkn auth login … -u test (HTTP)"]
-    G2 --> H["onboard_offer_context_loader_toolset\n(openbkn impex)"]
+    G2 --> H["model registration (interactive or --config=models.yaml)"]
   end
 ```
 
-On **minimum (no-auth)** installs, the full-auth-only steps do not require the admin backend and typically skip the **test** / **relogin** / impex gating; Context Loader may still run if the operator deployment exists.
+On **minimum (no-auth)** installs, the full-auth-only steps do not require the admin backend and typically skip the **test** / **relogin** gating.
 
-**3) Full-auth install: who talks to whom (user `test` + Context Loader impex)**
+**3) Full-auth install: who talks to whom (user `test`)**
 
 ```mermaid
 sequenceDiagram
@@ -344,7 +343,7 @@ sequenceDiagram
 
 After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on a full-auth install so those calls use the business user.
 
-The `openbkn` CLI and its `admin` subcommand share **one** login and token store. For impex, **`openbkn` must be signed in as `test`**, not the initial console `admin` session when the API returns 403.
+The `openbkn` CLI and its `admin` subcommand share **one** login and token store. Business-plane work such as model registration uses the `test` session; the initial console `admin` session often gets 403 there.
 
 ---
 

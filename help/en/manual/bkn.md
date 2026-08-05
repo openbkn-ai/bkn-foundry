@@ -182,18 +182,22 @@ openbkn bkn create-from-catalog <catalog_id> \
   --tables orders,customers,products \
   --build --embedding-model <model-name>
 
-# From CSV files
+# From CSV files (load them into the catalog's database first, then build)
 openbkn bkn create-from-csv <catalog_id> \
   --files "./data/*.csv" \
   --name "analytics-network" \
   --build
 ```
 
----
-
 Catalog registration and table discovery are covered in [Data Ingestion](datasource.md).
 `--build` submits one Vega build task per resource; index configuration lives on the
 resource — see [VEGA Engine](vega.md).
+
+`create-from-csv` still exists in the CLI, but its CSV loading depends on the retired
+dataflow path and does not work on current deployments — load the files with the `mysql`
+client first, then use `create-from-catalog` (see `examples/02-csv-to-kn`).
+
+---
 
 ## 💻 CLI
 

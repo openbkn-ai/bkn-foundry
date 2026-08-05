@@ -181,7 +181,7 @@ openbkn bkn create-from-catalog <catalog_id> \
   --tables orders,customers,products \
   --build --embedding-model <模型名>
 
-# 从 CSV 文件批量创建（先导入该 Catalog 对应的库，再建网）
+# 从 CSV 文件批量创建（先把文件装进该 Catalog 对应的库，再建网）
 openbkn bkn create-from-csv <catalog_id> \
   --files "./data/*.csv" \
   --name "财务分析网络" \
@@ -190,6 +190,9 @@ openbkn bkn create-from-csv <catalog_id> \
 
 Catalog 的注册与表发现见[数据接入](datasource.md)。`--build` 会为每个资源提交一次 Vega
 构建任务；索引配置归属于资源，细节见 [VEGA 引擎](vega.md)。
+
+`create-from-csv` 仍在 CLI 中，但其 CSV 入库依赖已下线的 dataflow 通道，当前部署上不可用——
+请先用 `mysql` 客户端把文件装进库，再走 `create-from-catalog`（参见 `examples/02-csv-to-kn`）。
 
 ---
 
