@@ -307,8 +307,6 @@ const structured = await bkn.call('/api/vega-backend/v1/query/execute', {
 const build = await bkn.vega.build({ resource_id: 'res-ds', mode: 'batch' }, { wait: true });
 const status = await bkn.vega.buildStatus(String(build.id));
 
-// Data views (mdl-uniquery) — no typed helper, use the passthrough or the `openbkn dataview` CLI
-const dvList = await bkn.call('/api/mdl-uniquery/v1/dataviews?limit=50', { method: 'GET' });
 ```
 
 ---
@@ -354,7 +352,7 @@ curl -sk -X POST "https://<access-address>/api/vega-backend/v1/catalogs/cat-001/
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs/cat-001/resources?category=table&limit=30" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 
-# Resources: list, list-all, get, create, update, delete, data
+# Resources: list, get, create, update, delete, data (create/update/delete are REST-only)
 curl -sk "https://<access-address>/api/vega-backend/v1/resources?catalog_id=cat-001&limit=50" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources" \
@@ -414,6 +412,6 @@ curl -sk -X POST "https://<access-address>/api/vega-backend/v1/connector-types/m
   -d '{"enabled":true}'
 ```
 
-Dataview HTTP paths are defined by **mdl-uniquery**, not vega-backend; use `openbkn dataview` or reach the REST paths via the SDK's `bkn.call(...)` passthrough.
+Dataview HTTP paths were served by **mdl-uniquery** / **mdl-data-model**; neither module is published any more, so those endpoints are unavailable in current deployments. Use Vega resources and `openbkn vega sql` instead.
 
 Full details: npm package `@openbkn/bkn-sdk` and `openbkn vega --help` / `openbkn vega <subcommand> --help`.
