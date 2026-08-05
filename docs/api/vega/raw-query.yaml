@@ -105,8 +105,8 @@ components:
       description: |
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
-        - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法
-          ，以及 SQL 违反只读策略（包括 `WITH` / CTE）；此时 `error_details` 固定为
+        - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法，
+          以及 SQL 违反只读策略（包括 `WITH` / CTE）；此时 `error_details` 固定为
           `raw query rejected by read-only policy`
         - `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout_sec` 超出 [1, 3600]
       content:

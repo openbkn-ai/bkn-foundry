@@ -16,10 +16,10 @@ import (
 
 // run_sql 只读 SQL 守卫。
 //
-// vega 的原始查询接口不校验语句类型（INSERT/UPDATE/DELETE/DDL 均会真正执行），
-// 调用方必须强制 SELECT-only。这里用「剥离注释与字符串字面量后再做词法判定」做纵深防御：
+// vega 的原始查询接口会以 SQLGlot AST 策略做最终裁决，拒绝非顶层 SELECT、WITH/CTE、
+// 集合运算和写入/DDL。这里用「剥离注释与字符串字面量后再做词法判定」做纵深防御：
 // 先消除可藏关键字的注释/字符串/占位符，再要求单语句、以 SELECT/WITH 开头、不含写/DDL 关键字。
-// 它不是完整 SQL 解析器，但配合 vega 端的 LIMIT 兜底足以防住越权写。
+// 它不是完整 SQL 解析器，不能替代 vega 端的最终策略校验。
 
 var (
 	// resourcePlaceholderRe 与 vega extractResourceIDs 保持一致：{{.resource_id}} 或 {{resource_id}}。
