@@ -413,7 +413,9 @@ func (ma *metricAccess) ListMetrics(ctx context.Context, query interfaces.Metric
 		if dir == "" {
 			dir = interfaces.DESC_DIRECTION
 		}
-		builder = builder.OrderBy(fmt.Sprintf("%s %s", sortCol, dir))
+		// f_id 兜底：默认按 f_update_time 排序，同批导入的指标时间戳完全相同，
+		// 没有 tiebreaker 时跨页边界的行序不保证稳定（同一行可能翻两次或被跳过）。
+		builder = builder.OrderBy(fmt.Sprintf("%s %s", sortCol, dir), "f_id ASC")
 	}
 
 	sqlStr, vals, err := builder.ToSql()

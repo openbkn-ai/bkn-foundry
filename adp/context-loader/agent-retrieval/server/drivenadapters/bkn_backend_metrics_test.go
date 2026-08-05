@@ -170,3 +170,52 @@ func TestListMetricsByObjectTypes_StopsOnShortPage(t *testing.T) {
 		convey.So(len(metrics), convey.ShouldEqual, 1)
 	})
 }
+
+func TestListMetricsByObjectTypes_BatchesScopeRefs(t *testing.T) {
+	convey.Convey("对象类 id 过多时分批发，避免请求行过长", t, func() {
+		client, mockHTTP, ctrl := newMetricsTestClient(t)
+		defer ctrl.Finish()
+
+		ids := make([]string, metricsScopeBatch+5)
+		for i := range ids {
+			ids[i] = "ot" + strconv.Itoa(i)
+		}
+
+		var batchSizes []int
+		mockHTTP.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, q url.Values, _ map[string]string) (int, []byte, error) {
+				batchSizes = append(batchSizes, len(strings.Split(q.Get("scope_ref"), ",")))
+				return http.StatusOK, []byte(`{"entries":[{"id":"m1","scope_ref":"ot0"}],"total_count":1}`), nil
+			}).Times(2)
+
+		metrics, err := client.ListMetricsByObjectTypes(context.Background(), "kn1", ids)
+
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(batchSizes, convey.ShouldResemble, []int{metricsScopeBatch, 5})
+		// 每批各回一条同 scope 的指标，合并后两条都在
+		convey.So(len(metrics), convey.ShouldEqual, 2)
+	})
+}
+
+func TestListMetricsByObjectTypes_EscapesKnID(t *testing.T) {
+	convey.Convey("kn_id 转义后才进 path，注入的查询参数盖不掉 scope_type", t, func() {
+		client, mockHTTP, ctrl := newMetricsTestClient(t)
+		defer ctrl.Finish()
+
+		var gotURL string
+		var gotQuery url.Values
+		mockHTTP.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, src string, q url.Values, _ map[string]string) (int, []byte, error) {
+				gotURL, gotQuery = src, q
+				return http.StatusOK, []byte(`{"entries":[],"total_count":0}`), nil
+			})
+
+		_, err := client.ListMetricsByObjectTypes(context.Background(),
+			"kn1/metrics?scope_type=subgraph&x=", []string{"ot1"})
+
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(gotURL, convey.ShouldNotContainSubstring, "?")
+		convey.So(gotURL, convey.ShouldEndWith, "/knowledge-networks/kn1%2Fmetrics%3Fscope_type=subgraph&x=/metrics")
+		convey.So(gotQuery.Get("scope_type"), convey.ShouldEqual, "object_type")
+	})
+}

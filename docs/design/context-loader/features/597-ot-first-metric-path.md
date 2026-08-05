@@ -63,6 +63,11 @@ MCP 工具 + REST 端点 `POST /kn/query_metric`，转发 ontology-query 的
   是 Agent 自由填写的字符串，不转义的话一个带 `?` 的值就能给下游塞进 `branch` 等查询参数。
 - 指标列表**分页取全**（单页 1000，硬上限 10000 只是失控保护）：截断后的答案与「这个对象类
   没有指标」在 Agent 眼里完全一样，而那正是把它推回 `run_sql` 的状态；真触到上限会打 warn。
+  对象类 id 按 100 个一批发（`get_kn_detail` 会问整网的对象类，几百个 id 逗号拼进查询串足以
+  撑爆代理的请求行缓冲）。bkn-backend 侧排序补 `f_id` tiebreaker——默认按 `f_update_time`
+  排，同批导入的指标时间戳相同，没有兜底列时跨页边界行序不稳。
+- `kn_id` 在两处适配器都 `PathEscape`：comm-go 的 `generateURL` 会把 URL 自带的查询参数
+  **反向覆盖**调用方传的值，不转义的话一个带 `?` 的 id 就能把 `scope_type` 顶掉。
 
 ### 2.3 口径写进工具描述
 

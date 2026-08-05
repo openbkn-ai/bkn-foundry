@@ -126,7 +126,9 @@ func TestQueryMetric(t *testing.T) {
 			AnalysisDimensions: []string{"region"},
 			Limit:              ptr(10),
 			FillNull:           true,
-			Time:               &interfaces.MetricTimeWindow{Instant: ptr(true), Start: ptr(int64(1)), End: ptr(int64(2))},
+			// fill_null 只对带 start/end 的序列查询有效，与下游同规则。
+			Time: &interfaces.MetricTimeWindow{
+				Instant: ptr(false), Start: ptr(int64(1)), End: ptr(int64(2)), Step: ptr("day")},
 		})
 
 		convey.So(err, convey.ShouldBeNil)
