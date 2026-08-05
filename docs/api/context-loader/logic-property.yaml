@@ -13,6 +13,12 @@ info:
     [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types` 返回的
     `logic_properties[].parameters`。
 
+    同一份文件里还有 `POST /kn/query_metric`：**类级指标、或没绑到任何逻辑属性的
+    指标**走它，直接按 `metric_id` 与 MetricDefinition 的口径取数。两条路的分工是
+    「实例 + 已绑逻辑属性 → `logic-property-resolver`，其余 → `query_metric`」；
+    已建模的指标一律不该用 `run_sql` 重写口径。指标清单来自 `get_object_types`
+    返回的 `related_metrics`。
+
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
   version: 0.1.3
 servers:
@@ -107,6 +113,90 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
 
+  /kn/query_metric:
+    post:
+      tags:
+        - LogicProperty
+      summary: 按指标口径取数
+      operationId: queryMetric
+      description: |
+        按已建模指标自身的口径计算取数，是 OT-first 指标路径的第 3 步：
+        `search_schema` / `get_kn_detail` 锁定对象类 → `get_object_types` 从
+        `related_metrics` 里选定 `metric_id` → 本接口计算。
+
+        与 `logic-property-resolver` 的分工：实例级、且已绑到逻辑属性的指标走那条
+        （它会先用大模型推参数）；**类级指标、或未绑逻辑属性的指标走本接口**，参数
+        由调用方显式给出，不经大模型。
+
+        `time` 在指标没有时间维度（`related_metrics[].time_dimension` 为空）时可整体
+        省略。给了就要自洽：`instant=true` 取单点，不得带 `step`；`instant=false`
+        取序列，必须带 `step`。这些组合在本服务就地校验，返回 400。
+
+        请求体与 ontology-query 的 `MetricQueryRequestBody` 同构；响应只保留结果序列，
+        不回带指标定义（`related_metrics` 里已经有了）。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+        - $ref: '#/components/parameters/XKnID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryMetricRequest'
+            examples:
+              取单点:
+                value:
+                  kn_id: kn_supplychain
+                  metric_id: metric_product_total
+              按维度拆分的区间序列:
+                value:
+                  kn_id: kn_supplychain
+                  metric_id: metric_product_total
+                  analysis_dimensions:
+                    - region
+                  time:
+                    instant: false
+                    start: 1735660800
+                    end: 1743436800
+                    step: month
+      responses:
+        '200':
+          description: 指标结果序列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryMetricResponse'
+            application/toon:
+              schema:
+                type: string
+                description: TOON 编码的同一结构（`response_format=toon` 时）。
+        '400':
+          description: |
+            缺 `kn_id` / `metric_id`，或时间窗自相矛盾（`instant=true` 带 `step`、
+            `instant=false` 缺 `step`、`step` 不在枚举内、`start` 晚于 `end`）
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: 指标不存在（下游 ontology-query 判定）
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误或下游异常
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
 components:
   securitySchemes:
     OAuth2:
@@ -126,8 +216,150 @@ components:
           - toon
         default: json
       description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+    XKnID:
+      name: x-kn-id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: 知识网络 ID 的请求头写法；请求体里给了 `kn_id` 时以请求体为准。
 
   schemas:
+    QueryMetricRequest:
+      type: object
+      required:
+        - kn_id
+        - metric_id
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。也可用 `x-kn-id` 头传。
+        metric_id:
+          type: string
+          description: |
+            指标 ID，取自 `get_object_types` 返回的 `related_metrics[].id`，
+            或对象类逻辑属性 `data_source` 里引用的指标 ID。
+        time:
+          $ref: '#/components/schemas/MetricTimeWindow'
+        condition:
+          type: object
+          additionalProperties: true
+          description: |
+            过滤条件，结构与 `query_object_instance` 的 `condition` 一致
+            （`field` / `operation` / `value` / `value_from`，可 `and` / `or` 嵌套）。
+        analysis_dimensions:
+          type: array
+          items:
+            type: string
+          description: |
+            分析维度（按维度拆分结果）。取值须来自
+            `related_metrics[].analysis_dimensions`。
+        order_by:
+          type: array
+          description: 结果排序。
+          items:
+            type: object
+            properties:
+              property:
+                type: string
+              direction:
+                type: string
+                enum:
+                  - asc
+                  - desc
+        having:
+          type: object
+          description: 对聚合结果过滤。
+          properties:
+            field:
+              type: string
+            operation:
+              type: string
+            value: {}
+        limit:
+          type: integer
+          description: 返回条数上限。
+        fill_null:
+          type: boolean
+          default: false
+          description: 区间查询时，无数据的步长点是否补空。
+
+    MetricTimeWindow:
+      type: object
+      description: |
+        时间窗。指标没有时间维度时可整体省略；给了就要自洽（见接口说明）。
+      properties:
+        instant:
+          type: boolean
+          description: '`true` 取单点（不得带 `step`）；`false` 取序列（必须带 `step`）。'
+        start:
+          type: integer
+          format: int64
+          description: 起始时间，unix 秒。
+        end:
+          type: integer
+          format: int64
+          description: 结束时间，unix 秒。
+        step:
+          type: string
+          enum:
+            - day
+            - week
+            - month
+            - quarter
+            - year
+          description: 序列步长，仅 `instant=false` 时传。
+
+    QueryMetricResponse:
+      type: object
+      properties:
+        kn_id:
+          type: string
+        metric_id:
+          type: string
+        datas:
+          type: array
+          description: |
+            按 `labels` 分组的结果序列。未传 `analysis_dimensions` 时通常只有一条，
+            `labels` 为空。
+          items:
+            $ref: '#/components/schemas/MetricDataSeries'
+        overall_ms:
+          type: integer
+          format: int64
+          description: 耗时（毫秒）。
+
+    MetricDataSeries:
+      type: object
+      properties:
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: 该序列对应的维度取值。
+        times:
+          type: array
+          items: {}
+          description: 时间点（unix 秒）。
+        time_strs:
+          type: array
+          items:
+            type: string
+          description: 时间点的可读形式。
+        values:
+          type: array
+          items: {}
+          description: 与 `times` 一一对应的指标值。
+        growth_values:
+          type: array
+          items: {}
+        growth_rates:
+          type: array
+          items: {}
+        proportions:
+          type: array
+          items: {}
+
     ResolveLogicPropertiesRequest:
       type: object
       required:

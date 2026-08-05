@@ -548,3 +548,124 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 
 	return actionTypes, nil
 }
+
+// metricsListResp is the bkn-backend GET .../metrics response.
+type metricsListResp struct {
+	Entries []struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		Comment       string `json:"comment"`
+		Unit          string `json:"unit"`
+		UnitType      string `json:"unit_type"`
+		MetricType    string `json:"metric_type"`
+		ScopeType     string `json:"scope_type"`
+		ScopeRef      string `json:"scope_ref"`
+		TimeDimension *struct {
+			Property string `json:"property"`
+		} `json:"time_dimension"`
+		AnalysisDimensions []struct {
+			Name string `json:"name"`
+		} `json:"analysis_dimensions"`
+	} `json:"entries"`
+	TotalCount int64 `json:"total_count"`
+}
+
+// maxScopedMetrics caps how many scoped metrics one get_object_types answer carries.
+// It matches bkn-backend's own MAX_LIMIT, and exists so a knowledge network with a
+// runaway metric count cannot quietly blow up a tool result.
+const maxScopedMetrics = 1000
+
+// ListMetricsByObjectTypes 枚举挂在给定对象类下的指标（scope_type=object_type）。
+// 走 bkn-backend 指标注册表（GET .../metrics），不是概念索引语义召回：对象类要"看得见"
+// 自己的指标，必须是全量且与库一致的。
+func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
+	scopeRefs := make([]string, 0, len(otIDs))
+	seen := make(map[string]struct{}, len(otIDs))
+	for _, id := range otIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		scopeRefs = append(scopeRefs, id)
+	}
+	if strings.TrimSpace(knID) == "" || len(scopeRefs) == 0 {
+		return nil, nil
+	}
+
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/metrics", b.baseURL, knID)
+	header := common.GetHeaderForChildOperation(ctx, "bkn.metric.list", 1)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+
+	queryValues := url.Values{}
+	queryValues.Set("scope_type", "object_type")
+	queryValues.Set("scope_ref", strings.Join(scopeRefs, ","))
+	queryValues.Set("limit", strconv.Itoa(maxScopedMetrics))
+
+	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
+	if err != nil {
+		b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, respCode,
+			fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err))
+	}
+
+	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
+		b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes failed, [%s], code %d", src, respCode)
+
+		var baseError interfaces.KnBaseError
+		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+			return nil, infraErr.DefaultHTTPError(ctx, respCode,
+				fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes failed, code %d", respCode))
+		}
+		return nil, &infraErr.HTTPError{
+			HTTPCode:     respCode,
+			Code:         baseError.ErrorCode,
+			Description:  baseError.Description,
+			Solution:     baseError.Solution,
+			ErrorLink:    baseError.ErrorLink,
+			ErrorDetails: baseError.ErrorDetails,
+		}
+	}
+
+	if len(respBody) == 0 {
+		return nil, nil
+	}
+
+	parsed := &metricsListResp{}
+	if err := sonic.Unmarshal(respBody, parsed); err != nil {
+		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListMetricsByObjectTypes unmarshal failed: %v", err)
+		return nil, err
+	}
+
+	metrics := make([]*interfaces.RelatedMetric, 0, len(parsed.Entries))
+	for _, e := range parsed.Entries {
+		// bkn-backend applies the scope filter, but an older backend that ignores the
+		// query parameter would otherwise hand every metric of the network to every
+		// object type. Cheap to re-check, and wrong-by-default if we do not.
+		if _, ok := seen[e.ScopeRef]; !ok {
+			continue
+		}
+		metric := &interfaces.RelatedMetric{
+			ID:         e.ID,
+			Name:       e.Name,
+			Comment:    e.Comment,
+			MetricType: e.MetricType,
+			Unit:       e.Unit,
+			UnitType:   e.UnitType,
+			ScopeRef:   e.ScopeRef,
+		}
+		if e.TimeDimension != nil {
+			metric.TimeDimension = e.TimeDimension.Property
+		}
+		for _, d := range e.AnalysisDimensions {
+			if strings.TrimSpace(d.Name) != "" {
+				metric.AnalysisDimensions = append(metric.AnalysisDimensions, d.Name)
+			}
+		}
+		metrics = append(metrics, metric)
+	}
+	return metrics, nil
+}

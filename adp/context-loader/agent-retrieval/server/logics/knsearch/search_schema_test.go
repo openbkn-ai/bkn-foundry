@@ -57,6 +57,10 @@ func (s *stubSearchSchemaBknBackend) GetActionTypeDetail(_ context.Context, _ st
 	return nil, nil
 }
 
+func (s *stubSearchSchemaBknBackend) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
+	return nil, nil
+}
+
 func (s *stubSearchSchemaBknBackend) SearchMetricTypes(ctx context.Context, req *interfaces.QueryConceptsReq) (*interfaces.MetricTypeConcepts, error) {
 	s.searchMetricCalls++
 	if s.searchMetricTypesFunc != nil {

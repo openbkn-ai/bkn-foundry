@@ -9,7 +9,7 @@
   },
   "search_schema": {
     "name": "search_schema",
-    "description": "统一的 Schema 探索入口。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type/condition_operations，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
+    "description": "统一的 Schema 探索入口，先锁定对象类（object_types）。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费；其中 metric_types 只是辅助线索，指标的权威清单以 get_object_types 返回的 related_metrics 为准（按对象类 scope 全量枚举）。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type/condition_operations，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
   },
   "query_object_instance": {
     "name": "query_object_instance",
@@ -21,7 +21,11 @@
   },
   "get_logic_properties_values": {
     "name": "get_logic_properties_values",
-    "description": "逻辑属性解析（指标/算子）。针对实例批量计算逻辑属性值。"
+    "description": "逻辑属性解析（指标/算子）。针对实例批量计算已绑逻辑属性的值——指标路径里对应「实例级 + 已绑 logic property」这一支；类级指标、或未绑逻辑属性的指标改调 query_metric。"
+  },
+  "query_metric": {
+    "name": "query_metric",
+    "description": "按已建模指标的口径取数（OT-first 路径第 3 步）。先 search_schema / get_kn_detail 锁定对象类，再 get_object_types 从 related_metrics 里选定 metric_id，最后调本工具计算——口径写在 MetricDefinition 里，别用 run_sql 自己重写。分流：实例级且已绑逻辑属性的走 get_logic_properties_values；类级、或未绑逻辑属性的走本工具。可选 condition 过滤、analysis_dimensions 拆维、time 取单点或序列。"
   },
   "get_action_info": {
     "name": "get_action_info",
@@ -49,11 +53,11 @@
   },
   "get_kn_detail": {
     "name": "get_kn_detail",
-    "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。默认 detail_level=summary：返回骨架 + 每个属性仅 name+type（不含 display_name/comment/字段映射/查询算子/映射规则）——足够理解结构与规划查询，体积小。需要某对象的完整字段映射（含 comment）时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。"
+    "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。默认 detail_level=summary：返回骨架 + 每个属性仅 name+type（不含 display_name/comment/字段映射/查询算子/映射规则）——足够理解结构与规划查询，体积小。需要某对象的完整字段映射（含 comment）时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。对象类条目附带 related_metric_count（该对象类下已建模指标数），用来判断是否值得下钻取指标。"
   },
   "get_object_types": {
     "name": "get_object_types",
-    "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters）。渐进式下钻用：先 get_kn_detail（summary）拿对象 id，再用本工具展开需要的对象。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
+    "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters），并返回该对象类下可用的指标 related_metrics（scope_type=object_type 且 scope_ref=对象类 id，含未绑逻辑属性的指标）。渐进式下钻用：先 get_kn_detail（summary）拿对象 id，再用本工具展开需要的对象。选定指标后：实例级且已绑逻辑属性走 get_logic_properties_values，类级或未绑的走 query_metric。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
   },
   "get_relation_types": {
     "name": "get_relation_types",
@@ -61,7 +65,7 @@
   },
   "run_sql": {
     "name": "run_sql",
-    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
+    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。注意：已建模指标不要用 SQL 重写口径——指标走 get_object_types 选定后的 query_metric / get_logic_properties_values；run_sql 用于未建成指标的即席聚合与跨表统计。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
   },
   "list_resources": {
     "name": "list_resources",

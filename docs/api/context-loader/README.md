@@ -11,7 +11,7 @@
 | [kn-explore.yaml](kn-explore.yaml) | 知识网络浏览 | `POST /kn/list_knowledge_networks`、`POST /kn/get_kn_detail`、`POST /kn/get_object_types`、`POST /kn/get_relation_types` |
 | [object-instance.yaml](object-instance.yaml) | 对象实例查询 | `POST /kn/query_object_instance` |
 | [instance-subgraph.yaml](instance-subgraph.yaml) | 实例子图查询 | `POST /kn/query_instance_subgraph` |
-| [logic-property.yaml](logic-property.yaml) | 逻辑属性求值 | `POST /kn/logic-property-resolver` |
+| [logic-property.yaml](logic-property.yaml) | 逻辑属性求值与指标取数 | `POST /kn/logic-property-resolver`、`POST /kn/query_metric` |
 | [action.yaml](action.yaml) | 行动召回与执行 | `POST /kn/get_action_info`、`POST /kn/execute_action`、`POST /kn/get_action_execution`、`POST /kn/list_action_executions` |
 | [skill.yaml](skill.yaml) | Skill 召回 | `POST /kn/find_skills` |
 | [data-access.yaml](data-access.yaml) | 数据层直查 | `POST /kn/list_resources`、`POST /kn/describe_resource`、`POST /kn/run_sql` |
@@ -22,11 +22,20 @@
 ```text
 list_knowledge_networks  → 发现 kn_id
 search_schema            → 一句话找到相关对象类 / 关系类 / 行动类 / 指标类
-get_object_types         → 下钻拿属性的物理列名与可用算子
+get_object_types         → 下钻拿属性的物理列名、可用算子，以及该对象类下的 related_metrics
 query_object_instance    → 取实例，从 _instance_identity 拿主键
-  ├→ logic-property-resolver → 求指标 / 算子类逻辑属性
+  ├→ logic-property-resolver → 求指标 / 算子类逻辑属性（实例 + 已绑逻辑属性）
   ├→ get_action_info → execute_action → get_action_execution → 执行闭环
   └→ find_skills            → 召回可装载的 Skill
+```
+
+指标取数（OT 优先，已建模指标别用 `run_sql` 重写口径）：
+
+```text
+search_schema / get_kn_detail  → 锁定对象类（summary 里 related_metric_count > 0 才有指标）
+get_object_types               → 从 related_metrics 选定指标
+  ├→ logic-property-resolver   → 实例级 + 已绑逻辑属性
+  └→ query_metric              → 类级 / 未绑逻辑属性，按 MetricDefinition 口径算
 ```
 
 绕开本体直查数据：`list_resources` → `describe_resource` → `run_sql`。
@@ -52,7 +61,7 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
      CONTRACT_ARGS="--include-probe-post --token $TOKEN"
 ```
 
-20 个操作里 **15 个在探测范围内**，其余 5 个不探测，原因如下——它们的响应结构
+21 个操作里 **15 个在探测范围内**，其余 6 个不探测，原因如下——它们的响应结构
 **未经实机验证**，改动时请人工核对：
 
 | 端点 | 不探测的原因 |
@@ -60,6 +69,7 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
 | `execute_action` | **有副作用**，会真的触发行动执行 |
 | `semantic-search` | 走大模型，耗时与成本不适合常态巡检 |
 | `logic-property-resolver` | 同上，且需要真实实例标识才能求值 |
+| `query_metric` | 需要环境里存在已建模指标，`metric_id` 无法自动合成 |
 | `run_sql` | 需要针对具体资源构造有意义的 SQL，无法自动合成 |
 | `POST /mcp` | JSON-RPC 会话语义，不是普通请求 / 响应结构 |
 

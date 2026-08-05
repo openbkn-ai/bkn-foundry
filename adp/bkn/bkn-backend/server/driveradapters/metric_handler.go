@@ -268,6 +268,29 @@ func (r *restHandler) ValidateMetrics(c *gin.Context, vis hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, nil)
 }
 
+// splitScopeRefs parses the scope_ref query parameter: one id, or several
+// separated by commas. Blanks and duplicates are dropped so the resulting IN
+// filter carries only what the caller actually asked for.
+func splitScopeRefs(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	refs := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	for _, part := range strings.Split(raw, ",") {
+		ref := strings.TrimSpace(part)
+		if ref == "" {
+			continue
+		}
+		if _, dup := seen[ref]; dup {
+			continue
+		}
+		seen[ref] = struct{}{}
+		refs = append(refs, ref)
+	}
+	return refs
+}
+
 func (r *restHandler) ListMetricsByIn(c *gin.Context) {
 	r.ListMetrics(c, visitor.GenerateVisitor(c))
 }
@@ -308,9 +331,15 @@ func (r *restHandler) ListMetrics(c *gin.Context, vis hydra.Visitor) {
 
 	namePattern := c.Query("name_pattern")
 	tag := strings.Trim(c.Query("tag"), " ")
-	scopeRef := strings.TrimSpace(c.Query("scope_ref"))
+	// scope_ref accepts one id or a comma-separated list, so an OT-first caller can
+	// enumerate the metrics of several object types in one request.
+	scopeRefs := splitScopeRefs(c.Query("scope_ref"))
+	scopeRef := ""
+	if len(scopeRefs) == 1 {
+		scopeRef = scopeRefs[0]
+	}
 	scopeType := strings.TrimSpace(c.Query("scope_type"))
-	if scopeRef != "" && scopeType == "" {
+	if len(scopeRefs) > 0 && scopeType == "" {
 		scopeType = interfaces.ScopeTypeObjectType
 	}
 	offset := c.DefaultQuery("offset", interfaces.DEFAULT_OFFEST)
@@ -337,6 +366,7 @@ func (r *restHandler) ListMetrics(c *gin.Context, vis hydra.Visitor) {
 		Tag:         tag,
 		ScopeType:   scopeType,
 		ScopeRef:    scopeRef,
+		ScopeRefs:   scopeRefs,
 		Branch:      branch,
 		KNID:        knID,
 	}

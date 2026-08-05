@@ -53,6 +53,7 @@ var communityTools = []string{
 	"list_knowledge_networks",
 	"list_resources",
 	"query_instance_subgraph",
+	"query_metric",
 	"query_object_instance",
 	"run_sql",
 	"search_schema",

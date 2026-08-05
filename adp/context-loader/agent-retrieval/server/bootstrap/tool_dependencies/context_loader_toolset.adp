@@ -317,6 +317,223 @@
       "dependencies_url": ""
      },
      {
+      "tool_id": "f80dc18e-955e-43af-b0f7-2000287d6848",
+      "name": "query_metric",
+      "description": "按已建模指标的口径取数（OT-first 第 3 步）。先 get_object_types 从 related_metrics 选定 metric_id，再调本工具；口径写在 MetricDefinition 里，不要用 run_sql 重写。实例级且已绑逻辑属性的走 get_logic_properties_values。",
+      "status": "enabled",
+      "metadata_type": "openapi",
+      "metadata": {
+       "version": "3c5c43e5-a1d7-483b-97b5-8f993cd1815a",
+       "summary": "query_metric",
+       "description": "按已建模指标的口径取数（OT-first 第 3 步）。先 get_object_types 从 related_metrics 选定 metric_id，再调本工具；口径写在 MetricDefinition 里，不要用 run_sql 重写。实例级且已绑逻辑属性的走 get_logic_properties_values。",
+       "server_url": "http://agent-retrieval:30779",
+       "path": "/api/agent-retrieval/in/v1/kn/query_metric",
+       "method": "POST",
+       "create_time": 1776920840668983300,
+       "update_time": 1776920840668983300,
+       "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "api_spec": {
+        "parameters": [
+         {
+          "name": "x-account-id",
+          "in": "header",
+          "description": "账户ID，用于内部服务调用时传递账户信息",
+          "required": false,
+          "schema": {
+           "type": "string"
+          }
+         },
+         {
+          "name": "x-account-type",
+          "in": "header",
+          "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+          "required": false,
+          "schema": {
+           "enum": [
+            "user",
+            "app",
+            "anonymous"
+           ],
+           "type": "string"
+          }
+         }
+        ],
+        "request_body": {
+         "description": "",
+         "content": {
+          "application/json": {
+           "schema": {
+            "type": "object",
+            "properties": {
+             "response_format": {
+              "type": "string",
+              "enum": [
+               "json",
+               "toon"
+              ],
+              "default": "toon",
+              "description": "文本格式：json 或 toon，默认 toon"
+             },
+             "kn_id": {
+              "type": "string",
+              "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+             },
+             "metric_id": {
+              "type": "string",
+              "description": "指标 ID，取自 get_object_types 的 related_metrics[].id"
+             },
+             "time": {
+              "type": "object",
+              "description": "时间窗；指标无时间维度时可省略。instant=true 取单点且不得传 step，instant=false 取序列且必须传 step。",
+              "properties": {
+               "instant": {
+                "type": "boolean"
+               },
+               "start": {
+                "type": "integer",
+                "description": "起始时间，unix 秒"
+               },
+               "end": {
+                "type": "integer",
+                "description": "结束时间，unix 秒"
+               },
+               "step": {
+                "type": "string",
+                "enum": [
+                 "day",
+                 "week",
+                 "month",
+                 "quarter",
+                 "year"
+                ]
+               }
+              }
+             },
+             "condition": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "过滤条件，结构同 query_object_instance 的 condition"
+             },
+             "analysis_dimensions": {
+              "type": "array",
+              "items": {
+               "type": "string"
+              },
+              "description": "分析维度，取值来自 related_metrics[].analysis_dimensions"
+             },
+             "order_by": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "properties": {
+                "property": {
+                 "type": "string"
+                },
+                "direction": {
+                 "type": "string",
+                 "enum": [
+                  "asc",
+                  "desc"
+                 ]
+                }
+               }
+              }
+             },
+             "having": {
+              "type": "object",
+              "properties": {
+               "field": {
+                "type": "string"
+               },
+               "operation": {
+                "type": "string"
+               },
+               "value": {}
+              }
+             },
+             "limit": {
+              "type": "integer",
+              "description": "返回条数上限"
+             },
+             "fill_null": {
+              "type": "boolean",
+              "description": "区间查询时无数据的步长点是否补空，默认 false"
+             }
+            },
+            "required": [
+             "kn_id",
+             "metric_id"
+            ]
+           }
+          }
+         },
+         "required": true
+        },
+        "responses": [
+         {
+          "status_code": "200",
+          "description": "ok",
+          "content": {
+           "application/json": {
+            "schema": {
+             "type": "object",
+             "properties": {
+              "kn_id": {
+               "type": "string",
+               "description": "知识网络 ID"
+              },
+              "metric_id": {
+               "type": "string",
+               "description": "指标 ID"
+              },
+              "datas": {
+               "type": "array",
+               "description": "按 labels 分组的结果序列",
+               "items": {
+                "type": "object",
+                "additionalProperties": true
+               }
+              },
+              "overall_ms": {
+               "type": "integer",
+               "description": "耗时（毫秒）"
+              }
+             }
+            }
+           }
+          }
+         }
+        ],
+        "components": null,
+        "callbacks": null,
+        "security": null,
+        "tags": null
+       }
+      },
+      "use_rule": "",
+      "global_parameters": {
+       "name": "",
+       "description": "",
+       "required": false,
+       "in": "",
+       "type": "",
+       "value": null
+      },
+      "create_time": 1776920840668983300,
+      "update_time": 1776920840668983300,
+      "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "extend_info": null,
+      "resource_object": "tool",
+      "source_id": "3c5c43e5-a1d7-483b-97b5-8f993cd1815a",
+      "source_type": "openapi",
+      "script_type": "",
+      "code": "",
+      "dependencies": [],
+      "dependencies_url": ""
+     },
+     {
       "tool_id": "52b35175-cee3-41ea-91c0-1d70e8371f9c",
       "name": "search_schema",
       "description": "统一的 Schema 探索入口。根据 query 返回相关 object_types、relation_types、action_types。",
@@ -2800,13 +3017,13 @@
      {
       "tool_id": "007bb878-29ee-40ed-9d55-bbea8d9f55eb",
       "name": "get_object_types",
-      "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters）。渐进式下钻：先 get_kn_detail(summary) 拿对象 id，再用本工具展开。ids 支持多个，未匹配的在 missing 返回。",
+      "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters），并返回该对象类 scope 下的 related_metrics（含未绑逻辑属性的指标）。渐进式下钻：先 get_kn_detail(summary) 拿对象 id，再用本工具展开。ids 支持多个，未匹配的在 missing 返回。",
       "status": "enabled",
       "metadata_type": "openapi",
       "metadata": {
        "version": "192b5f4e-5d29-4ecb-9c45-77e38852978b",
        "summary": "get_object_types",
-       "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters）。渐进式下钻：先 get_kn_detail(summary) 拿对象 id，再用本工具展开。ids 支持多个，未匹配的在 missing 返回。",
+       "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters），并返回该对象类 scope 下的 related_metrics（含未绑逻辑属性的指标）。渐进式下钻：先 get_kn_detail(summary) 拿对象 id，再用本工具展开。ids 支持多个，未匹配的在 missing 返回。",
        "server_url": "http://agent-retrieval:30779",
        "path": "/api/agent-retrieval/in/v1/kn/get_object_types",
        "method": "POST",
@@ -2896,7 +3113,7 @@
                 "type": "object",
                 "additionalProperties": true
                },
-               "description": "对象类完整定义（含 data_properties / logic_properties 的映射细节）"
+               "description": "对象类完整定义（含 data_properties / logic_properties 的映射细节），related_metrics 为该对象类下可用指标（id/name/comment/unit/metric_type/analysis_dimensions/time_dimension）"
               },
               "missing": {
                "type": "array",

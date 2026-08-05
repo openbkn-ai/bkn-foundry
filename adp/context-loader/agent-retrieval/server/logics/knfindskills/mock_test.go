@@ -75,6 +75,10 @@ func (m *testBknBackend) SearchActionTypes(ctx context.Context, query *interface
 	return nil, nil
 }
 
+func (m *testBknBackend) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
+	return nil, nil
+}
+
 func (m *testBknBackend) SearchMetricTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (*interfaces.MetricTypeConcepts, error) {
 	return nil, nil
 }
@@ -95,6 +99,11 @@ func (m *testOntologyQuery) QueryObjectInstances(ctx context.Context, req *inter
 		return m.queryObjectInstancesFunc(ctx, req)
 	}
 	return &interfaces.QueryObjectInstancesResp{}, nil
+}
+
+func (m *testOntologyQuery) QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool,
+	req *interfaces.MetricQueryDownstreamReq) (*interfaces.MetricQueryDownstreamResp, error) {
+	return &interfaces.MetricQueryDownstreamResp{}, nil
 }
 
 func (m *testOntologyQuery) QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (*interfaces.QueryInstanceSubgraphResp, error) {

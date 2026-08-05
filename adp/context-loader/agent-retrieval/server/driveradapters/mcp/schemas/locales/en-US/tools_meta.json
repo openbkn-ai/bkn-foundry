@@ -1,7 +1,7 @@
 {
   "search_schema": {
     "name": "search_schema",
-    "description": "Explore schema by natural language. Returns relevant object types, relation types, action types, metric types, condition operations, and data source metadata for downstream query tools."
+    "description": "Explore schema by natural language. Returns relevant object types, relation types, action types, metric types, condition operations, and data source metadata for downstream query tools. Object types come first: metric_types here is only a hint — the authoritative list of a metric for an object type is related_metrics from get_object_types."
   },
   "query_object_instance": {
     "name": "query_object_instance",
@@ -13,7 +13,11 @@
   },
   "get_logic_properties_values": {
     "name": "get_logic_properties_values",
-    "description": "Resolve calculated logic properties, such as metrics or operator-backed properties, for a batch of object instances."
+    "description": "Resolve calculated logic properties, such as metrics or operator-backed properties, for a batch of object instances. This is the instance-level branch of the metric path (a metric already bound to a logic property); class-level metrics and metrics not bound to a logic property go to query_metric."
+  },
+  "query_metric": {
+    "name": "query_metric",
+    "description": "Compute a modelled metric by its own definition (step 3 of the OT-first metric path). Recall the object type with search_schema / get_kn_detail, pick a metric_id from get_object_types' related_metrics, then call this tool — the formula lives in the MetricDefinition, so do not re-derive it with run_sql. Routing: instance-level values of a bound logic property go through get_logic_properties_values; class-level metrics, and metrics not bound to any logic property, come here. Optional condition filter, analysis_dimensions breakdown, and a time block for a single point or a series."
   },
   "get_action_info": {
     "name": "get_action_info",
@@ -41,11 +45,11 @@
   },
   "get_kn_detail": {
     "name": "get_kn_detail",
-    "description": "Get full knowledge network details, including concept groups, object types, relation types, and action types. Use this when a known kn_id needs a complete schema snapshot."
+    "description": "Get full knowledge network details, including concept groups, object types, relation types, and action types. Use this when a known kn_id needs a complete schema snapshot. Object type entries carry related_metric_count, the number of metrics modelled on that object type, so you can tell whether drilling in for metrics is worth it."
   },
   "run_sql": {
     "name": "run_sql",
-    "description": "Run one read-only SELECT statement in Trino SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract."
+    "description": "Run one read-only SELECT statement in Trino SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract. Do not re-derive a modelled metric in SQL: pick it from get_object_types' related_metrics and call query_metric (or get_logic_properties_values for a bound logic property). run_sql is for ad-hoc aggregation that has not been modelled as a metric."
   },
   "list_resources": {
     "name": "list_resources",

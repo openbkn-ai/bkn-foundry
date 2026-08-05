@@ -105,6 +105,10 @@ func (m *mockBknBackend) SearchActionTypes(ctx context.Context, req *interfaces.
 	return m.actionTypesResp, m.actionTypesError
 }
 
+func (m *mockBknBackend) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
+	return nil, nil
+}
+
 func (m *mockBknBackend) SearchMetricTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (*interfaces.MetricTypeConcepts, error) {
 	return nil, nil
 }
@@ -143,6 +147,11 @@ func (m *mockOntologyQuery) GetActionExecution(ctx context.Context, req *interfa
 
 func (m *mockOntologyQuery) ListActionExecutions(ctx context.Context, req *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
 	return nil, nil
+}
+
+func (m *mockOntologyQuery) QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool,
+	req *interfaces.MetricQueryDownstreamReq) (*interfaces.MetricQueryDownstreamResp, error) {
+	return &interfaces.MetricQueryDownstreamResp{}, nil
 }
 
 func (m *mockOntologyQuery) QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error) {

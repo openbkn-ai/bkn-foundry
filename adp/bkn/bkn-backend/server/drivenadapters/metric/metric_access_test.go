@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	sq "github.com/Masterminds/squirrel"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"bkn-backend/common"
@@ -349,5 +350,41 @@ func TestMetricAccess_GetMetricByID_notFound(t *testing.T) {
 		So(err, ShouldEqual, sql.ErrNoRows)
 		So(def, ShouldBeNil)
 		So(mock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
+func TestProcessMetricQueryCondition_ScopeRefs(t *testing.T) {
+	Convey("scope_ref filtering", t, func() {
+		build := func(query interfaces.MetricsListQueryParams) (string, []any) {
+			sqlStr, vals, err := processMetricQueryCondition(query,
+				sq.Select("f_id").From(METRIC_TABLE_NAME)).ToSql()
+			So(err, ShouldBeNil)
+			return sqlStr, vals
+		}
+
+		Convey("multiple scope refs become an IN filter", func() {
+			sqlStr, vals := build(interfaces.MetricsListQueryParams{
+				KNID:      "kn1",
+				ScopeType: interfaces.ScopeTypeObjectType,
+				ScopeRefs: []string{"ot1", "ot2"},
+			})
+			So(sqlStr, ShouldContainSubstring, "f_scope_ref IN (?,?)")
+			So(vals, ShouldContain, "ot1")
+			So(vals, ShouldContain, "ot2")
+		})
+
+		Convey("single scope ref stays an equality filter", func() {
+			sqlStr, vals := build(interfaces.MetricsListQueryParams{
+				KNID:     "kn1",
+				ScopeRef: "ot1",
+			})
+			So(sqlStr, ShouldContainSubstring, "f_scope_ref = ?")
+			So(vals, ShouldContain, "ot1")
+		})
+
+		Convey("no scope ref leaves the filter out", func() {
+			sqlStr, _ := build(interfaces.MetricsListQueryParams{KNID: "kn1"})
+			So(sqlStr, ShouldNotContainSubstring, "f_scope_ref")
+		})
 	})
 }

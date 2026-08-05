@@ -28,7 +28,7 @@
       "name": { "type": "string", "description": "知识网络名称" },
       "comment": { "type": "string", "description": "描述" },
       "concept_groups": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "概念组" },
-      "object_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "对象类型（含 data_source 等）" },
+      "object_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细" },
       "relation_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "关系类型" },
       "action_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "行动类型" }
     }

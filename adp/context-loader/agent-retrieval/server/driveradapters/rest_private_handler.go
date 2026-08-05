@@ -80,6 +80,7 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
 	engine.POST("/kn/get_object_types", r.KnQueryToolsHandler.GetObjectTypes)
 	engine.POST("/kn/get_relation_types", r.KnQueryToolsHandler.GetRelationTypes)
+	engine.POST("/kn/query_metric", r.KnQueryToolsHandler.QueryMetric)
 	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
 	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
 

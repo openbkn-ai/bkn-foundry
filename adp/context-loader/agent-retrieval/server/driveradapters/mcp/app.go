@@ -22,6 +22,7 @@ import (
 	logicsKar "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knactionrecall"
 	logicsFs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knfindskills"
 	logicsKlp "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
@@ -36,6 +37,7 @@ const (
 	toolKeyQueryObjectInstance      = "query_object_instance"
 	toolKeyQueryInstanceSubgraph    = "query_instance_subgraph"
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
+	toolKeyQueryMetric              = "query_metric"
 	toolKeyGetActionInfo            = "get_action_info"
 	toolKeyExecuteAction            = "execute_action"
 	toolKeyGetActionExecution       = "get_action_execution"
@@ -66,8 +68,15 @@ const serverInstructions = `ContextLoader 知识网络查询工具集使用指�
 - 单对象类过滤 + 排序 + 分页（field op value，可 and/or 组合）→ query_object_instance；算子白名单以对象类的 condition_operations 为准。
 - 聚合 / 统计 / 排名（SUM、COUNT、AVG、GROUP BY、按聚合值排序、跨表 join）→ run_sql（Trino 只读 SQL）；表名用占位符 {{.<data_source.id>}}，<data_source.id> 必须替换成 search_schema 返回的真实 id 值（禁止照抄字面 resource_id；JOIN 多表时每个表用各自不同的 id）；列名用 search_schema 的 data_property.column（物理列，需 include_columns=true 获取），不是 name（逻辑名）。query_object_instance 不支持聚合。
 - 沿关系多跳取子图 → query_instance_subgraph。
-- 逻辑属性（指标/算子）计算 → get_logic_properties_values。
 - 对象可执行行动召回 → get_action_info。
+
+指标取数（OT 优先，三选一，禁止用 run_sql 重写已建模指标的口径）：
+1. 先锁定对象类：search_schema 或 get_kn_detail（summary 里 related_metric_count>0 的对象类才有指标）。
+2. get_object_types(ids) 看该对象类下有什么：logic_properties（data_source.type=metric）是实例级，related_metrics 是这个对象类 scope 下的全部指标（含未绑逻辑属性的）。
+3. 选定后计算：
+   - 实例级 + 已绑逻辑属性 → get_logic_properties_values
+   - 类级 / 未绑逻辑属性 → query_metric（传 metric_id，可选 condition / analysis_dimensions / time）
+   - 指标压根没建模，才用 run_sql 现算
 
 数据层直查（资源未建成对象类、或只想绕本体直查数据时）：
 - list_resources 列出账户可见的数据资源（resource_id、name、type、catalog_id），可按 catalog_id / type 过滤。
@@ -150,10 +159,13 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 	findSkillsService := logicsFs.NewFindSkillsService()
 	b.add(toolKeyFindSkills, handleFindSkills(findSkillsService))
 
+	metricsService := knmetrics.NewKnMetricsService()
+	b.add(toolKeyQueryMetric, handleQueryMetric(metricsService))
+
 	bknBackend := drivenadapters.NewBknBackendAccess()
 	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
-	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend))
-	b.addEmbedded(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend))
+	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService))
+	b.addEmbedded(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService))
 	b.addEmbedded(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
 
 	runSQLService := knrunsql.NewKnRunSQLService()

@@ -27,7 +27,7 @@
       "object_types": {
         "type": "array",
         "items": { "type": "object", "additionalProperties": true },
-        "description": "对象类完整定义（含 data_properties 的 mapped_field / condition_operations、logic_properties 的 data_source / parameters）"
+        "description": "对象类完整定义（含 data_properties 的 mapped_field / condition_operations、logic_properties 的 data_source / parameters）。related_metrics 为该对象类 scope 下的全部指标（id/name/comment/unit/metric_type/analysis_dimensions/time_dimension），含未绑逻辑属性的：实例级且已绑逻辑属性用 get_logic_properties_values 算，其余把 id 传给 query_metric 算。"
       },
       "missing": {
         "type": "array",

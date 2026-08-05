@@ -131,6 +131,21 @@ func (mr *MockDrivenOntologyQueryMockRecorder) QueryLogicProperties(ctx, req any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryLogicProperties", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).QueryLogicProperties), ctx, req)
 }
 
+// QueryMetricData mocks base method.
+func (m *MockDrivenOntologyQuery) QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool, req *interfaces.MetricQueryDownstreamReq) (*interfaces.MetricQueryDownstreamResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryMetricData", ctx, knID, metricID, fillNull, req)
+	ret0, _ := ret[0].(*interfaces.MetricQueryDownstreamResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryMetricData indicates an expected call of QueryMetricData.
+func (mr *MockDrivenOntologyQueryMockRecorder) QueryMetricData(ctx, knID, metricID, fillNull, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryMetricData", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).QueryMetricData), ctx, knID, metricID, fillNull, req)
+}
+
 // QueryObjectInstances mocks base method.
 func (m *MockDrivenOntologyQuery) QueryObjectInstances(ctx context.Context, req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
 	m.ctrl.T.Helper()

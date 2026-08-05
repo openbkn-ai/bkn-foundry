@@ -98,6 +98,8 @@ paths:
         这些是顶层数组的重复拷贝，概念组只保留 `object_type_ids` 作为分组边界。
 
         被剥掉的细节按需用 `get_object_types` / `get_relation_types` 取回。
+        对象类条目带 `related_metric_count`（该对象类下已建模指标数），`>0` 才值得
+        为取指标下钻。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - $ref: '#/components/parameters/XKnID'
@@ -153,6 +155,11 @@ paths:
         取 `get_kn_detail` 在 summary 级别剥掉的对象类细节：属性的 `mapped_field`
         （写 `run_sql` 要的物理列名）、`condition_operations`（该属性可用的查询算子）、
         逻辑属性的 `data_source` 与 `parameters`。
+
+        同时返回 `related_metrics`——挂在该对象类下的指标，**包括没绑到逻辑属性、
+        因而在 `logic_properties` 里根本看不见的那些**。这是 Agent 选指标的权威清单，
+        选定后走 [logic-property.yaml](logic-property.yaml) 的
+        `logic-property-resolver`（实例 + 已绑逻辑属性）或 `query_metric`（其余）。
 
         `ids` 里既可以传对象类 ID，也可以传对象类名（ID 优先，名称仅作兜底）；
         匹配不到的 ID 原样回填在 `missing` 里，不报错。属性的 `display_name`
@@ -493,6 +500,54 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LogicProperty'
+        related_metrics:
+          type: array
+          description: |
+            挂在该对象类下的指标（`scope_type=object_type` 且 `scope_ref` 等于本对象类
+            ID），**含没绑到任何逻辑属性的指标**。仅 `get_object_types` 返回。
+            选定后怎么算：实例级且已绑逻辑属性走
+            [logic-property.yaml](logic-property.yaml) 的 `logic-property-resolver`，
+            其余把 `id` 传给同文件的 `query_metric`。
+          items:
+            $ref: '#/components/schemas/RelatedMetric'
+        related_metric_count:
+          type: integer
+          description: |
+            该对象类下的指标数。`get_kn_detail` 只给这个数，判断值不值得用
+            `get_object_types` 下钻拿 `related_metrics` 明细。
+
+    RelatedMetric:
+      type: object
+      description: |
+        对象类下可用指标的精简描述——够选指标，不含计算公式：口径在
+        MetricDefinition 里，由 `query_metric` 执行，调用方不该自己重写。
+      properties:
+        id:
+          type: string
+          description: 指标 ID，直接传给 `query_metric` 的 `metric_id`。
+        name:
+          type: string
+        comment:
+          type: string
+        metric_type:
+          type: string
+          description: 指标类型（如 `atomic`）。
+        unit:
+          type: string
+        unit_type:
+          type: string
+        scope_ref:
+          type: string
+          description: 统计主体对象类 ID，等于所在对象类的 `id`。
+        analysis_dimensions:
+          type: array
+          items:
+            type: string
+          description: 可用的分析维度名，`query_metric` 的 `analysis_dimensions` 只能从这里取值。
+        time_dimension:
+          type: string
+          description: |
+            指标的时间属性名；为空表示该指标没有时间维度，`query_metric` 可以不传 `time`。
 
     DataProperty:
       type: object

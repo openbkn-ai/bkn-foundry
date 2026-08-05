@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	logicsKqs "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
@@ -470,7 +471,7 @@ func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context
 // handleGetKnDetail handles get_kn_detail tool calls.
 // 包装 bkn-backend 的知识网络详情（概念组 / 对象类 / 关系类 / 行动类），并按
 // detail_level 做渐进式裁剪：summary（默认）返回骨架 + 属性名，full 返回全量。
-func handleGetKnDetail(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -489,6 +490,9 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess) func(ctx context.Context
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		// Counts only: which object types have metrics worth drilling into, without
+		// carrying the metric list itself at this level.
+		metrics.AttachRelatedMetricCounts(ctx, knID, resp.ObjectTypes)
 		resp.Slim(getStringArg(req, "detail_level", interfaces.DetailLevelSummary))
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
@@ -514,8 +518,9 @@ func (a *knDrillArgs) resolveKnID(req mcp.CallToolRequest) string {
 
 // handleGetObjectTypes handles get_object_types tool calls: return the full
 // definition (data/logic properties incl. mappings) of the requested object type
-// ids. Pairs with get_kn_detail summary, which omits that heavy detail.
-func handleGetObjectTypes(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// ids, plus the metrics scoped to them. Pairs with get_kn_detail summary, which
+// omits that heavy detail.
+func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
 		if err != nil {
@@ -538,6 +543,9 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess) func(ctx context.Cont
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		matched, missing := detail.FilterObjectTypes(args.IDs)
+		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
+		// property is unreachable from the object type without this.
+		metrics.AttachRelatedMetrics(ctx, knID, matched)
 		bkntrace.EmitSchemaDefinitionEvents(ctx, nil, "object", knID, args.IDs, len(matched))
 		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing}
 		result, err := BuildMCPToolResult(resp, format)
@@ -653,6 +661,39 @@ func handleFindSkills(service interfaces.IFindSkillsService) func(ctx context.Co
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
+// handleQueryMetric handles query_metric tool calls: compute one modelled metric
+// by its own definition.
+//
+// This is step 3 of the OT-first metric path and the reason run_sql is not the
+// answer for a metric: the calculation formula lives in the MetricDefinition, so
+// the caller names the metric instead of re-deriving it in SQL.
+func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		args := &interfaces.QueryMetricReq{}
+		if err := bindArguments(req, args); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if args.KnID == "" {
+			args.KnID = getKnIDFromHeader(req)
+		}
+
+		resp, err := service.QueryMetric(ctx, args)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

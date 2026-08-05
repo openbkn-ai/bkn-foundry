@@ -284,6 +284,11 @@ type ReqMetrics struct {
 }
 
 // MetricsListQueryParams lists metrics under a knowledge network (GET .../metrics query params).
+//
+// ScopeRefs holds the comma-separated scope_ref values of the query and filters
+// with IN; it is what an OT-first caller uses to enumerate the metrics of several
+// object types in one round trip. ScopeRef stays for single-value callers and is
+// ignored once ScopeRefs is set.
 type MetricsListQueryParams struct {
 	PaginationQueryParameters
 	NamePattern string
@@ -292,6 +297,7 @@ type MetricsListQueryParams struct {
 	KNID        string
 	ScopeType   string
 	ScopeRef    string
+	ScopeRefs   []string
 }
 
 // MetricsList is the list response for GET .../metrics (bkn-metrics.yaml ListMetrics: entries, total_count).

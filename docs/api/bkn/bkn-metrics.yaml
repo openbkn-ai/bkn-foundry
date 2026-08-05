@@ -101,7 +101,11 @@ paths:
               - subgraph
           in: query
         - name: scope_ref
-          description: 按指标作用域所指向的概念 ID 过滤（如 object_type 的对象类 ID）
+          description: |
+            按指标作用域所指向的概念 ID 过滤（如 object_type 的对象类 ID）。
+            支持逗号分隔的多个 ID（如 `ot_a,ot_b`），命中其中任一即返回——
+            一次列出多个对象类下的指标用。只传 `scope_ref` 不传 `scope_type` 时，
+            `scope_type` 默认按 `object_type` 处理。
           schema:
             type: string
           in: query

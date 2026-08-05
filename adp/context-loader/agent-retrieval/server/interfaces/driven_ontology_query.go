@@ -162,4 +162,8 @@ type DrivenOntologyQuery interface {
 	ListActionExecutions(ctx context.Context, req *ListActionExecutionsRequest) (resp map[string]any, err error)
 	// QueryInstanceSubgraph queries object subgraph
 	QueryInstanceSubgraph(ctx context.Context, req *QueryInstanceSubgraphReq) (resp *QueryInstanceSubgraphResp, err error)
+	// QueryMetricData computes one metric by its own definition
+	// (POST .../metrics/{metric_id}/data)
+	QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool,
+		req *MetricQueryDownstreamReq) (resp *MetricQueryDownstreamResp, err error)
 }

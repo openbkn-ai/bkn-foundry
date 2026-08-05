@@ -61,6 +61,11 @@ func (s *stubOntologyQuery) ListActionExecutions(_ context.Context, _ *interface
 	return nil, nil
 }
 
+func (s *stubOntologyQuery) QueryMetricData(_ context.Context, _, _ string, _ bool,
+	_ *interfaces.MetricQueryDownstreamReq) (*interfaces.MetricQueryDownstreamResp, error) {
+	return nil, nil
+}
+
 func (s *stubOntologyQuery) QueryInstanceSubgraph(_ context.Context, _ *interfaces.QueryInstanceSubgraphReq) (*interfaces.QueryInstanceSubgraphResp, error) {
 	return nil, nil
 }

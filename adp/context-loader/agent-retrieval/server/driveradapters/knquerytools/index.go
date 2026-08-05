@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 )
@@ -32,6 +33,7 @@ type KnQueryToolsHandler interface {
 	GetKnDetail(c *gin.Context)
 	GetObjectTypes(c *gin.Context)
 	GetRelationTypes(c *gin.Context)
+	QueryMetric(c *gin.Context)
 	ListResources(c *gin.Context)
 	DescribeResource(c *gin.Context)
 }
@@ -41,6 +43,7 @@ type knQueryToolsHandler struct {
 	runSQL     knrunsql.KnRunSQLService
 	resources  knresources.KnResourcesService
 	bknBackend interfaces.BknBackendAccess
+	metrics    knmetrics.KnMetricsService
 }
 
 var (
@@ -57,6 +60,7 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 			runSQL:     knrunsql.NewKnRunSQLService(),
 			resources:  knresources.NewKnResourcesService(),
 			bknBackend: drivenadapters.NewBknBackendAccess(),
+			metrics:    knmetrics.NewKnMetricsService(),
 		}
 	})
 	return handler
@@ -126,6 +130,8 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	// 只挂计数不挂明细：够 Agent 判断哪个对象类值得下钻取指标。
+	h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes)
 	detailLevel := req.DetailLevel
 	if detailLevel == "" {
 		detailLevel = interfaces.DetailLevelSummary
@@ -211,6 +217,8 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		return
 	}
 	matched, missing := detail.FilterObjectTypes(req.IDs)
+	// OT-first 第 2 步：未绑逻辑属性的 scoped 指标只有在这里才看得见。
+	h.metrics.AttachRelatedMetrics(ctx, knID, matched)
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing})
 }
@@ -240,4 +248,34 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 	matched, missing := detail.FilterRelationTypes(req.IDs)
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "relation", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched, Missing: missing})
+}
+
+// QueryMetric 按指标自身口径取数（OT-first 路径第 3 步）。
+//
+// 与 get_logic_properties_values 分流：实例级、已绑逻辑属性的走那条；类级、或未绑
+// 逻辑属性的走这条。两条都不该被 run_sql 取代——口径在 MetricDefinition 里。
+func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
+	ctx := c.Request.Context()
+	req := &interfaces.QueryMetricReq{}
+	if err := c.ShouldBindJSON(req); err != nil {
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
+		return
+	}
+	if req.KnID == "" {
+		req.KnID = c.GetHeader("X-Kn-ID")
+	}
+
+	resp, err := h.metrics.QueryMetric(ctx, req)
+	if err != nil {
+		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#QueryMetric] kn=%s metric=%s failed: %v",
+			req.KnID, req.MetricID, err)
+		if httpErr, ok := err.(*errors.HTTPError); ok {
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		// 入参错误（kn_id / metric_id 缺失、时间窗自相矛盾）都是调用方的错。
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, resp)
 }
