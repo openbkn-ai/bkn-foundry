@@ -66,7 +66,7 @@ concurrency:
   group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}-${{ (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && !(github.event.sender.login != 'github-actions[bot]' && (contains(github.event.comment.body, '/review') || contains(github.event.comment.body, '@claude')) && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) && format('comment-{0}', github.event.comment.id) || 'review' }}
   cancel-in-progress: true
 
-# 评审分三段跑：plan 算分片 → review 按分片并行 → verdict 汇总表态。
+# 评审分四段跑：plan 算分片 → review 按分片并行 → verify 复核阻塞项 → verdict 汇总表态。
 #
 # 起因：#662（adp/bkn 5 文件 + adp/context-loader 4 文件）由单个 agent 通吃，连撞两次
 # error_max_turns（num_turns 61），整轮零产出、额度全烧。单 agent 的轮数随 PR 规模线性
@@ -89,6 +89,10 @@ concurrency:
 #   - **表态只能有一次**。分片只贴 inline comment、只写 findings JSON，一律不许调
 #     `gh pr review`；N 片各自表态会在 PR 上挂出 N 条评审状态，作者不知道该解哪个。
 #     汇总用确定性脚本而非再起一个模型：拼接已有结论不需要判断力，也不该有编造空间。
+#   - **阻塞项必须过独立复核才能进 PR**。发现者自评把握挡不住误报——同一段上下文里
+#     模型对自己刚推出来的结论天然高估。verify 换一份干净上下文、默认立场是驳回，
+#     照 evidence 去原地验。误报的代价不对称：放过一个待确认项作者自己会看到，
+#     报一个假阻塞项则挂住 PR、逼作者证伪一个不存在的问题，几次之后没人再信这个评审。
 
 jobs:
   plan:
@@ -352,8 +356,11 @@ jobs:
 
             两件事，缺一不可：
 
-            **一、具体问题贴 inline comment** 到对应行（中文），说明「问题是什么 +
-            怎么改」。不复述 diff，不为凑数提格式化/命名类琐碎意见。
+            **一、inline comment 只贴改进建议与待确认项**（中文，贴到对应行，说明
+            「问题是什么 + 怎么改」），**不要贴阻塞项**。阻塞项一律只写进下面的 JSON，
+            经独立的 verify 环节复核后才会出现在 PR 上——本仓的评审历史上出现过一批
+            高危项事后核实几乎全是误报，未经复核就贴到行上，作者要为假问题付出真时间。
+            不复述 diff，不为凑数提格式化/命名类琐碎意见。
 
             **二、写 findings/${{ matrix.shard.key }}.json**，严格用下面的结构：
 
@@ -365,7 +372,8 @@ jobs:
               "impact": "这片改动波及哪些服务、接口、存量数据",
               "blockers": [
                 {"file": "adp/bkn/x.go", "line": 42, "what": "问题是什么",
-                 "scenario": "什么输入、什么状态、坏成什么样"}
+                 "scenario": "什么输入、什么状态、坏成什么样",
+                 "evidence": ["comm-go/x/y.go:88-95 这几行里读到的、支撑这条结论的事实"]}
               ],
               "unconfirmed": [{"file": "...", "what": "待确认项，不阻断放行"}],
               "not_covered": "本轮没来得及核的面，没有就写空串"
@@ -375,6 +383,10 @@ jobs:
             **blockers 的门槛**：你已经读过源码核实，能说清具体的失效场景，并且自评
             把握 ≥ 90 分。说不清、或失效场景里有任何一环没在代码里核实过，都不算阻塞
             项——降级进 unconfirmed，或者直接丢掉。
+
+            `evidence` 必填且必须是你**这一轮真读过的** file:line。写不出具体位置，
+            说明这条是从 diff 表面推出来的，不是核实出来的——那它就不是阻塞项。
+            复核环节会照着 evidence 去原地验，编造的位置一验就穿。
 
             **你不要调用 `gh pr review`。** 表态由 verdict 环节统一落一次；N 个分片各自
             表态会在 PR 上挂出 N 条互相打架的评审状态。你的 JSON 就是你的表态。
@@ -414,10 +426,159 @@ jobs:
         run: |
           echo "::warning::Secret CLAUDE_CODE_OAUTH_TOKEN not set — skipping Claude review."
 
+  # 阻塞项在进 PR 之前先过一道独立复核。
+  #
+  # 起因：本仓评审历史上出现过一批标成高危的项，事后逐条核源码几乎全是误报。误报的
+  # 代价不对称——放过一个待确认项，作者自己会看到；报一个假阻塞项，PR 被 CHANGES_REQUESTED
+  # 挂住，作者要花真时间去证伪一个不存在的问题，几次之后就没人再信这个评审了。
+  #
+  # 让发现者自评把握（分片 prompt 里的 ≥ 90 分）挡不住这个：同一段上下文里，模型对自己
+  # 刚推出来的结论天然高估。所以复核必须换一份干净上下文重来一遍，且**默认立场是驳回**——
+  # 拿不出「读了哪个文件哪几行、看到了什么」就判 refuted，不给「看起来像有问题」留出口。
+  #
+  # 只在真有阻塞项时才起这个 job，多数 PR 直接跳过，成本为零。
+  verify:
+    needs: [plan, review]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout PR branch (non-PR events)
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr checkout "$PR_NUMBER"
+
+      - name: Download findings
+        uses: actions/download-artifact@v4
+        with:
+          pattern: findings-*
+          path: findings
+          merge-multiple: true
+
+      # id 用 `<分片 key>#<该片内序号>` 生成，verdict 会按同样规则重算一遍去对齐结论。
+      # 不用全局自增序号：分片是并行的，artifact 下载顺序不保证稳定。
+      - name: Collect blockers
+        id: collect
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib
+
+          items = []
+          for path in sorted(pathlib.Path("findings").glob("*.json")):
+              try:
+                  data = json.loads(path.read_text(encoding="utf-8"))
+              except (ValueError, OSError):
+                  continue
+              key = path.stem
+              for i, b in enumerate(data.get("blockers") or []):
+                  items.append({
+                      "id": "%s#%d" % (key, i),
+                      "shard": data.get("shard", key),
+                      "file": b.get("file", ""),
+                      "line": b.get("line"),
+                      "what": b.get("what", ""),
+                      "scenario": b.get("scenario", ""),
+                      "evidence": b.get("evidence") or [],
+                  })
+
+          pathlib.Path("blockers.json").write_text(
+              json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("count=%d" % len(items))
+          PY
+
+      - name: Verify blockers
+        if: steps.collect.outputs.count != '0' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: false
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ env.PR_NUMBER }}
+
+            上一环节的评审分片报了若干**阻塞项**，全部列在 `blockers.json` 里。你的
+            工作是逐条**尝试驳回**它们，只让站得住的那些进 PR。
+
+            你不是在复述别人的结论，也不是在补充新问题。发现新问题不归你管，写进
+            notes 即可，不要加进 verdicts。
+
+            ## 立场
+
+            **默认驳回。** 每一条的默认判定是 `refuted: true`，只有你自己动手把失效
+            场景在源码里走通了，才翻成 `refuted: false`。
+
+            报告方给了 `evidence`（它声称读过的 file:line）。照着去原地读，然后问：
+
+            - 那几行真的写着它说的东西吗？位置对不上、内容对不上，直接驳回。
+            - 就算内容对得上，从这几行能推出它描述的失效场景吗？中间缺一环就驳回。
+            - 触发这个场景需要的输入/状态，在真实调用路径上到得了吗？到不了就驳回：
+              「理论上可以构造出来」不算。
+            - 有没有它没看到的上游校验、默认值、早退分支，已经把这个场景挡掉了？
+              `git grep` 调用方确认。挡掉了就驳回。
+
+            拿不准就驳回。放过一个真问题，作者和后续的 CI 还有机会拦；放行一个假问题，
+            PR 被挂住、作者花时间证伪一个不存在的东西，几次之后没人再信这个评审。
+
+            ## 轮次预算
+
+            互不依赖的 Read / Grep / git 调用放在同一条消息里并发发出。每条阻塞项分到
+            的预算有限，先照 evidence 直接定位，别从头通读整个模块。
+
+            最后一步必须写出 `verified.json`。没写就等于整个复核环节失效，所有阻塞项
+            会以「未复核」的身份进 PR。
+
+            ## 产出
+
+            写 `verified.json`，`verdicts` 必须覆盖 `blockers.json` 里的每一个 id：
+
+            ```json
+            {
+              "verdicts": [
+                {"id": "adp-bkn#0", "refuted": true,
+                 "reason": "驳回或确认的理由，指明你读了哪个文件的哪几行"}
+              ],
+              "notes": "复核过程中顺带发现的、但不属于本次阻塞项的事情，可以为空串"
+            }
+            ```
+
+            `reason` 里必须出现你**这一轮真读过的** file:line。这是复核结论本身的
+            evidence，写不出来的结论和它要驳回的东西是同一种毛病。
+          claude_args: |
+            --model claude-opus-5
+            --effort xhigh
+            --max-turns 40
+            --allowedTools "Read,Grep,Glob,LS,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
+
+      - name: Upload verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification
+          path: |
+            blockers.json
+            verified.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   verdict:
     # always()：任一分片撞上限、超时或崩掉，都要照样表态并写明哪片没覆盖。
     # 「跑挂了 PR 上什么都没有」正是分片要消掉的失败模式，这里是它的落点。
-    needs: [plan, review]
+    needs: [plan, review, verify]
     if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -436,6 +597,15 @@ jobs:
           pattern: findings-*
           path: findings
           merge-multiple: true
+
+      # verify 整个挂掉时这个 artifact 不存在，下一步会把全部阻塞项标成「未复核」
+      # 照常报上去——复核缺席只该降低可信度，不该让阻塞项静默消失。
+      - name: Download verification
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: verification
+          path: verification
 
       # 汇总用确定性脚本，不再起一个模型：拼接已有结论不需要判断力，也不该有编造空间。
       - name: Assemble verdict
@@ -460,7 +630,9 @@ jobs:
                   missing.append(s)
                   continue
               done.append((s, data))
-              for b in data.get("blockers") or []:
+              for i, b in enumerate(data.get("blockers") or []):
+                  # id 规则必须与 verify 的 collect 步骤一致：<分片 key>#<片内序号>。
+                  b = dict(b, id="%s#%d" % (s["key"], i))
                   blockers.append((s, b))
               for u in data.get("unconfirmed") or []:
                   unconfirmed.append((s, u))
@@ -471,16 +643,52 @@ jobs:
               print("action=none")
               raise SystemExit(0)
 
+          # 复核结论：refuted 的阻塞项不进 PR，只留在折叠区里备查——全部丢掉的话，
+          # 复核环节把真问题误杀了也没人看得见。
+          verdicts = {}
+          vpath = pathlib.Path("verification/verified.json")
+          if vpath.exists():
+              try:
+                  for v in json.loads(vpath.read_text(encoding="utf-8")).get("verdicts") or []:
+                      verdicts[v.get("id")] = v
+              except (ValueError, OSError):
+                  verdicts = {}
+
+          survived, refuted, unreviewed = [], [], []
+          for s_, b in blockers:
+              v = verdicts.get(b["id"])
+              if v is None:
+                  unreviewed.append((s_, b, None))
+              elif v.get("refuted"):
+                  refuted.append((s_, b, v))
+              else:
+                  survived.append((s_, b, v))
+
+          # 未复核的仍然当阻塞项报，但在正文里标出来——复核缺席是降可信度，不是免罪。
+          blockers = [(s_, b) for s_, b, _ in survived + unreviewed]
+
           if blockers:
               lines.append("## 阻塞项\n")
-              for s, b in blockers:
+              lines.append("以下每一条都经过一轮独立复核（默认驳回，核实通过才保留）。\n")
+              for s_, b in blockers:
                   loc = b.get("file", "")
                   if b.get("line"):
                       loc += ":%s" % b["line"]
-                  lines.append("- **[%s] %s** — %s" % (s["label"], loc, b.get("what", "")))
+                  mark = "" if verdicts.get(b["id"]) else "（**未复核**，复核环节未产出结论）"
+                  lines.append("- **[%s] %s** — %s%s"
+                               % (s_["label"], loc, b.get("what", ""), mark))
                   if b.get("scenario"):
                       lines.append("  失效场景：%s" % b["scenario"])
               lines.append("")
+
+          if refuted:
+              lines.append("<details><summary>复核未通过、已丢弃的 %d 条</summary>\n"
+                           % len(refuted))
+              for s_, b, v in refuted:
+                  lines.append("- **[%s] %s** — %s" % (s_["label"], b.get("file", ""),
+                                                       b.get("what", "")))
+                  lines.append("  驳回理由：%s" % v.get("reason", ""))
+              lines.append("\n</details>\n")
 
           lines.append("## 各分片结论\n")
           for s, data in done:
