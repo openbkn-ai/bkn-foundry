@@ -272,7 +272,7 @@ Typical flags:
 
 1. **`openbkn auth login`** (`onboard_ensure_bkn_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` + the per-install initial password (`bknSafe.initialPassword` in config.yaml) (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
 2. **`openbkn` on `PATH`** (`onboard_ensure_bkn_cli`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
-3. **Admin auth** (`onboard_ensure_bkn_auth` (shared by admin and business use)) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` + recorded initial-password defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
+3. **Admin auth** (`onboard_ensure_bkn_auth`, shared by admin and business use) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` + recorded initial-password defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
 4. **User `test`** (`onboard_provision_bkn_safe_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
 5. **Model registration** (interactive or YAML) — uses **`~/.bkn` as `test`**. The Context Loader built-in toolbox is auto-imported by agent-retrieval at startup and is no longer a separate onboard step; see [Quick Start](quick-start.md) for how to verify it.
 
@@ -314,7 +314,7 @@ flowchart TB
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli (Helm / ns → full-auth?)"]
     D --> E["ensure admin CLI\n(npm -g openbkn on full-auth installs if needed)"]
-    E --> F["admin auth (same openbkn defaults)\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
+    E --> F["onboard_ensure_bkn_auth\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
     F --> G1["onboard_provision_bkn_safe_test_user\ncreate or sync test + roles"]
     G1 --> G2["onboard re-login…\nopenbkn auth login … -u test (HTTP)"]
     G2 --> H["model registration (interactive or --config=models.yaml)"]

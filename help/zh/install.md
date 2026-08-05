@@ -274,8 +274,8 @@ sudo bash ./onboard.sh --help
 **完整鉴权安装（启用 auth + business domain）**：脚本根据 Helm/命名空间判断为完整鉴权安装 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
 
 1. **`openbkn auth login`**（`onboard_ensure_bkn_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` + 安装时生成的初始密码（config.yaml `bknSafe.initialPassword`）（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
-2. **`openbkn` 在 PATH**（`ensure admin CLI`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
-3. **管理认证**（`onboard_ensure_bkn_auth`（管理与业务共用））— 管理操作**复用第 1 步同一份 `openbkn` 登录与 token 存储**（默认仍是 `admin` + 记录的初始密码）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`）。TTY 下也支持浏览器 OAuth。
+2. **`openbkn` 在 PATH**（`onboard_ensure_bkn_cli`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
+3. **管理认证**（`onboard_ensure_bkn_auth`，管理与业务共用）— 管理操作**复用第 1 步同一份 `openbkn` 登录与 token 存储**（默认仍是 `admin` + 记录的初始密码）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`）。TTY 下也支持浏览器 OAuth。
 4. **业务用户 `test`**（`onboard_provision_bkn_safe_test_user`）— 创建 `test`，密码 `111111`（可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖），把 `openbkn admin role list` 中**所有**角色都挂上，然后 **`openbkn auth login` 为 `test`**，让 SDK 会话切到业务用户，供后续步骤使用。若 `test` 已存在，则只做角色同步。
 5. **模型注册**（交互式或 YAML）— 使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**。Context Loader 的内置工具箱由 agent-retrieval 启动时自动导入，不再是 onboard 的独立步骤；确认方式见[快速开始](quick-start.md)。
 
@@ -317,7 +317,7 @@ flowchart TB
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli（Helm/命名空间 → 是否完整鉴权）"]
     D --> E["ensure admin CLI\n（完整鉴权时按需 npm -g 安装 openbkn）"]
-    E --> F["管理认证（与 openbkn 同默认）\n（管理认证 与 openbkn 同默认；或 -k 浏览器；-y 自动 HTTP）"]
+    E --> F["onboard_ensure_bkn_auth\n（管理认证：与 openbkn 同默认；或 -k 浏览器；-y 自动 HTTP）"]
     F --> G1["onboard_provision_bkn_safe_test_user\n创建或同步 test 与角色"]
     G1 --> G2["onboard re-login…\nopenbkn 以 test 登录（HTTP）"]
     G2 --> H["模型注册（交互式或 --config=models.yaml）"]
