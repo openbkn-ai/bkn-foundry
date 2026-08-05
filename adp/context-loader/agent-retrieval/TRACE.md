@@ -52,7 +52,7 @@ Core 为每次受管业务工具调用分配稳定 `operation_id`、`attempt` �
 | REST 首次正常执行 | 响应头 `bkn-receipt-id`、`bkn-operation-id` | 业务响应体保持不变；调用方用 ID 查询完整 Receipt |
 | REST terminal replay 或 pending | JSON 响应体字段 `receipt` | 下游不再执行，返回持久化状态 |
 | MCP 正常执行 | `structuredContent.bkn_receipt` | 与工具结构化结果一并返回 |
-| MCP terminal replay 或 pending | `structuredContent.receipt` | 下游不再执行，返回持久化状态 |
+| MCP terminal replay 或 pending | text content JSON 的 `receipt` 字段 | 下游不再执行，返回持久化状态；错误结果不携带 `structuredContent` |
 
 `receipt_status` 表示业务 Attempt 是否完成，`evidence_durability` 表示证据是否收到 Core durable ACK，两者不得混用：
 

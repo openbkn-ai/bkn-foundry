@@ -273,17 +273,15 @@ func hashLifecyclePayload(raw []byte) string {
 }
 
 func lifecycleUnavailableError(client *bkntrace.LifecycleClient) bkntrace.APIError {
-	message := "BKN Trace Core is unavailable"
 	if client == nil || !client.Enabled() {
-		message = "BKN Trace Core is not configured"
+		return bkntrace.APIError{
+			Code: "feature_not_installed", Message: "BKN Trace Core is not configured",
+		}
 	}
-	// No required_action. It used to say "install_enterprise_implementation",
-	// which a community deployment shipped to every caller whose trace core was
-	// simply unconfigured — a paid surface announcing itself from the image that
-	// is supposed to prove it is not there (ee-design.md §4.4). What the caller
-	// needs is that the dependency is unavailable; which product answers it is
-	// the operator's business, and the operator reads logs.
-	return bkntrace.APIError{Code: "feature_not_installed", Message: message}
+	return bkntrace.APIError{
+		Code: "trace_core_unavailable", Message: "BKN Trace Core is temporarily unavailable",
+		Retryable: true, RequiredAction: "retry_later",
+	}
 }
 
 func lifecycleHTTPStatus(code string) int {
@@ -300,8 +298,14 @@ func lifecycleHTTPStatus(code string) int {
 		return http.StatusNotFound
 	case "conversation_owner_mismatch", "permission_denied":
 		return http.StatusForbidden
+	case "evidence_capture_denied":
+		return http.StatusForbidden
 	case "feature_not_installed":
 		return http.StatusNotImplemented
+	case "trace_core_unavailable":
+		return http.StatusServiceUnavailable
+	case "evidence_capture_failed":
+		return http.StatusBadGateway
 	default:
 		return http.StatusConflict
 	}

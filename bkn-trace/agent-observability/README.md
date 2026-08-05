@@ -227,6 +227,10 @@ helm upgrade --install agent-observability charts/agent-observability \
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
+Chart 默认不创建或接管 ingest Secret，并继续使用兼容 key `token`。OpenBKN 捆绑安装器会显式创建并复用该 Secret；独立部署应预先创建外部 Secret。`createSecret=true` 仅适用于 Helm 直接管理的全新安装，不适用于 `helm template | kubectl apply`，也不得用于接管已有的外部 Secret。
+
+滚动升级期间，新旧 agent-retrieval 实例可能对失败调用上报不同的 evidence durability；这是升级窗口内的临时统计差异，待生产者全部完成滚动后收敛。不得据此回写或重算历史 Ledger 事件。
+
 Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求；当前业务域由 Studio 发送。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。服务到服务查询仍可配置独立的 `BKN_TRACE_QUERY_GATEWAY_TOKEN`，不得把该 token 放入浏览器。
 
 Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须同时经过两层校验：API 网关通过 `X-BKN-Trace-Query-Token` 提交独立网关凭据，并注入 `x-account-id`、`x-account-type`，以及 `x-business-domain` 或 `x-tenant-id`。Evidence 索引持久化 tenant/business domain/account 归属；持久化了多个归属维度时必须逐一匹配，查询在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。

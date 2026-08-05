@@ -271,7 +271,8 @@ func TestLifecycleSchemaUsesRegisteredIssue541ErrorsAndCoreTypes(t *testing.T) {
 		"interaction_required", "interaction_in_progress", "interaction_terminal",
 		"operation_required", "idempotency_conflict", "receipt_pending",
 		"terminal_conflict", "closure_manifest_invalid", "feature_not_installed",
-		"permission_denied", "resource_not_disclosed",
+		"permission_denied", "resource_not_disclosed", "trace_core_unavailable",
+		"evidence_capture_denied", "evidence_capture_failed",
 	}
 	errorSchema := core.Definitions["httphandler.lifecycleError"]
 	codeSchema := errorSchema["properties"].(map[string]any)["code"].(map[string]any)

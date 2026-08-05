@@ -462,6 +462,9 @@ func TestLifecycleHTTPStatusPreservesProtocolSemantics(t *testing.T) {
 		"conversation_owner_mismatch": http.StatusForbidden,
 		"permission_denied":           http.StatusForbidden,
 		"feature_not_installed":       http.StatusNotImplemented,
+		"trace_core_unavailable":      http.StatusServiceUnavailable,
+		"evidence_capture_denied":     http.StatusForbidden,
+		"evidence_capture_failed":     http.StatusBadGateway,
 		"receipt_pending":             http.StatusConflict,
 		// A licence gap is hidden, not refused. This code was never covered
 		// here, which is how it sat in the same arm as permission_denied.
@@ -479,6 +482,18 @@ func TestLifecycleHTTPStatusPreservesProtocolSemantics(t *testing.T) {
 	// assert the inequality itself.
 	if lifecycleHTTPStatus("capability_not_licensed") == lifecycleHTTPStatus("permission_denied") {
 		t.Error("缺证书与缺权限返回了同一个状态码——档位边界会被当成授权边界识别出来")
+	}
+}
+
+func TestLifecycleUnavailableErrorDistinguishesMissingConfigurationFromOutage(t *testing.T) {
+	missing := lifecycleUnavailableError(nil)
+	if missing.Code != "feature_not_installed" || missing.Retryable {
+		t.Fatalf("missing Core configuration returned %#v", missing)
+	}
+
+	outage := lifecycleUnavailableError(bkntrace.NewLifecycleClient("http://trace-core", nil))
+	if outage.Code != "trace_core_unavailable" || !outage.Retryable || outage.RequiredAction != "retry_later" {
+		t.Fatalf("configured Core outage returned %#v", outage)
 	}
 }
 

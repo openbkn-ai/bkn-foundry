@@ -44,7 +44,7 @@ type lifecycleErrorEnvelope struct {
 }
 
 type lifecycleError struct {
-	Code                 string `json:"code" enums:"conversation_required,conversation_not_found,conversation_closed,conversation_expired,conversation_owner_mismatch,interaction_required,interaction_in_progress,interaction_terminal,agent_name_conflict,agent_name_invalid,operation_required,idempotency_conflict,event_payload_conflict,producer_sequence_conflict,invalid_evidence_event,receipt_pending,terminal_conflict,closure_manifest_invalid,feature_not_installed,capability_not_licensed,permission_denied,resource_not_disclosed,internal_error"`
+	Code                 string `json:"code" enums:"conversation_required,conversation_not_found,conversation_closed,conversation_expired,conversation_owner_mismatch,interaction_required,interaction_in_progress,interaction_terminal,agent_name_conflict,agent_name_invalid,operation_required,idempotency_conflict,event_payload_conflict,producer_sequence_conflict,invalid_evidence_event,receipt_pending,terminal_conflict,closure_manifest_invalid,feature_not_installed,trace_core_unavailable,evidence_capture_denied,evidence_capture_failed,capability_not_licensed,permission_denied,resource_not_disclosed,internal_error"`
 	Message              string `json:"message"`
 	CurrentStatus        string `json:"current_status,omitempty"`
 	CurrentInteractionID string `json:"current_interaction_id,omitempty"`

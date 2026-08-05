@@ -438,7 +438,17 @@ _openbkn_release_extra_sets() {
     local namespace="${2:-${CORE_NAMESPACE}}"
     CORE_RELEASE_EXTRA_SETS=()
     CORE_RELEASE_EXTRA_SET_STRINGS=()
-    if [[ "${release_name}" == "bkn-safe" ]]; then
+    if [[ "${release_name}" == "agent-observability" ]]; then
+        CORE_RELEASE_EXTRA_SETS+=(
+            "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
+            "evidence.ingestAuth.secretKey=token"
+        )
+        if kubectl get secret bkn-trace-evidence-ingest -n "${namespace}" >/dev/null 2>&1; then
+            CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=false")
+        else
+            CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=true")
+        fi
+    elif [[ "${release_name}" == "bkn-safe" ]]; then
         local initial_pwd
         initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
         if [[ -n "${initial_pwd}" ]]; then

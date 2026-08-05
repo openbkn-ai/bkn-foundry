@@ -491,6 +491,12 @@ func applyCanonicalConversationEvidenceAndDuration(
 		if summary.Status != "running" && summary.Status != "unknown" {
 			total += summary.DurationMS
 		}
+		if canonicalEvidenceRank(summary.EvidenceCompleteness) > canonicalEvidenceRank(canonicalCompleteness) {
+			canonicalCompleteness = summary.EvidenceCompleteness
+		}
+		for _, reason := range summary.PartialReasons {
+			canonicalReasons[reason] = struct{}{}
+		}
 	}
 	if canonicalFound {
 		*evidenceCompleteness = canonicalCompleteness

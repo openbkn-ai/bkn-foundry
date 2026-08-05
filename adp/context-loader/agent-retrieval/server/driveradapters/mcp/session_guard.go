@@ -257,6 +257,8 @@ func callBusinessTool(
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {
+	// Keep this mapping aligned with the REST twin in lifecycle_middleware.go
+	// and the Core lifecycle error registry.
 	if errors.Is(err, bkntrace.ErrFeatureNotInstalled) {
 		return lifecycleError{
 			Code: "feature_not_installed", Message: "BKN Trace Core is not configured",

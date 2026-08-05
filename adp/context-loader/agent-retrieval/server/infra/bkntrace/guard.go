@@ -162,9 +162,13 @@ func (g *Guard) Finish(
 	case attempted:
 		input.EvidenceDurability = "failed"
 	default:
-		// The receipt is itself the durable record for tools that do not emit a
-		// separate business-evidence event and for rejected downstream calls.
-		input.EvidenceDurability = "durable"
+		if evidenceIngestURL() == "" {
+			input.EvidenceDurability = "pending"
+		} else {
+			// The receipt is itself the durable record for tools that do not emit a
+			// separate business-evidence event and for rejected downstream calls.
+			input.EvidenceDurability = "durable"
+		}
 	}
 	finishContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer cancel()

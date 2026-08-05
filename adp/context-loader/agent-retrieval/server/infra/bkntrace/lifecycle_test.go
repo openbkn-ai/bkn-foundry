@@ -361,6 +361,7 @@ func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
 }
 
 func TestGuardFinishTerminalizesReceiptWhenToolEmitsNoEvidenceEvent(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "http://trace.local/ingest")
 	var requestBody map[string]any
 	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
 		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
@@ -381,6 +382,32 @@ func TestGuardFinishTerminalizesReceiptWhenToolEmitsNoEvidenceEvent(t *testing.T
 	}
 	if requestBody["evidence_durability"] != "durable" {
 		t.Fatalf("lifecycle receipt itself must terminalize no-evidence operations: %#v", requestBody)
+	}
+}
+
+func TestGuardFinishKeepsEvidencePendingWhenIngestIsDisabled(t *testing.T) {
+	t.Setenv(envEvidenceIngestURL, "")
+	var requestBody map[string]any
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode finish request: %v", err)
+		}
+		return lifecycleJSONResponse(http.StatusOK, OperationResult{
+			Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+			Receipt:   Receipt{ReceiptID: "receipt-1", OperationID: "op-1", Attempt: 1, ReceiptStatus: "completed"},
+		}), nil
+	})
+	ctx := trustedLifecycleTestContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.RequestID = "req_evidence_disabled_0001"
+	ctx, _ = EnsureTraceCorrelation(common.SetTraceContextToCtx(ctx, traceContext))
+	ctx = withEvidenceOutcome(ctx)
+
+	if _, apiErr, err := NewGuard(client).Finish(ctx, pendingGuardState(), "sha256:result", false, false); err != nil || apiErr != nil {
+		t.Fatalf("finish with evidence disabled: api=%#v err=%v", apiErr, err)
+	}
+	if requestBody["evidence_durability"] != "pending" {
+		t.Fatalf("disabled evidence ingestion must remain pending: %#v", requestBody)
 	}
 }
 

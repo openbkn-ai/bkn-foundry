@@ -324,6 +324,32 @@ func TestCanonicalConversationEvidenceReplacesRequestDerivedPartial(t *testing.T
 	}
 }
 
+func TestCanonicalConversationEvidenceKeepsMissingInteractionPartial(t *testing.T) {
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_complete", ConversationID: "conversation_supply",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+		})
+		completeness := "partial"
+		reasons := []string{"request_partial"}
+		duration := int64(0)
+		applyCanonicalConversationEvidenceAndDuration(
+			&completeness, &reasons, &duration, tx,
+			[]evidencevo.RequestSummary{
+				{InteractionID: "interaction_complete", EvidenceCompleteness: "partial"},
+				{InteractionID: "interaction_missing", Status: "completed", EvidenceCompleteness: "partial", PartialReasons: []string{"missing_canonical_interaction"}},
+			},
+		)
+		if completeness != "partial" || !containsSummaryValue(reasons, "missing_canonical_interaction") {
+			t.Fatalf("missing canonical interaction must remain conservatively partial: completeness=%q reasons=%v", completeness, reasons)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("apply mixed canonical conversation evidence: %v", err)
+	}
+}
+
 func TestAggregateRequestGroupDoesNotDowngradeBusinessEvidenceForAuxiliaryGap(t *testing.T) {
 	base, _ := aggregateRequestGroup([]evidencevo.RequestSummary{
 		{
