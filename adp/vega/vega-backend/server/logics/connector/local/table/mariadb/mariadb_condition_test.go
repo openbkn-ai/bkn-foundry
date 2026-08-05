@@ -10,6 +10,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
@@ -284,6 +285,28 @@ func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+}
+
+func TestMariaDBDateExpressionsNormalizeCursorTimestamps(t *testing.T) {
+	c := &MariaDBConnector{}
+	wantMillis := int64(1785295334428)
+	wantTime := time.UnixMilli(wantMillis).UTC()
+
+	for name, value := range map[string]any{
+		"time.Time": wantTime,
+		"RFC3339":   wantTime.Format(time.RFC3339Nano),
+	} {
+		t.Run(name, func(t *testing.T) {
+			cond := mustNewCond(t, "created_at", ">", value)
+			sql, args := toSQL(t, c, cond)
+			if sql != "`created_at` > FROM_UNIXTIME(?/1000)" {
+				t.Errorf("unexpected SQL: %s", sql)
+			}
+			if len(args) != 1 || args[0] != wantMillis {
+				t.Errorf("unexpected args: %v", args)
+			}
+		})
+	}
 }
 func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
 	t.Run("convert like", func(t *testing.T) {

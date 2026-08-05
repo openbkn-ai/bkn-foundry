@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -33,6 +34,13 @@ func normalizeTimestampValue(value any) any {
 		return int64(v)
 	case uint32:
 		return int64(v)
+	case time.Time:
+		return v.UnixMilli()
+	case string:
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(v)); err == nil {
+			return parsed.UnixMilli()
+		}
+		return value
 	default:
 		return value
 	}

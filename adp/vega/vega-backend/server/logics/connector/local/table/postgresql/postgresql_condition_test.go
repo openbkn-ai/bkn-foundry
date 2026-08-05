@@ -9,6 +9,7 @@ package postgresql
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -126,6 +127,30 @@ func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone
 			require.NoError(t, err)
 			assert.Equal(t, `"created_at" >= (to_timestamp(?::double precision / 1000.0) AT TIME ZONE current_setting('TimeZone'))`, sql)
 			assert.Equal(t, []interface{}{int64(1785295334428)}, args)
+		})
+	}
+}
+
+func TestPostgresqlDateExpressionsNormalizeCursorTimestamps(t *testing.T) {
+	field := &interfaces.Property{
+		Name:         "created_at",
+		OriginalName: "created_at",
+		OriginalType: "timestamptz",
+		Type:         interfaces.DataType_Timestamp,
+	}
+	wantMillis := int64(1785295334428)
+	wantTime := time.UnixMilli(wantMillis).UTC()
+
+	for name, value := range map[string]any{
+		"time.Time": wantTime,
+		"RFC3339":   wantTime.Format(time.RFC3339Nano),
+	} {
+		t.Run(name, func(t *testing.T) {
+			expr, err := postgresqlDateCompareExpr(field, ">", value)
+			require.NoError(t, err)
+			_, args, err := expr.ToSql()
+			require.NoError(t, err)
+			assert.Equal(t, []interface{}{wantMillis}, args)
 		})
 	}
 }

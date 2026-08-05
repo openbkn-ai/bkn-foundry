@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -34,6 +35,13 @@ func normalizeTimestampValue(value any) any {
 		return int64(v)
 	case uint32:
 		return int64(v)
+	case time.Time:
+		return v.UnixMilli()
+	case string:
+		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(v)); err == nil {
+			return parsed.UnixMilli()
+		}
+		return value
 	default:
 		return value
 	}
@@ -59,9 +67,16 @@ func validateMariaDBDateValue(field *interfaces.Property, value any) error {
 
 	switch value := value.(type) {
 	case string:
-		if _, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err != nil {
-			return fmt.Errorf("MariaDB date field %q requires epoch milliseconds, got %q", field.Name, value)
+		trimmed := strings.TrimSpace(value)
+		if _, err := strconv.ParseFloat(trimmed, 64); err == nil {
+			return nil
 		}
+		if _, err := time.Parse(time.RFC3339Nano, trimmed); err == nil {
+			return nil
+		}
+		return fmt.Errorf("MariaDB date field %q requires epoch milliseconds, got %q", field.Name, value)
+	case time.Time:
+		return nil
 	case float32, float64,
 		int, int8, int16, int32, int64,
 		uint, uint8, uint16, uint32, uint64:
