@@ -53,16 +53,30 @@ func postgresqlDateValueExpr(field *interfaces.Property, value any) string {
 	if field.Type == interfaces.DataType_Time {
 		return "?"
 	}
+	originalType := strings.ToLower(strings.TrimSpace(field.OriginalType))
+	nativeTimestamp := false
 	if _, ok := value.(time.Time); ok {
-		return "?"
+		nativeTimestamp = true
 	}
 	if value, ok := value.(string); ok {
 		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
-			return "?"
+			nativeTimestamp = true
 		}
 	}
+	if nativeTimestamp {
+		// Without an explicit cast PostgreSQL may infer an unknown parameter as timestamptz
+		// and shift an unzoned column through the session TimeZone. Keep native cursors in
+		// wall-clock space for timestamp-without-time-zone and date columns.
+		switch originalType {
+		case "timestamp", "timestamp without time zone", "date":
+			return "?::timestamp"
+		}
+		if field.Type == interfaces.DataType_Date {
+			return "?::timestamp"
+		}
+		return "?"
+	}
 
-	originalType := strings.ToLower(strings.TrimSpace(field.OriginalType))
 	switch originalType {
 	case "time", "timetz", "time without time zone", "time with time zone":
 		// An epoch instant has no well-defined time-of-day value. Keep time values raw so

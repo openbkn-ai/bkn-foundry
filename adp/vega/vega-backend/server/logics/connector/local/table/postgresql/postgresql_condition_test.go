@@ -135,23 +135,32 @@ func TestPostgresqlDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 	wantMillis := int64(1785295334428)
 	wantTime := time.UnixMilli(wantMillis).UTC()
 
-	for _, originalType := range []string{"timestamp", "timestamptz"} {
+	tests := []struct {
+		originalType string
+		fieldType    string
+		wantSQL      string
+	}{
+		{originalType: "timestamp", fieldType: interfaces.DataType_Timestamp, wantSQL: `"created_at" > ?::timestamp`},
+		{originalType: "date", fieldType: interfaces.DataType_Date, wantSQL: `"created_at" > ?::timestamp`},
+		{originalType: "timestamptz", fieldType: interfaces.DataType_Timestamp, wantSQL: `"created_at" > ?`},
+	}
+	for _, test := range tests {
 		field := &interfaces.Property{
 			Name:         "created_at",
 			OriginalName: "created_at",
-			OriginalType: originalType,
-			Type:         interfaces.DataType_Timestamp,
+			OriginalType: test.originalType,
+			Type:         test.fieldType,
 		}
 		for name, value := range map[string]any{
 			"time.Time": wantTime,
 			"RFC3339":   wantTime.Format(time.RFC3339Nano),
 		} {
-			t.Run(originalType+"/"+name, func(t *testing.T) {
+			t.Run(test.originalType+"/"+name, func(t *testing.T) {
 				expr, err := postgresqlDateCompareExpr(field, ">", value)
 				require.NoError(t, err)
 				sql, args, err := expr.ToSql()
 				require.NoError(t, err)
-				assert.Equal(t, `"created_at" > ?`, sql)
+				assert.Equal(t, test.wantSQL, sql)
 				assert.Equal(t, []interface{}{wantTime}, args)
 			})
 		}
