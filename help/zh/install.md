@@ -277,7 +277,7 @@ sudo bash ./onboard.sh --help
 2. **`openbkn` 在 PATH**（`ensure admin CLI`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
 3. **管理认证**（`onboard_ensure_bkn_auth`（管理与业务共用））— 管理操作**复用第 1 步同一份 `openbkn` 登录与 token 存储**（默认仍是 `admin` + 记录的初始密码）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`）。TTY 下也支持浏览器 OAuth。
 4. **业务用户 `test`**（`onboard_provision_bkn_safe_test_user`）— 创建 `test`，密码 `111111`（可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖），把 `openbkn admin role list` 中**所有**角色都挂上，然后 **`openbkn auth login` 为 `test`**，让 SDK 会话切到业务用户，供后续步骤使用。若 `test` 已存在，则只做角色同步。
-5. **模型注册**（交互式或 YAML）— 使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**。Context Loader 的内置工具箱由平台安装流程注册，不再是 onboard 的独立步骤；确认方式见[快速开始](quick-start.md)。
+5. **模型注册**（交互式或 YAML）— 使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**。Context Loader 的内置工具箱由 agent-retrieval 启动时自动导入，不再是 onboard 的独立步骤；确认方式见[快速开始](quick-start.md)。
 
 任何一步失败脚本都会非零退出并打印清楚原因；修好之后重跑 `sudo bash deploy/onboard.sh`（Linux）/ `bash deploy/onboard.sh`（macOS dev）即可——已成功的步骤会被检测并跳过（重复运行幂等）。
 

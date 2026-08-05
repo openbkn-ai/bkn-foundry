@@ -274,7 +274,7 @@ Typical flags:
 2. **`openbkn` on `PATH`** (`onboard_ensure_bkn_cli`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
 3. **Admin auth** (`onboard_ensure_bkn_auth` (shared by admin and business use)) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` + recorded initial-password defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
 4. **User `test`** (`onboard_provision_bkn_safe_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
-5. **Model registration** (interactive or YAML) — uses **`~/.bkn` as `test`**. The Context Loader built-in toolbox is registered by the platform install flow and is no longer a separate onboard step; see [Quick Start](quick-start.md) for how to verify it.
+5. **Model registration** (interactive or YAML) — uses **`~/.bkn` as `test`**. The Context Loader built-in toolbox is auto-imported by agent-retrieval at startup and is no longer a separate onboard step; see [Quick Start](quick-start.md) for how to verify it.
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
