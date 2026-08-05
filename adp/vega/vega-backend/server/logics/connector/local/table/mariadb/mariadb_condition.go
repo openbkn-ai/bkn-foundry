@@ -36,10 +36,10 @@ func normalizeTimestampValue(value any) any {
 	case uint32:
 		return int64(v)
 	case time.Time:
-		return v.UnixMilli()
+		return v
 	case string:
 		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(v)); err == nil {
-			return parsed.UnixMilli()
+			return parsed
 		}
 		return value
 	default:
@@ -47,9 +47,17 @@ func normalizeTimestampValue(value any) any {
 	}
 }
 
-func mariaDBDateValueExpr(field *interfaces.Property) string {
+func mariaDBDateValueExpr(field *interfaces.Property, value any) string {
 	if field.Type == interfaces.DataType_Time {
 		return "?"
+	}
+	if _, ok := value.(time.Time); ok {
+		return "?"
+	}
+	if value, ok := value.(string); ok {
+		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
+			return "?"
+		}
 	}
 	return "FROM_UNIXTIME(?/1000)"
 }
@@ -84,7 +92,6 @@ func validateMariaDBDateValue(field *interfaces.Property, value any) error {
 	default:
 		return fmt.Errorf("MariaDB date field %q requires epoch milliseconds, got %T", field.Name, value)
 	}
-	return nil
 }
 
 func mariaDBDateCompareExpr(field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
@@ -92,7 +99,7 @@ func mariaDBDateCompareExpr(field *interfaces.Property, op string, value any) (s
 		return nil, err
 	}
 	return sq.Expr(
-		quoteColumnName(field.OriginalName)+" "+op+" "+mariaDBDateValueExpr(field),
+		quoteColumnName(field.OriginalName)+" "+op+" "+mariaDBDateValueExpr(field, value),
 		normalizeTimestampValue(value),
 	), nil
 }
@@ -104,7 +111,7 @@ func mariaDBDateSetExpr(field *interfaces.Property, op string, values []any) (sq
 		if err := validateMariaDBDateValue(field, value); err != nil {
 			return nil, err
 		}
-		valueExprs[i] = mariaDBDateValueExpr(field)
+		valueExprs[i] = mariaDBDateValueExpr(field, value)
 		args[i] = normalizeTimestampValue(value)
 	}
 	return sq.Expr(

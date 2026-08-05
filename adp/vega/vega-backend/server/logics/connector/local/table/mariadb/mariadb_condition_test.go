@@ -287,7 +287,7 @@ func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
 	})
 }
 
-func TestMariaDBDateExpressionsNormalizeCursorTimestamps(t *testing.T) {
+func TestMariaDBDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 	c := &MariaDBConnector{}
 	wantMillis := int64(1785295334428)
 	wantTime := time.UnixMilli(wantMillis).UTC()
@@ -299,10 +299,10 @@ func TestMariaDBDateExpressionsNormalizeCursorTimestamps(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cond := mustNewCond(t, "created_at", ">", value)
 			sql, args := toSQL(t, c, cond)
-			if sql != "`created_at` > FROM_UNIXTIME(?/1000)" {
+			if sql != "`created_at` > ?" {
 				t.Errorf("unexpected SQL: %s", sql)
 			}
-			if len(args) != 1 || args[0] != wantMillis {
+			if len(args) != 1 || !args[0].(time.Time).Equal(wantTime) {
 				t.Errorf("unexpected args: %v", args)
 			}
 		})

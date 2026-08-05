@@ -35,10 +35,10 @@ func normalizeTimestampValue(value any) any {
 	case uint32:
 		return int64(v)
 	case time.Time:
-		return v.UnixMilli()
+		return v
 	case string:
 		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(v)); err == nil {
-			return parsed.UnixMilli()
+			return parsed
 		}
 		return value
 	default:
@@ -47,11 +47,19 @@ func normalizeTimestampValue(value any) any {
 }
 
 // postgresqlDateValueExpr builds a parameter expression compatible with the field's PostgreSQL date type.
-func postgresqlDateValueExpr(field *interfaces.Property) string {
+func postgresqlDateValueExpr(field *interfaces.Property, value any) string {
 	// Type is the semantic contract and may be present even when an API-provided schema
 	// omits OriginalType. Keep this check aligned with validatePostgresqlDateValue.
 	if field.Type == interfaces.DataType_Time {
 		return "?"
+	}
+	if _, ok := value.(time.Time); ok {
+		return "?"
+	}
+	if value, ok := value.(string); ok {
+		if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
+			return "?"
+		}
 	}
 
 	originalType := strings.ToLower(strings.TrimSpace(field.OriginalType))
@@ -88,7 +96,7 @@ func postgresqlDateCompareExpr(field *interfaces.Property, op string, value any)
 		return nil, err
 	}
 	return sq.Expr(
-		quoteColumnName(field.OriginalName)+" "+op+" "+postgresqlDateValueExpr(field),
+		quoteColumnName(field.OriginalName)+" "+op+" "+postgresqlDateValueExpr(field, value),
 		normalizeTimestampValue(value),
 	), nil
 }
@@ -100,7 +108,7 @@ func postgresqlDateSetExpr(field *interfaces.Property, op string, values []any) 
 		if err := validatePostgresqlDateValue(field, value); err != nil {
 			return nil, err
 		}
-		valueExprs[i] = postgresqlDateValueExpr(field)
+		valueExprs[i] = postgresqlDateValueExpr(field, value)
 		args[i] = normalizeTimestampValue(value)
 	}
 	return sq.Expr(

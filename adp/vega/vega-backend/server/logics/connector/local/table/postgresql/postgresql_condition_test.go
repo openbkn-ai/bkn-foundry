@@ -131,27 +131,30 @@ func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone
 	}
 }
 
-func TestPostgresqlDateExpressionsNormalizeCursorTimestamps(t *testing.T) {
-	field := &interfaces.Property{
-		Name:         "created_at",
-		OriginalName: "created_at",
-		OriginalType: "timestamptz",
-		Type:         interfaces.DataType_Timestamp,
-	}
+func TestPostgresqlDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 	wantMillis := int64(1785295334428)
 	wantTime := time.UnixMilli(wantMillis).UTC()
 
-	for name, value := range map[string]any{
-		"time.Time": wantTime,
-		"RFC3339":   wantTime.Format(time.RFC3339Nano),
-	} {
-		t.Run(name, func(t *testing.T) {
-			expr, err := postgresqlDateCompareExpr(field, ">", value)
-			require.NoError(t, err)
-			_, args, err := expr.ToSql()
-			require.NoError(t, err)
-			assert.Equal(t, []interface{}{wantMillis}, args)
-		})
+	for _, originalType := range []string{"timestamp", "timestamptz"} {
+		field := &interfaces.Property{
+			Name:         "created_at",
+			OriginalName: "created_at",
+			OriginalType: originalType,
+			Type:         interfaces.DataType_Timestamp,
+		}
+		for name, value := range map[string]any{
+			"time.Time": wantTime,
+			"RFC3339":   wantTime.Format(time.RFC3339Nano),
+		} {
+			t.Run(originalType+"/"+name, func(t *testing.T) {
+				expr, err := postgresqlDateCompareExpr(field, ">", value)
+				require.NoError(t, err)
+				sql, args, err := expr.ToSql()
+				require.NoError(t, err)
+				assert.Equal(t, `"created_at" > ?`, sql)
+				assert.Equal(t, []interface{}{wantTime}, args)
+			})
+		}
 	}
 }
 
