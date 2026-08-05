@@ -85,6 +85,7 @@ spec:
           # kubectl image WITH a shell — distroless kubectl images (e.g.
           # rancher/kubectl) have no /bin/sh and won't start the loop.
           image: __KUBECTL_IMAGE__
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -124,6 +125,7 @@ spec:
               readOnly: true
         - name: nginx
           image: __NGINX_IMAGE__
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
           readinessProbe:
