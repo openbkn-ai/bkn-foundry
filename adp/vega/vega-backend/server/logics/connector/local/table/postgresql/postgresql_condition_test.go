@@ -70,6 +70,63 @@ func TestConvertDateGteUsesToTimestamp(t *testing.T) {
 	})
 }
 
+func TestConvertDateEqualityUsesToTimestamp(t *testing.T) {
+	c := &PostgresqlConnector{}
+
+	t.Run("uses to_timestamp for equal", func(t *testing.T) {
+		cond := mustNewCond(t, "created_at", "==", float64(1785295334428))
+		sql, args := toSQL(t, c, cond)
+
+		assert.Equal(t, `"created_at" = to_timestamp(?::double precision / 1000.0)`, sql)
+		assert.Equal(t, []interface{}{int64(1785295334428)}, args)
+	})
+
+	t.Run("uses to_timestamp for not equal", func(t *testing.T) {
+		cond := mustNewCond(t, "created_at", "!=", float64(1785295334428))
+		sql, args := toSQL(t, c, cond)
+
+		assert.Equal(t, `"created_at" <> to_timestamp(?::double precision / 1000.0)`, sql)
+		assert.Equal(t, []interface{}{int64(1785295334428)}, args)
+	})
+}
+
+func TestConvertDateSetMembershipUsesToTimestamp(t *testing.T) {
+	c := &PostgresqlConnector{}
+	values := []any{1785295334428, 1785381734428}
+
+	t.Run("uses to_timestamp for in", func(t *testing.T) {
+		cond := mustNewCond(t, "created_at", "in", values)
+		sql, args := toSQL(t, c, cond)
+
+		assert.Equal(t, `"created_at" IN (to_timestamp(?::double precision / 1000.0), to_timestamp(?::double precision / 1000.0))`, sql)
+		assert.Equal(t, []interface{}{int64(1785295334428), int64(1785381734428)}, args)
+	})
+
+	t.Run("uses to_timestamp for not in", func(t *testing.T) {
+		cond := mustNewCond(t, "created_at", "not_in", values)
+		sql, args := toSQL(t, c, cond)
+
+		assert.Equal(t, `"created_at" NOT IN (to_timestamp(?::double precision / 1000.0), to_timestamp(?::double precision / 1000.0))`, sql)
+		assert.Equal(t, []interface{}{int64(1785295334428), int64(1785381734428)}, args)
+	})
+}
+
+func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone(t *testing.T) {
+	for _, originalType := range []string{"timestamp", "timestamp without time zone"} {
+		t.Run(originalType, func(t *testing.T) {
+			field := &interfaces.Property{
+				OriginalName: "created_at",
+				OriginalType: originalType,
+			}
+
+			sql, args, err := postgresqlDateCompareExpr(field, ">=", float64(1785295334428)).ToSql()
+			require.NoError(t, err)
+			assert.Equal(t, `"created_at" >= (to_timestamp(?::double precision / 1000.0) AT TIME ZONE current_setting('TimeZone'))`, sql)
+			assert.Equal(t, []interface{}{int64(1785295334428)}, args)
+		})
+	}
+}
+
 func TestConvertDateRangeUsesToTimestamp(t *testing.T) {
 	t.Run("uses to_timestamp for both range bounds", func(t *testing.T) {
 		c := &PostgresqlConnector{}
