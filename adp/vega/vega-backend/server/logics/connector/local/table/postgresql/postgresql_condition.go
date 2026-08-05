@@ -38,6 +38,9 @@ func normalizeTimestampValue(value any) any {
 	}
 }
 
+// postgresqlDateCompareExpr compares a date column with epoch milliseconds.
+// The explicit float8 cast prevents PostgreSQL from inferring the parameter as int4
+// from the 1000 literal, which would overflow or truncate millisecond timestamps.
 func postgresqlDateCompareExpr(columnName, op string, value any) sq.Sqlizer {
 	return sq.Expr(
 		quoteColumnName(columnName)+" "+op+" to_timestamp(?::double precision / 1000.0)",
