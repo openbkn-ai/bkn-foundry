@@ -275,7 +275,7 @@ Typical flags:
 2. **`openbkn` on `PATH`** (`onboard_ensure_kweaver_admin_for_isf`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
 3. **Admin auth** (`onboard_ensure_kweaver_admin_auth_for_isf`) — admin operations reuse the **same `openbkn` login / token store** as step 1 (`admin` + recorded initial-password defaults). Uses `-u` / `-p` / `-k` (HTTP `/oauth2/signin` is selected automatically). On a TTY a browser flow is also offered.
 4. **User `test`** (`onboard_offer_isf_test_user`) — created with password `111111` (override with `ONBOARD_TEST_USER_PASSWORD`), every role from `openbkn admin role list` assigned, then **`openbkn auth login` as `test`** so the SDK session matches the business user for the next steps. If `test` already exists, only role-sync runs.
-5. **Context Loader + model registration** (`onboard_offer_context_loader_toolset` → `openbkn call impex`; then interactive / YAML model registration) — both use **`~/.bkn` as `test`** (the console `admin` session usually returns `403` on impex).
+5. **Model registration** (interactive or YAML) — uses **`~/.bkn` as `test`**. The Context Loader built-in toolbox is registered by the platform install flow and is no longer a separate onboard step; see [Quick Start](quick-start.md) for how to verify it.
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
@@ -314,10 +314,10 @@ flowchart TB
     A["onboard_ensure_kweaver_auth\n(openbkn: HTTP default admin + recorded initial password, or browser)"] --> B["kubectl: ns or target namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli (Helm / ns → full-auth?)"]
-    D --> E["onboard_ensure_kweaver_admin_for_isf\n(npm -g openbkn on full-auth installs if needed)"]
+    D --> E["ensure admin CLI\n(npm -g openbkn on full-auth installs if needed)"]
     E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n(admin auth: same openbkn defaults, or -k browser; -y: auto HTTP)"]
     F --> G1["onboard_offer_isf_test_user\ncreate or sync test + roles"]
-    G1 --> G2["onboard_isf_relogin…\nopenbkn auth as test (HTTP)"]
+    G1 --> G2["onboard re-login…\nopenbkn auth login … -u test (HTTP)"]
     G2 --> H["onboard_offer_context_loader_toolset\n(openbkn impex)"]
   end
 ```
@@ -338,8 +338,8 @@ sequenceDiagram
   O->>A: openbkn admin (same login / token) — HTTP defaults or -k browser
   A->>A: user create, password, assign roles
   A-->>O: user list OK
-  O->>K: openbkn auth as test — HTTP (test password)
-  O->>K: openbkn call impex / later openbkn steps
+  O->>K: openbkn auth login -u test — HTTP (test password)
+  O->>K: model registration / later openbkn steps
 ```
 
 After **probe**, the default path continues with **Namespace + models + BKN** in this shell: **~/.bkn** should already be **test** on a full-auth install so those calls use the business user.

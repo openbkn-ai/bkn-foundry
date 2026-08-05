@@ -20,40 +20,46 @@
 
 ## 3. Steps（操作步骤）
 
-### 3.1 选/建数据源
+### 3.1 选/建 Catalog
 
-先看现有数据源，从中挑一个：
-
-```bash
-openbkn ds list
-```
-
-如果没有合适的，连接一个新的（示例为 MySQL）：
+先看现有 Catalog，从中挑一个：
 
 ```bash
-openbkn ds connect mysql db.example.com 3306 erp \
-  --account root --password pass123
-# → 返回 ds_id
+openbkn vega catalog list
 ```
 
-> 选好后记下 **`<ds_id>`**。下面把它当成已知量。
+如果没有合适的，注册一个新的（示例为 MySQL）：
+
+```bash
+openbkn vega catalog create --name "erp" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["erp"]}'
+# → 返回 catalog id
+
+openbkn vega catalog enable <catalog_id>
+openbkn vega catalog discover <catalog_id> --wait
+```
+
+> 选好后记下 **`<catalog_id>`**。下面把它当成已知量。
 
 ### 3.2 一键从 CSV 建 KN
 
 ```bash
-openbkn bkn create-from-csv <ds_id> \
+openbkn bkn create-from-csv <catalog_id> \
   --files "物料.csv,库存.csv" \
   --name "supply-kn" \
   --table-prefix sc_
-# → 自动完成：CSV 入库 → 创建 dataview → 创建 OT → 构建索引
 # → 返回 kn_id
 ```
+
+> **该命令当前不可用**：它的 CSV 入库依赖已下线的 dataflow 通道。请走下面的分步路径
+> （mysql 客户端装库 → 重新发现 → `create-from-catalog`），`examples/02-csv-to-kn`
+> 是完整可运行版本。
 
 参数速查：
 
 | 参数 | 是否必填 | 说明 |
 | --- | --- | --- |
-| `<ds_id>` | 是 | 用于落 CSV 的数据源 ID |
+| `<catalog_id>` | 是 | CSV 落地库对应的 Catalog ID |
 | `--files` | 是 | 逗号分隔或 glob，例如 `"*.csv"` |
 | `--name` | 是 | 知识网络名 |
 | `--table-prefix` | 否 | 表名前缀，避免和已有表冲突 |
@@ -64,8 +70,12 @@ openbkn bkn create-from-csv <ds_id> \
 <summary>等价的两步路径（想自定义主键 / 显示键时用）</summary>
 
 ```bash
-openbkn ds import-csv <ds_id> --files "*.csv" --table-prefix sc_
-openbkn bkn create-from-ds <ds_id> --name "supply-kn" --build
+# 1. 用 mysql 客户端把 CSV 装进 Catalog 对应的库（平台侧 import-csv 已下线）
+mysql -h db.example.com -u root -p erp < load_csv.sql
+
+# 2. 重新发现表，再从 Catalog 建网
+openbkn vega catalog discover <catalog_id> --wait
+openbkn bkn create-from-catalog <catalog_id> --name "supply-kn" --build
 ```
 
 分步路径下可在 `bkn object-type create` 时用 `--primary-key` / `--display-key` 显式指定字段。
@@ -115,8 +125,8 @@ openbkn bkn search <kn_id> "物料"
 | --- | --- | --- |
 | `401 Unauthorized` 或返回体含 `oauth info is not active` | token 过期 | `openbkn auth login <平台地址>` |
 | `openbkn bkn object-type list <kn_id>` 输出 `[]` | CSV 路径错 / glob 没匹配到 | 确认 `--files` 路径，必要时改用绝对路径 |
-| `object-type query` 响应中 `total = 0` | 构建未完成或映射错 | `openbkn bkn stats <kn_id>` 看 `doc_count`；必要时 `openbkn bkn build <kn_id> --wait --timeout 600` 重建 |
-| `ds import-csv` 报 `table already exists` | 同名表已存在 | 首批加 `--recreate`：`openbkn ds import-csv <ds_id> --files "*.csv" --recreate` |
+| `object-type query` 响应中 `total = 0` | 源表为空、映射错，或索引未建好 | 先 `openbkn vega resource query <resource_id> --limit 5` 看源端有没有数据；建过索引的用 `openbkn vega dataset build-list --resource-id <resource_id>` 看 `index_health` |
+| 装 CSV 时报 `table already exists` | 同名表已存在 | 在 SQL 里先 `DROP TABLE IF EXISTS`（平台侧的 `ds import-csv` 已下线，导入由 mysql 客户端完成） |
 | 自动选出的主键不是业务唯一键 | 启发式无法识别 | 走分步路径，`openbkn bkn object-type create` 显式 `--primary-key` / `--display-key` |
 | `bkn search` 返回 `HTTP 500` | 视图不支持全文检索 | 把查询 `condition` 从 `match` 改为 `like` |
 

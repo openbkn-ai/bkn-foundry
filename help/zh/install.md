@@ -275,10 +275,10 @@ sudo bash ./onboard.sh --help
 **完整鉴权安装（启用 auth + business domain）**：脚本根据 Helm/命名空间判断为完整鉴权安装 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
 
 1. **`openbkn auth login`**（`onboard_ensure_kweaver_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` + 安装时生成的初始密码（config.yaml `bknSafe.initialPassword`）（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
-2. **`openbkn` 在 PATH**（`onboard_ensure_kweaver_admin_for_isf`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
+2. **`openbkn` 在 PATH**（`ensure admin CLI`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
 3. **管理认证**（`onboard_ensure_kweaver_admin_auth_for_isf`）— 管理操作**复用第 1 步同一份 `openbkn` 登录与 token 存储**（默认仍是 `admin` + 记录的初始密码）。命令是 `-u` / `-p` / `-k`（带上即走 HTTP `/oauth2/signin`）。TTY 下也支持浏览器 OAuth。
 4. **业务用户 `test`**（`onboard_offer_isf_test_user`）— 创建 `test`，密码 `111111`（可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖），把 `openbkn admin role list` 中**所有**角色都挂上，然后 **`openbkn auth login` 为 `test`**，让 SDK 会话切到业务用户，供后续步骤使用。若 `test` 已存在，则只做角色同步。
-5. **Context Loader + 模型注册**（`onboard_offer_context_loader_toolset` → `openbkn call impex`；随后是交互式或 YAML 模型注册）— 都使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**；仅 **admin** 的 `openbkn` 会话对 impex 常见 **403**。
+5. **模型注册**（交互式或 YAML）— 使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**。Context Loader 的内置工具箱由平台安装流程注册，不再是 onboard 的独立步骤；确认方式见[快速开始](quick-start.md)。
 
 任何一步失败脚本都会非零退出并打印清楚原因；修好之后重跑 `sudo bash deploy/onboard.sh`（Linux）/ `bash deploy/onboard.sh`（macOS dev）即可——已成功的步骤会被检测并跳过（重复运行幂等）。
 
@@ -317,10 +317,10 @@ flowchart TB
     A["onboard_ensure_kweaver_auth\n（openbkn：HTTP 默认 admin + 记录的初始密码，或浏览器）"] --> B["kubectl：命名空间或目标 namespace"]
     B --> C["onboard_prepend_npm_global_bin_to_path"]
     C --> D["onboard_recommend_admin_cli（Helm/命名空间 → 是否完整鉴权）"]
-    D --> E["onboard_ensure_kweaver_admin_for_isf\n（完整鉴权时按需 npm -g 安装 openbkn）"]
+    D --> E["ensure admin CLI\n（完整鉴权时按需 npm -g 安装 openbkn）"]
     E --> F["onboard_ensure_kweaver_admin_auth_for_isf\n（管理认证 与 openbkn 同默认；或 -k 浏览器；-y 自动 HTTP）"]
     F --> G1["onboard_offer_isf_test_user\n创建或同步 test 与角色"]
-    G1 --> G2["onboard_isf_relogin…\nopenbkn 以 test 登录（HTTP）"]
+    G1 --> G2["onboard re-login…\nopenbkn 以 test 登录（HTTP）"]
     G2 --> H["onboard_offer_context_loader_toolset\n（openbkn impex）"]
   end
 ```
@@ -342,7 +342,7 @@ sequenceDiagram
   A->>A: 创建 user、设密、挂载角色
   A-->>O: user list 成功
   O->>K: openbkn 以 test 登录 — HTTP（test 的密码）
-  O->>K: openbkn call impex / 后续 openbkn 操作
+  O->>K: 模型注册 / 后续 openbkn 操作
 ```
 
 **probe 之后**，默认模式会继续 **命名空间 + 模型 + BKN** 交互；在完整鉴权安装上此时 **`~/.bkn` 宜已为 `test`**，后续注册走业务用户。
