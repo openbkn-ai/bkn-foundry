@@ -65,7 +65,7 @@ func TestConvertDateGteUsesToTimestamp(t *testing.T) {
 		cond := mustNewCond(t, "created_at", ">=", float64(1710000000000))
 		sql, args := toSQL(t, c, cond)
 
-		assert.Equal(t, `"created_at" >= to_timestamp(?/1000)`, sql)
+		assert.Equal(t, `"created_at" >= to_timestamp(?::double precision / 1000.0)`, sql)
 		assert.Equal(t, []interface{}{int64(1710000000000)}, args)
 	})
 }
@@ -76,8 +76,8 @@ func TestConvertDateRangeUsesToTimestamp(t *testing.T) {
 		cond := mustNewCond(t, "created_at", "range", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
 
-		assert.Contains(t, sql, `"created_at" >= to_timestamp(?/1000)`)
-		assert.Contains(t, sql, `"created_at" <= to_timestamp(?/1000)`)
+		assert.Contains(t, sql, `"created_at" >= to_timestamp(?::double precision / 1000.0)`)
+		assert.Contains(t, sql, `"created_at" <= to_timestamp(?::double precision / 1000.0)`)
 		assert.Equal(t, []interface{}{int64(1710000000000), int64(1710003600000)}, args)
 	})
 }
@@ -88,8 +88,8 @@ func TestConvertDateOutRangeUsesToTimestamp(t *testing.T) {
 		cond := mustNewCond(t, "created_at", "out_range", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
 
-		assert.Contains(t, sql, `"created_at" < to_timestamp(?/1000)`)
-		assert.Contains(t, sql, `"created_at" > to_timestamp(?/1000)`)
+		assert.Contains(t, sql, `"created_at" < to_timestamp(?::double precision / 1000.0)`)
+		assert.Contains(t, sql, `"created_at" > to_timestamp(?::double precision / 1000.0)`)
 		assert.Equal(t, []interface{}{int64(1710000000000), int64(1710003600000)}, args)
 	})
 }
@@ -100,8 +100,8 @@ func TestConvertDateBetweenUsesToTimestamp(t *testing.T) {
 		cond := mustNewCond(t, "created_at", "between", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
 
-		assert.Contains(t, sql, `"created_at" >= to_timestamp(?/1000)`)
-		assert.Contains(t, sql, `"created_at" <= to_timestamp(?/1000)`)
+		assert.Contains(t, sql, `"created_at" >= to_timestamp(?::double precision / 1000.0)`)
+		assert.Contains(t, sql, `"created_at" <= to_timestamp(?::double precision / 1000.0)`)
 		assert.Equal(t, []interface{}{int64(1710000000000), int64(1710003600000)}, args)
 	})
 }

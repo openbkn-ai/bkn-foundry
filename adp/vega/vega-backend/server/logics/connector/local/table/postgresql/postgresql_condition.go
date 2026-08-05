@@ -40,7 +40,7 @@ func normalizeTimestampValue(value any) any {
 
 func postgresqlDateCompareExpr(columnName, op string, value any) sq.Sqlizer {
 	return sq.Expr(
-		quoteColumnName(columnName)+" "+op+" to_timestamp(?/1000)",
+		quoteColumnName(columnName)+" "+op+" to_timestamp(?::double precision / 1000.0)",
 		normalizeTimestampValue(value),
 	)
 }
