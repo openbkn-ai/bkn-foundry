@@ -55,8 +55,9 @@ func TestExecuteSkillOnlyAppearsWhenEnabled(t *testing.T) {
 func TestSkillToolsAdvertiseSchemas(t *testing.T) {
 	noExtensions(t)
 
+	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	for _, key := range []string{toolKeyListSkills, toolKeyGetSkillContent, toolKeyReadSkillFile, toolKeyExecuteSkill} {
-		in, out := tryLoadToolSchemas(key)
+		in, out := tryLoadToolSchemas(locale, key)
 		if len(in) == 0 {
 			t.Fatalf("%s 缺 input_schema", key)
 		}

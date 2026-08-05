@@ -170,8 +170,8 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 	bknBackend := drivenadapters.NewBknBackendAccess()
 	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
 	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService))
-	b.addEmbedded(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService))
-	b.addEmbedded(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
+	b.add(toolKeyGetObjectTypes, handleGetObjectTypes(bknBackend, metricsService))
+	b.add(toolKeyGetRelationTypes, handleGetRelationTypes(bknBackend))
 
 	runSQLService := knrunsql.NewKnRunSQLService()
 	b.add(toolKeyRunSQL, handleRunSQL(runSQLService))
@@ -220,7 +220,7 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 		// notices.
 		server.WithToolFilter(b.filter),
 	)
-	registerLifecycleTools(mcpServer, lifecycleClient)
+	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 	b.attach(mcpServer)
 	return mcpServer, b
 }

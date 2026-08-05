@@ -118,7 +118,18 @@ func (b *mcpLocaleBundle) ToolMeta(toolKey string) ToolMeta {
 
 func (b *mcpLocaleBundle) ToolSchemas(toolKey string) (input, output json.RawMessage) {
 	input, output = loadToolSchemas(toolKey)
-	if b.schemaDescriptions == nil {
+	return b.OverlaySchemas(toolKey, input, output)
+}
+
+// OverlaySchemas applies the locale's description overlay to schemas the caller
+// already has. Split out of ToolSchemas for /mcp/info, which loads its schemas
+// its own way (nil instead of a panic when a file is missing) but has to end up
+// with the same text tools/list serves.
+func (b *mcpLocaleBundle) OverlaySchemas(
+	toolKey string,
+	input, output json.RawMessage,
+) (json.RawMessage, json.RawMessage) {
+	if b == nil || b.schemaDescriptions == nil {
 		return input, output
 	}
 	replacements := b.schemaDescriptions[toolKey]

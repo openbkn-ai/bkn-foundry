@@ -104,11 +104,6 @@ func TestCommunityToolSchemasUnchanged(t *testing.T) {
 			t.Fatalf("tool %q missing from the assembled server", key)
 		}
 		want, _ := bundle.ToolSchemas(key)
-		if key == toolKeyGetObjectTypes || key == toolKeyGetRelationTypes {
-			// These two still read the embedded schemas directly; see
-			// toolBuilder.addEmbedded.
-			want, _ = loadToolSchemas(key)
-		}
 		if string(tool.Tool.RawInputSchema) != string(want) {
 			t.Fatalf("tool %q input schema was modified with no extension registered", key)
 		}
@@ -157,8 +152,9 @@ func TestCommunityMCPInfoSchemasComeFromEmbeddedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildMCPInfo: %v", err)
 	}
+	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	for _, tool := range info.Tools {
-		want, _ := tryLoadToolSchemas(tool.Name)
+		want, _ := tryLoadToolSchemas(locale, tool.Name)
 		if len(want) == 0 {
 			continue
 		}

@@ -19,6 +19,9 @@ import (
 func TestToolsListCarriesDisplayMetadata(t *testing.T) {
 	noExtensions(t)
 
+	// 按进程当前的 locale 取期望值，而不是恒读中文基准文件：本地开发机上
+	// LANG=en_US 是常态，写死基准文件会让这条断言在那里假红。
+	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	for _, tool := range assembledTools(t) {
 		raw, err := json.Marshal(tool)
 		if err != nil {
@@ -33,22 +36,22 @@ func TestToolsListCarriesDisplayMetadata(t *testing.T) {
 			t.Fatalf("decode tool %q: %v", tool.Name, err)
 		}
 
-		want := loadToolMeta(wire.Name)
+		want := locale.ToolMeta(wire.Name)
 		if wire.Title != want.Title {
-			t.Fatalf("tool %q advertises title %q, tools_meta.json says %q", wire.Name, wire.Title, want.Title)
+			t.Fatalf("tool %q advertises title %q, tool metadata says %q", wire.Name, wire.Title, want.Title)
 		}
 		if wire.Title == "" {
 			t.Fatalf("tool %q has no title — a client would have to keep its own display-name table, which is what this field exists to remove", wire.Name)
 		}
 		if got := wire.Meta[toolMetaKeyGroup]; got != want.Group {
-			t.Fatalf("tool %q advertises group %v, tools_meta.json says %q", wire.Name, got, want.Group)
+			t.Fatalf("tool %q advertises group %v, tool metadata says %q", wire.Name, got, want.Group)
 		}
 		if got := wire.Meta[toolMetaKeyGroupTitle]; got != want.GroupTitle {
-			t.Fatalf("tool %q advertises group_title %v, tools_meta.json says %q", wire.Name, got, want.GroupTitle)
+			t.Fatalf("tool %q advertises group_title %v, tool metadata says %q", wire.Name, got, want.GroupTitle)
 		}
 		// JSON 数字解到 any 上是 float64，比较前先归一。
 		if got, _ := wire.Meta[toolMetaKeyOrder].(float64); int(got) != want.Order {
-			t.Fatalf("tool %q advertises order %v, tools_meta.json says %d", wire.Name, wire.Meta[toolMetaKeyOrder], want.Order)
+			t.Fatalf("tool %q advertises order %v, tool metadata says %d", wire.Name, wire.Meta[toolMetaKeyOrder], want.Order)
 		}
 	}
 }
@@ -86,6 +89,11 @@ func TestLocalizedToolMetaTranslatesWithoutRemodelling(t *testing.T) {
 		t.Fatalf("decode localized tool metadata: %v", err)
 	}
 	base := allToolMeta()
+	for key := range base {
+		if _, ok := meta[key]; !ok {
+			t.Errorf("tool %q has no en-US entry — it would advertise its zh-CN title in an English catalogue", key)
+		}
+	}
 	for key, m := range meta {
 		if _, ok := base[key]; !ok {
 			t.Errorf("localized tool metadata has %q, which tools_meta.json does not", key)
@@ -132,6 +140,36 @@ func TestMCPInfoDisplayMetadataMatchesToolsList(t *testing.T) {
 		if tool.Group != group || tool.GroupTitle != groupTitle || tool.Order != order {
 			t.Fatalf("tool %q: /mcp/info says (%q, %q, %d), tools/list says (%q, %q, %d)",
 				tool.Name, tool.Group, tool.GroupTitle, tool.Order, group, groupTitle, order)
+		}
+	}
+}
+
+// 三条注册路径——toolBuilder、生命周期适配层、企业插座——此前只有第一条过
+// locale，另外两条直接读中文基准文件。缺陷只在非中文部署上现形：一份目录里
+// 14 个英文名配 4 个中文名。这条测试把整个目录按非默认 locale 装配一遍，任何
+// 一条路径漏接都会红。
+func TestEveryRegistrationPathHonoursTheLocale(t *testing.T) {
+	noExtensions(t)
+	t.Setenv("MCP_LOCALE", "en-US")
+
+	raw, err := schemasFS.ReadFile("schemas/locales/en-US/tools_meta.json")
+	if err != nil {
+		t.Fatalf("read localized tool metadata: %v", err)
+	}
+	var localized map[string]ToolMeta
+	if err := json.Unmarshal(raw, &localized); err != nil {
+		t.Fatalf("decode localized tool metadata: %v", err)
+	}
+
+	for _, tool := range assembledTools(t) {
+		want, ok := localized[tool.Name]
+		if !ok {
+			t.Errorf("tool %q has no en-US entry", tool.Name)
+			continue
+		}
+		if tool.Title != want.Title {
+			t.Errorf("tool %q advertises title %q under en-US, the localized file says %q — its registration path does not go through the locale bundle",
+				tool.Name, tool.Title, want.Title)
 		}
 	}
 }

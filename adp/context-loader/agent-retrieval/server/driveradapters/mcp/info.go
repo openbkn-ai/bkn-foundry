@@ -42,10 +42,10 @@ type MCPInfo struct {
 }
 
 // tryLoadToolSchemas 与 loadToolSchemas 同源，但读不到/解析失败时返回 nil 而非 panic，
-// 供 info 端点容错使用。
-func tryLoadToolSchemas(toolKey string) (input, output json.RawMessage) {
+// 供 info 端点容错使用。取到之后按 locale 叠一层，与 tools/list 同一份答案。
+func tryLoadToolSchemas(locale *mcpLocaleBundle, toolKey string) (input, output json.RawMessage) {
 	if input, output, ok := lifecycleToolSchemas(toolKey); ok {
-		return input, output
+		return locale.OverlaySchemas(toolKey, input, output)
 	}
 	data, err := schemasFS.ReadFile(fmt.Sprintf("schemas/%s.json", toolKey))
 	if err != nil {
@@ -58,7 +58,7 @@ func tryLoadToolSchemas(toolKey string) (input, output json.RawMessage) {
 	if isBusinessTool(toolKey) {
 		wrapper.InputSchema = offerBKNContext(wrapper.InputSchema)
 	}
-	return wrapper.InputSchema, wrapper.OutputSchema
+	return locale.OverlaySchemas(toolKey, wrapper.InputSchema, wrapper.OutputSchema)
 }
 
 // BuildMCPInfo 基于内嵌的 tools_meta.json + schemas/*.json 组装 MCP 自描述文档。
@@ -72,8 +72,8 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 	if err := json.Unmarshal(data, &meta); err != nil {
 		return nil, fmt.Errorf("parse tools_meta.json: %w", err)
 	}
-	// 这里读的恒是内嵌的那份，不过 locale——和 name/description 一样，是这个端点
-	// 早就有的缺口（见 socket_call_test.go 里那条注释），展示元数据只是跟着它走。
+	// 本地化按与 tools/list 同一个来源解析（进程环境）。这个端点此前对 locale
+	// 失明，非中文部署下它与 tools/list 会给出两种语言的同一份目录。
 
 	// 与 tools/list 用同一套按当前档位的判定：装饰过的工具带上付费参数、
 	// 未授权的企业工具不出现。两处若不一致，这个端点就比不存在更糟——它的
@@ -82,14 +82,16 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 		key  string
 		info MCPToolInfo
 	}
+	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	all := make([]entry, 0, len(meta))
-	for key, m := range meta {
+	for key := range meta {
 		// 未装配的工具不能出现在这里：这个端点的用途是「不握手就看清能力面」，
 		// 广播一条 tools/call 会答「无此工具」的条目比不广播更糟。
 		if key == toolKeyExecuteSkill && !executeSkillEnabled() {
 			continue
 		}
-		in, out := tryLoadToolSchemas(key)
+		m := locale.ToolMeta(key)
+		in, out := tryLoadToolSchemas(locale, key)
 		if d, ok := mcptool.DecoratorFor(key); ok && d.Allowed() {
 			in = d.Patch(in)
 		}

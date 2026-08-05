@@ -63,18 +63,6 @@ func (b *toolBuilder) add(key string, h mcptool.Handler) {
 	b.addWith(key, b.locale.ToolMeta(key), in, out, h)
 }
 
-// addEmbedded registers a core tool from the embedded schemas directory,
-// bypassing the locale bundle.
-//
-// Only get_object_types and get_relation_types come through here, and that is a
-// standing bug rather than a design — they miss out on localisation. Fixing it
-// changes what a community binary advertises, so it is a separate change with
-// its own parity baseline.
-func (b *toolBuilder) addEmbedded(key string, h mcptool.Handler) {
-	in, out := loadToolSchemas(key)
-	b.addWith(key, loadToolMeta(key), in, out, h)
-}
-
 // addWith is where a core tool meets its decorator, if it has one.
 //
 // The tool is registered with core's own schema and the patched variant is kept
@@ -161,7 +149,7 @@ func (b *toolBuilder) claimName(name, key string) {
 // AddTool lets the later registration win.
 func (b *toolBuilder) claimLifecycleNames() {
 	for key := range lifecycleToolNames {
-		b.claimName(loadToolMeta(key).Name, key)
+		b.claimName(b.locale.ToolMeta(key).Name, key)
 	}
 }
 

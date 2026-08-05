@@ -136,11 +136,19 @@ func hashBytes(raw []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func registerLifecycleTools(mcpServer *server.MCPServer, client *bkntrace.LifecycleClient) {
+// registerLifecycleTools hangs the tracing lifecycle tools straight off the
+// server rather than putting them through toolBuilder, but it takes the same
+// locale bundle: a client sees one catalogue, and half of it arriving in
+// another language is the kind of defect only a non-default deployment shows.
+func registerLifecycleTools(
+	mcpServer *server.MCPServer,
+	client *bkntrace.LifecycleClient,
+	locale *mcpLocaleBundle,
+) {
 	for name := range lifecycleToolNames {
-		input, output := loadToolSchemas(name)
+		input, output := locale.ToolSchemas(name)
 		mcpServer.AddTool(
-			newToolWithSchemas(loadToolMeta(name), input, output),
+			newToolWithSchemas(locale.ToolMeta(name), input, output),
 			handleLifecycleTool(client, name),
 		)
 	}
