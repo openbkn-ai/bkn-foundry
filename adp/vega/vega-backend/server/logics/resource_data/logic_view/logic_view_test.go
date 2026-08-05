@@ -164,7 +164,8 @@ func TestDerivedIndexRejectsFirstPageWindowOverflow(t *testing.T) {
 
 func TestExecutePhysicalQuery(t *testing.T) {
 	t.Run("returns error for unsupported category", func(t *testing.T) {
-		rows, total, err := executePhysicalQuery(context.Background(), &interfaces.Catalog{}, &interfaces.Resource{
+		svc := &logicViewService{}
+		rows, total, err := svc.executePhysicalQuery(context.Background(), &interfaces.Catalog{}, &interfaces.Resource{
 			ID:       "resource-1",
 			Category: "unsupported",
 		}, &interfaces.ResourceDataQueryParams{})

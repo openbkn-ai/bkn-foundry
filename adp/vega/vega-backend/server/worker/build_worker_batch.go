@@ -32,6 +32,7 @@ type batchBuildWorker struct {
 	appSetting  *common.AppSetting
 	client      *asynq.Client
 	bts         interfaces.BuildTaskService
+	cf          interfaces.ConnectorFactory
 	cs          interfaces.CatalogService
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
@@ -49,6 +50,7 @@ func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 		appSetting:  appSetting,
 		client:      client,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
+		cf:          factory.GetFactory(appSetting),
 		rs:          rs,
 		cs:          catalog.NewCatalogService(appSetting),
 		lim:         local_index.NewLocalIndexManager(appSetting),
@@ -249,7 +251,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 	firstQuery := true
 
 	// get total rows from MySQL
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := bbw.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return fmt.Errorf("create connector instance failed: %w", err)
 	}

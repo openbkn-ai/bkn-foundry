@@ -34,6 +34,7 @@ var (
 
 type resourceDataService struct {
 	appSetting *common.AppSetting
+	cf         interfaces.ConnectorFactory
 	ds         interfaces.DatasetService
 	lim        interfaces.LocalIndexManager
 	cs         interfaces.CatalogService
@@ -47,6 +48,7 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 	rdServiceOnce.Do(func() {
 		rdService = &resourceDataService{
 			appSetting: appSetting,
+			cf:         factory.GetFactory(appSetting),
 			ds:         dataset.NewDatasetService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
 			cs:         catalog.NewCatalogService(appSetting),
@@ -324,7 +326,7 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 	logger.Debugf("QueryData, resourceID: %s, catalogID: %s, params: %v",
 		resource.ID, resource.CatalogID, params)
 
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := rds.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).

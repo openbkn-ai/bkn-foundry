@@ -28,7 +28,6 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
-	"vega-backend/logics/connector/factory"
 )
 
 // mockCipher 实现 kwcrypto.Cipher 接口用于测试
@@ -47,23 +46,6 @@ func (m *mockCipher) Decrypt(ciphertext string) (string, error) {
 
 func (m *mockCipher) Signature(data string) (string, error) {
 	return "", nil
-}
-
-func patchConnectorInitializationError(t *testing.T, connectorErr error) {
-	t.Helper()
-
-	patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
-		return &factory.ConnectorFactory{}
-	})
-	patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
-		func(*factory.ConnectorFactory, string) []string {
-			return nil
-		})
-	patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
-		func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
-			return nil, connectorErr
-		})
-	t.Cleanup(patches.Reset)
 }
 
 func requireRedactedConnectorInitializationError(t *testing.T, err error, sensitiveError string) {
@@ -308,9 +290,14 @@ func TestCatalogServiceCreate(t *testing.T) {
 		sensitiveError := "invalid endpoint db.internal with token secret"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		patchConnectorInitializationError(t, errors.New(sensitiveError))
-
-		cs := &catalogService{ps: mockPS}
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
+			Return(nil, errors.New(sensitiveError))
+		cs := &catalogService{
+			ps: mockPS,
+			cf: connectorFactory,
+		}
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:          "physical-catalog",
 			ConnectorType: "mariadb",
@@ -344,23 +331,14 @@ func TestCatalogServiceCreate(t *testing.T) {
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-
-		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
-			return &factory.ConnectorFactory{}
-		})
-		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
-			func(*factory.ConnectorFactory, string) []string {
-				return nil
-			})
-		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
-			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
-				return connector, nil
-			})
-		t.Cleanup(patches.Reset)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
 		cs := &catalogService{
 			appSetting: &common.AppSetting{},
 			ps:         mockPS,
+			cf:         connectorFactory,
 		}
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:          "physical-catalog",
@@ -580,9 +558,14 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		sensitiveError := "invalid endpoint db.internal with token secret"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		patchConnectorInitializationError(t, errors.New(sensitiveError))
-
-		cs := &catalogService{ps: mockPS}
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
+			Return(nil, errors.New(sensitiveError))
+		cs := &catalogService{
+			ps: mockPS,
+			cf: connectorFactory,
+		}
 		result, err := cs.TestConnectionConfig(context.Background(), &interfaces.CatalogConnectionTestRequest{
 			ConnectorType: "mariadb",
 		})
@@ -645,21 +628,16 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).
 			Return(errors.New(sensitiveError))
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
-		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
-			return &factory.ConnectorFactory{}
-		})
-		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
-			func(*factory.ConnectorFactory, string) []string {
-				return nil
-			})
-		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
-			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
-				return connector, nil
-			})
-		t.Cleanup(patches.Reset)
-
-		cs := &catalogService{appSetting: &common.AppSetting{}, ca: ca, ps: ps}
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			ca:         ca,
+			ps:         ps,
+			cf:         connectorFactory,
+		}
 		result, err := cs.TestConnection(context.Background(), "catalog-1")
 
 		var httpErr *rest.HTTPError
@@ -768,9 +746,14 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sensitiveError := "invalid endpoint db.internal with token secret"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		patchConnectorInitializationError(t, errors.New(sensitiveError))
-
-		cs := &catalogService{ps: mockPS}
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
+			Return(nil, errors.New(sensitiveError))
+		cs := &catalogService{
+			ps: mockPS,
+			cf: connectorFactory,
+		}
 		err := cs.Update(context.Background(), &interfaces.Catalog{
 			ID:   "catalog-1",
 			Name: "physical-catalog",
@@ -791,23 +774,14 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-
-		patches := gomonkey.ApplyFunc(factory.GetFactory, func() *factory.ConnectorFactory {
-			return &factory.ConnectorFactory{}
-		})
-		patches.ApplyMethod(&factory.ConnectorFactory{}, "GetSensitiveFields",
-			func(*factory.ConnectorFactory, string) []string {
-				return nil
-			})
-		patches.ApplyMethod(&factory.ConnectorFactory{}, "CreateConnectorInstance",
-			func(*factory.ConnectorFactory, context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
-				return connector, nil
-			})
-		t.Cleanup(patches.Reset)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
 		cs := &catalogService{
 			appSetting: &common.AppSetting{},
 			ps:         mockPS,
+			cf:         connectorFactory,
 		}
 		err := cs.Update(context.Background(), &interfaces.Catalog{
 			ID:   "catalog-1",

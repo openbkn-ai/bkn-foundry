@@ -34,11 +34,12 @@ import (
 )
 
 var (
-	rawQueryServiceOnce     sync.Once
-	rawQueryServiceInstance interfaces.RawQueryService
+	rqServiceOnce sync.Once
+	rqService     interfaces.RawQueryService
 )
 
 type rawQueryService struct {
+	cf interfaces.ConnectorFactory
 	cs interfaces.CatalogService
 	rs interfaces.ResourceService
 }
@@ -48,13 +49,14 @@ const rawQueryTotalCountColumn = "_raw_query_total_count"
 // NewRawQueryService 创建SQL查询服务（单例模式）
 func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryService {
 	rawQueryCursorSessions.configure(appSetting.QuerySetting.CursorMaxSessions)
-	rawQueryServiceOnce.Do(func() {
-		rawQueryServiceInstance = &rawQueryService{
+	rqServiceOnce.Do(func() {
+		rqService = &rawQueryService{
+			cf: factory.GetFactory(appSetting),
 			cs: catalog.NewCatalogService(appSetting),
 			rs: resourcelogic.NewResourceService(appSetting),
 		}
 	})
-	return rawQueryServiceInstance
+	return rqService
 }
 
 // Execute 执行SQL查询
@@ -533,7 +535,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		pageCtx, cancel = context.WithTimeout(ctx, time.Duration(session.QueryTimeoutSec)*time.Second)
 		defer cancel()
 	}
-	connector, err := factory.GetFactory().CreateConnectorInstance(pageCtx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := rqs.cf.CreateConnectorInstance(pageCtx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("connector initialization failed")
@@ -647,7 +649,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	}
 
 	delete(queryMap, "resource_id")
-	connector, err := factory.GetFactory().CreateConnectorInstance(queryCtx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := rqs.cf.CreateConnectorInstance(queryCtx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("connector initialization failed")
@@ -972,7 +974,7 @@ type rawSQLBuildOptions struct {
 func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.Catalog, sql string,
 	pagingMode interfaces.PagingMode, buildOptions *rawSQLBuildOptions) (*interfaces.RawQueryResponse, error) {
 	// 创建connector
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := rqs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).

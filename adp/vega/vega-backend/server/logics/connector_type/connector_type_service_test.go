@@ -9,6 +9,7 @@ package connector_type
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,6 +18,7 @@ import (
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	"vega-backend/logics/connector/factory"
 )
 
 func newTestConnectorTypeService(t *testing.T) (*connectorTypeService, *vmock.MockConnectorTypeAccess, *vmock.MockPermissionService) {
@@ -30,6 +32,92 @@ func newTestConnectorTypeService(t *testing.T) (*connectorTypeService, *vmock.Mo
 		cta: cta,
 		ps:  ps,
 	}, cta, ps
+}
+
+func TestConnectorTypeServiceRegister(t *testing.T) {
+	t.Run("persists resolved local connector definition before enabling it", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		request := &interfaces.ConnectorTypeReq{
+			Type:        "localdb",
+			Name:        "Local DB",
+			Description: "Local database",
+			Mode:        interfaces.ConnectorModeLocal,
+			Category:    interfaces.ConnectorCategoryAPI,
+			FieldConfig: map[string]interfaces.ConnectorFieldConfig{"stale": {Type: "string"}},
+			Enabled:     true,
+		}
+		resolved := &interfaces.ConnectorType{
+			Type:        request.Type,
+			Name:        request.Name,
+			Description: request.Description,
+			Mode:        interfaces.ConnectorModeLocal,
+			Category:    interfaces.ConnectorCategoryTable,
+			FieldConfig: map[string]interfaces.ConnectorFieldConfig{"host": {Type: "string", Required: true}},
+			Enabled:     true,
+		}
+		events := make([]string, 0, 3)
+		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		service.cf = connectorFactory
+		connectorFactory.EXPECT().ResolveConnectorTypeRegistration(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, got *interfaces.ConnectorType) (*interfaces.ConnectorType, error) {
+				events = append(events, "resolve")
+				assert.Contains(t, got.FieldConfig, "stale")
+				return resolved, nil
+			})
+		connectorFactory.EXPECT().RegisterConnector(gomock.Any(), resolved.Type, resolved).
+			DoAndReturn(func(_ context.Context, connectorType string, got *interfaces.ConnectorType) error {
+				events = append(events, "register")
+				assert.Equal(t, resolved.Type, connectorType)
+				assert.Same(t, resolved, got)
+				return nil
+			})
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
+			ID:   interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
+		cta.EXPECT().Create(gomock.Any(), resolved).DoAndReturn(func(context.Context, *interfaces.ConnectorType) error {
+			events = append(events, "create")
+			return nil
+		})
+
+		err := service.Register(context.Background(), request)
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"resolve", "create", "register"}, events)
+	})
+
+	t.Run("rejects unavailable local connector before database write", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		service.cf = connectorFactory
+		connectorFactory.EXPECT().ResolveConnectorTypeRegistration(gomock.Any(), gomock.Any()).
+			Return(nil, errors.New("local connector is unavailable"))
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		err := service.Register(context.Background(), &interfaces.ConnectorTypeReq{
+			Type: "future-local", Mode: interfaces.ConnectorModeLocal,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "VegaBackend.ConnectorType.BadRequest")
+	})
+
+	t.Run("does not enable connector when database write fails", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		resolved := &interfaces.ConnectorType{Type: "localdb", Mode: interfaces.ConnectorModeLocal}
+		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		service.cf = connectorFactory
+		connectorFactory.EXPECT().ResolveConnectorTypeRegistration(gomock.Any(), gomock.Any()).Return(resolved, nil)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cta.EXPECT().Create(gomock.Any(), resolved).Return(errors.New("database unavailable"))
+
+		err := service.Register(context.Background(), &interfaces.ConnectorTypeReq{
+			Type: "localdb", Mode: interfaces.ConnectorModeLocal,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "database unavailable")
+	})
 }
 
 func TestConnectorTypeServiceGetByType(t *testing.T) {
@@ -231,6 +319,55 @@ func TestConnectorTypeServiceListAuthResources(t *testing.T) {
 	})
 }
 
+func TestConnectorTypeServiceUpdate(t *testing.T) {
+	t.Run("uses resolved code definition when updating local connector", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		service.cf = connectorFactory
+		current := &interfaces.ConnectorType{
+			Type: "localdb", Name: "Local DB", Mode: interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+			FieldConfig: map[string]interfaces.ConnectorFieldConfig{
+				"host": {Type: "string"},
+			},
+		}
+		request := &interfaces.ConnectorTypeReq{
+			Type: "localdb", Name: "Renamed Local DB", Mode: interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+			FieldConfig: map[string]interfaces.ConnectorFieldConfig{
+				"stale": {Type: "string"},
+			},
+			Enabled: true,
+		}
+		resolved := &interfaces.ConnectorType{
+			Type: "localdb", Name: "Renamed Local DB", Mode: interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+			FieldConfig: map[string]interfaces.ConnectorFieldConfig{
+				"host": {Type: "string", Required: true},
+			},
+			Enabled: true,
+		}
+
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connectorFactory.EXPECT().ResolveConnectorTypeRegistration(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, candidate *interfaces.ConnectorType) (*interfaces.ConnectorType, error) {
+				assert.Contains(t, candidate.FieldConfig, "stale")
+				return resolved, nil
+			})
+		cta.EXPECT().Update(gomock.Any(), resolved).Return(nil)
+		connectorFactory.EXPECT().RegisterConnector(gomock.Any(), "localdb", resolved).Return(nil)
+		ps.EXPECT().UpdateResource(gomock.Any(), interfaces.PermissionResource{
+			ID: "localdb", Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, Name: "Renamed Local DB",
+		}).Return(nil)
+
+		err := service.Update(context.Background(), current, request)
+
+		require.NoError(t, err)
+		assert.Contains(t, current.FieldConfig, "host")
+		assert.NotContains(t, current.FieldConfig, "stale")
+	})
+}
+
 func TestConnectorTypeServiceCheckExistByType(t *testing.T) {
 	t.Run("checks existence by type", func(t *testing.T) {
 		service, cta, _ := newTestConnectorTypeService(t)
@@ -261,6 +398,8 @@ func TestConnectorTypeServiceCheckExistByName(t *testing.T) {
 func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 	t.Run("set enabled checks permission and updates access", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
+		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		service.cf = connectorFactory
 		ps.EXPECT().
 			CheckPermission(gomock.Any(), interfaces.PermissionResource{
 				Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
@@ -268,6 +407,7 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 			}, []string{interfaces.OPERATION_TYPE_MODIFY}).
 			Return(nil)
 		cta.EXPECT().SetEnabled(gomock.Any(), "remote-api", true).Return(nil)
+		connectorFactory.EXPECT().SetConnectorEnabled(gomock.Any(), "remote-api", true).Return(nil)
 
 		require.NoError(t, service.SetEnabled(context.Background(), "remote-api", true))
 	})
@@ -281,6 +421,18 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "db down")
+	})
+
+	t.Run("allows updating unavailable connector during binary downgrade", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		service.cf = connectorFactory
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cta.EXPECT().SetEnabled(gomock.Any(), "enterprise-local", false).Return(nil)
+		connectorFactory.EXPECT().SetConnectorEnabled(gomock.Any(), "enterprise-local", false).
+			Return(fmt.Errorf("missing connector: %w", factory.ErrConnectorUnavailable))
+
+		require.NoError(t, service.SetEnabled(context.Background(), "enterprise-local", false))
 	})
 }
 

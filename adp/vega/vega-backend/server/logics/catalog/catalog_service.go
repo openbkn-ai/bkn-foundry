@@ -60,6 +60,7 @@ type catalogService struct {
 	db         *sql.DB
 
 	ca   interfaces.CatalogAccess
+	cf   interfaces.ConnectorFactory
 	ra   interfaces.ResourceAccess
 	ps   interfaces.PermissionService
 	ums  interfaces.UserMgmtService
@@ -80,6 +81,7 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 			}
 		}
 
+		cf := factory.GetFactory(appSetting)
 		hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
 		lim := local_index.NewLocalIndexManager(appSetting)
 		ps := permission.NewPermissionService(appSetting)
@@ -91,6 +93,7 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 
 			bta:  logics.BTA,
 			ca:   logics.CA,
+			cf:   cf,
 			hcss: hcss,
 			lim:  lim,
 			ps:   ps,
@@ -211,7 +214,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
 
 		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
-		sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
+		sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
@@ -221,7 +224,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 		// 用解密后的明文 config 创建 connector 并测试连接
 		connectorCfg := interfaces.ConnectorConfig(decryptedConfig)
-		connector, err := factory.GetFactory().CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
+		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -385,7 +388,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		cs.removeSensitiveFields(catalog)
 	} else {
 		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
-		sensitiveFields := factory.GetFactory().GetSensitiveFields(catalog.ConnectorType)
+		sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
 		decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
@@ -420,7 +423,7 @@ func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSe
 		return catalog, nil
 	}
 
-	sensitiveFields := factory.GetFactory().GetSensitiveFields(catalog.ConnectorType)
+	sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
 	decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to validate sensitive fields", err)
@@ -686,7 +689,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		// 此处不重复，仅按 req.ConnectorType 走解密 + 试连 + 持久化流程。
 
 		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
-		sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
+		sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
@@ -696,7 +699,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 
 		// 用解密后的明文 config 创建 connector 并测试连接
 		connectorCfg := interfaces.ConnectorConfig(decryptedConfig)
-		connector, err := factory.GetFactory().CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
+		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -1041,7 +1044,7 @@ func (cs *catalogService) testCatalogConnection(
 		return &result, nil
 	}
 
-	sensitiveFields := factory.GetFactory().GetSensitiveFields(catalog.ConnectorType)
+	sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
 	config, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -1073,7 +1076,7 @@ func (cs *catalogService) TestConnectionConfig(ctx context.Context,
 		return nil, err
 	}
 
-	sensitiveFields := factory.GetFactory().GetSensitiveFields(req.ConnectorType)
+	sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
 	decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -1084,7 +1087,7 @@ func (cs *catalogService) TestConnectionConfig(ctx context.Context,
 
 func (cs *catalogService) probeConnection(ctx context.Context, connectorType string,
 	config interfaces.ConnectorConfig) (*interfaces.CatalogHealthCheckStatus, error) {
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, connectorType, config)
+	connector, err := cs.cf.CreateConnectorInstance(ctx, connectorType, config)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create connector", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -1154,7 +1157,7 @@ func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) {
 	if catalog == nil || catalog.ConnectorType == "" {
 		return
 	}
-	sensitiveFields := factory.GetFactory().GetSensitiveFields(catalog.ConnectorType)
+	sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
 	for _, field := range sensitiveFields {
 		delete(catalog.ConnectorCfg, field)
 	}

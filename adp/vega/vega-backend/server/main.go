@@ -149,7 +149,7 @@ func main() {
 	logics.SetSemanticUnderstandingTaskAccess(semantic_understanding_task.NewSemanticUnderstandingTaskAccess(appSetting))
 
 	// 初始化 Connector Factory 并注册内置的 Local Connector Builder
-	factory.Init(appSetting)
+	factory.GetFactory(appSetting)
 	logger.Info("VEGA Manager Init Connector Factory Success")
 
 	// 初始化并启动统一的 TaskWorkerManger，处理所有类型的任务

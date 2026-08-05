@@ -37,6 +37,7 @@ var (
 
 type logicViewService struct {
 	appSetting *common.AppSetting
+	cf         interfaces.ConnectorFactory
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
 	ps         interfaces.PermissionService
@@ -48,6 +49,7 @@ func NewLogicViewService(appSetting *common.AppSetting) interfaces.LogicViewServ
 	lvServiceOnce.Do(func() {
 		lvService = &logicViewService{
 			appSetting: appSetting,
+			cf:         factory.GetFactory(appSetting),
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resource.NewResourceService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
@@ -266,10 +268,10 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 	params.ActualFilterCond = actualFilterCond
 
 	// 交给 executePhysicalQuery 处理 SQL push-down
-	return executePhysicalQuery(ctx, catalog, fromResource, params)
+	return lvs.executePhysicalQuery(ctx, catalog, fromResource, params)
 }
 
-func executePhysicalQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+func (lvs *logicViewService) executePhysicalQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Execute physical query")
@@ -280,9 +282,9 @@ func executePhysicalQuery(ctx context.Context, catalog *interfaces.Catalog, reso
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryTable:
-		return executeTableQuery(ctx, catalog, resource, params)
+		return lvs.executeTableQuery(ctx, catalog, resource, params)
 	case interfaces.ResourceCategoryIndex:
-		return executeIndexQuery(ctx, catalog, resource, params)
+		return lvs.executeIndexQuery(ctx, catalog, resource, params)
 	default:
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
 			WithErrorDetails(fmt.Sprintf("unsupported resource category: %s", resource.Category))
@@ -510,13 +512,13 @@ func rawPaging(params *interfaces.ResourceDataQueryParams) interfaces.PagingRequ
 	return paging
 }
 
-func executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+func (lvs *logicViewService) executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Execute index query")
 	defer span.End()
 
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := lvs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -548,13 +550,13 @@ func executeIndexQuery(ctx context.Context, catalog *interfaces.Catalog, resourc
 	return result.Entries, result.Total, nil
 }
 
-func executeTableQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+func (lvs *logicViewService) executeTableQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Execute table query")
 	defer span.End()
 
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := lvs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).

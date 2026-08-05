@@ -380,6 +380,8 @@ components:
 
         - `type` 在 POST 与 PUT 中都**必填**，且必须自描述资源主键。
         - POST：全局唯一，已存在返回 409 `VegaBackend.ConnectorType.TypeExists`。
+        - POST/PUT 注册或更新 `local` 连接器时，当前二进制必须包含同名实现；`type`、`name`、
+          `mode`、`category` 必须与代码中的连接器定义一致，`field_config` 以代码定义为准。
         - PUT：必须与路径参数 `type` **完全一致**，缺失返回 400 `VegaBackend.ConnectorType.InvalidParameter.Type`，不一致返回 409 `VegaBackend.ConnectorType.TypeMismatch`。
       type: object
       required:
@@ -409,7 +411,7 @@ components:
             - local
             - remote
         category:
-          description: 分类
+          description: 分类；POST/PUT 注册或更新 local 连接器时必须与后端代码定义一致
           type: string
           enum:
             - table
@@ -423,7 +425,7 @@ components:
           description: 仅 remote 模式下的远程服务地址
           type: string
         field_config:
-          description: 字段配置（兼容 JSON Schema properties），key 为字段标识
+          description: 字段配置（兼容 JSON Schema properties），key 为字段标识；POST/PUT 注册或更新 local 连接器时忽略请求值并使用后端代码定义
           type: object
           additionalProperties:
             $ref: "#/components/schemas/ConnectorFieldConfig"

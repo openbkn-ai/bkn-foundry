@@ -26,18 +26,20 @@ import (
 // DiscoverTaskWorker handles discover tasks.
 type DiscoverTaskWorker struct {
 	appSetting *common.AppSetting
-	rs         interfaces.ResourceService
+	cf         interfaces.ConnectorFactory
 	cs         interfaces.CatalogService
 	dts        interfaces.DiscoverTaskService
+	rs         interfaces.ResourceService
 }
 
 // NewDiscoverTaskWorker creates a new discover worker.
 func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 	return &DiscoverTaskWorker{
 		appSetting: appSetting,
-		rs:         resource.NewResourceService(appSetting),
+		cf:         factory.GetFactory(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
 		dts:        discover_task.NewDiscoverTaskService(appSetting),
+		rs:         resource.NewResourceService(appSetting),
 	}
 }
 
@@ -156,7 +158,7 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 func (dtw *DiscoverTaskWorker) createAndConnectConnector(ctx context.Context, catalog *interfaces.Catalog) (interfaces.Connector, error) {
 
 	// 创建 connector
-	connector, err := factory.GetFactory().CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	connector, err := dtw.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connector: %w", err)
 	}

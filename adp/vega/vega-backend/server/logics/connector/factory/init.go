@@ -16,10 +16,9 @@ import (
 )
 
 // InitLocalConnectors 初始化本地 connector
-func (cf *ConnectorFactory) InitLocalConnectors() {
+func (cf *connectorFactory) InitLocalConnectors() {
 	cf.connectors[interfaces.ConnectorTypeMySQL] = mariadb.NewMariaDBConnector()
 	cf.connectors[interfaces.ConnectorTypeOpenSearch] = opensearch.NewOpenSearchConnector()
-	//cf.connectors[interfaces.ConnectorTypeOracle] = oracle.NewOracleConnector()
 	cf.connectors[interfaces.ConnectorTypeMariaDB] = mariadb.NewMariaDBConnector()
 	cf.connectors[interfaces.ConnectorTypePostgreSQL] = postgresql.NewPostgresqlConnector()
 	cf.connectors[interfaces.ConnectorTypeSQLServer] = sqlserver.NewSQLServerConnector()
