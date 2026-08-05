@@ -140,19 +140,24 @@ openbkn context relation-types <kn-id> rt_purchase
 ```bash
 # 条件查询对象实例
 openbkn context query-object-instance <kn-id> --args '{
-  "object_type_id": "ot_customer",
-  "conditions": [
-    {"field": "status", "operation": "==", "value": "active"}
-  ],
+  "ot_id": "ot_customer",
+  "filters": [{"field": "status", "op": "==", "value": "active"}],
   "limit": 20
 }'
 
 # 沿关系类路径查询实例子图
 openbkn context query-instance-subgraph <kn-id> --args '{
-  "object_type_id": "ot_customer",
-  "instance_identities": [{"id": "cust_001"}],
-  "relation_type_ids": ["rt_purchase"],
-  "limit": 50
+  "relation_type_paths": [{
+    "object_types": [
+      {"id": "ot_customer", "condition": {"operation": "and", "sub_conditions": []}, "limit": 10},
+      {"id": "ot_order",    "condition": {"operation": "and", "sub_conditions": []}, "limit": 10}
+    ],
+    "relation_types": [{
+      "relation_type_id": "rt_purchase",
+      "source_object_type_id": "ot_customer",
+      "target_object_type_id": "ot_order"
+    }]
+  }]
 }'
 ```
 
@@ -161,15 +166,16 @@ openbkn context query-instance-subgraph <kn-id> --args '{
 ```bash
 # 计算逻辑属性取值
 openbkn context get-logic-properties <kn-id> --args '{
-  "object_type_id": "ot_customer",
-  "instance_identities": [{"id": "cust_001"}],
-  "logic_property_names": ["lifetime_value", "risk_score"]
+  "ot_id": "ot_customer",
+  "query": "这批客户近一年的终身价值与风险分",
+  "_instance_identities": [{"...": "从 query_object_instance 返回的 _instance_identity 原样取"}],
+  "properties": ["lifetime_value", "risk_score"]
 }'
 
-# 取该实例可触发的行动类信息
+# 取某个行动类的工具定义与参数 Schema（at_id 必填，来自 search_schema / get_kn_detail）
 openbkn context get-action-info <kn-id> --args '{
-  "object_type_id": "ot_customer",
-  "instance_identities": [{"id": "cust_001"}]
+  "at_id": "at_send_coupon",
+  "_instance_identities": [{"...": "从 query_object_instance 返回的 _instance_identity 原样取"}]
 }'
 
 # 按对象类召回可用 Skill
@@ -182,7 +188,11 @@ openbkn context find-skills <kn-id> ot_customer --top-k 5
 
 ```bash
 openbkn context tool-call <kn-id> run_sql --args '{"sql":"SELECT 1"}'
-openbkn context tool-call <kn-id> execute_action --arg action_type_id=at_notify --arg dry_run=true
+openbkn context tool-call <kn-id> execute_action --args '{
+  "at_id": "at_send_coupon",
+  "_instance_identities": [{"...": "同上"}],
+  "dynamic_params": {}
+}'
 openbkn context call-method <kn-id> tools/list
 ```
 
@@ -199,22 +209,30 @@ openbkn context search-schema "$KN" "客户" --scope object
 
 # 3. 实例查询 — 取活跃客户
 openbkn context query-object-instance "$KN" --args '{
-  "object_type_id": "ot_customer",
-  "conditions": [{"field": "status", "operation": "==", "value": "active"}],
+  "ot_id": "ot_customer",
+  "filters": [{"field": "status", "op": "==", "value": "active"}],
   "limit": 10
 }'
 
 # 4. 子图扩展 — 看该客户的购买关系
 openbkn context query-instance-subgraph "$KN" --args '{
-  "object_type_id": "ot_customer",
-  "instance_identities": [{"id": "cust_001"}],
-  "relation_type_ids": ["rt_purchase"]
+  "relation_type_paths": [{
+    "object_types": [
+      {"id": "ot_customer", "condition": {"operation": "and", "sub_conditions": []}, "limit": 10},
+      {"id": "ot_order",    "condition": {"operation": "and", "sub_conditions": []}, "limit": 10}
+    ],
+    "relation_types": [{
+      "relation_type_id": "rt_purchase",
+      "source_object_type_id": "ot_customer",
+      "target_object_type_id": "ot_order"
+    }]
+  }]
 }'
 
 # 5. 行动信息 — 看可对该客户执行什么
 openbkn context get-action-info "$KN" --args '{
-  "object_type_id": "ot_customer",
-  "instance_identities": [{"id": "cust_001"}]
+  "at_id": "at_send_coupon",
+  "_instance_identities": [{"...": "取自第 3 步返回的 _instance_identity"}]
 }'
 ```
 
@@ -242,27 +260,37 @@ const ots = await bkn.context.objectTypes(knId, ['ot_customer']);
 
 // 实例查询
 const instances = await bkn.context.queryObjectInstance(knId, {
-  object_type_id: 'ot_customer',
-  conditions: [{ field: 'status', operation: '==', value: 'active' }],
+  ot_id: 'ot_customer',
+  filters: [{ field: 'status', op: '==', value: 'active' }],
   limit: 20,
 });
 
 // 子图遍历
 const subgraph = await bkn.context.queryInstanceSubgraph(knId, {
-  object_type_id: 'ot_customer',
-  instance_identities: [{ id: 'cust-5521' }],
-  relation_type_ids: ['rt_purchase'],
+  relation_type_paths: [{
+    object_types: [
+      { id: 'ot_customer', condition: { operation: 'and', sub_conditions: [] }, limit: 10 },
+      { id: 'ot_order', condition: { operation: 'and', sub_conditions: [] }, limit: 10 },
+    ],
+    relation_types: [{
+      relation_type_id: 'rt_purchase',
+      source_object_type_id: 'ot_customer',
+      target_object_type_id: 'ot_order',
+    }],
+  }],
 });
 
 // 逻辑属性与行动
+// _instance_identities 必须原样取自上一步返回的 _instance_identity，不能自己编
 const logic = await bkn.context.logicProperties(knId, {
-  object_type_id: 'ot_customer',
-  instance_identities: [{ id: 'cust-5521' }],
-  logic_property_names: ['lifetime_value'],
+  ot_id: 'ot_customer',
+  query: '这批客户近一年的终身价值',
+  _instance_identities: instances.map((r: any) => r._instance_identity),
+  properties: ['lifetime_value'],
 });
 const actions = await bkn.context.actionInfo(knId, {
-  object_type_id: 'ot_customer',
-  instance_identities: [{ id: 'cust-5521' }],
+  at_id: 'at_send_coupon',
+  _instance_identities: instances.map((r: any) => r._instance_identity),
 });
 
 // 技能召回
@@ -277,6 +305,25 @@ const sql = await bkn.context.toolCall(knId, 'run_sql', { sql: 'SELECT 1' });
 ### curl
 
 REST 面的路径是 `/api/agent-retrieval/v1/kn/<工具名>`，与 MCP 工具同名；健康检查在 `/health` 下，不带 `/api` 前缀。
+
+> **先读这条**：自 0.1.3 起，`/kn/*` 的所有 POST 一律要求请求体带 `bkn_context`，缺失即 400。
+> 这是无条件、fail-closed 的校验（`rest_public_handler.go:67` 无条件挂载中间件，
+> `isLifecycleBusinessRequest` 对任意路径含 `/kn/` 的 POST 生效），所以**下面的 curl 示例
+> 在按当前代码构建的部署上都会被挡下**。v0.1.2 发布版不含该中间件，示例可直接运行。
+>
+> `bkn_context` 只接受五个字段：`conversation_id`、`interaction_id`、`parent_operation_id`、
+> `causation_event_ids`、`business_refs`。传入其它字段返回 `invalid_business_context`——
+> 尤其注意 **`operation_key` 不能自己传**，它由服务端从请求关联信息推导。
+> 缺 `conversation_id` 返回 `conversation_required`，缺 `interaction_id` 返回 `interaction_required`。
+>
+> 会话 id 的来源是 `bkn_start_interaction`，而该工具只在 MCP 通道上公开，没有对应的 REST 路由。
+> 也就是说 0.1.3+ 上纯 HTTP 调用方拿不到这两个 id：请改走 MCP（`openbkn context ...` 即走此路径，
+> 由服务端按连接自动归并会话）。
+
+```bash
+# 0.1.3+ 上的形态：bkn_context 由 MCP 会话提供，纯 curl 无法自行获得
+# {"kn_id":"kn_abc123","query":"客户","bkn_context":{"conversation_id":"…","interaction_id":"…"}}
+```
 
 ```bash
 # 健康检查（无需鉴权）
@@ -295,8 +342,8 @@ curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/query_object_
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
-    "object_type_id": "ot_customer",
-    "conditions": [{"field":"status","operation":"==","value":"active"}],
+    "ot_id": "ot_customer",
+    "filters": [{"field":"status","op":"==","value":"active"}],
     "limit": 20
   }'
 
@@ -306,9 +353,17 @@ curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/query_instanc
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
-    "object_type_id": "ot_customer",
-    "instance_identities": [{"id":"cust_001"}],
-    "relation_type_ids": ["rt_purchase"]
+    "relation_type_paths": [{
+      "object_types": [
+        {"id":"ot_customer","condition":{"operation":"and","sub_conditions":[]},"limit":10},
+        {"id":"ot_order","condition":{"operation":"and","sub_conditions":[]},"limit":10}
+      ],
+      "relation_types": [{
+        "relation_type_id":"rt_purchase",
+        "source_object_type_id":"ot_customer",
+        "target_object_type_id":"ot_order"
+      }]
+    }]
   }'
 
 # 逻辑属性（注意路径是 logic-property-resolver，不与工具同名）
@@ -317,9 +372,10 @@ curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/logic-propert
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
-    "object_type_id": "ot_customer",
-    "instance_identities": [{"id":"cust_001"}],
-    "logic_property_names": ["lifetime_value"]
+    "ot_id": "ot_customer",
+    "query": "这批客户近一年的终身价值",
+    "_instance_identities": [{"...": "取自 query_object_instance 返回的 _instance_identity"}],
+    "properties": ["lifetime_value"]
   }'
 
 # 行动信息
@@ -328,15 +384,10 @@ curl -sk -X POST "https://<访问地址>/api/agent-retrieval/v1/kn/get_action_in
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn_abc123",
-    "object_type_id": "ot_customer",
-    "instance_identities": [{"id":"cust_001"}]
+    "at_id": "at_send_coupon",
+    "_instance_identities": [{"...": "取自 query_object_instance 返回的 _instance_identity"}]
   }'
 ```
-
-> **注意**：部分版本的 context-loader 会对 `/kn/*` 的 POST 请求校验会话上下文，请求体缺少
-> `bkn_context`（`conversation_id` / `interaction_id` / `operation_key`）时返回
-> `400 conversation_required`。该校验在 v0.1.2 发布版中不存在。走 MCP 通道时由服务端按连接
-> 自动归并，不需要调用方自己造。
 
 ---
 

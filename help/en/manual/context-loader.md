@@ -137,17 +137,24 @@ openbkn context relation-types <kn-id> rt_purchase
 ```bash
 # Object instances with conditions
 openbkn context query-object-instance <kn-id> --args '{
-  "object_type_id": "ot_orders",
-  "conditions": [{"field": "priority", "operation": "==", "value": "high"}],
+  "ot_id": "ot_orders",
+  "filters": [{"field": "priority", "op": "==", "value": "high"}],
   "limit": 20
 }'
 
 # Relation subgraph around instances
 openbkn context query-instance-subgraph <kn-id> --args '{
-  "object_type_id": "ot_orders",
-  "instance_identities": [{"id": "ord-5521"}],
-  "relation_type_ids": ["rt_belongs_to"],
-  "limit": 50
+  "relation_type_paths": [{
+    "object_types": [
+      {"id": "ot_orders",   "condition": {"operation": "and", "sub_conditions": []}, "limit": 10},
+      {"id": "ot_customer", "condition": {"operation": "and", "sub_conditions": []}, "limit": 10}
+    ],
+    "relation_types": [{
+      "relation_type_id": "rt_belongs_to",
+      "source_object_type_id": "ot_orders",
+      "target_object_type_id": "ot_customer"
+    }]
+  }]
 }'
 ```
 
@@ -156,15 +163,17 @@ openbkn context query-instance-subgraph <kn-id> --args '{
 ```bash
 # Computed / derived property values
 openbkn context get-logic-properties <kn-id> --args '{
-  "object_type_id": "ot_orders",
-  "instance_identities": [{"id": "ord-5521"}],
-  "logic_property_names": ["days_overdue"]
+  "ot_id": "ot_orders",
+  "query": "how overdue are these orders",
+  "_instance_identities": [{"...": "copied verbatim from _instance_identity in a query result"}],
+  "properties": ["days_overdue"]
 }'
 
-# Actions available on an instance
+# Tool definition and parameter schema for one action type (at_id is required —
+# get it from search_schema / get_kn_detail first)
 openbkn context get-action-info <kn-id> --args '{
-  "object_type_id": "ot_orders",
-  "instance_identities": [{"id": "ord-5521"}]
+  "at_id": "at_escalate",
+  "_instance_identities": [{"...": "copied verbatim from _instance_identity in a query result"}]
 }'
 
 # Skills bound to an object type
@@ -177,7 +186,11 @@ The catalog grows between releases and the CLI does not wrap every tool. `tool-c
 
 ```bash
 openbkn context tool-call <kn-id> run_sql --args '{"sql":"SELECT 1"}'
-openbkn context tool-call <kn-id> execute_action --arg action_type_id=at_notify --arg dry_run=true
+openbkn context tool-call <kn-id> execute_action --args '{
+  "at_id": "at_escalate",
+  "_instance_identities": [{"...": "as above"}],
+  "dynamic_params": {}
+}'
 openbkn context call-method <kn-id> tools/list
 ```
 
@@ -194,21 +207,30 @@ openbkn context search-schema "$KN" "high-priority orders" --scope object
 
 # 3. Query instances
 openbkn context query-object-instance "$KN" --args '{
-  "object_type_id": "ot_orders",
-  "conditions": [{"field": "priority", "operation": "==", "value": "high"}],
+  "ot_id": "ot_orders",
+  "filters": [{"field": "priority", "op": "==", "value": "high"}],
   "limit": 10
 }'
 
 # 4. Explore the neighbourhood
 openbkn context query-instance-subgraph "$KN" --args '{
-  "object_type_id": "ot_orders",
-  "instance_identities": [{"id": "ord-5521"}]
+  "relation_type_paths": [{
+    "object_types": [
+      {"id": "ot_orders",   "condition": {"operation": "and", "sub_conditions": []}, "limit": 10},
+      {"id": "ot_customer", "condition": {"operation": "and", "sub_conditions": []}, "limit": 10}
+    ],
+    "relation_types": [{
+      "relation_type_id": "rt_belongs_to",
+      "source_object_type_id": "ot_orders",
+      "target_object_type_id": "ot_customer"
+    }]
+  }]
 }'
 
 # 5. Check what can be done to it
 openbkn context get-action-info "$KN" --args '{
-  "object_type_id": "ot_orders",
-  "instance_identities": [{"id": "ord-5521"}]
+  "at_id": "at_escalate",
+  "_instance_identities": [{"...": "from step 3's _instance_identity"}]
 }'
 ```
 
@@ -236,26 +258,37 @@ const ots = await bkn.context.objectTypes(knId, ['ot_orders']);
 
 // Instance queries
 const instances = await bkn.context.queryObjectInstance(knId, {
-  object_type_id: 'ot_orders',
-  conditions: [{ field: 'priority', operation: '==', value: 'high' }],
+  ot_id: 'ot_orders',
+  filters: [{ field: 'priority', op: '==', value: 'high' }],
   limit: 20,
 });
 
 const subgraph = await bkn.context.queryInstanceSubgraph(knId, {
-  object_type_id: 'ot_orders',
-  instance_identities: [{ id: 'ord-5521' }],
-  relation_type_ids: ['rt_belongs_to'],
+  relation_type_paths: [{
+    object_types: [
+      { id: 'ot_orders', condition: { operation: 'and', sub_conditions: [] }, limit: 10 },
+      { id: 'ot_customer', condition: { operation: 'and', sub_conditions: [] }, limit: 10 },
+    ],
+    relation_types: [{
+      relation_type_id: 'rt_belongs_to',
+      source_object_type_id: 'ot_orders',
+      target_object_type_id: 'ot_customer',
+    }],
+  }],
 });
 
 // Logic properties and actions
+// _instance_identities must be copied verbatim from the previous result's
+// _instance_identity field — never hand-written
 const logic = await bkn.context.logicProperties(knId, {
-  object_type_id: 'ot_orders',
-  instance_identities: [{ id: 'ord-5521' }],
-  logic_property_names: ['days_overdue'],
+  ot_id: 'ot_orders',
+  query: 'how overdue are these orders',
+  _instance_identities: instances.map((r: any) => r._instance_identity),
+  properties: ['days_overdue'],
 });
 const actions = await bkn.context.actionInfo(knId, {
-  object_type_id: 'ot_orders',
-  instance_identities: [{ id: 'ord-5521' }],
+  at_id: 'at_escalate',
+  _instance_identities: instances.map((r: any) => r._instance_identity),
 });
 
 // Skills
@@ -270,6 +303,27 @@ const sql = await bkn.context.toolCall(knId, 'run_sql', { sql: 'SELECT 1' });
 ## curl
 
 REST paths are `/api/agent-retrieval/v1/kn/<tool-name>`, matching the MCP tool names. Health checks live under `/health`, outside the `/api` prefix.
+
+> **Read this first**: since 0.1.3 every POST to `/kn/*` requires a `bkn_context` in the body and
+> returns 400 without one. The check is unconditional and fail-closed (`rest_public_handler.go:67`
+> mounts the middleware unconditionally; `isLifecycleBusinessRequest` matches any POST whose path
+> contains `/kn/`), so **the curl examples below are rejected on a build from current code**. The
+> v0.1.2 release does not have this middleware and runs them as written.
+>
+> `bkn_context` accepts exactly five fields: `conversation_id`, `interaction_id`,
+> `parent_operation_id`, `causation_event_ids`, `business_refs`. Anything else returns
+> `invalid_business_context` — in particular **you cannot pass `operation_key`**; the server derives
+> it from trusted request correlation. A missing `conversation_id` returns `conversation_required`;
+> a missing `interaction_id` returns `interaction_required`.
+>
+> Those ids come from `bkn_start_interaction`, which is exposed only over MCP — there is no REST
+> route for it. So on 0.1.3+ a plain HTTP caller cannot obtain them: use the MCP transport instead
+> (`openbkn context ...` goes through it and the server derives the session per connection).
+
+```bash
+# On 0.1.3+ the body needs a session supplied by MCP; plain curl cannot mint one:
+# {"kn_id":"kn-001","query":"orders","bkn_context":{"conversation_id":"…","interaction_id":"…"}}
+```
 
 ```bash
 # Health check (no auth)
@@ -288,8 +342,8 @@ curl -sk -X POST "https://<access-address>/api/agent-retrieval/v1/kn/query_objec
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn-001",
-    "object_type_id": "ot_orders",
-    "conditions": [{"field":"priority","operation":"==","value":"high"}],
+    "ot_id": "ot_orders",
+    "filters": [{"field":"priority","op":"==","value":"high"}],
     "limit": 20
   }'
 
@@ -299,9 +353,17 @@ curl -sk -X POST "https://<access-address>/api/agent-retrieval/v1/kn/query_insta
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn-001",
-    "object_type_id": "ot_orders",
-    "instance_identities": [{"id":"ord-5521"}],
-    "relation_type_ids": ["rt_belongs_to"]
+    "relation_type_paths": [{
+      "object_types": [
+        {"id":"ot_orders","condition":{"operation":"and","sub_conditions":[]},"limit":10},
+        {"id":"ot_customer","condition":{"operation":"and","sub_conditions":[]},"limit":10}
+      ],
+      "relation_types": [{
+        "relation_type_id":"rt_belongs_to",
+        "source_object_type_id":"ot_orders",
+        "target_object_type_id":"ot_customer"
+      }]
+    }]
   }'
 
 # Logic properties (path is logic-property-resolver, not the tool name)
@@ -310,9 +372,10 @@ curl -sk -X POST "https://<access-address>/api/agent-retrieval/v1/kn/logic-prope
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn-001",
-    "object_type_id": "ot_orders",
-    "instance_identities": [{"id":"ord-5521"}],
-    "logic_property_names": ["days_overdue"]
+    "ot_id": "ot_orders",
+    "query": "how overdue are these orders",
+    "_instance_identities": [{"...": "copied from _instance_identity in a query result"}],
+    "properties": ["days_overdue"]
   }'
 
 # Action info
@@ -321,16 +384,10 @@ curl -sk -X POST "https://<access-address>/api/agent-retrieval/v1/kn/get_action_
   -H "Content-Type: application/json" \
   -d '{
     "kn_id": "kn-001",
-    "object_type_id": "ot_orders",
-    "instance_identities": [{"id":"ord-5521"}]
+    "at_id": "at_escalate",
+    "_instance_identities": [{"...": "copied from _instance_identity in a query result"}]
   }'
 ```
-
-> **Note:** some builds gate `POST /kn/*` on session context and answer
-> `400 conversation_required` when the body has no `bkn_context`
-> (`conversation_id` / `interaction_id` / `operation_key`). The v0.1.2 release does not
-> have this check. Over the MCP transport the server derives the context per connection,
-> so callers never supply it themselves.
 
 ---
 
