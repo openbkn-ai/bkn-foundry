@@ -46,20 +46,12 @@ type connectorFactory struct {
 	connectors map[string]interfaces.Connector // 内置 connector 构建器
 }
 
-func validateConnectorIdentity(tp string, ct *interfaces.ConnectorType, connector interfaces.Connector) error {
-	registeredType := connector.GetType()
-	registeredName := connector.GetName()
+func validateConnectorRegistration(tp string, ct *interfaces.ConnectorType, connector interfaces.Connector) error {
+	if tp != ct.Type {
+		return fmt.Errorf("connector registration key mismatch: key=%s, requested=%s", tp, ct.Type)
+	}
 	registeredMode := connector.GetMode()
 	registeredCategory := connector.GetCategory()
-
-	if tp != ct.Type || registeredType != ct.Type {
-		return fmt.Errorf("connector type mismatch: key=%s, registered=%s, requested=%s",
-			tp, registeredType, ct.Type)
-	}
-	if registeredName != ct.Name {
-		return fmt.Errorf("connector type %s name mismatch: registered=%s, requested=%s",
-			ct.Type, registeredName, ct.Name)
-	}
 	if registeredMode != ct.Mode {
 		return fmt.Errorf("connector type %s mode mismatch: registered=%s, requested=%s",
 			ct.Type, registeredMode, ct.Mode)
@@ -119,7 +111,7 @@ func (cf *connectorFactory) RegisterConnector(ctx context.Context, tp string, ct
 
 	connector, exist := cf.connectors[tp]
 	if exist {
-		if err := validateConnectorIdentity(tp, ct, connector); err != nil {
+		if err := validateConnectorRegistration(tp, ct, connector); err != nil {
 			return err
 		}
 		if ct.Mode == interfaces.ConnectorModeLocal {
@@ -160,7 +152,7 @@ func (cf *connectorFactory) ResolveConnectorTypeRegistration(_ context.Context,
 
 	connector, exists := cf.connectors[ct.Type]
 	if exists {
-		if err := validateConnectorIdentity(ct.Type, ct, connector); err != nil {
+		if err := validateConnectorRegistration(ct.Type, ct, connector); err != nil {
 			return nil, err
 		}
 	}

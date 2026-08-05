@@ -79,8 +79,6 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		local := vmock.NewMockConnector(ctrl)
-		local.EXPECT().GetType().Return("localdb")
-		local.EXPECT().GetName().Return("localdb")
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 		local.EXPECT().GetFieldConfig().Return(testConnectorFieldConfig())
@@ -106,8 +104,6 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 	t.Run("returns error instead of exiting for mismatched local field config", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		local := vmock.NewMockConnector(ctrl)
-		local.EXPECT().GetType().Return("localdb")
-		local.EXPECT().GetName().Return("localdb")
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 		local.EXPECT().GetFieldConfig().Return(testConnectorFieldConfig())
@@ -128,8 +124,6 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 	t.Run("rejects mode change for existing connector", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		local := vmock.NewMockConnector(ctrl)
-		local.EXPECT().GetType().Return("localdb")
-		local.EXPECT().GetName().Return("localdb")
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
@@ -176,14 +170,12 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 	})
 }
 
-func TestValidateConnectorIdentity(t *testing.T) {
+func TestValidateConnectorRegistration(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*interfaces.ConnectorType)
 		field  string
 	}{
-		{name: "type mismatch", mutate: func(ct *interfaces.ConnectorType) { ct.Type = "other" }, field: "type"},
-		{name: "name mismatch", mutate: func(ct *interfaces.ConnectorType) { ct.Name = "Other" }, field: "name"},
 		{name: "mode mismatch", mutate: func(ct *interfaces.ConnectorType) { ct.Mode = interfaces.ConnectorModeRemote }, field: "mode"},
 		{name: "category mismatch", mutate: func(ct *interfaces.ConnectorType) { ct.Category = interfaces.ConnectorCategoryAPI }, field: "category"},
 	}
@@ -192,8 +184,6 @@ func TestValidateConnectorIdentity(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			connector := vmock.NewMockConnector(ctrl)
-			connector.EXPECT().GetType().Return("localdb")
-			connector.EXPECT().GetName().Return("Local DB")
 			connector.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 			request := &interfaces.ConnectorType{
@@ -202,12 +192,33 @@ func TestValidateConnectorIdentity(t *testing.T) {
 			}
 			test.mutate(request)
 
-			err := validateConnectorIdentity("localdb", request, connector)
+			err := validateConnectorRegistration("localdb", request, connector)
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.field+" mismatch")
 		})
 	}
+
+	t.Run("allows mutable name", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
+
+		err := validateConnectorRegistration("localdb", &interfaces.ConnectorType{
+			Type: "localdb", Name: "Renamed Local DB", Mode: interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+		}, connector)
+
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects registration key mismatch", func(t *testing.T) {
+		err := validateConnectorRegistration("localdb", &interfaces.ConnectorType{Type: "other"}, nil)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "key mismatch")
+	})
 }
 
 func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
@@ -217,8 +228,6 @@ func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		local := vmock.NewMockConnector(ctrl)
-		local.EXPECT().GetType().Return("localdb")
-		local.EXPECT().GetName().Return("Local DB")
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 		local.EXPECT().GetFieldConfig().Return(testConnectorFieldConfig())
@@ -242,6 +251,23 @@ func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
 		assert.Contains(t, request.FieldConfig, "stale")
 	})
 
+	t.Run("supports mysql registration through mariadb implementation", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
+		cf.InitLocalConnectors()
+		request := &interfaces.ConnectorType{
+			Type: interfaces.ConnectorTypeMySQL, Name: "MySQL", Mode: interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable, Enabled: true,
+			FieldConfig: map[string]interfaces.ConnectorFieldConfig{"stale": {Type: "string"}},
+		}
+
+		resolved, err := cf.ResolveConnectorTypeRegistration(ctx, request)
+
+		require.NoError(t, err)
+		assert.Equal(t, "MySQL", resolved.Name)
+		assert.Equal(t, cf.connectors[interfaces.ConnectorTypeMySQL].GetFieldConfig(), resolved.FieldConfig)
+		require.NoError(t, cf.RegisterConnector(ctx, resolved.Type, resolved))
+	})
+
 	t.Run("rejects local connector missing from binary", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
 
@@ -260,8 +286,6 @@ func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		local := vmock.NewMockConnector(ctrl)
-		local.EXPECT().GetType().Return("localdb")
-		local.EXPECT().GetName().Return("Remote API")
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
