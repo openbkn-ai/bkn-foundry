@@ -1,0 +1,42 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "skill_id": {
+        "type": "string",
+        "description": "技能 ID（取自 list_skills 或 find_skills 的 skill_id）。"
+      }
+    },
+    "required": ["skill_id"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "skill_id": { "type": "string" },
+      "status": { "type": "string", "description": "技能状态（published 等）" },
+      "content": { "type": "string", "description": "SKILL.md 正文（技能的使用说明与入口命令）" },
+      "truncated": { "type": "boolean", "description": "正文是否因超长被截断" },
+      "files": {
+        "type": "array",
+        "description": "技能包内的文件清单。需要哪个文件的内容再用 read_skill_file 取，不必整包读。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "rel_path": { "type": "string", "description": "包内相对路径，read_skill_file 的 rel_path 用此值" },
+            "file_type": { "type": "string" },
+            "size": { "type": "integer", "description": "字节数" },
+            "mime_type": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "message": { "type": "string", "description": "补充说明（如截断提示）" }
+    }
+  }
+}

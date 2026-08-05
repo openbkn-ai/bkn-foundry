@@ -74,6 +74,11 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 	}
 	all := make([]entry, 0, len(meta))
 	for key, m := range meta {
+		// 未装配的工具不能出现在这里：这个端点的用途是「不握手就看清能力面」，
+		// 广播一条 tools/call 会答「无此工具」的条目比不广播更糟。
+		if key == toolKeyExecuteSkill && !executeSkillEnabled() {
+			continue
+		}
 		in, out := tryLoadToolSchemas(key)
 		if d, ok := mcptool.DecoratorFor(key); ok && d.Allowed() {
 			in = d.Patch(in)

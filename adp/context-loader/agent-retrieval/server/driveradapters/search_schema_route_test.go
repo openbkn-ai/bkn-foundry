@@ -35,6 +35,7 @@ func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 			KnSearchHandler:                stubKnSearchHandler{},
 			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
+			KnSkillsHandler:                stubKnSkillsHandler{},
 			LifecycleClient:                inProcessLifecycleClient(t),
 			Logger:                         logger.DefaultLogger(),
 		}

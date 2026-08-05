@@ -53,6 +53,59 @@ func NewSkillReader() interfaces.SkillReader {
 	return readerInst
 }
 
+// authorizeSkillRead 校验调用方对该技能是否有读取权限（执行 / 公开访问 / 查看三者之一）。
+//
+// 公开接口一律强制。内部接口（internal-v1）看 SKILL_INTERNAL_READ_AUTHZ：
+// off 直接放行；shadow（默认）查但不拦，未通过只打日志；enforce 与公开接口一致返回 403。
+// 分档是为了不打断存量内部调用方——context-loader 把这两个接口包成 MCP 工具之后，
+// 内部路径再无条件放行就等于任意账户可读任意技能全文，但直接翻强制会误伤，先影子观察。
+//
+// 内部接口若拿不到账户身份（accessor 解析失败），shadow 档同样只记日志：
+// 那是「无从判断」，不是「判定为无权」，此时拦下来纯属误伤。
+func (r *skillReader) authorizeSkillRead(ctx context.Context, userID, skillID string) error {
+	isPublic := common.IsPublicAPIFromCtx(ctx)
+	mode := common.GetSkillReadAuthzMode()
+	if !isPublic {
+		if mode == common.SkillReadAuthzOff {
+			return nil
+		}
+		// 内部路径上没有账户身份就没得判：调用方连自己是谁都没说，此时查授权只会
+		// 把「无从判断」误判成「无权」。公开路径不走这里——那条的身份由令牌保证。
+		if authContext, ok := common.GetAccountAuthContextFromCtx(ctx); (!ok || authContext.AccountID == "") && userID == "" {
+			return nil
+		}
+	}
+
+	shadow := !isPublic && mode == common.SkillReadAuthzShadow
+	accessor, err := r.AuthService.GetAccessor(ctx, userID)
+	if err != nil {
+		if shadow {
+			r.Logger.WithContext(ctx).Warnf("[skill.read.authz.shadow] resolve accessor failed, skill %s, user %s: %v", skillID, userID, err)
+			return nil
+		}
+		return err
+	}
+	authorized, err := r.AuthService.OperationCheckAny(ctx, accessor, skillID, interfaces.AuthResourceTypeSkill,
+		interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeView)
+	if err != nil {
+		if shadow {
+			r.Logger.WithContext(ctx).Warnf("[skill.read.authz.shadow] check failed, skill %s, user %s: %v", skillID, userID, err)
+			return nil
+		}
+		return err
+	}
+	if authorized {
+		return nil
+	}
+	if shadow {
+		r.Logger.WithContext(ctx).Warnf("[skill.read.authz.shadow] user %s would be denied on skill %s (mode=shadow, request allowed)", userID, skillID)
+		return nil
+	}
+	r.Logger.WithContext(ctx).Errorf("user %s has no permission to execute、view、public access skill %s", userID, skillID)
+	return errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden,
+		fmt.Sprintf("user has no permission to execute、view、public access skill %s", skillID))
+}
+
 // GetSkillContent 获取技能内容
 func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSkillContentReq) (resp *interfaces.GetSkillContentResp, err error) {
 	// 记录可观测
@@ -66,23 +119,8 @@ func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSk
 	if err != nil {
 		return
 	}
-	// 如果是外部接口
-	if common.IsPublicAPIFromCtx(ctx) {
-		// 有执行、查看、公开访问权限
-		accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
-		if err != nil {
-			return nil, err
-		}
-		authorized, err := r.AuthService.OperationCheckAny(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill,
-			interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeView)
-		if err != nil {
-			return nil, err
-		}
-		if !authorized {
-			r.Logger.WithContext(ctx).Errorf("user has no permission to execute、view、public access skill %s", req.SkillID)
-			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden, fmt.Sprintf("user has no permission to execute、view、public access skill %s", req.SkillID))
-			return nil, err
-		}
+	if err = r.authorizeSkillRead(ctx, req.UserID, req.SkillID); err != nil {
+		return nil, err
 	}
 	// 查询对应的"SKILL.md文件
 	skillFile, err := r.fileRepo.SelectSkillFileByPath(ctx, nil, skill.SkillID, skill.Version, SkillMD)
@@ -128,22 +166,8 @@ func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSki
 		r.Logger.WithContext(ctx).Errorf("read skill file failed: %v", err)
 		return nil, err
 	}
-	if common.IsPublicAPIFromCtx(ctx) {
-		// 有执行、查看、公开访问权限
-		accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
-		if err != nil {
-			return nil, err
-		}
-		authorized, err := r.AuthService.OperationCheckAny(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill,
-			interfaces.AuthOperationTypeExecute, interfaces.AuthOperationTypePublicAccess, interfaces.AuthOperationTypeView)
-		if err != nil {
-			return nil, err
-		}
-		if !authorized {
-			r.Logger.WithContext(ctx).Errorf("user %s has no permission to execute skill %s", req.UserID, req.SkillID)
-			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden, fmt.Sprintf("user %s has no permission to execute skill %s", req.UserID, req.SkillID))
-			return nil, err
-		}
+	if err = r.authorizeSkillRead(ctx, req.UserID, req.SkillID); err != nil {
+		return nil, err
 	}
 	relPath, err := normalizeZipPath(req.RelPath)
 	if err != nil {

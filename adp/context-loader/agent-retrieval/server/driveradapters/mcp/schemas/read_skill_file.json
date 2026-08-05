@@ -1,0 +1,34 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "skill_id": {
+        "type": "string",
+        "description": "技能 ID（取自 list_skills 或 find_skills 的 skill_id）。"
+      },
+      "rel_path": {
+        "type": "string",
+        "description": "技能包内相对路径，取自 get_skill_content 返回的 files[].rel_path。不接受包外路径（../ 会被拒）。"
+      }
+    },
+    "required": ["skill_id", "rel_path"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "skill_id": { "type": "string" },
+      "rel_path": { "type": "string" },
+      "mime_type": { "type": "string" },
+      "file_type": { "type": "string" },
+      "content": { "type": "string", "description": "文件正文。二进制文件不返回此字段，只回 message 说明。" },
+      "truncated": { "type": "boolean", "description": "正文是否因超长被截断" },
+      "message": { "type": "string", "description": "补充说明（二进制未返回正文 / 截断提示）" }
+    }
+  }
+}

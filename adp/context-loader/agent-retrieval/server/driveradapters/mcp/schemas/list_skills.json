@@ -1,0 +1,56 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": ["json", "toon"],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "name": {
+        "type": "string",
+        "description": "可选。按技能名称模糊过滤。"
+      },
+      "category": {
+        "type": "string",
+        "description": "可选。按技能分类过滤。"
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "可选。页码，从 1 开始，默认 1。"
+      },
+      "page_size": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "可选。每页大小，默认 20。"
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "entries": {
+        "type": "array",
+        "description": "已发布的技能列表",
+        "items": {
+          "type": "object",
+          "properties": {
+            "skill_id": { "type": "string", "description": "技能 ID，供 get_skill_content / read_skill_file / execute_skill 使用" },
+            "name": { "type": "string", "description": "技能名" },
+            "description": { "type": "string", "description": "技能描述" },
+            "version": { "type": "string", "description": "已发布版本" },
+            "category": { "type": "string", "description": "技能分类" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "total_count": { "type": "integer", "description": "符合过滤条件的技能总数" },
+      "page": { "type": "integer" },
+      "page_size": { "type": "integer" },
+      "message": { "type": "string", "description": "空结果说明，仅当 entries 为空时出现" }
+    }
+  }
+}

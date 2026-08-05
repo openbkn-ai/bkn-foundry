@@ -28,6 +28,15 @@ info:
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
     AppKey）。**本面所有接口都要求 `x-business-domain` 头**（路由组统一加了中间件）。
+
+    **内部面（`internal-v1`）的读授权按档位**：`/content` 与 `/files/read` 在公开面
+    一律按账户判定（`execute` / `public_access` / `view` 三者有其一），内部面则看
+    `SKILL_INTERNAL_READ_AUTHZ`——`shadow`（默认）查了但不拦、判定不通过只打日志，
+    `enforce` 与公开面一致返回 403，`off` 完全不查。分档是为了不打断存量内部调用方：
+    context-loader 已把这两个接口包成 MCP 工具，`skill_id` 由调用方自填，内部面无条件
+    放行等于任意账户可读任意技能全文，但直接翻强制会误伤，先影子观察再翻。
+    调用方没带账户身份时任何档位都跳过判定——那是「无从判断」，不是「判定为无权」。
+    `/execute` 不受该档位影响，一直按账户强制。
   version: 0.1.3
 servers:
   - url: /api/agent-operator-integration/v1

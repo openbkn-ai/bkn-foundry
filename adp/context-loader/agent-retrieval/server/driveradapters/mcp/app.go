@@ -27,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knresources"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
 const (
@@ -50,6 +51,10 @@ const (
 	toolKeyRunSQL                   = "run_sql"
 	toolKeyListResources            = "list_resources"
 	toolKeyDescribeResource         = "describe_resource"
+	toolKeyListSkills               = "list_skills"
+	toolKeyGetSkillContent          = "get_skill_content"
+	toolKeyReadSkillFile            = "read_skill_file"
+	toolKeyExecuteSkill             = "execute_skill"
 )
 
 // serverInstructions is returned at MCP initialize. It gives the LLM a
@@ -174,6 +179,16 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 	resourcesService := knresources.NewKnResourcesService()
 	b.add(toolKeyListResources, handleListResources(resourcesService))
 	b.add(toolKeyDescribeResource, handleDescribeResource(resourcesService))
+
+	// 技能面：find_skills 只回 id/名/描述，下面三条才是拿到 id 之后能走的路。
+	skillsService := knskills.NewKnSkillsService()
+	b.add(toolKeyListSkills, handleListSkills(skillsService))
+	b.add(toolKeyGetSkillContent, handleGetSkillContent(skillsService))
+	b.add(toolKeyReadSkillFile, handleReadSkillFile(skillsService))
+	// execute_skill 是工具面唯一的命令执行通道，默认不装配（见 executeSkillEnabled）。
+	if executeSkillEnabled() {
+		b.add(toolKeyExecuteSkill, handleExecuteSkill(skillsService))
+	}
 
 	// The lifecycle tools are registered straight onto the server by the tracing
 	// adapter rather than through the builder. Claim their advertised names all

@@ -87,4 +87,12 @@ type DrivenOperatorIntegration interface {
 	CallMCPTool(ctx context.Context, req *CallMCPToolRequest) (map[string]interface{}, error)
 	// SyncToolDependencyPackage Sync internal tool dependency package
 	SyncToolDependencyPackage(ctx context.Context, req *SyncToolDependencyPackageRequest) error
+	// ListSkills 浏览已发布技能（技能市场）
+	ListSkills(ctx context.Context, req *ListSkillsRequest) (*ListSkillsResponse, error)
+	// GetSkillContent 取技能主文档（SKILL.md）正文与包内文件清单
+	GetSkillContent(ctx context.Context, skillID string) (*GetSkillContentResponse, error)
+	// ReadSkillFile 读技能包内单个文件正文
+	ReadSkillFile(ctx context.Context, req *ReadSkillFileRequest) (*ReadSkillFileResponse, error)
+	// ExecuteSkill 在沙箱内执行技能入口命令
+	ExecuteSkill(ctx context.Context, req *ExecuteSkillRequest) (*ExecuteSkillResponse, error)
 }

@@ -230,6 +230,13 @@ func (stubKnFindSkillsHandler) FindSkills(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+type stubKnSkillsHandler struct{}
+
+func (stubKnSkillsHandler) ListSkills(c *gin.Context)      { c.Status(http.StatusOK) }
+func (stubKnSkillsHandler) GetSkillContent(c *gin.Context) { c.Status(http.StatusOK) }
+func (stubKnSkillsHandler) ReadSkillFile(c *gin.Context)   { c.Status(http.StatusOK) }
+func (stubKnSkillsHandler) ExecuteSkill(c *gin.Context)    { c.Status(http.StatusOK) }
+
 type stubKnQueryToolsHandler struct{}
 
 func (stubKnQueryToolsHandler) RunSQL(c *gin.Context)                { c.Status(http.StatusOK) }
@@ -258,6 +265,7 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 			KnSearchHandler:                stubKnSearchHandler{},
 			KnFindSkillsHandler:            stubKnFindSkillsHandler{},
 			KnQueryToolsHandler:            stubKnQueryToolsHandler{},
+			KnSkillsHandler:                stubKnSkillsHandler{},
 			LifecycleClient:                inProcessLifecycleClient(t),
 			Logger:                         logger.DefaultLogger(),
 		}

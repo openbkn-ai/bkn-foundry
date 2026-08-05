@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -35,6 +36,7 @@ type restPrivateHandler struct {
 	MCPProxyHandler                mcpproxy.MCPProxyHandler
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
 	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
+	KnSkillsHandler                knskills.KnSkillsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
 }
@@ -51,6 +53,7 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 		MCPProxyHandler:                mcpproxy.NewMCPProxyHandler(),
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
 		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
+		KnSkillsHandler:                knskills.NewKnSkillsHandler(),
 		Logger:                         logger,
 		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
 	}
@@ -83,6 +86,12 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/query_metric", r.KnQueryToolsHandler.QueryMetric)
 	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
 	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
+
+	// 技能面：浏览 / 读文件 / 执行（find_skills 之后的下钻链路）
+	engine.POST("/kn/list_skills", r.KnSkillsHandler.ListSkills)
+	engine.POST("/kn/get_skill_content", r.KnSkillsHandler.GetSkillContent)
+	engine.POST("/kn/read_skill_file", r.KnSkillsHandler.ReadSkillFile)
+	engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
 
 	// MCP Proxy
 	engine.POST("/mcp/proxy/:mcp_id/tools/:tool_name/call", r.MCPProxyHandler.CallMCPTool)

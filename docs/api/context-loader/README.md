@@ -13,7 +13,7 @@
 | [instance-subgraph.yaml](instance-subgraph.yaml) | 实例子图查询 | `POST /kn/query_instance_subgraph` |
 | [logic-property.yaml](logic-property.yaml) | 逻辑属性求值与指标取数 | `POST /kn/logic-property-resolver`、`POST /kn/query_metric` |
 | [action.yaml](action.yaml) | 行动召回与执行 | `POST /kn/get_action_info`、`POST /kn/execute_action`、`POST /kn/get_action_execution`、`POST /kn/list_action_executions` |
-| [skill.yaml](skill.yaml) | Skill 召回 | `POST /kn/find_skills` |
+| [skill.yaml](skill.yaml) | Skill 召回与读取 | `POST /kn/find_skills`、`POST /kn/list_skills`、`POST /kn/get_skill_content`、`POST /kn/read_skill_file`、`POST /kn/execute_skill` |
 | [data-access.yaml](data-access.yaml) | 数据层直查 | `POST /kn/list_resources`、`POST /kn/describe_resource`、`POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP 服务 | `GET /mcp/info`、`POST /mcp` |
 
@@ -27,6 +27,7 @@ query_object_instance    → 取实例，从 _instance_identity 拿主键
   ├→ logic-property-resolver → 求指标 / 算子类逻辑属性（实例 + 已绑逻辑属性）
   ├→ get_action_info → execute_action → get_action_execution → 执行闭环
   └→ find_skills            → 召回可装载的 Skill
+       └→ get_skill_content → read_skill_file → execute_skill
 ```
 
 指标取数（OT 优先，已建模指标别用 `run_sql` 重写口径）：
@@ -37,6 +38,9 @@ get_object_types               → 从 related_metrics 选定指标
   ├→ logic-property-resolver   → 实例级 + 已绑逻辑属性
   └→ query_metric              → 类级 / 未绑逻辑属性，按 MetricDefinition 口径算
 ```
+
+Skill 面另有一条不依赖知识网络的入口：`list_skills` 直接翻已发布 Skill 列表，
+再走同样的 `get_skill_content` → `read_skill_file` → `execute_skill`。
 
 绕开本体直查数据：`list_resources` → `describe_resource` → `run_sql`。
 
@@ -61,7 +65,7 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
      CONTRACT_ARGS="--include-probe-post --token $TOKEN"
 ```
 
-21 个操作里 **15 个在探测范围内**，其余 6 个不探测，原因如下——它们的响应结构
+25 个操作里 **16 个在探测范围内**，其余 9 个不探测，原因如下——它们的响应结构
 **未经实机验证**，改动时请人工核对：
 
 | 端点 | 不探测的原因 |
@@ -72,7 +76,11 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
 | `query_metric` | 需要环境里存在已建模指标，`metric_id` 无法自动合成 |
 | `run_sql` | 需要针对具体资源构造有意义的 SQL，无法自动合成 |
 | `POST /mcp` | JSON-RPC 会话语义，不是普通请求 / 响应结构 |
+| `execute_skill` | **有副作用**，会在沙箱内真的执行命令 |
+| `get_skill_content` | 需要环境里存在已发布 Skill 的真实 `skill_id` |
+| `read_skill_file` | 同上，且还需要包内一个真实存在的 `rel_path` |
 
-探测范围内的 15 个中，`get_action_info`、`get_action_execution`、`find_skills`
+探测范围内的 16 个中，`get_action_info`、`get_action_execution`、`find_skills`
 依赖环境里存在行动类 / 执行记录 / `skills` 对象类，数据不具备时报告会列为
-「缺少探测参数」或 404，同样按未验证处理。
+「缺少探测参数」或 404，同样按未验证处理。`list_skills` 在没有已发布 Skill 时
+返回空列表加 `message`，属正常 200。

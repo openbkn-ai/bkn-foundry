@@ -4175,6 +4175,635 @@
       "code": "",
       "dependencies": [],
       "dependencies_url": ""
+     },
+     {
+      "tool_id": "87b2b1d5-1830-52b2-a064-48ec2ac260e7",
+      "name": "list_skills",
+      "description": "浏览已发布技能（不需要知识网络上下文）。与 find_skills 互补：那条按对象类/实例召回，这条按名称或分类翻列表。拿到 skill_id 后用 get_skill_content 读 SKILL.md，用 read_skill_file 下钻附属文件，用 execute_skill 执行入口命令。",
+      "status": "enabled",
+      "metadata_type": "openapi",
+      "metadata": {
+       "version": "353f83c8-a32e-5a67-b454-36508e113845",
+       "summary": "list_skills",
+       "description": "浏览已发布技能（不需要知识网络上下文）。与 find_skills 互补：那条按对象类/实例召回，这条按名称或分类翻列表。拿到 skill_id 后用 get_skill_content 读 SKILL.md，用 read_skill_file 下钻附属文件，用 execute_skill 执行入口命令。",
+       "server_url": "http://agent-retrieval:30779",
+       "path": "/api/agent-retrieval/in/v1/kn/list_skills",
+       "method": "POST",
+       "create_time": 1776920840668983300,
+       "update_time": 1776920840668983300,
+       "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "api_spec": {
+        "parameters": [
+         {
+          "name": "x-account-id",
+          "in": "header",
+          "description": "账户ID，用于内部服务调用时传递账户信息",
+          "required": false,
+          "schema": {
+           "type": "string"
+          }
+         },
+         {
+          "name": "x-account-type",
+          "in": "header",
+          "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+          "required": false,
+          "schema": {
+           "enum": [
+            "user",
+            "app",
+            "anonymous"
+           ],
+           "type": "string"
+          }
+         }
+        ],
+        "request_body": {
+         "description": "",
+         "content": {
+          "application/json": {
+           "schema": {
+            "type": "object",
+            "properties": {
+             "response_format": {
+              "type": "string",
+              "enum": [
+               "json",
+               "toon"
+              ],
+              "default": "toon",
+              "description": "文本格式：json 或 toon，默认 toon"
+             },
+             "name": {
+              "type": "string",
+              "description": "可选。按技能名称模糊过滤。"
+             },
+             "category": {
+              "type": "string",
+              "description": "可选。按技能分类过滤。"
+             },
+             "page": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "可选。页码，从 1 开始，默认 1。"
+             },
+             "page_size": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "可选。每页大小，默认 20。"
+             }
+            }
+           }
+          }
+         },
+         "required": false
+        },
+        "responses": [
+         {
+          "status_code": "200",
+          "description": "ok",
+          "content": {
+           "application/json": {
+            "schema": {
+             "type": "object",
+             "properties": {
+              "entries": {
+               "type": "array",
+               "description": "已发布的技能列表",
+               "items": {
+                "type": "object",
+                "properties": {
+                 "skill_id": {
+                  "type": "string",
+                  "description": "技能 ID，供 get_skill_content / read_skill_file / execute_skill 使用"
+                 },
+                 "name": {
+                  "type": "string",
+                  "description": "技能名"
+                 },
+                 "description": {
+                  "type": "string",
+                  "description": "技能描述"
+                 },
+                 "version": {
+                  "type": "string",
+                  "description": "已发布版本"
+                 },
+                 "category": {
+                  "type": "string",
+                  "description": "技能分类"
+                 }
+                },
+                "additionalProperties": true
+               }
+              },
+              "total_count": {
+               "type": "integer",
+               "description": "符合过滤条件的技能总数"
+              },
+              "page": {
+               "type": "integer"
+              },
+              "page_size": {
+               "type": "integer"
+              },
+              "message": {
+               "type": "string",
+               "description": "空结果说明，仅当 entries 为空时出现"
+              }
+             }
+            }
+           }
+          }
+         }
+        ],
+        "components": null,
+        "callbacks": null,
+        "security": null,
+        "tags": null,
+        "external_docs": null
+       }
+      },
+      "use_rule": "",
+      "global_parameters": {
+       "name": "",
+       "description": "",
+       "required": false,
+       "in": "",
+       "type": "",
+       "value": null
+      },
+      "create_time": 1776920840668983300,
+      "update_time": 1776920840668983300,
+      "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "extend_info": null,
+      "resource_object": "tool",
+      "source_id": "353f83c8-a32e-5a67-b454-36508e113845",
+      "source_type": "openapi",
+      "script_type": "",
+      "code": "",
+      "dependencies": [],
+      "dependencies_url": ""
+     },
+     {
+      "tool_id": "9db297b5-e07d-594e-a1a4-1143ddbfe965",
+      "name": "get_skill_content",
+      "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法与入口命令都写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。",
+      "status": "enabled",
+      "metadata_type": "openapi",
+      "metadata": {
+       "version": "e0169fb5-751b-52a2-a411-0c683e2cf51b",
+       "summary": "get_skill_content",
+       "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法与入口命令都写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。",
+       "server_url": "http://agent-retrieval:30779",
+       "path": "/api/agent-retrieval/in/v1/kn/get_skill_content",
+       "method": "POST",
+       "create_time": 1776920840668983300,
+       "update_time": 1776920840668983300,
+       "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "api_spec": {
+        "parameters": [
+         {
+          "name": "x-account-id",
+          "in": "header",
+          "description": "账户ID，用于内部服务调用时传递账户信息",
+          "required": false,
+          "schema": {
+           "type": "string"
+          }
+         },
+         {
+          "name": "x-account-type",
+          "in": "header",
+          "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+          "required": false,
+          "schema": {
+           "enum": [
+            "user",
+            "app",
+            "anonymous"
+           ],
+           "type": "string"
+          }
+         }
+        ],
+        "request_body": {
+         "description": "",
+         "content": {
+          "application/json": {
+           "schema": {
+            "type": "object",
+            "properties": {
+             "response_format": {
+              "type": "string",
+              "enum": [
+               "json",
+               "toon"
+              ],
+              "default": "toon",
+              "description": "文本格式：json 或 toon，默认 toon"
+             },
+             "skill_id": {
+              "type": "string",
+              "description": "技能 ID（取自 list_skills 或 find_skills 的 skill_id）。"
+             }
+            },
+            "required": [
+             "skill_id"
+            ]
+           }
+          }
+         },
+         "required": true
+        },
+        "responses": [
+         {
+          "status_code": "200",
+          "description": "ok",
+          "content": {
+           "application/json": {
+            "schema": {
+             "type": "object",
+             "properties": {
+              "skill_id": {
+               "type": "string"
+              },
+              "status": {
+               "type": "string",
+               "description": "技能状态（published 等）"
+              },
+              "content": {
+               "type": "string",
+               "description": "SKILL.md 正文（技能的使用说明与入口命令）"
+              },
+              "truncated": {
+               "type": "boolean",
+               "description": "正文是否因超长被截断"
+              },
+              "files": {
+               "type": "array",
+               "description": "技能包内的文件清单。需要哪个文件的内容再用 read_skill_file 取，不必整包读。",
+               "items": {
+                "type": "object",
+                "properties": {
+                 "rel_path": {
+                  "type": "string",
+                  "description": "包内相对路径，read_skill_file 的 rel_path 用此值"
+                 },
+                 "file_type": {
+                  "type": "string"
+                 },
+                 "size": {
+                  "type": "integer",
+                  "description": "字节数"
+                 },
+                 "mime_type": {
+                  "type": "string"
+                 }
+                },
+                "additionalProperties": true
+               }
+              },
+              "message": {
+               "type": "string",
+               "description": "补充说明（如截断提示）"
+              }
+             }
+            }
+           }
+          }
+         }
+        ],
+        "components": null,
+        "callbacks": null,
+        "security": null,
+        "tags": null,
+        "external_docs": null
+       }
+      },
+      "use_rule": "",
+      "global_parameters": {
+       "name": "",
+       "description": "",
+       "required": false,
+       "in": "",
+       "type": "",
+       "value": null
+      },
+      "create_time": 1776920840668983300,
+      "update_time": 1776920840668983300,
+      "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "extend_info": null,
+      "resource_object": "tool",
+      "source_id": "e0169fb5-751b-52a2-a411-0c683e2cf51b",
+      "source_type": "openapi",
+      "script_type": "",
+      "code": "",
+      "dependencies": [],
+      "dependencies_url": ""
+     },
+     {
+      "tool_id": "5d0433cf-8d3a-5843-bf8a-1aafe9fd93e0",
+      "name": "read_skill_file",
+      "description": "读技能包内单个文件的正文，rel_path 取自 get_skill_content 返回的 files 清单。渐进式加载用：大文件不必常驻上下文。二进制文件只回元数据不回正文。",
+      "status": "enabled",
+      "metadata_type": "openapi",
+      "metadata": {
+       "version": "3926edb8-64d9-5c93-b8a9-2f644707ca33",
+       "summary": "read_skill_file",
+       "description": "读技能包内单个文件的正文，rel_path 取自 get_skill_content 返回的 files 清单。渐进式加载用：大文件不必常驻上下文。二进制文件只回元数据不回正文。",
+       "server_url": "http://agent-retrieval:30779",
+       "path": "/api/agent-retrieval/in/v1/kn/read_skill_file",
+       "method": "POST",
+       "create_time": 1776920840668983300,
+       "update_time": 1776920840668983300,
+       "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "api_spec": {
+        "parameters": [
+         {
+          "name": "x-account-id",
+          "in": "header",
+          "description": "账户ID，用于内部服务调用时传递账户信息",
+          "required": false,
+          "schema": {
+           "type": "string"
+          }
+         },
+         {
+          "name": "x-account-type",
+          "in": "header",
+          "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+          "required": false,
+          "schema": {
+           "enum": [
+            "user",
+            "app",
+            "anonymous"
+           ],
+           "type": "string"
+          }
+         }
+        ],
+        "request_body": {
+         "description": "",
+         "content": {
+          "application/json": {
+           "schema": {
+            "type": "object",
+            "properties": {
+             "response_format": {
+              "type": "string",
+              "enum": [
+               "json",
+               "toon"
+              ],
+              "default": "toon",
+              "description": "文本格式：json 或 toon，默认 toon"
+             },
+             "skill_id": {
+              "type": "string",
+              "description": "技能 ID（取自 list_skills 或 find_skills 的 skill_id）。"
+             },
+             "rel_path": {
+              "type": "string",
+              "description": "技能包内相对路径，取自 get_skill_content 返回的 files[].rel_path。不接受包外路径（../ 会被拒）。"
+             }
+            },
+            "required": [
+             "skill_id",
+             "rel_path"
+            ]
+           }
+          }
+         },
+         "required": true
+        },
+        "responses": [
+         {
+          "status_code": "200",
+          "description": "ok",
+          "content": {
+           "application/json": {
+            "schema": {
+             "type": "object",
+             "properties": {
+              "skill_id": {
+               "type": "string"
+              },
+              "rel_path": {
+               "type": "string"
+              },
+              "mime_type": {
+               "type": "string"
+              },
+              "file_type": {
+               "type": "string"
+              },
+              "content": {
+               "type": "string",
+               "description": "文件正文。二进制文件不返回此字段，只回 message 说明。"
+              },
+              "truncated": {
+               "type": "boolean",
+               "description": "正文是否因超长被截断"
+              },
+              "message": {
+               "type": "string",
+               "description": "补充说明（二进制未返回正文 / 截断提示）"
+              }
+             }
+            }
+           }
+          }
+         }
+        ],
+        "components": null,
+        "callbacks": null,
+        "security": null,
+        "tags": null,
+        "external_docs": null
+       }
+      },
+      "use_rule": "",
+      "global_parameters": {
+       "name": "",
+       "description": "",
+       "required": false,
+       "in": "",
+       "type": "",
+       "value": null
+      },
+      "create_time": 1776920840668983300,
+      "update_time": 1776920840668983300,
+      "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "extend_info": null,
+      "resource_object": "tool",
+      "source_id": "3926edb8-64d9-5c93-b8a9-2f644707ca33",
+      "source_type": "openapi",
+      "script_type": "",
+      "code": "",
+      "dependencies": [],
+      "dependencies_url": ""
+     },
+     {
+      "tool_id": "d3b3582b-ae4a-5b78-b1a0-aaf6b8c0065c",
+      "name": "execute_skill",
+      "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。",
+      "status": "enabled",
+      "metadata_type": "openapi",
+      "metadata": {
+       "version": "04acbde8-ca98-5bab-a2a7-2753218e4e06",
+       "summary": "execute_skill",
+       "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。",
+       "server_url": "http://agent-retrieval:30779",
+       "path": "/api/agent-retrieval/in/v1/kn/execute_skill",
+       "method": "POST",
+       "create_time": 1776920840668983300,
+       "update_time": 1776920840668983300,
+       "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+       "api_spec": {
+        "parameters": [
+         {
+          "name": "x-account-id",
+          "in": "header",
+          "description": "账户ID，用于内部服务调用时传递账户信息",
+          "required": false,
+          "schema": {
+           "type": "string"
+          }
+         },
+         {
+          "name": "x-account-type",
+          "in": "header",
+          "description": "账户类型：user(用户), app(应用), anonymous(匿名)",
+          "required": false,
+          "schema": {
+           "enum": [
+            "user",
+            "app",
+            "anonymous"
+           ],
+           "type": "string"
+          }
+         }
+        ],
+        "request_body": {
+         "description": "",
+         "content": {
+          "application/json": {
+           "schema": {
+            "type": "object",
+            "properties": {
+             "skill_id": {
+              "type": "string",
+              "description": "技能 ID（取自 list_skills 或 find_skills 的 skill_id）。"
+             },
+             "entry_shell": {
+              "type": "string",
+              "description": "在沙箱内执行的入口命令。必须取自 SKILL.md 中声明的入口，不要自行拼装无关命令。技能包已解压到工作目录，命令相对该目录执行。"
+             },
+             "timeout": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600,
+              "description": "可选。执行超时秒数。"
+             }
+            },
+            "required": [
+             "skill_id",
+             "entry_shell"
+            ]
+           }
+          }
+         },
+         "required": true
+        },
+        "responses": [
+         {
+          "status_code": "200",
+          "description": "ok",
+          "content": {
+           "application/json": {
+            "schema": {
+             "type": "object",
+             "properties": {
+              "skill_id": {
+               "type": "string"
+              },
+              "exit_code": {
+               "type": "integer",
+               "description": "进程退出码，0 为成功"
+              },
+              "stdout": {
+               "type": "string",
+               "description": "标准输出（超长会截断）"
+              },
+              "stderr": {
+               "type": "string",
+               "description": "标准错误（超长会截断）"
+              },
+              "truncated": {
+               "type": "boolean",
+               "description": "stdout / stderr 是否被截断"
+              },
+              "execution_time": {
+               "type": "integer",
+               "description": "执行耗时（毫秒）"
+              },
+              "work_dir": {
+               "type": "string",
+               "description": "沙箱内工作目录"
+              },
+              "command": {
+               "type": "string",
+               "description": "实际执行的命令"
+              },
+              "mocked": {
+               "type": "boolean",
+               "description": "沙箱不可用时的桩执行标记"
+              }
+             }
+            }
+           }
+          }
+         }
+        ],
+        "components": null,
+        "callbacks": null,
+        "security": null,
+        "tags": null,
+        "external_docs": null
+       }
+      },
+      "use_rule": "",
+      "global_parameters": {
+       "name": "",
+       "description": "",
+       "required": false,
+       "in": "",
+       "type": "",
+       "value": null
+      },
+      "create_time": 1776920840668983300,
+      "update_time": 1776920840668983300,
+      "create_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "update_user": "ede150ba-06f4-11f1-85aa-3a34099a4c4b",
+      "extend_info": null,
+      "resource_object": "tool",
+      "source_id": "04acbde8-ca98-5bab-a2a7-2753218e4e06",
+      "source_type": "openapi",
+      "script_type": "",
+      "code": "",
+      "dependencies": [],
+      "dependencies_url": ""
      }
     ],
     "create_time": 1776920840665934300,

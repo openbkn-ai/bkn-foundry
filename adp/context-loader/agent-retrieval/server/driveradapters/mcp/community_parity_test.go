@@ -49,14 +49,19 @@ var communityTools = []string{
 	"get_logic_properties_values",
 	"get_object_types",
 	"get_relation_types",
+	"get_skill_content",
 	"list_action_executions",
 	"list_knowledge_networks",
 	"list_resources",
+	"list_skills",
 	"query_instance_subgraph",
 	"query_metric",
 	"query_object_instance",
+	"read_skill_file",
 	"run_sql",
 	"search_schema",
+	// execute_skill 默认不装配（MCP_EXECUTE_SKILL_ENABLED），所以不在这份基线里，
+	// 由 TestExecuteSkillOnlyAppearsWhenEnabled 单独盯。
 }
 
 // noExtensions puts the process in the state a community binary is always in:

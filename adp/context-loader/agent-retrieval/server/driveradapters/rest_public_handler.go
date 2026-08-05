@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -38,6 +39,7 @@ type restPublicHandler struct {
 	KnSearchHandler                knsearch.KnSearchHandler
 	KnFindSkillsHandler            knfindskills.KnFindSkillsHandler
 	KnQueryToolsHandler            knquerytools.KnQueryToolsHandler
+	KnSkillsHandler                knskills.KnSkillsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
 }
@@ -56,6 +58,7 @@ func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterfa
 		KnSearchHandler:                knsearch.NewKnSearchHandler(),
 		KnFindSkillsHandler:            knfindskills.NewKnFindSkillsHandler(),
 		KnQueryToolsHandler:            knquerytools.NewKnQueryToolsHandler(),
+		KnSkillsHandler:                knskills.NewKnSkillsHandler(),
 		Logger:                         logger,
 		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
 	}
@@ -88,6 +91,12 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/query_metric", r.KnQueryToolsHandler.QueryMetric)
 	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
 	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
+
+	// 技能面：浏览 / 读文件 / 执行（find_skills 之后的下钻链路）
+	engine.POST("/kn/list_skills", r.KnSkillsHandler.ListSkills)
+	engine.POST("/kn/get_skill_content", r.KnSkillsHandler.GetSkillContent)
+	engine.POST("/kn/read_skill_file", r.KnSkillsHandler.ReadSkillFile)
+	engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
 
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
 	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），其余走标准 MCP Streamable HTTP。

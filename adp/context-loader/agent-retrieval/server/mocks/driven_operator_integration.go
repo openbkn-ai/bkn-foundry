@@ -13,9 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
-
 	interfaces "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockDrivenOperatorIntegration is a mock of DrivenOperatorIntegration interface.
@@ -57,6 +56,21 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) CallMCPTool(ctx, req any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallMCPTool", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).CallMCPTool), ctx, req)
 }
 
+// ExecuteSkill mocks base method.
+func (m *MockDrivenOperatorIntegration) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillRequest) (*interfaces.ExecuteSkillResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteSkill", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ExecuteSkillResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteSkill indicates an expected call of ExecuteSkill.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ExecuteSkill(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteSkill", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ExecuteSkill), ctx, req)
+}
+
 // GetMCPToolDetail mocks base method.
 func (m *MockDrivenOperatorIntegration) GetMCPToolDetail(ctx context.Context, req *interfaces.GetMCPToolDetailRequest) (*interfaces.GetMCPToolDetailResponse, error) {
 	m.ctrl.T.Helper()
@@ -72,6 +86,21 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) GetMCPToolDetail(ctx, req a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPToolDetail", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).GetMCPToolDetail), ctx, req)
 }
 
+// GetSkillContent mocks base method.
+func (m *MockDrivenOperatorIntegration) GetSkillContent(ctx context.Context, skillID string) (*interfaces.GetSkillContentResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSkillContent", ctx, skillID)
+	ret0, _ := ret[0].(*interfaces.GetSkillContentResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSkillContent indicates an expected call of GetSkillContent.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) GetSkillContent(ctx, skillID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSkillContent", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).GetSkillContent), ctx, skillID)
+}
+
 // GetToolDetail mocks base method.
 func (m *MockDrivenOperatorIntegration) GetToolDetail(ctx context.Context, req *interfaces.GetToolDetailRequest) (*interfaces.GetToolDetailResponse, error) {
 	m.ctrl.T.Helper()
@@ -85,6 +114,36 @@ func (m *MockDrivenOperatorIntegration) GetToolDetail(ctx context.Context, req *
 func (mr *MockDrivenOperatorIntegrationMockRecorder) GetToolDetail(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetToolDetail", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).GetToolDetail), ctx, req)
+}
+
+// ListSkills mocks base method.
+func (m *MockDrivenOperatorIntegration) ListSkills(ctx context.Context, req *interfaces.ListSkillsRequest) (*interfaces.ListSkillsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSkills", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ListSkillsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSkills indicates an expected call of ListSkills.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ListSkills(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSkills", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ListSkills), ctx, req)
+}
+
+// ReadSkillFile mocks base method.
+func (m *MockDrivenOperatorIntegration) ReadSkillFile(ctx context.Context, req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadSkillFile", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ReadSkillFileResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadSkillFile indicates an expected call of ReadSkillFile.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ReadSkillFile(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadSkillFile", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ReadSkillFile), ctx, req)
 }
 
 // SyncToolDependencyPackage mocks base method.

@@ -7,6 +7,11 @@ info:
     实例），拿回一批相关 Skill 的最小元数据（`skill_id` / `name` / `description`），
     再决定装载哪一个。
 
+    召回只是入口。拿到 `skill_id` 之后：`get_skill_content` 读 SKILL.md 正文与包内
+    文件清单，`read_skill_file` 按 `rel_path` 单取附属文件（渐进式加载，大文件不必
+    常驻上下文），`execute_skill` 在沙箱内执行 SKILL.md 声明的入口命令。不需要知识
+    网络上下文时用 `list_skills` 直接翻已发布技能列表。
+
     Skill 与业务对象的绑定关系建在知识网络里：平台约定该网中存在一个固定的
     `skills` 对象类，业务对象类通过关系类与它相连，召回就是沿这些关系走。
     `skills` 对象类由 execution-factory 在注册 Skill 时写入。
@@ -149,6 +154,264 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
 
+  /kn/list_skills:
+    post:
+      tags:
+        - Skill
+      summary: 浏览已发布 Skill
+      operationId: listSkills
+      x-contract-probe:
+        readonly: true
+        order: 4
+        body:
+          page_size: 3
+      description: |
+        翻已发布 Skill 列表，不需要知识网络上下文。与 `find_skills` 互补：那条按对象类
+        / 实例召回，这条按名称或分类分页浏览。
+
+        只返回**已发布**状态的 Skill；草稿态不出现在这里。
+
+        **空结果是 200 不是错误**：无匹配时 `entries: []` 并带 `message` 说明。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListSkillsRequest'
+            examples:
+              全部:
+                value: {}
+              按名称过滤:
+                value:
+                  name: 合同
+                  page: 1
+                  page_size: 20
+      responses:
+        '200':
+          description: 已发布 Skill 列表，可能为空
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSkillsResponse'
+              examples:
+                有结果:
+                  value:
+                    entries:
+                      - skill_id: skill_contract_review
+                        name: 合同审查
+                        description: 对合同条款进行全面审查，识别风险点
+                        version: '1.0.2'
+                        category: legal
+                    total_count: 1
+                    page: 1
+                    page_size: 20
+            application/toon:
+              schema:
+                type: string
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '502':
+          description: 上游 execution-factory 不可用
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+  /kn/get_skill_content:
+    post:
+      tags:
+        - Skill
+      summary: 读 SKILL.md 正文与包内文件清单
+      operationId: getSkillContent
+      description: |
+        返回 Skill 主文档 `SKILL.md` 的正文，以及技能包内的文件清单
+        （`files[].rel_path`）。Skill 的用法与入口命令都写在正文里。
+
+        需要某个附属文件的内容时再调 `read_skill_file` 单取，不必整包下载。
+
+        正文超过 40000 字符会截断，此时 `truncated=true` 并带 `message` 说明。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetSkillContentRequest'
+            examples:
+              example:
+                value:
+                  skill_id: skill_contract_review
+      responses:
+        '200':
+          description: SKILL.md 正文与文件清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSkillContentResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: 缺少 `skill_id`
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '403':
+          description: 当前账户对该 Skill 无执行 / 查看 / 公开访问权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: Skill 不存在或未发布
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+  /kn/read_skill_file:
+    post:
+      tags:
+        - Skill
+      summary: 读技能包内单个文件
+      operationId: readSkillFile
+      description: |
+        按 `rel_path` 取技能包内单个文件的正文。`rel_path` 取自
+        `get_skill_content` 返回的 `files[].rel_path`，**不接受包外路径**（`../` 被拒）。
+
+        **二进制文件不回正文**：`mime_type` 为图片 / 音视频 / 压缩包 / PDF，或正文不是
+        合法 UTF-8 时，只返回元数据与 `message` 说明，避免把乱码灌进模型上下文。
+
+        正文超过 40000 字符会截断（`truncated=true`）；单文件超过 5 MiB 返回 413。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadSkillFileRequest'
+            examples:
+              example:
+                value:
+                  skill_id: skill_contract_review
+                  rel_path: refs/checklist.md
+      responses:
+        '200':
+          description: 文件元数据与正文（二进制文件无正文）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadSkillFileResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: 缺少 `skill_id` / `rel_path`，或路径越出技能包
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '403':
+          description: 当前账户对该 Skill 无执行 / 查看 / 公开访问权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: Skill 或该路径的文件不存在
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '413':
+          description: 文件超过 5 MiB 上限，改用技能包下载接口
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
+  /kn/execute_skill:
+    post:
+      tags:
+        - Skill
+      summary: 在沙箱内执行 Skill 入口命令
+      operationId: executeSkill
+      description: |
+        把 Skill 包投进沙箱会话解压，执行 `entry_shell` 指定的入口命令，回收
+        `exit_code` / `stdout` / `stderr`。
+
+        **`entry_shell` 必须取自 SKILL.md 声明的入口**，先用 `get_skill_content`
+        读清楚再调；这条接口不校验命令与 Skill 的对应关系。
+
+        授权由 execution-factory 按账户强制：需要该 Skill 的 `execute` 或
+        `public_access` 权限，无权限返回 403。
+
+        `stdout` / `stderr` 各自超过 8000 字符会截断（`truncated=true`）。
+
+        **同名 MCP 工具默认不装配**：MCP 面的 `execute_skill` 需要显式开启
+        （`MCP_EXECUTE_SKILL_ENABLED=true`）；未开启时它既不出现在 `tools/list`
+        也不出现在 `GET /mcp/info`。本 REST 端点不受该开关影响。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteSkillRequest'
+            examples:
+              example:
+                value:
+                  skill_id: skill_contract_review
+                  entry_shell: python main.py --input contract.txt
+                  timeout: 60
+      responses:
+        '200':
+          description: |
+            执行完成。注意 `exit_code != 0` 同样是 200——命令跑完了但业务失败，
+            与接口调用失败是两回事。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteSkillResponse'
+        '400':
+          description: 缺少 `skill_id` / `entry_shell`
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '403':
+          description: 当前账户对该 Skill 无执行权限
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: Skill 不存在或未发布
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '502':
+          description: 沙箱或上游 execution-factory 不可用
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
 components:
   securitySchemes:
     OAuth2:
@@ -255,3 +518,220 @@ components:
           type: string
           description: Skill 功能描述。BKN 中无该属性时不返回，也不影响召回。
           example: 对合同条款进行全面审查，识别风险点
+
+    ListSkillsRequest:
+      type: object
+      properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        name:
+          type: string
+          description: 按 Skill 名称模糊过滤。
+          example: 合同
+        category:
+          type: string
+          description: 按 Skill 分类过滤。
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+          description: 页码，从 1 开始。
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+          description: 每页大小。
+
+    ListSkillsResponse:
+      type: object
+      required:
+        - entries
+        - total_count
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillListItem'
+        total_count:
+          type: integer
+          description: 符合过滤条件的已发布 Skill 总数。
+        page:
+          type: integer
+        page_size:
+          type: integer
+        message:
+          type: string
+          description: 空结果说明。仅当 `entries` 为空时出现。
+
+    SkillListItem:
+      type: object
+      required:
+        - skill_id
+        - name
+      properties:
+        skill_id:
+          type: string
+          example: skill_contract_review
+        name:
+          type: string
+          example: 合同审查
+        description:
+          type: string
+        version:
+          type: string
+          description: 已发布版本。
+          example: '1.0.2'
+        category:
+          type: string
+
+    GetSkillContentRequest:
+      type: object
+      required:
+        - bkn_context
+        - skill_id
+      properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        skill_id:
+          type: string
+          description: Skill ID，取自 `find_skills` 或 `list_skills`。
+          example: skill_contract_review
+
+    GetSkillContentResponse:
+      type: object
+      required:
+        - skill_id
+        - content
+        - files
+      properties:
+        skill_id:
+          type: string
+        status:
+          type: string
+          description: Skill 状态，正常为 `published`。
+        content:
+          type: string
+          description: SKILL.md 正文。
+        truncated:
+          type: boolean
+          description: 正文是否因超长（40000 字符）被截断。
+        files:
+          type: array
+          description: 技能包内文件清单，`rel_path` 供 `read_skill_file` 使用。
+          items:
+            $ref: '#/components/schemas/SkillFileSummary'
+        message:
+          type: string
+          description: 补充说明（如截断提示）。
+
+    SkillFileSummary:
+      type: object
+      required:
+        - rel_path
+      properties:
+        rel_path:
+          type: string
+          example: refs/checklist.md
+        file_type:
+          type: string
+        size:
+          type: integer
+          description: 字节数。
+        mime_type:
+          type: string
+
+    ReadSkillFileRequest:
+      type: object
+      required:
+        - bkn_context
+        - skill_id
+        - rel_path
+      properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        skill_id:
+          type: string
+          example: skill_contract_review
+        rel_path:
+          type: string
+          description: |
+            技能包内相对路径，取自 `get_skill_content` 的 `files[].rel_path`。
+            包外路径（含 `../`）返回 400。
+          example: refs/checklist.md
+
+    ReadSkillFileResponse:
+      type: object
+      required:
+        - skill_id
+        - rel_path
+      properties:
+        skill_id:
+          type: string
+        rel_path:
+          type: string
+        mime_type:
+          type: string
+        file_type:
+          type: string
+        content:
+          type: string
+          description: 文件正文。二进制文件不返回该字段。
+        truncated:
+          type: boolean
+        message:
+          type: string
+          description: 补充说明（二进制未返回正文 / 截断提示）。
+
+    ExecuteSkillRequest:
+      type: object
+      required:
+        - bkn_context
+        - skill_id
+        - entry_shell
+      properties:
+        bkn_context:
+          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
+        skill_id:
+          type: string
+          example: skill_contract_review
+        entry_shell:
+          type: string
+          description: |
+            沙箱内执行的入口命令，取自 SKILL.md 声明的入口。技能包已解压到工作目录，
+            命令相对该目录执行。
+          example: python main.py --input contract.txt
+        timeout:
+          type: integer
+          minimum: 1
+          maximum: 600
+          description: 执行超时秒数。
+
+    ExecuteSkillResponse:
+      type: object
+      required:
+        - skill_id
+        - exit_code
+      properties:
+        skill_id:
+          type: string
+        exit_code:
+          type: integer
+          description: 进程退出码，0 为成功。非 0 时接口仍返回 200。
+        stdout:
+          type: string
+        stderr:
+          type: string
+        truncated:
+          type: boolean
+          description: "`stdout` / `stderr` 是否被截断（各自 8000 字符上限）。"
+        execution_time:
+          type: integer
+          description: 执行耗时（毫秒）。
+        work_dir:
+          type: string
+        command:
+          type: string
+        mocked:
+          type: boolean
+          description: 沙箱不可用时的桩执行标记。

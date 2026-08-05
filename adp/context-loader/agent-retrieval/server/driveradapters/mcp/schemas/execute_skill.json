@@ -1,0 +1,36 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "skill_id": {
+        "type": "string",
+        "description": "技能 ID（取自 list_skills 或 find_skills 的 skill_id）。"
+      },
+      "entry_shell": {
+        "type": "string",
+        "description": "在沙箱内执行的入口命令。必须取自 SKILL.md 中声明的入口，不要自行拼装无关命令。技能包已解压到工作目录，命令相对该目录执行。"
+      },
+      "timeout": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 600,
+        "description": "可选。执行超时秒数。"
+      }
+    },
+    "required": ["skill_id", "entry_shell"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "skill_id": { "type": "string" },
+      "exit_code": { "type": "integer", "description": "进程退出码，0 为成功" },
+      "stdout": { "type": "string", "description": "标准输出（超长会截断）" },
+      "stderr": { "type": "string", "description": "标准错误（超长会截断）" },
+      "truncated": { "type": "boolean", "description": "stdout / stderr 是否被截断" },
+      "execution_time": { "type": "integer", "description": "执行耗时（毫秒）" },
+      "work_dir": { "type": "string", "description": "沙箱内工作目录" },
+      "command": { "type": "string", "description": "实际执行的命令" },
+      "mocked": { "type": "boolean", "description": "沙箱不可用时的桩执行标记" }
+    }
+  }
+}
