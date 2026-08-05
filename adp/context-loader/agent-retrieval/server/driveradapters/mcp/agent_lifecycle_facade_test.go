@@ -173,16 +173,14 @@ func TestManagedFinishIdempotencyIsStableAcrossTransportRetries(t *testing.T) {
 	}
 }
 
-func TestLifecycleErrorReturnsRecoveryGuidanceInTextAndStructuredContent(t *testing.T) {
+func TestLifecycleErrorReturnsRecoveryGuidanceWithoutSuccessStructuredContent(t *testing.T) {
 	result := lifecycleToolError(lifecycleError{
 		Code: "interaction_in_progress", Message: "an interaction is already active",
 		CurrentStatus: "active", CurrentInteractionID: "int-active-1",
 		RequiredAction: "bkn_finish_interaction",
 	})
-	structured := result.StructuredContent.(map[string]any)["error"].(map[string]any)
-	if structured["current_interaction_id"] != "int-active-1" ||
-		structured["required_action"] != "bkn_finish_interaction" {
-		t.Fatalf("structured error omitted recovery guidance: %#v", structured)
+	if result.StructuredContent != nil {
+		t.Fatalf("error result must not be validated against the success output schema: %#v", result.StructuredContent)
 	}
 	textContent, ok := mcpsdk.AsTextContent(result.Content[0])
 	if !ok {

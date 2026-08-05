@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"runtime/debug"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -174,12 +175,12 @@ func guardBusinessToolCallWithCompletion(
 			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
 		}
 		if lifecycleErr != nil {
-			errorResult := lifecycleToolError(*lifecycleErr)
 			if completed != nil && lifecycleErr.Code == "receipt_pending" {
-				structured := errorResult.StructuredContent.(map[string]any)
-				structured["receipt"] = completed.Receipt
+				return lifecycleToolErrorWithDetails(
+					*lifecycleErr, map[string]any{"receipt": completed.Receipt},
+				), nil
 			}
-			return errorResult, nil
+			return lifecycleToolError(*lifecycleErr), nil
 		}
 		if completed != nil {
 			if structured, ok := result.StructuredContent.(map[string]any); ok {
@@ -256,13 +257,40 @@ func callBusinessTool(
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {
-	message := "BKN Trace Core is unavailable"
 	if errors.Is(err, bkntrace.ErrFeatureNotInstalled) {
-		message = "BKN Trace Core is not configured"
+		return lifecycleError{
+			Code: "feature_not_installed", Message: "BKN Trace Core is not configured",
+		}
 	}
-	// See the HTTP twin in driveradapters/lifecycle_middleware.go: the caller is
-	// told the dependency is unavailable, not which product to buy.
-	return lifecycleError{Code: "feature_not_installed", Message: message}
+	var coreErr *bkntrace.CoreHTTPError
+	if errors.As(err, &coreErr) {
+		message := coreErr.Message
+		if message == "" {
+			message = "BKN Trace evidence could not be recorded"
+		}
+		switch coreErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return lifecycleError{
+				Code: "evidence_capture_denied", Message: message,
+				RequiredAction: "request_authorization",
+			}
+		default:
+			if coreErr.Retryable() {
+				return lifecycleError{
+					Code: "trace_core_unavailable", Message: "BKN Trace Core is temporarily unavailable",
+					Retryable: true, RequiredAction: "retry_later",
+				}
+			}
+			return lifecycleError{
+				Code: "evidence_capture_failed", Message: message,
+				RequiredAction: "contact_platform_operator",
+			}
+		}
+	}
+	return lifecycleError{
+		Code: "trace_core_unavailable", Message: "BKN Trace Core is temporarily unavailable",
+		Retryable: true, RequiredAction: "retry_later",
+	}
 }
 
 func operationIdentity(operation any) (string, int) {
@@ -285,10 +313,7 @@ func receiptPendingToolError(receipt any) *mcpsdk.CallToolResult {
 		Code: "receipt_pending", Message: "operation receipt is still pending",
 		Retryable: true, RequiredAction: "poll_receipt",
 	}
-	result := lifecycleToolError(errorValue)
-	structured := result.StructuredContent.(map[string]any)
-	structured["receipt"] = receipt
-	return result
+	return lifecycleToolErrorWithDetails(errorValue, map[string]any{"receipt": receipt})
 }
 
 func receiptStatus(receipt any) string {
@@ -324,6 +349,10 @@ func stringSliceValue(value any) []string {
 }
 
 func lifecycleToolError(value lifecycleError) *mcpsdk.CallToolResult {
+	return lifecycleToolErrorWithDetails(value, nil)
+}
+
+func lifecycleToolErrorWithDetails(value lifecycleError, details map[string]any) *mcpsdk.CallToolResult {
 	errorValue := map[string]any{
 		"code":            value.Code,
 		"message":         value.Message,
@@ -341,8 +370,9 @@ func lifecycleToolError(value lifecycleError) *mcpsdk.CallToolResult {
 		errorValue["request_id"] = value.RequestID
 	}
 	envelope := map[string]any{"error": errorValue}
+	for key, detail := range details {
+		envelope[key] = detail
+	}
 	raw, _ := json.Marshal(envelope)
-	result := mcpsdk.NewToolResultStructured(envelope, string(raw))
-	result.IsError = true
-	return result
+	return mcpsdk.NewToolResultError(string(raw))
 }

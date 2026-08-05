@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -39,8 +40,33 @@ const (
 
 const maxInFlightEvidenceBatches = 64
 const maxSubgraphEvidenceRefs = 100
+const maxCoreErrorBodyBytes = 4 << 10
 
 type Event map[string]any
+
+type CoreHTTPError struct {
+	StatusCode int
+	Code       string
+	Message    string
+}
+
+func (e *CoreHTTPError) Error() string {
+	parts := make([]string, 0, 2)
+	if code := strings.TrimSpace(e.Code); code != "" {
+		parts = append(parts, code)
+	}
+	if message := strings.TrimSpace(e.Message); message != "" {
+		parts = append(parts, message)
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("BKN Trace Core HTTP %d", e.StatusCode)
+	}
+	return fmt.Sprintf("BKN Trace Core HTTP %d: %s", e.StatusCode, strings.Join(parts, ": "))
+}
+
+func (e *CoreHTTPError) Retryable() bool {
+	return e.StatusCode == http.StatusTooManyRequests || e.StatusCode >= http.StatusInternalServerError
+}
 
 type InteractionArtifactType string
 
@@ -53,6 +79,7 @@ type evidenceOutcomeContextKey struct{}
 
 type evidenceOutcome struct {
 	mu           sync.Mutex
+	attempted    bool
 	durable      bool
 	eventIDs     []string
 	businessRefs []BusinessRef
@@ -100,6 +127,18 @@ func HashValue(value any) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+func hashArtifactContent(value any) (string, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return "", err
+	}
+	raw := bytes.TrimSuffix(buffer.Bytes(), []byte("\n"))
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
 func EvidenceEnabled() bool {
 	return evidenceIngestURL() != ""
 }
@@ -137,7 +176,10 @@ func RecordInteractionArtifact(
 	default:
 		return "", fmt.Errorf("unsupported interaction artifact type %q", artifactType)
 	}
-	contentHash := HashValue(content)
+	contentHash, err := hashArtifactContent(content)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize interaction artifact: %w", err)
+	}
 	idHash := sha256.Sum256([]byte(ec.interactionID + "|" + string(artifactType) + "|" + contentHash))
 	artifactID := "art_" + string(artifactType) + "_" + hex.EncodeToString(idHash[:16])
 	artifactRef := "artifact:" + artifactID
@@ -204,15 +246,19 @@ func postArtifactWithRetry(
 		setEvidenceIngestHeaders(req.Header, traceBlock)
 		resp, requestErr := evidenceHTTPClient.Do(req)
 		if requestErr == nil {
-			resp.Body.Close()
 			if resp.StatusCode < http.StatusBadRequest {
+				resp.Body.Close()
 				cancel()
 				return nil
 			}
-			requestErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			requestErr = coreHTTPError(resp)
 		}
 		cancel()
 		err = requestErr
+		var coreErr *CoreHTTPError
+		if errors.As(err, &coreErr) && !coreErr.Retryable() {
+			return err
+		}
 		if attempt < 2 {
 			time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
 		}
@@ -246,6 +292,13 @@ func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string,
 		return ""
 	}
 	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLEvents(ctx, sql, resourceIDs, resp))
+}
+
+func EmitSchemaDefinitionEvents(ctx context.Context, logger interfaces.Logger, kind, knID string, ids []string, matched int) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildSchemaDefinitionEvents(ctx, kind, knID, ids, matched))
 }
 
 func submitAndReturnFirstEventID(ctx context.Context, logger interfaces.Logger, req any, events []Event) string {
@@ -349,6 +402,39 @@ func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, re
 	)
 }
 
+func BuildSchemaDefinitionEvents(ctx context.Context, kind, knID string, ids []string, matched int) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok || strings.TrimSpace(knID) == "" {
+		return nil
+	}
+	refType := ""
+	switch kind {
+	case "object":
+		refType = "object"
+	case "relation":
+		refType = "relation"
+	default:
+		return nil
+	}
+	refs := []map[string]any{{
+		"ref_id": "kn:" + knID, "ref_type": "knowledge_network",
+		"source_system": ModuleName, "validity": "observed",
+		"version_status": "unversioned", "visibility": "visible",
+	}}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		refs = append(refs, map[string]any{
+			"ref_id": kind + ":" + knID + ":" + id, "ref_type": refType,
+			"source_system": ModuleName, "validity": "observed",
+			"version_status": "unversioned", "visibility": "visible",
+		})
+	}
+	return buildRetrievalEvents(ec, "context.get_"+kind+"_types", HashValue(strings.Join(ids, "\x00")), matched, false, refs)
+}
+
 func buildRetrievalEvents(ec eventContext, operation, queryHash string, candidateCount int, truncated bool, refs []map[string]any) []Event {
 	fact := buildEvent(ec, "retrieval.completed", operation, map[string]any{
 		"query_hash":      queryHash,
@@ -372,6 +458,7 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 	if ingestURL == "" {
 		return nil
 	}
+	recordEvidenceAttempt(ctx)
 	timeout := evidenceTimeout()
 	traceBlock := map[string]any{
 		"trace_id":                     ec.traceID,
@@ -491,14 +578,24 @@ func recordDurableEvidenceOutcome(ctx context.Context, payload batch) {
 	}
 }
 
-func snapshotEvidenceOutcome(ctx context.Context) (bool, []string, []BusinessRef) {
+func recordEvidenceAttempt(ctx context.Context) {
 	outcome := evidenceOutcomeFromContext(ctx)
 	if outcome == nil {
-		return false, nil, nil
+		return
+	}
+	outcome.mu.Lock()
+	outcome.attempted = true
+	outcome.mu.Unlock()
+}
+
+func snapshotEvidenceOutcome(ctx context.Context) (bool, bool, []string, []BusinessRef) {
+	outcome := evidenceOutcomeFromContext(ctx)
+	if outcome == nil {
+		return false, false, nil, nil
 	}
 	outcome.mu.Lock()
 	defer outcome.mu.Unlock()
-	return outcome.durable, append([]string(nil), outcome.eventIDs...), append([]BusinessRef(nil), outcome.businessRefs...)
+	return outcome.attempted, outcome.durable, append([]string(nil), outcome.eventIDs...), append([]BusinessRef(nil), outcome.businessRefs...)
 }
 
 func postBatchWithRetry(ingestURL string, timeout time.Duration, payload batch) error {
@@ -537,13 +634,38 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 			cancel()
 			return err
 		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			err = coreHTTPError(resp)
+			cancel()
+			return err
+		}
 		resp.Body.Close()
 		cancel()
-		if resp.StatusCode >= http.StatusBadRequest {
-			return fmt.Errorf("HTTP %d", resp.StatusCode)
-		}
 	}
 	return nil
+}
+
+func coreHTTPError(resp *http.Response) error {
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxCoreErrorBodyBytes+1))
+	var payload struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Error   struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(body, &payload)
+	if payload.Error.Code != "" || payload.Error.Message != "" {
+		payload.Code = payload.Error.Code
+		payload.Message = payload.Error.Message
+	}
+	return &CoreHTTPError{
+		StatusCode: resp.StatusCode,
+		Code:       strings.TrimSpace(payload.Code),
+		Message:    strings.TrimSpace(payload.Message),
+	}
 }
 
 type trace30Event struct {

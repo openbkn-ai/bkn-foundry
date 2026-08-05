@@ -132,7 +132,7 @@ func lifecycleAdapterJSONResponse(status int, value any) *http.Response {
 	}
 }
 
-func TestStartInteractionUsesCoreCreatedAtForServerOwnedQuestionEvidence(t *testing.T) {
+func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEvidence(t *testing.T) {
 	createdAt := time.Date(2026, 8, 3, 6, 30, 0, 123000000, time.UTC)
 	var artifact map[string]any
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -161,11 +161,7 @@ func TestStartInteractionUsesCoreCreatedAtForServerOwnedQuestionEvidence(t *test
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
 	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "query-token")
 
-	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID: trace.TraceID{1}, SpanID: trace.SpanID{1}, TraceFlags: trace.FlagsSampled,
-	})
-	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
-	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID: "req_cursor_native_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
 	})
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
@@ -188,6 +184,9 @@ func TestStartInteractionUsesCoreCreatedAtForServerOwnedQuestionEvidence(t *test
 	}
 	if got := artifact["observed_at"]; got != createdAt.Format(time.RFC3339Nano) {
 		t.Fatalf("question artifact observed_at=%v, want Core created_at %s", got, createdAt.Format(time.RFC3339Nano))
+	}
+	if got, _ := artifact["trace_id"].(string); len(got) != 32 {
+		t.Fatalf("question artifact trace_id=%q, want server-created W3C trace ID", got)
 	}
 }
 

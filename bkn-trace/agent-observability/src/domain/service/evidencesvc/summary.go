@@ -432,7 +432,8 @@ func (s *Service) applyCanonicalConversationState(
 				continue
 			}
 			applyCanonicalConversationEvidenceAndDuration(
-				&entries[index].EvidenceCompleteness, &entries[index].DurationMS,
+				&entries[index].EvidenceCompleteness, &entries[index].PartialReasons,
+				&entries[index].DurationMS,
 				tx, requestsByConversation[entries[index].ConversationID],
 			)
 			entries[index].Status = string(conversation.Status)
@@ -455,6 +456,7 @@ func (s *Service) applyCanonicalConversationState(
 
 func applyCanonicalConversationEvidenceAndDuration(
 	evidenceCompleteness *string,
+	partialReasons *[]string,
 	durationMS *int64,
 	tx isessionstore.Transaction,
 	requests []evidencevo.RequestSummary,
@@ -466,13 +468,22 @@ func applyCanonicalConversationEvidenceAndDuration(
 		}
 	}
 	var total int64
+	canonicalFound := false
+	canonicalCompleteness := ""
+	canonicalReasons := map[string]struct{}{}
 	for interactionID, interactionRequests := range byInteraction {
 		interaction, found := tx.PeekInteraction(interactionID)
 		if found {
+			canonicalFound = true
 			total += canonicalInteractionDurationMS(interaction)
 			candidate := string(interaction.EvidenceStatus)
-			if canonicalEvidenceRank(candidate) > canonicalEvidenceRank(*evidenceCompleteness) {
-				*evidenceCompleteness = candidate
+			if canonicalEvidenceRank(candidate) > canonicalEvidenceRank(canonicalCompleteness) {
+				canonicalCompleteness = candidate
+			}
+			if interaction.EvidenceStatus == sessionvo.EvidencePartial || interaction.EvidenceStatus == sessionvo.EvidenceFailed {
+				for _, reason := range latestAssemblyPartialReasons(tx, interactionID) {
+					canonicalReasons[reason] = struct{}{}
+				}
 			}
 			continue
 		}
@@ -480,6 +491,10 @@ func applyCanonicalConversationEvidenceAndDuration(
 		if summary.Status != "running" && summary.Status != "unknown" {
 			total += summary.DurationMS
 		}
+	}
+	if canonicalFound {
+		*evidenceCompleteness = canonicalCompleteness
+		*partialReasons = sortedSummarySet(canonicalReasons)
 	}
 	*durationMS = total
 }
@@ -506,9 +521,9 @@ func canonicalEvidenceRank(value string) int {
 		return 4
 	case string(sessionvo.EvidencePartial):
 		return 3
-	case "content_unavailable":
-		return 2
 	case string(sessionvo.EvidenceComplete):
+		return 2
+	case string(sessionvo.EvidenceNotApplicable):
 		return 1
 	default:
 		return 0
@@ -528,23 +543,46 @@ func (s *Service) applyCanonicalInteractionState(ctx context.Context, entries []
 			applyInteractionState(
 				&entries[index].Status,
 				&entries[index].EvidenceCompleteness,
+				&entries[index].PartialReasons,
 				&entries[index].StartedAt,
 				&entries[index].CompletedAt,
 				&entries[index].DurationMS,
 				interaction,
 			)
+			applyCanonicalPartialReasons(&entries[index].PartialReasons, tx, interaction)
 		}
 		return nil
 	})
 }
 
+func applyCanonicalPartialReasons(reasons *[]string, tx isessionstore.Transaction, interaction sessionvo.Interaction) {
+	if interaction.EvidenceStatus != sessionvo.EvidencePartial && interaction.EvidenceStatus != sessionvo.EvidenceFailed {
+		*reasons = []string{}
+		return
+	}
+	*reasons = latestAssemblyPartialReasons(tx, interaction.ID)
+}
+
+func latestAssemblyPartialReasons(tx isessionstore.Transaction, interactionID string) []string {
+	revisions := tx.ListAssemblyRevisions(interactionID)
+	if len(revisions) == 0 {
+		return []string{}
+	}
+	return append([]string{}, revisions[len(revisions)-1].PartialReasons...)
+}
+
 func applyInteractionState(
-	status, evidenceCompleteness, startedAt, completedAt *string,
+	status, evidenceCompleteness *string,
+	partialReasons *[]string,
+	startedAt, completedAt *string,
 	durationMS *int64,
 	interaction sessionvo.Interaction,
 ) {
 	*status = string(interaction.ExecutionStatus)
 	*evidenceCompleteness = string(interaction.EvidenceStatus)
+	if interaction.EvidenceStatus != sessionvo.EvidencePartial && interaction.EvidenceStatus != sessionvo.EvidenceFailed {
+		*partialReasons = []string{}
+	}
 	if !interaction.CreatedAt.IsZero() {
 		*startedAt = interaction.CreatedAt.UTC().Format(time.RFC3339Nano)
 	}
@@ -588,6 +626,12 @@ func (s *Service) applyCanonicalRequestIdentity(ctx context.Context, requests []
 			requests[index].AgentName = conversation.AgentName
 			requests[index].ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
 			requests[index].EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
+			if requests[index].OperationID != "" {
+				operation, operationFound := tx.PeekOperation(requests[index].OperationID)
+				if operationFound && operation.AttemptStatus == sessionvo.AttemptFailed && requests[index].ErrorSummary == "" {
+					requests[index].ErrorSummary = "OpenBKN operation failed"
+				}
+			}
 		}
 		return nil
 	})
@@ -816,11 +860,13 @@ func (s *Service) GetInteractionSummary(
 			applyInteractionState(
 				&summary.Status,
 				&summary.EvidenceCompleteness,
+				&summary.PartialReasons,
 				&summary.StartedAt,
 				&summary.CompletedAt,
 				&summary.DurationMS,
 				interaction,
 			)
+			applyCanonicalPartialReasons(&summary.PartialReasons, tx, interaction)
 			return nil
 		})
 		if err != nil {

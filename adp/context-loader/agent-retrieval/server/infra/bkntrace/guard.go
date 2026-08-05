@@ -63,7 +63,7 @@ func (g *Guard) Begin(
 	ctx context.Context,
 	intent GuardIntent,
 ) (context.Context, GuardState, GuardDisposition, *APIError, error) {
-	ctx, err := ensureFinishCorrelation(ctx)
+	ctx, err := EnsureTraceCorrelation(ctx)
 	if err != nil {
 		return ctx, GuardState{}, "", nil, err
 	}
@@ -103,7 +103,9 @@ func (g *Guard) Begin(
 	return withDeclaredBusinessRefs(withEvidenceOutcome(ctx), trustedRefs), state, GuardExecute, nil, nil
 }
 
-func ensureFinishCorrelation(ctx context.Context) (context.Context, error) {
+// EnsureTraceCorrelation preserves an incoming W3C trace when present and
+// derives stable request-scoped correlation when the client does not send one.
+func EnsureTraceCorrelation(ctx context.Context) (context.Context, error) {
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
 	ctx = common.SetTraceContextToCtx(ctx, traceContext)
 	if trace.SpanContextFromContext(ctx).IsValid() {
@@ -129,7 +131,7 @@ func (g *Guard) Finish(
 	failed bool,
 	retryable bool,
 ) (OperationResult, *APIError, error) {
-	ctx, err := ensureFinishCorrelation(ctx)
+	ctx, err := EnsureTraceCorrelation(ctx)
 	if err != nil {
 		return OperationResult{}, nil, err
 	}
@@ -151,10 +153,18 @@ func (g *Guard) Finish(
 	// not a by-product of evidence delivery. Keep them in the receipt even while
 	// observed evidence is still awaiting a durable acknowledgement.
 	input.BusinessRefs = declaredBusinessRefsFromContext(ctx)
-	if durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx); durable {
+	attempted, durable, evidenceRefs, businessRefs := snapshotEvidenceOutcome(ctx)
+	switch {
+	case durable:
 		input.EvidenceDurability = "durable"
 		input.ObservedEvidenceRefs = evidenceRefs
 		input.BusinessRefs = mergeBusinessRefs(input.BusinessRefs, businessRefs)
+	case attempted:
+		input.EvidenceDurability = "failed"
+	default:
+		// The receipt is itself the durable record for tools that do not emit a
+		// separate business-evidence event and for rejected downstream calls.
+		input.EvidenceDurability = "durable"
 	}
 	finishContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer cancel()

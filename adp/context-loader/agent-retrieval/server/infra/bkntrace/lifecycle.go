@@ -324,7 +324,11 @@ func (c *LifecycleClient) FailAttempt(
 	ctx context.Context,
 	input FinishAttemptInput,
 ) (OperationResult, *APIError, error) {
-	return c.finishAttempt(ctx, input, "fail", "failed")
+	evidenceDurability := strings.TrimSpace(input.EvidenceDurability)
+	if evidenceDurability == "" {
+		evidenceDurability = "durable"
+	}
+	return c.finishAttempt(ctx, input, "fail", evidenceDurability)
 }
 
 func (c *LifecycleClient) GetOperation(

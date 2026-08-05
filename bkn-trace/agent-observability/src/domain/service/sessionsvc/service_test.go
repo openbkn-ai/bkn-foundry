@@ -1564,6 +1564,49 @@ func TestOptionalPendingReceiptDoesNotBlockEvidenceCompletion(t *testing.T) {
 	}
 }
 
+func TestManagedTerminationAssignsDeadlineOnlyForRequiredPendingReceipt(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 5, 9, 0, 0, 0, time.UTC)
+	store := sessionstore.NewWithClock(func() time.Time { return now })
+	service := sessionsvc.New(store, sessionsvc.Options{AssemblyTimeout: 90 * time.Second})
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "managed-assembly-timeout")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "managed-timeout-start",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	_, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "schema", ToolName: "get_object_types", NormalizedInputHash: "sha256:schema",
+		Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	})
+	if err != nil {
+		t.Fatalf("ensure operation: %v", err)
+	}
+
+	completed, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "managed-timeout-finish", DeriveManifest: true,
+		Manifest: sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "answer_returned"},
+	})
+	if err != nil {
+		t.Fatalf("terminate interaction: %v", err)
+	}
+	if completed.EvidenceStatus != sessionvo.EvidenceAssembling || completed.ClosureManifest == nil {
+		t.Fatalf("expected assembling interaction with closure manifest, got %#v", completed)
+	}
+	deadline := completed.ClosureManifest.AssemblerDeadline
+	if deadline == nil || !deadline.Equal(now.Add(90*time.Second)) {
+		t.Fatalf("assembler deadline = %v, want %s", deadline, now.Add(90*time.Second))
+	}
+	if len(completed.ClosureManifest.ExpectedReceipts) != 1 || completed.ClosureManifest.ExpectedReceipts[0].ReceiptID != receipt.ID {
+		t.Fatalf("expected authoritative pending receipt in manifest: %#v", completed.ClosureManifest)
+	}
+}
+
 func TestLicenseLossStillTerminatesAndRecordsEvidenceOmission(t *testing.T) {
 	t.Parallel()
 
@@ -1622,6 +1665,59 @@ func TestAbandonExpiredOnlyTransitionsMatchingActiveLease(t *testing.T) {
 	if len(abandoned) != 1 || abandoned[0].ID != expired.ID ||
 		abandoned[0].ExecutionStatus != sessionvo.InteractionAbandoned {
 		t.Fatalf("unexpected abandoned interactions: %#v", abandoned)
+	}
+}
+
+func TestAbandonExpiredInteractionPreservesDurableOperationEvidence(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
+	store := sessionstore.NewWithClock(func() time.Time { return now })
+	service := sessionsvc.New(store, sessionsvc.Options{})
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "expired-with-evidence")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "expired-with-evidence",
+		LeaseDuration: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "inventory", ToolName: "query_object_instance", NormalizedInputHash: "sha256:inventory",
+		Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	})
+	if err != nil {
+		t.Fatalf("ensure operation: %v", err)
+	}
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt, ReceiptID: receipt.ID,
+		PayloadHash: "sha256:inventory-result", EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID: "req-inventory", TraceID: validTraceIDOne,
+		ObservedEvidenceRefs: []string{"evt-inventory"},
+	}); err != nil {
+		t.Fatalf("complete operation: %v", err)
+	}
+	active, err := service.GetInteraction(context.Background(), owner, interaction.ID)
+	if err != nil {
+		t.Fatalf("get active interaction: %v", err)
+	}
+	now = active.LeaseExpiresAt.Add(time.Second)
+
+	abandoned, err := service.AbandonExpiredInteractions(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("abandon expired interaction: %v", err)
+	}
+	if len(abandoned) != 1 || abandoned[0].ExecutionStatus != sessionvo.InteractionAbandoned ||
+		abandoned[0].EvidenceStatus != sessionvo.EvidenceComplete || abandoned[0].ClosureManifest == nil {
+		t.Fatalf("abandoned interaction lost durable evidence: %#v", abandoned)
+	}
+	revisions, err := service.ListAssemblyRevisions(context.Background(), owner, interaction.ID)
+	if err != nil || len(revisions) != 1 || revisions[0].Trigger != "lease_expired" ||
+		revisions[0].Completeness != sessionvo.EvidenceComplete ||
+		len(revisions[0].IncludedEventIDs) != 1 || revisions[0].IncludedEventIDs[0] != "evt-inventory" {
+		t.Fatalf("abandoned interaction did not freeze durable evidence: %#v, %v", revisions, err)
 	}
 }
 

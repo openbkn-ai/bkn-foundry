@@ -115,8 +115,8 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		case "/api/agent-observability/v1/operations/op-1/attempts/1:fail":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body["evidence_durability"] != "failed" {
-				t.Errorf("failed attempt must report failed evidence durability: %#v", body)
+			if body["evidence_durability"] != "durable" {
+				t.Errorf("failed attempt must preserve durable lifecycle evidence: %#v", body)
 			}
 			_ = json.NewEncoder(w).Encode(OperationResult{
 				Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "failed"},
@@ -277,15 +277,15 @@ func TestEnsureFinishCorrelationDerivesStableSyntheticTraceFromRequest(t *testin
 			RequestID: requestID,
 		})
 	}
-	first, err := ensureFinishCorrelation(contextFor("req_01JZVALIDREQUESTID000000021"))
+	first, err := EnsureTraceCorrelation(contextFor("req_01JZVALIDREQUESTID000000021"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	replay, err := ensureFinishCorrelation(contextFor("req_01JZVALIDREQUESTID000000021"))
+	replay, err := EnsureTraceCorrelation(contextFor("req_01JZVALIDREQUESTID000000021"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := ensureFinishCorrelation(contextFor("req_01JZVALIDREQUESTID000000022"))
+	other, err := EnsureTraceCorrelation(contextFor("req_01JZVALIDREQUESTID000000022"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,6 +357,55 @@ func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
 	businessRefs, _ := requestBody["business_refs"].([]any)
 	if len(businessRefs) != 1 {
 		t.Fatalf("finish request lost business refs: %#v", requestBody)
+	}
+}
+
+func TestGuardFinishTerminalizesReceiptWhenToolEmitsNoEvidenceEvent(t *testing.T) {
+	var requestBody map[string]any
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode finish request: %v", err)
+		}
+		return lifecycleJSONResponse(http.StatusOK, OperationResult{
+			Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+			Receipt:   Receipt{ReceiptID: "receipt-1", OperationID: "op-1", Attempt: 1, ReceiptStatus: "completed"},
+		}), nil
+	})
+	ctx := trustedLifecycleTestContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.RequestID = "req_no_evidence_event_0001"
+	ctx, _ = EnsureTraceCorrelation(common.SetTraceContextToCtx(ctx, traceContext))
+	ctx = withEvidenceOutcome(ctx)
+	if _, apiErr, err := NewGuard(client).Finish(ctx, pendingGuardState(), "sha256:result", false, false); err != nil || apiErr != nil {
+		t.Fatalf("finish no-evidence operation: api=%#v err=%v", apiErr, err)
+	}
+	if requestBody["evidence_durability"] != "durable" {
+		t.Fatalf("lifecycle receipt itself must terminalize no-evidence operations: %#v", requestBody)
+	}
+}
+
+func TestGuardFinishMarksAttemptedEvidenceDeliveryFailurePartial(t *testing.T) {
+	var requestBody map[string]any
+	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
+		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode finish request: %v", err)
+		}
+		return lifecycleJSONResponse(http.StatusOK, OperationResult{
+			Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+			Receipt:   Receipt{ReceiptID: "receipt-1", OperationID: "op-1", Attempt: 1, ReceiptStatus: "completed"},
+		}), nil
+	})
+	ctx := trustedLifecycleTestContext()
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.RequestID = "req_evidence_failed_0001"
+	ctx, _ = EnsureTraceCorrelation(common.SetTraceContextToCtx(ctx, traceContext))
+	ctx = withEvidenceOutcome(ctx)
+	recordEvidenceAttempt(ctx)
+	if _, apiErr, err := NewGuard(client).Finish(ctx, pendingGuardState(), "sha256:result", false, false); err != nil || apiErr != nil {
+		t.Fatalf("finish failed-evidence operation: api=%#v err=%v", apiErr, err)
+	}
+	if requestBody["evidence_durability"] != "failed" {
+		t.Fatalf("attempted evidence failure must become explicit partial evidence: %#v", requestBody)
 	}
 }
 

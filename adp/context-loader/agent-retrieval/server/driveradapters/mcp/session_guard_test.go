@@ -47,14 +47,7 @@ func TestSessionGuardMissingConversationFailsClosed(t *testing.T) {
 	if coreCalls != 0 || downstreamCalls != 0 {
 		t.Fatalf("fail-closed requires zero calls, got core=%d downstream=%d", coreCalls, downstreamCalls)
 	}
-	structured, ok := result.StructuredContent.(map[string]any)
-	if !ok {
-		t.Fatalf("expected structured lifecycle error, got %#v", result.StructuredContent)
-	}
-	errValue, ok := structured["error"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected error envelope, got %#v", structured)
-	}
+	errValue := lifecycleErrorFromResult(t, result)
 	if errValue["code"] != "conversation_required" ||
 		errValue["required_action"] != "bkn_start_interaction" ||
 		errValue["retryable"] != false {
@@ -91,7 +84,7 @@ func TestSessionGuardMissingInteractionFailsClosed(t *testing.T) {
 	if coreCalls != 0 || downstreamCalls != 0 {
 		t.Fatalf("fail-closed requires zero calls, got core=%d downstream=%d", coreCalls, downstreamCalls)
 	}
-	errValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+	errValue := lifecycleErrorFromResult(t, result)
 	if errValue["code"] != "interaction_required" || errValue["required_action"] != "bkn_start_interaction" {
 		t.Fatalf("unexpected lifecycle error: %#v", errValue)
 	}
@@ -160,7 +153,7 @@ func TestSessionGuardCoreRejectionPreventsDownstreamCall(t *testing.T) {
 	if downstreamCalls != 0 {
 		t.Fatalf("core rejection must prevent downstream call, got %d", downstreamCalls)
 	}
-	errValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+	errValue := lifecycleErrorFromResult(t, result)
 	if errValue["code"] != "interaction_terminal" {
 		t.Fatalf("unexpected lifecycle error: %#v", errValue)
 	}
@@ -184,7 +177,7 @@ func TestSessionGuardDistinguishesUninstalledAndUnavailableCore(t *testing.T) {
 			ensure: func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 				return nil, nil, errors.New("connection refused")
 			},
-			wantCode: "feature_not_installed", wantAction: "",
+			wantCode: "trace_core_unavailable", wantAction: "retry_later", wantRetryable: true,
 		},
 	}
 	for _, test := range tests {
@@ -203,12 +196,24 @@ func TestSessionGuardDistinguishesUninstalledAndUnavailableCore(t *testing.T) {
 			if downstreamCalls != 0 {
 				t.Fatalf("Core failure must keep downstream at zero")
 			}
-			value := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+			value := lifecycleErrorFromResult(t, result)
 			if value["code"] != test.wantCode || value["required_action"] != test.wantAction ||
 				value["retryable"] != test.wantRetryable {
 				t.Fatalf("wrong Core availability semantics: %#v", value)
 			}
 		})
+	}
+}
+
+func TestLifecycleAvailabilityErrorPreservesEvidenceAuthorizationFailure(t *testing.T) {
+	result := lifecycleAvailabilityError(&bkntrace.CoreHTTPError{
+		StatusCode: http.StatusUnauthorized,
+		Code:       "permission_denied",
+		Message:    "trusted gateway identity is required",
+	})
+	if result.Code != "evidence_capture_denied" || result.Message != "trusted gateway identity is required" ||
+		result.RequiredAction != "request_authorization" || result.Retryable {
+		t.Fatalf("evidence authorization failure was misclassified: %#v", result)
 	}
 }
 
@@ -308,7 +313,7 @@ func TestSessionGuardPendingReplayReturnsReceiptPendingWithoutDownstream(t *test
 	if downstreamCalls != 0 {
 		t.Fatalf("pending replay must not call downstream, got %d", downstreamCalls)
 	}
-	structured := result.StructuredContent.(map[string]any)
+	structured := errorEnvelopeFromResult(t, result)
 	errorValue := structured["error"].(map[string]any)
 	if errorValue["code"] != "receipt_pending" ||
 		errorValue["required_action"] != "poll_receipt" ||
@@ -345,7 +350,7 @@ func TestSessionGuardDoesNotInferExecutionFromCreated(t *testing.T) {
 	if downstreamCalls != 0 {
 		t.Fatalf("created without execute must fail closed, downstream calls=%d", downstreamCalls)
 	}
-	errorValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+	errorValue := lifecycleErrorFromResult(t, result)
 	if errorValue["code"] != "receipt_pending" {
 		t.Fatalf("missing execute returned wrong lifecycle error: %#v", result.StructuredContent)
 	}
@@ -410,7 +415,7 @@ func TestSessionGuardFinishPendingPreservesStableReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finish pending escaped as protocol error: %v", err)
 	}
-	structured := result.StructuredContent.(map[string]any)
+	structured := errorEnvelopeFromResult(t, result)
 	errorValue := structured["error"].(map[string]any)
 	receipt := structured["receipt"].(map[string]any)
 	if errorValue["code"] != "receipt_pending" ||
@@ -685,7 +690,7 @@ func TestSessionGuardRejectsCrossKnowledgeNetworkBusinessRefBeforeExecution(t *t
 	if coreCalls != 0 || downstreamCalls != 0 {
 		t.Fatalf("invalid refs reached execution: core=%d downstream=%d", coreCalls, downstreamCalls)
 	}
-	errorValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+	errorValue := lifecycleErrorFromResult(t, result)
 	if errorValue["code"] != "invalid_business_ref" || errorValue["required_action"] != "correct_business_refs" {
 		t.Fatalf("unexpected validation error: %#v", errorValue)
 	}

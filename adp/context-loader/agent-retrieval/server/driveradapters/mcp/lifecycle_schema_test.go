@@ -230,6 +230,30 @@ func TestStartInteractionDeclaresOptionalBoundedAgentName(t *testing.T) {
 	}
 }
 
+func TestLifecycleInputDescriptionsAreConciseAndActionable(t *testing.T) {
+	wantFields := map[string][]string{
+		"bkn_start_interaction":  {"conversation_id", "question", "agent_name"},
+		"bkn_finish_interaction": {"interaction_id", "outcome", "answer", "reason"},
+	}
+	for tool, fields := range wantFields {
+		input, _ := loadToolSchemas(tool)
+		var schema struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(input, &schema); err != nil {
+			t.Fatalf("decode %s schema: %v", tool, err)
+		}
+		for _, field := range fields {
+			description := schema.Properties[field].Description
+			if description == "" || len(description) > 120 {
+				t.Fatalf("%s.%s description must be present and concise: %q", tool, field, description)
+			}
+		}
+	}
+}
+
 func TestLifecycleSchemaUsesRegisteredIssue541ErrorsAndCoreTypes(t *testing.T) {
 	swaggerPath := filepath.Clean("../../../../../../bkn-trace/agent-observability/docs/swagger/swagger.json")
 	raw, err := os.ReadFile(swaggerPath)
@@ -378,6 +402,12 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	}
 	if !strings.Contains(string(values), `gateway_token_secret_key: "token"`) {
 		t.Fatalf("Helm lifecycle values must define the trusted gateway token key: %s", values)
+	}
+	if !strings.Contains(string(values), `ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"`) {
+		t.Fatal("Helm must connect evidence ingestion to agent-observability by default")
+	}
+	if !strings.Contains(string(values), `ingest_token_secret_name: "bkn-trace-evidence-ingest"`) {
+		t.Fatal("Helm must reference the shared evidence ingest Secret by default")
 	}
 	if !strings.Contains(string(values), `default_tenant_id: "openbkn-local"`) {
 		t.Fatalf("Helm lifecycle values must align with the observability single-tenant scope: %s", values)

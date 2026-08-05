@@ -152,6 +152,11 @@ func handleLifecycleTool(
 	name string,
 ) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		var err error
+		ctx, err = bkntrace.EnsureTraceCorrelation(ctx)
+		if err != nil {
+			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+		}
 		hints, hintErr := hostLifecycleHintsFromRequest(req)
 		if hintErr != nil {
 			return lifecycleToolError(lifecycleError{

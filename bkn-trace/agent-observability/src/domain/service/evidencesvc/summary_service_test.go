@@ -258,6 +258,7 @@ func TestCanonicalInteractionStateKeepsFailedCallSeparateFromCompletedTurn(t *te
 	entries := []evidencevo.InteractionListSummary{{
 		InteractionID: "interaction_inventory", Status: "error",
 		EvidenceCompleteness: "partial", ErrorSummary: "one OpenBKN call failed",
+		PartialReasons: []string{"evidence_durability_failed"},
 	}}
 
 	if err := service.applyCanonicalInteractionState(context.Background(), entries); err != nil {
@@ -269,6 +270,57 @@ func TestCanonicalInteractionStateKeepsFailedCallSeparateFromCompletedTurn(t *te
 	}
 	if entries[0].ErrorSummary != "one OpenBKN call failed" {
 		t.Fatalf("failed child call must remain diagnosable: %+v", entries[0])
+	}
+	if len(entries[0].PartialReasons) != 0 {
+		t.Fatalf("canonical complete evidence must clear request-local reasons: %+v", entries[0])
+	}
+}
+
+func TestCanonicalRequestIdentityAddsSafeFallbackForFailedOperation(t *testing.T) {
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "conversation_failed_call", AgentName: "Supply Agent"})
+		tx.SaveOperation(sessionvo.Operation{
+			ID: "operation_failed_call", ConversationID: "conversation_failed_call",
+			InteractionID: "interaction_completed", ToolName: "run_sql",
+			AttemptStatus: sessionvo.AttemptFailed,
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed failed operation: %v", err)
+	}
+	service := &Service{sessionStore: sessions}
+	requests := []evidencevo.RequestSummary{{
+		ConversationID: "conversation_failed_call", OperationID: "operation_failed_call",
+		Status: "error",
+	}}
+	if err := service.applyCanonicalRequestIdentity(context.Background(), requests); err != nil {
+		t.Fatalf("apply canonical request identity: %v", err)
+	}
+	if requests[0].ErrorSummary != "OpenBKN operation failed" {
+		t.Fatalf("failed operation must remain diagnosable: %+v", requests[0])
+	}
+}
+
+func TestCanonicalConversationEvidenceReplacesRequestDerivedPartial(t *testing.T) {
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_complete", ConversationID: "conversation_supply",
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+		})
+		completeness := "partial"
+		duration := int64(0)
+		applyCanonicalConversationEvidenceAndDuration(
+			&completeness, new([]string), &duration, tx,
+			[]evidencevo.RequestSummary{{InteractionID: "interaction_complete"}},
+		)
+		if completeness != "complete" {
+			t.Fatalf("conversation evidence must come from canonical interactions, got %q", completeness)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("apply canonical conversation evidence: %v", err)
 	}
 }
 

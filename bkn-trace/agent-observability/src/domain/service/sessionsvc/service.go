@@ -23,12 +23,14 @@ const (
 	maxOperationsPerInteraction   = 128
 	maxClaimsPerInteraction       = 32
 	maxEvidenceRefsPerInteraction = 2048
+	defaultAssemblyTimeout        = 5 * time.Minute
 )
 
 type Options struct {
 	Now                     func() time.Time
 	NewID                   func(prefix string) string
 	EvidenceCollectionState func() string
+	AssemblyTimeout         time.Duration
 	Metrics                 icoremetrics.Recorder
 }
 
@@ -37,6 +39,7 @@ type Service struct {
 	now                     func() time.Time
 	newID                   func(string) string
 	evidenceCollectionState func() string
+	assemblyTimeout         time.Duration
 	metrics                 icoremetrics.Recorder
 }
 
@@ -57,9 +60,14 @@ func New(store isessionstore.Store, options Options) *Service {
 	if metrics == nil {
 		metrics = icoremetrics.Noop{}
 	}
+	assemblyTimeout := options.AssemblyTimeout
+	if assemblyTimeout <= 0 {
+		assemblyTimeout = defaultAssemblyTimeout
+	}
 	return &Service{
 		store: store, now: now, newID: newID,
 		evidenceCollectionState: evidenceCollectionState,
+		assemblyTimeout:         assemblyTimeout,
 		metrics:                 metrics,
 	}
 }
@@ -566,6 +574,10 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			command.LeaseToken = interaction.LeaseToken
 			command.LeaseEpoch = interaction.LeaseEpoch
 			command.Manifest = deriveClosureManifest(tx, interaction.ID, command.Manifest)
+			if hasRequiredPendingReceipt(tx, command.Manifest) {
+				deadline := tx.Now().Add(s.assemblyTimeout)
+				command.Manifest.AssemblerDeadline = &deadline
+			}
 		}
 		payloadHash := hashValue(struct {
 			Status   sessionvo.InteractionStatus
@@ -1163,15 +1175,27 @@ func (s *Service) AbandonExpiredInteractions(ctx context.Context, limit int) ([]
 				continue
 			}
 			now := tx.Now()
+			manifest := deriveClosureManifest(tx, current.ID, sessionvo.ClosureManifest{
+				Version: "3.0.0", CompletionReason: "interaction_abandoned",
+			})
+			if hasRequiredPendingReceipt(tx, manifest) {
+				manifest.AssemblerDeadline = &now
+			}
 			current.ExecutionStatus = sessionvo.InteractionAbandoned
-			current.EvidenceStatus = evidenceStatusAtTermination(tx, sessionvo.ClosureManifest{})
+			current.EvidenceStatus = evidenceStatusAtTermination(tx, manifest)
 			current.TerminalIdempotencyKey = "lease-expired:" + current.LeaseToken
 			current.TerminalPayloadHash = hashValue(current.LeaseVersion)
 			current.RowVersion++
 			current.LeaseVersion++
 			current.UpdatedAt = now
 			current.TerminalAt = &now
+			current.ClosureManifest = &manifest
 			tx.SaveInteraction(current)
+			if current.EvidenceStatus != sessionvo.EvidenceAssembling {
+				if err := s.freezeAssemblyRevision(tx, current, manifest, "lease_expired"); err != nil {
+					return err
+				}
+			}
 			if err := s.appendProjection(tx, "interaction", current.ID, "interaction.abandoned", current); err != nil {
 				return err
 			}
@@ -1455,6 +1479,19 @@ func evidenceStatusAtTermination(tx isessionstore.Transaction, manifest sessionv
 		}
 	}
 	return sessionvo.EvidenceComplete
+}
+
+func hasRequiredPendingReceipt(tx isessionstore.Transaction, manifest sessionvo.ClosureManifest) bool {
+	for _, expected := range manifest.ExpectedReceipts {
+		if !expected.Required {
+			continue
+		}
+		receipt, found := tx.FindReceipt(expected.ReceiptID)
+		if !found || receipt.EvidenceDurability == sessionvo.DurabilityPending {
+			return true
+		}
+	}
+	return false
 }
 
 func appendUnique(values []string, value string) []string {

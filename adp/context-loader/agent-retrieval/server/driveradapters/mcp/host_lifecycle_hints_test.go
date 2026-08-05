@@ -195,7 +195,7 @@ func TestStartInteractionRejectsConversationThatConflictsWithHostMapping(t *test
 	if startCalls != 0 {
 		t.Fatalf("host conflict executed start %d times", startCalls)
 	}
-	errorValue := result.StructuredContent.(map[string]any)["error"].(map[string]any)
+	errorValue := lifecycleErrorFromResult(t, result)
 	if errorValue["code"] != "conversation_context_conflict" {
 		t.Fatalf("host conflict error = %#v", errorValue)
 	}

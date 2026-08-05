@@ -74,26 +74,33 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 	}
 	properties := map[string]any{}
 	required := []string{}
-	addString := func(name string, isRequired bool) {
-		properties[name] = map[string]any{"type": "string"}
-		if isRequired {
-			required = append(required, name)
-		}
-	}
 	switch toolKey {
 	case "bkn_start_interaction":
-		addString("conversation_id", false)
-		addString("question", true)
+		properties["conversation_id"] = map[string]any{
+			"type": "string", "description": "Omit on the first turn; otherwise reuse the ID returned by start.",
+		}
+		properties["question"] = map[string]any{
+			"type": "string", "description": "Use the user's question for this turn.",
+		}
+		required = append(required, "question")
 		properties["agent_name"] = map[string]any{
 			"type": "string", "maxLength": 128,
-			"description": "Optional display name declared on the first interaction; later turns omit it or reuse the same value.",
+			"description": "Optionally declare a display name on the first turn; do not change it later.",
 		}
 	case "bkn_finish_interaction":
-		addString("interaction_id", true)
+		properties["interaction_id"] = map[string]any{
+			"type": "string", "description": "Use the exact interaction_id returned by start.",
+		}
+		required = append(required, "interaction_id")
 		properties["outcome"] = enumSchema("completed", "failed", "cancelled", "handed_off")
+		properties["outcome"].(map[string]any)["description"] = "Set the final outcome for this turn."
 		required = append(required, "outcome")
-		addString("answer", false)
-		addString("reason", false)
+		properties["answer"] = map[string]any{
+			"type": "string", "description": "Provide the final answer when outcome is completed.",
+		}
+		properties["reason"] = map[string]any{
+			"type": "string", "description": "Briefly explain a non-completed outcome.",
+		}
 	}
 	input, _ := json.Marshal(map[string]any{
 		"type": "object", "properties": properties, "required": required,

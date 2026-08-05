@@ -49,8 +49,9 @@ evidence:
         pullPolicy: IfNotPresent
       backoffLimit: 1
   ingestAuth:
-    existingSecret: ""
-    secretKey: token
+    existingSecret: "bkn-trace-evidence-ingest"
+    secretKey: ingest-token
+    createSecret: true
     allowUnauthenticated: false
   rawTraceQuery:
     enabled: false
