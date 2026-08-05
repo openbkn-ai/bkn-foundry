@@ -27,8 +27,9 @@ info:
     窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由 `input_dialect` 和底层连接器支持。
 
     不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、
-    锁定读取，以及写入、DDL、事务、权限与过程类语句。文件读取、外部访问或休眠等
-    仅 SQLGlot 可识别的内置函数可用；UDF 和未建模的方言函数一律被拒绝。违反策略返回 HTTP 400
+    锁定读取，以及写入、DDL、事务、权限与过程类语句。函数仅允许 SQLGlot 可识别的具名
+    内置表达式：UDF 与未建模的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
+    内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400
     `VegaBackend.Query.InvalidParameter`，`error_details` 为
     `raw query rejected by read-only policy`；请改写为单条顶层 `SELECT`。
 
@@ -51,9 +52,9 @@ paths:
         实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
 
         **SQL 语法边界**：只接受单条顶层 `SELECT`。支持同一 Catalog 内的 `JOIN`、
-        `WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询与
-        窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由所选方言和连接器支持。
-        `WITH` / CTE、
+        `WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询不被
+        只读策略单独禁止，但须由所选方言和连接器支持；窗口函数与其他内置函数还必须
+        由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。`WITH` / CTE、
         `UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、锁定读取、DML、DDL、
         事务、权限和过程类语句均被拒绝。CTE 不可通过改写为 `WITH` 规避：请改为单条
         顶层 `SELECT`，或拆分为多次查询。
