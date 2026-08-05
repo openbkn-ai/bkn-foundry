@@ -26,7 +26,8 @@ var (
 	resourcePlaceholderRe = regexp.MustCompile(`\{\{\.?(\w+)\}\}`)
 	// anyPlaceholderRe 在关键字判定前把占位符整体替换掉，避免 {{.delete}} 之类内部词触发误判。
 	anyPlaceholderRe = regexp.MustCompile(`\{\{[^}]*\}\}`)
-	// startsWithSelectRe 允许前导空白与左括号（如 (SELECT ...) UNION ...）。
+	// startsWithSelectRe 只校验入口形态，允许前导空白与左括号；集合运算可能通过本地守卫，
+	// 但会由 vega 的最终策略拒绝。
 	startsWithSelectRe = regexp.MustCompile(`(?is)^[\s(]*(SELECT|WITH)\b`)
 	// forbiddenKeywordRe 写入 / DDL / 权限 / 过程类关键字黑名单（剥离注释与字符串后判定）。
 	forbiddenKeywordRe = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|REPLACE|MERGE|UPSERT|CALL|EXEC|EXECUTE|RENAME|LOAD|COPY|INTO|ATTACH|DETACH|USE|VACUUM|ANALYZE|REFRESH|COMMENT|PREPARE|DEALLOCATE)\b`)
