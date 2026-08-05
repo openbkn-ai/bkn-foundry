@@ -85,13 +85,13 @@ After a successful browser login, the page states you can close the tab and expl
 openbkn config show
 ```
 
-The Context Loader toolset ADP (used by agents to query knowledge networks) is now imported by **`onboard.sh`** via `openbkn call impex` (no longer by `deploy.sh`). To verify it is registered on the platform:
+The Context Loader toolset (used by agents to query knowledge networks) is registered as a built-in toolbox by the platform install flow. To verify it is registered:
 
 ```bash
 openbkn call '/api/agent-operator-integration/v1/tool-box/list?name=contextloader&page=1&page_size=50' -bd bd_public --pretty
 ```
 
-(This differs from `openbkn context-loader tools`: the former lists Operator toolboxes; the latter lists MCP tools.)
+(That lists Operator-side toolboxes. For the MCP tool catalog use `openbkn context info`, or `openbkn context tools <kn-id>` for one knowledge network.)
 
 If later commands return empty results, the domain may be wrong. The next two commands — **`openbkn config list-bd`** and **`openbkn config set-bd`** — require the platform’s **business-domain management service**. **`--minimum` / minimal installs omit that service**, so **these two CLI subcommands are not available** (e.g. `list-bd` returns **404**). That does **not** mean there is no business domain or that `config show` is wrong — on minimal installs **do not run** the commands below; trust `config show`. Use them only on a **full install** when you need to **list or switch** among multiple domains:
 
@@ -105,21 +105,28 @@ openbkn config set-bd <uuid>
 > - **`openbkn auth whoami`** needs an `id_token` from OAuth login. If you used `openbkn auth login … --no-auth` (or the platform is a minimal / no-auth install), the CLI is in **no-auth** mode and `whoami` will report no `id_token` — **expected**; use `openbkn auth status` to confirm no-auth.
 > - **`openbkn config list-bd` / `set-bd`**: As above, **minimal installs do not include** the backend for these two subcommands. Use `config show` for the default domain. On a **full install**, use `list-bd` / `set-bd` to list or switch domains; if `list-bd` still returns **404**, check gateway routing or whether the service is deployed.
 
-### Step 2: Connect a Data Source
+### Step 2: Connect a Database (register a Vega catalog)
 
 ```bash
-openbkn ds connect mysql db.example.com 3306 erp \
-  --account root --password pass123
-# → returns ds_id, e.g. ds-abc123
+CAT=$(openbkn --json vega catalog create --name "erp" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["erp"]}' \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+echo "$CAT"   # → catalog id
 ```
 
-Arguments: `mysql` is the data source type (supports mysql / postgresql / hive, etc.), followed by **host**, **port**, **database name**. `--account` and `--password` are the connection credentials.
+The fields inside `connector_config` vary by connector type; `openbkn vega connector-type get <type>`
+is authoritative. **The host must be reachable from the network vega-backend runs in** — usually an
+internal address.
 
-Inspect what's available:
+A catalog is created disabled. Enable it, then discover its tables:
 
 ```bash
-openbkn ds list
-openbkn ds tables ds-abc123
+openbkn vega catalog enable "$CAT"
+openbkn vega catalog discover "$CAT" --wait
+
+# Inspect the discovered table resources
+openbkn vega catalog list
+openbkn vega resource list --catalog-id "$CAT" --category table
 ```
 
 ### Step 3: Create a Knowledge Network
@@ -127,17 +134,23 @@ openbkn ds tables ds-abc123
 **Option A: CLI one-liner**
 
 ```bash
-openbkn bkn create-from-ds ds-abc123 \
+openbkn bkn create-from-catalog "$CAT" \
   --name "erp-supply-chain" \
-  --tables "erp.orders,erp.products,erp.customers" \
-  --build --timeout 600
+  --tables "orders,products,customers" \
+  --build --embedding-model text-embedding-v4
 ```
 
-> **Table name format**: `--tables` requires fully-qualified names in `database.table` format (matching the output of `openbkn ds tables`). Bare table names will result in a `No tables available` error.
+This creates one object type per table, binds each to its Vega resource, and maps the fields.
+`--build` additionally submits a search-index build (full text + vector) per resource.
 
-This single command discovers table schemas, creates object types, and maps fields. If the resulting object types are resource-backed (directly mapped to data source tables), `--build` is automatically skipped (no index needed — data is queried in real time from the source); only object types that require an independent index will be built.
+> **`--build` changes the read path**: once a table resource has a local index, Vega serves rows from
+> that index and only falls back to the source database while no index exists — later `UPDATE`s in the
+> source are invisible until the resource is rebuilt. Omit `--build` to keep reads live, at the cost of
+> full-text and vector search.
 
-> **Note**: `create-from-ds` automatically selects a primary key and display key. If the source table has no explicit primary key, the auto-selection may be suboptimal (e.g. choosing `status`), causing records with the same key value to be merged. You can later fix this with `openbkn bkn object-type update`.
+> **Note**: `create-from-catalog` auto-selects a primary key and display key. If the source table has no
+> explicit primary key the choice may be suboptimal (e.g. `status`), merging records that share a value.
+> Fix it afterwards with `openbkn bkn object-type update`.
 
 **Option B: Via AI coding assistant**
 
@@ -385,54 +398,59 @@ The trace returns a Span tree ordered by time, showing:
 
 **Story**: You don't have a database — just a few CSV reports.
 
+CSV still needs a database to land in: load the files, then register a catalog and build.
+
 ```bash
-# List available data sources (CSV needs an intermediate store)
-openbkn ds list
+# 1. Load the CSVs with the standard mysql client (see examples/02-csv-to-kn)
+mysql -h db.example.com -u root -p supply_chain < load_csv.sql
 
-# Import CSV into a data source
-openbkn ds import-csv <ds_id> --files "materials.csv,inventory.csv" --table-prefix sc_
+# 2. Register the catalog and discover tables (as in the scenario above)
+openbkn vega catalog create --name "supply" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["supply_chain"]}'
+openbkn vega catalog enable <catalog_id>
+openbkn vega catalog discover <catalog_id> --wait
 
-# Create and build the knowledge network
-openbkn bkn create-from-csv <ds_id> \
-  --files "materials.csv,inventory.csv" \
-  --name "supply-reports" --build
+# 3. Build the knowledge network and its indexes
+openbkn bkn create-from-catalog <catalog_id> \
+  --name "supply-reports" --build --embedding-model text-embedding-v4
 
 # Verify
 openbkn bkn search <kn_id> "zero inventory"
 ```
 
+> `openbkn bkn create-from-csv <catalog_id> --files ...` still exists in the CLI, but it relies on the
+> retired dataflow import path and does not work on current deployments. Use the three steps above;
+> `examples/02-csv-to-kn` is a runnable version.
+
 ---
 
-## 🎯 Scenario: VEGA data views and SQL
+## 🎯 Scenario: Run SQL directly against the data
 
-**Story**: You want to run SQL directly against the underlying data, bypassing the knowledge network.
+**Story**: You want to query the underlying data, bypassing the knowledge network.
 
 ```bash
-# Platform health check
-openbkn vega inspect
-
-# List catalogs
-openbkn vega catalog list
+# Probe: a catalog listing means the service is up and the token is valid
+openbkn vega catalog list --limit 1
 
 # Browse resources in a catalog
 openbkn vega catalog resources <catalog_id> --category table
 
-# Find data views
-openbkn dataview find --name "supplier_entity"
+# Sample rows from one resource
+openbkn vega resource query <resource_id> --limit 10 --need-total
 
-# Query a data view (uses the view's stored definition)
-openbkn dataview query <view_id> --limit 10
+# Direct SQL: reference a resource with the {{<resource_id>}} placeholder
+# instead of hand-writing fully-qualified table names
+openbkn vega sql --input-dialect mysql \
+  --query "SELECT supplier_name, city FROM {{<resource_id>}} LIMIT 10"
 
-# Custom SQL query (use fully-qualified catalog."schema"."table" names)
-openbkn dataview query <view_id> --sql "SELECT supplier_name, city FROM <catalog>.\"supply_chain\".\"supplier_entity\" LIMIT 10"
-
-# Prefer names from the data view (do not guess the catalog):
-# openbkn dataview get <view_id> → use JSON field meta_table_name (Vega catalog id + source schema + table)
+# Multi-table JOINs within one catalog go through the structured query endpoint
+openbkn call /api/vega-backend/v1/resources/query -X POST \
+  -d '{"tables":[{"resource_id":"<resource_id>"}],"limit":5,"need_total":true}'
 ```
 
-`<catalog>` must be the **Vega catalog id** for that data source (see `openbkn vega catalog list`); `"supply_chain"` / `"supplier_entity"` map to the source database/schema and table. **Reliable approach**: copy the **`meta_table_name`** field from **`openbkn dataview get <view_id>`** into your SQL. For `sql_str`, `fields`, and the field table, see the Dataview section in [VEGA](manual/vega.md).
-
-On a **Core-only** install, `dataview query` without `--sql` supports structured reads (pagination, column selection, etc.). **Ad-hoc `--sql`** requires a separately managed **`vega-calculate-coordinator`**, which is not installed by the BKN Foundry deployment scripts. See [VEGA](manual/vega.md).
+> Data views (`openbkn dataview`, mdl-uniquery) and the `vega-calculate-coordinator` that ad-hoc SQL
+> depended on have both been retired. Use resource queries and `vega sql` instead — see
+> [VEGA](manual/vega.md).
 
 ---
 

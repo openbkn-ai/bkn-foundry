@@ -83,13 +83,13 @@ openbkn config show
 
 > 💡 **无浏览器 / CI 场景** 的更多登录方式（`--no-browser` 一次性 OAuth、`openbkn auth export` + 重放、HTTP 用户名密码等）见 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)（脚本内部用的就是 HTTP `-u`/`-p`）以及 [OpenBKN SDK 认证文档](https://github.com/openbkn-ai/bkn-sdk#authentication)。
 
-Context Loader 工具集 ADP（用于 agent 调用知识网络）现在由 **`onboard.sh`** 通过 `openbkn call impex` 自动导入（不再走 `deploy.sh`）。要确认平台上是否已注册：
+Context Loader 工具集（供 Agent 调用知识网络）由平台安装流程注册为内置工具箱。要确认当前平台上是否已注册：
 
 ```bash
 openbkn call '/api/agent-operator-integration/v1/tool-box/list?name=contextloader&page=1&page_size=50' -bd bd_public --pretty
 ```
 
-（与 `openbkn context-loader tools` 不同：前者为 Operator 工具箱列表，后者为 MCP 工具列表。）
+（这查的是 Operator 侧的工具箱列表；MCP 侧的工具目录用 `openbkn context info`，或按知识网络看 `openbkn context tools <kn-id>`。）
 
 ### 🧠 配置模型（按需）
 
@@ -163,37 +163,47 @@ AI 助手会自动调用 `openbkn` CLI 完成全部操作，包括数据源发�
 
 **故事线**：你刚部署好 BKN Foundry，手头有一台 MySQL 数据库装着 ERP 数据。你的目标是把数据库变成一个知识网络，然后查询数据。
 
-#### 第 1 步：接入数据源
+#### 第 1 步：接入数据库（注册 Vega Catalog）
 
 ```bash
-openbkn ds connect mysql db.example.com 3306 erp \
-  --account root --password pass123
-# → 返回 ds_id，例如 ds-abc123
+CAT=$(openbkn --json vega catalog create --name "erp" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["erp"]}' \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+echo "$CAT"   # → catalog id
 ```
 
-参数说明：`mysql` 为数据源类型（支持 mysql / postgresql / hive 等），后跟 **主机**、**端口**、**数据库名**，`--account` 和 `--password` 为连接凭据。
+`connector_config` 的字段随连接器类型而异，以 `openbkn vega connector-type get <type>` 返回的
+schema 为准。**主机地址须由 vega-backend 所在网络可达**，通常是内网地址。
 
-查看已有数据源和表结构：
+Catalog 创建后默认禁用，先启用再发现表：
 
 ```bash
-openbkn ds list
-openbkn ds tables ds-abc123
+openbkn vega catalog enable "$CAT"
+openbkn vega catalog discover "$CAT" --wait
+
+# 查看发现出的表资源
+openbkn vega catalog list
+openbkn vega resource list --catalog-id "$CAT" --category table
 ```
 
 #### 第 2 步：创建知识网络
 
 ```bash
-openbkn bkn create-from-ds ds-abc123 \
+openbkn bkn create-from-catalog "$CAT" \
   --name "erp-供应链" \
-  --tables "erp.orders,erp.products,erp.customers" \
-  --build --timeout 600
+  --tables "orders,products,customers" \
+  --build --embedding-model text-embedding-v4
 ```
 
-> **表名格式**：`--tables` 需要使用 `数据库名.表名` 的全限定格式（与 `openbkn ds tables` 输出一致）。裸表名会导致 `No tables available` 错误。
+这一条命令完成：按表创建对象类 → 绑定 Vega 资源 → 映射字段；`--build` 会为每个资源再提交一次
+检索索引构建任务（全文 + 向量）。
 
-这一条命令完成了：自动发现表结构 → 创建对象类 → 映射字段。如果对象类是 resource-backed（直接映射数据源表），`--build` 会自动跳过（不需要构建索引，数据直接从源表实时查询）；只有需要独立索引的对象类才会执行构建。
+> **`--build` 会改变读取路径**：表资源一旦有了本地索引，Vega 就从索引读，只有在没有索引时才回源库
+> 实时查；源库的后续更新要等重建索引才可见。只想要实时读就别加 `--build`，代价是没有全文与向量检索。
 
-> **注意**：`create-from-ds` 会自动选择主键（primary key）和显示键（display key）。如果源表没有明确的主键，自动选择可能不理想（如选择 `status` 字段），导致相同主键值的记录被合并。建议后续通过 `openbkn bkn object-type update` 手动指定正确的主键。
+> **注意**：`create-from-catalog` 会自动选择主键与显示键。源表没有明确主键时，自动选择可能不理想
+> （例如选中 `status`），导致相同主键值的记录被合并。可事后用 `openbkn bkn object-type update`
+> 指定正确的主键。
 
 验证：
 
@@ -297,54 +307,58 @@ Trace 返回按时间排列的 Span 树，展示：
 
 **故事线**：你没有数据库，只有几份 CSV 报表。
 
+CSV 仍需要一个数据库作为落地存储：先把 CSV 装进库，再注册 Catalog 建网。
+
 ```bash
-# 先找一个可用的数据源（CSV 需要一个中间存储）
-openbkn ds list
+# 1. 用标准 mysql 客户端把 CSV 装进目标库（示例见 examples/02-csv-to-kn）
+mysql -h db.example.com -u root -p supply_chain < load_csv.sql
 
-# 导入 CSV 到数据源
-openbkn ds import-csv <ds_id> --files "物料.csv,库存.csv" --table-prefix sc_
+# 2. 注册 Catalog 并发现表（同上一场景）
+openbkn vega catalog create --name "supply" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["supply_chain"]}'
+openbkn vega catalog enable <catalog_id>
+openbkn vega catalog discover <catalog_id> --wait
 
-# 一键创建知识网络
-openbkn bkn create-from-csv <ds_id> \
-  --files "物料.csv,库存.csv" \
-  --name "供应链报表" --build
+# 3. 建网并建索引
+openbkn bkn create-from-catalog <catalog_id> \
+  --name "供应链报表" --build --embedding-model text-embedding-v4
 
 # 验证
 openbkn bkn search <kn_id> "库存为零"
 ```
 
+> `openbkn bkn create-from-csv <catalog_id> --files ...` 仍在 CLI 中，但它依赖已下线的
+> dataflow 导入通道，当前部署上不可用；请按上面的三步走。完整可运行版本见
+> `examples/02-csv-to-kn`。
+
 ---
 
-### 🎯 场景：VEGA 数据视图与 SQL 查询
+### 🎯 场景：直接对底层数据执行 SQL
 
-**故事线**：你想直接对底层数据执行 SQL，而不是通过知识网络。
+**故事线**：你想绕过知识网络，直接查数据。
 
 ```bash
-# 平台健康检查
-openbkn vega inspect
-
-# 列出 catalog
-openbkn vega catalog list
+# 探活：能列出 catalog 即服务可达、token 有效
+openbkn vega catalog list --limit 1
 
 # 查看某个 catalog 下的资源
 openbkn vega catalog resources <catalog_id> --category table
 
-# 查找数据视图
-openbkn dataview find --name "supplier_entity"
+# 抽样看某个资源的数据
+openbkn vega resource query <resource_id> --limit 10 --need-total
 
-# 查询数据视图（默认使用视图定义）
-openbkn dataview query <view_id> --limit 10
+# 直连 SQL：用 {{<resource_id>}} 占位符引用资源，避免手写全限定表名
+openbkn vega sql --input-dialect mysql \
+  --query "SELECT supplier_name, city FROM {{<resource_id>}} LIMIT 10"
 
-# 自定义 SQL 查询（需使用 catalog."schema"."table" 全限定名）
-openbkn dataview query <view_id> --sql "SELECT supplier_name, city FROM <catalog>.\"supply_chain\".\"supplier_entity\" LIMIT 10"
-
-# 全限定名请以 dataview 为准（勿手写猜 catalog）：
-# openbkn dataview get <view_id> → 使用响应 JSON 字段 meta_table_name（与 vega catalog id + 源库 schema/表名 一致）
+# 同一 Catalog 内多表 JOIN 走结构化查询接口
+openbkn call /api/vega-backend/v1/resources/query -X POST \
+  -d '{"tables":[{"resource_id":"<resource_id>"}],"limit":5,"need_total":true}'
 ```
 
-其中 `<catalog>` 须替换为该数据源在 **Vega** 中注册得到的 **catalog id**（见 `openbkn vega catalog list`），**不要**用视图逻辑名或裸表名代替；`"supply_chain"`、`"supplier_entity"` 分别对应源库中的 database/schema 与物理表名。**可靠做法**：`openbkn dataview get <view_id>` 取响应中的 **`meta_table_name`** 字段，在 SQL 中原样引用；`sql_str`、`fields` 含义见 [VEGA](manual/vega.md)「数据视图」中的字段表。
-
-仅 **Core** 部署时，`dataview query` 不带 `--sql` 可做分页、选列等结构化查询；**`--sql` 复杂自定义 SQL** 需要单独维护的 **`vega-calculate-coordinator`**，BKN Foundry 部署脚本不再安装该组件。详见 [VEGA](manual/vega.md)。
+> 早期的数据视图（`openbkn dataview`、mdl-uniquery）与自定义 SQL 依赖的
+> `vega-calculate-coordinator` 均已下线，改用上面的资源查询与 `vega sql`。详见
+> [VEGA](manual/vega.md)。
 
 ---
 
