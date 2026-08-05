@@ -549,31 +549,37 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 	return actionTypes, nil
 }
 
-// metricsListResp is the bkn-backend GET .../metrics response.
-type metricsListResp struct {
-	Entries []struct {
-		ID            string `json:"id"`
-		Name          string `json:"name"`
-		Comment       string `json:"comment"`
-		Unit          string `json:"unit"`
-		UnitType      string `json:"unit_type"`
-		MetricType    string `json:"metric_type"`
-		ScopeType     string `json:"scope_type"`
-		ScopeRef      string `json:"scope_ref"`
-		TimeDimension *struct {
-			Property string `json:"property"`
-		} `json:"time_dimension"`
-		AnalysisDimensions []struct {
-			Name string `json:"name"`
-		} `json:"analysis_dimensions"`
-	} `json:"entries"`
-	TotalCount int64 `json:"total_count"`
+// metricsListEntry is one entry of the bkn-backend GET .../metrics response.
+type metricsListEntry struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Comment       string `json:"comment"`
+	Unit          string `json:"unit"`
+	UnitType      string `json:"unit_type"`
+	MetricType    string `json:"metric_type"`
+	ScopeType     string `json:"scope_type"`
+	ScopeRef      string `json:"scope_ref"`
+	TimeDimension *struct {
+		Property string `json:"property"`
+	} `json:"time_dimension"`
+	AnalysisDimensions []struct {
+		Name string `json:"name"`
+	} `json:"analysis_dimensions"`
 }
 
-// maxScopedMetrics caps how many scoped metrics one get_object_types answer carries.
-// It matches bkn-backend's own MAX_LIMIT, and exists so a knowledge network with a
-// runaway metric count cannot quietly blow up a tool result.
-const maxScopedMetrics = 1000
+// metricsListResp is the bkn-backend GET .../metrics response.
+type metricsListResp struct {
+	Entries    []metricsListEntry `json:"entries"`
+	TotalCount int64              `json:"total_count"`
+}
+
+const (
+	// metricsPageSize is one request's worth of metrics; bkn-backend's own MAX_LIMIT.
+	metricsPageSize = 1000
+	// maxScopedMetrics bounds the whole paged walk. It is a runaway guard for a
+	// knowledge network with an absurd metric count, not the expected ceiling.
+	maxScopedMetrics = 10000
+)
 
 // ListMetricsByObjectTypes 枚举挂在给定对象类下的指标（scope_type=object_type）。
 // 走 bkn-backend 指标注册表（GET .../metrics），不是概念索引语义召回：对象类要"看得见"
@@ -600,48 +606,70 @@ func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID st
 	header := common.GetHeaderForChildOperation(ctx, "bkn.metric.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
-	queryValues := url.Values{}
-	queryValues.Set("scope_type", "object_type")
-	queryValues.Set("scope_ref", strings.Join(scopeRefs, ","))
-	queryValues.Set("limit", strconv.Itoa(maxScopedMetrics))
+	// Page rather than cap. A truncated answer is indistinguishable from "this
+	// object type has no metrics", and that is precisely the state that sends an
+	// agent back to run_sql — the behaviour this whole path exists to remove.
+	entries := make([]metricsListEntry, 0, metricsPageSize)
+	var total int64
+	for offset := 0; offset < maxScopedMetrics; offset += metricsPageSize {
+		queryValues := url.Values{}
+		queryValues.Set("scope_type", "object_type")
+		queryValues.Set("scope_ref", strings.Join(scopeRefs, ","))
+		queryValues.Set("limit", strconv.Itoa(metricsPageSize))
+		queryValues.Set("offset", strconv.Itoa(offset))
 
-	respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
-	if err != nil {
-		b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, respCode,
-			fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err))
-	}
-
-	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
-		b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes failed, [%s], code %d", src, respCode)
-
-		var baseError interfaces.KnBaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		respCode, respBody, err := b.httpClient.GetNoUnmarshal(ctx, src, queryValues, header)
+		if err != nil {
+			b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err)
 			return nil, infraErr.DefaultHTTPError(ctx, respCode,
-				fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes failed, code %d", respCode))
+				fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err))
 		}
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
+
+		if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
+			b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes failed, [%s], code %d", src, respCode)
+
+			var baseError interfaces.KnBaseError
+			if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+				return nil, infraErr.DefaultHTTPError(ctx, respCode,
+					fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes failed, code %d", respCode))
+			}
+			return nil, &infraErr.HTTPError{
+				HTTPCode:     respCode,
+				Code:         baseError.ErrorCode,
+				Description:  baseError.Description,
+				Solution:     baseError.Solution,
+				ErrorLink:    baseError.ErrorLink,
+				ErrorDetails: baseError.ErrorDetails,
+			}
+		}
+
+		if len(respBody) == 0 {
+			break
+		}
+
+		parsed := &metricsListResp{}
+		if err := sonic.Unmarshal(respBody, parsed); err != nil {
+			b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListMetricsByObjectTypes unmarshal failed: %v", err)
+			return nil, err
+		}
+		total = parsed.TotalCount
+		entries = append(entries, parsed.Entries...)
+		if len(parsed.Entries) < metricsPageSize || int64(len(entries)) >= parsed.TotalCount {
+			break
 		}
 	}
 
-	if len(respBody) == 0 {
-		return nil, nil
+	// The hard cap is a runaway guard, not a page size. If it ever bites, the
+	// answer is incomplete and has to say so out loud.
+	if total > int64(len(entries)) {
+		b.logger.WithContext(ctx).Warnf(
+			"[BknBackendAccess] ListMetricsByObjectTypes stopped at %d of %d metrics for kn=%s (%d object types); "+
+				"object types beyond the cap are advertised without their metrics",
+			len(entries), total, knID, len(scopeRefs))
 	}
 
-	parsed := &metricsListResp{}
-	if err := sonic.Unmarshal(respBody, parsed); err != nil {
-		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListMetricsByObjectTypes unmarshal failed: %v", err)
-		return nil, err
-	}
-
-	metrics := make([]*interfaces.RelatedMetric, 0, len(parsed.Entries))
-	for _, e := range parsed.Entries {
+	metrics := make([]*interfaces.RelatedMetric, 0, len(entries))
+	for _, e := range entries {
 		// bkn-backend applies the scope filter, but an older backend that ignores the
 		// query parameter would otherwise hand every metric of the network to every
 		// object type. Cheap to re-check, and wrong-by-default if we do not.

@@ -129,8 +129,13 @@ paths:
         由调用方显式给出，不经大模型。
 
         `time` 在指标没有时间维度（`related_metrics[].time_dimension` 为空）时可整体
-        省略。给了就要自洽：`instant=true` 取单点，不得带 `step`；`instant=false`
-        取序列，必须带 `step`。这些组合在本服务就地校验，返回 400。
+        省略。给了就要自洽：**省略 `instant` 等同于 `instant=false`（序列查询），
+        必须带 `step`**；`instant=true` 取单点（此时 `step` 被下游忽略）；
+        `start` 与 `end` 要么都给要么都不给。`step` 大小写不敏感。
+
+        这些规则在本服务就地校验并返回 400，规则逐条对齐 ontology-query 的
+        `validateMetricQueryRequest`——本地比下游严会把合法调用误拒，比下游松只是
+        把同一个错误延后。
 
         请求体与 ontology-query 的 `MetricQueryRequestBody` 同构；响应只保留结果序列，
         不回带指标定义（`related_metrics` 里已经有了）。
@@ -172,8 +177,9 @@ paths:
                 description: TOON 编码的同一结构（`response_format=toon` 时）。
         '400':
           description: |
-            缺 `kn_id` / `metric_id`，或时间窗自相矛盾（`instant=true` 带 `step`、
-            `instant=false` 缺 `step`、`step` 不在枚举内、`start` 晚于 `end`）
+            缺 `kn_id` / `metric_id`，或时间窗不合法（序列查询缺 `step`、`step` 不是
+            日历粒度、`start`/`end` 未成对、`start` 晚于 `end`、`fill_null` 用在
+            非序列查询上）
           content:
             application/json:
               schema:
@@ -282,7 +288,9 @@ components:
         fill_null:
           type: boolean
           default: false
-          description: 区间查询时，无数据的步长点是否补空。
+          description: |
+            区间查询时，无数据的步长点是否补空。仅对序列查询有效，且必须同时给
+            `time.start` 与 `time.end`。
 
     MetricTimeWindow:
       type: object
@@ -291,7 +299,7 @@ components:
       properties:
         instant:
           type: boolean
-          description: '`true` 取单点（不得带 `step`）；`false` 取序列（必须带 `step`）。'
+          description: '`true` 取单点（`step` 被忽略）；`false` 或**省略**取序列（必须带 `step`）。'
         start:
           type: integer
           format: int64
@@ -308,7 +316,7 @@ components:
             - month
             - quarter
             - year
-          description: 序列步长，仅 `instant=false` 时传。
+          description: 序列步长（大小写不敏感）。序列查询必传（含省略 `instant` 的情形）。
 
     QueryMetricResponse:
       type: object

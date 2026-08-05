@@ -8,6 +8,8 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -111,5 +113,60 @@ func TestListMetricsByObjectTypes_SurfacesBackendError(t *testing.T) {
 		metrics, err := client.ListMetricsByObjectTypes(context.Background(), "kn1", []string{"ot1"})
 		convey.So(err, convey.ShouldNotBeNil)
 		convey.So(metrics, convey.ShouldBeNil)
+	})
+}
+
+func TestListMetricsByObjectTypes_PagesUntilComplete(t *testing.T) {
+	convey.Convey("指标数超过单页时继续翻页，不静默截断", t, func() {
+		client, mockHTTP, ctrl := newMetricsTestClient(t)
+		defer ctrl.Finish()
+
+		// 第一页满页且 total 更大 → 必须再请求一次；两页拼起来才是完整答案。
+		page := func(ids []string, total int) []byte {
+			entries := make([]string, 0, len(ids))
+			for _, id := range ids {
+				entries = append(entries, `{"id":"`+id+`","name":"`+id+`","scope_ref":"ot1"}`)
+			}
+			return []byte(`{"entries":[` + strings.Join(entries, ",") + `],"total_count":` + strconv.Itoa(total) + `}`)
+		}
+		first := make([]string, metricsPageSize)
+		for i := range first {
+			first[i] = "m" + strconv.Itoa(i)
+		}
+
+		var offsets []string
+		gomock.InOrder(
+			mockHTTP.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, q url.Values, _ map[string]string) (int, []byte, error) {
+					offsets = append(offsets, q.Get("offset"))
+					return http.StatusOK, page(first, metricsPageSize+1), nil
+				}),
+			mockHTTP.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, q url.Values, _ map[string]string) (int, []byte, error) {
+					offsets = append(offsets, q.Get("offset"))
+					return http.StatusOK, page([]string{"tail"}, metricsPageSize+1), nil
+				}),
+		)
+
+		metrics, err := client.ListMetricsByObjectTypes(context.Background(), "kn1", []string{"ot1"})
+
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(offsets, convey.ShouldResemble, []string{"0", strconv.Itoa(metricsPageSize)})
+		convey.So(len(metrics), convey.ShouldEqual, metricsPageSize+1)
+		convey.So(metrics[len(metrics)-1].ID, convey.ShouldEqual, "tail")
+	})
+}
+
+func TestListMetricsByObjectTypes_StopsOnShortPage(t *testing.T) {
+	convey.Convey("一页拿完就不再请求", t, func() {
+		client, mockHTTP, ctrl := newMetricsTestClient(t)
+		defer ctrl.Finish()
+
+		mockHTTP.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, []byte(`{"entries":[{"id":"m1","scope_ref":"ot1"}],"total_count":1}`), nil).Times(1)
+
+		metrics, err := client.ListMetricsByObjectTypes(context.Background(), "kn1", []string{"ot1"})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(len(metrics), convey.ShouldEqual, 1)
 	})
 }

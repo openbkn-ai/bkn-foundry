@@ -55,8 +55,14 @@ MCP 工具 + REST 端点 `POST /kn/query_metric`，转发 ontology-query 的
   那份定义调用方刚从 `related_metrics` 拿过，每次取数再抄一遍是这套工具面一直在削的体积。
 - 走内部路由 `/in`，账户随 header 透传、授权由下游判定，与 `get_logic_properties_values`
   同一姿势——因此 issue 里担心的「AppKey/OAuth 打不通 metric data 会 401」不成立。
-- 时间窗自相矛盾（`instant=true` 带 `step`、`instant=false` 缺 `step`、`step` 不在枚举内、
-  `start` 晚于 `end`）就地拦下返回 400，规则与逻辑属性的 metric 参数校验一致。
+- 时间窗就地校验返回 400，规则**逐条对齐 ontology-query 的 `validateMetricQueryRequest`**：
+  省略 `instant` 等同于序列查询（必须给 `step`）、`step` 限日历粒度且大小写不敏感、
+  `start`/`end` 必须成对、`start <= end`、`fill_null` 仅对带 `start`/`end` 的序列查询有效。
+  本地比下游严会把合法调用误拒，比下游松只是把同一个错误延后——所以是复刻，不是另立一套。
+- `kn_id` / `metric_id` 进 URL 前 `url.PathEscape`，`fill_null` 走 `url.Values`：`metric_id`
+  是 Agent 自由填写的字符串，不转义的话一个带 `?` 的值就能给下游塞进 `branch` 等查询参数。
+- 指标列表**分页取全**（单页 1000，硬上限 10000 只是失控保护）：截断后的答案与「这个对象类
+  没有指标」在 Agent 眼里完全一样，而那正是把它推回 `run_sql` 的状态；真触到上限会打 warn。
 
 ### 2.3 口径写进工具描述
 
@@ -116,8 +122,13 @@ MCP 工具 + REST 端点 `POST /kn/query_metric`，转发 ontology-query 的
 - 单测：适配器（查询参数、scope 复筛、错误透传）、服务（分组、降级、时间窗校验、透传）、
   MCP 工具（`related_metrics` 出现在结果里、`query_metric` happy path 与缺参）、
   bkn-backend（`IN` 过滤、`splitScopeRefs`）、社区工具面基线
-- 实机（VM）：`supplychain_hd0202` 的 8 个指标在 `get_object_types` 可见；
-  `query_metric` 取「产品总数」结果与 `openbkn bkn metric query` 一致（431）
+- 实机（测试服 14.103.77.23，KN `ecommerce_ops_bkn_public`，14 个 atomic 指标）：
+  - `order` 的 5 个指标全部可见（此前只有绑了 `lp_gmv_metric` 的 GMV 一个）；
+    `shipment` 无任何逻辑属性，其 2 个指标此前完全不可见，现可见
+  - `get_kn_detail` 的 20 个对象类计数与指标注册表逐一吻合
+  - `query_metric` 取 `m_shipment_cnt` = 12190；`m_gmv` 带 `condition` 排除
+    `cancelled` 得 436,367,809.20，与 `run_sql` 分组对账（469,497,191.25 −
+    33,129,382.05）完全一致
 
 ## 6. 不在范围内
 

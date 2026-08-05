@@ -385,7 +385,7 @@
              },
              "time": {
               "type": "object",
-              "description": "时间窗；指标无时间维度时可省略。instant=true 取单点且不得传 step，instant=false 取序列且必须传 step。",
+              "description": "时间窗；指标无时间维度时可省略。省略 instant 等同于序列查询（必须传 step）；instant=true 取单点。start 与 end 要么都传要么都不传。",
               "properties": {
                "instant": {
                 "type": "boolean"
@@ -406,7 +406,8 @@
                  "month",
                  "quarter",
                  "year"
-                ]
+                ],
+                "description": "序列步长（大小写不敏感），序列查询必传"
                }
               }
              },
@@ -458,7 +459,7 @@
              },
              "fill_null": {
               "type": "boolean",
-              "description": "区间查询时无数据的步长点是否补空，默认 false"
+              "description": "区间查询时无数据的步长点是否补空，默认 false；仅序列查询有效且需同时给 start/end"
              }
             },
             "required": [

@@ -151,7 +151,7 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 	if metricID == "" {
 		return nil, ErrMetricIDRequired
 	}
-	if err := validateTimeWindow(req.Time); err != nil {
+	if err := validateTimeWindow(req.Time, req.FillNull); err != nil {
 		return nil, err
 	}
 
@@ -178,30 +178,58 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 	return out, nil
 }
 
-// validateTimeWindow 在本地拦掉时间窗的自相矛盾组合。
+// isTrendWindow mirrors ontology-query's metricQueryIsTrendTime: a window is a
+// trend (series) query unless instant is explicitly true. Omitting instant means
+// trend, not instant — getting this backwards is what makes the common
+// {"start":…,"end":…} shape pass here and fail downstream.
+func isTrendWindow(t *interfaces.MetricTimeWindow) bool {
+	return t != nil && (t.Instant == nil || !*t.Instant)
+}
+
+// validateTimeWindow rejects a malformed time window before it costs a round trip.
 //
-// 这些组合下游同样会拒，但错误信息会绕一圈才回到 Agent；就地判定给的是能直接照着改的
-// 提示。规则与逻辑属性 metric 参数校验一致：instant=true 取一个点，不带 step；
-// instant=false 取序列，必须带 step。
-func validateTimeWindow(t *interfaces.MetricTimeWindow) error {
+// Every rule here mirrors ontology-query's validateMetricQueryRequest exactly —
+// same conditions, same wording — because a local check that is stricter than the
+// downstream one turns a valid call into a false rejection, and a looser one just
+// delays the same error. The point is a faster, identical verdict, not a second
+// opinion.
+func validateTimeWindow(t *interfaces.MetricTimeWindow, fillNull bool) error {
 	if t == nil {
+		if fillNull {
+			return errors.New("fill_null requires a time range (time is required)")
+		}
 		return nil
 	}
-	instant := t.Instant != nil && *t.Instant
-	if t.Instant != nil && instant && t.Step != nil && strings.TrimSpace(*t.Step) != "" {
-		return errors.New("time.instant=true cannot be combined with time.step (instant asks for a single point)")
-	}
-	if t.Instant != nil && !instant && (t.Step == nil || strings.TrimSpace(*t.Step) == "") {
-		return errors.New("time.instant=false requires time.step (one of: day, week, month, quarter, year)")
-	}
-	if t.Step != nil && strings.TrimSpace(*t.Step) != "" {
-		step := strings.TrimSpace(*t.Step)
-		if _, ok := validSteps[step]; !ok {
-			return fmt.Errorf("invalid time.step %q, must be one of: day, week, month, quarter, year", step)
-		}
+	if (t.Start != nil) != (t.End != nil) {
+		return errors.New("time.start and time.end must both be set when either is set")
 	}
 	if t.Start != nil && t.End != nil && *t.Start > *t.End {
-		return errors.New("time.start must not be later than time.end")
+		return errors.New("time.start must be <= time.end")
+	}
+	if isTrendWindow(t) {
+		if t.Step == nil || strings.TrimSpace(*t.Step) == "" {
+			return errors.New("trend query requires time.step (calendar interval only). " +
+				"Omitting time.instant means a trend query; set time.instant=true for a single point")
+		}
+		if err := validateCalendarStep(*t.Step); err != nil {
+			return err
+		}
+	}
+	if fillNull {
+		if !isTrendWindow(t) {
+			return errors.New("fill_null is only valid for trend (range) queries: set time.instant to false or omit it")
+		}
+		if t.Start == nil || t.End == nil {
+			return errors.New("fill_null requires time.start and time.end")
+		}
+	}
+	return nil
+}
+
+// validateCalendarStep accepts the same steps as ontology-query, case-insensitively.
+func validateCalendarStep(raw string) error {
+	if _, ok := validSteps[strings.ToLower(strings.TrimSpace(raw))]; !ok {
+		return fmt.Errorf("step must be a calendar interval: day, week, month, quarter, year (got %q)", raw)
 	}
 	return nil
 }

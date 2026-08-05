@@ -52,7 +52,12 @@ const (
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/subgraph
 	queryInstanceSubgraphURI = "/in/v1/knowledge-networks/%s/subgraph"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/metrics/:metric_id/data
-	queryMetricDataURI = "/in/v1/knowledge-networks/%s/metrics/%s/data?fill_null=%v"
+	//
+	// Both ids are escaped at call time: metric_id arrives straight from an agent
+	// (the tool schema constrains it to a string and nothing more), and an
+	// unescaped one carrying "?" or "&" would smuggle query parameters — branch
+	// and fill_null among them — into the downstream request.
+	queryMetricDataURI = "/in/v1/knowledge-networks/%s/metrics/%s/data"
 )
 
 // NewOntologyQueryAccess 创建OntologyQueryAccess
@@ -440,8 +445,10 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 // 透传，授权在下游判定。
 func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool,
 	req *interfaces.MetricQueryDownstreamReq) (resp *interfaces.MetricQueryDownstreamResp, err error) {
-	uri := fmt.Sprintf(queryMetricDataURI, knID, metricID, fillNull)
-	url := fmt.Sprintf("%s%s", o.baseURL, uri)
+	uri := fmt.Sprintf(queryMetricDataURI, url.PathEscape(knID), url.PathEscape(metricID))
+	query := url.Values{}
+	query.Set("fill_null", strconv.FormatBool(fillNull))
+	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
 	header := common.GetHeaderForChildOperation(ctx, "ontology.metric.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
@@ -449,7 +456,7 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 	if req == nil {
 		req = &interfaces.MetricQueryDownstreamReq{}
 	}
-	_, respBody, err := o.httpClient.Post(ctx, url, header, req)
+	_, respBody, err := o.httpClient.Post(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#QueryMetricData] kn=%s metric=%s failed: %v", knID, metricID, err)
 		// 指标不存在 / 参数不合法是调用方的错，别混进依赖故障。

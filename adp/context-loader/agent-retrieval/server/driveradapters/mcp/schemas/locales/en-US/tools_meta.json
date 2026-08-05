@@ -17,7 +17,7 @@
   },
   "query_metric": {
     "name": "query_metric",
-    "description": "Compute a modelled metric by its own definition (step 3 of the OT-first metric path). Recall the object type with search_schema / get_kn_detail, pick a metric_id from get_object_types' related_metrics, then call this tool — the formula lives in the MetricDefinition, so do not re-derive it with run_sql. Routing: instance-level values of a bound logic property go through get_logic_properties_values; class-level metrics, and metrics not bound to any logic property, come here. Optional condition filter, analysis_dimensions breakdown, and a time block for a single point or a series."
+    "description": "Compute a modelled metric by its own definition (step 3 of the OT-first metric path). Recall the object type with search_schema / get_kn_detail, pick a metric_id from get_object_types' related_metrics, then call this tool — the formula lives in the MetricDefinition, so do not re-derive it with run_sql. Routing: instance-level values of a bound logic property go through get_logic_properties_values; class-level metrics, and metrics not bound to any logic property, come here. Optional condition filter, analysis_dimensions breakdown, and a time block for a single point or a series. Time window: omitting instant means a trend query, which requires step; start and end must both be set or both omitted."
   },
   "get_action_info": {
     "name": "get_action_info",

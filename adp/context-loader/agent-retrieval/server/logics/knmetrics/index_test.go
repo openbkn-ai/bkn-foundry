@@ -165,31 +165,86 @@ func TestQueryMetric(t *testing.T) {
 		convey.So(oq.calls, convey.ShouldEqual, 0)
 	})
 
-	convey.Convey("时间窗自相矛盾就地拦下", t, func() {
+	// 时间窗规则逐条对齐 ontology-query 的 validateMetricQueryRequest：本地比下游严
+	// 会把合法调用误拒，比下游松只是把同一个错误延后，两者都不可接受。
+	convey.Convey("时间窗校验与下游同规则", t, func() {
 		oq := &stubOntologyQuery{}
 		svc := NewKnMetricsServiceWith(nil, nil, oq)
 		base := func(tw *interfaces.MetricTimeWindow) *interfaces.QueryMetricReq {
 			return &interfaces.QueryMetricReq{KnID: "kn1", MetricID: "m1", Time: tw}
 		}
 
-		_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
-			Instant: ptr(true), Step: ptr("day")}))
-		convey.So(err, convey.ShouldNotBeNil)
-		convey.So(err.Error(), convey.ShouldContainSubstring, "instant=true")
+		convey.Convey("省略 instant 等同于序列查询，缺 step 就地拒", func() {
+			_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
+				Start: ptr(int64(1)), End: ptr(int64(2))}))
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "trend query requires time.step")
+			convey.So(oq.calls, convey.ShouldEqual, 0)
+		})
 
-		_, err = svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{Instant: ptr(false)}))
-		convey.So(err, convey.ShouldNotBeNil)
-		convey.So(err.Error(), convey.ShouldContainSubstring, "requires time.step")
+		convey.Convey("instant=false 缺 step 同样拒", func() {
+			_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{Instant: ptr(false)}))
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "trend query requires time.step")
+		})
 
-		_, err = svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
-			Instant: ptr(false), Step: ptr("fortnight")}))
-		convey.So(err, convey.ShouldNotBeNil)
-		convey.So(err.Error(), convey.ShouldContainSubstring, "invalid time.step")
+		convey.Convey("step 不在日历粒度里就拒", func() {
+			_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
+				Instant: ptr(false), Step: ptr("fortnight")}))
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "step must be a calendar interval")
+		})
 
-		_, err = svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
-			Start: ptr(int64(20)), End: ptr(int64(10))}))
+		convey.Convey("step 大小写不敏感（下游 ToLower，本地不能更严）", func() {
+			_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
+				Instant: ptr(false), Step: ptr("Day")}))
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(oq.calls, convey.ShouldEqual, 1)
+		})
+
+		convey.Convey("instant=true 带 step 不拒（下游只是忽略它）", func() {
+			_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
+				Instant: ptr(true), Step: ptr("day")}))
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(oq.calls, convey.ShouldEqual, 1)
+		})
+
+		convey.Convey("start/end 必须成对", func() {
+			_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
+				Instant: ptr(true), Start: ptr(int64(1))}))
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "must both be set")
+			convey.So(oq.calls, convey.ShouldEqual, 0)
+		})
+
+		convey.Convey("start 晚于 end 就拒", func() {
+			_, err := svc.QueryMetric(context.Background(), base(&interfaces.MetricTimeWindow{
+				Instant: ptr(true), Start: ptr(int64(20)), End: ptr(int64(10))}))
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "time.start must be <= time.end")
+		})
+	})
+
+	convey.Convey("fill_null 只对区间查询有效", t, func() {
+		oq := &stubOntologyQuery{}
+		svc := NewKnMetricsServiceWith(nil, nil, oq)
+
+		_, err := svc.QueryMetric(context.Background(), &interfaces.QueryMetricReq{
+			KnID: "kn1", MetricID: "m1", FillNull: true})
 		convey.So(err, convey.ShouldNotBeNil)
-		convey.So(err.Error(), convey.ShouldContainSubstring, "time.start")
+		convey.So(err.Error(), convey.ShouldContainSubstring, "fill_null requires a time range")
+
+		_, err = svc.QueryMetric(context.Background(), &interfaces.QueryMetricReq{
+			KnID: "kn1", MetricID: "m1", FillNull: true,
+			Time: &interfaces.MetricTimeWindow{Instant: ptr(true), Start: ptr(int64(1)), End: ptr(int64(2))}})
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(err.Error(), convey.ShouldContainSubstring, "only valid for trend")
+
+		_, err = svc.QueryMetric(context.Background(), &interfaces.QueryMetricReq{
+			KnID: "kn1", MetricID: "m1", FillNull: true,
+			Time: &interfaces.MetricTimeWindow{Instant: ptr(false), Step: ptr("day")}})
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(err.Error(), convey.ShouldContainSubstring, "fill_null requires time.start and time.end")
 
 		convey.So(oq.calls, convey.ShouldEqual, 0)
 	})

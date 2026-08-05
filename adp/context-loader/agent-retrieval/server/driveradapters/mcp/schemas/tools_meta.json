@@ -25,7 +25,7 @@
   },
   "query_metric": {
     "name": "query_metric",
-    "description": "按已建模指标的口径取数（OT-first 路径第 3 步）。先 search_schema / get_kn_detail 锁定对象类，再 get_object_types 从 related_metrics 里选定 metric_id，最后调本工具计算——口径写在 MetricDefinition 里，别用 run_sql 自己重写。分流：实例级且已绑逻辑属性的走 get_logic_properties_values；类级、或未绑逻辑属性的走本工具。可选 condition 过滤、analysis_dimensions 拆维、time 取单点或序列。"
+    "description": "按已建模指标的口径取数（OT-first 路径第 3 步）。先 search_schema / get_kn_detail 锁定对象类，再 get_object_types 从 related_metrics 里选定 metric_id，最后调本工具计算——口径写在 MetricDefinition 里，别用 run_sql 自己重写。分流：实例级且已绑逻辑属性的走 get_logic_properties_values；类级、或未绑逻辑属性的走本工具。可选 condition 过滤、analysis_dimensions 拆维、time 取单点或序列。时间窗规则：省略 instant 等同于序列查询，必须给 step；start 与 end 要么都给要么都不给。"
   },
   "get_action_info": {
     "name": "get_action_info",
