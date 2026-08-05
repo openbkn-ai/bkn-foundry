@@ -278,7 +278,7 @@ Typical flags:
 
 If any step fails, the script exits non-zero with a clear message; re-run `sudo bash deploy/onboard.sh` (Linux) / `bash deploy/onboard.sh` (macOS dev) after fixing the cause — earlier successful steps are detected and skipped (idempotent re-runs).
 
-**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the full-auth-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend), 
+**Minimum install** (`--minimum`): only `openbkn auth` (often `--no-auth`); the full-auth-only steps 2–4 above are no-ops (admin tasks need the auth-enabled backend).
 
 At the end, an **English completion report** is printed unless `ONBOARD_NO_COMPLETION_REPORT=1`.
 
