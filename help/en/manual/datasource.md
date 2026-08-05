@@ -1,16 +1,18 @@
-# 📂 Data source management
+# 📂 Data Ingestion (Vega Catalog)
 
 ## 📖 Overview
 
-**Data Source Management (DS)** handles **connection registration**, **table discovery**, **CSV import**, and **lifecycle maintenance** for external databases. It is the prerequisite for building Knowledge Networks (BKN) — first connect a database to the platform, then use `bkn create-from-ds` or `bkn create-from-csv` to turn tables into a knowledge network.
+**Data ingestion** registers an external database with the platform, discovers its tables, and maintains the connection's lifecycle. It is the step before building a Knowledge Network (BKN): register the database as a **Catalog**, let discovery turn each table into a **Resource**, then bind object types to those resources.
+
+> **Interface change:** the standalone data source service (`/api/builder/v1` and the `openbkn ds` commands) has been retired; its job now belongs to **vega-backend**. See [Retired command mapping](#retired-command-mapping) at the end.
 
 Ingress prefix (typical):
 
 | Prefix | Role |
 | --- | --- |
-| `/api/builder/v1` | Data source connections, discovery, and management |
+| `/api/vega-backend/v1` | Catalog registration, table discovery, resource and index management |
 
-**Related modules:** [BKN Engine](bkn.md) (create knowledge networks from data sources), [VEGA Engine](vega.md) (data virtualization and query).
+**Related modules:** [BKN Engine](bkn.md) (create knowledge networks from a catalog), [VEGA Engine](vega.md) (resource queries and index builds).
 
 ## 🗃️ Supported database types
 
@@ -18,183 +20,196 @@ mysql, postgresql, sqlserver, oracle, clickhouse, hive, opensearch, elasticsearc
 
 ## CLI
 
-### Connect a Data Source
+### Register a catalog
 
 ```bash
-# Connect to MySQL
-openbkn ds connect mysql db.example.com 3306 erp \
-  --account root --password pass123
-# → returns ds_id, e.g. ds-abc123
+# MySQL
+openbkn vega catalog create --name "erp" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["erp"]}'
+# → returns a catalog id, e.g. d9okoc9v287s739h2120
 
-# Connect to PostgreSQL with schema and custom name
-openbkn ds connect postgresql pg.example.com 5432 analytics \
-  --account reader --password pass456 \
-  --schema public --name "analytics-db"
+# PostgreSQL
+openbkn vega catalog create --name "analytics" --connector-type postgresql \
+  --connector-config '{"host":"pg.example.com","port":5432,"username":"reader","password":"pass456","databases":["analytics"]}'
 ```
 
-Argument order: `<db_type> <host> <port> <database>`. Use `--account` and `--password` for credentials.
+The fields inside `connector_config` vary by connector type; the schema returned by `openbkn vega connector-type get <type>` is authoritative. **The host must be reachable from the network vega-backend runs in** — usually an internal address, not the one your laptop can reach.
 
-### List and Inspect Data Sources
+### Enable and discover
+
+A catalog is created disabled. Enable it before discovery:
 
 ```bash
-# List all data sources
-openbkn ds list
-
-# Search by keyword
-openbkn ds list --keyword "erp"
-
-# Filter by type
-openbkn ds list --type mysql
-
-# Get details for a single data source
-openbkn ds get ds-abc123
+openbkn vega catalog enable <catalog_id>
+openbkn vega catalog discover <catalog_id> --wait
 ```
 
-### Discover Tables
+Discovery is asynchronous; `--wait` blocks until it finishes.
+
+### List and inspect
 
 ```bash
-# List all tables in a data source
-openbkn ds tables ds-abc123
+# All catalogs
+openbkn vega catalog list
 
-# Search tables by keyword
-openbkn ds tables ds-abc123 --keyword "order"
+# One catalog
+openbkn vega catalog get <catalog_id>
+
+# Connection health
+openbkn vega catalog health <catalog_id>
+
+# Test the connection
+openbkn vega catalog test-connection <catalog_id>
+```
+
+### Inspect tables (resources)
+
+Every discovered table is a resource, and its id is what an object type binds to:
+
+```bash
+# Table resources under this catalog
+openbkn vega resource list --catalog-id <catalog_id> --category table
+
+# One resource, including schema_definition (the field list)
+openbkn vega resource get <resource_id>
+
+# Sample rows
+openbkn vega resource query <resource_id> --limit 10
 ```
 
 ### Import CSV
 
-Upload local CSV files into an existing data source (database), then use them to build a knowledge network.
+The platform-side CSV import command is gone. Load the CSVs into the target database with the standard `mysql` client first, then register the catalog and discover — `examples/02-csv-to-kn` is a runnable version of exactly this flow.
 
 ```bash
-# Import multiple CSV files
-openbkn ds import-csv ds-abc123 --files "materials.csv,inventory.csv"
-
-# Use glob patterns with a table prefix
-openbkn ds import-csv ds-abc123 --files "*.csv" --table-prefix sc_
-
-# Recreate existing tables (when column structure changed)
-openbkn ds import-csv ds-abc123 --files "materials.csv" --recreate
-
-# Adjust batch size for large files
-openbkn ds import-csv ds-abc123 --files "big-table.csv" --batch-size 1000
+# examples/02-csv-to-kn: CSV → MySQL → Catalog → knowledge network
+cd examples/02-csv-to-kn
+cp env.sample .env && vim .env
+./run.sh
 ```
 
-| Parameter | Required | Default | Description |
-| --- | --- | --- | --- |
-| `datasource_id` | yes | — | Target data source ID |
-| `--files` | yes | — | CSV file paths, comma-separated or glob |
-| `--table-prefix` | no | `""` | Prefix for generated table names |
-| `--batch-size` | no | 500 | Rows per write batch (1–10000) |
-| `--recreate` | no | off | Send overwrite on first batch to recreate table |
-
-### Delete a Data Source
+### Delete a catalog
 
 ```bash
-# Delete (with confirmation prompt)
-openbkn ds delete ds-abc123
-
-# Skip confirmation
-openbkn ds delete ds-abc123 --yes
+openbkn vega catalog delete <catalog_id>
 ```
 
-### End-to-End Example
+Deleting a catalog cascades to its resources and their indexes. Object types bound to those resources lose their data source and need rebinding.
+
+### End-to-end
 
 ```bash
-# 1. Connect to a database
-openbkn ds connect mysql db.example.com 3306 erp \
-  --account root --password pass123
-# → ds-abc123
+# 1. Register and enable
+CAT=$(openbkn --json vega catalog create --name "erp" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["erp"]}' \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+openbkn vega catalog enable "$CAT"
 
 # 2. Discover tables
-openbkn ds tables ds-abc123
+openbkn vega catalog discover "$CAT" --wait
+openbkn vega resource list --catalog-id "$CAT" --category table
 
-# 3. Create a knowledge network from the data source
-openbkn bkn create-from-ds ds-abc123 \
+# 3. Build a knowledge network from the catalog (--build also creates search indexes)
+openbkn bkn create-from-catalog "$CAT" \
   --name "erp-supply-chain" \
   --tables "orders,products,customers" \
-  --build --timeout 600
+  --build --embedding-model text-embedding-v4
 
-# 4. Verify the knowledge network
+# 4. Verify
 openbkn bkn object-type list <kn_id>
 openbkn bkn search <kn_id> "overdue orders"
 ```
 
 ---
 
-## TypeScript SDK
-
-Data source operations live under the `builder/v1` API. Reach them through the
-SDK's generic `call` passthrough.
+### TypeScript SDK
 
 ```typescript
 import { createClient } from '@openbkn/bkn-sdk';
 
-const bkn = createClient({ baseUrl: 'https://<access-address>', token: process.env.BKN_TOKEN });
+const bkn = createClient({ baseUrl: 'https://<platform-url>', token: process.env.BKN_TOKEN });
 
-// List data sources
-const dsList = await bkn.call('/api/builder/v1/datasources?page=1&size=20', { method: 'GET' });
-console.log('data sources:', dsList);
+// List catalogs
+const catalogs = await bkn.vega.catalogs({ limit: 20 });
+console.log('catalogs:', catalogs);
 
-// Get details
-const detail = await bkn.call('/api/builder/v1/datasources/ds-abc123', { method: 'GET' });
-console.log('details:', detail);
-
-// Connect a new data source
-const newDs = await bkn.call('/api/builder/v1/datasources', {
-  method: 'POST',
-  body: {
-    type: 'mysql',
+// Register a catalog
+const created = await bkn.vega.createCatalog({
+  name: 'erp',
+  connector_type: 'mysql',
+  connector_config: {
     host: 'db.example.com',
     port: 3306,
-    database: 'erp',
-    account: 'root',
+    username: 'root',
     password: 'pass123',
+    databases: ['erp'],
   },
 });
-console.log('data source ID:', newDs);
+console.log('catalog id:', created.id);
 
-// Discover tables
-const tables = await bkn.call('/api/builder/v1/datasources/ds-abc123/tables', { method: 'GET' });
-console.log('tables:', tables);
+// Enable and discover
+await bkn.vega.enableCatalog(created.id);
+await bkn.vega.discoverCatalog(created.id, true);
+
+// List table resources
+const resources = await bkn.resource.list({ catalogId: created.id, category: 'table' });
+console.log('resources:', resources);
 
 // Delete
-await bkn.call('/api/builder/v1/datasources/ds-abc123', { method: 'DELETE' });
+await bkn.vega.deleteCatalog(created.id);
 ```
 
 ---
 
-## curl
+### curl
 
 ```bash
-# List data sources
-curl -sk "https://<access-address>/api/builder/v1/datasources?page=1&size=20" \
-  -H "Authorization: Bearer $(openbkn token)"
+# List catalogs
+curl -sk "https://<platform-url>/api/vega-backend/v1/catalogs?limit=20" \
+  -H "Authorization: Bearer $(openbkn auth token)"
 
-# Filter by type
-curl -sk "https://<access-address>/api/builder/v1/datasources?type=mysql&page=1&size=20" \
-  -H "Authorization: Bearer $(openbkn token)"
-
-# Get data source details
-curl -sk "https://<access-address>/api/builder/v1/datasources/ds-abc123" \
-  -H "Authorization: Bearer $(openbkn token)"
-
-# Connect a new data source
-curl -sk -X POST "https://<access-address>/api/builder/v1/datasources" \
-  -H "Authorization: Bearer $(openbkn token)" \
+# Register a catalog
+curl -sk -X POST "https://<platform-url>/api/vega-backend/v1/catalogs" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "type": "mysql",
-    "host": "db.example.com",
-    "port": 3306,
-    "database": "erp",
-    "account": "root",
-    "password": "pass123"
+    "name": "erp",
+    "connector_type": "mysql",
+    "connector_config": {
+      "host": "db.example.com",
+      "port": 3306,
+      "username": "root",
+      "password": "pass123",
+      "databases": ["erp"]
+    }
   }'
 
-# Discover tables
-curl -sk "https://<access-address>/api/builder/v1/datasources/ds-abc123/tables" \
-  -H "Authorization: Bearer $(openbkn token)"
+# Enable and discover
+curl -sk -X POST "https://<platform-url>/api/vega-backend/v1/catalogs/<catalog_id>/enable" \
+  -H "Authorization: Bearer $(openbkn auth token)"
+curl -sk -X POST "https://<platform-url>/api/vega-backend/v1/catalogs/<catalog_id>/discover?wait=true" \
+  -H "Authorization: Bearer $(openbkn auth token)"
 
-# Delete a data source
-curl -sk -X DELETE "https://<access-address>/api/builder/v1/datasources/ds-abc123" \
-  -H "Authorization: Bearer $(openbkn token)"
+# List table resources
+curl -sk "https://<platform-url>/api/vega-backend/v1/resources?catalog_id=<catalog_id>&category=table" \
+  -H "Authorization: Bearer $(openbkn auth token)"
+
+# Delete a catalog
+curl -sk -X DELETE "https://<platform-url>/api/vega-backend/v1/catalogs/<catalog_id>" \
+  -H "Authorization: Bearer $(openbkn auth token)"
 ```
+
+---
+
+## Retired command mapping
+
+`/api/builder/v1` and the `openbkn ds` commands were retired along with the data source service. Old command → current practice:
+
+| Retired | Current practice |
+| --- | --- |
+| `openbkn ds connect <type> <host> <port> <db>` | `openbkn vega catalog create --connector-type <type> --connector-config '<json>'`, then `enable` |
+| `openbkn ds list` / `openbkn ds get <id>` | `openbkn vega catalog list` / `openbkn vega catalog get <id>` |
+| `openbkn ds tables <id>` | `openbkn vega catalog discover <id> --wait`, then `openbkn vega resource list --catalog-id <id> --category table` |
+| `openbkn ds import-csv <id> --files ...` | Load the CSVs with the `mysql` client, then discover — see `examples/02-csv-to-kn` |
+| `openbkn ds delete <id>` | `openbkn vega catalog delete <id>` |
+| `openbkn bkn create-from-ds <ds_id>` | `openbkn bkn create-from-catalog <catalog_id>` |

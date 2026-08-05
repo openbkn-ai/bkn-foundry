@@ -279,7 +279,9 @@ Edit **both** ConfigMaps; **`defaultSmallModelName` must match**. Add the line u
 kubectl rollout restart deployment/bkn-backend -n openbkn
 kubectl rollout restart deployment/ontology-query -n openbkn
 openbkn bkn search <kn_id> "test query"
-# optional: openbkn bkn build <kn_id> --wait --timeout 600
+# optional: after switching the embedding model, rebuild each resource index
+# openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+#   --build-key-fields <pk-column> --embedding-fields <text-column> --embedding-model <model-name> --wait
 ```
 
 **Troubleshooting**: **`IdNotExist`** usually means `defaultSmallModelName` does not match the list, or only one ConfigMap was edited / pods not restarted. **`Redis GET` timeout**: check **mf-model-api** ↔ Redis/Sentinel or restart **mf-model-api**.
@@ -372,7 +374,9 @@ kubectl edit configmap bkn-backend-cm -n openbkn
 kubectl edit configmap ontology-query-cm -n openbkn
 kubectl rollout restart deployment/bkn-backend -n openbkn
 kubectl rollout restart deployment/ontology-query -n openbkn
-openbkn bkn build <kn_id> --wait --timeout 600
+# Rebuild the resource index, one resource at a time (the KN-level build API is gone)
+openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+  --build-key-fields <pk-column> --embedding-fields <text-column> --embedding-model <model-name> --wait
 
 # 6. Verify semantic search
 openbkn bkn search <kn_id> "test query"

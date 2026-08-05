@@ -279,7 +279,9 @@ server:
 kubectl rollout restart deployment/bkn-backend -n openbkn
 kubectl rollout restart deployment/ontology-query -n openbkn
 openbkn bkn search <kn_id> "测试搜索"
-# 可选：openbkn bkn build <kn_id> --wait --timeout 600
+# 可选：换了嵌入模型后重建资源索引（按资源，逐个执行）
+# openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+#   --build-key-fields <主键列> --embedding-fields <文本列> --embedding-model <模型名> --wait
 ```
 
 **排障**：`IdNotExist` 多为 `defaultSmallModelName` 与列表不一致，或只改了一侧 ConfigMap、未重启。若报 **Redis GET 超时**，检查 **mf-model-api** 与 Redis/Sentinel 或重启 `mf-model-api`。
@@ -372,7 +374,9 @@ kubectl edit configmap bkn-backend-cm -n openbkn
 kubectl edit configmap ontology-query-cm -n openbkn
 kubectl rollout restart deployment/bkn-backend -n openbkn
 kubectl rollout restart deployment/ontology-query -n openbkn
-openbkn bkn build <kn_id> --wait --timeout 600
+# 重建资源索引（按资源，逐个执行；知识网络层已无 build 接口）
+openbkn vega dataset build <resource_id> --mode batch --execute-type full \
+  --build-key-fields <主键列> --embedding-fields <文本列> --embedding-model <模型名> --wait
 
 # 6. 验证语义搜索
 openbkn bkn search <kn_id> "测试查询"
