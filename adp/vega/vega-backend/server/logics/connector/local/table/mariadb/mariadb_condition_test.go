@@ -68,6 +68,31 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
+	t.Run("accept numeric string epoch milliseconds", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "created_at", "==", "1785295334428")
+		sql, args := toSQL(t, c, cond)
+		if sql != "`created_at` = FROM_UNIXTIME(?/1000)" {
+			t.Errorf("unexpected SQL: %s", sql)
+		}
+		if len(args) != 1 || args[0] != "1785295334428" {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+	t.Run("reject date literal before mysql numeric coercion", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "created_at", "==", "2026-01-01 00:00:00")
+		expr, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected non-epoch date value error")
+		}
+		if expr != nil {
+			t.Fatalf("expected nil expression, got %v", expr)
+		}
+		if !strings.Contains(err.Error(), "requires epoch milliseconds") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 	t.Run("convert equal field to field", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cfg := &interfaces.FilterCondCfg{

@@ -131,6 +131,21 @@ func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone
 }
 
 func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
+	t.Run("uses semantic type when original type is absent", func(t *testing.T) {
+		field := &interfaces.Property{
+			Name:         "event_time",
+			OriginalName: "event_time",
+			Type:         interfaces.DataType_Time,
+		}
+
+		expr, err := postgresqlDateCompareExpr(field, ">=", "14:30:00")
+		require.NoError(t, err)
+		sql, args, err := expr.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t, `"event_time" >= ?`, sql)
+		assert.Equal(t, []interface{}{"14:30:00"}, args)
+	})
+
 	for _, originalType := range []string{"time", "timetz", "time without time zone", "time with time zone"} {
 		t.Run(originalType, func(t *testing.T) {
 			field := &interfaces.Property{

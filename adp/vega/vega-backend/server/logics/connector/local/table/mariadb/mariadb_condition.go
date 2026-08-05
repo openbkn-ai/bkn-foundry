@@ -9,6 +9,7 @@ package mariadb
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
@@ -46,10 +47,27 @@ func mariaDBDateValueExpr(field *interfaces.Property) string {
 }
 
 func validateMariaDBDateValue(field *interfaces.Property, value any) error {
-	if field.Type == interfaces.DataType_Time && value != nil {
+	if value == nil {
+		return nil
+	}
+	if field.Type == interfaces.DataType_Time {
 		if _, ok := value.(string); !ok {
 			return fmt.Errorf("MariaDB time field %q requires a time string, got %T", field.Name, value)
 		}
+		return nil
+	}
+
+	switch value := value.(type) {
+	case string:
+		if _, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err != nil {
+			return fmt.Errorf("MariaDB date field %q requires epoch milliseconds, got %q", field.Name, value)
+		}
+	case float32, float64,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64:
+		return nil
+	default:
+		return fmt.Errorf("MariaDB date field %q requires epoch milliseconds, got %T", field.Name, value)
 	}
 	return nil
 }

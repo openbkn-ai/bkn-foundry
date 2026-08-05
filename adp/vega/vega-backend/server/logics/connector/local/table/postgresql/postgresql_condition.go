@@ -40,6 +40,12 @@ func normalizeTimestampValue(value any) any {
 
 // postgresqlDateValueExpr builds a parameter expression compatible with the field's PostgreSQL date type.
 func postgresqlDateValueExpr(field *interfaces.Property) string {
+	// Type is the semantic contract and may be present even when an API-provided schema
+	// omits OriginalType. Keep this check aligned with validatePostgresqlDateValue.
+	if field.Type == interfaces.DataType_Time {
+		return "?"
+	}
+
 	originalType := strings.ToLower(strings.TrimSpace(field.OriginalType))
 	switch originalType {
 	case "time", "timetz", "time without time zone", "time with time zone":
@@ -59,7 +65,6 @@ func postgresqlDateValueExpr(field *interfaces.Property) string {
 	return timestampExpr
 }
 
-// postgresqlDateCompareExpr compares a date column with epoch milliseconds.
 func validatePostgresqlDateValue(field *interfaces.Property, value any) error {
 	if field.Type == interfaces.DataType_Time && value != nil {
 		if _, ok := value.(string); !ok {
@@ -69,6 +74,7 @@ func validatePostgresqlDateValue(field *interfaces.Property, value any) error {
 	return nil
 }
 
+// postgresqlDateCompareExpr compares a date column with epoch milliseconds or a time string.
 func postgresqlDateCompareExpr(field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
 	if err := validatePostgresqlDateValue(field, value); err != nil {
 		return nil, err
