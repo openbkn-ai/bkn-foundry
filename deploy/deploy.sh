@@ -270,6 +270,19 @@ _sync_ingress_ports_from_access_address() {
     esac
 }
 
+_sync_and_upsert_access_address() {
+    local host="$1"
+    local port="$2"
+    local path="$3"
+    local scheme="$4"
+
+    # The interactive prompt may have changed port or scheme after the
+    # initial defaults were synchronized.  Keep the ingress install inputs
+    # aligned with the address that is ultimately persisted.
+    _sync_ingress_ports_from_access_address "${port}" "${scheme}"
+    _upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
+}
+
 _default_access_port_for_scheme() {
     local scheme="${1:-https}"
     case "${scheme,,}" in
@@ -342,7 +355,7 @@ confirm_access_address_before_install() {
 
         if [[ -n "${OPENBKN_ACCESS_ADDRESS:-}" ]]; then
             log_info "Using accessAddress from --access_address: ${url}"
-            _upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
+            _sync_and_upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
         fi
         return 0
     fi
@@ -356,7 +369,7 @@ confirm_access_address_before_install() {
             generate_config_yaml
         fi
         # Then upsert the confirmed accessAddress into full config.
-        _upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
+        _sync_and_upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
         return 0
     fi
 
@@ -399,7 +412,7 @@ confirm_access_address_before_install() {
     fi
 
     # Then upsert the confirmed accessAddress into full config.
-    _upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
+    _sync_and_upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
     log_info "accessAddress written to ${CONFIG_YAML_PATH}: ${scheme}://${host}:${port}${path}"
 }
 
@@ -808,4 +821,6 @@ main() {
     exit 1
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
