@@ -226,6 +226,27 @@ func TestRegisterWithoutATierPanics(t *testing.T) {
 	RegisterMounter("", func(*gin.RouterGroup, Services) {})
 }
 
+// A second mounter is an assembly bug: the socket holds exactly one, so the
+// later registration would replace the earlier one and the write routes served
+// would not be the ones the assembly intended.
+//
+// The guard has been here all along; the test has not. entitlement.MarkAssembled
+// is idempotent by name and catches nothing here, so this is the socket's own
+// invariant to keep — and the equivalent guard in permobject was lost exactly
+// this way, by being deleted along with the package that used to hold it.
+func TestSecondMounterPanics(t *testing.T) {
+	resetForTest()
+	community(t)
+	gatedMounter()
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("第二个 mounter 必须 panic——否则先注册的写路由被静默替换")
+		}
+	}()
+	gatedMounter()
+}
+
 // Registering must also put the capability in the process-wide assembly table.
 //
 // This is the bug that shipped: the socket recorded its mounter and its tier

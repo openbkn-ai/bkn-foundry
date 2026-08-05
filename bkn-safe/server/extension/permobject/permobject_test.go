@@ -170,10 +170,14 @@ func TestRegisterNilPanics(t *testing.T) {
 // so a silently swapped implementation is an authorization change nobody sees.
 //
 // The guard used to live in extension.Claim, which this migration deleted;
-// entitlement.MarkAssembled is idempotent by name and does not replace it. It
-// is written against two DIFFERENT concrete types on purpose: with the same
-// type, atomic.Value's own "store of inconsistently typed value" panic would
-// mask a missing guard and this test would pass for the wrong reason.
+// entitlement.MarkAssembled is idempotent by name and does not replace it.
+//
+// Both registrations use the SAME concrete type, and that is the whole point.
+// atomic.Value.Store panics only when the concrete type DIFFERS; two values of
+// one type overwrite silently. So a second *fake is the case the guard has to
+// catch on its own — delete the guard and this test fails. Registering a
+// different type instead would panic inside Store whether or not the guard
+// exists, and the test would pass for the wrong reason.
 func TestSecondRegistrationPanics(t *testing.T) {
 	on := true
 	licensed(t, &on)
@@ -184,14 +188,8 @@ func TestSecondRegistrationPanics(t *testing.T) {
 			t.Fatal("第二次 Register 必须 panic——否则第一个实现被静默丢弃，启动日志里没有任何痕迹")
 		}
 	}()
-	register(&otherFake{})
+	register(&fake{decision: Deny})
 }
-
-// otherFake is a second Authorizer implementation with a distinct concrete
-// type. See TestSecondRegistrationPanics for why the type has to differ.
-type otherFake struct{}
-
-func (*otherFake) Decide(context.Context, Request) (Decision, error) { return Abstain, nil }
 
 // A capability registered without a tier would be a paid capability registered
 // as free. The socket delegates the check to MarkAssembled; this pins that it
