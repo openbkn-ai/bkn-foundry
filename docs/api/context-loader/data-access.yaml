@@ -143,12 +143,18 @@ paths:
         1. **必须引用占位符**。SQL 里没有 `{{.resource_id}}` 时报
            `sql must reference at least one data resource via the {{.resource_id}} placeholder`
            ——这既是定位数据源的唯一途径，也挡住了绕开权限直接写物理表名。
-        2. **必须是单条只读语句**。守卫会先剥掉注释、字符串字面量与占位符，再判定：
-           不允许多语句（剥离后仍含 `;`）、必须以 `SELECT` 或 `WITH` 开头、不得含
+        2. **必须是单条只读 `SELECT` 语句**。端到端兼容性以 vega 的只读策略为准；
+           虽然本服务的本地守卫可接受以 `WITH` 开头的语句，但 vega 当前会拒绝 CTE，
+           因此调用方**不得使用 `WITH` / CTE**。守卫会先剥掉注释、字符串字面量与占位符，
+           再判定：不允许多语句（剥离后仍含 `;`）、必须以 `SELECT` 或 `WITH` 开头、不得含
            写入 / DDL / 权限 / 过程类关键字（INSERT、UPDATE、DELETE、DROP、ALTER、
            CREATE、TRUNCATE、GRANT、REVOKE、REPLACE、MERGE、UPSERT、CALL、EXEC、
            EXECUTE、RENAME、LOAD、COPY、INTO、ATTACH、DETACH、USE、VACUUM、ANALYZE、
            REFRESH、COMMENT、PREPARE、DEALLOCATE）。
+
+           当前保证可用的只读语法为：单表或同一 catalog 内的 `JOIN`、`WHERE`、
+           `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 及常用聚合函数（如 `COUNT`、`SUM`、
+           `AVG`、`MIN`、`MAX`）。子查询和窗口函数不属于当前兼容性承诺，调用方不得依赖。
 
            守卫不是完整 SQL 解析器，是纵深防御的一层：下游 vega 的原始查询接口本身
            **不校验语句类型**，写语句送到就会真执行，所以拦截必须在这里做死。
@@ -189,8 +195,10 @@ paths:
                 type: string
         '400':
           description: |
-            SQL 为空、未引用资源占位符、含多语句或写 / DDL 关键字，
-            以及下游返回的 SQL 语法 / 权限错误
+            SQL 为空、未引用资源占位符、使用 `WITH` / CTE、含多语句或写 / DDL 关键字，
+            以及下游返回的 SQL 语法 / 权限错误。当前下游对 CTE 返回
+            `VegaBackend.Query.InvalidParameter`，详情为 `raw query rejected by read-only policy`；
+            调用方应将 CTE 改写为单条 `SELECT`，或拆分为多次查询。
           content:
             application/json:
               schema:

@@ -77,6 +77,8 @@ const serverInstructions = `ContextLoader 知识网络查询工具集使用指�
 
 提示：聚合类问题（如「每个 X 的 Y 总数/排名」）直接走 run_sql，不要用 query_object_instance 的 sort 近似。
 
+run_sql 语法边界：仅写单条 SELECT；可用同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 与常用聚合函数。不得使用 WITH/CTE、多语句、写入/DDL 或跨 catalog join；子查询和窗口函数不在当前兼容性承诺内。
+
 run_sql 占位符示例（id 必须来自 search_schema / list_resources 的真实返回值，逐表替换，别照抄 'resource_id' 字面量；JOIN 多表 = 多个不同 id）：
   search_schema("进球") → data_source.id = "GOALS_RID"
   search_schema("赛事") → data_source.id = "TOURN_RID"

@@ -61,7 +61,7 @@
   },
   "run_sql": {
     "name": "run_sql",
-    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
+    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
   },
   "list_resources": {
     "name": "list_resources",

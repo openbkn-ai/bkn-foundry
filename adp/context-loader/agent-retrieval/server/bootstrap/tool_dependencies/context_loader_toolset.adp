@@ -2305,13 +2305,13 @@
      {
       "tool_id": "a82ef26d-7775-48be-bdc6-cd1d7f90867b",
       "name": "run_sql",
-      "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。",
+      "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。",
       "status": "enabled",
       "metadata_type": "openapi",
       "metadata": {
        "version": "1839dd82-9cf3-4667-8748-27c2dcdabacd",
        "summary": "run_sql",
-       "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许 SELECT/WITH，禁止写入/DDL；单次查询的资源需同属一个数据目录（不支持跨目录 join）。",
+       "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。表名用占位符 {{.resource_id}} 引用（resource_id 取自对象类的 data_source.id，可由 search_schema 获得）；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。",
        "server_url": "http://agent-retrieval:30779",
        "path": "/api/agent-retrieval/in/v1/kn/run_sql",
        "method": "POST",
@@ -2363,7 +2363,7 @@
              },
              "sql": {
               "type": "string",
-              "description": "只读 SQL（Trino 方言）。表名必须用占位符 {{.resource_id}} 引用，resource_id 取自对象类的 data_source.id（可经 search_schema 获得）。仅允许 SELECT / WITH，禁止任何写入与 DDL；不支持多语句；不支持跨数据目录 join（单次查询涉及的资源需同属一个 catalog）。vega 会自动限量（最多 10000 行）。"
+              "description": "只读 SQL（Trino 方言）。表名必须用占位符 {{.resource_id}} 引用，resource_id 取自对象类的 data_source.id（可经 search_schema 获得）。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。vega 会自动限量（最多 10000 行）。"
              },
              "resource_type": {
               "type": "string",
