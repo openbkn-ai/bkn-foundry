@@ -21,8 +21,8 @@
 # read only — NO secrets, NO helm). The expected release list still comes from
 # the publish-time snapshot, mounted read-only from the data ConfigMap.
 #
-# Placeholders __NAMESPACE__ / __INGRESS_CLASS__ / __KUBECTL_IMAGE__ are
-# substituted by status.sh.
+# Placeholders __NAMESPACE__ / __INGRESS_CLASS__ / __KUBECTL_IMAGE__ /
+# __NGINX_IMAGE__ are substituted by status.sh.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

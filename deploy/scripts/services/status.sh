@@ -165,10 +165,6 @@ gen_install_status_json() {
     local namespace
     namespace="$(_openbkn_resolve_target_namespace)"
 
-    # Resolve both endpoint images here, after deploy.sh has parsed global
-    # flags such as --offline.
-    _status_resolve_images
-
     if ! command -v python3 >/dev/null 2>&1; then
         log_warn "python3 not found; skipping install-status snapshot."
         return 0

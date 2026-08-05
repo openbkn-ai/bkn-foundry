@@ -302,6 +302,15 @@ section (probed via the apiserver service proxy: `/health/ready` → `/api/v1/he
 ./deploy.sh openbkn publish-status
 ```
 
+For an offline environment, sync the latest images (including
+`openbkn-ai/library/nginx:1.27-alpine`) before republishing the endpoint, and
+pass the offline flag to `publish-status`:
+
+```bash
+./scripts/sync-k8s-images.sh <offline-registry>
+./deploy.sh --offline=<offline-registry> openbkn publish-status
+```
+
 A **non-sensitive** dashboard is also served, unauthenticated, through the ingress
 (a tiny nginx serving ConfigMaps — see `conf/install-status/`):
 

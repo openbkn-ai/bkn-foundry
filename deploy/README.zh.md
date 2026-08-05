@@ -297,6 +297,14 @@ kubectl get pods -A
 ./deploy.sh openbkn publish-status
 ```
 
+离线环境请在重新发布 install-status 前带上 `--offline`，并先同步最新镜像（包括
+`openbkn-ai/library/nginx:1.27-alpine`）：
+
+```bash
+./scripts/sync-k8s-images.sh <offline-registry>
+./deploy.sh --offline=<offline-registry> openbkn publish-status
+```
+
 同时通过 ingress 以**非敏感**面板对外提供(由一个极小的 nginx 托管 ConfigMap,见
 `conf/install-status/`):
 
