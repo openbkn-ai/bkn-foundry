@@ -20,34 +20,32 @@
 
 所有 `openbkn vega` 子命令支持的公共参数：`-bd` / `--biz-domain <s>`（默认取自 `openbkn config`）、`--pretty`（JSON 美化，默认开启）。完整列表见 `openbkn vega --help`。
 
-### 平台健康与统计
+### 平台可达性
+
+CLI 没有单独的探活子命令，用一次带鉴权的 Catalog 列举即可判断服务是否可达与授权是否有效：
 
 ```bash
-# 可达性探测（Node CLI：带鉴权 GET .../catalogs?limit=1）
-openbkn vega health
+# 可达性探测：能返回列表即服务可达且 token 有效
+openbkn vega catalog list --limit 1
 
-# Catalog 数量（最多列举 100 个 Catalog 后计数）
-openbkn vega stats
-
-# 健康探测 JSON + catalog_count（同样最多列举 100 个 Catalog）
-openbkn vega inspect
+# 各 Catalog 的连接健康状态
+openbkn vega catalog health <catalog_id> [<catalog_id> ...]
 ```
 
-CLI 不会请求 vega-backend Pod 的 `GET /health`，而是用已授权的 **catalogs 列表** 做探活。
+vega-backend Pod 自身的 `GET /health` 不在 `/api/vega-backend/v1` 下，通常也不经 Ingress 暴露，排障时在集群内访问。
 
 ### Catalog 管理
 
 ```bash
 # 列出 Catalog（可选过滤）
 openbkn vega catalog list
-openbkn vega catalog list --status healthy --limit 20
+openbkn vega catalog list --health-check-status healthy --limit 20
 
 # 获取单个 Catalog
 openbkn vega catalog get <catalog_id>
 
-# 批量健康检查，或检查全部
+# 批量健康检查（多个 id 空格分隔）
 openbkn vega catalog health cat_pg001 cat_mysql002
-openbkn vega catalog health --all
 
 # 测试已注册 Catalog 的连接
 openbkn vega catalog test-connection <catalog_id>
@@ -68,38 +66,31 @@ openbkn vega catalog create \
 
 openbkn vega catalog update <catalog_id> --name new-name --connector-config '{"host":"..."}'
 
-openbkn vega catalog delete <catalog_id> [<catalog_id> ...]   # 默认确认，加 -y 跳过
-openbkn vega catalog delete cat_a,cat_b -y
+openbkn vega catalog delete <catalog_id>
 ```
 
 ### 资源管理
 
-CLI **没有** `openbkn vega resource preview`。请用 **`resource query`** 并设置较小 `limit` 抽样查看数据。
+资源由 Catalog 发现产生，CLI 不提供手工创建与修改；抽样看数据用 `query` 并设小 `limit`。
+
+`openbkn vega resource` 提供只读的三条（`list` / `get` / `query`）；顶层的 `openbkn resource`（别名 `res`）多两条：按名查找与删除。两者访问同一批资源。
 
 ```bash
 # 列出资源（可选过滤）
 openbkn vega resource list
 openbkn vega resource list --catalog-id <catalog_id> --category table --limit 50
 
-# 全量列举（GET .../resources/list）
-openbkn vega resource list-all [--limit N] [--offset N]
-
+# 查看单个资源（含 schema_definition 字段清单与 index_config）
 openbkn vega resource get <resource_id>
 
-# 结构化数据查询（POST .../resources/:id/data）
-openbkn vega resource query <resource_id> \
-  -d '{"limit":10,"offset":0,"need_total":true}'
+# 抽样查看数据行
+openbkn vega resource query <resource_id> --limit 10 --need-total
 
-# 创建 / 更新 / 删除资源
-openbkn vega resource create \
-  --catalog-id <catalog_id> \
-  --name my_table \
-  --category table \
-  [--source-identifier <si>] [--database <db>] [-d '{"extra":"fields"}']
+# 按名称查找（模糊；--exact 精确匹配）
+openbkn resource find --name "customer_orders" --catalog-id <catalog_id>
 
-openbkn vega resource update <resource_id> [--name X] [--status X] [--tags t1,t2] [-d '{"k":"v"}']
-
-openbkn vega resource delete <resource_id> [<resource_id> ...] [-y]
+# 删除资源
+openbkn resource delete <resource_id>
 ```
 
 ### 数据集（文档与构建）
@@ -145,10 +136,12 @@ openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_ids> -X DELE
 
 以下两条命令都走 **`vega-backend`**，**不依赖** `vega-calculate-coordinator`（Trino）。适合在仅安装 BKN Foundry、已配置 MySQL/PostgreSQL Catalog 的场景下查数。
 
-**结构化查询** — `POST /api/vega-backend/v1/query/execute`
+**结构化查询** — `POST /api/vega-backend/v1/resources/query`
+
+CLI 没有对应的 typed 子命令，直接调接口：
 
 ```bash
-openbkn vega query execute -d '<json>'
+openbkn call /api/vega-backend/v1/resources/query -X POST -d '<json>'
 ```
 
 请求体要点：`tables`（必填，`resource_id` + 可选 `alias`）、`joins`（同 Catalog 内多表）、`output_fields`、`filter_condition`、`sort`、`offset` / `limit`（`limit` 最大 10000）、`need_total`。首页分页时 `query_id` 可不传；翻页需带上次返回的 `query_id`。JOIN 的 `on` 条件里 **`left_field` / `right_field` 须与 `openbkn vega resource get` 返回的 `schema_definition[].name` 一致**。**所有表必须属于同一 Catalog**，否则返回 501。
@@ -158,13 +151,14 @@ openbkn vega query execute -d '<json>'
 单表示例：
 
 ```bash
-openbkn vega query execute -d '{"tables":[{"resource_id":"res_mysql_supplier"}],"limit":5,"need_total":true}'
+openbkn call /api/vega-backend/v1/resources/query -X POST \
+  -d '{"tables":[{"resource_id":"res_mysql_supplier"}],"limit":5,"need_total":true}'
 ```
 
 两表 JOIN 示例（请替换为真实 `resource_id` 与字段名）：
 
 ```bash
-openbkn vega query execute -d '{
+openbkn call /api/vega-backend/v1/resources/query -X POST -d '{
   "tables": [
     {"resource_id":"res_a","alias":"a"},
     {"resource_id":"res_b","alias":"b"}
@@ -175,99 +169,89 @@ openbkn vega query execute -d '{
 }'
 ```
 
-**直连 SQL** — `POST /api/vega-backend/v1/resources/query`
+**直连 SQL** — `openbkn vega sql`
 
-**简易模式**（不写 JSON body）：用两个参数分别传入引擎类型与 SQL（**请给 SQL 加引号**）。
+**简易模式**（不写 JSON body）：SQL 用 `--query` 传入（**请加引号**），方言用 `--input-dialect`。
 
 ```bash
-openbkn vega sql --resource-type mysql --query "SELECT * FROM {{.res_mysql_supplier}} LIMIT 5"
+openbkn vega sql --input-dialect mysql \
+  --query "SELECT * FROM {{res_mysql_supplier}} LIMIT 5"
 ```
 
-**高级模式**：完整 JSON；一旦使用 `-d`，将忽略 `--resource-type` / `--query`。
+其余可选参数：`--limit` / `--offset` / `--need-total`、游标翻页的 `--paging-mode cursor` 与 `--cursor` / `--keep-alive-sec`、`--query-timeout-sec`。
+
+**高级模式**：`-d` 传完整 JSON；一旦使用 `-d`，将忽略上述单项参数。
 
 ```bash
 openbkn vega sql -d '<json>'
-openbkn vega sql --help
+openbkn vega help sql
 ```
-
-请求体必填：`query`（SQL 字符串，或 OpenSearch 的 DSL 对象）、`resource_type`（`mysql` | `mariadb` | `postgresql` | `opensearch`）。可选：`stream_size`（100–10000）、`query_timeout`（秒，1–3600）、`query_id`。
 
 SQL 中可使用占位符 `{{.<资源ID>}}` 或 `{{<资源ID>}}`（资源 ID 为 Vega `resource_id`），后端替换为该资源的物理表标识。无占位符时也可写**原生 SQL**（仍需 `resource_type`），表名需符合目标库语法。
 
 **三种查询方式对照**
 
-| 方式 | 入口 | 依赖 | 典型用途 |
-|------|------|------|----------|
-| 结构化查询 | `openbkn vega query execute` | vega-backend | 同 Catalog 多表 JOIN、统一 filter DSL |
-| 直连 SQL | `openbkn vega sql` | vega-backend | 复杂 SQL、聚合、占位符引用资源 |
-| 单资源数据 API | `openbkn vega resource query <id> -d {...}` | vega-backend | 单表过滤、sort、`search_after` 分页 |
-| Dataview + `--sql` | `openbkn dataview query ... --sql` | mdl-uniquery + 单独维护的 **Trino** | 跨源/复杂 SQL 经计算集群 |
+| 方式 | 入口 | 典型用途 |
+|------|------|----------|
+| 结构化查询 | `openbkn call /api/vega-backend/v1/resources/query -X POST` | 同 Catalog 多表 JOIN、统一 filter DSL |
+| 直连 SQL | `openbkn vega sql` | 复杂 SQL、聚合、占位符引用资源 |
+| 单资源抽样 | `openbkn vega resource query <id> --limit N` | 单表快速看数 |
 
-TypeScript：直连 SQL 用 typed 方法 `bkn.vega.sql({ resource_type, query })`；结构化 `query/execute` 无 typed 方法，用 `bkn.call('/api/vega-backend/v1/query/execute', { method: 'POST', body })`。
+三者都只依赖 vega-backend。
+
+TypeScript：直连 SQL 用 typed 方法 `bkn.vega.sql({...})`；结构化查询无 typed 方法，用 `bkn.call('/api/vega-backend/v1/resources/query', { method: 'POST', body })`。
 
 ### 连接器类型
+
+CLI 只提供只读的两条；注册与启停连接器类型属于平台运维动作，走 `/api/vega-backend/v1/connector-types` 接口。
 
 ```bash
 openbkn vega connector-type list
 openbkn vega connector-type get postgresql
-
-openbkn vega connector-type register -d '{"name":"custom",...}'
-openbkn vega connector-type update <type> -d '{...}'
-openbkn vega connector-type delete <type> [-y]
-openbkn vega connector-type enable <type> --enabled true
 ```
 
 ### 数据视图（Dataview）
 
-数据视图由 **mdl-uniquery** 等模块提供，请使用 **`dataview`** 命令组（不走 `vega` 子命令）：
+**该能力已下线。** 数据视图由 mdl-uniquery / mdl-data-model 提供，这两个模块已不再发布，`openbkn dataview` 命令组在 CLI 0.1.2 中也只剩空壳、无任何子命令。自定义 SQL 依赖的 `vega-calculate-coordinator`（Trino/Hetu 系）同样不再随部署脚本安装。
 
-```bash
-openbkn dataview list
-openbkn dataview find --name "客户订单视图" --exact --wait
-openbkn dataview get dv_001
-# --sql 中 FROM 须为全限定名：请用 get 返回的 meta_table_name；下例 mysql_demo."sales"."customer_orders" 仅为格式示意
-openbkn dataview query dv_001 \
-  --sql "SELECT customer_name, order_count FROM mysql_demo.\"sales\".\"customer_orders\" WHERE region = '华东' LIMIT 20"
-```
+现在的等价做法：
 
-**自定义 SQL（`--sql`）**：不带 `--sql` 时，`dataview query` 使用视图内建定义，走直连数据源；`--sql` 依赖单独维护的 **`vega-calculate-coordinator`**（Hetu/Presto 系引擎），BKN Foundry 部署脚本不再包含或安装该组件。**复杂 SQL 请使用 catalog.`"schema"."table"` 全限定名。**
+| 原用途 | 现行做法 |
+|--------|----------|
+| 浏览/查询视图数据 | 直接查资源：`openbkn vega resource query <resource_id> --limit N` |
+| 视图内自定义 SQL | `openbkn vega sql --input-dialect <方言> --query "..."`，用 `{{<resource_id>}}` 占位符引用资源 |
+| 跨表 JOIN | `openbkn call /api/vega-backend/v1/resources/query -X POST`，同一 Catalog 内多表 JOIN |
 
-**`dataview get` 响应字段（自定义 `--sql` 时）**：`openbkn dataview get <view_id> --pretty` 返回的 JSON 中，与表引用直接相关的是下表（字段名与 REST / TypeScript SDK 一致）。
-
-| 字段 | 说明 |
-|------|------|
-| **`meta_table_name`** | **必用**：全限定表名字符串（`catalog."schema"."table"`），在 `--sql` 的 `FROM` / `JOIN` 中原样使用；勿凭视图名手写 catalog。 |
-| **`sql_str`** | 视图保存的 SQL，可与 `meta_table_name` 对照表引用。 |
-| **`fields`** | 各列的 `name`、`type` 等元数据；**不含**全限定表名。 |
-
-**全限定名 / `meta_table_name` 从哪里来**：走 `--sql` 时，引擎按 **Trino/Hetu 风格**解析表名，需要 **`catalog."schema"."table"`** 三段式，含义大致为：
-
-- **catalog**：该数据源在 **Vega** 侧注册得到的 **catalog 标识**（与 `openbkn vega catalog list` 中每条 catalog 的 **id** 一致；常见会带连接器类型前缀，例如 `mysql_…`，具体以环境为准）。
-- **schema**：源库中的 **命名空间**——对 MySQL 多为 **database 名**，对 PostgreSQL 多为 **schema 名**，依连接器与元数据而定。
-- **table**：物理表名（或视图名）。
-
-平台在创建数据视图时会解析元数据并写入 **`meta_table_name`**（以及内建 **`sql_str`**）。**不要凭视图逻辑名或表名单独拼 catalog**；应执行 **`openbkn dataview get <view_id>`**，将返回的 **`meta_table_name`** 原样用于 `FROM` / `JOIN`，或与 `sql_str` 中的表引用保持一致。多表 JOIN 须在同一数据源（同一 catalog）下。
-
-TypeScript：数据视图无 typed 方法，用 `bkn.call('/api/mdl-uniquery/v1/dataviews?limit=50', { method: 'GET' })`，或使用 `openbkn dataview` CLI。
+对象类若仍绑定在已废弃的 `data_view` 数据源上，查询会失败，需要改绑到 Vega 资源。
 
 ### 端到端流程
 
 ```bash
-openbkn vega health
+# 1. 探活与连接器
+openbkn vega catalog list --limit 1
 openbkn vega connector-type list
-openbkn vega catalog health --all
+
+# 2. Catalog 健康与发现
+openbkn vega catalog health cat_pg001
 openbkn vega catalog discover cat_pg001 --wait
 openbkn vega catalog resources cat_pg001 --category table
-openbkn vega resource query res_orders_001 -d '{"limit":5,"need_total":true}'
-openbkn dataview query dv_001 \
-  --sql "SELECT * FROM mysql_demo.\"sales\".\"customer_orders\" WHERE amount > 10000 ORDER BY amount DESC LIMIT 10"
+
+# 3. 看数
+openbkn vega resource query res_orders_001 --limit 5 --need-total
+openbkn vega sql --input-dialect mysql \
+  --query "SELECT * FROM {{res_orders_001}} WHERE amount > 10000 ORDER BY amount DESC LIMIT 10"
+
+# 4. 建检索索引（全文 + 向量）
+openbkn vega dataset build res_orders_001 --mode batch --execute-type full \
+  --build-key-fields id --fulltext-fields customer_name \
+  --embedding-fields customer_name --embedding-model text-embedding-v4 --wait
 ```
 
 ---
 
 ## 📘 TypeScript SDK
 
-`bkn.vega` 提供了 Catalog、连接器类型、直连 SQL、构建任务的 typed 方法；资源浏览/查询在 `bkn.resource` 下。没有 typed 方法的端点（结构化 `query/execute`、Catalog 更新/删除、资源 CRUD、数据集文档、数据视图）通过通用的 `bkn.call(...)` passthrough 访问。
+`bkn.vega` 提供 Catalog、连接器类型、直连 SQL、构建任务的 typed 方法；资源浏览/查询在 `bkn.resource` 下。没有 typed 方法的端点（结构化查询 `/resources/query`、数据集文档写入）通过通用的 `bkn.call(...)` passthrough 访问。
 
 ```typescript
 import { createClient } from '@openbkn/bkn-sdk';
@@ -275,7 +259,7 @@ import { createClient } from '@openbkn/bkn-sdk';
 const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
 // Catalog（typed）
-const catalogs = await bkn.vega.catalogs({ status: 'healthy', limit: 20 });
+const catalogs = await bkn.vega.catalogs({ healthCheckStatus: 'healthy', limit: 20 });
 catalogs.forEach((c) => console.log(c.id, c.name));
 
 const detail = await bkn.vega.getCatalog('cat-001');
@@ -301,14 +285,14 @@ const rows = await bkn.resource.query('res-001', { limit: 5 });
 // 连接器类型（typed）
 const connectors = await bkn.vega.connectorTypes();
 
-// 直连 SQL（typed）
+// 直连 SQL（typed；实际打到 POST /resources/query）
 const sqlOut = await bkn.vega.sql({
-  resource_type: 'mysql',
-  query: 'SELECT 1 AS one',
+  query: 'SELECT * FROM {{res-001}} LIMIT 5',
+  input_dialect: 'mysql',
 });
 
-// 结构化 query/execute —— 无 typed 方法，用 passthrough
-const structured = await bkn.call('/api/vega-backend/v1/query/execute', {
+// 结构化查询 —— 无 typed 方法，用 passthrough
+const structured = await bkn.call('/api/vega-backend/v1/resources/query', {
   method: 'POST',
   body: { tables: [{ resource_id: 'res-001' }], limit: 5, need_total: true },
 });
@@ -317,103 +301,101 @@ const structured = await bkn.call('/api/vega-backend/v1/query/execute', {
 const build = await bkn.vega.build({ resource_id: 'res-ds', mode: 'batch' }, { wait: true });
 const status = await bkn.vega.buildStatus(String(build.id));
 
-// 数据视图（mdl-uniquery）—— 无 typed 方法，用 passthrough 或 `openbkn dataview` CLI
-const dvList = await bkn.call('/api/mdl-uniquery/v1/dataviews?limit=50', { method: 'GET' });
 ```
 
 ---
 
 ## 🌐 curl
 
-已 `openbkn auth login` 时，可将示例中的 **`Authorization: Bearer $(openbkn token)`** 用于受保护接口；将 **`https://<访问地址>`** 换为实际平台地址。
+已 `openbkn auth login` 时，可将示例中的 **`Authorization: Bearer $(openbkn auth token)`** 用于受保护接口；将 **`https://<访问地址>`** 换为实际平台地址。
 
 ```bash
-# 列举 Catalog 探活（与 Node CLI `openbkn vega health` 思路一致）
+# 列举 Catalog 探活（能返回即服务可达、token 有效）
 curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs?limit=1" \
-  -H "Authorization: Bearer $(openbkn token)" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "x-business-domain: bd_public"
 
 # 可选：直连 vega-backend Pod 的 /health（不在 /v1 下）
-# curl -sk "https://<访问地址>/health" -H "Authorization: Bearer $(openbkn token)"
+# curl -sk "https://<访问地址>/health" -H "Authorization: Bearer $(openbkn auth token)"
 
-curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs?status=healthy&limit=20" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs?health_check_status=healthy&limit=20" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs/cat_pg001" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/catalogs" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"name":"my","connector_type":"mysql","connector_config":{"host":"h","port":3306,"database":"d","username":"u","password":"p"}}'
 curl -sk -X PUT "https://<访问地址>/api/vega-backend/v1/catalogs/cat_pg001" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"name":"new-name"}'
 curl -sk -X DELETE "https://<访问地址>/api/vega-backend/v1/catalogs/cat_pg001" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 
 curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs/cat_pg001/health-status" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/catalogs/cat_pg001/test-connection" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/catalogs/cat_pg001/discover" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk "https://<访问地址>/api/vega-backend/v1/catalogs/cat_pg001/resources?category=table&limit=30" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 
 curl -sk "https://<访问地址>/api/vega-backend/v1/resources?catalog_id=cat_pg001&limit=50" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"catalog_id":"cat_pg001","name":"t","category":"table"}'
 curl -sk -X PUT "https://<访问地址>/api/vega-backend/v1/resources/res_orders_001" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"status":"active"}'
 curl -sk -X DELETE "https://<访问地址>/api/vega-backend/v1/resources/res_orders_001" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/res_orders_001/data" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -H "x-http-method-override: GET" \
   -d '{"limit":10,"offset":0,"need_total":true}'
 
 # Dataset 文档写入（使用 POST 覆盖）
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/res-ds/data" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -H "x-http-method-override: POST" \
   -d '[{"id":"doc1","content":"..."}]'
 
 # Dataset 构建任务
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/build-tasks" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"resource_id":"res-ds","mode":"full"}'
 curl -sk "https://<访问地址>/api/vega-backend/v1/build-tasks/<task-id>" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 
-curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/query/execute" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/query" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"tables":[{"resource_id":"res_orders_001"}],"limit":5,"need_total":true}'
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/query" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"resource_type":"mysql","query":"SELECT 1 AS one"}'
 
 curl -sk "https://<访问地址>/api/vega-backend/v1/connector-types" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk "https://<访问地址>/api/vega-backend/v1/connector-types/mysql" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/connector-types/mysql/enabled" \
-  -H "Authorization: Bearer $(openbkn token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
   -d '{"enabled":true}'
 ```
 
-Dataview 的 HTTP 路径由 **mdl-uniquery** / **mdl-data-model** 提供，不在 vega-backend 的 `router.go` 中；请使用 `openbkn dataview`，或通过 SDK 的 `bkn.call(...)` passthrough 访问 REST 路径。
+Dataview 的 HTTP 路径原由 **mdl-uniquery** / **mdl-data-model** 提供，这两个模块已不再发布，相关接口在当前部署中不可用；改用 Vega 资源与 `openbkn vega sql`。
 
 更多说明见 npm 包 `@openbkn/bkn-sdk` 以及 `openbkn vega --help`。
