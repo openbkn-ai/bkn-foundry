@@ -171,8 +171,9 @@ func sameSet(got, want []string) bool {
 }
 
 // The licence hub is running but nothing has been imported yet — the shape the
-// VM reproduced, and the branch the nil-service test above skips entirely
-// (licenseStateOrUnlicensed returns early on nil).
+// VM reproduced, and a different branch from the nil-service test above: there
+// the gate is absent entirely, here it is installed and reporting a hub with no
+// certificate in it.
 func TestCapabilitiesWithHubButNoLicenceReportsCommunity(t *testing.T) {
 	r, _, _ := newLicenseServer(t)
 

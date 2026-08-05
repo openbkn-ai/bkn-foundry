@@ -105,9 +105,19 @@ var minEdition licverify.Edition
 // after the assembly registry is frozen, and a zero min. All four are assembly
 // bugs that must be loud at startup; the last one because a paid capability
 // registered without a tier would be registered as free.
+//
+// The second-registration guard is this package's own. entitlement.MarkAssembled
+// is idempotent by name — one capability routinely has several entry points —
+// so it does not catch a second Authorizer, and this socket holds exactly one:
+// the later Store would silently discard the earlier implementation, leaving no
+// trace anywhere. This is the layer that produces Deny over casbin, so which
+// implementation decides is not something to lose quietly.
 func Register(min licverify.Edition, a Authorizer) {
 	if a == nil {
 		panic("permobject: Register(nil)")
+	}
+	if load() != nil {
+		panic("permobject: authorizer already registered — a second one would silently replace the first")
 	}
 	entitlement.MustBeAssembling("permobject")
 	// Records the capability in the process-wide assembly table, which is what

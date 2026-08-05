@@ -164,6 +164,35 @@ func TestRegisterNilPanics(t *testing.T) {
 	Register(licverify.EditionEnterprise, nil)
 }
 
+// Two Authorizers is an assembly bug that has to be loud. atomic.Value would
+// let the second one through whenever the concrete types match, silently
+// discarding the first — and this is the layer that produces Deny over casbin,
+// so a silently swapped implementation is an authorization change nobody sees.
+//
+// The guard used to live in extension.Claim, which this migration deleted;
+// entitlement.MarkAssembled is idempotent by name and does not replace it. It
+// is written against two DIFFERENT concrete types on purpose: with the same
+// type, atomic.Value's own "store of inconsistently typed value" panic would
+// mask a missing guard and this test would pass for the wrong reason.
+func TestSecondRegistrationPanics(t *testing.T) {
+	on := true
+	licensed(t, &on)
+	register(&fake{decision: Allow})
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("第二次 Register 必须 panic——否则第一个实现被静默丢弃，启动日志里没有任何痕迹")
+		}
+	}()
+	register(&otherFake{})
+}
+
+// otherFake is a second Authorizer implementation with a distinct concrete
+// type. See TestSecondRegistrationPanics for why the type has to differ.
+type otherFake struct{}
+
+func (*otherFake) Decide(context.Context, Request) (Decision, error) { return Abstain, nil }
+
 // A capability registered without a tier would be a paid capability registered
 // as free. The socket delegates the check to MarkAssembled; this pins that it
 // is actually reached, so dropping the delegation cannot pass silently.

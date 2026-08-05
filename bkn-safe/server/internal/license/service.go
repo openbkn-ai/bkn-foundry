@@ -147,6 +147,13 @@ func (s *Service) State() licverify.Snapshot { return s.guard.State() }
 // The returned Gate re-reads State() on every call. Do not memoise it into a
 // bool: an imported, renewed or lapsed certificate has to take effect on the
 // next request, not the next restart.
+//
+// It reads the snapshot exactly ONCE per call and derives every field from that
+// one reading. Reading twice — say State() here and InForce() again below —
+// straddles a certificate swap: the returned Snapshot would then carry the old
+// certificate's edition next to the new one's state, describing a deployment
+// that never existed. The window is nanoseconds, which is precisely why such a
+// bug would never be reproduced from a report.
 func Gate(s *Service) entitlement.Gate {
 	return entitlement.GateFunc(func() entitlement.Snapshot {
 		if s == nil {
@@ -157,7 +164,7 @@ func Gate(s *Service) entitlement.Gate {
 		// expired one still carries a payload with a paid edition in it.
 		// Reading that edition would hand out capability the licence no longer
 		// covers, which is the exact bug this predicate exists to prevent.
-		if !s.InForce() || snap.Payload == nil {
+		if !inForce(snap) || snap.Payload == nil {
 			return entitlement.Snapshot{Edition: licverify.EditionCommunity, State: snap.State}
 		}
 		return entitlement.Snapshot{
@@ -168,6 +175,14 @@ func Gate(s *Service) entitlement.Gate {
 			Features: snap.Payload.Features,
 		}
 	})
+}
+
+// inForce is the single predicate for "does this snapshot grant anything".
+// Both InForce and Gate go through it so there is one definition rather than
+// two that can drift — the drift this migration was cleaning up in the first
+// place.
+func inForce(snap licverify.Snapshot) bool {
+	return snap.State == licverify.StateValid || snap.State == licverify.StateGrace
 }
 
 // InForce reports whether the licence currently grants anything. It reads the
@@ -184,10 +199,7 @@ func Gate(s *Service) entitlement.Gate {
 // There is deliberately no per-feature form of this. Authorisation is by tier
 // (ee-design.md §3.1); the certificate's features[] is display and audit data,
 // and a FeatureEnabled(key) helper is how fine-grained gating creeps back in.
-func (s *Service) InForce() bool {
-	snap := s.guard.State()
-	return snap.State == licverify.StateValid || snap.State == licverify.StateGrace
-}
+func (s *Service) InForce() bool { return inForce(s.guard.State()) }
 
 // Fingerprint returns this cluster's instance fingerprint. Available with or
 // without a license — the activation guide shows it before anything is imported.

@@ -82,7 +82,7 @@ func registerCapabilities(g *gin.RouterGroup, svc *license.Service) {
 			// and the callers are frontends that will each answer it differently.
 			Licensed:     false,
 			Edition:      "community",
-			State:        string(licenseStateOrUnlicensed(svc)),
+			State:        "unlicensed",
 			Features:     []string{},
 			Capabilities: []string{},
 			Limits:       map[string]int64{},
@@ -109,33 +109,39 @@ func registerCapabilities(g *gin.RouterGroup, svc *license.Service) {
 		// answered true for a certificate expired past its grace window while
 		// every gated call refused — a full menu where nothing works, the exact
 		// failure this field was added to prevent.
-		resp.Licensed = entitlement.Licensed()
-		resp.Edition = string(entitlement.Current())
+		//
+		// Snap, not Licensed()+Current()+State(): three separate reads can
+		// straddle a certificate import or a renewal, and the response would
+		// then mix fields from two certificates — a state no deployment was
+		// ever in, and one no bug report could be reproduced from.
+		snap := entitlement.Snap()
+		resp.Licensed = snap.Licensed
+		resp.Edition = string(snap.Edition)
+		if snap.State != "" {
+			// Empty means no gate was installed at all: a community deployment
+			// with no licence hub. The default above already says "unlicensed",
+			// which is what that is.
+			resp.State = string(snap.State)
+		}
 
 		// Everything DESCRIPTIVE comes from the installed certificate, in force
 		// or not: support needs to see what it carries even when it grants
 		// nothing, and Licensed already says that it grants nothing.
+		//
+		// These come from the hub's snapshot rather than the gate's because the
+		// gate deliberately drops limits, and drops features once a certificate
+		// lapses. Reading them straight from the payload is the point.
 		if svc != nil {
-			if snap := svc.State(); snap.Payload != nil {
-				if snap.Payload.Features != nil {
-					resp.Features = snap.Payload.Features
+			if lic := svc.State(); lic.Payload != nil {
+				if lic.Payload.Features != nil {
+					resp.Features = lic.Payload.Features
 				}
-				if snap.Payload.Limits != nil {
-					resp.Limits = snap.Payload.Limits
+				if lic.Payload.Limits != nil {
+					resp.Limits = lic.Payload.Limits
 				}
 			}
 		}
 
 		c.JSON(http.StatusOK, resp)
 	})
-}
-
-// licenseStateOrUnlicensed reports the license state, treating a disabled
-// license hub as unlicensed — which is the truth from a capability standpoint
-// and keeps the response shape stable.
-func licenseStateOrUnlicensed(svc *license.Service) string {
-	if svc == nil {
-		return "unlicensed"
-	}
-	return string(svc.State().State)
 }

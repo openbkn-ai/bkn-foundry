@@ -171,8 +171,17 @@ func registerLicenseInternal(r *gin.Engine, svc *license.Service) {
 	})
 
 	// GET /capabilities — the features/limits the license carries, plus the
-	// state needed to interpret them (fallback = community set applies). The
-	// frontend shows/hides entries by this; enforcement stays server-side.
+	// state needed to interpret them (fallback = community set applies).
+	//
+	// This is the RAW certificate, for cluster-internal consumers that verify
+	// and interpret it themselves. It is NOT a display surface: edition here
+	// comes straight off the payload, so a certificate expired past its grace
+	// window still reports the tier it was sold as, and the caller is expected
+	// to read state to work out that it grants nothing.
+	//
+	// Frontends use /api/safe/v1/capabilities instead — the gateway exposes
+	// that one, and it reports what is actually in force and actually installed
+	// in this binary. The two disagree by design.
 	g.GET("/capabilities", func(c *gin.Context) {
 		snap := svc.State()
 		resp := gin.H{
