@@ -60,24 +60,39 @@ func postgresqlDateValueExpr(field *interfaces.Property) string {
 }
 
 // postgresqlDateCompareExpr compares a date column with epoch milliseconds.
-func postgresqlDateCompareExpr(field *interfaces.Property, op string, value any) sq.Sqlizer {
+func validatePostgresqlDateValue(field *interfaces.Property, value any) error {
+	if field.Type == interfaces.DataType_Time && value != nil {
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("PostgreSQL time field %q requires a time string, got %T", field.Name, value)
+		}
+	}
+	return nil
+}
+
+func postgresqlDateCompareExpr(field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
+	if err := validatePostgresqlDateValue(field, value); err != nil {
+		return nil, err
+	}
 	return sq.Expr(
 		quoteColumnName(field.OriginalName)+" "+op+" "+postgresqlDateValueExpr(field),
 		normalizeTimestampValue(value),
-	)
+	), nil
 }
 
-func postgresqlDateSetExpr(field *interfaces.Property, op string, values []any) sq.Sqlizer {
+func postgresqlDateSetExpr(field *interfaces.Property, op string, values []any) (sq.Sqlizer, error) {
 	valueExprs := make([]string, len(values))
 	args := make([]any, len(values))
 	for i, value := range values {
+		if err := validatePostgresqlDateValue(field, value); err != nil {
+			return nil, err
+		}
 		valueExprs[i] = postgresqlDateValueExpr(field)
 		args[i] = normalizeTimestampValue(value)
 	}
 	return sq.Expr(
 		quoteColumnName(field.OriginalName)+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
 		args...,
-	)
+	), nil
 }
 
 func (c *PostgresqlConnector) ConvertFilterCondition(ctx context.Context, condition interfaces.FilterCondition,
@@ -211,7 +226,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionEqual(ctx context.Context, c
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return postgresqlDateCompareExpr(cond.Lfield, "=", cond.Value), nil
+			return postgresqlDateCompareExpr(cond.Lfield, "=", cond.Value)
 		}
 		return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -232,7 +247,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotEqual(ctx context.Context
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return postgresqlDateCompareExpr(cond.Lfield, "<>", cond.Value), nil
+			return postgresqlDateCompareExpr(cond.Lfield, "<>", cond.Value)
 		}
 		return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -253,7 +268,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionGt(ctx context.Context, cond
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return postgresqlDateCompareExpr(cond.Lfield, ">", cond.Value), nil
+			return postgresqlDateCompareExpr(cond.Lfield, ">", cond.Value)
 		}
 		return sq.Gt{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -274,7 +289,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionGte(ctx context.Context, con
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return postgresqlDateCompareExpr(cond.Lfield, ">=", cond.Value), nil
+			return postgresqlDateCompareExpr(cond.Lfield, ">=", cond.Value)
 		}
 		return sq.GtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -295,7 +310,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionLt(ctx context.Context, cond
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return postgresqlDateCompareExpr(cond.Lfield, "<", cond.Value), nil
+			return postgresqlDateCompareExpr(cond.Lfield, "<", cond.Value)
 		}
 		return sq.Lt{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -316,7 +331,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionLte(ctx context.Context, con
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return postgresqlDateCompareExpr(cond.Lfield, "<=", cond.Value), nil
+			return postgresqlDateCompareExpr(cond.Lfield, "<=", cond.Value)
 		}
 		return sq.LtOrEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -338,7 +353,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionIn(ctx context.Context, cond
 		return nil, fmt.Errorf("condition [in] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return postgresqlDateSetExpr(cond.Lfield, "IN", cond.Value), nil
+		return postgresqlDateSetExpr(cond.Lfield, "IN", cond.Value)
 	}
 
 	return sq.Eq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
@@ -356,7 +371,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotIn(ctx context.Context, c
 		return nil, fmt.Errorf("condition [not_in] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return postgresqlDateSetExpr(cond.Lfield, "NOT IN", cond.Value), nil
+		return postgresqlDateSetExpr(cond.Lfield, "NOT IN", cond.Value)
 	}
 
 	return sq.NotEq{quoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
@@ -454,10 +469,15 @@ func (c *PostgresqlConnector) ConvertFilterConditionRange(ctx context.Context, c
 	}
 
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return sq.And{
-			postgresqlDateCompareExpr(cond.Lfield, ">=", values[0]),
-			postgresqlDateCompareExpr(cond.Lfield, "<=", values[1]),
-		}, nil
+		lower, err := postgresqlDateCompareExpr(cond.Lfield, ">=", values[0])
+		if err != nil {
+			return nil, err
+		}
+		upper, err := postgresqlDateCompareExpr(cond.Lfield, "<=", values[1])
+		if err != nil {
+			return nil, err
+		}
+		return sq.And{lower, upper}, nil
 	}
 
 	return sq.And{
@@ -484,10 +504,15 @@ func (c *PostgresqlConnector) ConvertFilterConditionOutRange(ctx context.Context
 	}
 
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return sq.Or{
-			postgresqlDateCompareExpr(cond.Lfield, "<", values[0]),
-			postgresqlDateCompareExpr(cond.Lfield, ">", values[1]),
-		}, nil
+		lower, err := postgresqlDateCompareExpr(cond.Lfield, "<", values[0])
+		if err != nil {
+			return nil, err
+		}
+		upper, err := postgresqlDateCompareExpr(cond.Lfield, ">", values[1])
+		if err != nil {
+			return nil, err
+		}
+		return sq.Or{lower, upper}, nil
 	}
 
 	return sq.Or{
@@ -590,10 +615,15 @@ func (c *PostgresqlConnector) ConvertFilterConditionBetween(ctx context.Context,
 	isDateType := interfaces.DataType_IsDate(fieldType)
 
 	if isDateType {
-		return sq.And{
-			postgresqlDateCompareExpr(cond.Lfield, ">=", values[0]),
-			postgresqlDateCompareExpr(cond.Lfield, "<=", values[1]),
-		}, nil
+		lower, err := postgresqlDateCompareExpr(cond.Lfield, ">=", values[0])
+		if err != nil {
+			return nil, err
+		}
+		upper, err := postgresqlDateCompareExpr(cond.Lfield, "<=", values[1])
+		if err != nil {
+			return nil, err
+		}
+		return sq.And{lower, upper}, nil
 	}
 
 	// 非时间类型字段，直接使用参数化查询

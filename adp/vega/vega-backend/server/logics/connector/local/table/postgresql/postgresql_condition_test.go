@@ -120,7 +120,9 @@ func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone
 				OriginalType: originalType,
 			}
 
-			sql, args, err := postgresqlDateCompareExpr(field, ">=", float64(1785295334428)).ToSql()
+			expr, err := postgresqlDateCompareExpr(field, ">=", float64(1785295334428))
+			require.NoError(t, err)
+			sql, args, err := expr.ToSql()
 			require.NoError(t, err)
 			assert.Equal(t, `"created_at" >= (to_timestamp(?::double precision / 1000.0) AT TIME ZONE current_setting('TimeZone'))`, sql)
 			assert.Equal(t, []interface{}{int64(1785295334428)}, args)
@@ -136,7 +138,9 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 				OriginalType: originalType,
 			}
 
-			sql, args, err := postgresqlDateCompareExpr(field, ">=", "14:30:00").ToSql()
+			expr, err := postgresqlDateCompareExpr(field, ">=", "14:30:00")
+			require.NoError(t, err)
+			sql, args, err := expr.ToSql()
 			require.NoError(t, err)
 			assert.Equal(t, `"event_time" >= ?`, sql)
 			assert.Equal(t, []interface{}{"14:30:00"}, args)
@@ -150,6 +154,16 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 
 		assert.Equal(t, `"event_time" IN (?, ?)`, sql)
 		assert.Equal(t, []interface{}{"14:30:00", "16:45:00"}, args)
+	})
+
+	t.Run("rejects numeric time values", func(t *testing.T) {
+		c := &PostgresqlConnector{}
+		cond := mustNewCond(t, "event_time", ">=", float64(1785295334428))
+
+		expr, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		require.Error(t, err)
+		assert.Nil(t, expr)
+		assert.Contains(t, err.Error(), "requires a time string")
 	})
 }
 

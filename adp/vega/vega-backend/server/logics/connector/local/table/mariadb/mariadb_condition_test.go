@@ -57,6 +57,17 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
+	t.Run("convert date equal from epoch milliseconds", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "created_at", "==", float64(1785295334428))
+		sql, args := toSQL(t, c, cond)
+		if sql != "`created_at` = FROM_UNIXTIME(?/1000)" {
+			t.Errorf("unexpected SQL: %s", sql)
+		}
+		if len(args) != 1 || args[0] != int64(1785295334428) {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
 	t.Run("convert equal field to field", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cfg := &interfaces.FilterCondCfg{
@@ -106,6 +117,17 @@ func TestMariaDBConnectorConvertFilterConditionNotEqual(t *testing.T) {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != "bob" {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+	t.Run("convert date not equal from epoch milliseconds", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "created_at", "!=", float64(1785295334428))
+		sql, args := toSQL(t, c, cond)
+		if sql != "`created_at` <> FROM_UNIXTIME(?/1000)" {
+			t.Errorf("unexpected SQL: %s", sql)
+		}
+		if len(args) != 1 || args[0] != int64(1785295334428) {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -176,6 +198,17 @@ func TestMariaDBConnectorConvertFilterConditionIn(t *testing.T) {
 			t.Errorf("expected 2 args, got %d", len(args))
 		}
 	})
+	t.Run("convert date in from epoch milliseconds", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "created_at", "in", []any{1785295334428, 1785381734428})
+		sql, args := toSQL(t, c, cond)
+		if sql != "`created_at` IN (FROM_UNIXTIME(?/1000), FROM_UNIXTIME(?/1000))" {
+			t.Errorf("unexpected SQL: %s", sql)
+		}
+		if len(args) != 2 || args[0] != int64(1785295334428) || args[1] != int64(1785381734428) {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
 }
 func TestMariaDBConnectorConvertFilterConditionNotIn(t *testing.T) {
 	t.Run("convert not in", func(t *testing.T) {
@@ -184,6 +217,46 @@ func TestMariaDBConnectorConvertFilterConditionNotIn(t *testing.T) {
 		sql, _ := toSQL(t, c, cond)
 		if sql != "`name` NOT IN (?)" {
 			t.Errorf("unexpected SQL: %s", sql)
+		}
+	})
+	t.Run("convert date not in from epoch milliseconds", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "created_at", "not_in", []any{1785295334428, 1785381734428})
+		sql, args := toSQL(t, c, cond)
+		if sql != "`created_at` NOT IN (FROM_UNIXTIME(?/1000), FROM_UNIXTIME(?/1000))" {
+			t.Errorf("unexpected SQL: %s", sql)
+		}
+		if len(args) != 2 || args[0] != int64(1785295334428) || args[1] != int64(1785381734428) {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+}
+
+func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
+	t.Run("keeps time strings raw", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "event_time", ">=", "14:30:00")
+		sql, args := toSQL(t, c, cond)
+		if sql != "`event_time` >= ?" {
+			t.Errorf("unexpected SQL: %s", sql)
+		}
+		if len(args) != 1 || args[0] != "14:30:00" {
+			t.Errorf("unexpected args: %v", args)
+		}
+	})
+
+	t.Run("rejects numeric time values", func(t *testing.T) {
+		c := &MariaDBConnector{}
+		cond := mustNewCond(t, "event_time", ">=", float64(1785295334428))
+		expr, err := c.ConvertFilterCondition(context.Background(), cond, testFieldsMap())
+		if err == nil {
+			t.Fatal("expected numeric time value error")
+		}
+		if expr != nil {
+			t.Fatalf("expected nil expression, got %v", expr)
+		}
+		if !strings.Contains(err.Error(), "requires a time string") {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }
@@ -417,6 +490,7 @@ func testFieldsMap() map[string]*interfaces.Property {
 		"age":        {Name: "age", OriginalName: "age", Type: interfaces.DataType_Integer},
 		"score":      {Name: "score", OriginalName: "score", Type: interfaces.DataType_Float},
 		"created_at": {Name: "created_at", OriginalName: "created_at", Type: interfaces.DataType_Datetime},
+		"event_time": {Name: "event_time", OriginalName: "event_time", OriginalType: "time", Type: interfaces.DataType_Time},
 		"is_active":  {Name: "is_active", OriginalName: "is_active", Type: interfaces.DataType_Boolean},
 		"tags":       {Name: "tags", OriginalName: "tags", Type: interfaces.DataType_Text},
 		"alias_col":  {Name: "alias_col", OriginalName: "t1.col", Type: interfaces.DataType_String},
