@@ -283,6 +283,23 @@ _sync_and_upsert_access_address() {
     _upsert_access_address "${host}" "${port}" "${path}" "${scheme}"
 }
 
+_port_after_interactive_protocol_selection() {
+    local current_port="$1"
+    local current_scheme="$2"
+    local input_port="$3"
+    local input_scheme="$4"
+    local selected_scheme="${input_scheme:-${current_scheme}}"
+
+    if [[ -n "${input_port}" ]]; then
+        printf '%s' "${input_port}"
+    elif [[ -n "${input_scheme}" ]] \
+        && [[ "${selected_scheme,,}" != "${current_scheme,,}" ]]; then
+        _default_access_port_for_scheme "${selected_scheme}"
+    else
+        printf '%s' "${current_port}"
+    fi
+}
+
 _default_access_port_for_scheme() {
     local scheme="${1:-https}"
     case "${scheme,,}" in
@@ -398,7 +415,7 @@ confirm_access_address_before_install() {
         read -r -p "  Protocol [${scheme}]: " input_scheme
 
         host="${input_host:-${host}}"
-        port="${input_port:-${port}}"
+        port="$(_port_after_interactive_protocol_selection "${port}" "${scheme}" "${input_port}" "${input_scheme}")"
         path="${input_path:-${path}}"
         scheme="${input_scheme:-${scheme}}"
     else

@@ -29,6 +29,20 @@ source "${SCRIPT_DIR}/deploy.sh"
 
 INGRESS_NGINX_HTTP_PORT=80
 INGRESS_NGINX_HTTPS_PORT=443
+
+# Interactive protocol changes without an explicit port must switch to the
+# new protocol's default, otherwise hostNetwork would try to bind both
+# protocols to the same port.
+assert_eq "protocol-change-uses-new-default-port" \
+    "$(_port_after_interactive_protocol_selection "443" "https" "" "http")" \
+    "80"
+assert_eq "explicit-port-wins-over-protocol-default" \
+    "$(_port_after_interactive_protocol_selection "443" "https" "8080" "http")" \
+    "8080"
+assert_eq "unchanged-protocol-keeps-current-port" \
+    "$(_port_after_interactive_protocol_selection "8443" "https" "" "")" \
+    "8443"
+
 _sync_and_upsert_access_address "foundry.example" "8443" "/" "https"
 assert_eq "https-custom-port-reaches-ingress" "${INGRESS_NGINX_HTTPS_PORT}" "8443"
 assert_eq "https-does-not-change-http-port" "${INGRESS_NGINX_HTTP_PORT}" "80"
