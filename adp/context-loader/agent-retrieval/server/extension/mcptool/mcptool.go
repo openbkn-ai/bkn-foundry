@@ -79,6 +79,19 @@ type ExtraTool struct {
 	Name, Desc    string
 	Input, Output json.RawMessage
 	Handle        Handler
+
+	// Presentation hints, all optional. Title is a UI-friendly display name
+	// (MCP's own `title` field); Group/GroupTitle/Order let the tool sit in a
+	// catalogue next to core's, and travel in the tool's `_meta`.
+	//
+	// Optional because a tool is usable without them and core will not invent
+	// them: left unset the tool is advertised with its Name and no group, which
+	// is how every tool looked before these existed. Group is a stable
+	// identifier a client may branch on; GroupTitle is the label it renders.
+	Title      string
+	Group      string
+	GroupTitle string
+	Order      int
 }
 
 // Decorator adds to a tool core already serves.

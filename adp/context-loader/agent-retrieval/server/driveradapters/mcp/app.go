@@ -225,8 +225,44 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 	return mcpServer, b
 }
 
-func newToolWithSchemas(name, description string, input, output json.RawMessage) mcp.Tool {
-	tool := mcp.NewToolWithRawSchema(name, description, input)
+// Prefix for this service's own `_meta` keys on a tool.
+//
+// MCP reserves modelcontextprotocol.io/ and mcp.dev/ for itself and asks
+// everyone else to prefix with a domain they control, so these keys cannot
+// collide with a future protocol field of the same short name.
+const toolMetaKeyPrefix = "openbkn.ai/"
+
+// Presentation hints that have no field of their own in the protocol. `title`
+// does have one and is set on the tool directly.
+const (
+	toolMetaKeyGroup      = toolMetaKeyPrefix + "group"
+	toolMetaKeyGroupTitle = toolMetaKeyPrefix + "group_title"
+	toolMetaKeyOrder      = toolMetaKeyPrefix + "order"
+)
+
+func newToolWithSchemas(meta ToolMeta, input, output json.RawMessage) mcp.Tool {
+	tool := mcp.NewToolWithRawSchema(meta.Name, meta.Description, input)
 	tool.RawOutputSchema = output
+	tool.Title = meta.Title
+	if fields := toolDisplayMetaFields(meta); len(fields) > 0 {
+		tool.Meta = &mcp.Meta{AdditionalFields: fields}
+	}
 	return tool
+}
+
+// toolDisplayMetaFields renders the non-protocol presentation hints as `_meta`
+// entries, omitting whatever the tool did not declare — an absent key is how a
+// client tells "ungrouped" from "grouped under the empty string".
+func toolDisplayMetaFields(meta ToolMeta) map[string]any {
+	fields := map[string]any{}
+	if meta.Group != "" {
+		fields[toolMetaKeyGroup] = meta.Group
+	}
+	if meta.GroupTitle != "" {
+		fields[toolMetaKeyGroupTitle] = meta.GroupTitle
+	}
+	if meta.Order != 0 {
+		fields[toolMetaKeyOrder] = meta.Order
+	}
+	return fields
 }

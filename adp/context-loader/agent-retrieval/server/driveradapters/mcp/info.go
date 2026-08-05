@@ -12,9 +12,17 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 )
 
-// MCPToolInfo 单个工具的对外说明（名称 / 描述 / 输入输出 schema）。
+// MCPToolInfo 单个工具的对外说明（名称 / 展示元数据 / 描述 / 输入输出 schema）。
+//
+// title / group / group_title / order 与 tools/list 同源：那边 title 落在协议
+// 自己的字段上、其余三个落在工具的 `_meta`，这边一律是平铺字段。两处必须给出
+// 同一份答案——这个端点存在的理由就是「不握手也能看清能力面」。
 type MCPToolInfo struct {
 	Name         string          `json:"name"`
+	Title        string          `json:"title,omitempty"`
+	Group        string          `json:"group,omitempty"`
+	GroupTitle   string          `json:"group_title,omitempty"`
+	Order        int             `json:"order,omitempty"`
 	Description  string          `json:"description"`
 	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
 	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
@@ -64,6 +72,8 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 	if err := json.Unmarshal(data, &meta); err != nil {
 		return nil, fmt.Errorf("parse tools_meta.json: %w", err)
 	}
+	// 这里读的恒是内嵌的那份，不过 locale——和 name/description 一样，是这个端点
+	// 早就有的缺口（见 socket_call_test.go 里那条注释），展示元数据只是跟着它走。
 
 	// 与 tools/list 用同一套按当前档位的判定：装饰过的工具带上付费参数、
 	// 未授权的企业工具不出现。两处若不一致，这个端点就比不存在更糟——它的
@@ -85,6 +95,10 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 		}
 		all = append(all, entry{key, MCPToolInfo{
 			Name:         m.Name,
+			Title:        m.Title,
+			Group:        m.Group,
+			GroupTitle:   m.GroupTitle,
+			Order:        m.Order,
 			Description:  m.Description,
 			InputSchema:  in,
 			OutputSchema: out,
@@ -97,6 +111,10 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 		}
 		all = append(all, entry{t.Key, MCPToolInfo{
 			Name:        t.Name,
+			Title:       t.Title,
+			Group:       t.Group,
+			GroupTitle:  t.GroupTitle,
+			Order:       t.Order,
 			Description: t.Desc,
 			// 与 tools/list 同样施加（assemble.go 的 addExtras）：企业工具按本服务
 			// 自己的定义就是业务工具，生命周期守卫会向它要 bkn_context。这个端点

@@ -90,6 +90,18 @@ paths:
 
         同一路径也接受协议规定的其他方法（如用于服务端推送的 `GET`、用于结束会话的
         `DELETE`），具体以 MCP 规范为准。
+
+        `tools/list` 的每个工具除协议必备字段外，还带一组展示元数据，供客户端直接
+        渲染工具目录，不必自行维护工具名到中文名的映射表：
+
+        - `title`：展示名，MCP 协议自身的字段（2025-06-18 起）。缺失时回退到 `name`。
+        - `_meta["openbkn.ai/group"]`：分组标识，稳定值，可用于分支判断。
+        - `_meta["openbkn.ai/group_title"]`：分组展示名。
+        - `_meta["openbkn.ai/order"]`：目录内位置，升序；未声明的排在末尾。
+
+        `title` 与 `group_title` 随部署的语言设置本地化；`group` 与 `order` 不随语言
+        变化。`_meta` 下这三项不是协议字段，不认识它们的客户端会按协议忽略。
+        `GET /mcp/info` 返回同一份元数据，只是平铺成普通字段。
       requestBody:
         required: true
         content:
@@ -185,7 +197,25 @@ components:
       properties:
         name:
           type: string
-          description: 工具名。
+          description: 工具名，调用时使用的程序标识，不随展示需要变化。
+        title:
+          type: string
+          description: |
+            工具展示名（随部署语言设置本地化）。对应 `tools/list` 里 MCP 协议
+            自身的 `title` 字段；客户端应优先展示它，缺失时回退到 `name`。
+        group:
+          type: string
+          description: |
+            分组标识，稳定值，供客户端分组或分支判断。当前取值：
+            `lifecycle` / `discovery` / `query` / `action` / `resource`。
+            扩展工具未声明时不返回。
+        group_title:
+          type: string
+          description: 分组展示名（随部署语言设置本地化）。
+        order:
+          type: integer
+          description: |
+            目录内的排列位置，升序。未声明时不返回，客户端应把这类工具排在末尾。
         description:
           type: string
           description: 工具描述（随部署语言设置本地化）。

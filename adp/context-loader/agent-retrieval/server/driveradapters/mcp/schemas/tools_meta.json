@@ -1,94 +1,186 @@
 {
   "bkn_finish_interaction": {
     "name": "bkn_finish_interaction",
+    "title": "结束交互",
+    "group": "lifecycle",
+    "group_title": "会话生命周期",
+    "order": 20,
     "description": "Submit the current Interaction result and final answer. This does not close the Conversation."
   },
   "bkn_start_interaction": {
     "name": "bkn_start_interaction",
+    "title": "开始交互",
+    "group": "lifecycle",
+    "group_title": "会话生命周期",
+    "order": 10,
     "description": "Start one managed Interaction. Omit conversation_id on the first turn; reuse the returned conversation_id on later turns."
   },
   "search_schema": {
     "name": "search_schema",
+    "title": "Schema 探索",
+    "group": "discovery",
+    "group_title": "网络与 Schema",
+    "order": 130,
     "description": "统一的 Schema 探索入口，先锁定对象类（object_types）。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费；其中 metric_types 只是辅助线索，指标的权威清单以 get_object_types 返回的 related_metrics 为准（按对象类 scope 全量枚举）。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type/condition_operations，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
   },
   "query_object_instance": {
     "name": "query_object_instance",
+    "title": "实例查询",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 210,
     "description": "单对象类实例过滤查询。已知对象类与过滤条件时，查询实例列表。支持 search_after 游标顺序翻页（用上一页返回的 search_after 取下一页，不支持跳页）。"
   },
   "query_instance_subgraph": {
     "name": "query_instance_subgraph",
+    "title": "子图查询",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 220,
     "description": "沿关系路径拉取实例子图，支持多跳关系查询。"
   },
   "get_logic_properties_values": {
     "name": "get_logic_properties_values",
+    "title": "逻辑属性计算",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 230,
     "description": "逻辑属性解析（指标/算子）。针对实例批量计算已绑逻辑属性的值——指标路径里对应「实例级 + 已绑 logic property」这一支；类级指标、或未绑逻辑属性的指标改调 query_metric。"
   },
   "query_metric": {
     "name": "query_metric",
+    "title": "指标查询",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 250,
     "description": "按已建模指标的口径取数（OT-first 路径第 3 步）。先 search_schema / get_kn_detail 锁定对象类，再 get_object_types 从 related_metrics 里选定 metric_id，最后调本工具计算——口径写在 MetricDefinition 里，别用 run_sql 自己重写。分流：实例级且已绑逻辑属性的走 get_logic_properties_values；类级、或未绑逻辑属性的走本工具。可选 condition 过滤、analysis_dimensions 拆维、time 取单点或序列。时间窗规则：省略 instant 等同于序列查询，必须给 step；start 与 end 要么都给要么都不给。"
   },
   "get_action_info": {
     "name": "get_action_info",
+    "title": "行动信息",
+    "group": "action",
+    "group_title": "行动",
+    "order": 310,
     "description": "行动信息召回。针对对象实例返回可执行行动的工具定义。"
   },
   "execute_action": {
     "name": "execute_action",
+    "title": "执行行动",
+    "group": "action",
+    "group_title": "行动",
+    "order": 320,
     "description": "执行行动。先用 get_action_info 获取行动的 dynamic_params schema，再填入真实动态参数值触发执行（异步，返回 execution_id）。同一 kn + 行动类型 + 实例集合与 dynamic_params 在窗口期内重复提交会返回 409，不要重试，改用 get_action_execution 查询已有 execution。"
   },
   "get_action_execution": {
     "name": "get_action_execution",
+    "title": "执行结果",
+    "group": "action",
+    "group_title": "行动",
+    "order": 330,
     "description": "查询单次行动执行的状态与结果。用 execute_action 返回的 execution_id 查询整体 status 与逐对象 results。"
   },
   "list_action_executions": {
     "name": "list_action_executions",
+    "title": "执行历史",
+    "group": "action",
+    "group_title": "行动",
+    "order": 340,
     "description": "列出行动执行历史，可按行动类型、状态、触发方式过滤并分页。"
   },
   "find_skills": {
     "name": "find_skills",
+    "title": "技能召回",
+    "group": "resource",
+    "group_title": "数据资源与技能",
+    "order": 430,
     "description": "技能召回。根据知识网络、对象类型、实例上下文等召回匹配的可用技能列表。"
   },
   "list_knowledge_networks": {
     "name": "list_knowledge_networks",
+    "title": "知识网络列表",
+    "group": "discovery",
+    "group_title": "网络与 Schema",
+    "order": 110,
     "description": "列出可用的知识网络（返回 kn_id、名称、描述）。其余查询工具均需 kn_id，作为探索的第一步入口。"
   },
   "get_kn_detail": {
     "name": "get_kn_detail",
+    "title": "网络结构",
+    "group": "discovery",
+    "group_title": "网络与 Schema",
+    "order": 120,
     "description": "获取知识网络 schema（概念组、对象类型含 data_source.id、关系类型、行动类型）。默认 detail_level=summary：返回骨架 + 每个属性仅 name+type（不含 display_name/comment/字段映射/查询算子/映射规则）——足够理解结构与规划查询，体积小。需要某对象的完整字段映射（含 comment）时调 get_object_types，需要关系的 mapping_rules 时调 get_relation_types。detail_level=full 一次拿全量（体积大，慎用）。对象类条目附带 related_metric_count（该对象类下已建模指标数），用来判断是否值得下钻取指标。"
   },
   "get_object_types": {
     "name": "get_object_types",
+    "title": "对象类详情",
+    "group": "discovery",
+    "group_title": "网络与 Schema",
+    "order": 140,
     "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters），并返回该对象类下可用的指标 related_metrics（scope_type=object_type 且 scope_ref=对象类 id，含未绑逻辑属性的指标）。渐进式下钻用：先 get_kn_detail（summary）拿对象 id，再用本工具展开需要的对象。选定指标后：实例级且已绑逻辑属性走 get_logic_properties_values，类级或未绑的走 query_metric。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
   },
   "get_relation_types": {
     "name": "get_relation_types",
+    "title": "关系类详情",
+    "group": "discovery",
+    "group_title": "网络与 Schema",
+    "order": 150,
     "description": "按 id 批量取关系类的完整定义（含 mapping_rules、source/target 对象名）。渐进式下钻用：先 get_kn_detail（summary）拿关系 id，再用本工具展开。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。"
   },
   "run_sql": {
     "name": "run_sql",
+    "title": "SQL 查询",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 240,
     "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。注意：已建模指标不要用 SQL 重写口径——指标走 get_object_types 选定后的 query_metric / get_logic_properties_values；run_sql 用于未建成指标的即席聚合与跨表统计。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
   },
   "list_resources": {
     "name": "list_resources",
+    "title": "数据资源列表",
+    "group": "resource",
+    "group_title": "数据资源与技能",
+    "order": 410,
     "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id），可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。"
   },
   "describe_resource": {
     "name": "describe_resource",
+    "title": "数据资源详情",
+    "group": "resource",
+    "group_title": "数据资源与技能",
+    "order": 420,
     "description": "取单个数据资源的物理 schema：connector_type 与列（columns:[{name,type}]）。写 run_sql 前用它拿物理列名。入参 resource_id 取自 list_resources。"
   },
   "list_skills": {
     "name": "list_skills",
+    "title": "技能列表",
+    "group": "resource",
+    "group_title": "数据资源与技能",
+    "order": 440,
     "description": "浏览已发布技能（不需要知识网络上下文）。与 find_skills 互补：那条按对象类/实例召回，这条按名称或分类翻列表。拿到 skill_id 后用 get_skill_content 读 SKILL.md，用 read_skill_file 下钻附属文件，用 execute_skill 执行入口命令。"
   },
   "get_skill_content": {
     "name": "get_skill_content",
+    "title": "技能内容",
+    "group": "resource",
+    "group_title": "数据资源与技能",
+    "order": 450,
     "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法与入口命令都写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。"
   },
   "read_skill_file": {
     "name": "read_skill_file",
+    "title": "读技能文件",
+    "group": "resource",
+    "group_title": "数据资源与技能",
+    "order": 460,
     "description": "读技能包内单个文件的正文，rel_path 取自 get_skill_content 返回的 files 清单。渐进式加载用：大文件不必常驻上下文。二进制文件只回元数据不回正文。"
   },
   "execute_skill": {
     "name": "execute_skill",
+    "title": "执行技能",
+    "group": "resource",
+    "group_title": "数据资源与技能",
+    "order": 470,
     "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。"
   }
 }

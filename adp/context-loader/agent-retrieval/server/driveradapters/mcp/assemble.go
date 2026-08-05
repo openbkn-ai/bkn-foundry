@@ -59,9 +59,8 @@ func newToolBuilder(locale *mcpLocaleBundle) *toolBuilder {
 // add registers a core tool, taking metadata and schemas from the locale
 // bundle.
 func (b *toolBuilder) add(key string, h mcptool.Handler) {
-	name, desc := b.locale.ToolMeta(key)
 	in, out := b.locale.ToolSchemas(key)
-	b.addWith(key, name, desc, in, out, h)
+	b.addWith(key, b.locale.ToolMeta(key), in, out, h)
 }
 
 // addEmbedded registers a core tool from the embedded schemas directory,
@@ -72,9 +71,8 @@ func (b *toolBuilder) add(key string, h mcptool.Handler) {
 // changes what a community binary advertises, so it is a separate change with
 // its own parity baseline.
 func (b *toolBuilder) addEmbedded(key string, h mcptool.Handler) {
-	name, desc := loadToolMeta(key)
 	in, out := loadToolSchemas(key)
-	b.addWith(key, name, desc, in, out, h)
+	b.addWith(key, loadToolMeta(key), in, out, h)
 }
 
 // addWith is where a core tool meets its decorator, if it has one.
@@ -85,13 +83,13 @@ func (b *toolBuilder) addEmbedded(key string, h mcptool.Handler) {
 // publish a paid parameter in its schema and stop being byte-identical to
 // community. The handler is wrapped either way — Wrap re-checks the licence on
 // every call and falls back to core's own result when it does not hold.
-func (b *toolBuilder) addWith(key, name, desc string, in, out json.RawMessage, h mcptool.Handler) {
-	b.claimName(name, key)
+func (b *toolBuilder) addWith(key string, meta ToolMeta, in, out json.RawMessage, h mcptool.Handler) {
+	b.claimName(meta.Name, key)
 	if d, ok := mcptool.DecoratorFor(key); ok {
-		b.patched[name] = newToolWithSchemas(name, desc, d.Patch(in), out)
+		b.patched[meta.Name] = newToolWithSchemas(meta, d.Patch(in), out)
 		h = d.Wrap(h)
 	}
-	b.pending = append(b.pending, pendingTool{newToolWithSchemas(name, desc, in, out), h})
+	b.pending = append(b.pending, pendingTool{newToolWithSchemas(meta, in, out), h})
 }
 
 // addExtras appends the enterprise-only tools. In a community binary the
@@ -108,7 +106,7 @@ func (b *toolBuilder) addExtras() {
 		// tool is unusable by anyone following it — the schema comes from ee,
 		// which has no reason to know this service has a lifecycle guard.
 		b.pending = append(b.pending, pendingTool{
-			newToolWithSchemas(t.Name, t.Desc, offerBKNContext(t.Input), t.Output),
+			newToolWithSchemas(extraToolMeta(t), offerBKNContext(t.Input), t.Output),
 			mcptool.Gated(t),
 		})
 	}
@@ -163,8 +161,26 @@ func (b *toolBuilder) claimName(name, key string) {
 // AddTool lets the later registration win.
 func (b *toolBuilder) claimLifecycleNames() {
 	for key := range lifecycleToolNames {
-		name, _ := loadToolMeta(key)
-		b.claimName(name, key)
+		b.claimName(loadToolMeta(key).Name, key)
+	}
+}
+
+// extraToolMeta reads an enterprise tool's presentation hints off its
+// declaration.
+//
+// They are optional there and stay optional here: an ee build that declares
+// none gets a tool with no title and no group, which is what every tool looked
+// like before this existed. Core does not invent a group for it — inventing one
+// would put a paid tool under a heading core made up, and core cannot see the
+// capability well enough to name it.
+func extraToolMeta(t mcptool.ExtraTool) ToolMeta {
+	return ToolMeta{
+		Name:        t.Name,
+		Title:       t.Title,
+		Group:       t.Group,
+		GroupTitle:  t.GroupTitle,
+		Order:       t.Order,
+		Description: t.Desc,
 	}
 }
 

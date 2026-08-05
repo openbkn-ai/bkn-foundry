@@ -139,9 +139,8 @@ func hashBytes(raw []byte) string {
 func registerLifecycleTools(mcpServer *server.MCPServer, client *bkntrace.LifecycleClient) {
 	for name := range lifecycleToolNames {
 		input, output := loadToolSchemas(name)
-		title, description := loadToolMeta(name)
 		mcpServer.AddTool(
-			newToolWithSchemas(title, description, input, output),
+			newToolWithSchemas(loadToolMeta(name), input, output),
 			handleLifecycleTool(client, name),
 		)
 	}

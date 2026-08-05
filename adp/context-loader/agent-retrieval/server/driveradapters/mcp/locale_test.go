@@ -14,9 +14,15 @@ func TestMCPLocaleBundle(t *testing.T) {
 
 		convey.So(bundle.ServerInstructions(), convey.ShouldContainSubstring, "Context Loader knowledge network tools")
 
-		name, description := bundle.ToolMeta(toolKeySearchSchema)
-		convey.So(name, convey.ShouldEqual, "search_schema")
-		convey.So(description, convey.ShouldContainSubstring, "Explore schema")
+		meta := bundle.ToolMeta(toolKeySearchSchema)
+		convey.So(meta.Name, convey.ShouldEqual, "search_schema")
+		convey.So(meta.Description, convey.ShouldContainSubstring, "Explore schema")
+		convey.So(meta.Title, convey.ShouldEqual, "Explore Schema")
+		convey.So(meta.GroupTitle, convey.ShouldEqual, "Networks & Schema")
+		// group / order 只在基准文件里声明，本地化文件不重复一遍——翻译改不动
+		// 分组归属和排序。
+		convey.So(meta.Group, convey.ShouldEqual, "discovery")
+		convey.So(meta.Order, convey.ShouldEqual, 130)
 
 		input, _ := bundle.ToolSchemas(toolKeySearchSchema)
 		var schema map[string]any
@@ -30,8 +36,7 @@ func TestMCPLocaleBundle(t *testing.T) {
 		bundle := loadMCPLocaleBundle("fr-FR")
 
 		convey.So(bundle.ServerInstructions(), convey.ShouldEqual, serverInstructions)
-		name, _ := bundle.ToolMeta(toolKeyRunSQL)
-		convey.So(name, convey.ShouldEqual, toolKeyRunSQL)
+		convey.So(bundle.ToolMeta(toolKeyRunSQL).Name, convey.ShouldEqual, toolKeyRunSQL)
 	})
 
 	convey.Convey("localized schema description overlays should match existing schema paths", t, func() {

@@ -79,13 +79,41 @@ func (b *mcpLocaleBundle) ServerInstructions() string {
 	return b.instructions
 }
 
-func (b *mcpLocaleBundle) ToolMeta(toolKey string) (name, description string) {
-	if b.toolMeta != nil {
-		if meta, ok := b.toolMeta[toolKey]; ok {
-			return meta.Name, meta.Description
-		}
+// ToolMeta returns the tool's metadata for the bundle's locale.
+//
+// A locale file translates; it does not re-model. So the localized entry
+// overlays only the fields it actually carries and everything else falls back
+// to the base file — a translator who adds a title but no group must not drop
+// the tool out of its group, and Order is a layout decision that has no reason
+// to differ between languages at all.
+func (b *mcpLocaleBundle) ToolMeta(toolKey string) ToolMeta {
+	meta := loadToolMeta(toolKey)
+	if b.toolMeta == nil {
+		return meta
 	}
-	return loadToolMeta(toolKey)
+	localized, ok := b.toolMeta[toolKey]
+	if !ok {
+		return meta
+	}
+	if localized.Name != "" {
+		meta.Name = localized.Name
+	}
+	if localized.Title != "" {
+		meta.Title = localized.Title
+	}
+	if localized.Group != "" {
+		meta.Group = localized.Group
+	}
+	if localized.GroupTitle != "" {
+		meta.GroupTitle = localized.GroupTitle
+	}
+	if localized.Order != 0 {
+		meta.Order = localized.Order
+	}
+	if localized.Description != "" {
+		meta.Description = localized.Description
+	}
+	return meta
 }
 
 func (b *mcpLocaleBundle) ToolSchemas(toolKey string) (input, output json.RawMessage) {
