@@ -45,7 +45,7 @@
   },
   "run_sql": {
     "name": "run_sql",
-    "description": "Run one read-only SELECT statement in Trino SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract."
+    "description": "Run one read-only SELECT statement in Trino SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract."
   },
   "list_resources": {
     "name": "list_resources",

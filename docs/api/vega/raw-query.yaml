@@ -23,12 +23,12 @@ info:
     **SQL 只读策略**：SQL 只允许单条顶层 `SELECT`，且所有物理表必须由受权限保护的
     Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为
     同一 Catalog 内的 `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和
-    常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询和窗口函数不被只读
-    策略单独禁止，但是否可用仍取决于 `input_dialect` 和底层连接器。
+    常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询不被只读策略单独禁止；
+    窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由 `input_dialect` 和底层连接器支持。
 
     不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、
     锁定读取，以及写入、DDL、事务、权限与过程类语句。文件读取、外部访问或休眠等
-    高风险函数也会被拒绝。违反策略返回 HTTP 400
+    仅 SQLGlot 可识别的内置函数可用；UDF 和未建模的方言函数一律被拒绝。违反策略返回 HTTP 400
     `VegaBackend.Query.InvalidParameter`，`error_details` 为
     `raw query rejected by read-only policy`；请改写为单条顶层 `SELECT`。
 
@@ -52,7 +52,8 @@ paths:
 
         **SQL 语法边界**：只接受单条顶层 `SELECT`。支持同一 Catalog 内的 `JOIN`、
         `WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询与
-        窗口函数不被只读策略单独禁止，但须由所选方言和连接器支持。`WITH` / CTE、
+        窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由所选方言和连接器支持。
+        `WITH` / CTE、
         `UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、锁定读取、DML、DDL、
         事务、权限和过程类语句均被拒绝。CTE 不可通过改写为 `WITH` 规避：请改为单条
         顶层 `SELECT`，或拆分为多次查询。
@@ -177,7 +178,8 @@ components:
                 SQL 字符串（mysql / postgresql 等）。仅允许单条顶层 `SELECT`；支持同一
                 Catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。
                 不支持 WITH/CTE、集合运算、多语句、SELECT INTO、锁定读取、DML/DDL、
-                事务、权限或过程类语句。子查询和窗口函数须由输入方言与连接器支持。
+                事务、权限或过程类语句。子查询须由输入方言与连接器支持；窗口函数和其他
+                内置函数还必须由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。
             - type: object
               description: DSL JSON 对象（OpenSearch / Elasticsearch）
               additionalProperties: true
