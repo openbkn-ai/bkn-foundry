@@ -57,11 +57,13 @@ MySQL Database
 > Other Step 3 knobs: `EMBEDDING_MODEL_NAME=` (empty) builds full-text only,
 > `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
 >
-> Note: the built index is not yet visible to the knowledge network's semantic layer.
-> An object type only advertises `match` / `knn` operations once its `index_available`
-> flag is set, and no code path sets it today — so `bkn search` stays at schema-level
-> concept matching no matter how the resource index turns out. The index is still what
-> Vega itself queries; this only limits KN-level semantic retrieval.
+> Note: the built index is not yet wired into the knowledge network's semantic layer.
+> An object type's `index_available` flag is never set to true by any code path today,
+> so property operations are derived from the property type alone: the `string`
+> properties this example creates get equality-style operations only — no `match`, no
+> `knn`. (A `text` property would still get `match`, and a `vector` property `knn`, even
+> with the flag false.) `bkn search` therefore stays at schema-level concept matching.
+> The index is still what Vega itself queries; only KN-level semantic retrieval is limited.
 
 ## Prerequisites
 

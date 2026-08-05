@@ -95,14 +95,11 @@ openbkn resource find --name "customer_orders" --catalog-id <catalog_id>
 openbkn resource delete <resource_id>
 ```
 
-### Dataset (documents and build)
+### Index builds and dataset documents
 
-For dataset-type resources, manage indexed documents and async build jobs:
+**Building a local index** (full text and/or vector) **only applies to `table` resources**: the first check in `BuildTaskService.Create` is the category, and anything else returns `400 Resource category must be table`. Documents in a `dataset` resource are indexed on write and never go through a build task.
 
-**Build a local index** (full text and/or vector) for a table or dataset resource.
-Index configuration is owned by the *resource* — `index_config` (build key, default
-analyzer/model) plus per-field `features` — and the build task snapshots it at creation.
-`dataset build` writes both halves: it PUTs the resource, then creates and starts the task.
+Index configuration is owned by the *resource* — `index_config` (build key, default analyzer/model) plus per-field `features` — and the build task snapshots it at creation. `dataset build` writes both halves: it PUTs the resource, then creates and starts the task.
 
 ```bash
 openbkn vega dataset build <resource_id> --mode batch|streaming \
@@ -119,21 +116,30 @@ openbkn vega dataset build-stop <task_id>
 openbkn vega dataset build-delete <task_id> [<task_id> ...]
 ```
 
+- `--execute-type` is **batch only** and defaults to `full`; passing it with `--mode streaming` returns 400 rather than being ignored.
 - `--embedding-model` takes the model **name**; a raw model id is rejected.
-- A resource with no `index_config.build_key_fields` is rejected with HTTP 400, which is
-  why `--build-key-fields` is required the first time you build a resource.
-- Building changes how the resource reads: Vega serves a table resource from its local
-  index as soon as one exists, and queries the source database only while it does not.
-  Source updates become visible on the next build.
+- A resource with no `index_config.build_key_fields` is rejected with HTTP 400, which is why `--build-key-fields` is required the first time you build a resource.
+- Building changes how the resource reads: Vega serves a table resource from its local index as soon as one exists, and queries the source database only while it does not. Source updates become visible on the next build.
+- `--wait` only blocks until the task reaches a terminal state; **it still exits 0 when that state is `failed`**. In scripts, read `status` and `index_health` from the response instead of trusting the exit code.
 
-Document-level management (dataset resources) has no CLI subcommand; drive the API directly:
+**Dataset document management** has no CLI subcommand; drive the API directly. Note that `POST /data` is a multiplexed endpoint dispatched on `X-HTTP-Method-Override` — **without that header it returns 400**:
 
 ```bash
-openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST -d '[{...}]'
-openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X PUT  -d '[{...}]'
+# Write documents (Override: POST)
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST \
+  -H "X-HTTP-Method-Override: POST" -d '[{...}]'
+
+# Delete by query (Override: DELETE)
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST \
+  -H "X-HTTP-Method-Override: DELETE" -d '{"filter":...}'
+
+# The three below are real methods and need no override header
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X PUT -d '[{...}]'
 openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_id> -X PUT -d '{...}'
 openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_ids> -X DELETE
 ```
+
+Reading rows through `POST /data` likewise needs `X-HTTP-Method-Override: GET` (see the curl section on this page).
 
 ### Structured query and SQL (vega-backend)
 

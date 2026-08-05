@@ -210,7 +210,8 @@ build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields>
         args+=(--embedding-fields "$ef" --embedding-model "$EMBEDDING_MODEL_NAME")
     fi
     debug "build index: openbkn ${args[*]}"
-    # Keep stderr: the API error is the only thing that explains a failed build.
+    # Keep stderr: the API error is the only thing that explains a failed build
+    # (a field missing from the resource schema, an unregistered model, ...).
     local out err rc=0
     err=$(mktemp); out=$(openbkn "${args[@]}" 2>"$err") || rc=$?
     if [ "$rc" -ne 0 ]; then
@@ -221,14 +222,26 @@ build_index() { # <resource_id> <build_key> <fulltext_fields> <embedding_fields>
         return 0
     fi
     rm -f "$err"
-    INDEX_OK=$((INDEX_OK + 1))
-    printf '%s' "$out" | python3 -c "import json,sys
+    # `--wait` only waits for a terminal state and still exits 0 when that state is
+    # `failed`, so the task's own status decides whether this counted as a success.
+    local line status
+    line=$(printf '%s' "$out" | python3 -c "import json,sys
 d=json.load(sys.stdin)
 h=d.get('index_health') or {}
-print('  $label: status=%s synced=%s vectorized=%s fulltext=%s embedding=%s' % (
-    d.get('status','?'), d.get('synced_count','?'), d.get('vectorized_count','?'),
-    h.get('fulltext','none'), h.get('embedding','none')))" 2>/dev/null \
-        || echo "  $label: index build returned an unexpected payload: $out" >&2
+print('%s\t  $label: status=%s synced=%s vectorized=%s fulltext=%s embedding=%s' % (
+    d.get('status','?'), d.get('status','?'), d.get('synced_count','?'),
+    d.get('vectorized_count','?'), h.get('fulltext','none'), h.get('embedding','none')))" 2>/dev/null) || {
+        echo "  $label: index build returned an unexpected payload: $out" >&2
+        INDEX_FAIL=$((INDEX_FAIL + 1))
+        return 0
+    }
+    status="${line%%$'\t'*}"
+    echo "${line#*$'\t'}"
+    if [ "$status" = "completed" ]; then
+        INDEX_OK=$((INDEX_OK + 1))
+    else
+        INDEX_FAIL=$((INDEX_FAIL + 1))
+    fi
 }
 
 echo ""
@@ -275,7 +288,9 @@ if [ "$INDEX_OK" -gt 0 ] && [ "$INDEX_FAIL" -eq 0 ]; then
     echo "  Source-database updates appear here only after the resource is rebuilt."
 elif [ "$INDEX_OK" -gt 0 ]; then
     echo "=== Step 6: Query instances (mixed read paths) ==="
-    echo "  $INDEX_OK resource(s) serve the Step 4 snapshot; $INDEX_FAIL failed to build and still read live."
+    echo "  $INDEX_OK resource(s) serve a completed Step 4 snapshot; $INDEX_FAIL did not complete."
+    echo "  A resource whose build failed part-way can still serve an incomplete snapshot —"
+    echo "  check 'openbkn vega dataset build-list' and its index_health before trusting the rows."
 else
     echo "=== Step 6: Query instances (live from the source database) ==="
 fi

@@ -93,14 +93,11 @@ openbkn resource find --name "customer_orders" --catalog-id <catalog_id>
 openbkn resource delete <resource_id>
 ```
 
-### 数据集（文档与构建）
+### 索引构建与数据集文档
 
-针对 dataset 类资源，管理索引文档与异步构建任务：
+**构建本地索引**（全文与/或向量）**只对 `table` 类资源有效**：`BuildTaskService.Create` 的第一道校验就是 category，非 table 直接返回 `400 Resource category must be table`。`dataset` 类资源的文档是写入即进索引，不经过构建任务。
 
-**构建本地索引**（全文与/或向量），适用于 table 与 dataset 类资源。索引配置归属于
-**资源**（`index_config` 给出构建键与默认分析器/模型，字段级 `features` 给出每个字段建哪种
-索引），构建任务在创建时对其做快照。`dataset build` 一条命令完成两步：先 PUT 资源写配置，
-再创建并启动构建任务。
+索引配置归属于**资源**（`index_config` 给出构建键与默认分析器/模型，字段级 `features` 给出每个字段建哪种索引），构建任务在创建时对其做快照。`dataset build` 一条命令完成两步：先 PUT 资源写配置，再创建并启动构建任务。
 
 ```bash
 openbkn vega dataset build <resource_id> --mode batch|streaming \
@@ -117,20 +114,30 @@ openbkn vega dataset build-stop <task_id>
 openbkn vega dataset build-delete <task_id> [<task_id> ...]
 ```
 
+- `--execute-type` **仅 batch 模式可用**，缺省为 `full`；streaming 模式下带上该参数会返回 400，不是被忽略。
 - `--embedding-model` 传的是模型**名称**，传模型 ID 会被拒绝。
-- 资源上没有 `index_config.build_key_fields` 时创建构建任务返回 400，因此首次为某个资源
-  建索引必须带 `--build-key-fields`。
-- 建索引会改变该资源的读取路径：表资源一旦有本地索引，Vega 就从索引读，只有在没有索引时
-  才回源库实时查；源库的更新要到下次构建才可见。
+- 资源上没有 `index_config.build_key_fields` 时创建构建任务返回 400，因此首次为某个资源建索引必须带 `--build-key-fields`。
+- 建索引会改变该资源的读取路径：表资源一旦有本地索引，Vega 就从索引读，只有在没有索引时才回源库实时查；源库的更新要到下次构建才可见。
+- `--wait` 只等到任务进入终态，**终态是 `failed` 时命令仍以 0 退出**，脚本里别只看退出码，要读返回体的 `status` 与 `index_health`。
 
-文档级管理（dataset 资源）没有对应的 CLI 子命令，直接调 API：
+**数据集文档管理**没有对应的 CLI 子命令，直接调 API。注意 `POST /data` 是按 `X-HTTP-Method-Override` 分派的复用端点，**不带该头会直接返回 400**：
 
 ```bash
-openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST -d '[{...}]'
-openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X PUT  -d '[{...}]'
+# 写入文档（Override: POST）
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST \
+  -H "X-HTTP-Method-Override: POST" -d '[{...}]'
+
+# 按条件删除（Override: DELETE）
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X POST \
+  -H "X-HTTP-Method-Override: DELETE" -d '{"filter":...}'
+
+# 以下三条是真 method，无需 Override 头
+openbkn call /api/vega-backend/v1/resources/<resource_id>/data -X PUT -d '[{...}]'
 openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_id> -X PUT -d '{...}'
 openbkn call /api/vega-backend/v1/resources/<resource_id>/data/<doc_ids> -X DELETE
 ```
+
+同理，用 `POST /data` 读数据要带 `X-HTTP-Method-Override: GET`（见本页 curl 段）。
 
 ### 结构化查询与 SQL 查询（vega-backend）
 
