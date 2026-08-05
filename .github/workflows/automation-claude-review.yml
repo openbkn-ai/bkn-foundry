@@ -6,6 +6,9 @@ name: Claude Code Review
 # 覆盖每次推送而非只审首版，是因为评审之后追加的提交往往是「按意见快速改一下」，
 # 恰恰最容易引入新问题；只审首版会让这部分完全不过审。
 # 连续推送的浪费由下面的 concurrency 收敛：新一次运行会取消尚未完成的上一次。
+# 「推提交」与「回帖 /review」若在同一段时间内发生，同样收敛成一轮——两个入口都保留，
+# 合并掉的只是重复劳动：存活的那轮 checkout 拿的是 PR 最新 HEAD（含新提交），而下方
+# prompt 本就要求读回既有 inline 评论与其下的回复，代码与回复两边都不会漏。
 #
 # 评论也能触发复评，但必须在正文里显式写 `/review` 或 `@claude`。早先是每条评论都跑
 # 一轮，作者每回一帖就复评一次，轮次膨胀且额度白烧——待确认项现在不阻断放行（见下方
@@ -47,19 +50,20 @@ on:
         type: string
 
 concurrency:
-  # 按事件类别分组，别把评论事件和 PR 推送混在一组。concurrency 在 run 排队时求值，
-  # 早于 job if，所以隔离只能靠分组，if 拦不住取消。
+  # 分组判据是「这条事件能不能过下方 job 的 if」，不是「它是不是评论事件」。
   #
-  # push（含 opened/synchronize/…）落 -push 组、cancel-in-progress 生效：连续推送时
-  # 新 run 取消未完成的旧 run，省额度。
+  # 能过 if 的（推送、人工写 `/review`/`@claude` 的评论、手动触发）全部落 -review 组，
+  # cancel-in-progress 生效：连续推送时新 run 取消旧 run；作者「推提交 + 回帖 /review」
+  # 这种连续动作也收敛成一轮，而不是推送和评论各跑一轮。
   #
-  # 评论事件（issue_comment / pull_request_review_comment）每条按 comment.id 各自成组。
-  # 否则 claude-code-action（track_progress）在评论触发的复评跑到一半时以 bot 身份贴
-  # tracking comment，那条 comment 又触发 issue_comment、排进同一 -comment 组，
-  # cancel-in-progress 在 job if 过滤掉 bot 评论之前就把正在跑的复评取消了——评论触发的
-  # 复评每次贴进度评论那刻自杀，`/review` 一次都跑不完。
-  # 按 comment.id 分组后每条评论各自独立、互不取消，bot 的进度评论也顶不掉正在跑的复评。
-  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}-${{ (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && format('comment-{0}', github.event.comment.id) || 'push' }}
+  # 过不了 if 的评论（bot 自己贴的进度/行内评论、外部人员的评论、不含口令的普通回帖）
+  # 必须按 comment.id 各自成组。concurrency 在 run 排队时求值，早于 job if，落进共享组
+  # 就会在 if 把它过滤掉之前先取消掉正在跑的评审。claude-code-action 的 tracking comment
+  # 与 create_inline_comment 正是这条路径——曾导致评审贴出第一条评论那刻就自杀。
+  #
+  # 因此下面的判据必须与 job if 的评论分支逐条对齐（非 bot、含口令、author_association
+  # 属 OWNER/MEMBER/COLLABORATOR）。漏对一条，那类事件就能溜进共享组杀掉正在跑的评审。
+  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}-${{ (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && !(github.event.sender.login != 'github-actions[bot]' && (contains(github.event.comment.body, '/review') || contains(github.event.comment.body, '@claude')) && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) && format('comment-{0}', github.event.comment.id) || 'review' }}
   cancel-in-progress: true
 
 jobs:
@@ -99,6 +103,15 @@ jobs:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
     steps:
+      # 推送事件先静默一小会儿再往下走。作者（多数时候是 agent）常见动作是
+      # `git push` 紧接着 `gh pr comment "/review"`，两条事件各触发一次评审；静默期内
+      # 后一条到达时，上面的 concurrency 会把本 run 取消，而此刻还没 checkout、没调
+      # Claude、没贴 tracking comment，取消的代价是零。等满则照常跑，只晚十几秒。
+      # 只挂 pull_request：评论触发与手动触发都是人明确要一轮，不该让它等。
+      - name: Debounce push events
+        if: github.event_name == 'pull_request'
+        run: sleep 15
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
