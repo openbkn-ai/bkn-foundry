@@ -46,6 +46,47 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Conce
 	return dsl, nil
 }
 
+// PropertyIndexCaps 描述 Vega 资源的某个字段在本地索引里实际具备的检索能力。
+// 能力来源是资源 schema 上的字段 features（由 `openbkn vega dataset build` 写入），
+// 不是对象类属性上手填的 index_config。
+type PropertyIndexCaps struct {
+	Keyword  bool
+	Fulltext bool
+	Vector   bool
+}
+
+// VegaResourceIndexCaps 派生资源各字段的索引能力，key 是资源字段名。
+//
+// 资源没有本地索引（index_name 为空）时返回 nil：features 只是「配置了要建什么」，
+// 构建任务没跑完之前这些能力并不存在，此时 Vega 会回落到源库实时查。
+func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyIndexCaps {
+	if res == nil || res.LocalIndexName == "" {
+		return nil
+	}
+
+	caps := make(map[string]PropertyIndexCaps, len(res.SchemaDefinition))
+	for _, p := range res.SchemaDefinition {
+		if p == nil {
+			continue
+		}
+		propCaps := PropertyIndexCaps{}
+		for _, feature := range p.Features {
+			switch feature.FeatureType {
+			case interfaces.FieldFeatureType_Keyword:
+				propCaps.Keyword = true
+			case interfaces.FieldFeatureType_Fulltext:
+				propCaps.Fulltext = true
+			case interfaces.FieldFeatureType_Vector:
+				propCaps.Vector = true
+			}
+		}
+		if propCaps.Keyword || propCaps.Fulltext || propCaps.Vector {
+			caps[p.Name] = propCaps
+		}
+	}
+	return caps
+}
+
 // VegaResourceSchemaToFieldsMap maps vega Resource schema to view-like fields for display and validation.
 func VegaResourceSchemaToFieldsMap(res *interfaces.VegaResource) map[string]*interfaces.ViewField {
 	fields := make(map[string]*interfaces.ViewField)

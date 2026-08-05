@@ -57,13 +57,16 @@ MySQL Database
 > Other Step 3 knobs: `EMBEDDING_MODEL_NAME=` (empty) builds full-text only,
 > `INDEX_TIMEOUT` (default 300s) caps the wait per resource.
 >
-> Note: the built index is not yet wired into the knowledge network's semantic layer.
-> An object type's `index_available` flag is never set to true by any code path today,
-> so property operations are derived from the property type alone: the `string`
-> properties this example creates get equality-style operations only — no `match`, no
-> `knn`. (A `text` property would still get `match`, and a `vector` property `knn`, even
-> with the flag false.) `bkn search` therefore stays at schema-level concept matching.
-> The index is still what Vega itself queries; only KN-level semantic retrieval is limited.
+> Once the index exists, an object type's property operations are derived from the
+> resource's per-field `features`: a field with a full-text index gets `match` /
+> `multi_match`, visible in the object type detail Step 4 prints. To get instances at
+> the knowledge-network level, call `POST /kn/kn_search` with `only_schema: false` —
+> matching instances come back in `nodes`.
+>
+> `knn` is the exception, still unavailable: the rewrite requires a property whose type
+> is literally `vector`, while a table resource's source field is a `string` and the
+> vector lands on a field the build task generates — no object-type property maps to it
+> yet. Until that mapping contract lands, vector search is Vega-side only.
 
 ## Prerequisites
 

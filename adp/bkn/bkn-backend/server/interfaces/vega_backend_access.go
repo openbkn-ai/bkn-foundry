@@ -67,6 +67,9 @@ type VegaResource struct {
 	// Status           string      `json:"status"`
 	SchemaDefinition []*Property              `json:"schema_definition,omitempty"`
 	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
+	// LocalIndexName 由构建任务填充，非空表示该资源已经有本地索引；
+	// 字段级 features 只有在这种情况下才真的落到了 OpenSearch 上。
+	LocalIndexName string `json:"index_name,omitempty"`
 }
 
 // VegaResourceIndexConfig mirrors vega-backend's resource-level index configuration.
