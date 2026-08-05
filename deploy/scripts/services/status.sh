@@ -28,12 +28,29 @@ INSTALL_STATUS_MERGE_JQ="${INSTALL_STATUS_DIR}/merge.jq"
 # alpine/k8s (which the docker.1panel.live mirror 403s) and bitnami/kubectl (whose
 # docker.io tags are being pruned post-deprecation), is reliably served by the
 # install-time --dockerhub-mirror on CN/restricted nets. Override via env.
-# In offline mode, use offline registry; otherwise use SWR mirror
-if [[ "${OFFLINE_MODE}" == "true" ]]; then
-    INSTALL_STATUS_KUBECTL_IMAGE="${INSTALL_STATUS_KUBECTL_IMAGE:-${OFFLINE_REGISTRY}/openbkn-ai/portainer/kubectl-shell:latest}"
-else
-    INSTALL_STATUS_KUBECTL_IMAGE="${INSTALL_STATUS_KUBECTL_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/portainer/kubectl-shell:latest}"
-fi
+# Keep explicit image overrides, but resolve the defaults when the endpoint is
+# actually published. `deploy.sh` parses --offline after sourcing this file.
+INSTALL_STATUS_KUBECTL_IMAGE_OVERRIDE="${INSTALL_STATUS_KUBECTL_IMAGE:-}"
+INSTALL_STATUS_NGINX_IMAGE_OVERRIDE="${INSTALL_STATUS_NGINX_IMAGE:-}"
+
+_status_resolve_images() {
+    local offline_registry="${OFFLINE_REGISTRY:-registry.openbkn.ai:5000}"
+    if [[ -n "${INSTALL_STATUS_KUBECTL_IMAGE_OVERRIDE}" ]]; then
+        INSTALL_STATUS_KUBECTL_IMAGE="${INSTALL_STATUS_KUBECTL_IMAGE_OVERRIDE}"
+    elif [[ "${OFFLINE_MODE:-false}" == "true" ]]; then
+        INSTALL_STATUS_KUBECTL_IMAGE="${offline_registry}/openbkn-ai/portainer/kubectl-shell:latest"
+    else
+        INSTALL_STATUS_KUBECTL_IMAGE="swr.cn-east-3.myhuaweicloud.com/openbkn-ai/portainer/kubectl-shell:latest"
+    fi
+
+    if [[ -n "${INSTALL_STATUS_NGINX_IMAGE_OVERRIDE}" ]]; then
+        INSTALL_STATUS_NGINX_IMAGE="${INSTALL_STATUS_NGINX_IMAGE_OVERRIDE}"
+    elif [[ "${OFFLINE_MODE:-false}" == "true" ]]; then
+        INSTALL_STATUS_NGINX_IMAGE="${offline_registry}/openbkn-ai/library/nginx:1.27-alpine"
+    else
+        INSTALL_STATUS_NGINX_IMAGE="swr.cn-east-3.myhuaweicloud.com/openbkn-ai/library/nginx:1.27-alpine"
+    fi
+}
 
 # Detect the ingress-nginx IngressClass to bind the endpoint to.
 _status_detect_ingress_class() {
@@ -110,11 +127,14 @@ _status_apply_endpoint() {
         rolebinding/install-status-rt \
         -n "${namespace}" --ignore-not-found >/dev/null 2>&1 || true
 
+    _status_resolve_images
+
     local ingress_class
     ingress_class="$(_status_detect_ingress_class)"
     sed -e "s|__NAMESPACE__|${namespace}|g" \
         -e "s|__INGRESS_CLASS__|${ingress_class}|g" \
         -e "s|__KUBECTL_IMAGE__|${INSTALL_STATUS_KUBECTL_IMAGE}|g" \
+        -e "s|__NGINX_IMAGE__|${INSTALL_STATUS_NGINX_IMAGE}|g" \
         "${INSTALL_STATUS_ENDPOINT_TPL}" \
         | kubectl apply -f - >/dev/null 2>&1 || {
             log_warn "Failed to apply install-status endpoint manifests."
@@ -144,6 +164,10 @@ _status_auth_disabled() {
 gen_install_status_json() {
     local namespace
     namespace="$(_openbkn_resolve_target_namespace)"
+
+    # Resolve both endpoint images here, after deploy.sh has parsed global
+    # flags such as --offline.
+    _status_resolve_images
 
     if ! command -v python3 >/dev/null 2>&1; then
         log_warn "python3 not found; skipping install-status snapshot."

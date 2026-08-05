@@ -94,6 +94,7 @@ OPENSEARCH_IMAGES=(
 # Required images for other components
 OTHER_IMAGES=(
     "openbkn-ai/portainer/kubectl-shell:latest"
+    "openbkn-ai/library/nginx:1.27-alpine"
 )
 
 # Required images for OpenBKN Applications
