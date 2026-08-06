@@ -322,3 +322,36 @@ async def _async_str():
 
 async def _async_prompt():
     return ("prompt", "src", "v1")
+
+
+def test_load_tools_never_opens_its_own_session(monkeypatch):
+    """load_tools 绝不自己握手。
+
+    原先是 `current_session() or await open_session()`。主路握手失败时它会再开
+    一个交互，而 graph 的 finally 只关自己持有的 cl_session（那时是 None），
+    兜底开的那个永远关不掉。服务端一个 conversation 只允许一个 active 交互，
+    于是每轮泄一个，下一轮必被 interaction_in_progress 挡掉。
+    """
+    from app.core import tools as tools_mod
+
+    opened = []
+
+    async def spy_open(*_a, **_k):
+        opened.append(1)
+        return context_loader.ContextLoaderSession("c", "i")
+
+    monkeypatch.setattr(tools_mod.context_loader, "open_session", spy_open)
+    monkeypatch.setattr(tools_mod.context_loader, "current_session", lambda: None)
+    monkeypatch.setattr(tools_mod.context_loader, "wanted", lambda _refs: True)
+
+    async def no_toolbox(*_a, **_k):
+        return []
+
+    monkeypatch.setattr(tools_mod, "_toolbox_tools", no_toolbox)
+
+    result = asyncio.run(
+        tools_mod.load_tools([{"type": "context_loader"}], "acct", "user")
+    )
+
+    assert opened == [], "load_tools 自己开了会话——那个交互没人关，会挡住下一轮"
+    assert result == []

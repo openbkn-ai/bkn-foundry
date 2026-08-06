@@ -186,12 +186,19 @@ async def load_tools(
 ) -> list[Any]:
     tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
     if context_loader.wanted(tool_refs):
-        # 会话通常已由调用方（runner / graph）在 begin_interaction 之前开好——那对
-        # 真 id 要先拿到才能让证据链和 Context Loader 落在同一轮交互上。这里兜住
-        # 直接调 load_tools 的场景（测试、将来的其他入口），不重复握手。
-        session = context_loader.current_session() or await context_loader.open_session()
+        # 只用调用方（runner / graph）已经开好的会话，这里绝不自己开。
+        #
+        # 原先这里是 `current_session() or await open_session()`，想兜住直接调
+        # load_tools 的场景。实测证明那是个泄漏源：主路握手失败时它会再开一个
+        # 交互，而 graph 的 finally 只关自己持有的 cl_session（此时是 None），
+        # 兜底开的那个永远关不掉。服务端一个 conversation 只允许一个 active
+        # 交互，于是每轮泄一个、下一轮必被 interaction_in_progress 挡掉，
+        # 一条 thread 从第二轮起就再也拿不到工具。
+        #
+        # 没开出会话就没有工具——open_session 已经打过 warning，失败留在看得见
+        # 的地方，比静默开一个关不掉的交互好。
+        session = context_loader.current_session()
         if session is not None:
-            context_loader.set_current(session)
             tools.extend(session.tools())
     conns = _mcp_connections(tool_refs, account_id, account_type)
     if conns:
