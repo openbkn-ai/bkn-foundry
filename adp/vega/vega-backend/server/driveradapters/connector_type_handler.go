@@ -60,6 +60,18 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 		}
 		enabled = &b
 	}
+	var available *bool
+	if availableStr := c.Query("available"); availableStr != "" {
+		b, err := strconv.ParseBool(availableStr)
+		if err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("invalid available: %s", availableStr))
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		available = &b
+	}
 	mode := c.Query("mode")
 	category := c.Query("category")
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
@@ -91,6 +103,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 		Mode:                  mode,
 		Category:              category,
 		Enabled:               enabled,
+		Available:             available,
 	}
 
 	if err := ValidateConnectorTypeListQueryParams(ctx, params); err != nil {

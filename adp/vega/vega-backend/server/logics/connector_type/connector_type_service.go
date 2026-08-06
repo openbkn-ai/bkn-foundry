@@ -133,6 +133,7 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 	}
+	ct.Available = cts.cf.IsConnectorAvailable(ct.Type)
 
 	span.SetStatus(codes.Ok, "")
 	return ct, nil
@@ -168,6 +169,10 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 	for _, c := range connectorTypesArr {
 		// 只留下有权限的模型
 		if resrc, exist := matchResoucesMap[c.Type]; exist {
+			c.Available = cts.cf.IsConnectorAvailable(c.Type)
+			if params.Available != nil && c.Available != *params.Available {
+				continue
+			}
 			c.Operations = resrc.Operations // 用户当前有权限的操作
 			connectorTypes = append(connectorTypes, c)
 		}

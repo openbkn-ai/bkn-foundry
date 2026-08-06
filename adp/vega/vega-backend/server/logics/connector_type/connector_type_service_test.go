@@ -34,6 +34,15 @@ func newTestConnectorTypeService(t *testing.T) (*connectorTypeService, *vmock.Mo
 	}, cta, ps
 }
 
+func mockConnectorAvailability(t *testing.T, service *connectorTypeService, availableByType map[string]bool) {
+	t.Helper()
+
+	connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+	connectorFactory.EXPECT().IsConnectorAvailable(gomock.Any()).AnyTimes().
+		DoAndReturn(func(tp string) bool { return availableByType[tp] })
+	service.cf = connectorFactory
+}
+
 func TestConnectorTypeServiceRegister(t *testing.T) {
 	t.Run("persists resolved local connector definition before enabling it", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
@@ -124,6 +133,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 	t.Run("returns connector type with allowed operations", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
 		connectorType := &interfaces.ConnectorType{Type: "remote-api", Name: "Remote API"}
+		mockConnectorAvailability(t, service, map[string]bool{"remote-api": true})
 
 		cta.EXPECT().GetByType(gomock.Any(), "remote-api").Return(connectorType, nil)
 		ps.EXPECT().
@@ -149,6 +159,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Same(t, connectorType, got)
+		assert.True(t, got.Available)
 		assert.Equal(t, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_MODIFY}, got.Operations)
 	})
 
@@ -182,6 +193,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 func TestConnectorTypeServiceList(t *testing.T) {
 	t.Run("filters by permission then paginates", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
+		mockConnectorAvailability(t, service, map[string]bool{"a": true, "c": true})
 		params := interfaces.ConnectorTypesQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 1},
 		}
@@ -217,6 +229,7 @@ func TestConnectorTypeServiceList(t *testing.T) {
 
 	t.Run("limit -1 returns all authorized connector types", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
+		mockConnectorAvailability(t, service, map[string]bool{"a": true, "b": true})
 		params := interfaces.ConnectorTypesQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
 		}
@@ -235,10 +248,45 @@ func TestConnectorTypeServiceList(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(2), total)
 		assert.Len(t, got, 2)
+		assert.True(t, got[0].Available)
+		assert.True(t, got[1].Available)
+	})
+
+	t.Run("filters by runtime availability before pagination", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		available := true
+		params := interfaces.ConnectorTypesQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 1},
+			Available:             &available,
+		}
+		types := []*interfaces.ConnectorType{
+			{Type: "a"},
+			{Type: "b"},
+			{Type: "c"},
+		}
+		mockConnectorAvailability(t, service, map[string]bool{"b": true, "c": true})
+
+		cta.EXPECT().List(gomock.Any(), params).Return(types, int64(len(types)), nil)
+		ps.EXPECT().
+			FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"a": {ResourceID: "a"},
+				"b": {ResourceID: "b"},
+				"c": {ResourceID: "c"},
+			}, nil)
+
+		got, total, err := service.List(context.Background(), params)
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), total)
+		require.Len(t, got, 1)
+		assert.Equal(t, "c", got[0].Type)
+		assert.True(t, got[0].Available)
 	})
 
 	t.Run("offset outside authorized list returns empty page with total", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
+		mockConnectorAvailability(t, service, map[string]bool{"a": true})
 		params := interfaces.ConnectorTypesQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 2, Limit: 10},
 		}

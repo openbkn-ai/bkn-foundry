@@ -87,17 +87,20 @@ type ConnectorType struct {
 	FieldConfig map[string]ConnectorFieldConfig `json:"field_config"` // 字段配置（兼容 JSON Schema properties）
 	Enabled     bool                            `json:"enabled"`      // 是否启用
 
+	Available bool `json:"available"` // 当前二进制是否包含该连接器实现
+
 	Operations []string `json:"operations"`
 }
 
 // ConnectorTypesQueryParams 查询参数
 type ConnectorTypesQueryParams struct {
 	PaginationQueryParams
-	Name     string `json:"name"`     // 按名称模糊筛选
-	Tag      string `json:"tag"`      // 按标签筛选
-	Mode     string `json:"mode"`     // 按模式筛选
-	Category string `json:"category"` // 按分类筛选
-	Enabled  *bool  `json:"enabled"`  // 按启用状态筛选
+	Name      string `json:"name"`      // 按名称模糊筛选
+	Tag       string `json:"tag"`       // 按标签筛选
+	Mode      string `json:"mode"`      // 按模式筛选
+	Category  string `json:"category"`  // 按分类筛选
+	Enabled   *bool  `json:"enabled"`   // 按启用状态筛选
+	Available *bool  `json:"available"` // 按当前二进制可用状态筛选
 }
 
 // ConnectorTypeReq 表示创建/更新 connector 类型的请求

@@ -84,6 +84,20 @@ func (mr *MockConnectorFactoryMockRecorder) GetSensitiveFields(tp any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockConnectorFactory)(nil).GetSensitiveFields), tp)
 }
 
+// IsConnectorAvailable mocks base method.
+func (m *MockConnectorFactory) IsConnectorAvailable(tp string) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsConnectorAvailable", tp)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsConnectorAvailable indicates an expected call of IsConnectorAvailable.
+func (mr *MockConnectorFactoryMockRecorder) IsConnectorAvailable(tp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsConnectorAvailable", reflect.TypeOf((*MockConnectorFactory)(nil).IsConnectorAvailable), tp)
+}
+
 // RegisterConnector mocks base method.
 func (m *MockConnectorFactory) RegisterConnector(ctx context.Context, tp string, ct *interfaces.ConnectorType) error {
 	m.ctrl.T.Helper()

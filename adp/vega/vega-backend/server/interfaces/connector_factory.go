@@ -20,5 +20,7 @@ type ConnectorFactory interface {
 	SetConnectorEnabled(ctx context.Context, tp string, enabled bool) error
 	CreateConnectorInstance(ctx context.Context, tp string, cfg ConnectorConfig) (Connector, error)
 
+	IsConnectorAvailable(tp string) bool
+
 	GetSensitiveFields(tp string) []string
 }

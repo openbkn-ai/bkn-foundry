@@ -331,6 +331,7 @@ func Test_ConnectorTypeRestHandler_ListConnectorTypes(t *testing.T) {
 		wantBody string
 	}{
 		{name: "invalid enabled", query: "?enabled=maybe", wantBody: "invalid enabled: maybe"},
+		{name: "invalid available", query: "?available=maybe", wantBody: "invalid available: maybe"},
 		{name: "invalid mode", query: "?mode=unknown", wantBody: "invalid mode: unknown"},
 		{name: "invalid category", query: "?category=unknown", wantBody: "invalid category: unknown"},
 	}
@@ -349,7 +350,7 @@ func Test_ConnectorTypeRestHandler_ListConnectorTypes(t *testing.T) {
 		})
 	}
 
-	t.Run("success list connector types with name mode category and enabled", func(t *testing.T) {
+	t.Run("success list connector types with name mode category enabled and available", func(t *testing.T) {
 		engine, cts := setup(t)
 		cts.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.ConnectorTypesQueryParams) ([]*interfaces.ConnectorType, int64, error) {
@@ -358,10 +359,12 @@ func Test_ConnectorTypeRestHandler_ListConnectorTypes(t *testing.T) {
 				assert.Equal(t, interfaces.ConnectorCategoryFileset, params.Category)
 				require.NotNil(t, params.Enabled)
 				assert.True(t, *params.Enabled)
+				require.NotNil(t, params.Available)
+				assert.True(t, *params.Available)
 				return []*interfaces.ConnectorType{}, int64(0), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, url+"?name=share&mode=local&category=fileset&enabled=true", nil)
+		req := httptest.NewRequest(http.MethodGet, url+"?name=share&mode=local&category=fileset&enabled=true&available=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

@@ -18,7 +18,7 @@ paths:
   /connector-types:
     get:
       summary: 获取连接器类型列表
-      description: 分页获取已注册的连接器类型；支持按 name、tag、mode、category、enabled 过滤。
+      description: 分页获取已注册的连接器类型；支持按 name、tag、mode、category、enabled、available 过滤。
       parameters:
         - name: name
           description: 按名称模糊过滤，匹配名称中包含该值的连接器类型
@@ -53,6 +53,11 @@ paths:
               - api
         - name: enabled
           description: 按启用状态过滤；不传表示不过滤
+          in: query
+          schema:
+            type: boolean
+        - name: available
+          description: 按当前二进制是否包含连接器实现过滤；不传表示不过滤
           in: query
           schema:
             type: boolean
@@ -326,6 +331,7 @@ components:
         - mode
         - category
         - enabled
+        - available
       properties:
         type:
           description: 连接器类型标识，全局唯一
@@ -368,6 +374,9 @@ components:
             $ref: "#/components/schemas/ConnectorFieldConfig"
         enabled:
           description: 是否启用
+          type: boolean
+        available:
+          description: 当前运行的二进制是否包含该连接器实现
           type: boolean
         operations:
           description: 该连接器类型支持的操作集合

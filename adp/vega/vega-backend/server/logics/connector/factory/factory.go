@@ -204,6 +204,16 @@ func (cf *connectorFactory) SetConnectorEnabled(ctx context.Context, tp string, 
 	return nil
 }
 
+// IsConnectorAvailable reports whether the running binary contains a registered
+// implementation for the connector type.
+func (cf *connectorFactory) IsConnectorAvailable(tp string) bool {
+	cf.mu.RLock()
+	defer cf.mu.RUnlock()
+
+	_, exists := cf.connectors[tp]
+	return exists
+}
+
 // CreateConnector 根据类型名称创建 connector 实例
 func (cf *connectorFactory) CreateConnectorInstance(ctx context.Context, tp string, cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	cf.mu.Lock()

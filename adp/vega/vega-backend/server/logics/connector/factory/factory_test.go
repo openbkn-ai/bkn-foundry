@@ -72,6 +72,17 @@ func TestConnectorFactoryRegisterAllConnectors(t *testing.T) {
 	assert.ErrorIs(t, err, ErrConnectorUnavailable)
 }
 
+func TestConnectorFactoryIsConnectorAvailable(t *testing.T) {
+	cf := &connectorFactory{
+		connectors: map[string]interfaces.Connector{
+			"registered": nil,
+		},
+	}
+
+	assert.True(t, cf.IsConnectorAvailable("registered"))
+	assert.False(t, cf.IsConnectorAvailable("missing"))
+}
+
 func TestConnectorFactoryRegisterConnector(t *testing.T) {
 	ctx := context.Background()
 
