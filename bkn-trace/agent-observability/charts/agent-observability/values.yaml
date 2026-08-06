@@ -29,6 +29,11 @@ networkPolicy:
     - namespace: ""
       podLabels:
         app.kubernetes.io/name: agent-retrieval
+    # Keep the pre-0.1.3 selector during rolling upgrades. Remove it only after
+    # every agent-retrieval workload carries the stable Kubernetes label above.
+    - namespace: ""
+      podLabels:
+        app: agent-retrieval
 
 ingress:
   enabled: true

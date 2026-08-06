@@ -199,6 +199,8 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 受管 Conversation、Interaction、Operation 生命周期只监听于集群内部的 `agent-observability-internal:8081`，不依赖共享生命周期 token。Evidence Ledger 与 Artifact 保留在 8080 的已发布生产者接口，并继续校验独立的 `bkn-trace-evidence-ingest` token，以兼容 bkn-agent、Vega、BKN Backend、ontology-query 和 Context Loader。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认只允许带稳定 `app.kubernetes.io/name=agent-retrieval` 标签的 Pod 访问 8081，其他部署可通过 `networkPolicy.allowedClients` 显式扩展。
 
+Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器负责创建或复用该 Secret，并将同一 token 注入 Agent Observability 与 Context Loader；单独安装任一 Chart 时，应预先创建 Secret，或保持 `evidence.ingestAuth.existingSecret` / `observability.evidence_ingest_token_secret_name` 为空，使 Evidence 写入明确处于未启用状态。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
+
 ```bash
 printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \
 kubectl create secret generic bkn-trace-core-mariadb \
@@ -217,6 +219,10 @@ helm upgrade --install agent-observability charts/agent-observability \
 Context Loader 携带 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。若请求未从内部监听器进入，生命周期接口拒绝写入，不得 fail-open。证据生产者则必须携带 ingest token；内部网络身份不能绕过该校验。
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
+
+从旧版升级时，生命周期入口由 8080 迁移到内部 8081。自定义 agent-retrieval values 必须同步更新 `observability.lifecycle.core_url`；标准安装器会同时更新两端。两次 Helm rollout 之间旧 retrieval Pod 可能短暂访问已移除的 8080 生命周期路由，因此生产升级应在维护或流量排空窗口内完成 Observability 与 Retrieval 的连续升级，再恢复第三方 Agent 流量。NetworkPolicy 暂时同时接受旧 `app=agent-retrieval` 与新稳定标签，待所有 retrieval 工作负载完成滚动后再移除旧选择器。
+
+安装器会把 Chart 的 `namespace` value 对齐到目标命名空间。升级前应核对 Helm release 命名空间、既有资源命名空间和历史 values；若三者存在漂移，应先明确迁移资源，避免升级时在新命名空间重建 Service 或 NetworkPolicy。
 
 滚动升级期间，新旧 agent-retrieval 实例可能对失败调用上报不同的 evidence durability；这是升级窗口内的临时统计差异，待生产者全部完成滚动后收敛。不得据此回写或重算历史 Ledger 事件。
 

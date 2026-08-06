@@ -28,6 +28,10 @@ func (s *Server) Start() error {
 	return nil
 }
 
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.httpServer.Handler.ServeHTTP(w, r)
+}
+
 // StartAsync binds the listener before returning so callers can fail startup
 // atomically when a required companion listener is unavailable.
 func (s *Server) StartAsync() (<-chan error, error) {

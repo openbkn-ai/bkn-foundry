@@ -6,6 +6,7 @@ PASS=0
 FAILED=0
 CALLS=()
 EXISTING_SECRETS=""
+EXISTING_DSN_DATA="dGVzdC1kc24="
 KUBECTL_LOG="$(mktemp)"
 
 ok() { PASS=$((PASS + 1)); }
@@ -36,7 +37,7 @@ kubectl() {
                 return 1
             fi
             if [[ "$*" == *"jsonpath={.data.dsn}"* ]]; then
-                printf 'dGVzdC1kc24='
+                printf '%s' "${EXISTING_DSN_DATA}"
             fi
             return 0
             ;;
@@ -107,6 +108,20 @@ CALLS=()
 cat > "${CONFIG_YAML_PATH}" <<'EOF'
 depServices:
   rds:
+    source_type: internal
+    host: mariadb.resource.svc.cluster.local
+    port: 3306
+    user: openbkn
+    password: valid@password/with?symbols
+EOF
+_openbkn_prepare_trace_profile openbkn
+assert_contains "preserves valid DSN password symbols" "stdin:openbkn:valid@password/with?symbols@tcp("
+
+CALLS=()
+: >"${KUBECTL_LOG}"
+cat > "${CONFIG_YAML_PATH}" <<'EOF'
+depServices:
+  rds:
     source_type: external
 EOF
 if _openbkn_prepare_trace_profile openbkn; then
@@ -119,6 +134,16 @@ assert_contains "checks for an external Core DSN Secret" "get secret bkn-trace-c
 CALLS=()
 : >"${KUBECTL_LOG}"
 EXISTING_SECRETS="bkn-trace-core-mariadb"
+EXISTING_DSN_DATA=""
+if _openbkn_prepare_trace_profile openbkn; then
+    fail "existing Core Secret without dsn key must fail"
+else
+    ok
+fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
+EXISTING_DSN_DATA="dGVzdC1kc24="
 _openbkn_prepare_trace_profile openbkn
 if grep -q "create secret generic" "${KUBECTL_LOG}"; then
     fail "existing Core DSN Secret must be reused"

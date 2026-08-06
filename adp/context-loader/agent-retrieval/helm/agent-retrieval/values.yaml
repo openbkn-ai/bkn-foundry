@@ -166,7 +166,8 @@ observability:
     sampling_rate: 1.0
   lifecycle:
     # Mandatory 3.0 business-call dependency. Product deployments install
-    # agent-observability before agent-retrieval; standalone releases override this URL.
+    # agent-observability before agent-retrieval. Lifecycle is no longer served
+    # on public port 8080; existing custom values must migrate to this URL.
     core_url: "http://agent-observability-internal:8081"
     # 0.1.3 defaults to the same single-tenant scope as agent-observability.
     # A trusted inbound x-tenant-id always takes precedence in multi-tenant deployments.
@@ -179,6 +180,8 @@ observability:
   evidence:
     ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
     timeout_ms: 2000
+    # Standard installs create this Secret through agent-observability. It is
+    # optional here so standalone retrieval can start with evidence disabled.
     ingest_token_secret_name: "bkn-trace-evidence-ingest"
     ingest_token_secret_key: "token"
   log:

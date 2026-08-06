@@ -763,11 +763,12 @@ func TestPostBatchPreservesSafeCoreErrorDetails(t *testing.T) {
 }
 
 func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
+	t.Setenv(envEvidenceIngestToken, "test-ingest-token")
 	previous := evidenceHTTPClient
 	t.Cleanup(func() { evidenceHTTPClient = previous })
 	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "" {
-			t.Fatalf("internal evidence request must not carry ingest token, got %q", got)
+		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "test-ingest-token" {
+			t.Fatalf("public evidence request ingest token = %q, want test-ingest-token", got)
 		}
 		if got := req.Header.Get("X-BKN-Trace-Query-Token"); got != "" {
 			t.Fatalf("internal evidence request must not carry gateway token, got %q", got)

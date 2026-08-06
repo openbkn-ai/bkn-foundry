@@ -18,7 +18,8 @@ if ! grep -Fq 'name: agent-observability-internal' <<<"${default_rendered}" ||
   exit 1
 fi
 if ! grep -Fq 'kind: NetworkPolicy' <<<"${default_rendered}" ||
-   ! grep -Fq 'app.kubernetes.io/name: agent-retrieval' <<<"${default_rendered}"; then
+   ! grep -Fq 'app.kubernetes.io/name: agent-retrieval' <<<"${default_rendered}" ||
+   ! grep -Fq 'app: agent-retrieval' <<<"${default_rendered}"; then
   echo "chart must restrict the private lifecycle port to agent-retrieval" >&2
   exit 1
 fi

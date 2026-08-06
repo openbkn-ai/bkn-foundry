@@ -104,6 +104,7 @@ spec:
                   secretKeyRef:
                     name: {{ .Values.observability.evidence.ingest_token_secret_name | quote }}
                     key: {{ .Values.observability.evidence.ingest_token_secret_key | quote }}
+                    optional: true
             {{- end}}
 
           ports:
