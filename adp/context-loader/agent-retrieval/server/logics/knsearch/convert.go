@@ -26,7 +26,9 @@ func KnSearchReqToLocal(req *interfaces.KnSearchReq) *interfaces.KnSearchLocalRe
 		Query:       req.Query,
 		KnID:        req.KnID,
 	}
-	local.OnlySchema = false
+	// 默认只回 Schema：这是所有存量调用方今天拿到的东西。
+	// 显式传 only_schema=false 才额外做语义实例召回。
+	local.OnlySchema = true
 	if req.OnlySchema != nil {
 		local.OnlySchema = *req.OnlySchema
 	}
@@ -140,9 +142,18 @@ func KnSearchLocalResponseToResp(local *interfaces.KnSearchLocalResponse) *inter
 	if local == nil {
 		return nil
 	}
-	return &interfaces.KnSearchResp{
+	resp := &interfaces.KnSearchResp{
 		ObjectTypes:   local.ObjectTypes,
 		RelationTypes: local.RelationTypes,
 		ActionTypes:   local.ActionTypes,
 	}
+	// 只在真的做了实例召回时才带 nodes / message：Schema-only 的响应保持原样。
+	if len(local.Nodes) > 0 {
+		resp.Nodes = local.Nodes
+	}
+	if local.Message != "" {
+		message := local.Message
+		resp.Message = &message
+	}
+	return resp
 }

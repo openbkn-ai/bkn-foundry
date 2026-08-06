@@ -1795,6 +1795,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 			} else {
 				objectType.DataSource.Name = res.Name
 				fieldsMap := logics.VegaResourceSchemaToFieldsMap(res)
+				indexCaps := logics.VegaResourceIndexCaps(res)
 				dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
 				for j, prop := range objectType.DataProperties {
 					if prop.MappedField != nil {
@@ -1803,7 +1804,11 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 							objectType.DataProperties[j].MappedField.Type = field.Type
 						}
 					}
-					objectType.DataProperties[j].ConditionOperations = ots.processConditionOperations(objectType, prop, dslView)
+					ops := ots.processConditionOperations(objectType, prop, dslView)
+					if prop.MappedField != nil {
+						ops = applyIndexCapOps(ops, indexCaps[prop.MappedField.Name])
+					}
+					objectType.DataProperties[j].ConditionOperations = ops
 				}
 			}
 		}
@@ -1945,6 +1950,46 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 
 	span.SetStatus(codes.Ok, "")
 	return objectType, nil
+}
+
+// applyIndexCapOps 把资源本地索引上已经具备的检索能力叠加进属性的算子集合。
+//
+// 叠加而不是替换：属性类型推出来的那批算子是基线（对象类可以完全没有索引），
+// 资源真建了什么索引，就在基线上再放开什么算子。字段有全文索引时，match /
+// multi_match 的执行链路本来就是通的（bkn 改写 → Vega 路由到 fulltext 子字段），
+// 这里只是把它如实登记出来，让上层检索知道可以用。
+//
+// 向量能力有意不映射成 knn：knn 改写要求属性类型字面是 vector，而表资源的源字段
+// 是 string，向量落在构建任务生成的字段上，对象类里并没有对应属性——现在放开
+// 只会让上层稳定收到 400。等「生成向量字段 → 对象类属性」的映射契约落地后再说。
+func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string {
+	if !propCaps.Keyword && !propCaps.Fulltext {
+		return ops
+	}
+
+	merged := make([]string, len(ops), len(ops)+len(interfaces.DSL_KEYWORD_OPS)+len(interfaces.DSL_TEXT_OPS))
+	copy(merged, ops)
+	seen := make(map[string]struct{}, cap(merged))
+	for _, op := range merged {
+		seen[op] = struct{}{}
+	}
+	appendOps := func(candidates []string) {
+		for _, op := range candidates {
+			if _, exists := seen[op]; exists {
+				continue
+			}
+			seen[op] = struct{}{}
+			merged = append(merged, op)
+		}
+	}
+
+	if propCaps.Keyword {
+		appendOps(interfaces.DSL_KEYWORD_OPS)
+	}
+	if propCaps.Fulltext {
+		appendOps(interfaces.DSL_TEXT_OPS)
+	}
+	return merged
 }
 
 // 处理字符串类型的操作符

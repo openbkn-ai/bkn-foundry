@@ -49,7 +49,22 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 		ActionTypes:   conceptResult.ActionTypes,
 	}
 
-	// shared logic 已收敛为 Schema-only，兼容字段仍可传入，但不再触发实例检索。
-	s.logger.WithContext(ctx).Infof("[KnSearchLocal] Shared logic converged to schema-only, skip semantic instance retrieval")
+	// 4. 语义实例召回：只在调用方明确要实例时做（search_schema 恒为 schema-only）
+	if req.OnlySchema {
+		s.logger.WithContext(ctx).Infof("[KnSearchLocal] only_schema=true, skip semantic instance retrieval")
+		return response, nil
+	}
+
+	instanceResult, instanceErr := s.semanticInstanceRetrieval(ctx, req, conceptResult.ObjectTypes, mergedConfig)
+	if instanceErr != nil {
+		// 实例召回失败不拖垮整条检索：Schema 本身已经是有用的结果，降级返回。
+		s.logger.WithContext(ctx).Warnf("[KnSearchLocal] Semantic instance retrieval failed, degrade to schema-only: %v", instanceErr)
+		return response, nil
+	}
+
+	response.Nodes = instanceResult.Nodes
+	response.Message = instanceResult.Message
+	s.logger.WithContext(ctx).Infof("[KnSearchLocal] Semantic instance retrieval completed: nodes=%d", len(response.Nodes))
+
 	return response, nil
 }

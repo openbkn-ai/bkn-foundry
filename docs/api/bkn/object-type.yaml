@@ -2046,7 +2046,11 @@ components:
           $ref: "#/components/schemas/IndexConfig"
           description: 索引配置
         condition_operations:
-          description: "字符串类型的属性能支持的过滤条件。字符串类型有string, text。"
+          description: |
+            该属性能支持的过滤条件，读取时按属性类型推导（字符串类型有 string、text），
+            再叠加数据源上已经建成的索引能力：属性映射到的 Vega 资源字段带全文索引时
+            额外给出 `match` / `multi_match`，带 keyword 索引时补齐等值类操作。
+            资源没有本地索引（构建任务未跑或未完成）时只有按类型推导的那批。
           type: array
           items:
             type: string

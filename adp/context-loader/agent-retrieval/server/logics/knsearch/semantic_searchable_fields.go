@@ -46,7 +46,10 @@ func isTextField(prop *interfaces.KnSearchDataProperty) bool {
 	return false
 }
 
-// findSemanticSearchableFields 从对象类型中筛选可语义检索的字段
+// findSemanticSearchableFields 从对象类型中筛选可语义检索的字段。
+//
+// 依据是属性的 condition_operations：字段能不能做 match / knn 由 bkn-backend 按资源
+// 上真实建成的索引派生后发布在这里，检索层只消费，不自己去问物理层。
 func findSemanticSearchableFields(objType *interfaces.KnSearchObjectType) []searchableField {
 	if objType == nil || len(objType.DataProperties) == 0 {
 		return nil

@@ -22,6 +22,7 @@ import (
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	bmock "bkn-backend/interfaces/mock"
+	"bkn-backend/logics"
 )
 
 func Test_objectTypeService_CheckObjectTypeExistByID(t *testing.T) {
@@ -3799,6 +3800,61 @@ func Test_compareMappedField(t *testing.T) {
 			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
 			newField := &interfaces.Field{Name: "id", Type: "keyword"}
 			So(compareMappedField(oldField, newField), ShouldBeTrue)
+		})
+	})
+}
+
+func Test_applyIndexCapOps(t *testing.T) {
+	Convey("Test applyIndexCapOps\n", t, func() {
+		// 属性类型推出来的基线：字符串在 DSL 视图下只有 keyword 那批算子
+		baseline := append([]string{}, interfaces.DSL_KEYWORD_OPS...)
+
+		contains := func(ops []string, op string) bool {
+			for _, item := range ops {
+				if item == op {
+					return true
+				}
+			}
+			return false
+		}
+
+		Convey("No caps leaves the baseline untouched\n", func() {
+			ops := applyIndexCapOps(baseline, logics.PropertyIndexCaps{})
+			So(ops, ShouldResemble, baseline)
+		})
+
+		Convey("Fulltext cap exposes match / multi_match\n", func() {
+			ops := applyIndexCapOps(baseline, logics.PropertyIndexCaps{Fulltext: true})
+			So(contains(ops, cond.OperationMatch), ShouldBeTrue)
+			So(contains(ops, cond.OperationMultiMatch), ShouldBeTrue)
+			// 基线算子一个不少
+			for _, op := range baseline {
+				So(contains(ops, op), ShouldBeTrue)
+			}
+			So(len(ops), ShouldEqual, len(baseline)+2)
+		})
+
+		Convey("Keyword cap does not duplicate ops already in the baseline\n", func() {
+			ops := applyIndexCapOps(baseline, logics.PropertyIndexCaps{Keyword: true})
+			So(len(ops), ShouldEqual, len(baseline))
+		})
+
+		Convey("Keyword cap tops up a baseline that lacks those ops\n", func() {
+			ops := applyIndexCapOps([]string{}, logics.PropertyIndexCaps{Keyword: true})
+			So(len(ops), ShouldEqual, len(interfaces.DSL_KEYWORD_OPS))
+			So(contains(ops, cond.OperationEq), ShouldBeTrue)
+		})
+
+		Convey("Vector cap alone stays silent: knn needs a vector-typed property\n", func() {
+			ops := applyIndexCapOps(baseline, logics.PropertyIndexCaps{Vector: true})
+			So(contains(ops, cond.OperationKNN), ShouldBeFalse)
+			So(ops, ShouldResemble, baseline)
+		})
+
+		Convey("The shared package-level op slices are never mutated\n", func() {
+			before := append([]string{}, interfaces.DSL_TEXT_OPS...)
+			_ = applyIndexCapOps(interfaces.DSL_TEXT_OPS, logics.PropertyIndexCaps{Keyword: true, Fulltext: true})
+			So(interfaces.DSL_TEXT_OPS, ShouldResemble, before)
 		})
 	})
 }

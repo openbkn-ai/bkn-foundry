@@ -12,11 +12,15 @@ info:
     | 端点 | 定位 | 建议 |
     |---|---|---|
     | `POST /kn/search_schema` | 标准契约，Schema-only | **新接入方用这个** |
-    | `POST /kn/kn_search` | `search_schema` 的兼容壳，吸收旧字段 | 仅存量调用方 |
+    | `POST /kn/kn_search` | 兼容壳，吸收旧字段；可选开语义实例召回 | 仅存量调用方 |
     | `POST /kn/semantic-search` | 早期语义检索，带查询理解与实例样本 | 需要 `query_understanding` 时用 |
 
-    `search_schema` / `kn_search` 固定为 Schema-only：不返回实例数据，也不承担实例
-    检索。拿到概念后，实例数据走
+    `search_schema` 固定为 Schema-only：不返回实例数据，也不承担实例检索。
+    `kn_search` 默认同样只回 Schema，只有显式传 `only_schema: false` 时才在概念命中的
+    基础上做一轮语义实例召回，并把命中实例放在 `nodes` 里。参与召回的只有
+    `condition_operations` 里带 `match` / `knn` / `==` 的属性——没建索引的对象类不出实例。
+
+    拿到概念后，实例数据也可以走
     [object-instance.yaml](object-instance.yaml)、[instance-subgraph.yaml](instance-subgraph.yaml)，
     或 [data-access.yaml](data-access.yaml) 的 `run_sql`。
 
@@ -115,16 +119,17 @@ paths:
           query: 巡检探测
       description: |
         兼容历史 `kn_search` 调用方式的接口。底层与 `search_schema` 共用同一套逻辑，
-        输出统一收敛为 Schema 结果。
+        默认输出同样收敛为 Schema 结果。
 
-        兼容边界（传入不报错，但也不恢复旧能力）：
+        兼容边界：
 
-        - `only_schema` 无论传什么都按 `true` 处理；
+        - `only_schema` 缺省按 `true` 处理，行为与 `search_schema` 一致；显式传
+          `false` 才额外做语义实例召回，命中实例放在 `nodes`，无命中时给 `message`；
+        - 实例召回失败不影响本次调用：降级为只回 Schema，不报错；
         - `retrieval_config` 里只有 `concept_retrieval.top_k`、
-          `concept_retrieval.schema_brief` 会被吸收，其余字段被忽略；
-        - 不再返回 `nodes` / `message`，也不返回实例检索结果。
+          `concept_retrieval.schema_brief` 会被吸收，其余字段被忽略。
 
-        新接入方请直接用 `POST /kn/search_schema`。
+        只要 Schema 的新接入方请直接用 `POST /kn/search_schema`。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
@@ -386,7 +391,11 @@ components:
               description: 兼容接收，当前版本不生效。
         only_schema:
           type: boolean
-          description: 兼容接收；接口固定 Schema-only，传任何值均按 `true` 处理。
+          default: true
+          description: |
+            缺省 `true`，只回 Schema。传 `false` 时在概念命中的基础上做一轮语义实例
+            召回，结果放在 `nodes`。只有 `condition_operations` 含 `match` / `knn` /
+            `==` 的属性参与召回，因此没建索引的对象类不会出实例。
         enable_rerank:
           type: boolean
           default: true
@@ -407,6 +416,7 @@ components:
         [kn-explore.yaml](kn-explore.yaml) 的 `ObjectType` / `RelationType` / `ActionType`。
 
         `metric_types` 仅 `search_schema` 返回；`kn_search` 兼容口不返回该字段。
+        `nodes` / `message` 只有 `kn_search` 传 `only_schema: false` 时才出现。
       properties:
         object_types:
           type: array
@@ -432,6 +442,18 @@ components:
           items:
             type: object
             additionalProperties: true
+        nodes:
+          type: array
+          description: |
+            语义实例召回命中的实例（仅 `kn_search` 且 `only_schema: false`）。
+          items:
+            type: object
+            additionalProperties: true
+        message:
+          type: string
+          description: |
+            实例召回的说明，例如「未检索到符合条件的实例数据」
+            （仅 `kn_search` 且 `only_schema: false`）。
 
     SemanticSearchRequest:
       type: object

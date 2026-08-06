@@ -106,12 +106,13 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 	objType *interfaces.KnSearchObjectType,
 	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
 ) ([]*interfaces.KnSearchNode, error) {
-	if len(findSemanticSearchableFields(objType)) == 0 {
+	searchable := findSemanticSearchableFields(objType)
+	if len(searchable) == 0 {
 		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no semantic-searchable properties, skip", objType.ConceptID)
 		return nil, nil
 	}
 
-	cond := s.buildSemanticSearchConditionStruct(req.Query, objType, config)
+	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config)
 	if cond == nil {
 		return nil, nil
 	}
@@ -141,7 +142,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 	}
 
 	// 计算相关性分数
-	s.scoreNodes(req.Query, nodes, config)
+	s.scoreNodes(req.Query, nodes, searchable, config)
 
 	// 按分数降序排序
 	sort.Slice(nodes, func(i, j int) bool {
@@ -160,12 +161,16 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 }
 
 // buildSemanticSearchConditionStruct 构建语义检索条件结构体
+// buildSemanticSearchConditionStruct 把一句自然语言拼成 OR 条件。
+//
+// 只用 knn 与 match：knn 吃整句（句向量本就该整句进），match 吃整句后由分析器分词
+// 逐词命中。等值不参与——拿整句去和某个字段做 == 永远为假，还要白占一个
+// max_sub_conditions 名额，把真正能命中的子条件挤掉。
 func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 	query string,
-	objType *interfaces.KnSearchObjectType,
+	searchable []searchableField,
 	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
 ) *interfaces.KnCondition {
-	searchable := findSemanticSearchableFields(objType)
 	if len(searchable) == 0 {
 		return nil
 	}
@@ -202,17 +207,6 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 			break
 		}
 		f := &searchable[i]
-		if f.HasExactMatch {
-			subConditions = append(subConditions, &interfaces.KnCondition{
-				Field:     f.Name,
-				Operation: interfaces.KnOperationTypeEqual,
-				Value:     query,
-				ValueFrom: interfaces.CondValueFromConst,
-			})
-			if len(subConditions) >= maxSub {
-				break
-			}
-		}
 		if f.HasMatch {
 			subConditions = append(subConditions, &interfaces.KnCondition{
 				Field:     f.Name,
@@ -276,9 +270,17 @@ func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObje
 }
 
 // scoreNodes 计算节点的相关性分数
-func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchNode, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) {
+// scoreNodes 只在底层没给出分数时兜底。
+//
+// 索引查询回来的行带 _score（ontology-query 逐行注入 hit.Score），那是 OpenSearch 的
+// 相关性，比这里的字符串比对可靠得多，一律保留。回落到源库直查的资源没有 _score，
+// 才用下面的兜底：命中范围覆盖参与检索的全部字段而不只是实例名——match 很可能命中
+// 的是描述、地址一类字段，只比实例名会把它们判成 0 分再被相关性过滤掉。
+func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchNode,
+	searchable []searchableField, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) {
+
 	for _, node := range nodes {
-		// 如果已有分数（来自向量检索），保留
+		// 已有分数（来自索引检索）时保留
 		if node.Score > 0 {
 			continue
 		}
@@ -288,19 +290,47 @@ func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchN
 			continue
 		}
 
-		// 基于名称匹配计算分数
-		score := 0.0
+		node.Score = fallbackNodeScore(query, node, searchable, config)
+	}
+}
 
-		// 完全匹配加高分
-		if node.InstanceName == query {
-			score = config.ExactNameMatchScore
-		} else if containsFold(node.InstanceName, query) {
-			score = 0.5
-		} else if containsFold(query, node.InstanceName) {
-			score = 0.3
+// fallbackNodeScore 取实例名与各可检索字段里的最高分。
+func fallbackNodeScore(query string, node *interfaces.KnSearchNode,
+	searchable []searchableField, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) float64 {
+
+	best := textOverlapScore(query, node.InstanceName, config.ExactNameMatchScore)
+	for i := range searchable {
+		value, ok := node.Properties[searchable[i].Name]
+		if !ok {
+			continue
 		}
+		text, ok := value.(string)
+		if !ok || text == "" {
+			continue
+		}
+		// 属性上的命中不如实例名精确，完全相等也只给 0.6，避免把地址、备注一类
+		// 长文本的整串相等抬到与实例名同级。
+		if score := textOverlapScore(query, text, 0.6); score > best {
+			best = score
+		}
+	}
+	return best
+}
 
-		node.Score = score
+// textOverlapScore 按「相等 > 目标含查询 > 查询含目标」三档给分。
+func textOverlapScore(query, target string, exactScore float64) float64 {
+	if target == "" {
+		return 0
+	}
+	switch {
+	case target == query:
+		return exactScore
+	case containsFold(target, query):
+		return 0.5
+	case containsFold(query, target):
+		return 0.3
+	default:
+		return 0
 	}
 }
 

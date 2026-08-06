@@ -210,7 +210,7 @@ func TestBuildSemanticSearchConditionStruct(t *testing.T) {
 	}
 	// 无可搜字段时返回 nil（与 Python 一致，无 "*" 回退）
 	objTypeEmpty := &interfaces.KnSearchObjectType{ConceptID: "ot1"}
-	condEmpty := svc.buildSemanticSearchConditionStruct("query", objTypeEmpty, config)
+	condEmpty := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objTypeEmpty), config)
 	if condEmpty != nil {
 		t.Errorf("Expected nil when no searchable fields (align with Python), got %v", condEmpty)
 	}
@@ -222,7 +222,7 @@ func TestBuildSemanticSearchConditionStruct(t *testing.T) {
 			{Name: "title", Type: "text", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeKnn, interfaces.KnOperationTypeMatch}},
 		},
 	}
-	cond := svc.buildSemanticSearchConditionStruct("query", objTypeWithProps, config)
+	cond := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objTypeWithProps), config)
 	if cond == nil {
 		t.Fatal("Expected non-nil condition when searchable fields present")
 	}
@@ -281,7 +281,7 @@ func TestScoreNodes(t *testing.T) {
 		{InstanceName: "Existing", Score: 0.9},  // Existing score
 	}
 
-	svc.scoreNodes("Target", nodes, config)
+	svc.scoreNodes("Target", nodes, nil, config)
 
 	if nodes[0].Score != 0.85 {
 		t.Errorf("Exact match score mismatch: %f", nodes[0].Score)
