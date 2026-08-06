@@ -8,6 +8,7 @@ Suggested exploration order:
 Query routing:
 - Use query_object_instance for single object-type filtering, sorting, and cursor-style pagination.
 - Use run_sql for joins, aggregation, ranking, GROUP BY, COUNT, SUM, AVG, and cross-table analysis. Use read-only MySQL SQL. Reference tables with placeholders such as {{.resource_id}} where resource_id comes from search_schema or list_resources. Use physical column names from search_schema with include_columns=true or from describe_resource.
+- Quote MySQL identifiers with backticks when needed (for example, `order_id`); double quotes are string literals, not identifiers.
 - Use query_instance_subgraph to expand related instances along relation paths.
 - Use get_action_info to discover actions that can be executed for object instances.
 

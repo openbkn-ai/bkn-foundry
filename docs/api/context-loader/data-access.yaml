@@ -88,7 +88,8 @@ paths:
           resource_id: '{cl_resource_id}'
       description: |
         取单个资源的物理列与连接器类型——写 `run_sql` 之前该看的东西。
-        `connector_type` 决定实际目标方言；`run_sql` 统一接收 MySQL 方言，再由 Vega 转译。
+        `connector_type` 决定实际目标方言；`run_sql` 统一接收 MySQL 方言，目标方言不是
+        MySQL 时由 Vega 转译，MySQL / MariaDB 资源则直接下发。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
@@ -135,9 +136,11 @@ paths:
       summary: 对数据资源执行只读 SQL
       operationId: runSQL
       description: |
-        以 MySQL 方言执行**只读** SQL。表名不写物理表名，写占位符；标识符需要引用时使用反引号
-        （如 `` `order_id` ``），双引号表示字符串字面量，不应用于标识符。
+        以 MySQL 方言执行**只读** SQL。表名不写物理表名，写占位符
         `{{.<resource_id>}}`，由服务端解析到真实数据源。
+
+        标识符需要引用时使用反引号（如 `` `order_id` ``）；双引号在 MySQL 方言下是
+        字符串字面量，不能用于标识符。
 
         **两条硬约束，违反直接 400，SQL 不会下发**：
 
@@ -147,7 +150,7 @@ paths:
         2. **必须是单条只读 `SELECT` 语句**。端到端兼容性以 vega 的只读策略为准；
            虽然本服务的本地守卫可接受以 `WITH` 开头的语句，但 vega 当前会拒绝 CTE，
            因此调用方**不得使用 `WITH` / CTE 或 `UNION` / `INTERSECT` / `EXCEPT`**。
-           守卫会先剥掉注释、字符串字面量与占位符，
+           守卫会先剥掉注释、字符串字面量、反引号标识符与占位符，
            再判定：不允许多语句（剥离后仍含 `;`）、必须以 `SELECT` 或 `WITH` 开头、不得含
            写入 / DDL / 权限 / 过程类关键字（INSERT、UPDATE、DELETE、DROP、ALTER、
            CREATE、TRUNCATE、GRANT、REVOKE、REPLACE、MERGE、UPSERT、CALL、EXEC、
