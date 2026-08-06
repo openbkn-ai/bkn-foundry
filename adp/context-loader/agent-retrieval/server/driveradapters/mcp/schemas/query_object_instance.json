@@ -4,7 +4,10 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -22,8 +25,10 @@
       },
       "condition": {
         "type": "object",
-        "description": "过滤条件。operation 必填。比较算子（==/!=/>/>=/</<=/in/not_in/like/not_like/exist/not_exist/match）配 field + value + value_from；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。value 与 value_from 必须同时出现，value_from 仅支持 const。算子白名单以对象类的 condition_operations 为准。无过滤条件时可整体省略 condition。",
-        "required": ["operation"],
+        "description": "过滤条件。operation 必填。比较算子（==/!=/>/>=/</<=/in/not_in/like/not_like/exist/not_exist/match）配 field + value + value_from；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。value 与 value_from 必须同时出现，value_from 仅支持 const。算子白名单以对象类的 condition_operations 为准。无过滤条件时可整体省略 condition。 knn 另需 limit_key=k + limit_value=<近邻数>；该算子只在属性的 condition_operations 含 knn 时可用（即绑定资源上这个字段真建了向量索引）。",
+        "required": [
+          "operation"
+        ],
         "properties": {
           "field": {
             "type": "string",
@@ -31,31 +36,81 @@
           },
           "operation": {
             "type": "string",
-            "description": "条件操作符，具体支持以对象类的 condition_operations 为准",
-            "enum": ["and", "or", "==", "!=", ">", ">=", "<", "<=", "in", "not_in", "like", "not_like", "exist", "not_exist", "match"]
+            "description": "条件操作符，具体支持以对象类的 condition_operations 为准。match 走全文索引（词法命中）；knn 走向量索引（语义/跨语言命中，字面不重合也能召回），两者是独立算子，要同时用就放进 or 的 sub_conditions。",
+            "enum": [
+              "and",
+              "or",
+              "==",
+              "!=",
+              ">",
+              ">=",
+              "<",
+              "<=",
+              "in",
+              "not_in",
+              "like",
+              "not_like",
+              "exist",
+              "not_exist",
+              "match",
+              "knn"
+            ]
           },
           "sub_conditions": {
             "type": "array",
             "description": "子条件数组，用于 and/or 组合（元素为同结构 condition）",
-            "items": { "type": "object" }
+            "items": {
+              "type": "object"
+            }
           },
           "value_from": {
             "type": "string",
-            "enum": ["const"],
+            "enum": [
+              "const"
+            ],
             "description": "值来源，仅支持 const；必须与 value 同时使用"
           },
           "value": {
             "description": "字段值；与 value_from=const 同时使用。比较算子用单值，范围用 [min, max]，集合算子（in/not_in）用数组",
             "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" },
-              { "type": "array", "items": { "oneOf": [
-                { "type": "string" },
-                { "type": "number" },
-                { "type": "boolean" }
-              ]}}
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                }
+              }
             ]
+          },
+          "limit_key": {
+            "type": "string",
+            "enum": [
+              "k"
+            ],
+            "description": "仅 knn 使用：近邻数量的键，固定为 k。与 limit_value 同时出现。"
+          },
+          "limit_value": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "仅 knn 使用：取多少个最近邻。不传时由服务端取默认值。"
           }
         },
         "additionalProperties": false
@@ -65,25 +120,63 @@
         "description": "扁平过滤简写：多个条件按 and 组合，等价于手写 condition 的 and 嵌套。覆盖最常见的「字段 op 值 [AND ...]」场景。与 condition 互斥（同传时 condition 优先）；需要 or 或多层嵌套时改用 condition。算子白名单以对象类的 condition_operations 为准。",
         "items": {
           "type": "object",
-          "required": ["field", "op", "value"],
+          "required": [
+            "field",
+            "op",
+            "value"
+          ],
           "properties": {
-            "field": { "type": "string", "description": "对象类属性名" },
+            "field": {
+              "type": "string",
+              "description": "对象类属性名"
+            },
             "op": {
               "type": "string",
               "description": "比较算子；白名单以对象类 condition_operations 为准",
-              "enum": ["==", "!=", ">", ">=", "<", "<=", "in", "not_in", "like", "not_like", "exist", "not_exist", "match"]
+              "enum": [
+                "==",
+                "!=",
+                ">",
+                ">=",
+                "<",
+                "<=",
+                "in",
+                "not_in",
+                "like",
+                "not_like",
+                "exist",
+                "not_exist",
+                "match"
+              ]
             },
             "value": {
               "description": "字段值；集合算子（in/not_in）用数组",
               "oneOf": [
-                { "type": "string" },
-                { "type": "number" },
-                { "type": "boolean" },
-                { "type": "array", "items": { "oneOf": [
-                  { "type": "string" },
-                  { "type": "number" },
-                  { "type": "boolean" }
-                ]}}
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  }
+                }
               ]
             }
           },
@@ -111,7 +204,10 @@
         "description": "指定返回的对象属性字段列表，默认返回所有属性"
       }
     },
-    "required": ["kn_id", "ot_id"]
+    "required": [
+      "kn_id",
+      "ot_id"
+    ]
   },
   "output_schema": {
     "type": "object",

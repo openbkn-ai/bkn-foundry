@@ -29,7 +29,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 210,
-    "description": "单对象类实例过滤查询。已知对象类与过滤条件时，查询实例列表。支持 search_after 游标顺序翻页（用上一页返回的 search_after 取下一页，不支持跳页）。"
+    "description": "单对象类实例过滤查询。已知对象类与过滤条件时，查询实例列表。支持 search_after 游标顺序翻页（用上一页返回的 search_after 取下一页，不支持跳页）。 文本检索按字段能力选算子：condition_operations 含 match 的字段可做全文模糊匹配，含 knn 的字段可做向量语义检索（自然语言、跨语言、换个说法都能召回，需配 limit_key=k + limit_value）；两者都要就用 or 把子条件并起来。"
   },
   "query_instance_subgraph": {
     "name": "query_instance_subgraph",
