@@ -1571,6 +1571,25 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 			So(result, ShouldBeFalse)
 		})
 
+		Convey("success - legacy leaf with sub conditions evaluates every leaf", func() {
+			condition := &cond.CondCfg{
+				Name:        "amount",
+				Operation:   cond.OperationEq,
+				ValueOptCfg: cond.ValueOptCfg{Value: 100},
+				SubConds: []*cond.CondCfg{
+					{Name: "level", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: "high"}},
+				},
+			}
+			paramDefs := []interfaces.Parameter{
+				{Name: "amount", Type: dtype.DATATYPE_INTEGER},
+				{Name: "level", Type: dtype.DATATYPE_STRING},
+			}
+
+			result, err := EvaluateDataAgainstCondition(ctx, map[string]any{"amount": 100, "level": "low"}, condition, paramDefs)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeFalse)
+		})
+
 		Convey("成功 - 简单等于条件满足", func() {
 			data := map[string]any{"amount": 100}
 			condition := &cond.CondCfg{

@@ -702,6 +702,7 @@ func evaluateConditionRecursive(ctx context.Context,
 	if condition == nil {
 		return true, nil
 	}
+	condition = cond.PromoteLegacyLeafWithSubConds(condition)
 
 	// Handle logical operators
 	switch condition.Operation {

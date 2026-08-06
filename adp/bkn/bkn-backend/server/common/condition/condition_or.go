@@ -66,9 +66,12 @@ func (cond *OrCond) Convert(ctx context.Context, vectorizer func(ctx context.Con
 		if err != nil {
 			return "", err
 		}
+		if dsl == "{}" {
+			return "{}", nil
+		}
 
 		// 过滤掉空字符串（被忽略的条件）
-		if dsl != "" && dsl != "{}" {
+		if dsl != "" {
 			validDSLs = append(validDSLs, dsl)
 		}
 	}
@@ -129,7 +132,13 @@ func convertOrCondToDatasetFilterCondition(ctx context.Context, cfg *CondCfg, fi
 	}
 
 	subConditions := make([]map[string]any, 0, len(cfg.SubConds))
+	hasNonNilSubCondition := false
 	for _, subCond := range cfg.SubConds {
+		if subCond == nil {
+			continue
+		}
+		hasNonNilSubCondition = true
+
 		subCondMap, err := ConvertCondCfgToFilterCondition(ctx, subCond, fieldsMap, vectorizer)
 		if err != nil {
 			return nil, err
@@ -138,14 +147,16 @@ func convertOrCondToDatasetFilterCondition(ctx context.Context, cfg *CondCfg, fi
 			subConditions = append(subConditions, subCondMap)
 			continue
 		}
-		if subCond != nil && subCond.Operation == OperationAnd {
+		if subCond.Operation == OperationAnd || subCond.Operation == OperationOr {
 			return nil, nil
 		}
 	}
 
-	// OR requires at least one effective sub-condition.
 	if len(subConditions) == 0 {
-		return nil, fmt.Errorf("sub condition size is 0")
+		if !hasNonNilSubCondition {
+			return nil, fmt.Errorf("sub condition size is 0")
+		}
+		return nil, nil
 	}
 
 	// If only one sub-condition, return it directly without wrapping in "or"

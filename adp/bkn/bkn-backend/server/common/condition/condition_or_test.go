@@ -10,6 +10,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	dtype "bkn-backend/interfaces/data_type"
@@ -175,6 +176,38 @@ func TestConvertOrCondToDatasetFilterCondition(t *testing.T) {
 			So(result, ShouldBeNil)
 			So(err.Error(), ShouldEqual, "sub condition size is 0")
 		})
+
+		Convey("nested match-all OR propagates to its parent", func() {
+			result, err := ConvertCondCfgToFilterCondition(context.Background(), &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					{
+						Operation: OperationOr,
+						SubConds: []*CondCfg{
+							{Operation: OperationAnd, SubConds: []*CondCfg{}},
+							{Operation: OperationEq, Field: "field1", ValueOptCfg: ValueOptCfg{ValueFrom: ValueFrom_Const, Value: "value1"}},
+						},
+					},
+					{Operation: OperationEq, Field: "field2", ValueOptCfg: ValueOptCfg{ValueFrom: ValueFrom_Const, Value: "value2"}},
+				},
+			}, nil, nil)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeNil)
+		})
+
+		Convey("ignored KNN child preserves the existing no-filter behavior", func() {
+			vectorizer := func(context.Context, string) ([]*VectorResp, error) {
+				return nil, &rest.HTTPError{BaseError: rest.BaseError{ErrorDetails: DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR}}
+			}
+			result, err := ConvertCondCfgToFilterCondition(context.Background(), &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					{Operation: OperationKNN, ValueOptCfg: ValueOptCfg{Value: "query"}},
+				},
+			}, nil, vectorizer)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeNil)
+		})
 	})
 }
 
@@ -252,6 +285,29 @@ func TestOrCond_Convert(t *testing.T) {
 			So(dsl, ShouldNotBeEmpty)
 			So(dsl, ShouldContainSubstring, "bool")
 			So(dsl, ShouldContainSubstring, "should")
+		})
+
+		Convey("empty AND child should make OR match all", func() {
+			cfg := &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					{Operation: OperationAnd, SubConds: []*CondCfg{}},
+					{
+						Operation: OperationEq,
+						Field:     "field1",
+						ValueOptCfg: ValueOptCfg{
+							ValueFrom: ValueFrom_Const,
+							Value:     "value1",
+						},
+					},
+				},
+			}
+			cond, err := newOrCond(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+
+			dsl, err := cond.Convert(ctx, nil)
+			So(err, ShouldBeNil)
+			So(dsl, ShouldEqual, "{}")
 		})
 
 		Convey("error in sub condition Convert should propagate", func() {
