@@ -399,3 +399,44 @@ def test_contextvar_token_reset_in_same_context():
     # 同一 context 内复位则正常
     context_loader.reset_current(token)
     assert context_loader.current_session() is None
+
+
+def test_session_stays_visible_after_load_tools():
+    """会话必须活过整轮，不能只活到 load_tools 结束。
+
+    agent-as-tool 的子 agent 在执行期才调 load_tools，靠 current_session() 拿
+    父会话。上一版把 ContextVar 收窄到装载那一段，子 agent 于是带着零个 CL 工具
+    作答——不报错、不告警。
+    """
+    sess = context_loader.ContextLoaderSession("c", "i")
+    context_loader.set_current(sess)
+    try:
+        # 装载早已结束；执行期（子 agent）仍要看得见
+        assert context_loader.current_session() is sess
+    finally:
+        context_loader.set_current(None)
+
+
+def test_busy_release_is_first_in_sse_finally():
+    """放位必须是 SSE finally 的第一条语句，前面不许有会抛的调用。
+
+    这条守的是模式而不是某一行：排在放位前面的每一条都可能把 thread 永久留在
+    409——close_session 挡不住断连的 CancelledError，evidence.end_interaction 是
+    ContextVar 复位、由 aclose 任务驱动时跨 context 必抛。两者都真的踩过。
+
+    源码级断言是刻意的：这个失效只在客户端中途断连时发生，单测跑不出来。
+    """
+    import inspect
+    import re
+
+    from app.core import graph
+
+    src = inspect.getsource(graph.stream_chat)
+    # 取最后一个 finally 块（_events 的那个）
+    tail = src[src.rindex("finally:"):]
+    body = [ln.strip() for ln in tail.splitlines()[1:] if ln.strip() and not ln.strip().startswith("#")]
+    assert body, "没解析到 finally 块"
+    assert re.match(r"_busy_threads\.discard", body[0]), (
+        f"finally 的第一条不是放位，而是：{body[0]}\n"
+        "排在放位前面的任何抛出都会让该 thread 永久停在 409"
+    )

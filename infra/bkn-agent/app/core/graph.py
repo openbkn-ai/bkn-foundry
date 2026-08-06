@@ -54,7 +54,6 @@ async def stream_chat(
 
     # 在 try 之前绑定：setup 早期抛异常时 except 分支也要能安全引用
     cl_session = None
-    cl_token = None
 
     try:
         thread_row = await dao.get_thread_row(session, thread_id)
@@ -92,20 +91,23 @@ async def stream_chat(
                 # 复制出来的独立 context，token 跨 context 复位直接抛
                 # ValueError: Token was created in a different Context，
                 # 而且它抛在 finally 开头，把后面的兜底收尾一并废掉。
-                cl_token = context_loader.set_current(cl_session)
-        try:
-            tools = await load_tools(
-                agent.tools,
-                account_id,
-                account_type,
-                depth=0,
-                parent_thread_id=thread_id,
-                skill_ids=skill_ids,
-            )
-        finally:
-            if cl_token is not None:
-                context_loader.reset_current(cl_token)
-                cl_token = None
+                # 设了就不复位。
+                #
+                # 上一版把它收窄到只活过 load_tools，结果 agent-as-tool 的子 agent
+                # 在执行期 current_session() 恒为 None，带着零个 CL 工具作答，
+                # 而且不报错不告警。ContextVar 的作用域是整轮，不是装载那一段。
+                #
+                # 不复位是安全的：它活在这个请求自己的 context 里，随请求消亡；
+                # 而跨 context 复位（生成器 / aclose 任务）必抛 ValueError。
+                context_loader.set_current(cl_session)
+        tools = await load_tools(
+            agent.tools,
+            account_id,
+            account_type,
+            depth=0,
+            parent_thread_id=thread_id,
+            skill_ids=skill_ids,
+        )
         tools = instrument_tool_calls(tools, account_id, account_type)
         limits = agent.limits or None
         max_turns = (
@@ -283,15 +285,20 @@ async def stream_chat(
         ) as e:  # 组装阶段（checkpointer/graph 建立）异常也要送 error，不裸断流
             yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
         finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
-            evidence.end_interaction(interaction_token)
-            # 放位必须排在收尾的网络调用之前：close_session 只 catch Exception，
-            # 客户端断连时的 CancelledError（BaseException）与 MCP TaskGroup 抛的
-            # BaseExceptionGroup 都会穿透 finally，排在它后面的语句永远跑不到，
-            # 该 thread 就会一直卡在 409 Thread.Busy 直到进程重启。
+            # 放位是 finally 的第一条，前面不许有任何会抛的语句。
+            #
+            # 排在它前面的每一条都是地雷：close_session 只 catch Exception，
+            # 挡不住断连的 CancelledError 与 MCP TaskGroup 的 BaseExceptionGroup；
+            # evidence.end_interaction 是 ContextVar 复位，而这段 finally 可能由
+            # GC 触发的 aclose 任务驱动——那是另一个 context，复位必抛 ValueError。
+            # 任何一个抛出来，thread 就永久停在 409 Thread.Busy 直到进程重启。
             _busy_threads.discard(thread_id)
-            # 这里不复位 ContextVar：本函数体跑在生成器自己的 context 里，
-            # 复位一个在 stream_chat 的 context 里创建的 token 会抛 ValueError，
-            # 且会顶掉后面的收尾。复位已在 load_tools 那段成对做完。
+            try:
+                evidence.end_interaction(interaction_token)
+            except ValueError as e:  # 跨 context 复位；证据链这一轮已经落完
+                logger.warning("[Chat] 证据链交互复位失败（跨 context）：%s", e)
+            # ContextVar 不在这里复位：本函数体可能跑在别的 context 里。
+            # 它随请求 context 消亡，不需要显式复位。
             # completed 必须带 answer（不带会被 closure_manifest_invalid 拒）。
             # 用显式的成功标记而不是「答案非空」：结构化输出那条路走 structured
             # 事件、answer_parts 是空的，按空判会把成功的一轮误报成 failed；
