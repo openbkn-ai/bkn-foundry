@@ -135,7 +135,8 @@ paths:
       summary: 对数据资源执行只读 SQL
       operationId: runSQL
       description: |
-        以 MySQL 方言执行**只读** SQL。表名不写物理表名，写占位符
+        以 MySQL 方言执行**只读** SQL。表名不写物理表名，写占位符；标识符需要引用时使用反引号
+        （如 `` `order_id` ``），双引号表示字符串字面量，不应用于标识符。
         `{{.<resource_id>}}`，由服务端解析到真实数据源。
 
         **两条硬约束，违反直接 400，SQL 不会下发**：
@@ -175,7 +176,7 @@ paths:
                 value:
                   sql: >-
                     SELECT status, count(*) AS cnt FROM {{.res_orders}}
-                    WHERE created_at >= date_add('day', -7, current_date)
+                    WHERE created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)
                     GROUP BY status
               两表关联:
                 value:
@@ -349,7 +350,7 @@ components:
           type: string
           description: |
             MySQL 方言 SQL。表名必须写成 `{{.<resource_id>}}` 占位符，
-            也接受 `{{<resource_id>}}` 形式。只允许单条 `SELECT` / `WITH`。
+            也接受 `{{<resource_id>}}` 形式。只允许单条 `SELECT`（不支持 `WITH` / CTE）。
           example: SELECT * FROM {{.res_orders}} LIMIT 100
         query_timeout:
           type: integer

@@ -47,7 +47,7 @@ func ExtractResourceIDs(sql string) []string {
 	return ids
 }
 
-// stripSQLNoise 去除行注释(-- 与 #)、块注释(/* */)、单引号字符串与反引号标识符，
+// stripSQLNoise 去除行注释(-- 与 #)、块注释(/* */)、MySQL 字符串与反引号标识符，
 // 以免其中藏有关键字或分号干扰守卫判定。
 func stripSQLNoise(sql string) string {
 	var b strings.Builder
@@ -73,30 +73,36 @@ func stripSQLNoise(sql string) string {
 			}
 			i++ // 跳过结尾的 '/'
 			b.WriteByte(' ')
-		case c == '\'': // 单引号字符串（'' 转义）
-			i++
-			for i < n {
-				if runes[i] == '\'' {
-					if i+1 < n && runes[i+1] == '\'' {
-						i += 2
-						continue
-					}
-					break
-				}
-				i++
-			}
+		case c == '\'' || c == '"': // MySQL 单/双引号字符串（反斜杠与重复引号转义）
+			i = skipQuotedSQLLiteral(runes, i, c)
 			b.WriteByte(' ')
 		case c == '`': // 反引号标识符
-			i++
-			for i < n && runes[i] != '`' {
-				i++
-			}
+			i = skipQuotedSQLLiteral(runes, i, c)
 			b.WriteByte(' ')
 		default:
 			b.WriteRune(c)
 		}
 	}
 	return b.String()
+}
+
+// skipQuotedSQLLiteral 返回从 openingQuote 开始的 MySQL 字符串或反引号标识符的结束位置。
+// 反斜杠转义与成对引号均不会提前结束字面量。
+func skipQuotedSQLLiteral(runes []rune, start int, quote rune) int {
+	for i := start + 1; i < len(runes); i++ {
+		if runes[i] == '\\' && i+1 < len(runes) {
+			i++
+			continue
+		}
+		if runes[i] == quote {
+			if i+1 < len(runes) && runes[i+1] == quote {
+				i++
+				continue
+			}
+			return i
+		}
+	}
+	return len(runes) - 1
 }
 
 // EnsureReadOnlySQL 校验 SQL 为单条只读 SELECT/WITH 查询；违规返回错误。

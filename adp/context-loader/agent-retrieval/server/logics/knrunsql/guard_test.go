@@ -21,6 +21,10 @@ func TestEnsureReadOnlySQL_Allowed(t *testing.T) {
 		`SELECT * FROM {{.delete_logs}}`,
 		`SELECT * FROM {{.update_history}}`,
 		`SELECT * FROM {{.res1}} WHERE note = 'please delete later'`,
+		`SELECT COUNT(*) FROM {{.res_audit}} WHERE op = "delete" GROUP BY user_id`,
+		`SELECT * FROM {{.res_logs}} WHERE note = 'it\'s fine' AND op = 'delete'`,
+		"SELECT * FROM {{.res_logs}} WHERE note = 'it''s fine' AND op = 'delete'",
+		"SELECT `delete` FROM {{.res_logs}}",
 	}
 	for _, sql := range cases {
 		if err := EnsureReadOnlySQL(sql); err != nil {
