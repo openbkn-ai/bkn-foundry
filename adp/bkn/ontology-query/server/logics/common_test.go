@@ -1545,6 +1545,23 @@ func Test_EvaluateDataAgainstCondition(t *testing.T) {
 			So(result, ShouldBeTrue)
 		})
 
+		Convey("成功 - 空 AND 返回 true", func() {
+			condition := &cond.CondCfg{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{}}
+
+			result, err := EvaluateDataAgainstCondition(ctx, map[string]any{}, condition, nil)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeTrue)
+		})
+
+		Convey("失败 - 空 OR 返回条件错误", func() {
+			condition := &cond.CondCfg{Operation: cond.OperationOr, SubConds: []*cond.CondCfg{}}
+
+			result, err := EvaluateDataAgainstCondition(ctx, map[string]any{}, condition, nil)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "sub condition size is 0")
+			So(result, ShouldBeFalse)
+		})
+
 		Convey("成功 - 简单等于条件满足", func() {
 			data := map[string]any{"amount": 100}
 			condition := &cond.CondCfg{

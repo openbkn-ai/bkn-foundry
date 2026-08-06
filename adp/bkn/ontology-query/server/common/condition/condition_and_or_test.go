@@ -209,6 +209,19 @@ func Test_AndCond_Convert2SQL(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(result, ShouldContainSubstring, `AND`)
 		})
+
+		Convey("success - empty AND converts to SQL tautology", func() {
+			cfg := &CondCfg{
+				Operation: OperationAnd,
+				SubConds:  []*CondCfg{},
+			}
+			cond, err := newAndCond(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+
+			result, err := cond.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, "1 = 1")
+		})
 	})
 }
 
@@ -482,6 +495,29 @@ func Test_OrCond_Convert2SQL(t *testing.T) {
 			result, err := cond.Convert2SQL(ctx)
 			So(err, ShouldBeNil)
 			So(result, ShouldContainSubstring, `OR`)
+		})
+
+		Convey("success - nested empty AND does not generate invalid SQL", func() {
+			cfg := &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					{Operation: OperationAnd, SubConds: []*CondCfg{}},
+					{
+						Name:      "name",
+						Operation: OperationEq,
+						ValueOptCfg: ValueOptCfg{
+							Value: "test",
+						},
+					},
+				},
+			}
+			cond, err := newOrCond(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+
+			result, err := cond.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(result, ShouldContainSubstring, "(1 = 1)")
+			So(result, ShouldNotContainSubstring, "()")
 		})
 	})
 }

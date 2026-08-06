@@ -718,6 +718,9 @@ func evaluateConditionRecursive(ctx context.Context,
 		return true, nil
 
 	case cond.OperationOr:
+		if len(condition.SubConds) == 0 {
+			return false, fmt.Errorf("sub condition size is 0")
+		}
 		for _, subCond := range condition.SubConds {
 			result, err := evaluateConditionRecursive(ctx, instanceData, subCond, propMap)
 			if err != nil {
