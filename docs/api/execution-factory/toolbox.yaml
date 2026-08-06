@@ -154,7 +154,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ToolBoxPage'
               examples:
-                实测:
+                示例:
                   value:
                     total: 45
                     page: 1
@@ -164,20 +164,19 @@ paths:
                     has_prev: false
                     data:
                       - box_id: e521d454-4a0b-4dc9-8a28-d0986de1cef9
-                        box_name: contextloader工具集
-                        box_desc: 'ContextLoader 标准内置工具集；契约版本: 0.9.0'
-                        box_svc_url: http://agent-retrieval:30779
+                        box_name: 订单查询工具集
+                        box_desc: 订单域的 OpenAPI 工具
+                        box_svc_url: http://orders.example.com
                         metadata_type: openapi
                         business_domain_id: default
                         status: published
                         category_type: data_query
                         category_name: 数据查询
-                        is_internal: true
+                        is_internal: false
                         source: custom
                         tools:
-                          - search_schema
-                          - query_object_instance
-                          - run_sql
+                          - list_orders
+                          - get_order
                         create_time: 1784431697368964901
                         update_time: 1785399402189683812
                         create_user: Administrator
