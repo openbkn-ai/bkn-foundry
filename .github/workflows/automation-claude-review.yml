@@ -555,6 +555,9 @@ jobs:
         if: always() && steps.prbranch.outputs.skip != 'true'
         run: |
           set -euo pipefail
+          # 不依赖 Prepare findings dir：那步是隐式 success()，前面任一步失败就会被跳过，
+          # 而本步是 always()——目录不存在时重定向会直接失败，安全网反而变成第二处报错。
+          mkdir -p findings
           f="findings/${SHARD_KEY}.json"
           if [ ! -s "$f" ]; then
             echo "::warning::分片 ${SHARD_KEY} 未写出 findings，回填占位。"
@@ -572,18 +575,30 @@ jobs:
         continue-on-error: true
         env:
           SHARD_LABEL: ${{ matrix.shard.label }}
-          JOB_STATUS: ${{ job.status }}
+          SHARD_KEY: ${{ matrix.shard.key }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os, subprocess, time
+          import json, os, pathlib, subprocess, time
 
           MARKER = "<!-- claude-review-progress -->"
           repo, pr = os.environ["GH_REPO"], os.environ["PR_NUMBER"]
           label = os.environ["SHARD_LABEL"]
+
+          # 判据取 findings 文件本身，不取 job.status。`Claude review` 那步在缺凭据时是
+          # **被跳过**的，跳过不影响 job 绿——用 job.status 会让一次没人审过的运行把每
+          # 一片都打上勾，正是这一步要防的事。回填保证了文件必然存在。
+          try:
+              data = json.loads(
+                  (pathlib.Path("findings") / (os.environ["SHARD_KEY"] + ".json"))
+                  .read_text(encoding="utf-8"))
+              reviewed = isinstance(data, dict) and data.get("status") != "no_output"
+          except Exception:
+              reviewed = False
+
           done = "- [x] `%s`" % label
-          if os.environ.get("JOB_STATUS") != "success":
-              done += " —— 未跑完，本片内容未经评审"
+          if not reviewed:
+              done += " —— 未产出结论，本片内容未经评审"
           todo = "- [ ] `%s`" % label
 
           def gh(*args):
@@ -592,8 +607,12 @@ jobs:
 
           for attempt in range(3):
               try:
-                  comments = json.loads(gh("repos/%s/issues/%s/comments" % (repo, pr),
-                                           "--paginate"))
+                  # `--paginate` 不带 `--jq` 会把每页各输出一个数组、首尾相接，不是合法
+                  # JSON（本文件在预取那处已经踩过并记下了这个坑）。`--jq '.[]'` 逐页
+                  # 展开成一行一个对象，跨页拼接后仍可逐行解析。
+                  raw = gh("repos/%s/issues/%s/comments" % (repo, pr),
+                           "--paginate", "--jq", ".[]")
+                  comments = [json.loads(l) for l in raw.splitlines() if l.strip()]
                   target = next((c for c in reversed(comments)
                                  if MARKER in (c.get("body") or "")), None)
                   if target is None:
@@ -604,7 +623,7 @@ jobs:
                   gh("-X", "PATCH", "repos/%s/issues/comments/%s" % (repo, target["id"]),
                      "-f", "body=" + body.replace(todo, done, 1))
                   break
-              except subprocess.CalledProcessError:
+              except (subprocess.CalledProcessError, ValueError):
                   if attempt == 2:
                       raise
                   time.sleep(2)
@@ -855,17 +874,22 @@ jobs:
           for s in shards:
               path = root / (s["key"] + ".json")
               if not path.exists():
-                  missing.append(s)
+                  missing.append((s, "absent"))
                   continue
+              # 防御要罩住整个循环体，不能只罩 json.loads：文件解析成顶层数组时
+              # data.get() 抛 AttributeError，同样会让 Assemble 非零退出。
               try:
                   data = json.loads(path.read_text(encoding="utf-8"))
-              except (ValueError, OSError):
-                  missing.append(s)
+                  if not isinstance(data, dict):
+                      raise ValueError("not an object")
+                  # 回填的占位不算「产出过结论」：否则全片静默失败会变成 approve 一个
+                  # 从没被审过的 PR——比不表态糟得多。
+                  status = data.get("status")
+              except (ValueError, OSError, AttributeError):
+                  missing.append((s, "absent"))
                   continue
-              # 回填的占位不算「产出过结论」：否则全片静默失败会变成 approve 一个
-              # 从没被审过的 PR——比不表态糟得多。归进 missing 走「未覆盖」那条路。
-              if data.get("status") == "no_output":
-                  missing.append(s)
+              if status == "no_output":
+                  missing.append((s, "no_output"))
                   continue
               done.append((s, data))
               # findings 是模型写的，属于不可信输入：JSON 合法但结构不对（元素是字符串
@@ -905,7 +929,7 @@ jobs:
           # 标题仍是硬编码中文，英文 PR 上会中英混排。多数派优先，平票落中文。
           votes = {}
           for _s, data in done:
-              lang = (data.get("lang") or "").strip().lower()
+              lang = str(data.get("lang") or "").strip().lower()
               if lang in ("zh", "en"):
                   votes[lang] = votes.get(lang, 0) + 1
           lang = "en" if votes.get("en", 0) > votes.get("zh", 0) else "zh"
@@ -915,7 +939,9 @@ jobs:
                      "dropped": "复核未通过、已丢弃的 %d 条", "why": "驳回理由：",
                      "byshard": "各分片结论", "impact": "影响范围：", "notcov": "未覆盖：",
                      "unconf": "待确认项（不阻断放行）", "missing": "未覆盖的分片",
-                     "missing_body": "下面这些分片没有产出结论（撞轮次上限、超时或运行失败），**这些文件本轮未经评审**：",
+                     "missing_body": "下面这些分片没有产出结论，**这些文件本轮未经评审**：",
+                     "reason_no_output": "跑完了但没落下结论（多半是撞轮次上限或提前收尾）",
+                     "reason_absent": "整个分片没跑起来或中途挂了",
                      "trunc": "文件清单被截断",
                      "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（`gh pr view --json files` 单次上限 100），**其余 %d 个未进入任何分片、本轮未经评审**。",
                      "footer": "改完请推新提交，或回复 `/review` 要一轮复评。",
@@ -925,7 +951,9 @@ jobs:
                      "dropped": "%d item(s) dropped by verification", "why": "Refuted because: ",
                      "byshard": "Per-shard findings", "impact": "Blast radius: ", "notcov": "Not covered: ",
                      "unconf": "Open questions (non-blocking)", "missing": "Shards with no result",
-                     "missing_body": "These shards produced no findings (turn limit, timeout, or job failure) — **their files were not reviewed this round**:",
+                     "missing_body": "These shards produced no findings — **their files were not reviewed this round**:",
+                     "reason_no_output": "ran but wrote no conclusion (most likely the turn limit, or it wrapped up early)",
+                     "reason_absent": "the shard never ran, or died partway through",
                      "trunc": "File list truncated",
                      "trunc_body": "This PR changes %s files but only %s reached the planner (`gh pr view --json files` caps at 100) — **the remaining %d were not assigned to any shard and were not reviewed**.",
                      "footer": "Push a new commit when addressed, or reply `/review` for another round.",
@@ -991,8 +1019,10 @@ jobs:
           if missing:
               lines.append("## %s\n" % T["missing"])
               lines.append(T["missing_body"] + "\n")
-              for s in missing:
-                  lines.append("- %s" % s["label"])
+              # 两种原因指向完全不同的修法（轮次预算 vs job 失败），所以要分开写，
+              # 不能都渲染成一行「未覆盖」。
+              for s, reason in missing:
+                  lines.append("- %s —— %s" % (s["label"], T["reason_" + reason]))
               lines.append("")
 
           dropped = int(os.environ.get("FILE_TOTAL") or 0) - int(os.environ.get("FILE_LISTED") or 0)
@@ -1048,14 +1078,41 @@ jobs:
       # 静默是最坏的结果：PR 上什么都没有，与「压根没触发」无法区分——#671 首轮就是
       # 这样被当成没触发的。这里不落评审状态（没审过就不该 request-changes，也不该
       # approve），但必须留一条普通评论说明这轮空转了。
+      # 条件不能写成 `action == 'none'`：那是隐式 success()，Assemble 自己崩掉时
+      # output 根本没写出来，于是 Post review 与本步双双跳过——整轮又回到静默，
+      # 正是这个 PR 要消掉的东西。改成「只要没落成表态就通告」。
+      # 这一轮真落了表态，就把上一轮的空转通告删掉——否则作者会在第 4 轮的结论旁边
+      # 读到第 3 轮的「本轮评审空转」。
+      - name: Clear stale empty-round notice
+        if: steps.assemble.outputs.action == 'approve' || steps.assemble.outputs.action == 'request-changes'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          MARKER='<!-- claude-review-empty -->'
+          gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\")) | .id] | .[]" \
+          | while read -r id; do
+              gh api -X DELETE "repos/${GH_REPO}/issues/comments/${id}" >/dev/null
+            done
+
       - name: Report empty round
-        if: steps.assemble.outputs.action == 'none'
+        if: always() && steps.assemble.outputs.action != 'approve' && steps.assemble.outputs.action != 'request-changes'
         continue-on-error: true
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          echo "::warning::所有分片均无产出，未落评审表态。"
+          echo "::warning::本轮未落评审表态。"
           state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
           [ "$state" = "OPEN" ] || exit 0
-          gh pr comment "$PR_NUMBER" --body "$(printf '### 本轮评审空转\n\n所有分片都没有产出结论，**这个 PR 本轮未经评审**。未落评审状态是因为没审过——既不该 request-changes，也不该 approve。\n\n常见原因：分片撞轮次上限、模型未写出结论文件、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。' "$RUN_URL")"
+          MARKER='<!-- claude-review-empty -->'
+          body=$(printf '%s\n### 本轮评审空转\n\n没有分片产出结论，**这个 PR 本轮未经评审**。未落评审状态是因为没审过——既不该 request-changes，也不该 approve。\n\n常见原因：分片撞轮次上限、模型未写出结论文件、汇总步骤失败、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。下一轮真出了结论，这条会自动消失。' "$MARKER" "$RUN_URL")
+          # 复用同一条：synchronize 每次推送跑一轮，凭据缺失这类持续故障否则会在 PR 上
+          # 堆出一串一模一样的通告，正是进度评论当初特意避开的噪声。
+          existing=$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\")) | .id] | last // empty")
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${GH_REPO}/issues/comments/${existing}" -f body="$body" >/dev/null
+          else
+            gh api -X POST "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
+          fi
