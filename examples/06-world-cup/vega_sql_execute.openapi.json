@@ -43,11 +43,16 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["query"],
+                "required": ["query", "query_format"],
                 "properties": {
                   "query": {
                     "type": "string",
                     "description": "SQL 字符串。SQL 中用 {{<resource_id>}} 占位引用 Vega resource。例：SELECT * FROM {{abc123}} LIMIT 5"
+                  },
+                  "query_format": {
+                    "type": "string",
+                    "enum": ["sql"],
+                    "description": "输入载体类型；本示例固定为 sql"
                   },
                   "stream_size": {
                     "type": "integer",

@@ -295,7 +295,9 @@ const connectors = await bkn.vega.connectorTypes();
 // 直连 SQL（typed；实际打到 POST /resources/query）
 const sqlOut = await bkn.vega.sql({
   query: 'SELECT * FROM {{res-001}} LIMIT 5',
+  query_format: 'sql',
   input_dialect: 'mysql',
+  paging: { mode: 'single', limit: 1 },
 });
 
 // 结构化查询 —— 无 typed 方法，用 passthrough

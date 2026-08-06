@@ -873,7 +873,7 @@ step_6_toolbox() {
     echo "  Query the resources directly, e.g.:" >&2
     echo "    ${KWEAV[*]} tool invoke $tool_id --toolbox $box_id \\" >&2
     echo "      --input query='SELECT tournament_name, winner FROM {{<tournaments_resource_id>}} ORDER BY year DESC LIMIT 5' \\" >&2
-    echo "      --input resource_type=mysql" >&2
+    echo "      --input query_format=sql" >&2
     echo "  (resource_id comes from: ${KWEAV[*]} vega resource list --datasource-id <catalog> --type table)" >&2
 }
 

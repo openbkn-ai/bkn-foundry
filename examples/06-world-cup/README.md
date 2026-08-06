@@ -116,7 +116,7 @@ openbkn vega resource list --datasource-id <catalog_id> --type table
 # run SQL through the published tool (TOOLBOX_BOX_ID / VEGA_TOOL_ID are echoed by step 6)
 openbkn tool invoke <VEGA_TOOL_ID> --toolbox <TOOLBOX_BOX_ID> \
   --input query='<your SQL with {{<resource_id>}} placeholders>' \
-  --input resource_type=mysql
+  --input query_format=sql
 ```
 
 ### Q1 · Messi's World Cup awards

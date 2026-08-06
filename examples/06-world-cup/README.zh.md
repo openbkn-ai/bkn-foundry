@@ -119,7 +119,7 @@ openbkn vega resource list --datasource-id <catalog_id> --type table
 # 通过已发布的工具跑 SQL（TOOLBOX_BOX_ID / VEGA_TOOL_ID 由 step 6 打印出来）
 openbkn tool invoke <VEGA_TOOL_ID> --toolbox <TOOLBOX_BOX_ID> \
   --input query='<带 {{<resource_id>}} 占位的 SQL>' \
-  --input resource_type=mysql
+  --input query_format=sql
 ```
 
 ### Q1 · 梅西在世界杯获过哪些奖
