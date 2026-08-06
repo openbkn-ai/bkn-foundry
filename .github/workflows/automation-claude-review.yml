@@ -16,7 +16,9 @@ name: Claude Code Review
 # 推送触发评审，02:28:56 作者发说明「appSetting 死字段本轮不采纳」，02:31:56 的结论仍把
 # 这条原样列了出来——作者会认为没人在听。debounce 那 15 秒对此完全无效，它只让**合格
 # 的**评论有机会取消推送轮，不合格的评论按 comment.id 单独分组、根本不参与取消。
-# 因此分片 prompt 要求「写 findings 之前最后再拉一次顶层评论」，把这个窗口堵死。
+# 因此分片 prompt 要求「写 findings 之前最后再拉一次顶层评论」。注意只堵住了顶层这一半：
+# 作者在 bot 的 inline 评论下回复「不采纳」仍读不到，因为补另一半要 `gh api`，而分片
+# 刻意不给（全方法通配会让模型能 POST /pulls/N/reviews，破坏「表态只能有一次」）。
 #
 # 评论也能触发复评，但必须在正文里显式写 `/review` 或 `@claude`。早先是每条评论都跑
 # 一轮，作者每回一帖就复评一次，轮次膨胀且额度白烧——待确认项现在不阻断放行（见下方
@@ -268,12 +270,24 @@ jobs:
           # 快照类文件要 `git show` 取前一版比对，也需要历史。
           fetch-depth: 0
 
+      # PR 可能在本轮跑到一半时被合并，分支随即删除，gh pr checkout 会以
+      # `couldn't find remote ref` 硬失败（#670 实测：review 片 03:48 切分支成功，
+      # verify 03:56 起跑时分支已没了）。此时该跳过而不是留个红叉——PR 都合了，
+      # 评审结论已无处可用。exit 0 之后必须把后续步骤一起 gate 掉，否则会拿默认
+      # 分支的工作树当 PR 内容评审。
       - name: Checkout PR branch (non-PR events)
+        id: prbranch
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
+          if [ "$state" != "OPEN" ]; then
+            echo "::warning::PR #$PR_NUMBER 已是 $state（本轮跑到一半被合并或关闭），跳过。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           gh pr checkout "$PR_NUMBER"
           echo "已切到 PR #$PR_NUMBER: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 
@@ -285,6 +299,7 @@ jobs:
       # 有一次」这条不变量（该不变量此前只靠 prompt 约束，不是权限上做不到）。
       # 顺带省轮次：一次 shell 调用替掉模型自己发的一轮工具调用。
       - name: Prefetch prior review comments
+        if: steps.prbranch.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -313,7 +328,7 @@ jobs:
             > prior-comments.json
 
       - name: Claude review
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != '' && steps.prbranch.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -407,13 +422,18 @@ jobs:
               完美，更不要凭「可能」把同一条追问第二遍。
             - 上面的触发式深挖只在首轮做；复评的范围限定在上一轮之后新增的提交与文件。
             - 第二轮起，除非发现你能说清失效场景的确定阻断项，否则不要再报阻塞项。
-            - **写 findings 之前，最后再拉一次顶层评论**：
-              `gh pr view "$PR_NUMBER" --json comments`。`prior-comments.json` 是本 job
-              开头预取的，而评审要跑好几分钟；作者常在这段时间里推完提交紧接着发一条
-              处理说明——哪条采纳了、哪条不采纳、为什么。只读预取文件就会把他刚说过的
-              话原样再问一遍。#619 第九轮实测：作者在推送后 14 秒发说明「appSetting
-              死字段本轮不采纳」，那轮结论仍把这条原样列了出来。新读到的按上面两条
-              规则处理：已解释的算过，明确不采纳的从 unconfirmed 里去掉。
+            - **写 findings 之前，最后再拉一次顶层评论**，逐字发这一条：
+              `gh pr view ${{ env.PR_NUMBER }} --json comments --jq '[.comments[-30:][] | {author: .author.login, body}]'`
+              PR 号已在 YAML 层插成字面量：allowedTools 是前缀白名单，命令里出现
+              `$PR_NUMBER` 这类展开会被权限层以 `Contains simple_expansion` 拒掉，
+              整条规则跑不起来。`--jq` 同样别省——不投影的话每条评论返回十几个字段
+              且是全部历史，而这一步正发生在轮次与上下文最紧的收尾时刻。
+              为什么要重拉：`prior-comments.json` 是本 job 开头预取的，而评审要跑好
+              几分钟；作者常在这段时间里推完提交紧接着发一条处理说明——哪条采纳了、
+              哪条不采纳、为什么。只读预取文件就会把他刚说过的话原样再问一遍。#619
+              第九轮实测：作者在推送后 14 秒发说明「appSetting 死字段本轮不采纳」，
+              那轮结论仍把这条原样列了出来。新读到的按上面两条规则处理：已解释的
+              算过，明确不采纳的从 unconfirmed 里去掉。
 
             ## 产出
 
@@ -531,12 +551,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      # PR 可能在本轮跑到一半时被合并，分支随即删除，gh pr checkout 会以
+      # `couldn't find remote ref` 硬失败（#670 实测：review 片 03:48 切分支成功，
+      # verify 03:56 起跑时分支已没了）。此时该跳过而不是留个红叉——PR 都合了，
+      # 评审结论已无处可用。exit 0 之后必须把后续步骤一起 gate 掉，否则会拿默认
+      # 分支的工作树当 PR 内容评审。
       - name: Checkout PR branch (non-PR events)
+        id: prbranch
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
+          if [ "$state" != "OPEN" ]; then
+            echo "::warning::PR #$PR_NUMBER 已是 $state（本轮跑到一半被合并或关闭），跳过。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           gh pr checkout "$PR_NUMBER"
 
       # 全部分片都没产出时一个 artifact 都不存在。download-artifact 在这种情况下是否
@@ -587,6 +619,7 @@ jobs:
 
       - name: Verify blockers
         if: steps.collect.outputs.count != '0' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
+          && steps.prbranch.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -778,7 +811,7 @@ jobs:
                      "trunc": "文件清单被截断",
                      "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（`gh pr view --json files` 单次上限 100），**其余 %d 个未进入任何分片、本轮未经评审**。",
                      "footer": "改完请推新提交，或回复 `/review` 要一轮复评。",
-                     "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评。"},
+                     "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评，且回帖人需为本仓 OWNER/MEMBER/COLLABORATOR。"},
               "en": {"block": "Blockers", "verified": "Each item below survived an independent verification pass (refuted by default; kept only when confirmed against the source).",
                      "unrev": " (**unverified** — the verification stage produced no result)", "scen": "Failure scenario: ",
                      "dropped": "%d item(s) dropped by verification", "why": "Refuted because: ",
@@ -788,7 +821,7 @@ jobs:
                      "trunc": "File list truncated",
                      "trunc_body": "This PR changes %s files but only %s reached the planner (`gh pr view --json files` caps at 100) — **the remaining %d were not assigned to any shard and were not reviewed**.",
                      "footer": "Push a new commit when addressed, or reply `/review` for another round.",
-                     "footer_ok": "Disagree, or want another pass? Reply `/review` — a plain comment does not trigger one."},
+                     "footer_ok": "Disagree, or want another pass? Reply `/review` — a plain comment does not trigger one, and the replier must be an OWNER/MEMBER/COLLABORATOR of this repo."},
           }[lang]
 
           survived, refuted, unreviewed = [], [], []
@@ -870,10 +903,20 @@ jobs:
 
       # 待确认项与「未覆盖的分片」都不阻断放行：写进 approve 的 body 当提示，由作者
       # 自行判断。为了等一个回应而改用 --request-changes，只会把 PR 挂在那里。
+      # PR 可能在评审跑的这几分钟里被合并（#670 实测：03:53 合并，03:56 verdict 仍贴出
+      # 一条 CHANGES_REQUESTED）。merge 已不可逆，此时表态纯属噪声，还会让人误以为
+      # 合进去的东西有阻塞项。job if 里的 state == 'open' 是在事件到达时求值的，拦不住
+      # 跑到一半才发生的合并，只能在落地前再查一次。
       - name: Post review
         if: steps.assemble.outputs.action != 'none'
         run: |
           set -euo pipefail
+          state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
+          if [ "$state" != "OPEN" ]; then
+            echo "::warning::PR #$PR_NUMBER 已是 $state，跳过表态。结论见下方 job summary。"
+            cat verdict.md >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if [ "${{ steps.assemble.outputs.action }}" = "request-changes" ]; then
             gh pr review "$PR_NUMBER" --request-changes --body-file verdict.md
           else
