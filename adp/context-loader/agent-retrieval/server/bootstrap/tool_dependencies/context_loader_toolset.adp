@@ -2583,10 +2583,6 @@
               "type": "string",
               "description": "只读 SQL（Trino 方言）。表名必须用占位符 {{.resource_id}} 引用，resource_id 取自对象类的 data_source.id（可经 search_schema 获得）。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。vega 会自动限量（最多 10000 行）。"
              },
-             "resource_type": {
-              "type": "string",
-              "description": "连接器类型（mysql / mariadb / postgresql / sqlserver）。留空则按 SQL 中第一个 {{.resource_id}} 自动解析，一般无需填写。"
-             },
              "query_timeout": {
               "type": "integer",
               "description": "查询超时（秒），范围 1-3600，默认 60。可选。"
