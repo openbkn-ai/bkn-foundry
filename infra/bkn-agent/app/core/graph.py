@@ -227,7 +227,15 @@ async def stream_chat(
             yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
         finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
             evidence.end_interaction(interaction_token)
-            await context_loader.close_session(cl_session)
+            # completed 必须带 answer（不带会被 closure_manifest_invalid 拒），
+            # 所以用累积到的回复；一个 token 都没产出就按 failed 收，别谎报完成。
+            _answer = "".join(answer_parts)
+            await context_loader.close_session(
+                cl_session,
+                outcome="completed" if _answer else "failed",
+                answer=_answer or None,
+                reason=None if _answer else "本轮未产出回复（异常或客户端断连）",
+            )
             _busy_threads.discard(thread_id)
 
     return _events()

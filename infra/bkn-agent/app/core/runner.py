@@ -62,9 +62,11 @@ async def run_agent_once(
         conversation_id=cl_session.conversation_id if cl_session else None,
         interaction_id=cl_session.interaction_id if cl_session else None,
     )
+    answer: str | None = None
+    failure: str | None = None
     try:
         await evidence.submit_interaction_started(account_id, account_type)
-        return await _run_agent_once_core(
+        answer = await _run_agent_once_core(
             agent,
             message,
             prompt_vars,
@@ -76,9 +78,20 @@ async def run_agent_once(
             response_format,
             task_id,
         )
+        return answer
+    except Exception as e:
+        failure = f"{type(e).__name__}: {e}"
+        raise
     finally:
         evidence.end_interaction(token)
-        await context_loader.close_session(cl_session, outcome="completed")
+        # outcome=completed 的时候 answer 是必填的（不带会被 closure_manifest_invalid
+        # 拒掉），所以本轮答案要一路带到这里，不能在 finally 里凭空补。
+        await context_loader.close_session(
+            cl_session,
+            outcome="completed" if answer is not None else "failed",
+            answer=answer,
+            reason=failure or (None if answer is not None else "本轮未产出回复"),
+        )
         if cl_token is not None:
             context_loader.reset_current(cl_token)
 
