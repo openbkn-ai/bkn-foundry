@@ -226,6 +226,9 @@ jobs:
     if: needs.plan.outputs.has_shards == 'true'
     name: review (${{ matrix.shard.label }})
     runs-on: ubuntu-latest
+    # agent 卡住时不能让 job 一路跑到 runner 的 6 小时上限：verdict 在 needs 上等着，
+    # 一片挂死会把整轮评审的结论一起拖到没人再看的时候。
+    timeout-minutes: 30
     strategy:
       # 一片撞上限或失败，其余片必须照跑完——分片的意义就在于故障隔离。
       fail-fast: false
@@ -279,7 +282,7 @@ jobs:
 
             分片：${{ matrix.shard.label }}
             类型：${{ matrix.shard.kind }}
-            产出文件：findings/${{ matrix.shard.key }}.json
+            产出文件：${{ github.workspace }}/findings/${{ matrix.shard.key }}.json
 
             仓库是 openbkn 单体仓，包含 Go / Python 微服务、Helm chart 与部署脚本。
             协作规范见 rules/CONTRIBUTING.zh.md。
@@ -303,8 +306,9 @@ jobs:
             - 你只负责一片，不要去审别片的文件；跨片的问题写进 findings 的 notes，
               由 verdict 汇总。
             - 用掉大约三分之二轮次时停止深挖，用已经核实的内容收敛出结论。
-            - 最后一步必须写出 findings/${{ matrix.shard.key }}.json。宁可给一份范围
-              有限、在 not_covered 里写明未覆盖面的结论，也不要什么都不产出。
+            - 最后一步必须写出 `${{ github.workspace }}/findings/${{ matrix.shard.key }}.json`
+              （**必须用这个绝对路径**，工具不接受相对路径）。宁可给一份范围有限、在
+              not_covered 里写明未覆盖面的结论，也不要什么都不产出。
 
             ## 关注面（按优先级）
 
@@ -368,7 +372,8 @@ jobs:
             高危项事后核实几乎全是误报，未经复核就贴到行上，作者要为假问题付出真时间。
             不复述 diff，不为凑数提格式化/命名类琐碎意见。
 
-            **二、写 findings/${{ matrix.shard.key }}.json**，严格用下面的结构：
+            **二、写 `${{ github.workspace }}/findings/${{ matrix.shard.key }}.json`**（绝对路径），
+            严格用下面的结构：
 
             ```json
             {
@@ -444,6 +449,7 @@ jobs:
   #
   # 只在真有阻塞项时才起这个 job，多数 PR 直接跳过，成本为零。
   verify:
+    timeout-minutes: 20
     needs: [plan, review]
     if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true'
     runs-on: ubuntu-latest
@@ -468,7 +474,11 @@ jobs:
           set -euo pipefail
           gh pr checkout "$PR_NUMBER"
 
+      # 全部分片都没产出时一个 artifact 都不存在。download-artifact 在这种情况下是否
+      # 静默通过没有保证，硬失败会把 verify 和 verdict 一起带走——那正是要消掉的
+      # 「跑挂了 PR 上什么都没有」。下游按「文件缺失 = 该片未覆盖」处理，容得下空目录。
       - name: Download findings
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           pattern: findings-*
@@ -517,7 +527,8 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ env.PR_NUMBER }}
 
-            上一环节的评审分片报了若干**阻塞项**，全部列在 `blockers.json` 里。你的
+            上一环节的评审分片报了若干**阻塞项**，全部列在
+            `${{ github.workspace }}/blockers.json`（**必须用这个绝对路径读**，工具不接受相对路径）。你的
             工作是逐条**尝试驳回**它们，只让站得住的那些进 PR。
 
             你不是在复述别人的结论，也不是在补充新问题。发现新问题不归你管，写进
@@ -545,12 +556,13 @@ jobs:
             互不依赖的 Read / Grep / git 调用放在同一条消息里并发发出。每条阻塞项分到
             的预算有限，先照 evidence 直接定位，别从头通读整个模块。
 
-            最后一步必须写出 `verified.json`。没写就等于整个复核环节失效，所有阻塞项
-            会以「未复核」的身份进 PR。
+            最后一步必须写出 `${{ github.workspace }}/verified.json`（绝对路径）。没写就等于整个复核
+            环节失效，所有阻塞项会以「未复核」的身份进 PR。
 
             ## 产出
 
-            写 `verified.json`，`verdicts` 必须覆盖 `blockers.json` 里的每一个 id：
+            写 `${{ github.workspace }}/verified.json`，`verdicts` 必须覆盖 `blockers.json`
+            里的每一个 id：
 
             ```json
             {
@@ -600,7 +612,11 @@ jobs:
       FILE_LISTED: ${{ needs.plan.outputs.file_listed }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      # 全部分片都没产出时一个 artifact 都不存在。download-artifact 在这种情况下是否
+      # 静默通过没有保证，硬失败会把 verify 和 verdict 一起带走——那正是要消掉的
+      # 「跑挂了 PR 上什么都没有」。下游按「文件缺失 = 该片未覆盖」处理，容得下空目录。
       - name: Download findings
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           pattern: findings-*
