@@ -25,7 +25,16 @@ def caller_token() -> str | None:
 
 
 def set_caller_token(value: str | None):
+    """由 HTTP 中间件调用（见 app/main.py）。
+
+    刻意不放在 get_account 里：那是个同步依赖，FastAPI 会丢进线程池执行，
+    在线程池里 set 的 ContextVar 回不到请求协程，读出来永远是 None。
+    """
     return _caller_token.set(value or None)
+
+
+def reset_caller_token(token) -> None:
+    _caller_token.reset(token)
 
 
 @dataclass(frozen=True)
@@ -37,10 +46,9 @@ class Account:
 def get_account(request: Request) -> Account:
     """/in 约定：网关信任请求头，鉴权押下游。空账户 fail-closed（本服务仅内部）。
 
-    另外把 Authorization 原样收进 ContextVar：本服务自身不校验它（身份仍以
-    x-account-id 为准），只在需要令牌的下游（Context Loader MCP 公开面）原样转发。
+    Authorization 不在这里收——见 set_caller_token 的说明，同步依赖跑在线程池里，
+    ContextVar 传不回来。收在 app/main.py 的中间件。
     """
-    set_caller_token(request.headers.get("authorization"))
     account_id = (request.headers.get("x-account-id") or "").strip()
     account_type = (request.headers.get("x-account-type") or "").strip()
     if not account_id or account_type not in _ALLOWED_TYPES:

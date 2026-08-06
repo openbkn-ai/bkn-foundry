@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.models import ErrorEnvelope
-from app import evidence, observability
+from app import auth, evidence, observability
 from app.observability import setup_otel
 from app.routers import agents, chat, impex, prompts, tasks, threads
 
@@ -61,9 +61,15 @@ async def bkn_trace_context_middleware(request: Request, call_next):
     ctx = observability.build_context(request.headers)
     request.state.bkn_trace_context = ctx
     token = observability.set_context(ctx)
+    # 令牌在这里收，不在 get_account 里收：FastAPI 把 **同步** 依赖丢进线程池跑，
+    # 在那里 set 的 ContextVar 回不到请求协程，caller_token() 永远是 None
+    # （VM 实测踩到：工具没挂，模型改口编了个工具调用当答案）。中间件与端点同
+    # 上下文链，这里 set 才可见。顺带覆盖不走 get_account 的路由。
+    auth_token = auth.set_caller_token(request.headers.get("authorization"))
     try:
         response = await call_next(request)
     finally:
+        auth.reset_caller_token(auth_token)
         observability.reset_context(token)
     for key, value in {
         observability.TRACE_ID_HEADER: ctx.trace_id,

@@ -138,3 +138,43 @@ def test_parse_ids_rejects_garbage(raw):
 def test_wanted_detects_ref():
     assert context_loader.wanted([{"type": "context_loader"}])
     assert not context_loader.wanted([{"type": "toolbox", "box_id": "b"}])
+
+
+def test_caller_token_visible_inside_request_handler():
+    """回归：令牌必须在请求协程里读得到。
+
+    原先在 get_account（同步依赖）里 set，FastAPI 把同步依赖丢进线程池执行，
+    ContextVar 传不回请求协程，caller_token() 恒为 None —— VM 实测的表现是
+    CL 工具静默不挂、模型改口编了个工具调用当答案。改由中间件 set。
+    """
+    from fastapi.testclient import TestClient
+
+    from app.main import app as real_app
+
+    seen = {}
+
+    @real_app.get("/__probe_caller_token")
+    def _probe():
+        seen["token"] = auth.caller_token()
+        return {"ok": True}
+
+    client = TestClient(real_app)
+    client.get("/__probe_caller_token", headers={"Authorization": "Bearer probe-token"})
+    assert seen["token"] == "Bearer probe-token"
+
+
+def test_caller_token_absent_when_header_missing():
+    from fastapi.testclient import TestClient
+
+    from app.main import app as real_app
+
+    seen = {}
+
+    @real_app.get("/__probe_caller_token_absent")
+    def _probe():
+        seen["token"] = auth.caller_token()
+        return {"ok": True}
+
+    client = TestClient(real_app)
+    client.get("/__probe_caller_token_absent")
+    assert seen["token"] is None
