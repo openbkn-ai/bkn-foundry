@@ -1094,6 +1094,13 @@ jobs:
                "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评，且回帖人需为本仓 OWNER/MEMBER/COLLABORATOR。"}
 
           # 模型不一定听话，长度要有确定性兜底——与「模型输出是不可信输入」同一思路。
+          # 只有一个评审者时，每行挂 [标签] 前缀、外加一个只有一行的「各分片结论」
+          # 小节，都是纯噪声。多片形态随时可能回来，所以按片数分支而不是删掉。
+          multi = len(done) > 1
+
+          def tag(label):
+              return "[%s] " % label if multi else ""
+
           def clip(x, n):
               x = " ".join(str(x).split())
               return x if len(x) <= n else x[:n - 1].rstrip() + "…"
@@ -1119,8 +1126,8 @@ jobs:
                   if b.get("line"):
                       loc += ":%s" % b["line"]
                   mark = "" if verdicts.get(b["id"]) else T["unrev"]
-                  lines.append("- **[%s] %s** — %s%s"
-                               % (s_["label"], loc, clip(b.get("what", ""), 300), mark))
+                  lines.append("- **%s%s** — %s%s"
+                               % (tag(s_["label"]), loc, clip(b.get("what", ""), 300), mark))
                   if b.get("scenario"):
                       lines.append("  %s%s" % (T["scen"], clip(b["scenario"], 300)))
               lines.append("")
@@ -1128,8 +1135,8 @@ jobs:
           if refuted:
               lines.append("<details><summary>" + (T["dropped"] % len(refuted)) + "</summary>\n")
               for s_, b, v in refuted:
-                  lines.append("- **[%s] %s** — %s" % (s_["label"], b.get("file", ""),
-                                                       clip(b.get("what", ""), 200)))
+                  lines.append("- **%s%s** — %s" % (tag(s_["label"]), b.get("file", ""),
+                                                    clip(b.get("what", ""), 200)))
                   lines.append("  %s%s" % (T["why"], clip(v.get("reason", ""), 200)))
               lines.append("\n</details>\n")
 
@@ -1138,12 +1145,20 @@ jobs:
           # ——Assemble 非零退出后既无表态也无告警。一律套 str()。
           # 每片一行，详情折叠。改造前影响范围是整个 PR 写一次，分片后变成每片各写一段，
           # 实测把结论正文撑到了改造前的 3 倍——阻塞项被埋在中间没人看得见。
-          lines.append("## %s\n" % T["byshard"])
-          for s, data in done:
-              n_b = len([b for _, b in blockers if _ is s])
-              n_u = len([u for ss, u in unconfirmed if ss is s])
-              tag = T["clean"] if not (n_b or n_u) else T["counts"] % (n_b, n_u)
-              lines.append("- **%s** — %s %s" % (s["label"], clip(data.get("summary") or "", 240), tag))
+          if not multi:
+              only = done[0][1]
+              if only.get("summary"):
+                  lines.append(clip(only["summary"], 400) + "\n")
+          else:
+              lines.append("## %s\n" % T["byshard"])
+              for s, data in done:
+                  n_b = len([b for _, b in blockers if _ is s])
+                  n_u = len([u for ss, u in unconfirmed if ss is s])
+                  # 不叫 tag：那是上面的前缀函数，同名会把它遮蔽掉，
+                  # 后面待确认项再调用就成了 str is not callable。
+                  counts = T["clean"] if not (n_b or n_u) else T["counts"] % (n_b, n_u)
+                  lines.append("- **%s** — %s %s"
+                               % (s["label"], clip(data.get("summary") or "", 240), counts))
           lines.append("")
 
           detail = []
@@ -1183,8 +1198,8 @@ jobs:
                           continue
                       s, u = items[rnd]
                       shown += 1
-                      lines.append("- **[%s] %s** — %s"
-                                   % (s["label"], u.get("file", ""), clip(u.get("what", ""), 220)))
+                      lines.append("- **%s%s** — %s"
+                                   % (tag(s["label"]), u.get("file", ""), clip(u.get("what", ""), 220)))
               dropped_u = len(unconfirmed) - shown
               if dropped_u > 0:
                   lines.append("- _%s_" % (T["more_unconf"] % dropped_u))
