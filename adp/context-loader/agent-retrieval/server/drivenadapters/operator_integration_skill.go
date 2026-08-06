@@ -61,10 +61,10 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ListSkills] URL: %s?%s", fullURL, query.Encode())
 
 	header := o.skillHeader(ctx, "operator.skill.list")
-	_, respBody, err := o.httpClient.Get(ctx, fullURL, query, header)
+	code, respBody, err := o.httpClient.Get(ctx, fullURL, query, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListSkills] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("技能列表接口调用失败: %v", err))
+		return nil, skillUpstreamError(ctx, code, "技能列表接口调用失败", err)
 	}
 
 	var raw struct {
@@ -111,10 +111,10 @@ func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetSkillContent] URL: %s", fullURL)
 
 	header := o.skillHeader(ctx, "operator.skill.content")
-	_, respBody, err := o.httpClient.Get(ctx, fullURL, nil, header)
+	code, respBody, err := o.httpClient.Get(ctx, fullURL, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("技能内容接口调用失败: %v", err))
+		return nil, skillUpstreamError(ctx, code, "技能内容接口调用失败", err)
 	}
 
 	var raw struct {
@@ -147,10 +147,10 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 
 	header := o.skillHeader(ctx, "operator.skill.file_read")
 	// 字段名是 rel_path，执行工厂侧 validate:"required"；发 path 会 400。
-	_, respBody, err := o.httpClient.Post(ctx, fullURL, header, map[string]string{"rel_path": req.RelPath})
+	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, map[string]string{"rel_path": req.RelPath})
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFile] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("技能文件读取接口调用失败: %v", err))
+		return nil, skillUpstreamError(ctx, code, "技能文件读取接口调用失败", err)
 	}
 
 	var raw struct {
@@ -188,10 +188,10 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 	if req.Timeout > 0 {
 		body["timeout"] = req.Timeout
 	}
-	_, respBody, err := o.httpClient.Post(ctx, fullURL, header, body)
+	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteSkill] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("技能执行接口调用失败: %v", err))
+		return nil, skillUpstreamError(ctx, code, "技能执行接口调用失败", err)
 	}
 
 	resp := &interfaces.ExecuteSkillResponse{}
@@ -235,6 +235,18 @@ func (o *operatorIntegrationClient) skillHeader(ctx context.Context, operationNa
 		header[string(interfaces.HeaderXBusinessDomain)] = interfaces.DefaultBusinessDomainID
 	}
 	return header
+}
+
+// skillUpstreamError 把执行工厂的失败按其状态码归类。
+//
+// 下游的 4xx 是调用方参数错（路径越出技能包、技能不存在、无权限），照原码回给调用方；
+// 一律翻成 502 会让模型以为服务坏了而不是自己传错，于是重试同样错误的参数。
+// 其余（连不上、5xx）才是真的上游故障。
+func skillUpstreamError(ctx context.Context, code int, action string, err error) error {
+	if code >= http.StatusBadRequest && code < http.StatusInternalServerError {
+		return infraErr.DefaultHTTPError(ctx, code, fmt.Sprintf("%s: %v", action, err))
+	}
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("%s: %v", action, err))
 }
 
 func firstNonEmptyStr(values ...string) string {

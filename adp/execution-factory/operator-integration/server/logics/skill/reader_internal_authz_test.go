@@ -3,12 +3,14 @@ package skill
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
@@ -103,6 +105,23 @@ func TestSkillInternalReadAuthzModes(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(resp.URL, ShouldEqual, "https://download/guide.md")
+		})
+
+		Convey("越出技能包的路径回 400，不是 500", func() {
+			// 裸 error 会被 rest 层兜成 500，调用方（尤其是模型）会当成服务故障去重试，
+			// 而这本来是它自己传错了路径。VM 实测发现，管理态那条一直是 400。
+			t.Setenv(common.SkillReadAuthzModeEnv, "off")
+			reader := newReader(mocks.NewMockIAuthorizationService(ctrl),
+				mocks.NewMockISkillFileIndex(ctrl), mocks.NewMockskillAssetStore(ctrl))
+
+			resp, err := reader.ReadSkillFile(skillInternalCtx(),
+				&interfaces.ReadSkillFileReq{SkillID: "skill-1", RelPath: "../../etc/passwd"})
+
+			So(resp, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*errors.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("无账户身份的内部调用：跳过判定，不误伤存量调用方", func() {

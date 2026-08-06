@@ -169,9 +169,11 @@ func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSki
 	if err = r.authorizeSkillRead(ctx, req.UserID, req.SkillID); err != nil {
 		return nil, err
 	}
+	// 越出技能包的路径是调用方参数错，回 400；裸 error 会被兜成 500，让调用方
+	// 以为服务坏了而不是自己传错。管理态那条（mgmt_reader）一直是 400，这里对齐。
 	relPath, err := normalizeZipPath(req.RelPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 	}
 	file, err := r.fileRepo.SelectSkillFileByPath(ctx, nil, req.SkillID, skill.Version, relPath)
 	if err != nil {

@@ -214,6 +214,15 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 
+# 内部（internal-v1）技能读接口的授权档位：
+#   shadow（默认）——查授权但不拦，判定不通过只打日志，与旧行为等价
+#   enforce      ——按账户强制，无权返回 403
+#   off          ——完全不查（回退档）
+# context-loader 已把 /content 与 /files/read 包成 MCP 工具，skill_id 由调用方自填；
+# 线上观察 shadow 日志确认无误伤后再翻 enforce。
+skill:
+  internalReadAuthz: shadow
+
 resources:
   requests:
     cpu: 200m
