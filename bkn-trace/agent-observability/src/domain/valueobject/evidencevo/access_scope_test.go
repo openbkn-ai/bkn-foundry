@@ -103,27 +103,26 @@ func TestNetworkBuilderMustManageEveryKnowledgeNetwork(t *testing.T) {
 	}
 }
 
-func TestNetworkBuilderKnowledgeNetworkWildcardCoversBusinessRecords(t *testing.T) {
+func TestNetworkBuilderTypeWideGrantDoesNotImplyBusinessContentAccess(t *testing.T) {
 	profile := AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
 		EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
-		ManagedKnowledgeNetworkIDs: []string{"*"},
 	}
 	record := RecordScope{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "other-user",
 		KnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
 	}
-	if !CanReadRecord(profile, record, AccessViewBusiness) {
-		t.Fatal("network_builder knowledge-network wildcard must cover a scoped business record")
+	if CanReadRecord(profile, record, AccessViewBusiness) {
+		t.Fatal("type-wide management must not bypass concrete business content authorization")
 	}
 
 	record.KnowledgeNetworkIDs = nil
 	if CanReadRecord(profile, record, AccessViewBusiness) {
-		t.Fatal("network wildcard must not authorize a record without trusted knowledge network scope")
+		t.Fatal("type-wide management must not authorize a record without trusted knowledge network scope")
 	}
 	record.KnowledgeNetworkIDs = []string{""}
 	if CanReadRecord(profile, record, AccessViewBusiness) {
-		t.Fatal("network wildcard must reject an empty knowledge network identifier")
+		t.Fatal("type-wide management must reject an empty knowledge network identifier")
 	}
 }
 
@@ -177,10 +176,10 @@ func TestCrossAccountCandidatesRequireAnExplicitAuthorizedView(t *testing.T) {
 		t.Fatal("managed-network business lookup needs cross-account candidates before record filtering")
 	}
 	typeWideBuilder := &AccessProfile{
-		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"*"},
+		Roles: []string{"network_builder"},
 	}
-	if !NeedsCrossAccountCandidates(QueryScope{AccessProfile: typeWideBuilder, View: AccessViewBusiness}) {
-		t.Fatal("network_builder wildcard management must widen business provenance candidates")
+	if NeedsCrossAccountCandidates(QueryScope{AccessProfile: typeWideBuilder, View: AccessViewBusiness}) {
+		t.Fatal("type-wide network management must not widen business provenance candidates")
 	}
 	admin := &AccessProfile{Roles: []string{"admin"}}
 	if NeedsCrossAccountCandidates(QueryScope{AccessProfile: admin, View: AccessViewBusiness}) {

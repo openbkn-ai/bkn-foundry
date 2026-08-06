@@ -120,27 +120,12 @@ func managesEveryRecordNetwork(profile AccessProfile, record RecordScope) bool {
 			managed[networkID] = struct{}{}
 		}
 	}
-	if _, allNetworks := managed["*"]; allNetworks {
-		return true
-	}
 	for _, networkID := range record.KnowledgeNetworkIDs {
 		if _, ok := managed[networkID]; !ok {
 			return false
 		}
 	}
 	return true
-}
-
-// HasManagedKnowledgeNetworkWildcard reports the existing BKN Safe
-// knowledge_network:* management grant. It is distinct from a platform-wide
-// *:* grant, which never enters ManagedKnowledgeNetworkIDs.
-func HasManagedKnowledgeNetworkWildcard(profile AccessProfile) bool {
-	for _, networkID := range profile.ManagedKnowledgeNetworkIDs {
-		if networkID == "*" {
-			return true
-		}
-	}
-	return false
 }
 
 func hasAnyRole(profile AccessProfile, expected ...string) bool {

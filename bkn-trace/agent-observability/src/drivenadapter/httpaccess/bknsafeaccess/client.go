@@ -150,7 +150,7 @@ func currentBuiltInRoles(values []string) []string {
 func concreteManagedNetworks(response permissionsResponse) []string {
 	networks := map[string]struct{}{}
 	for _, permission := range response.Permissions {
-		if permission.Resource.Type != "knowledge_network" || permission.Resource.ID == "" {
+		if permission.Resource.Type != "knowledge_network" || permission.Resource.ID == "" || permission.Resource.ID == "*" {
 			continue
 		}
 		for _, operation := range permission.Operations {

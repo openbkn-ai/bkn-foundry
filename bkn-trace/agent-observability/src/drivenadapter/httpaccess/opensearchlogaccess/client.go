@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
@@ -172,11 +171,7 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 				"attributes.application_id.keyword": query.AuthorizedApplicationID,
 			}})
 		}
-		if containsManagedNetworkWildcard(query.AuthorizedKnowledgeNetworkIDs) {
-			candidates = append(candidates, map[string]any{"exists": map[string]any{
-				"field": "attributes.knowledge_network_ids.keyword",
-			}})
-		} else if len(query.AuthorizedKnowledgeNetworkIDs) > 0 {
+		if len(query.AuthorizedKnowledgeNetworkIDs) > 0 {
 			candidates = append(candidates, map[string]any{"terms": map[string]any{
 				"attributes.knowledge_network_ids.keyword": query.AuthorizedKnowledgeNetworkIDs,
 			}})
@@ -247,12 +242,6 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		}
 	}
 	return result
-}
-
-func containsManagedNetworkWildcard(networkIDs []string) bool {
-	return evidencevo.HasManagedKnowledgeNetworkWildcard(evidencevo.AccessProfile{
-		ManagedKnowledgeNetworkIDs: networkIDs,
-	})
 }
 
 func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {

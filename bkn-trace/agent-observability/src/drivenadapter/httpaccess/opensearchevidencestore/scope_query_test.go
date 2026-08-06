@@ -32,10 +32,10 @@ func TestScopeCandidateMustPushesDownBusinessRecordScope(t *testing.T) {
 	}
 }
 
-func TestScopeCandidateMustAllowsKnowledgeNetworkWildcardForNetworkBuilder(t *testing.T) {
+func TestScopeCandidateMustDoesNotTreatTypeWideNetworkGrantAsBusinessContentAccess(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "builder-a",
-		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"*"},
+		Roles:         []string{"network_builder"},
 		AccountActive: true, TenantActive: true,
 	}
 	must := scopeCandidateMust(evidencevo.QueryScope{
@@ -44,10 +44,10 @@ func TestScopeCandidateMustAllowsKnowledgeNetworkWildcardForNetworkBuilder(t *te
 	})
 
 	rendered := mustJSON(t, must)
-	if !strings.Contains(rendered, "knowledge_network_ids") {
-		t.Fatalf("network wildcard must require trusted knowledge network scope: %s", rendered)
+	if strings.Contains(rendered, "knowledge_network_ids") {
+		t.Fatalf("type-wide management grant must not widen business content candidates: %s", rendered)
 	}
-	for _, expected := range []string{"effective_subject_id", "bkn.account.id", "bkn.account.type", "exists"} {
+	for _, expected := range []string{"effective_subject_id", "bkn.account.id", "bkn.account.type"} {
 		if !strings.Contains(rendered, expected) {
 			t.Fatalf("own-record candidate condition %q is missing: %s", expected, rendered)
 		}
