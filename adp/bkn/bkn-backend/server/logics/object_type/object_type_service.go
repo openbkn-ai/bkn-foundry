@@ -1970,7 +1970,10 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 //
 // 资源存的是构建时用户给的值，可能是模型名（`openbkn vega dataset build
 // --embedding-model text-embedding-v4`），也可能已经是 ID；而查询侧向量化只认 ID。
-// 先按名字查，查不到就当它本来就是 ID 用。解析失败返回空串，调用方据此不登记 knn。
+// 按名字查 → 按 ID 查，两条都落空才算解析失败，返回空串让调用方不登记 knn。
+//
+// 不能拿名字冒充 ID 兜底：那样查询期才在向量化环节炸，调用方拿到的是 5xx，而不是
+// 「这个字段本来就不支持 knn」这一事实。能力清单要么说得准，要么就别说。
 func (ots *objectTypeService) resolveEmbeddingModelID(ctx context.Context, model string, cache map[string]string) string {
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -1980,8 +1983,11 @@ func (ots *objectTypeService) resolveEmbeddingModelID(ctx context.Context, model
 		return resolved
 	}
 
-	resolved := model
+	resolved := ""
 	if found, err := ots.mfs.GetModelByName(ctx, model); err == nil && found != nil && found.ModelID != "" {
+		resolved = found.ModelID
+	} else if found, err := ots.mfs.GetModelByID(ctx, model); err == nil && found != nil && found.ModelID != "" {
+		// 资源上直接记的就是 ID 时走这条。
 		resolved = found.ModelID
 	}
 	cache[model] = resolved
