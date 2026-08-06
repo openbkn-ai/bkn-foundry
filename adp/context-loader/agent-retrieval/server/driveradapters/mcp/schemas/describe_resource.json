@@ -21,7 +21,7 @@
       "resource_id": { "type": "string" },
       "connector_type": {
         "type": "string",
-        "description": "连接器类型（mysql / mariadb / postgresql），写 run_sql 时可作 resource_type，一般无需手填（run_sql 会自动解析）。"
+        "description": "连接器类型（mysql / mariadb / postgresql / sqlserver），写 run_sql 时可作 resource_type，一般无需手填（run_sql 会自动解析）。"
       },
       "columns": {
         "type": "array",
