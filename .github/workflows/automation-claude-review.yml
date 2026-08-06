@@ -231,60 +231,34 @@ jobs:
                   key = "misc"
               groups.setdefault(key, []).append(p)
 
-          # 片数上限。超过就把文件最少的几片并进 misc：并行度再高也换不来收益，
-          # 而每片都是一份完整上下文的开销。
-          MAX_MODULE_SHARDS = 6
-          modules = [(k, v) for k, v in groups.items() if k != "misc"]
-          if len(modules) > MAX_MODULE_SHARDS:
-              modules.sort(key=lambda kv: len(kv[1]), reverse=True)
-              for k, v in modules[MAX_MODULE_SHARDS:]:
-                  groups.setdefault("misc", []).extend(v)
-                  del groups[k]
+          # 一片，一个 agent 看全部。
+          #
+          # 分片曾解决过一个真问题：#662 撞 60 轮上限、连烧两次 $5、零产出，改造前 189
+          # 次运行里 12 次失败全是 error_max_turns。但它被无条件用在了每个 PR 上，而
+          # 最近十个 PR 里有七个的代码文件数不超过 12——一个 agent 审得完，却在付六片的
+          # 钱、等九分钟。
+          #
+          # 更要命的是阻断概率被放大：六片各自独立找问题，按单片 20% 的阻断率算，至少
+          # 一片阻断的概率是 1 − 0.8⁶ ≈ 74%。#685 连续五轮 CHANGES_REQUESTED、始终不
+          # 收敛，这是原因之一。「审得更全」和「更难通过」是同一件事的两面。
+          #
+          # 当初逼出分片的那个 60 轮上限，前提也已经变了：上限抬到 80、prompt 里有轮次
+          # 预算、文档与测试走浅审、深挖改成条件触发。同一个 PR，现在单 agent 的活比
+          # #662 时少得多，把上限放到 200 就够。
+          #
+          # 保留的是文件类分流——deep / shallow / lowrisk 的区分省的是真活，与分片无关。
+          # 不再需要 contract 片：一个 agent 本来就看得见全量 diff，跨模块一致性自然在
+          # 视野里。
+          deep_files = sorted(f for g in groups.values() for f in g if klass(f) == "deep")
+          shallow_files = sorted(f for g in groups.values() for f in g if klass(f) == "shallow")
 
-          # 单片代码文件数上限。实测 #619 有一片 31 个代码文件、#657 19 个——一片要在
-          # 80 轮内逐个读完还要追引用点，只能靠少审来收场，而「少审了」在结论里是看不见
-          # 的。超了就按文件继续切，切出来的片各自独立跑，覆盖不因规模缩水。
-          MAX_DEEP_PER_SHARD = 12
-
-          shards = []
-          for key, files in groups.items():
-              deep = sorted(f for f in files if klass(f) == "deep")
-              shallow = sorted(f for f in files if klass(f) == "shallow")
-              chunks = [deep[i:i + MAX_DEEP_PER_SHARD]
-                        for i in range(0, len(deep), MAX_DEEP_PER_SHARD)] or [[]]
-              for n, chunk in enumerate(chunks, 1):
-                  suffix = "" if len(chunks) == 1 else " (%d/%d)" % (n, len(chunks))
-                  shards.append({
-                      "key": (key.replace("/", "-")
-                              + ("" if len(chunks) == 1 else "-%d" % n)),
-                      "label": key + suffix,
-                      "kind": "misc" if key == "misc" else "module",
-                      "files": "\n".join("- " + f for f in chunk) or "（本片没有代码改动）",
-                      # 测试文件只挂在第一片上，避免每片都重复拿到同一批
-                      "files_shallow": "\n".join("- " + f for f in shallow) if n == 1 else "",
-                  })
-
-          # 低风险文件单独成片而不是直接丢掉：静默不审比多花几分钱糟得多，
-          # 而且文档与代码对不上本身就是要报的问题。
-          if lowrisk:
-              shards.append({
-                  "key": "low-risk",
-                  "label": "docs / examples / generated",
-                  "kind": "lowrisk",
-                  "files": "\n".join("- " + f for f in sorted(lowrisk)),
-                  "files_shallow": "",
-              })
-
-          # contract 片固定存在（只要 PR 有改动）：跨模块契约、配置与部署面、数据面
-          # 这三个面切开就废了，必须有人拿全量 diff 统一看。
-          if paths:
-              shards.append({
-                  "key": "contract",
-                  "label": "跨模块契约 / 配置与部署面 / 数据面",
-                  "kind": "contract",
-                  "files": "",
-                  "files_shallow": "",
-              })
+          shards = [{
+              "key": "review",
+              "label": "全量",
+              "kind": "single",
+              "files": "\n".join("- " + f for f in deep_files) or "（本轮没有代码改动）",
+              "files_shallow": "\n".join("- " + f for f in (shallow_files + sorted(lowrisk))),
+          }] if paths else []
 
           print("shards=" + json.dumps(shards, ensure_ascii=False))
           print("has_shards=" + ("true" if shards else "false"))
@@ -460,7 +434,7 @@ jobs:
 
             ## 你这一片的范围
 
-            ${{ matrix.shard.kind == 'contract' && '你拿的是全量 diff，但**只看跨模块一致性，不重复别人已经在做的模块内逻辑审查**。三个面：一、跨模块契约——同一能力在 REST 路由、MCP 工具定义、.adp 描述、SDK、CLI 等多处各有一份声明，必须同步改，只改其中一处就是线上不一致。二、配置与部署面——Helm values、configmap、环境变量、chart 默认值的改动，分别核存量环境升级（沿用旧值会不会失效、缺省值会不会被覆盖）与全新安装。三、数据面——落库字段、索引结构、消息体格式的变化，确认存量数据仍能被新代码正确读出；滚动升级期间新旧版本并存，两边必须互相兼容。' || (matrix.shard.kind == 'lowrisk' && '这一片是文档、示例与生成物，**浅审**：只确认它们与本次代码改动是否一致（描述与实现对不上、示例跑不通、生成物与源不同步），以及有没有泄露凭据或内部地址。不做引用点追踪，不做触发式深挖，不写影响范围。没问题就直接落结论收工——这一片的预算远小于代码片。' || '你负责为下面这些文件出结论：') }}
+            你负责这个 PR 的**全部**改动，下面是需要出结论的文件：
 
             ${{ matrix.shard.files }}
 
@@ -664,13 +638,15 @@ jobs:
           #
           # 轮次上限 80：#662 曾在 60 触顶零产出。分片后单片实际轮数远低于此，这个值
           # 是余量而非目标，跑不满不计费。
-          # effort 与轮次按片分档：contract 片要在全仓范围内比对多处声明，是最难的判断，
+          # 只有一个 agent，没必要在 effort 上省——它要独自承担整轮判断。轮次上限从 80
+          # 抬到 200：这是当初逼出分片的那个约束，放开它才是单 agent 方案成立的前提。
+          # 旧注释保留如下：effort 与轮次按片分档；contract 片要在全仓比对多处声明，
           # 保持 xhigh；模块片做的是「读 diff 找问题」，high 足够，而 xhigh 每轮多生成的
           # 思考 token 是实打实的成本。低风险片只做一致性核对，25 轮绰绰有余。
           claude_args: |
             --model claude-opus-5
-            --effort ${{ matrix.shard.kind == 'contract' && 'xhigh' || 'high' }}
-            --max-turns ${{ matrix.shard.kind == 'lowrisk' && '25' || '80' }}
+            --effort xhigh
+            --max-turns 200
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
 
       # if: always()——分片撞上限时 action 以失败退出，但它此前可能已经写了 JSON；
@@ -1183,8 +1159,8 @@ jobs:
           # 首轮每片至多 2 条、总共 6 条；复评轮收到 1 条 / 2 条。
           if unconfirmed:
               lines.append("## %s\n" % T["unconf"])
-              # 轮转取，不是先到先得：contract 片固定排在最后，先到先得会让多模块 PR
-              # 上它的待确认项被前面的模块片整片挤掉，而它恰恰是唯一看跨模块的。
+              # 轮转取：分片时代 contract 片排在最后会被挤掉，才有了这个写法。现在只有
+              # 一片，它退化成按顺序取，保留是因为多片形态随时可能再需要。
               by_shard = collections.OrderedDict()
               for s, u in unconfirmed:
                   by_shard.setdefault(s["key"], []).append((s, u))
