@@ -135,6 +135,12 @@ jobs:
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
       GH_TOKEN: ${{ github.token }}
+      # gh 解析目标仓库只认 --repo、GH_REPO、当前目录的 git remote 三者，**不读**
+      # GITHUB_REPOSITORY。这个 job 有意不 checkout，工作目录不是 git 仓库，不给
+      # GH_REPO 的话 gh 会以 failed to determine base repo 直接非零退出，plan 一挂
+      # 下游全跳过——连 verdict 的 always() 兜底都够不着（它被 needs.plan.result 挡着）。
+      # 同仓 automation-agent-metrics.yml 是同样不 checkout 的场景，那里逐条带 -R。
+      GH_REPO: ${{ github.repository }}
     steps:
       # 推送事件先静默一小会儿再往下走。作者（多数时候是 agent）常见动作是
       # `git push` 紧接着 `gh pr comment "/review"`，两条事件各触发一次评审；静默期内
@@ -266,6 +272,20 @@ jobs:
       - name: Prepare findings dir
         run: mkdir -p findings
 
+      # 上一轮的 inline 评论由 shell 预取成文件，分片不再需要 `Bash(gh api:*)`——那是
+      # 全方法通配，模型可以直接 POST /pulls/N/reviews 落一条评审状态，绕过「表态只能
+      # 有一次」这条不变量（该不变量此前只靠 prompt 约束，不是权限上做不到）。
+      # 顺带省轮次：一次 shell 调用替掉模型自己发的一轮工具调用。
+      - name: Prefetch prior review comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}/comments" --paginate \
+            --jq '[.[] | {path, line, user: .user.login, body}]' \
+            > prior-comments.json || echo '[]' > prior-comments.json
+
       - name: Claude review
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         uses: anthropics/claude-code-action@v1
@@ -349,8 +369,8 @@ jobs:
 
             目标是收敛，不是每轮重开一次全面评审：
 
-            - 先读回上一轮落在你这片文件上的 inline 评论与其下回复：`gh api
-              "repos/${{ github.repository }}/pulls/$PR_NUMBER/comments"`。
+            - 先读回上一轮的 inline 评论：已经预取到 `${{ github.workspace }}/prior-comments.json`
+              （绝对路径），直接读文件，不要自己去调 API。只看落在你这片文件上的那些。
             - 已经提过的问题，作者改了、或给出对得上疑点的解释，就算过。不必追求措辞
               完美，更不要凭「可能」把同一条追问第二遍。
             - 上面的触发式深挖只在首轮做；复评的范围限定在上一轮之后新增的提交与文件。
@@ -387,9 +407,14 @@ jobs:
                  "evidence": ["comm-go/x/y.go:88-95 这几行里读到的、支撑这条结论的事实"]}
               ],
               "unconfirmed": [{"file": "...", "what": "待确认项，不阻断放行"}],
-              "not_covered": "本轮没来得及核的面，没有就写空串"
+              "not_covered": "本轮没来得及核的面，没有就写空串",
+              "lang": "zh"
             }
             ```
+
+            `lang` 填 `zh` 或 `en`，取你按上面规则判定的 PR 主体语言。verdict 的正文
+            骨架（各级标题）按它来选，不填则默认中文——正文骨架和你写的内容语言不一致
+            会读成两份东西。
 
             **blockers 的门槛**：你已经读过源码核实，能说清具体的失效场景，并且自评
             把握 ≥ 90 分。说不清、或失效场景里有任何一环没在代码里核实过，都不算阻塞
@@ -419,7 +444,7 @@ jobs:
             --model claude-opus-5
             --effort xhigh
             --max-turns 80
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
 
       # if: always()——分片撞上限时 action 以失败退出，但它此前可能已经写了 JSON；
       # 更重要的是没写也要让 verdict 知道这片跑挂了（靠 artifact 缺失判定）。
@@ -447,7 +472,8 @@ jobs:
   # 刚推出来的结论天然高估。所以复核必须换一份干净上下文重来一遍，且**默认立场是驳回**——
   # 拿不出「读了哪个文件哪几行、看到了什么」就判 refuted，不给「看起来像有问题」留出口。
   #
-  # 只在真有阻塞项时才起这个 job，多数 PR 直接跳过，成本为零。
+  # job 本身总会起（checkout + 下载 artifact，秒级），但只有真存在阻塞项时才调模型。
+  # 多数 PR 没有阻塞项，模型这一步直接跳过，额度开销为零。
   verify:
     timeout-minutes: 20
     needs: [plan, review]
@@ -502,6 +528,9 @@ jobs:
                   continue
               key = path.stem
               for i, b in enumerate(data.get("blockers") or []):
+                  # 过滤规则与 verdict 的拼装脚本严格一致，序号同样取自 enumerate。
+                  if not isinstance(b, dict):
+                      continue
                   items.append({
                       "id": "%s#%d" % (key, i),
                       "shard": data.get("shard", key),
@@ -611,6 +640,10 @@ jobs:
       FILE_TOTAL: ${{ needs.plan.outputs.file_total }}
       FILE_LISTED: ${{ needs.plan.outputs.file_listed }}
       GH_TOKEN: ${{ github.token }}
+      # 同 plan：这个 job 也不 checkout，没有 GH_REPO 的话最后那条 gh pr review
+      # 会在「确定 base repo」这一步就失败——分片全跑完、verdict.md 也拼好了，
+      # 唯一一次表态却落不下去，「一定有一次表态」的设计在最后一米断掉。
+      GH_REPO: ${{ github.repository }}
     steps:
       # 全部分片都没产出时一个 artifact 都不存在。download-artifact 在这种情况下是否
       # 静默通过没有保证，硬失败会把 verify 和 verdict 一起带走——那正是要消掉的
@@ -655,12 +688,21 @@ jobs:
                   missing.append(s)
                   continue
               done.append((s, data))
+              # findings 是模型写的，属于不可信输入：JSON 合法但结构不对（元素是字符串
+              # 而非对象）会让下面的 dict()/get() 抛异常，Assemble 非零退出后 Post review
+              # 不执行、告警分支也不成立——PR 上既无表态也无告警，只剩一个红叉。
+              # 序号取自 enumerate 而非计数器，跳过畸形元素不会让 id 错位（id 是
+              # survived/refuted 分类的唯一依据，错位会把复核结论贴到别的阻塞项上）。
+              # verify 的 collect 步骤必须用完全相同的过滤规则。
               for i, b in enumerate(data.get("blockers") or []):
+                  if not isinstance(b, dict):
+                      continue
                   # id 规则必须与 verify 的 collect 步骤一致：<分片 key>#<片内序号>。
                   b = dict(b, id="%s#%d" % (s["key"], i))
                   blockers.append((s, b))
               for u in data.get("unconfirmed") or []:
-                  unconfirmed.append((s, u))
+                  if isinstance(u, dict):
+                      unconfirmed.append((s, u))
 
           # 一片都没产出（多半是 secret 缺失或全线失败）：不表态，只留告警。
           # 此时 request-changes 会拿一个「什么都没审」当阻塞理由挂住 PR。
@@ -679,6 +721,35 @@ jobs:
               except (ValueError, OSError):
                   verdicts = {}
 
+          # 正文骨架跟着分片判定的 PR 语言走，否则「语言跟随 PR」只作用于模型写的字，
+          # 标题仍是硬编码中文，英文 PR 上会中英混排。多数派优先，平票落中文。
+          votes = {}
+          for _s, data in done:
+              lang = (data.get("lang") or "").strip().lower()
+              if lang in ("zh", "en"):
+                  votes[lang] = votes.get(lang, 0) + 1
+          lang = "en" if votes.get("en", 0) > votes.get("zh", 0) else "zh"
+          T = {
+              "zh": {"block": "阻塞项", "verified": "以下每一条都经过一轮独立复核（默认驳回，核实通过才保留）。",
+                     "unrev": "（**未复核**，复核环节未产出结论）", "scen": "失效场景：",
+                     "dropped": "复核未通过、已丢弃的 %d 条", "why": "驳回理由：",
+                     "byshard": "各分片结论", "impact": "影响范围：", "notcov": "未覆盖：",
+                     "unconf": "待确认项（不阻断放行）", "missing": "未覆盖的分片",
+                     "missing_body": "下面这些分片没有产出结论（撞轮次上限、超时或运行失败），**这些文件本轮未经评审**：",
+                     "trunc": "文件清单被截断",
+                     "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（`gh pr view --json files` 单次上限 100），**其余 %d 个未进入任何分片、本轮未经评审**。",
+                     "footer": "改完请推新提交，或回复 `/review` 要一轮复评。"},
+              "en": {"block": "Blockers", "verified": "Each item below survived an independent verification pass (refuted by default; kept only when confirmed against the source).",
+                     "unrev": " (**unverified** — the verification stage produced no result)", "scen": "Failure scenario: ",
+                     "dropped": "%d item(s) dropped by verification", "why": "Refuted because: ",
+                     "byshard": "Per-shard findings", "impact": "Blast radius: ", "notcov": "Not covered: ",
+                     "unconf": "Open questions (non-blocking)", "missing": "Shards with no result",
+                     "missing_body": "These shards produced no findings (turn limit, timeout, or job failure) — **their files were not reviewed this round**:",
+                     "trunc": "File list truncated",
+                     "trunc_body": "This PR changes %s files but only %s reached the planner (`gh pr view --json files` caps at 100) — **the remaining %d were not assigned to any shard and were not reviewed**.",
+                     "footer": "Push a new commit when addressed, or reply `/review` for another round."},
+          }[lang]
+
           survived, refuted, unreviewed = [], [], []
           for s_, b in blockers:
               v = verdicts.get(b["id"])
@@ -693,64 +764,60 @@ jobs:
           blockers = [(s_, b) for s_, b, _ in survived + unreviewed]
 
           if blockers:
-              lines.append("## 阻塞项\n")
-              lines.append("以下每一条都经过一轮独立复核（默认驳回，核实通过才保留）。\n")
+              lines.append("## %s\n" % T["block"])
+              lines.append(T["verified"] + "\n")
               for s_, b in blockers:
                   loc = b.get("file", "")
                   if b.get("line"):
                       loc += ":%s" % b["line"]
-                  mark = "" if verdicts.get(b["id"]) else "（**未复核**，复核环节未产出结论）"
+                  mark = "" if verdicts.get(b["id"]) else T["unrev"]
                   lines.append("- **[%s] %s** — %s%s"
                                % (s_["label"], loc, b.get("what", ""), mark))
                   if b.get("scenario"):
-                      lines.append("  失效场景：%s" % b["scenario"])
+                      lines.append("  %s%s" % (T["scen"], b["scenario"]))
               lines.append("")
 
           if refuted:
-              lines.append("<details><summary>复核未通过、已丢弃的 %d 条</summary>\n"
-                           % len(refuted))
+              lines.append("<details><summary>" + (T["dropped"] % len(refuted)) + "</summary>\n")
               for s_, b, v in refuted:
                   lines.append("- **[%s] %s** — %s" % (s_["label"], b.get("file", ""),
                                                        b.get("what", "")))
-                  lines.append("  驳回理由：%s" % v.get("reason", ""))
+                  lines.append("  %s%s" % (T["why"], v.get("reason", "")))
               lines.append("\n</details>\n")
 
-          lines.append("## 各分片结论\n")
+          lines.append("## %s\n" % T["byshard"])
           for s, data in done:
               lines.append("### %s" % s["label"])
               if data.get("summary"):
                   lines.append(data["summary"])
               if data.get("impact"):
-                  lines.append("影响范围：%s" % data["impact"])
+                  lines.append(T["impact"] + data["impact"])
               if data.get("not_covered"):
-                  lines.append("未覆盖：%s" % data["not_covered"])
+                  lines.append(T["notcov"] + data["not_covered"])
               lines.append("")
 
           if unconfirmed:
-              lines.append("## 待确认项（不阻断放行）\n")
+              lines.append("## %s\n" % T["unconf"])
               for s, u in unconfirmed:
                   lines.append("- **[%s] %s** — %s"
                                % (s["label"], u.get("file", ""), u.get("what", "")))
               lines.append("")
 
           if missing:
-              lines.append("## 未覆盖的分片\n")
-              lines.append("下面这些分片没有产出结论（撞轮次上限、超时或运行失败），"
-                           "**这些文件本轮未经评审**：\n")
+              lines.append("## %s\n" % T["missing"])
+              lines.append(T["missing_body"] + "\n")
               for s in missing:
                   lines.append("- %s" % s["label"])
               lines.append("")
 
           dropped = int(os.environ.get("FILE_TOTAL") or 0) - int(os.environ.get("FILE_LISTED") or 0)
           if dropped > 0:
-              lines.append("## 文件清单被截断\n")
-              lines.append("本 PR 共 %s 个改动文件，分片只拿到 %s 个"
-                           "（`gh pr view --json files` 单次上限 100），"
-                           "**其余 %d 个未进入任何分片、本轮未经评审**。\n"
-                           % (os.environ["FILE_TOTAL"], os.environ["FILE_LISTED"], dropped))
+              lines.append("## %s\n" % T["trunc"])
+              lines.append(T["trunc_body"] % (os.environ["FILE_TOTAL"],
+                                          os.environ["FILE_LISTED"], dropped) + "\n")
 
           if blockers:
-              lines.append("改完请推新提交，或回复 `/review` 要一轮复评。")
+              lines.append(T["footer"])
 
           pathlib.Path("verdict.md").write_text("\n".join(lines), encoding="utf-8")
           print("action=" + ("request-changes" if blockers else "approve"))
