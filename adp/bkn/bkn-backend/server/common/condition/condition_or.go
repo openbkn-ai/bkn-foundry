@@ -33,7 +33,12 @@ func newOrCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap ma
 			return nil, err
 		}
 
-		subConds = append(subConds, cond)
+		if cond != nil {
+			subConds = append(subConds, cond)
+		}
+	}
+	if len(subConds) == 0 {
+		return nil, fmt.Errorf("sub condition size is 0")
 	}
 
 	return &OrCond{
@@ -131,12 +136,16 @@ func convertOrCondToDatasetFilterCondition(ctx context.Context, cfg *CondCfg, fi
 		}
 		if subCondMap != nil {
 			subConditions = append(subConditions, subCondMap)
+			continue
+		}
+		if subCond != nil && subCond.Operation == OperationAnd {
+			return nil, nil
 		}
 	}
 
-	// If all sub-conditions were filtered out, return nil
+	// OR requires at least one effective sub-condition.
 	if len(subConditions) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("sub condition size is 0")
 	}
 
 	// If only one sub-condition, return it directly without wrapping in "or"

@@ -92,10 +92,22 @@ func TestNewOrCond(t *testing.T) {
 			So(len(orCond.mSubConds), ShouldEqual, 2)
 		})
 
-		Convey("nil sub condition should still be added", func() {
+		Convey("only nil sub conditions should return error", func() {
+			cfg := &CondCfg{
+				Operation: OperationOr,
+				SubConds:  []*CondCfg{nil},
+			}
+			cond, err := newOrCond(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldNotBeNil)
+			So(cond, ShouldBeNil)
+			So(err.Error(), ShouldContainSubstring, "sub condition size is 0")
+		})
+
+		Convey("nil sub conditions should be skipped when a valid child exists", func() {
 			cfg := &CondCfg{
 				Operation: OperationOr,
 				SubConds: []*CondCfg{
+					nil,
 					{
 						Operation: OperationEq,
 						Field:     "field1",
@@ -109,6 +121,7 @@ func TestNewOrCond(t *testing.T) {
 			cond, err := newOrCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
 			So(cond, ShouldNotBeNil)
+			So(len(cond.(*OrCond).mSubConds), ShouldEqual, 1)
 		})
 
 		Convey("error in sub condition should propagate", func() {
@@ -128,6 +141,39 @@ func TestNewOrCond(t *testing.T) {
 			cond, err := newOrCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
 			So(cond, ShouldBeNil)
+		})
+	})
+}
+
+func TestConvertOrCondToDatasetFilterCondition(t *testing.T) {
+	Convey("Test convertOrCondToDatasetFilterCondition", t, func() {
+		Convey("empty AND child makes OR match all", func() {
+			result, err := ConvertCondCfgToFilterCondition(context.Background(), &CondCfg{
+				Operation: OperationOr,
+				SubConds: []*CondCfg{
+					{Operation: OperationAnd, SubConds: []*CondCfg{}},
+					{
+						Operation: OperationEq,
+						Field:     "field1",
+						ValueOptCfg: ValueOptCfg{
+							ValueFrom: ValueFrom_Const,
+							Value:     "value1",
+						},
+					},
+				},
+			}, nil, nil)
+			So(err, ShouldBeNil)
+			So(result, ShouldBeNil)
+		})
+
+		Convey("only nil children return an error", func() {
+			result, err := ConvertCondCfgToFilterCondition(context.Background(), &CondCfg{
+				Operation: OperationOr,
+				SubConds:  []*CondCfg{nil},
+			}, nil, nil)
+			So(err, ShouldNotBeNil)
+			So(result, ShouldBeNil)
+			So(err.Error(), ShouldEqual, "sub condition size is 0")
 		})
 	})
 }
