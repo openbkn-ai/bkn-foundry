@@ -140,6 +140,21 @@ def test_wanted_detects_ref():
     assert not context_loader.wanted([{"type": "toolbox", "box_id": "b"}])
 
 
+def _probe_app():
+    """装同一条中间件的一次性 app。
+
+    不往 app.main 的真 app 上挂路由——那会漏进 openapi()，把契约冻结测试撞红
+    （已经撞过一次）。
+    """
+    from fastapi import FastAPI
+
+    from app.main import bkn_trace_context_middleware
+
+    probe = FastAPI()
+    probe.middleware("http")(bkn_trace_context_middleware)
+    return probe
+
+
 def test_caller_token_visible_inside_request_handler():
     """回归：令牌必须在请求协程里读得到。
 
@@ -149,32 +164,28 @@ def test_caller_token_visible_inside_request_handler():
     """
     from fastapi.testclient import TestClient
 
-    from app.main import app as real_app
-
     seen = {}
+    probe = _probe_app()
 
-    @real_app.get("/__probe_caller_token")
-    def _probe():
+    @probe.get("/t")
+    def _t():
         seen["token"] = auth.caller_token()
         return {"ok": True}
 
-    client = TestClient(real_app)
-    client.get("/__probe_caller_token", headers={"Authorization": "Bearer probe-token"})
+    TestClient(probe).get("/t", headers={"Authorization": "Bearer probe-token"})
     assert seen["token"] == "Bearer probe-token"
 
 
 def test_caller_token_absent_when_header_missing():
     from fastapi.testclient import TestClient
 
-    from app.main import app as real_app
-
     seen = {}
+    probe = _probe_app()
 
-    @real_app.get("/__probe_caller_token_absent")
-    def _probe():
+    @probe.get("/t")
+    def _t():
         seen["token"] = auth.caller_token()
         return {"ok": True}
 
-    client = TestClient(real_app)
-    client.get("/__probe_caller_token_absent")
+    TestClient(probe).get("/t")
     assert seen["token"] is None
