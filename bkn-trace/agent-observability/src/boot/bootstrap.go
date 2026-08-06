@@ -50,11 +50,12 @@ import (
 )
 
 type App struct {
-	server        *httpserver.Server
-	closeDatabase func() error
-	stopWorkers   context.CancelFunc
-	workers       sync.WaitGroup
-	projection    *projectorsvc.Worker
+	server         *httpserver.Server
+	internalServer *httpserver.Server
+	closeDatabase  func() error
+	stopWorkers    context.CancelFunc
+	workers        sync.WaitGroup
+	projection     *projectorsvc.Worker
 }
 
 const APIBasePath = "/api/agent-observability/v1"
@@ -357,11 +358,6 @@ func newApp(
 		evidenceHandler.GetTraceSubresource(w, r)
 	}))
 	mux.HandleFunc(APIBasePath+"/evidence-nodes/", readAuth(evidenceHandler.GetEvidenceNode))
-	mux.HandleFunc(
-		APIBasePath+"/evidence/events",
-		evidenceHandler.RequireTrustedLifecycleIdentity(ledgerHandler.Ingest),
-	)
-	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
 	httphandler.RegisterBusinessProvenanceRoutes(mux, APIBasePath, evidenceHandler, readAuth)
@@ -372,26 +368,56 @@ func newApp(
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-facets", readAuth(logHandler.GetLogFacets))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
-	httphandler.RegisterSessionRoutes(
-		mux, APIBasePath, sessionHandler, evidenceHandler.RequireTrustedLifecycleIdentity,
-	)
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))
 
+	internalMux := http.NewServeMux()
+	internal := evidenceHandler.InternalLifecycle
+	lifecycle := func(next http.HandlerFunc) http.HandlerFunc {
+		return internal(evidenceHandler.RequireTrustedLifecycleIdentity(next))
+	}
+	internalMux.HandleFunc(APIBasePath+"/evidence/events", lifecycle(ledgerHandler.Ingest))
+	internalMux.HandleFunc(APIBasePath+"/evidence/artifacts", internal(evidenceHandler.IngestEvidenceArtifact))
+	httphandler.RegisterSessionRoutes(internalMux, APIBasePath, sessionHandler, lifecycle)
+
 	return &App{
-		server: httpserver.New(httpServerConfig.Address, mux),
+		server:         httpserver.New(httpServerConfig.Address, mux),
+		internalServer: httpserver.New(httpServerConfig.InternalAddress, internalMux),
 	}
 }
 
 func (a *App) Start() error {
-	return a.server.Start()
+	if a.internalServer == nil {
+		return a.server.Start()
+	}
+	internalResult, err := a.internalServer.StartAsync()
+	if err != nil {
+		return fmt.Errorf("start BKN Trace internal listener: %w", err)
+	}
+	publicResult, err := a.server.StartAsync()
+	if err != nil {
+		_ = a.internalServer.Shutdown(context.Background())
+		return fmt.Errorf("start BKN Trace public listener: %w", err)
+	}
+	select {
+	case err := <-internalResult:
+		if err != nil {
+			return fmt.Errorf("BKN Trace internal listener stopped: %w", err)
+		}
+		return nil
+	case err := <-publicResult:
+		return err
+	}
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
 	var shutdownErr error
 	if a.server != nil {
 		shutdownErr = a.server.Shutdown(ctx)
+	}
+	if a.internalServer != nil {
+		shutdownErr = errors.Join(shutdownErr, a.internalServer.Shutdown(ctx))
 	}
 	shutdownErr = errors.Join(
 		shutdownErr,

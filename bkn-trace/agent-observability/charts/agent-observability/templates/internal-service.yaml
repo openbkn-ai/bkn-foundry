@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-observability.fullname" . }}-internal
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "agent-observability.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: lifecycle
+      port: 8081
+      targetPort: internal-http
+      protocol: TCP

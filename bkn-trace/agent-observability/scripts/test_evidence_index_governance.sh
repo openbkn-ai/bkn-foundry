@@ -3,12 +3,8 @@ set -euo pipefail
 
 chart_dir="${1:-charts/agent-observability}"
 default_rendered="$(helm template agent-observability "${chart_dir}")"
-if grep -Fq "kind: Secret" <<<"${default_rendered}"; then
-  echo "default chart must not adopt or create an evidence ingest Secret" >&2
-  exit 1
-fi
-if grep -Fq "BKN_TRACE_EVIDENCE_INGEST_TOKEN" <<<"${default_rendered}"; then
-  echo "default chart must not require a new evidence ingest Secret" >&2
+if grep -Eq "BKN_TRACE_(EVIDENCE_INGEST|QUERY_GATEWAY)_TOKEN" <<<"${default_rendered}"; then
+  echo "chart must not inject shared Trace tokens" >&2
   exit 1
 fi
 if grep -Fq "BKN_TRACE_CORE_MARIADB_DSN" <<<"${default_rendered}"; then
@@ -16,16 +12,14 @@ if grep -Fq "BKN_TRACE_CORE_MARIADB_DSN" <<<"${default_rendered}"; then
   exit 1
 fi
 
-managed_secret_rendered="$(helm template agent-observability "${chart_dir}" \
-  --set evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest \
-  --set evidence.ingestAuth.createSecret=true)"
-if ! grep -A2 -Fq 'name: BKN_TRACE_EVIDENCE_INGEST_TOKEN' <<<"${managed_secret_rendered}" ||
-   ! grep -Fq 'key: "token"' <<<"${managed_secret_rendered}"; then
-  echo "explicit ingest Secret configuration must retain the legacy token key" >&2
+if ! grep -Fq 'name: agent-observability-internal' <<<"${default_rendered}" ||
+   ! grep -Fq 'port: internal-http' <<<"${default_rendered}"; then
+  echo "chart must expose a private lifecycle Service" >&2
   exit 1
 fi
-if ! grep -Fq '"helm.sh/resource-policy": keep' <<<"${managed_secret_rendered}"; then
-  echo "chart-managed ingest Secret must survive an accidental manifest omission or uninstall" >&2
+if ! grep -Fq 'kind: NetworkPolicy' <<<"${default_rendered}" ||
+   ! grep -Fq 'app: agent-retrieval' <<<"${default_rendered}"; then
+  echo "chart must restrict the private lifecycle port to agent-retrieval" >&2
   exit 1
 fi
 if ! grep -A1 -Fq "name: BKN_TRACE_PROJECTION_ENABLED

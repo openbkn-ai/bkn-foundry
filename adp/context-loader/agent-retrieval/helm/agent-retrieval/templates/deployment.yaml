@@ -89,13 +89,6 @@ spec:
               - name: BKN_TRACE_DEFAULT_BUSINESS_DOMAIN
                 value: {{ .Values.observability.lifecycle.default_business_domain | quote }}
             {{- end}}
-            {{- if .Values.observability.lifecycle.gateway_token_secret_name }}
-              - name: BKN_TRACE_QUERY_GATEWAY_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: {{ .Values.observability.lifecycle.gateway_token_secret_name | quote }}
-                    key: {{ .Values.observability.lifecycle.gateway_token_secret_key | quote }}
-            {{- end}}
             {{- if .Values.observability.evidence.ingest_url }}
               - name: BKN_TRACE_EVIDENCE_INGEST_URL
                 value: {{ .Values.observability.evidence.ingest_url | quote }}
@@ -103,14 +96,6 @@ spec:
             {{- if .Values.observability.evidence.timeout_ms }}
               - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
                 value: {{ .Values.observability.evidence.timeout_ms | quote }}
-            {{- end}}
-            {{- if .Values.observability.evidence.ingest_token_secret_name }}
-              - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: {{ .Values.observability.evidence.ingest_token_secret_name | quote }}
-                    key: {{ .Values.observability.evidence.ingest_token_secret_key | quote }}
-                    optional: true
             {{- end}}
 
           ports:

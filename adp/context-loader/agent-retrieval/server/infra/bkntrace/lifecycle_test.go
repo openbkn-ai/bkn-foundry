@@ -70,12 +70,10 @@ func TestGuardBeginUsesCoreCreatedAtForOperationEvidence(t *testing.T) {
 }
 
 func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
-	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "trusted-context-loader-token")
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		for name, expected := range map[string]string{
-			"X-BKN-Trace-Query-Token":        "trusted-context-loader-token",
 			"x-account-id":                   "user-1",
 			"x-account-type":                 "user",
 			"x-tenant-id":                    "tenant-1",
@@ -89,6 +87,9 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 			if actual := r.Header.Get(name); actual != expected {
 				t.Errorf("%s = %q, want %q", name, actual, expected)
 			}
+		}
+		if got := r.Header.Get("X-BKN-Trace-Query-Token"); got != "" {
+			t.Errorf("internal lifecycle request must not carry gateway token, got %q", got)
 		}
 		switch r.URL.Path {
 		case "/api/agent-observability/v1/interactions/int-1":

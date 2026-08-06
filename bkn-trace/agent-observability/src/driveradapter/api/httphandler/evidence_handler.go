@@ -23,15 +23,12 @@ const maxEvidenceBodyBytes = 1 << 20
 const evidenceIngestTokenEnv = "BKN_TRACE_EVIDENCE_INGEST_TOKEN"
 const evidenceAllowUnauthenticatedIngestEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST"
 const evidenceIngestTokenHeader = "X-BKN-Trace-Ingest-Token"
-const evidenceQueryGatewayTokenEnv = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
 const evidenceAllowUnauthenticatedQueryEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY"
-const evidenceQueryGatewayTokenHeader = "X-BKN-Trace-Query-Token"
 const evidenceHydraAdminURLEnv = "BKN_TRACE_HYDRA_ADMIN_URL"
 const evidenceDeploymentTenantIDEnv = "BKN_TRACE_DEPLOYMENT_TENANT_ID"
 
 type EvidenceHandlerSecurityConfig struct {
 	IngestToken                string
-	QueryGatewayToken          string
 	HydraAdminURL              string
 	DeploymentTenantID         string
 	QueryHTTPClient            *http.Client
@@ -43,7 +40,6 @@ type EvidenceHandlerSecurityConfig struct {
 type EvidenceHandler struct {
 	evidenceService            *evidencesvc.Service
 	ingestToken                string
-	queryGatewayToken          string
 	hydraAdminURL              string
 	deploymentTenantID         string
 	queryHTTPClient            *http.Client
@@ -53,6 +49,7 @@ type EvidenceHandler struct {
 }
 
 type trustedQueryScopeContextKey struct{}
+type trustedInternalCallerContextKey struct{}
 
 func trustedQueryScopeFromContext(ctx context.Context) (evidencevo.QueryScope, bool) {
 	scope, ok := ctx.Value(trustedQueryScopeContextKey{}).(evidencevo.QueryScope)
@@ -71,7 +68,6 @@ func NewEvidenceHandlerWithAuthorizationScopeResolver(
 	allowUnauthenticatedQuery := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedQueryEnv)), "true")
 	return NewEvidenceHandlerWithSecurityConfig(evidenceService, EvidenceHandlerSecurityConfig{
 		IngestToken:                os.Getenv(evidenceIngestTokenEnv),
-		QueryGatewayToken:          os.Getenv(evidenceQueryGatewayTokenEnv),
 		HydraAdminURL:              os.Getenv(evidenceHydraAdminURLEnv),
 		DeploymentTenantID:         os.Getenv(evidenceDeploymentTenantIDEnv),
 		AllowUnauthenticatedIngest: allowUnauthenticated,
@@ -98,7 +94,6 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 	return &EvidenceHandler{
 		evidenceService:            evidenceService,
 		ingestToken:                strings.TrimSpace(config.IngestToken),
-		queryGatewayToken:          strings.TrimSpace(config.QueryGatewayToken),
 		hydraAdminURL:              strings.TrimRight(strings.TrimSpace(config.HydraAdminURL), "/"),
 		deploymentTenantID:         strings.TrimSpace(config.DeploymentTenantID),
 		queryHTTPClient:            queryHTTPClient,
@@ -887,12 +882,10 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 
 func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		gatewayTrusted := h.queryGatewayToken != "" &&
-			secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken)
-		if !gatewayTrusted {
+		if !isTrustedInternalCaller(r.Context()) {
 			writeLifecycleError(
 				w, r, http.StatusUnauthorized, "permission_denied",
-				"trusted gateway identity with authorized tenant and business domain is required",
+				"managed lifecycle requests are accepted only through the internal OpenBKN gateway",
 			)
 			return
 		}
@@ -922,11 +915,23 @@ func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc)
 	}
 }
 
+// InternalLifecycle marks requests accepted by the private Core listener.
+// It is intentionally applied only while registering the internal listener;
+// request headers can never grant this privilege.
+func (h *EvidenceHandler) InternalLifecycle(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), trustedInternalCallerContextKey{}, true)
+		next(w, r.WithContext(ctx))
+	}
+}
+
+func isTrustedInternalCaller(ctx context.Context) bool {
+	trusted, _ := ctx.Value(trustedInternalCallerContextKey{}).(bool)
+	return trusted
+}
+
 func (h *EvidenceHandler) authorizeQueryGateway(w http.ResponseWriter, r *http.Request) bool {
 	if _, ok := trustedQueryScopeFromContext(r.Context()); ok {
-		return true
-	}
-	if h.queryGatewayToken != "" && secureTokenEqual(r.Header.Get(evidenceQueryGatewayTokenHeader), h.queryGatewayToken) {
 		return true
 	}
 	if h.hydraAdminURL != "" && strings.TrimSpace(r.Header.Get("Authorization")) != "" {
@@ -938,11 +943,7 @@ func (h *EvidenceHandler) authorizeQueryGateway(w http.ResponseWriter, r *http.R
 	if h.hydraAdminURL != "" {
 		return h.authorizeOAuthQuery(w, r)
 	}
-	if h.queryGatewayToken == "" {
-		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_AUTH_NOT_CONFIGURED", "query gateway authentication is not configured")
-		return false
-	}
-	writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_GATEWAY_AUTH_REQUIRED", "trusted query gateway authentication is required")
+	writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_AUTH_NOT_CONFIGURED", "OAuth query authentication is not configured")
 	return false
 }
 
@@ -1124,6 +1125,9 @@ func traceIDFromSnapshotPreviewPath(path string) string {
 }
 
 func (h *EvidenceHandler) authorizeEvidenceIngest(w http.ResponseWriter, r *http.Request) bool {
+	if isTrustedInternalCaller(r.Context()) {
+		return true
+	}
 	if h.ingestToken == "" {
 		if h.allowUnauthenticatedIngest {
 			return true

@@ -164,6 +164,7 @@ setup_mariadb_databases() {
     # List of databases to create
     local databases=(
         "safe"
+        "bkn_trace"
     )
 
     # Execute SQL commands to create databases

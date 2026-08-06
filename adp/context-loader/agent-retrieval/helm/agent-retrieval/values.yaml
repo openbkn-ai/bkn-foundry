@@ -167,7 +167,7 @@ observability:
   lifecycle:
     # Mandatory 3.0 business-call dependency. Product deployments install
     # agent-observability before agent-retrieval; standalone releases override this URL.
-    core_url: "http://agent-observability:8080"
+    core_url: "http://agent-observability-internal:8081"
     # 0.1.3 defaults to the same single-tenant scope as agent-observability.
     # A trusted inbound x-tenant-id always takes precedence in multi-tenant deployments.
     default_tenant_id: "openbkn-local"
@@ -176,13 +176,9 @@ observability:
     # fails closed. A trusted inbound x-business-domain still wins; multi-domain
     # deployments clear this value to force every caller to declare its domain.
     default_business_domain: "bd_public"
-    gateway_token_secret_name: ""
-    gateway_token_secret_key: "token"
   evidence:
-    ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+    ingest_url: "http://agent-observability-internal:8081/api/agent-observability/v1/evidence/events"
     timeout_ms: 2000
-    ingest_token_secret_name: "bkn-trace-evidence-ingest"
-    ingest_token_secret_key: "token"
   log:
     enabled: false
     level: info

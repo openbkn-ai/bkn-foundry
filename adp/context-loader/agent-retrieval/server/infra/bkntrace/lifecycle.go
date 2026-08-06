@@ -25,11 +25,9 @@ import (
 )
 
 const (
-	CoreSchemaVersion      = "3.0.0"
-	coreAPIPath            = "/api/agent-observability/v1"
-	envCoreURL             = "BKN_TRACE_CORE_URL"
-	envCoreGatewayToken    = "BKN_TRACE_QUERY_GATEWAY_TOKEN"
-	coreGatewayTokenHeader = "X-BKN-Trace-Query-Token"
+	CoreSchemaVersion = "3.0.0"
+	coreAPIPath       = "/api/agent-observability/v1"
+	envCoreURL        = "BKN_TRACE_CORE_URL"
 
 	lifecycleClientTimeout      = 10 * time.Second
 	lifecycleMaxIdleConnections = 100
@@ -202,9 +200,8 @@ type FinishAttemptInput struct {
 }
 
 type LifecycleClient struct {
-	baseURL      string
-	gatewayToken string
-	client       *http.Client
+	baseURL string
+	client  *http.Client
 }
 
 func NewLifecycleClient(baseURL string, client *http.Client) *LifecycleClient {
@@ -212,9 +209,8 @@ func NewLifecycleClient(baseURL string, client *http.Client) *LifecycleClient {
 		client = newLifecycleHTTPClient()
 	}
 	return &LifecycleClient{
-		baseURL:      strings.TrimRight(baseURL, "/"),
-		gatewayToken: strings.TrimSpace(os.Getenv(envCoreGatewayToken)),
-		client:       client,
+		baseURL: strings.TrimRight(baseURL, "/"),
+		client:  client,
 	}
 }
 
@@ -431,9 +427,6 @@ func (c *LifecycleClient) do(
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.gatewayToken != "" {
-		req.Header.Set(coreGatewayTokenHeader, c.gatewayToken)
-	}
 	if err := setTrustedLifecycleHeaders(ctx, req.Header); err != nil {
 		return &APIError{
 			Code: "permission_denied", Message: err.Error(),

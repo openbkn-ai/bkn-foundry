@@ -23,6 +23,9 @@ service:
   type: ClusterIP
   port: 8080
 
+networkPolicy:
+  enabled: true
+
 ingress:
   enabled: true
   className: class-443
@@ -48,18 +51,9 @@ evidence:
         tag: "8.10.1"
         pullPolicy: IfNotPresent
       backoffLimit: 1
-  ingestAuth:
-    existingSecret: ""
-    secretKey: token
-    # Bundle installers may enable this explicitly. Standalone upgrades keep
-    # externally managed Secrets outside Helm ownership by default.
-    createSecret: false
-    allowUnauthenticated: false
   rawTraceQuery:
     enabled: false
   queryAuth:
-    existingSecret: ""
-    secretKey: token
     hydraAdminURL: http://bkn-safe-hydra-admin:4445
     # 0.1.3 is deployed as a single tenant. This trusted server-side value is
     # injected after gateway authentication and never accepted from Studio.

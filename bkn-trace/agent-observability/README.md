@@ -197,17 +197,9 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 ### Evidence 写入安全边界
 
-`POST /api/agent-observability/v1/evidence/events` 是权威 Ledger 写接口，生产环境必须同时经过平台可信网关身份校验和服务内 ingest token 校验。网关必须剥离外部调用方提交的 owner header，并从认证上下文重新注入完整 owner tuple；服务不接受请求 body 自报 owner。
+受管 Conversation、Interaction、Operation 及 Evidence Ledger 写入只监听于集群内部的 `agent-observability-internal:8081`。公开 Ingress 的 8080 只提供 Studio 的受权读取；Chart 的 NetworkPolicy 只允许 `agent-retrieval` 访问 8081。写入方必须由 Context Loader 从认证上下文注入完整 owner tuple，服务不接受 body 自报 owner，也不依赖共享静态 token。
 
 ```bash
-kubectl create secret generic bkn-trace-evidence-ingest \
-  --from-literal=token='<strong-token>' \
-  -n observability
-
-kubectl create secret generic bkn-trace-query-gateway \
-  --from-literal=token='<different-strong-token>' \
-  -n observability
-
 kubectl create secret generic bkn-trace-core-mariadb \
   --from-literal=dsn='<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' \
   -n observability
@@ -215,27 +207,21 @@ kubectl create secret generic bkn-trace-core-mariadb \
 
 ```bash
 helm upgrade --install agent-observability charts/agent-observability \
-  --set evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest \
-  --set evidence.queryAuth.existingSecret=bkn-trace-query-gateway \
   --set core.store=mariadb \
   --set core.mariadb.existingSecret=bkn-trace-core-mariadb \
   --set core.projection.enabled=true \
   -n observability
 ```
 
-内部写入方需要携带 `X-BKN-Trace-Ingest-Token` 和由网关注入的 `X-BKN-Trace-Query-Token`，以及 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。生产环境未配置相应凭据时接口拒绝写入，不得 fail-open。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST=true`；该开关只绕过 ingest token，不能绕过可信网关身份边界，Helm 默认值为 `false`。
+内部写入方携带 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。若请求未从内部监听器进入，生命周期接口拒绝写入，不得 fail-open。
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
-Chart 默认不创建或接管 ingest Secret，并继续使用兼容 key `token`。OpenBKN 捆绑安装器会显式创建并复用该 Secret；独立部署应预先创建外部 Secret。`createSecret=true` 仅适用于 Helm 直接管理的全新安装，不适用于 `helm template | kubectl apply`，也不得用于接管已有的外部 Secret。
-
 滚动升级期间，新旧 agent-retrieval 实例可能对失败调用上报不同的 evidence durability；这是升级窗口内的临时统计差异，待生产者全部完成滚动后收敛。不得据此回写或重算历史 Ledger 事件。
 
-Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求；当前业务域由 Studio 发送。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。服务到服务查询仍可配置独立的 `BKN_TRACE_QUERY_GATEWAY_TOKEN`，不得把该 token 放入浏览器。
+Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求；当前业务域由 Studio 发送。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。
 
-Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须同时经过两层校验：API 网关通过 `X-BKN-Trace-Query-Token` 提交独立网关凭据，并注入 `x-account-id`、`x-account-type`，以及 `x-business-domain` 或 `x-tenant-id`。Evidence 索引持久化 tenant/business domain/account 归属；持久化了多个归属维度时必须逐一匹配，查询在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。
-
-`BKN_TRACE_QUERY_GATEWAY_TOKEN` 必须与 ingest token 使用不同 Secret，只提供给 API 网关，不提供给 producer 或浏览器。producer 即使持有 ingest token并伪造身份 header，也不能调用查询接口。网关必须剥离外部调用方提交的 `X-BKN-Trace-Query-Token` 与身份 header，再从受控 Secret 和认证上下文重新注入。未配置 query gateway token 时生产查询返回 `503 QUERY_AUTH_NOT_CONFIGURED`；仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY=true`，Helm 默认关闭。
+Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须经过 OAuth 与 Access Profile 校验，并以 tenant、business domain、account 归属在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY=true`，Helm 默认关闭。
 
 统一日志分页游标使用 `BKN_OBSERVABILITY_CURSOR_SIGNING_KEY` 做 HMAC 签名，并绑定过滤条件、主体、应用、Access Profile 指纹和可见来源。多副本部署必须通过 `observability.cursorSigning.existingSecret` 为全部 Pod 注入同一密钥；单实例本地环境未配置时使用仅在当前进程有效的随机密钥，进程重启后的旧游标按失效处理。密钥不得写入日志、响应或配置文件。
 

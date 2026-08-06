@@ -763,16 +763,14 @@ func TestPostBatchPreservesSafeCoreErrorDetails(t *testing.T) {
 }
 
 func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
-	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "producer-token")
-	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "gateway-token")
 	previous := evidenceHTTPClient
 	t.Cleanup(func() { evidenceHTTPClient = previous })
 	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "producer-token" {
-			t.Fatalf("ingest token header=%q", got)
+		if got := req.Header.Get("X-BKN-Trace-Ingest-Token"); got != "" {
+			t.Fatalf("internal evidence request must not carry ingest token, got %q", got)
 		}
-		if got := req.Header.Get("X-BKN-Trace-Query-Token"); got != "gateway-token" {
-			t.Fatalf("query gateway token header=%q", got)
+		if got := req.Header.Get("X-BKN-Trace-Query-Token"); got != "" {
+			t.Fatalf("internal evidence request must not carry gateway token, got %q", got)
 		}
 		for header, want := range map[string]string{
 			"x-account-id":                   "acct_demo",

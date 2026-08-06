@@ -797,8 +797,6 @@ func trace30RefType(value string) string {
 
 func setEvidenceIngestHeaders(headers http.Header, traceBlock map[string]any) {
 	headers.Set("Content-Type", "application/json")
-	headers.Set("X-BKN-Trace-Ingest-Token", strings.TrimSpace(os.Getenv(envEvidenceIngestToken)))
-	headers.Set(coreGatewayTokenHeader, strings.TrimSpace(os.Getenv(envCoreGatewayToken)))
 	accountID := stringValue(traceBlock["bkn.account.id"])
 	accountType := stringValue(traceBlock["bkn.account.type"])
 	tenantID := stringValue(traceBlock["bkn.tenant.id"])
