@@ -52,6 +52,22 @@ func TestOracleConnectorBuildPagedSQL(t *testing.T) {
 	)
 }
 
+func TestOracleConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
+	connector, mock, cleanup := newOracleConnectorMock(t, nil)
+	defer cleanup()
+	connector.connected = true
+
+	mock.ExpectQuery("SELECT ").
+		WithArgs("APP", "DELETED_ORDERS").
+		WillReturnError(sql.ErrNoRows)
+
+	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Database: "app", Name: "deleted_orders"})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "table metadata not found or inaccessible: app.deleted_orders")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestOracleConnectorValidateSchemas(t *testing.T) {
 	t.Run("success case insensitive", func(t *testing.T) {
 		connector, mock, cleanup := newOracleConnectorMock(t, []string{"app"})

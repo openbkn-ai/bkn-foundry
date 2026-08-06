@@ -199,7 +199,7 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 		&indexLength,
 	); err != nil {
 		if err == sql.ErrNoRows {
-			return nil
+			return fmt.Errorf("table metadata not found or inaccessible: %s.%s", table.Database, table.Name)
 		}
 		return err
 	}

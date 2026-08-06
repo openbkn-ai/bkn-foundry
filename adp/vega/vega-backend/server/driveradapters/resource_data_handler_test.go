@@ -104,6 +104,19 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"total_count":1`)
 	})
 
+	t.Run("rejects negative offset before querying", func(t *testing.T) {
+		engine, _, _, _ := setupResourceDataHandlerTest(t)
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"offset":-1,"limit":10}}`))
+		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.InvalidParameter.Offset")
+	})
+
 	t.Run("preserves total count requested by cursor session", func(t *testing.T) {
 		engine, rs, _, rds := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()

@@ -126,7 +126,7 @@ WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'v', 'm', 'p', 'f
 		&relKind, &desc, &estRows, &totalBytes, &indexBytes)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil
+			return fmt.Errorf("table metadata not found or inaccessible: %s.%s", table.Schema, table.Name)
 		}
 		return err
 	}

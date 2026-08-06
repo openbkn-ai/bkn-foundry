@@ -8,6 +8,7 @@ package postgresql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/url"
 	"strings"
@@ -188,6 +189,22 @@ func TestPostgresqlConnectorClose(t *testing.T) {
 		assert.Nil(t, connector.db)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestPostgresqlConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
+	connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
+	defer cleanup()
+	connector.connected = true
+
+	mock.ExpectQuery("SELECT c.relkind::text").
+		WithArgs("public", "deleted_orders").
+		WillReturnError(sql.ErrNoRows)
+
+	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Schema: "public", Name: "deleted_orders"})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "table metadata not found or inaccessible: public.deleted_orders")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func validPostgresqlConfig(port int) interfaces.ConnectorConfig {
