@@ -51,6 +51,7 @@ func TestEnsureReadOnlySQL_Rejected(t *testing.T) {
 		`SELECT 1; SELECT 2`,
 		`SELECT * FROM {{.res1}} -- harmless
 			 ; DELETE FROM {{.res1}}`,
+		`SELECT * FROM {{.res1}} WHERE a = 1--2; DROP TABLE t`,
 		"SELECT `a\\` , x FROM {{.res1}}; DROP TABLE t",
 		`SELECT "a\"" FROM {{.res1}}; DROP TABLE t`,
 		`SELECT * INTO OUTFILE '/tmp/x' FROM {{.res1}}`,

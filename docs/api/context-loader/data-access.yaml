@@ -161,6 +161,8 @@ paths:
            当前保证可用的只读语法为：单表或同一 catalog 内的 `JOIN`、`WHERE`、
            `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 及常用聚合函数（如 `COUNT`、`SUM`、
            `AVG`、`MIN`、`MAX`）。子查询和窗口函数不属于当前兼容性承诺，调用方不得依赖。
+           SQL Server 资源还要求 `SELECT` 输出列名唯一；使用 `JOIN` 时，`*` 必须带表别名
+           限定（如 `o.*`），不能使用裸 `*`。
 
            守卫不是完整 SQL 解析器，是纵深防御的一层：vega 侧另有基于 SQLGlot AST 的
            只读策略做最终裁决（拒绝非顶层 SELECT、WITH/CTE、集合运算等），两层都不可省。

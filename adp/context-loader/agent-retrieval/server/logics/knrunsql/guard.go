@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // run_sql 只读 SQL 守卫。
@@ -56,7 +57,8 @@ func stripSQLNoise(sql string) string {
 	for i := 0; i < n; i++ {
 		c := runes[i]
 		switch {
-		case c == '-' && i+1 < n && runes[i+1] == '-': // 行注释 --
+		case c == '-' && i+1 < n && runes[i+1] == '-' &&
+			(i+2 >= n || unicode.IsSpace(runes[i+2]) || unicode.IsControl(runes[i+2])): // MySQL 行注释 --
 			for i < n && runes[i] != '\n' {
 				i++
 			}
