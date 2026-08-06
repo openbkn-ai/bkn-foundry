@@ -166,3 +166,33 @@ func Test_VegaResourceIndexCaps(t *testing.T) {
 		})
 	})
 }
+
+func TestVegaResourceIndexCaps_RefPropertyRedirectsCapability(t *testing.T) {
+	res := &interfaces.VegaResource{
+		LocalIndexName: "vega-build-abc",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "fulltext_summary",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.FieldFeatureType_Fulltext, RefProperty: "summary"},
+				},
+			},
+			{
+				Name: "summary",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.FieldFeatureType_Keyword},
+				},
+			},
+		},
+	}
+
+	caps := VegaResourceIndexCaps(res)
+
+	if _, exists := caps["fulltext_summary"]; exists {
+		t.Fatalf("capability must land on the referenced field, not the declaring property")
+	}
+	got := caps["summary"]
+	if !got.Fulltext || !got.Keyword {
+		t.Fatalf("summary should carry both the redirected fulltext and its own keyword, got %+v", got)
+	}
+}

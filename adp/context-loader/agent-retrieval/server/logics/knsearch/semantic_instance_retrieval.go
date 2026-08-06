@@ -40,6 +40,8 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	instanceConfig := config.SemanticInstanceRetrieval
 	propertyConfig := config.PropertyFilter
 
+	s.backfillConditionOperations(ctx, req.KnID, objectTypes)
+
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
 

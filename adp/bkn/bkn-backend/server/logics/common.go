@@ -69,8 +69,14 @@ func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyInde
 		if p == nil {
 			continue
 		}
-		propCaps := PropertyIndexCaps{}
 		for _, feature := range p.Features {
+			// 特性可以挂在一个属性上而作用于另一个字段（ref_property）。归属必须跟
+			// vega-backend 生成构建任务快照时的算法一致，否则能力会记到错误的字段上。
+			field := p.Name
+			if feature.RefProperty != "" {
+				field = feature.RefProperty
+			}
+			propCaps := caps[field]
 			switch feature.FeatureType {
 			case interfaces.FieldFeatureType_Keyword:
 				propCaps.Keyword = true
@@ -78,10 +84,10 @@ func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyInde
 				propCaps.Fulltext = true
 			case interfaces.FieldFeatureType_Vector:
 				propCaps.Vector = true
+			default:
+				continue
 			}
-		}
-		if propCaps.Keyword || propCaps.Fulltext || propCaps.Vector {
-			caps[p.Name] = propCaps
+			caps[field] = propCaps
 		}
 	}
 	return caps
