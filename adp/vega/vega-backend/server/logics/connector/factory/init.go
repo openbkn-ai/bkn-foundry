@@ -12,7 +12,6 @@ import (
 	"vega-backend/logics/connector/local/index/opensearch"
 	"vega-backend/logics/connector/local/table/mariadb"
 	"vega-backend/logics/connector/local/table/postgresql"
-	"vega-backend/logics/connector/local/table/sqlserver"
 )
 
 // initLocalConnectors 初始化本地 connector
@@ -24,6 +23,5 @@ func (cf *connectorFactory) initLocalConnectors() {
 	cf.connectors[interfaces.ConnectorTypeOpenSearch] = opensearch.NewOpenSearchConnector()
 	cf.connectors[interfaces.ConnectorTypeMariaDB] = mariadb.NewMariaDBConnector()
 	cf.connectors[interfaces.ConnectorTypePostgreSQL] = postgresql.NewPostgresqlConnector()
-	cf.connectors[interfaces.ConnectorTypeSQLServer] = sqlserver.NewSQLServerConnector()
 	cf.connectors[interfaces.ConnectorTypeAnyShare] = anyshare.NewAnyShareConnector()
 }

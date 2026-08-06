@@ -14,7 +14,6 @@ require (
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/hibiken/asynq v0.26.0
 	github.com/lib/pq v1.12.3
-	github.com/microsoft/go-mssqldb v1.9.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
 	github.com/openbkn-ai/bkn-comm-go v0.0.4
@@ -59,7 +58,6 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
-	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
