@@ -368,3 +368,34 @@ def test_close_session_is_idempotent():
     asyncio.run(context_loader.close_session(s, outcome="completed", answer="a"))
     assert len(fin.calls) == 1
     assert s.closed is True
+
+
+def test_contextvar_token_reset_in_same_context():
+    """ContextVar 的 set/reset 必须成对出现在同一个 context。
+
+    早先是在 stream_chat 里 set、在 _events() 这个异步生成器的 finally 里 reset。
+    生成器跑在复制出来的独立 context，跨 context 复位直接抛
+    ValueError: Token was created in a different Context，而且它抛在 finally
+    开头，把后面的兜底收尾一并废掉——VM 上每个 /chat 请求都在刷这条 ASGI 异常。
+    """
+    import contextvars
+
+    sess = context_loader.ContextLoaderSession("c", "i")
+    token = context_loader.set_current(sess)
+    assert context_loader.current_session() is sess
+
+    def _in_copied_context():
+        # 生成器/任务拿到的是 context 的副本：读得到，但复位会炸
+        assert context_loader.current_session() is sess
+        try:
+            context_loader.reset_current(token)
+        except ValueError as e:
+            return str(e)
+        return None
+
+    err = contextvars.copy_context().run(_in_copied_context)
+    assert err is not None and "different Context" in err
+
+    # 同一 context 内复位则正常
+    context_loader.reset_current(token)
+    assert context_loader.current_session() is None

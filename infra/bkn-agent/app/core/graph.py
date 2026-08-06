@@ -84,18 +84,28 @@ async def stream_chat(
                 req.message, agent_name=agent.name, host_conversation_key=thread_id
             )
             if cl_session is not None:
-                # 只有真开出会话才置 ContextVar：置成 None 会让 tools.py 的
-                # `current_session() or await open_session()` 再握一次手，
-                # 那次的 interaction_id evidence 从来没见过。
+                # 只在真开出会话时置位。ContextVar 的作用域就只有 load_tools
+                # 这一段——tools.py 靠它拿会话——所以设与复位都收在这里，
+                # 且必须在同一个 context 里成对出现。
+                #
+                # 早先是在 _events() 的 finally 里复位的：那是个异步生成器，跑在
+                # 复制出来的独立 context，token 跨 context 复位直接抛
+                # ValueError: Token was created in a different Context，
+                # 而且它抛在 finally 开头，把后面的兜底收尾一并废掉。
                 cl_token = context_loader.set_current(cl_session)
-        tools = await load_tools(
-            agent.tools,
-            account_id,
-            account_type,
-            depth=0,
-            parent_thread_id=thread_id,
-            skill_ids=skill_ids,
-        )
+        try:
+            tools = await load_tools(
+                agent.tools,
+                account_id,
+                account_type,
+                depth=0,
+                parent_thread_id=thread_id,
+                skill_ids=skill_ids,
+            )
+        finally:
+            if cl_token is not None:
+                context_loader.reset_current(cl_token)
+                cl_token = None
         tools = instrument_tool_calls(tools, account_id, account_type)
         limits = agent.limits or None
         max_turns = (
@@ -118,8 +128,6 @@ async def stream_chat(
         )
     except BaseException:
         _busy_threads.discard(thread_id)  # setup 失败必须放位，否则该 thread 永久 409
-        if cl_token is not None:
-            context_loader.reset_current(cl_token)
         # setup 阶段抛异常时 _events() 根本没被构造，它的 finally 也就永远不会跑。
         # 握手若已经成功，那次交互会永久停在 active——而且是确定性的：同一个请求
         # 每重试一次就再泄一个。这里补收尾。
@@ -281,8 +289,9 @@ async def stream_chat(
             # BaseExceptionGroup 都会穿透 finally，排在它后面的语句永远跑不到，
             # 该 thread 就会一直卡在 409 Thread.Busy 直到进程重启。
             _busy_threads.discard(thread_id)
-            if cl_token is not None:
-                context_loader.reset_current(cl_token)
+            # 这里不复位 ContextVar：本函数体跑在生成器自己的 context 里，
+            # 复位一个在 stream_chat 的 context 里创建的 token 会抛 ValueError，
+            # 且会顶掉后面的收尾。复位已在 load_tools 那段成对做完。
             # completed 必须带 answer（不带会被 closure_manifest_invalid 拒）。
             # 用显式的成功标记而不是「答案非空」：结构化输出那条路走 structured
             # 事件、answer_parts 是空的，按空判会把成功的一轮误报成 failed；
