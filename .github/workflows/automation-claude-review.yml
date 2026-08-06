@@ -482,14 +482,11 @@ jobs:
             读不懂自己的评审。混合语言时按标题与描述的主体语言走。代码标识符、错误信息、
             命令、路径一律保持原样，不翻译。
 
-            **一、inline comment 只贴改进建议与待确认项**（贴到对应行，说明
-            「问题是什么 + 怎么改」），**不要贴阻塞项**。阻塞项一律只写进下面的 JSON，
-            经独立的 verify 环节复核后才会出现在 PR 上——本仓的评审历史上出现过一批
-            高危项事后核实几乎全是误报，未经复核就贴到行上，作者要为假问题付出真时间。
-            不复述 diff，不为凑数提格式化/命名类琐碎意见。
-
-            **二、写 `${{ github.workspace }}/findings/${{ matrix.shard.key }}.json`**（绝对路径），
-            严格用下面的结构：
+            **一、先写 `${{ github.workspace }}/findings/${{ matrix.shard.key }}.json`**
+            （绝对路径）。**这一步排在最前面是有意的**：它是你这片唯一会进入最终结论的
+            产出，inline comment 不进。实测出过分片贴完 inline 就收尾、没写这个文件的
+            情况，结果是整轮评审在 PR 上零反馈——比漏一条意见糟得多。所以：先落文件，
+            后贴 inline；结论有更新就重写一遍文件。严格用下面的结构：
 
             ```json
             {
@@ -520,6 +517,12 @@ jobs:
             说明这条是从 diff 表面推出来的，不是核实出来的——那它就不是阻塞项。
             复核环节会照着 evidence 去原地验，编造的位置一验就穿。
 
+            **二、inline comment 只贴改进建议与待确认项**（贴到对应行，说明「问题是什么
+            + 怎么改」），**不要贴阻塞项**。阻塞项一律只进上面的 JSON，经独立的 verify
+            环节复核后才会出现在 PR 上——本仓的评审历史上出现过一批高危项事后核实几乎
+            全是误报，未经复核就贴到行上，作者要为假问题付出真时间。不复述 diff，不为
+            凑数提格式化/命名类琐碎意见。
+
             **你不要调用 `gh pr review`。** 表态由 verdict 环节统一落一次；N 个分片各自
             表态会在 PR 上挂出 N 条互相打架的评审状态。你的 JSON 就是你的表态。
 
@@ -544,6 +547,20 @@ jobs:
 
       # if: always()——分片撞上限时 action 以失败退出，但它此前可能已经写了 JSON；
       # 更重要的是没写也要让 verdict 知道这片跑挂了（靠 artifact 缺失判定）。
+      # 分片跑完却没写 findings 的情况实测发生过（#671 首轮三片全没写，整轮零反馈）。
+      # 补一个占位，让 verdict 能把「跑了但没落结论」与「job 整个挂掉」区分开，也保证
+      # 至少有一个 artifact 存在。
+      - name: Backfill missing findings
+        if: always() && steps.prbranch.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          f="findings/${SHARD_KEY}.json"
+          if [ ! -s "$f" ]; then
+            echo "::warning::分片 ${SHARD_KEY} 未写出 findings，回填占位。"
+            printf '{"shard":"%s","status":"no_output","summary":"","impact":"","blockers":[],"unconfirmed":[],"not_covered":"本片跑完但未落结论，内容未经评审。"}\n' \
+              "${SHARD_KEY}" > "$f"
+          fi
+
       - name: Upload findings
         if: always()
         uses: actions/upload-artifact@v4
@@ -796,6 +813,11 @@ jobs:
               except (ValueError, OSError):
                   missing.append(s)
                   continue
+              # 回填的占位不算「产出过结论」：否则全片静默失败会变成 approve 一个
+              # 从没被审过的 PR——比不表态糟得多。归进 missing 走「未覆盖」那条路。
+              if data.get("status") == "no_output":
+                  missing.append(s)
+                  continue
               done.append((s, data))
               # findings 是模型写的，属于不可信输入：JSON 合法但结构不对（元素是字符串
               # 而非对象）会让下面的 dict()/get() 抛异常，Assemble 非零退出后 Post review
@@ -974,7 +996,17 @@ jobs:
               gh api -X DELETE "repos/${GH_REPO}/issues/comments/${id}" >/dev/null
             done
 
-      - name: Warn when nothing was produced
+      # 静默是最坏的结果：PR 上什么都没有，与「压根没触发」无法区分——#671 首轮就是
+      # 这样被当成没触发的。这里不落评审状态（没审过就不该 request-changes，也不该
+      # approve），但必须留一条普通评论说明这轮空转了。
+      - name: Report empty round
         if: steps.assemble.outputs.action == 'none'
+        continue-on-error: true
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          echo "::warning::所有分片均无产出，未落评审表态。检查 CLAUDE_CODE_OAUTH_TOKEN 与各分片日志。"
+          set -euo pipefail
+          echo "::warning::所有分片均无产出，未落评审表态。"
+          state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
+          [ "$state" = "OPEN" ] || exit 0
+          gh pr comment "$PR_NUMBER" --body "$(printf '### 本轮评审空转\n\n所有分片都没有产出结论，**这个 PR 本轮未经评审**。未落评审状态是因为没审过——既不该 request-changes，也不该 approve。\n\n常见原因：分片撞轮次上限、模型未写出结论文件、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。' "$RUN_URL")"
