@@ -80,7 +80,7 @@
   "run_sql": {
     "title": "Run SQL",
     "group_title": "Instance Queries",
-    "description": "Run one read-only SELECT statement in Trino SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract. Do not re-derive a modelled metric in SQL: pick it from get_object_types' related_metrics and call query_metric (or get_logic_properties_values for a bound logic property). run_sql is for ad-hoc aggregation that has not been modelled as a metric."
+    "description": "Run one read-only SELECT statement in MySQL SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract. Do not re-derive a modelled metric in SQL: pick it from get_object_types' related_metrics and call query_metric (or get_logic_properties_values for a bound logic property). run_sql is for ad-hoc aggregation that has not been modelled as a metric."
   },
   "list_resources": {
     "title": "Data Resources",

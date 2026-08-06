@@ -24,7 +24,7 @@ var (
 
 // RunSQLReq run_sql 入参（MCP 工具与内部 REST 端点共用）。
 type RunSQLReq struct {
-	SQL          string `json:"sql"`           // Trino 方言 SQL，表名用 {{.resource_id}} 占位
+	SQL          string `json:"sql"`           // MySQL 方言 SQL，表名用 {{.resource_id}} 占位
 	QueryTimeout int    `json:"query_timeout"` // 查询超时（秒），可选
 }
 
@@ -77,7 +77,7 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 	resp, err := s.vega.RawQuery(ctx, &interfaces.VegaRawQueryReq{
 		Query:           req.SQL,
 		QueryFormat:     "sql",
-		InputDialect:    "trino",
+		InputDialect:    "mysql",
 		QueryTimeoutSec: req.QueryTimeout,
 		Paging: interfaces.VegaPagingRequest{
 			Mode:  "single",

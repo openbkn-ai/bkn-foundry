@@ -46,7 +46,7 @@ func TestRunSQLUsesRawQueryContract(t *testing.T) {
 	if vega.req == nil {
 		t.Fatal("RawQuery() was not called")
 	}
-	if vega.req.QueryFormat != "sql" || vega.req.InputDialect != "trino" || vega.req.QueryTimeoutSec != 30 {
+	if vega.req.QueryFormat != "sql" || vega.req.InputDialect != "mysql" || vega.req.QueryTimeoutSec != 30 {
 		t.Fatalf("unexpected Raw Query contract: %#v", vega.req)
 	}
 	if vega.req.Paging != (interfaces.VegaPagingRequest{Mode: "single", Limit: 10000}) {

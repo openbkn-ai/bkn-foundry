@@ -129,7 +129,7 @@
   },
   "run_sql": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
-    "input_schema.properties.sql.description": "One read-only SELECT statement in Trino SQL. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract.",
+    "input_schema.properties.sql.description": "One read-only SELECT statement in MySQL SQL. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract.",
     "input_schema.properties.query_timeout.description": "Query timeout in seconds.",
     "output_schema.properties.columns.description": "Result columns.",
     "output_schema.properties.entries.description": "Result rows.",
