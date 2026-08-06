@@ -1252,7 +1252,13 @@ jobs:
             done
 
       # 静默是最坏的结果：PR 上什么都没有，与「压根没触发」无法区分——#671 首轮就是
-      # 这样被当成没触发的。这里不落评审状态（没审过就不该 request-changes，也不该
+      # 这样被当成没触发的。
+      #
+      # 一个反复出现且最难自查的原因：claude-code-action 校验运行时的 workflow 文件与
+      # 默认分支上的副本是否逐字一致，不一致就把自己整步跳过（日志里是
+      # "Workflow validation failed"）。于是任何在途的评审，只要这期间有人把 workflow
+      # 改动合进 main，就会静默 no-op——#693 就是这么空转的。改这个文件的当天尤其常见，
+      # 所以通告文案把它列在第一条。这里不落评审状态（没审过就不该 request-changes，也不该
       # approve），但必须留一条普通评论说明这轮空转了。
       # 这一轮真落了表态，就把上一轮的空转通告删掉——否则作者会在第 4 轮的结论旁边
       # 读到第 3 轮的「本轮评审空转」。
@@ -1282,7 +1288,7 @@ jobs:
           state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
           [ "$state" = "OPEN" ] || exit 0
           MARKER='<!-- claude-review-empty -->'
-          body=$(printf '%s\n### 本轮评审没有产出结论\n\n没有分片落下结论，**这些改动本轮未经评审**。没有表态是因为无从表态——既不该 request-changes，也不该 approve。\n\n常见原因：分片撞轮次上限、模型未写出结论文件、汇总步骤失败、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。下一轮真出了结论，这条会自动消失。' "$MARKER" "$RUN_URL")
+          body=$(printf '%s\n### 本轮评审没有产出结论\n\n没有分片落下结论，**这些改动本轮未经评审**。没有表态是因为无从表态——既不该 request-changes，也不该 approve。\n\n常见原因：本轮运行期间 workflow 文件被合进默认分支（claude-code-action 要求两者逐字一致，不一致会整步跳过）、分片撞轮次上限、模型未写出结论文件、汇总步骤失败、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。下一轮真出了结论，这条会自动消失。' "$MARKER" "$RUN_URL")
           # 复用同一条：synchronize 每次推送跑一轮，凭据缺失这类持续故障否则会在 PR 上
           # 堆出一串一模一样的通告，正是进度评论当初特意避开的噪声。
           existing=$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
