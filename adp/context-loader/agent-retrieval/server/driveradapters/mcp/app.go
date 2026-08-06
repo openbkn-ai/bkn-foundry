@@ -93,17 +93,17 @@ const serverInstructions = `ContextLoader 知识网络查询工具集使用指�
 
 run_sql 语法边界：仅写单条 SELECT；可用同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 与常用聚合函数。不得使用 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 或跨 catalog join；子查询和窗口函数不在当前兼容性承诺内。
 
-MySQL 标识符需要引用时用反引号（例如 order_id）；双引号是字符串字面量，不是标识符。
+MySQL 标识符需要引用时用反引号包裹；双引号是字符串字面量，不是标识符。
 
 run_sql 占位符示例（id 必须来自 search_schema / list_resources 的真实返回值，逐表替换，别照抄 'resource_id' 字面量；JOIN 多表 = 多个不同 id）：
-  search_schema("进球") → data_source.id = "GOALS_RID"
-  search_schema("赛事") → data_source.id = "TOURN_RID"
+  search_schema("进球") → data_source.id = "goals_rid"
+  search_schema("赛事") → data_source.id = "tourn_rid"
   run_sql:
     SELECT t.tournament_name, g.family_name, COUNT(*) AS c
-    FROM {{.GOALS_RID}} g
-    JOIN {{.TOURN_RID}} t ON g.tournament_id = t.tournament_id
+    FROM {{.goals_rid}} g
+    JOIN {{.tourn_rid}} t ON g.tournament_id = t.tournament_id
     GROUP BY t.tournament_name, g.family_name ORDER BY c DESC
-  其中 GOALS_RID / TOURN_RID 是上面两次 search_schema 各自返回的真实 data_source.id（点可选：{{id}} 与 {{.id}} 等价）。`
+  其中 goals_rid / tourn_rid 是上面两次 search_schema 各自返回的真实 data_source.id（点可选：{{id}} 与 {{.id}} 等价）。`
 
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
 // Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
