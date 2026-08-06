@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "agent-observability.fullname" . }}-internal
+  name: {{ include "agent-observability.fullname" . | trunc 54 | trimSuffix "-" }}-internal
   labels:
     {{- include "agent-observability.labels" . | nindent 4 }}
 spec:

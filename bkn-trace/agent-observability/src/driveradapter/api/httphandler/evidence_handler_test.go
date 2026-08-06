@@ -505,17 +505,16 @@ func TestLifecycleIdentityRejectsIncompleteOwnerTupleAtGatewayBoundary(t *testin
 		EvidenceHandlerSecurityConfig{},
 	)
 	nextCalled := false
-	next := handler.RequireTrustedLifecycleIdentity(func(
+	next := handler.InternalLifecycle(handler.RequireTrustedLifecycleIdentity(func(
 		http.ResponseWriter, *http.Request,
 	) {
 		nextCalled = true
-	})
+	}))
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/agent-observability/v1/conversations:ensure-current",
 		nil,
 	)
-	request.Header.Set("X-BKN-Trace-Query-Token", "trusted-gateway-token")
 	request.Header.Set("x-account-id", "subject-1")
 	request.Header.Set("x-account-type", "service")
 	request.Header.Set("x-business-domain", "domain-1")
@@ -524,7 +523,8 @@ func TestLifecycleIdentityRejectsIncompleteOwnerTupleAtGatewayBoundary(t *testin
 
 	next(response, request)
 
-	if response.Code != http.StatusUnauthorized || nextCalled {
+	if response.Code != http.StatusUnauthorized || nextCalled ||
+		!strings.Contains(response.Body.String(), "complete lifecycle owner identity") {
 		t.Fatalf(
 			"incomplete owner tuple must be rejected at the gateway boundary: %d %s",
 			response.Code, response.Body.String(),

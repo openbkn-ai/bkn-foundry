@@ -180,8 +180,9 @@ observability:
   evidence:
     ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
     timeout_ms: 2000
-    # Standard installs create this Secret through agent-observability. It is
-    # optional here so standalone retrieval can start with evidence disabled.
+    # Standard installs create this Secret through agent-observability. A
+    # standalone retrieval install must clear ingest_url to disable evidence;
+    # otherwise a missing Secret leaves evidence delivery unauthorized.
     ingest_token_secret_name: "bkn-trace-evidence-ingest"
     ingest_token_secret_key: "token"
   log:

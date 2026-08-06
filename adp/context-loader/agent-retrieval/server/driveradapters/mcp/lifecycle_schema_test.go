@@ -404,6 +404,9 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(string(values), `ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"`) {
 		t.Fatal("Helm must preserve the token-protected public evidence producer contract")
 	}
+	if !strings.Contains(string(values), `ingest_token_secret_name: "bkn-trace-evidence-ingest"`) {
+		t.Fatal("Helm must wire the standard evidence ingest Secret by default")
+	}
 	if !strings.Contains(string(values), `default_tenant_id: "openbkn-local"`) {
 		t.Fatalf("Helm lifecycle values must align with the observability single-tenant scope: %s", values)
 	}

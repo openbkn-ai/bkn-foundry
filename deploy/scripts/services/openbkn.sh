@@ -435,7 +435,7 @@ CORE_RELEASE_EXTRA_SETS=()
 CORE_RELEASE_EXTRA_SET_STRINGS=()
 
 OPENBKN_TRACE_CORE_SECRET="${OPENBKN_TRACE_CORE_SECRET:-bkn-trace-core-mariadb}"
-OPENBKN_TRACE_DATABASE="${OPENBKN_TRACE_DATABASE:-bkn_trace}"
+OPENBKN_TRACE_DATABASE="bkn_trace"
 OPENBKN_TRACE_INGEST_SECRET="${OPENBKN_TRACE_INGEST_SECRET:-bkn-trace-evidence-ingest}"
 
 # The chart defaults keep standalone development lightweight. A complete
@@ -483,19 +483,18 @@ _openbkn_release_list_contains() {
 # the Secret explicitly before the release is installed.
 _openbkn_prepare_trace_profile() {
     local namespace="$1"
-    if kubectl get secret "${OPENBKN_TRACE_CORE_SECRET}" -n "${namespace}" >/dev/null 2>&1; then
+    local source_type
+    source_type="$(config_yaml_dep_field rds source_type)"
+    if [[ "${source_type}" != "internal" ]]; then
+        if ! kubectl get secret "${OPENBKN_TRACE_CORE_SECRET}" -n "${namespace}" >/dev/null 2>&1; then
+            log_error "BKN Trace requires Secret ${OPENBKN_TRACE_CORE_SECRET} with key dsn when depServices.rds.source_type is external"
+            return 1
+        fi
         if [[ -z "$(kubectl get secret "${OPENBKN_TRACE_CORE_SECRET}" -n "${namespace}" -o jsonpath='{.data.dsn}' 2>/dev/null)" ]]; then
             log_error "BKN Trace Core Secret ${OPENBKN_TRACE_CORE_SECRET} must contain key dsn"
             return 1
         fi
         return 0
-    fi
-
-    local source_type
-    source_type="$(config_yaml_dep_field rds source_type)"
-    if [[ "${source_type}" != "internal" ]]; then
-        log_error "BKN Trace requires Secret ${OPENBKN_TRACE_CORE_SECRET} with key dsn when depServices.rds.source_type is external"
-        return 1
     fi
 
     local host port user password dsn
@@ -514,8 +513,8 @@ _openbkn_prepare_trace_profile() {
     fi
     dsn="${user}:${password}@tcp(${host}:${port})/${OPENBKN_TRACE_DATABASE}?charset=utf8mb4&parseTime=true&loc=UTC"
     if ! printf '%s' "${dsn}" | kubectl create secret generic "${OPENBKN_TRACE_CORE_SECRET}" -n "${namespace}" \
-        --from-file=dsn=/dev/stdin >/dev/null; then
-        log_error "BKN Trace cannot create Core DSN Secret ${OPENBKN_TRACE_CORE_SECRET}"
+        --from-file=dsn=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null; then
+        log_error "BKN Trace cannot update Core DSN Secret ${OPENBKN_TRACE_CORE_SECRET}"
         return 1
     fi
 }
@@ -754,6 +753,7 @@ _openbkn_apply_default_set_values() {
         local _reg_resolved
         _reg_resolved="$(_openbkn_resolve_registry "offline")"
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
+        CORE_SET_VALUES+=("evidence.indexManagement.createJob.image.registry=${_reg_resolved}")
         log_info "Offline mode: Forcing image.registry=${_reg_resolved} via --set (overrides config.yaml)"
     elif get_set_value "image.registry" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
         : # user passed --set image.registry=… explicitly; do not override

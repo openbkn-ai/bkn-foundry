@@ -199,7 +199,7 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 受管 Conversation、Interaction、Operation 生命周期只监听于集群内部的 `agent-observability-internal:8081`，不依赖共享生命周期 token。Evidence Ledger 与 Artifact 保留在 8080 的已发布生产者接口，并继续校验独立的 `bkn-trace-evidence-ingest` token，以兼容 bkn-agent、Vega、BKN Backend、ontology-query 和 Context Loader。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认只允许带稳定 `app.kubernetes.io/name=agent-retrieval` 标签的 Pod 访问 8081，其他部署可通过 `networkPolicy.allowedClients` 显式扩展。
 
-Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器负责创建或复用该 Secret，并将同一 token 注入 Agent Observability 与 Context Loader；单独安装任一 Chart 时，应预先创建 Secret，或保持 `evidence.ingestAuth.existingSecret` / `observability.evidence_ingest_token_secret_name` 为空，使 Evidence 写入明确处于未启用状态。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
+Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器负责创建或复用该 Secret，并将同一 token 注入 Agent Observability 与 Context Loader；单独安装任一 Chart 时，应预先创建 Secret。若要禁用 Evidence 写入，必须同时清空 Context Loader 的 `observability.evidence.ingest_url`，不能只省略 token Secret。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
 
 ```bash
 printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \

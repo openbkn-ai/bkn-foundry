@@ -2,6 +2,7 @@ apiVersion: v2
 name: agent-observability
 description: Helm chart for agent-observability service
 type: application
+kubeVersion: ">=1.23.0-0"
 version: 0.1.0
 appVersion: "0.1.1"
 home: https://github.com/openbkn-ai/bkn-foundry/tree/main/bkn-trace/agent-observability

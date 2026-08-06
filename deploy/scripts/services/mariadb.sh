@@ -122,20 +122,19 @@ setup_mariadb_databases() {
     # Always grant user permissions first
     grant_mariadb_user_permissions
 
-    # Check if ISF or Core manifest has pre-stage data-migrator (0.6.0+)
-    # If so, skip manual database creation - the data-migrator chart will handle it
+    # The data-migrator also creates these databases in current bundles. Keep
+    # this idempotent fallback because MariaDB may be installed independently or
+    # upgraded before the migrator hook runs.
     local isf_manifest core_manifest
     isf_manifest="${ISF_VERSION_MANIFEST_FILE:-$(resolve_embedded_release_manifest "isf" "${HELM_CHART_VERSION:-}")}"
     core_manifest="${CORE_VERSION_MANIFEST_FILE:-$(resolve_embedded_release_manifest "bkn-foundry" "${HELM_CHART_VERSION:-}")}"
 
     if [[ -f "${isf_manifest}" ]] && should_skip_db_init_for_manifest "${isf_manifest}"; then
-        log_info "ISF manifest ${isf_manifest} has pre-stage data-migrator (0.6.0+), skipping manual database creation"
-        return 0
+        log_info "ISF manifest ${isf_manifest} has pre-stage data-migrator; retaining idempotent database setup"
     fi
 
     if [[ -f "${core_manifest}" ]] && should_skip_db_init_for_manifest "${core_manifest}"; then
-        log_info "Core manifest ${core_manifest} has pre-stage data-migrator (0.6.0+), skipping manual database creation"
-        return 0
+        log_info "Core manifest ${core_manifest} has pre-stage data-migrator; retaining idempotent database setup"
     fi
 
     log_info "Setting up additional databases and permissions..."

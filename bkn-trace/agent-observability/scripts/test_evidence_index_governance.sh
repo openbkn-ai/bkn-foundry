@@ -2,9 +2,17 @@
 set -euo pipefail
 
 chart_dir="${1:-charts/agent-observability}"
+if ! grep -Fq 'kubeVersion: ">=1.23.0-0"' "${chart_dir}/Chart.yaml"; then
+  echo "chart must declare the Kubernetes version required by namespace label selectors" >&2
+  exit 1
+fi
 default_rendered="$(helm template agent-observability "${chart_dir}")"
 if grep -Eq "BKN_TRACE_(EVIDENCE_INGEST|QUERY_GATEWAY)_TOKEN" <<<"${default_rendered}"; then
   echo "standalone chart must not inject a token without an existing Secret" >&2
+  exit 1
+fi
+if grep -Fq 'kind: Secret' <<<"${default_rendered}"; then
+  echo "standalone chart must not create a Secret by default" >&2
   exit 1
 fi
 if grep -Fq "BKN_TRACE_CORE_MARIADB_DSN" <<<"${default_rendered}"; then
@@ -15,6 +23,13 @@ fi
 if ! grep -Fq 'name: agent-observability-internal' <<<"${default_rendered}" ||
    ! grep -Fq 'port: internal-http' <<<"${default_rendered}"; then
   echo "chart must expose a private lifecycle Service" >&2
+  exit 1
+fi
+long_name="rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+long_rendered="$(helm template "${long_name}" "${chart_dir}")"
+internal_name="$(awk '/^---$/{service=0; name=""} /^kind: Service$/{service=1} service && /^  name: /{name=$2} service && /targetPort: internal-http/{print name; exit}' <<<"${long_rendered}")"
+if [[ -z "${internal_name}" ]] || (( ${#internal_name} > 63 )); then
+  echo "private lifecycle Service name must fit the DNS label limit: ${internal_name}" >&2
   exit 1
 fi
 if ! grep -Fq 'kind: NetworkPolicy' <<<"${default_rendered}" ||
@@ -34,6 +49,14 @@ ingest_rendered="$(helm template agent-observability "${chart_dir}" \
 if ! grep -Fq 'name: BKN_TRACE_EVIDENCE_INGEST_TOKEN' <<<"${ingest_rendered}" ||
    grep -Fq 'name: BKN_TRACE_QUERY_GATEWAY_TOKEN' <<<"${ingest_rendered}"; then
   echo "configured evidence ingest must use its token without restoring the lifecycle gateway token" >&2
+  exit 1
+fi
+managed_ingest_rendered="$(helm template agent-observability "${chart_dir}" \
+  --set evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest \
+  --set evidence.ingestAuth.createSecret=true)"
+if ! grep -A12 -F 'kind: Secret' <<<"${managed_ingest_rendered}" | grep -Fq '"helm.sh/resource-policy": keep' ||
+   ! grep -A20 -F 'kind: Secret' <<<"${managed_ingest_rendered}" | grep -Fq 'token:'; then
+  echo "installer-managed ingest Secret must preserve the token key and keep policy" >&2
   exit 1
 fi
 if ! grep -A1 -Fq "name: BKN_TRACE_PROJECTION_ENABLED

@@ -15,6 +15,7 @@ not_contains() {
     local label="$1" value="$2" unexpected="$3"
     if [[ "${value}" != *"${unexpected}"* ]]; then ok; else fail "${label}: unexpected [${unexpected}] in [${value}]"; fi
 }
+log_info() { :; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../services/openbkn.sh
@@ -41,6 +42,18 @@ contains "retrieval emits Trace spans" "${ar_sets}" "observability.trace.enabled
 contains "retrieval emits evidence through token-protected ingest" "${ar_sets}" "observability.evidence.ingest_url=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
 contains "retrieval uses evidence ingest Secret" "${ar_sets}" "observability.evidence.ingest_token_secret_name=bkn-trace-evidence-ingest"
 not_contains "retrieval has no query gateway Secret" "${ar_sets}" "gateway_token_secret_name="
+
+CORE_SET_VALUES=()
+OFFLINE_MODE=true
+OFFLINE_REGISTRY=registry.test:5000
+_openbkn_apply_default_set_values
+offline_sets="${CORE_SET_VALUES[*]:-}"
+contains "offline installs rewrite application images" "${offline_sets}" "image.registry=registry.test:5000/openbkn-ai"
+contains "offline installs rewrite the evidence index hook image" "${offline_sets}" "evidence.indexManagement.createJob.image.registry=registry.test:5000/openbkn-ai"
+
+sync_script="$(<"${SCRIPT_DIR}/scripts/sync-k8s-images.sh")"
+contains "offline sync includes the evidence index hook image" "${sync_script}" 'curlimages/curl:8.10.1'
+contains "offline sync mirrors hooks into the OpenBKN namespace" "${sync_script}" 'target_image="${TARGET_REGISTRY}/openbkn-ai/${image}"'
 
 if [[ "${FAILED}" -eq 0 ]]; then
     echo "openbkn_trace_profile_test: all ${PASS} checks passed"

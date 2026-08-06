@@ -45,6 +45,11 @@ kubectl() {
             local stdin_value
             stdin_value="$(cat)"
             printf 'stdin:%s\n' "${stdin_value}" >>"${KUBECTL_LOG}"
+            printf '%s\n' 'apiVersion: v1' 'kind: Secret'
+            return 0
+            ;;
+        *"apply -f -"*)
+            cat >/dev/null
             return 0
             ;;
         *) return 0 ;;
@@ -146,9 +151,30 @@ CALLS=()
 EXISTING_DSN_DATA="dGVzdC1kc24="
 _openbkn_prepare_trace_profile openbkn
 if grep -q "create secret generic" "${KUBECTL_LOG}"; then
-    fail "existing Core DSN Secret must be reused"
+    fail "external Core DSN Secret must be reused"
 else
     ok
+fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
+cat > "${CONFIG_YAML_PATH}" <<'EOF'
+depServices:
+  rds:
+    source_type: internal
+    host: mariadb.resource.svc.cluster.local
+    port: 3306
+    user: openbkn
+    password: refreshed-password
+EOF
+_openbkn_prepare_trace_profile openbkn
+assert_contains "internal Core DSN Secret is refreshed from current RDS configuration" "create secret generic bkn-trace-core-mariadb"
+assert_contains "internal Core DSN Secret is updated idempotently" "apply -f -"
+
+if grep -Fq -- "bkn_trace" "${SCRIPT_DIR}/../data-migrator/config.monorepo.yaml"; then
+    ok
+else
+    fail "data-migrator must pre-create the bkn_trace database"
 fi
 
 if [[ "${FAILED}" -eq 0 ]]; then
