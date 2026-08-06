@@ -160,7 +160,10 @@ async def open_session() -> Optional[ContextLoaderSession]:
     try:
         tools = await client.get_tools()
     except Exception as e:
-        logger.warning("[ContextLoader] 连接 MCP 面失败（%s），跳过工具装载：%s", source, e)
+        # ExceptionGroup 的 str() 只有 "unhandled errors in a TaskGroup"，真因全在
+        # 子异常里。VM 上第一次排查就卡在这条日志上（真因是 401），所以摊开打。
+        detail = "; ".join(f"{type(x).__name__}: {x}" for x in getattr(e, "exceptions", ()) or ()) or f"{type(e).__name__}: {e}"
+        logger.warning("[ContextLoader] 连接 MCP 面失败（%s），跳过工具装载：%s", source, detail)
         return None
 
     by_name = {getattr(t, "name", ""): t for t in tools}
@@ -199,31 +202,54 @@ async def open_session() -> Optional[ContextLoaderSession]:
 def _parse_ids(raw: Any) -> Optional[tuple[str, str]]:
     """从 bkn_start_interaction 的返回里取出 (conversation_id, interaction_id)。
 
-    langchain-mcp-adapters 可能把 structuredContent 直接给成 dict，也可能给回
-    文本内容，两种都收。
+    langchain-mcp-adapters 的实际返回形状（VM 实测）是个二元组：
+
+        ([{"type": "text", "text": "<json>", "id": ...}],
+         {"structured_content": {"conversation_id": ..., "interaction_id": ...}})
+
+    早先这里只认 dict 和裸 JSON 串，撞上真实形状直接返回 None —— 握手其实成功了，
+    id 也拿到了，却被判成「未返回可用 id」而跳过整个工具装载。这里按「先找
+    structured_content，再退回文本块里的 JSON」两级解析，并保留 dict / 裸串两种
+    简单形状。
     """
+    for candidate in _id_candidates(raw):
+        cid = candidate.get("conversation_id")
+        iid = candidate.get("interaction_id")
+        if isinstance(cid, str) and cid and isinstance(iid, str) and iid:
+            return cid, iid
+    return None
+
+
+def _id_candidates(raw: Any):
+    """把可能藏着 id 的字典逐个吐出来，从最可信的来源开始。"""
     import json
 
-    payload = raw
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except (TypeError, ValueError):
-            return None
-    if isinstance(payload, (list, tuple)):
-        payload = payload[0] if payload else None
-        if isinstance(payload, str):
+    seen: list[Any] = []
+
+    def walk(node: Any, depth: int = 0) -> None:
+        if depth > 4 or node is None:
+            return
+        if isinstance(node, str):
             try:
-                payload = json.loads(payload)
+                walk(json.loads(node), depth + 1)
             except (TypeError, ValueError):
-                return None
-    if not isinstance(payload, dict):
-        return None
-    cid = payload.get("conversation_id")
-    iid = payload.get("interaction_id")
-    if isinstance(cid, str) and isinstance(iid, str) and cid and iid:
-        return cid, iid
-    return None
+                pass
+            return
+        if isinstance(node, dict):
+            # structured_content / structuredContent 是 MCP 的结构化输出，优先
+            for key in ("structured_content", "structuredContent"):
+                if isinstance(node.get(key), dict):
+                    seen.append(node[key])
+            seen.append(node)
+            if isinstance(node.get("text"), str):
+                walk(node["text"], depth + 1)
+            return
+        if isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item, depth + 1)
+
+    walk(raw)
+    return [c for c in seen if isinstance(c, dict)]
 
 
 async def close_session(session: Optional[ContextLoaderSession]) -> None:

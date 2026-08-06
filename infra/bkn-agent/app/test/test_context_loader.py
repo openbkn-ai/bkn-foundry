@@ -36,7 +36,17 @@ def _start_tool():
     return _FakeTool(
         "bkn_start_interaction",
         args_schema={"type": "object", "properties": {}},
-        result={"conversation_id": "conv_real", "interaction_id": "int_real"},
+        # VM 实测形状：(content_blocks, {"structured_content": {...}})
+        result=(
+            [{"type": "text",
+              "text": '{"conversation_id":"conv_real","execution_status":"active",'
+                      '"interaction_id":"int_real"}',
+              "id": "lc_1"}],
+            {"structured_content": {
+                "conversation_id": "conv_real",
+                "execution_status": "active",
+                "interaction_id": "int_real"}},
+        ),
     )
 
 
@@ -118,19 +128,29 @@ def test_start_interaction_failure_skips_tools(monkeypatch):
         auth._caller_token.reset(token)
 
 
-@pytest.mark.parametrize(
-    "raw",
-    [
-        {"conversation_id": "c", "interaction_id": "i"},
-        '{"conversation_id":"c","interaction_id":"i"}',
-        ['{"conversation_id":"c","interaction_id":"i"}'],
-    ],
-)
-def test_parse_ids_accepts_dict_text_and_list(raw):
+@pytest.mark.parametrize("raw", [
+    # 裸 dict
+    {"conversation_id": "c", "interaction_id": "i"},
+    # JSON 串
+    '{"conversation_id":"c","interaction_id":"i"}',
+    # VM 实测：(content_blocks, artifact)，id 在 structured_content 里
+    ([{"type": "text", "text": '{"conversation_id":"c","interaction_id":"i"}'}],
+     {"structured_content": {"conversation_id": "c", "interaction_id": "i"}}),
+    # 同上但只有文本块，没有 structured_content —— 退回解析 text
+    ([{"type": "text", "text": '{"conversation_id":"c","interaction_id":"i"}'}], {}),
+    # camelCase 的 structuredContent
+    ([], {"structuredContent": {"conversation_id": "c", "interaction_id": "i"}}),
+])
+def test_parse_ids_accepts_real_and_simple_shapes(raw):
     assert context_loader._parse_ids(raw) == ("c", "i")
 
 
-@pytest.mark.parametrize("raw", [None, "not json", {}, {"conversation_id": "c"}, []])
+@pytest.mark.parametrize("raw", [
+    None, "", "not json", 123, [], {},
+    {"conversation_id": "c"},                      # 缺一半
+    {"conversation_id": "", "interaction_id": "i"},  # 空串不算
+    ([{"type": "text", "text": "plain text"}], {}),
+])
 def test_parse_ids_rejects_garbage(raw):
     assert context_loader._parse_ids(raw) is None
 
