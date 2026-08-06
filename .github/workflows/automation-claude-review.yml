@@ -249,6 +249,10 @@ jobs:
         env:
           SHARDS: ${{ steps.plan.outputs.shards }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # 转圈图标。自己存在仓里而不是复用 claude-code-action 那个 user-attachment：
+          # 那是别人项目的资产，删掉就成裂图。本仓是 public，raw 链接可被 GitHub 的
+          # 图片代理取到；私有仓则不行，届时要换成上传到 user-attachments。
+          SPINNER: ${{ github.server_url }}/${{ github.repository }}/raw/main/.github/assets/review-spinner.gif
         run: |
           set -euo pipefail
           MARKER='<!-- claude-review-progress -->'
@@ -256,7 +260,8 @@ jobs:
           import json, os
           shards = json.loads(os.environ["SHARDS"])
           lines = ["<!-- claude-review-progress -->",
-                   "### 评审进行中",
+                   '### <img src="%s" width="16" height="16" /> 评审进行中'
+                   % os.environ["SPINNER"],
                    "",
                    "按模块分 %d 片并行，逐片完成后统一给出一次结论。" % len(shards),
                    ""]
