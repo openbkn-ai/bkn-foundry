@@ -202,6 +202,14 @@ func sqlServerDateComparison(field, operator string, value any) (sq.Sqlizer, err
 
 func unixMilliseconds(value any) (int64, error) {
 	switch typed := value.(type) {
+	case time.Time:
+		return typed.UnixMilli(), nil
+	case string:
+		parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(typed))
+		if err != nil {
+			return 0, fmt.Errorf("date condition value must be unix milliseconds or an RFC3339 timestamp")
+		}
+		return parsed.UnixMilli(), nil
 	case int:
 		return int64(typed), nil
 	case int64:
@@ -209,11 +217,11 @@ func unixMilliseconds(value any) (int64, error) {
 	case float64:
 		if math.IsNaN(typed) || math.IsInf(typed, 0) ||
 			typed < float64(math.MinInt64) || typed >= -float64(math.MinInt64) || typed != math.Trunc(typed) {
-			return 0, fmt.Errorf("date condition value must be unix milliseconds")
+			return 0, fmt.Errorf("date condition value must be unix milliseconds or an RFC3339 timestamp")
 		}
 		return int64(typed), nil
 	default:
-		return 0, fmt.Errorf("date condition value must be unix milliseconds")
+		return 0, fmt.Errorf("date condition value must be unix milliseconds or an RFC3339 timestamp")
 	}
 }
 

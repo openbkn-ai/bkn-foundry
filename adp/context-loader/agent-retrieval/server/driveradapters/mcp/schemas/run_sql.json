@@ -14,7 +14,7 @@
       },
       "resource_type": {
         "type": "string",
-        "description": "连接器类型（mysql / mariadb / postgresql）。留空则按 SQL 中第一个 {{.resource_id}} 自动解析，一般无需填写。"
+        "description": "连接器类型（mysql / mariadb / postgresql / sqlserver）。留空则按 SQL 中第一个 {{.resource_id}} 自动解析，一般无需填写。"
       },
       "query_timeout": {
         "type": "integer",

@@ -623,6 +623,7 @@ func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
 	createdAt := &interfaces.Property{Name: "created_at", OriginalName: "created_at", Type: interfaces.DataType_Datetime}
 	workTime := &interfaces.Property{Name: "work_time", OriginalName: "work_time", Type: interfaces.DataType_Time}
 	fields := map[string]*interfaces.Property{"status": status, "tags": tags, "created_at": createdAt, "work_time": workTime}
+	nativeTimestamp := time.Date(2026, time.August, 6, 1, 2, 3, 456000000, time.UTC)
 	tests := []struct {
 		name        string
 		condition   interfaces.FilterCondition
@@ -668,6 +669,22 @@ func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
 			},
 			containsSQL: []string{"[created_at] >= @p1", "[created_at] <= @p2"},
 			args:        []any{time.UnixMilli(1000).UTC(), time.UnixMilli(2000).UTC()},
+		},
+		{
+			name: "datetime accepts time.Time",
+			condition: &filter_condition.EqualCond{
+				Cfg: constCfg, Lfield: createdAt, Value: nativeTimestamp,
+			},
+			containsSQL: []string{"[created_at] = @p1"},
+			args:        []any{nativeTimestamp},
+		},
+		{
+			name: "datetime accepts RFC3339",
+			condition: &filter_condition.EqualCond{
+				Cfg: constCfg, Lfield: createdAt, Value: nativeTimestamp.Format(time.RFC3339Nano),
+			},
+			containsSQL: []string{"[created_at] = @p1"},
+			args:        []any{nativeTimestamp},
 		},
 		{
 			name: "time value does not use unix milliseconds",
@@ -731,7 +748,7 @@ func TestSQLServerConnectorConvertFilterCondition(t *testing.T) {
 			Cfg: constCfg, Lfield: createdAt, Value: "2026-08-03",
 		}, fields)
 
-		require.ErrorContains(t, err, "date condition value must be unix milliseconds")
+		require.ErrorContains(t, err, "date condition value must be unix milliseconds or an RFC3339 timestamp")
 	})
 	t.Run("rejects before interval outside DATEADD range", func(t *testing.T) {
 		_, err := (&SQLServerConnector{}).convertFilterCondition(context.Background(), &filter_condition.BeforeCond{
