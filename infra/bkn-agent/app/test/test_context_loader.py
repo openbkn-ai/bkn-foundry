@@ -2,7 +2,7 @@
 
 守的是三件不能回退的事：
 1. bkn_context 由运行时注入，不进模型可见的参数表（模型编不出合法 id）
-2. 凭据优先调用方透传，AppKey 只是兜底；两个都没有就不挂工具，且不静默
+2. 凭据只认调用方透传的令牌；没有就不挂工具，且不静默（无服务凭据兜底）
 3. 生命周期工具不暴露给模型
 """
 import asyncio
@@ -10,7 +10,6 @@ import asyncio
 import pytest
 
 from app import auth
-from app.config import config
 from app.core import context_loader
 
 
@@ -59,30 +58,11 @@ def _install(monkeypatch, tools):
 
 
 def test_no_credential_skips_and_warns(monkeypatch, caplog):
-    monkeypatch.setattr(config, "CONTEXT_LOADER_APPKEY", "")
     token = auth.set_caller_token(None)
     try:
         with caplog.at_level("WARNING"):
             assert asyncio.run(context_loader.open_session()) is None
-        assert "无可用凭据" in caplog.text  # 不静默
-    finally:
-        auth._caller_token.reset(token)
-
-
-def test_caller_token_preferred_over_appkey(monkeypatch):
-    monkeypatch.setattr(config, "CONTEXT_LOADER_APPKEY", "bak_service")
-    token = auth.set_caller_token("Bearer user-token")
-    try:
-        assert context_loader._credential() == ("Bearer user-token", "caller")
-    finally:
-        auth._caller_token.reset(token)
-
-
-def test_appkey_is_fallback_only(monkeypatch):
-    monkeypatch.setattr(config, "CONTEXT_LOADER_APPKEY", "bak_service")
-    token = auth.set_caller_token(None)
-    try:
-        assert context_loader._credential() == ("Bearer bak_service", "service_appkey")
+        assert "未透传 Authorization" in caplog.text  # 不静默
     finally:
         auth._caller_token.reset(token)
 

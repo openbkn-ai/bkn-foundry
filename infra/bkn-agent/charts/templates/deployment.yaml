@@ -74,8 +74,6 @@ spec:
               value: {{ .Values.runtime.operatorIntegrationBase | quote }}
             - name: CONTEXT_LOADER_MCP_URL
               value: {{ .Values.runtime.contextLoaderMcpUrl | quote }}
-            - name: CONTEXT_LOADER_APPKEY
-              value: {{ .Values.runtime.contextLoaderAppKey | quote }}
             - name: BKN_AGENT_DEFAULT_MODEL
               value: {{ .Values.runtime.defaultModel | quote }}
             - name: CHECKPOINTER_BACKEND

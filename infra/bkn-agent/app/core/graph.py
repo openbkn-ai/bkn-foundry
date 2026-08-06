@@ -73,7 +73,7 @@ async def stream_chat(
         # 证据链这一轮的 id。load_tools 会复用这个已开的会话，不重复握手。
         cl_session = None
         if context_loader.wanted(agent.tools):
-            cl_session = await context_loader.open_session()
+            cl_session = await context_loader.open_session(req.message, agent_name=agent.name)
             context_loader.set_current(cl_session)
         tools = await load_tools(
             agent.tools,

@@ -12,11 +12,12 @@
   `bkn_start_interaction` 领一对真 id，再拿它调业务工具。领到的 id 与令牌身份
   绑定、不与 MCP 会话绑定，所以一轮对话领一次即可复用。
 
-凭据优先级：
-1. 调用方透传的 Authorization（`auth.caller_token()`）——主路，保住 per-user 授权
-2. `CONTEXT_LOADER_APPKEY`——兜底。⚠️ 用上它时 Context Loader 看到的是该 AppKey
-   的签发人而不是真实调用者，这一次调用的 per-user 授权就塌缩了
-3. 都没有 → 不挂 CL 工具，并记一条 warning（不静默返回空工具集）
+凭据只有一个来源：调用方透传的 Authorization（`auth.caller_token()`）。
+
+刻意不留服务凭据兜底。用服务 AppKey 顶上去的话，Context Loader 看到的是该
+AppKey 的签发人而不是真实调用者，per-user 授权当场塌缩成「签发人可见的范围」——
+一个默认关闭但存在的开关，迟早会被人为了「让它跑起来」打开。没令牌就不挂工具，
+并记一条 warning（不静默返回空工具集），失败留在看得见的地方。
 """
 import logging
 from contextvars import ContextVar
@@ -61,14 +62,9 @@ def wanted(tool_refs: list[dict]) -> bool:
     return any(ref.get("type") == "context_loader" for ref in tool_refs)
 
 
-def _credential() -> tuple[Optional[str], str]:
-    """返回 (Authorization 头原文, 凭据来源)。都没有则 (None, "none")。"""
-    token = caller_token()
-    if token:
-        return token, "caller"
-    if config.CONTEXT_LOADER_APPKEY:
-        return f"Bearer {config.CONTEXT_LOADER_APPKEY}", "service_appkey"
-    return None, "none"
+def _credential() -> Optional[str]:
+    """当前调用方透传的 Authorization 头原文；没有则 None。"""
+    return caller_token()
 
 
 def _client(authorization: str) -> MultiServerMCPClient:
@@ -91,10 +87,9 @@ class ContextLoaderSession:
     参数表——什么时候算一轮交互是运行时的事，不是模型该决策的事。
     """
 
-    def __init__(self, conversation_id: str, interaction_id: str, credential_source: str):
+    def __init__(self, conversation_id: str, interaction_id: str):
         self.conversation_id = conversation_id
         self.interaction_id = interaction_id
-        self.credential_source = credential_source
         self._tools: list[Any] = []
         self._finish: Any = None
 
@@ -146,13 +141,19 @@ def _bind_context(tool: Any, session: ContextLoaderSession) -> Any:
     )
 
 
-async def open_session() -> Optional[ContextLoaderSession]:
-    """握手并装载工具。凭据缺失或握手失败返回 None（调用方决定是否致命）。"""
-    authorization, source = _credential()
+async def open_session(
+    question: str = "", *, agent_name: str | None = None
+) -> Optional[ContextLoaderSession]:
+    """握手并装载工具。凭据缺失或握手失败返回 None（调用方决定是否致命）。
+
+    question 是 bkn_start_interaction 的必填项，语义是「这一轮用户问了什么」，
+    传本轮真实输入而不是空串——生命周期服务按它归档这一轮。
+    """
+    authorization = _credential()
     if not authorization:
         logger.warning(
-            "[ContextLoader] 无可用凭据（调用方未透传 Authorization，且未配置 "
-            "CONTEXT_LOADER_APPKEY），跳过 context_loader 工具装载"
+            "[ContextLoader] 调用方未透传 Authorization，跳过 context_loader 工具装载。"
+            "Context Loader 的 MCP 面只认真实令牌，调用 bkn-agent 时需带上最终用户的令牌"
         )
         return None
 
@@ -163,7 +164,7 @@ async def open_session() -> Optional[ContextLoaderSession]:
         # ExceptionGroup 的 str() 只有 "unhandled errors in a TaskGroup"，真因全在
         # 子异常里。VM 上第一次排查就卡在这条日志上（真因是 401），所以摊开打。
         detail = "; ".join(f"{type(x).__name__}: {x}" for x in getattr(e, "exceptions", ()) or ()) or f"{type(e).__name__}: {e}"
-        logger.warning("[ContextLoader] 连接 MCP 面失败（%s），跳过工具装载：%s", source, detail)
+        logger.warning("[ContextLoader] 连接 MCP 面失败，跳过工具装载：%s", detail)
         return None
 
     by_name = {getattr(t, "name", ""): t for t in tools}
@@ -173,7 +174,10 @@ async def open_session() -> Optional[ContextLoaderSession]:
         return None
 
     try:
-        raw = await start.coroutine(question="")
+        args = {"question": question or "(未提供)"}
+        if agent_name:
+            args["agent_name"] = agent_name[:128]
+        raw = await start.coroutine(**args)
     except Exception as e:
         logger.warning("[ContextLoader] bkn_start_interaction 失败，跳过工具装载：%s", e)
         return None
@@ -183,7 +187,7 @@ async def open_session() -> Optional[ContextLoaderSession]:
         logger.warning("[ContextLoader] bkn_start_interaction 未返回可用 id：%r", raw)
         return None
 
-    session = ContextLoaderSession(ids[0], ids[1], source)
+    session = ContextLoaderSession(ids[0], ids[1])
     session._finish = by_name.get("bkn_finish_interaction")
     session._tools = [
         _bind_context(t, session)
@@ -191,9 +195,8 @@ async def open_session() -> Optional[ContextLoaderSession]:
         if name not in _LIFECYCLE_TOOLS
     ]
     logger.info(
-        "[ContextLoader] 会话就绪：%d 个工具，凭据来源 %s，interaction %s",
+        "[ContextLoader] 会话就绪：%d 个工具，interaction %s",
         len(session._tools),
-        source,
         session.interaction_id,
     )
     return session
@@ -252,15 +255,36 @@ def _id_candidates(raw: Any):
     return [c for c in seen if isinstance(c, dict)]
 
 
-async def close_session(session: Optional[ContextLoaderSession]) -> None:
+# bkn_finish_interaction 的 outcome 枚举（取自 MCP 面 input_schema）。
+# 早先这里传的是 "succeeded"——不在枚举里，连同把 id 塞进 bkn_context 而不是
+# interaction_id，导致每一轮收尾都被 resource_not_disclosed 拒掉，交互全挂在
+# active 上没人关。
+_OUTCOMES = {"completed", "failed", "cancelled", "handed_off"}
+
+
+async def close_session(
+    session: Optional[ContextLoaderSession],
+    *,
+    outcome: str = "completed",
+    answer: str | None = None,
+    reason: str | None = None,
+) -> None:
     """收尾 bkn_finish_interaction。失败只告警：一轮已经跑完，不该因为收尾失败
     把成功的结果翻成失败。"""
     if session is None or session._finish is None:
         return
+    if outcome not in _OUTCOMES:
+        outcome = "completed"
+    args: dict[str, Any] = {
+        "interaction_id": session.interaction_id,
+        "outcome": outcome,
+    }
+    if answer:
+        args["answer"] = answer[:4000]
+    if reason:
+        args["reason"] = reason[:1000]
     try:
-        await session._finish.coroutine(
-            bkn_context=session.bkn_context, outcome="succeeded"
-        )
+        await session._finish.coroutine(**args)
     except Exception as e:
         logger.warning(
             "[ContextLoader] bkn_finish_interaction 失败（interaction %s）：%s",

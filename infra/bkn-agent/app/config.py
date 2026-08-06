@@ -38,12 +38,9 @@ class Config:
         "CONTEXT_LOADER_MCP_URL",
         "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/",
     )
-    # 兜底服务凭据（bak_ AppKey）。仅在调用方没有透传令牌时启用。
-    #
-    # ⚠️ 一旦用上，Context Loader 看到的就是这个服务主体而不是真实调用者，
-    # per-user 授权在该次调用上塌缩为「AppKey 签发人可见的范围」。主路是透传
-    # 调用方令牌（见 auth.caller_token）；留空则没有兜底，无令牌时不挂 CL 工具。
-    CONTEXT_LOADER_APPKEY = _env("CONTEXT_LOADER_APPKEY", "")
+    # 凭据只走调用方透传的令牌（见 auth.caller_token）。刻意不设服务凭据兜底：
+    # 用服务 AppKey 顶上去会让 Context Loader 看到签发人而非真实调用者，
+    # per-user 授权当场塌缩。没令牌就不挂 CL 工具。
     CONTEXT_LOADER_MCP_TIMEOUT_S = float(_env("CONTEXT_LOADER_MCP_TIMEOUT_S", "30"))
 
     # BKN Trace phase-two evidence ingestion. Empty URL = construct evidence facts

@@ -41,10 +41,6 @@ runtime:
   # Context Loader 的 MCP 面（ToolRef type=context_loader 由此装载）。这是公开面：
   # 它挂 introspect，只认真实令牌，不吃 /in 的头部身份。
   contextLoaderMcpUrl: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
-  # 兜底服务凭据（bak_ AppKey），仅在调用方没透传 Authorization 时启用。
-  # ⚠️ 一旦启用，Context Loader 看到的是该 AppKey 的签发人而非真实调用者，
-  # per-user 授权在这次调用上塌缩。默认留空 = 无兜底，无令牌时不挂 CL 工具。
-  contextLoaderAppKey: ""
   defaultModel: ""
   checkpointerBackend: "mysql"
   # 建表统一归 migrations/bkn-agent/（core-data-migrator）。

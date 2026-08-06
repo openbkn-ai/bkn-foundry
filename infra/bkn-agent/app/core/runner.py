@@ -52,7 +52,7 @@ async def run_agent_once(
     cl_session = None
     cl_token = None
     if context_loader.wanted(agent.tools):
-        cl_session = await context_loader.open_session()
+        cl_session = await context_loader.open_session(message, agent_name=agent.name)
         cl_token = context_loader.set_current(cl_session)
     token = evidence.begin_interaction(
         message,
@@ -78,7 +78,7 @@ async def run_agent_once(
         )
     finally:
         evidence.end_interaction(token)
-        await context_loader.close_session(cl_session)
+        await context_loader.close_session(cl_session, outcome="completed")
         if cl_token is not None:
             context_loader.reset_current(cl_token)
 
