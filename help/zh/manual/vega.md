@@ -194,7 +194,7 @@ openbkn vega sql -d '<json>'
 openbkn vega help sql
 ```
 
-SQL 中可使用占位符 `{{.<资源ID>}}` 或 `{{<资源ID>}}`（资源 ID 为 Vega `resource_id`），后端替换为该资源的物理表标识。无占位符时也可写**原生 SQL**（仍需 `resource_type`），表名需符合目标库语法。
+SQL 必须使用至少一个占位符 `{{.<资源ID>}}` 或 `{{<资源ID>}}`（资源 ID 为 Vega `resource_id`），后端会根据资源所属 Catalog 解析目标连接器并替换为物理表标识。不支持不带资源占位符的原生表名查询。
 
 **三种查询方式对照**
 
@@ -392,7 +392,7 @@ curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/query" \
 curl -sk -X POST "https://<访问地址>/api/vega-backend/v1/resources/query" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
-  -d '{"resource_type":"mysql","query":"SELECT 1 AS one"}'
+  -d '{"query":"SELECT * FROM {{res_orders_001}} LIMIT 1","query_format":"sql","input_dialect":"mysql","paging":{"mode":"single","limit":1}}'
 
 curl -sk "https://<访问地址>/api/vega-backend/v1/connector-types" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"

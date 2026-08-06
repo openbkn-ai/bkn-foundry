@@ -195,7 +195,7 @@ openbkn vega sql --help
 
 Other flags: `--limit` / `--offset` / `--need-total`, cursor paging via `--paging-mode cursor` with `--cursor` / `--keep-alive-sec`, and `--query-timeout-sec`.
 
-Placeholders: `{{.<resource_id>}}` or `{{<resource_id>}}` (Vega resource id) are replaced with the resource’s physical table id. You may also run **native SQL** without placeholders if table names are valid for the engine.
+SQL must contain at least one `{{.<resource_id>}}` or `{{<resource_id>}}` placeholder (using a Vega resource id). The backend resolves the target connector from the resource's Catalog and replaces the placeholder with its physical table identifier. Queries using native table names without resource placeholders are not supported.
 
 **Comparison**
 
@@ -299,8 +299,10 @@ const connectors = await bkn.vega.connectorTypes();
 
 // Direct SQL (typed)
 const sqlOut = await bkn.vega.sql({
-  resource_type: 'mysql',
-  query: 'SELECT 1 AS one',
+  query: 'SELECT * FROM {{res-001}} LIMIT 1',
+  query_format: 'sql',
+  input_dialect: 'mysql',
+  paging: { mode: 'single', limit: 1 },
 });
 
 // Structured query/execute — no typed helper, use the passthrough
@@ -402,7 +404,7 @@ curl -sk -X POST "https://<access-address>/api/vega-backend/v1/query/execute" \
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources/query" \
   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
   -H "Content-Type: application/json" \
-  -d '{"resource_type":"mysql","query":"SELECT 1 AS one"}'
+  -d '{"query":"SELECT * FROM {{res-001}} LIMIT 1","query_format":"sql","input_dialect":"mysql","paging":{"mode":"single","limit":1}}'
 
 # Connector types
 curl -sk "https://<access-address>/api/vega-backend/v1/connector-types" \

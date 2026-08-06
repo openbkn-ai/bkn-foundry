@@ -43,15 +43,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["query", "resource_type"],
+                "required": ["query"],
                 "properties": {
                   "query": {
                     "type": "string",
                     "description": "SQL 字符串。SQL 中用 {{<resource_id>}} 占位引用 Vega resource。例：SELECT * FROM {{abc123}} LIMIT 5"
-                  },
-                  "resource_type": {
-                    "type": "string",
-                    "description": "目标 connector 类型；取值之一：mysql / mariadb / postgresql / opensearch"
                   },
                   "stream_size": {
                     "type": "integer",
