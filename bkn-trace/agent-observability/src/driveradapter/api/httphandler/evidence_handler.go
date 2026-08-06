@@ -1125,9 +1125,6 @@ func traceIDFromSnapshotPreviewPath(path string) string {
 }
 
 func (h *EvidenceHandler) authorizeEvidenceIngest(w http.ResponseWriter, r *http.Request) bool {
-	if isTrustedInternalCaller(r.Context()) {
-		return true
-	}
 	if h.ingestToken == "" {
 		if h.allowUnauthenticatedIngest {
 			return true

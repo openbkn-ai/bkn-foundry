@@ -132,9 +132,6 @@ func (h *LedgerHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LedgerHandler) authorize(w http.ResponseWriter, r *http.Request) bool {
-	if isTrustedInternalCaller(r.Context()) {
-		return true
-	}
 	if h.allowUnauthenticatedIngest {
 		return true
 	}

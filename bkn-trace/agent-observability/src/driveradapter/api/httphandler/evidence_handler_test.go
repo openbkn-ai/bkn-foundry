@@ -110,6 +110,20 @@ func TestInternalLifecycleIdentityRequiresInternalListenerNotSharedToken(t *test
 	}
 }
 
+func TestInternalLifecycleMarkerDoesNotBypassEvidenceIngestToken(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		IngestToken: "evidence-token",
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/artifacts", strings.NewReader(validHandlerArtifact()))
+	response := httptest.NewRecorder()
+
+	handler.InternalLifecycle(handler.IngestEvidenceArtifact)(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("internal marker without evidence token = %d, want %d: %s", response.Code, http.StatusUnauthorized, response.Body.String())
+	}
+}
+
 func TestEvidenceHandlerDevelopmentBypassesDefaultToDisabled(t *testing.T) {
 	t.Setenv(evidenceIngestTokenEnv, "")
 	t.Setenv(evidenceAllowUnauthenticatedIngestEnv, "")

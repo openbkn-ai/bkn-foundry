@@ -24,6 +24,7 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         app: {{ .Release.Name }}
+        app.kubernetes.io/name: agent-retrieval
     spec:
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -96,6 +97,13 @@ spec:
             {{- if .Values.observability.evidence.timeout_ms }}
               - name: BKN_TRACE_EVIDENCE_TIMEOUT_MS
                 value: {{ .Values.observability.evidence.timeout_ms | quote }}
+            {{- end}}
+            {{- if .Values.observability.evidence.ingest_token_secret_name }}
+              - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.observability.evidence.ingest_token_secret_name | quote }}
+                    key: {{ .Values.observability.evidence.ingest_token_secret_key | quote }}
             {{- end}}
 
           ports:

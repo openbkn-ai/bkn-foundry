@@ -1,4 +1,8 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- if not (gt (len .Values.networkPolicy.allowedClients) 0) }}
+{{- fail "networkPolicy.allowedClients must contain at least one private lifecycle client" }}
+{{- end }}
+{{- $allowedClients := .Values.networkPolicy.allowedClients }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -16,11 +20,21 @@ spec:
     - ports:
         - protocol: TCP
           port: http
-    # Lifecycle and evidence writes use the private listener only.
+    # Managed lifecycle calls use the private listener only. Evidence ingest
+    # remains on the token-protected public API for platform producers.
     - from:
-        - podSelector:
+        {{- range $allowedClients }}
+        {{- if not (gt (len .podLabels) 0) }}
+        {{- fail "networkPolicy.allowedClients[].podLabels is required" }}
+        {{- end }}
+        {{- $podLabels := .podLabels }}
+        - namespaceSelector:
             matchLabels:
-              app: agent-retrieval
+              kubernetes.io/metadata.name: {{ default $.Release.Namespace .namespace | quote }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $podLabels | nindent 14 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: internal-http

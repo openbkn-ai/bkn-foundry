@@ -75,6 +75,8 @@ spec:
                   name: {{ required "core.mariadb.existingSecret is required for the MariaDB Core store" .Values.core.mariadb.existingSecret | quote }}
                   key: {{ .Values.core.mariadb.dsnKey | quote }}
             {{- end }}
+            - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST
+              value: {{ ternary "true" "false" .Values.evidence.ingestAuth.allowUnauthenticated | quote }}
             - name: BKN_TRACE_ALLOW_RAW_TRACE_QUERY
               value: {{ ternary "true" "false" .Values.evidence.rawTraceQuery.enabled | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
@@ -104,6 +106,13 @@ spec:
               value: {{ .Values.opensearch.auth.username | quote }}
             - name: OPENSEARCH_AUTH_PASSWORD
               value: {{ .Values.opensearch.auth.password | quote }}
+            {{- end }}
+            {{- if .Values.evidence.ingestAuth.existingSecret }}
+            - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.evidence.ingestAuth.existingSecret | quote }}
+                  key: {{ .Values.evidence.ingestAuth.secretKey | quote }}
             {{- end }}
             {{- if .Values.observability.cursorSigning.existingSecret }}
             - name: BKN_OBSERVABILITY_CURSOR_SIGNING_KEY

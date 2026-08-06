@@ -401,8 +401,8 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(string(values), `core_url: "http://agent-observability-internal:8081"`) {
 		t.Fatalf("Helm lifecycle default must target the internal agent-observability service: %s", values)
 	}
-	if !strings.Contains(string(values), `ingest_url: "http://agent-observability-internal:8081/api/agent-observability/v1/evidence/events"`) {
-		t.Fatal("Helm must connect evidence ingestion to the internal agent-observability service by default")
+	if !strings.Contains(string(values), `ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"`) {
+		t.Fatal("Helm must preserve the token-protected public evidence producer contract")
 	}
 	if !strings.Contains(string(values), `default_tenant_id: "openbkn-local"`) {
 		t.Fatalf("Helm lifecycle values must align with the observability single-tenant scope: %s", values)
@@ -422,8 +422,11 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if strings.Contains(rendering, `if .Values.observability.lifecycle.core_url`) {
 		t.Fatal("lifecycle enforcement must not have a long-lived disable switch")
 	}
-	if strings.Contains(rendering, `BKN_TRACE_QUERY_GATEWAY_TOKEN`) || strings.Contains(rendering, `BKN_TRACE_EVIDENCE_INGEST_TOKEN`) {
-		t.Fatal("Helm must not inject shared Trace tokens into agent-retrieval")
+	if strings.Contains(rendering, `BKN_TRACE_QUERY_GATEWAY_TOKEN`) {
+		t.Fatal("Helm must not inject a shared lifecycle token into agent-retrieval")
+	}
+	if !strings.Contains(rendering, `BKN_TRACE_EVIDENCE_INGEST_TOKEN`) {
+		t.Fatal("Helm must retain the evidence ingest token for the public producer contract")
 	}
 	if !strings.Contains(rendering, `name: BKN_TRACE_DEFAULT_TENANT_ID`) {
 		t.Fatal("Helm must support an explicit single-tenant trust scope")

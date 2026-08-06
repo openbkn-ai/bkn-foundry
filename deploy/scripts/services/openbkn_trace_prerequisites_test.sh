@@ -6,6 +6,7 @@ PASS=0
 FAILED=0
 CALLS=()
 EXISTING_SECRETS=""
+KUBECTL_LOG="$(mktemp)"
 
 ok() { PASS=$((PASS + 1)); }
 fail() { echo "FAIL: $*"; FAILED=$((FAILED + 1)); }
@@ -17,16 +18,33 @@ assert_contains() {
             return
         fi
     done
+    if grep -Fq -- "${expected}" "${KUBECTL_LOG}"; then
+        ok
+        return
+    fi
     fail "${label}: missing [${expected}]"
 }
 
 kubectl() {
     CALLS+=("$*")
+    printf '%s\n' "$*" >>"${KUBECTL_LOG}"
     case "$*" in
         *"get secret"*)
             local name
             name="$(printf '%s' "$*" | awk '{print $3}')"
-            [[ " ${EXISTING_SECRETS} " == *" ${name} "* ]]
+            if [[ " ${EXISTING_SECRETS} " != *" ${name} "* ]]; then
+                return 1
+            fi
+            if [[ "$*" == *"jsonpath={.data.dsn}"* ]]; then
+                printf 'dGVzdC1kc24='
+            fi
+            return 0
+            ;;
+        *"create secret"*)
+            local stdin_value
+            stdin_value="$(cat)"
+            printf 'stdin:%s\n' "${stdin_value}" >>"${KUBECTL_LOG}"
+            return 0
             ;;
         *) return 0 ;;
     esac
@@ -35,7 +53,7 @@ log_error() { :; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG_YAML_PATH="$(mktemp)"
-trap 'rm -f "${CONFIG_YAML_PATH}"' EXIT
+trap 'rm -f "${CONFIG_YAML_PATH}" "${KUBECTL_LOG}"' EXIT
 # shellcheck source=../services/openbkn.sh
 source "${SCRIPT_DIR}/scripts/services/openbkn.sh"
 
@@ -60,8 +78,32 @@ EOF
 _openbkn_prepare_trace_profile openbkn
 assert_contains "creates the Core DSN Secret" "create secret generic bkn-trace-core-mariadb"
 assert_contains "uses the Trace database DSN" "/bkn_trace?charset=utf8mb4"
+assert_contains "passes the DSN through stdin" "--from-file=dsn=/dev/stdin"
+if grep -Fq -- "--from-literal=dsn=" "${KUBECTL_LOG}"; then
+    fail "Core DSN must not be exposed in kubectl process arguments"
+else
+    ok
+fi
 
 CALLS=()
+: >"${KUBECTL_LOG}"
+cat > "${CONFIG_YAML_PATH}" <<'EOF'
+depServices:
+  rds:
+    source_type: internal
+    host: mariadb.resource.svc.cluster.local
+    port: 3306
+    user: invalid:user
+    password: valid@password/with?symbols
+EOF
+if _openbkn_prepare_trace_profile openbkn; then
+    fail "ambiguous DSN user must fail with a clear error"
+else
+    ok
+fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
 cat > "${CONFIG_YAML_PATH}" <<'EOF'
 depServices:
   rds:
@@ -75,9 +117,10 @@ fi
 assert_contains "checks for an external Core DSN Secret" "get secret bkn-trace-core-mariadb"
 
 CALLS=()
+: >"${KUBECTL_LOG}"
 EXISTING_SECRETS="bkn-trace-core-mariadb"
 _openbkn_prepare_trace_profile openbkn
-if printf '%s\n' "${CALLS[@]}" | grep -q "create secret generic"; then
+if grep -q "create secret generic" "${KUBECTL_LOG}"; then
     fail "existing Core DSN Secret must be reused"
 else
     ok

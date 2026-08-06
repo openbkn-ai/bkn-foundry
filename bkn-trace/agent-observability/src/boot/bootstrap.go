@@ -358,6 +358,8 @@ func newApp(
 		evidenceHandler.GetTraceSubresource(w, r)
 	}))
 	mux.HandleFunc(APIBasePath+"/evidence-nodes/", readAuth(evidenceHandler.GetEvidenceNode))
+	mux.HandleFunc(APIBasePath+"/evidence/events", ledgerHandler.Ingest)
+	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
 	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
 	httphandler.RegisterBusinessProvenanceRoutes(mux, APIBasePath, evidenceHandler, readAuth)
@@ -377,8 +379,6 @@ func newApp(
 	lifecycle := func(next http.HandlerFunc) http.HandlerFunc {
 		return internal(evidenceHandler.RequireTrustedLifecycleIdentity(next))
 	}
-	internalMux.HandleFunc(APIBasePath+"/evidence/events", lifecycle(ledgerHandler.Ingest))
-	internalMux.HandleFunc(APIBasePath+"/evidence/artifacts", internal(evidenceHandler.IngestEvidenceArtifact))
 	httphandler.RegisterSessionRoutes(internalMux, APIBasePath, sessionHandler, lifecycle)
 
 	return &App{

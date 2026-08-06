@@ -50,6 +50,22 @@ func TestLedgerHandlerReturnsDurableAckAndUsesTrustedOwner(t *testing.T) {
 	}
 }
 
+func TestLedgerHandlerRequiresEvidenceIngestToken(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewLedgerHandler(ledgersvc.New(ledgerstore.New()), httphandler.LedgerSecurityConfig{
+		IngestToken: "evidence-token",
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", nil)
+	response := httptest.NewRecorder()
+
+	handler.Ingest(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("missing evidence ingest token = %d, want %d: %s", response.Code, http.StatusUnauthorized, response.Body.String())
+	}
+}
+
 func TestLedgerHandlerRejectsCallerControlledIdentityFields(t *testing.T) {
 	t.Parallel()
 

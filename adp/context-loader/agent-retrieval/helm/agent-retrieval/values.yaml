@@ -177,8 +177,10 @@ observability:
     # deployments clear this value to force every caller to declare its domain.
     default_business_domain: "bd_public"
   evidence:
-    ingest_url: "http://agent-observability-internal:8081/api/agent-observability/v1/evidence/events"
+    ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
     timeout_ms: 2000
+    ingest_token_secret_name: "bkn-trace-evidence-ingest"
+    ingest_token_secret_key: "token"
   log:
     enabled: false
     level: info

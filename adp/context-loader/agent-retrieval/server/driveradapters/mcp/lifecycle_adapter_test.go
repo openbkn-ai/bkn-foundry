@@ -79,7 +79,6 @@ func TestStartInteractionWithoutConversationEnsuresManagedConversationFirst(t *t
 			}), nil
 		}
 	})}
-	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "query-token")
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", "")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
@@ -159,7 +158,6 @@ func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEviden
 	defer backend.Close()
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
-	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "query-token")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		RequestID: "req_cursor_native_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
@@ -226,7 +224,6 @@ func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testi
 	defer backend.Close()
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
-	t.Setenv("BKN_TRACE_QUERY_GATEWAY_TOKEN", "query-token")
 
 	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID: trace.TraceID{2}, SpanID: trace.SpanID{2}, TraceFlags: trace.FlagsSampled,

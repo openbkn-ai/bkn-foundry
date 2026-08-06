@@ -30,6 +30,7 @@ contains "AO requires Core DSN Secret" "${ao_sets}" "core.mariadb.existingSecret
 contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
 contains "AO creates evidence index" "${ao_sets}" "evidence.indexManagement.createJob.enabled=true"
+contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
 
 CORE_RELEASE_EXTRA_SETS=()
@@ -37,9 +38,9 @@ _openbkn_trace_profile_sets agent-retrieval
 ar_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "retrieval targets internal Trace Core" "${ar_sets}" "observability.lifecycle.core_url=http://agent-observability-internal:8081"
 contains "retrieval emits Trace spans" "${ar_sets}" "observability.trace.enabled=true"
-contains "retrieval emits evidence internally" "${ar_sets}" "observability.evidence.ingest_url=http://agent-observability-internal:8081/api/agent-observability/v1/evidence/events"
+contains "retrieval emits evidence through token-protected ingest" "${ar_sets}" "observability.evidence.ingest_url=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+contains "retrieval uses evidence ingest Secret" "${ar_sets}" "observability.evidence.ingest_token_secret_name=bkn-trace-evidence-ingest"
 not_contains "retrieval has no query gateway Secret" "${ar_sets}" "gateway_token_secret_name="
-not_contains "retrieval has no ingest token Secret" "${ar_sets}" "ingest_token_secret_name="
 
 if [[ "${FAILED}" -eq 0 ]]; then
     echo "openbkn_trace_profile_test: all ${PASS} checks passed"

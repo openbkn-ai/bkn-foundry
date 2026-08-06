@@ -25,6 +25,10 @@ service:
 
 networkPolicy:
   enabled: true
+  allowedClients:
+    - namespace: ""
+      podLabels:
+        app.kubernetes.io/name: agent-retrieval
 
 ingress:
   enabled: true
@@ -51,6 +55,13 @@ evidence:
         tag: "8.10.1"
         pullPolicy: IfNotPresent
       backoffLimit: 1
+  ingestAuth:
+    existingSecret: ""
+    secretKey: token
+    # Bundle installers may enable this explicitly. Standalone upgrades keep
+    # externally managed Secrets outside Helm ownership by default.
+    createSecret: false
+    allowUnauthenticated: false
   rawTraceQuery:
     enabled: false
   queryAuth:

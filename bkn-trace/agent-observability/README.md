@@ -197,11 +197,12 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 ### Evidence 写入安全边界
 
-受管 Conversation、Interaction、Operation 及 Evidence Ledger 写入只监听于集群内部的 `agent-observability-internal:8081`。公开 Ingress 的 8080 只提供 Studio 的受权读取；Chart 的 NetworkPolicy 只允许 `agent-retrieval` 访问 8081。写入方必须由 Context Loader 从认证上下文注入完整 owner tuple，服务不接受 body 自报 owner，也不依赖共享静态 token。
+受管 Conversation、Interaction、Operation 生命周期只监听于集群内部的 `agent-observability-internal:8081`，不依赖共享生命周期 token。Evidence Ledger 与 Artifact 保留在 8080 的已发布生产者接口，并继续校验独立的 `bkn-trace-evidence-ingest` token，以兼容 bkn-agent、Vega、BKN Backend、ontology-query 和 Context Loader。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认只允许带稳定 `app.kubernetes.io/name=agent-retrieval` 标签的 Pod 访问 8081，其他部署可通过 `networkPolicy.allowedClients` 显式扩展。
 
 ```bash
+printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \
 kubectl create secret generic bkn-trace-core-mariadb \
-  --from-literal=dsn='<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' \
+  --from-file=dsn=/dev/stdin \
   -n observability
 ```
 
@@ -213,7 +214,7 @@ helm upgrade --install agent-observability charts/agent-observability \
   -n observability
 ```
 
-内部写入方携带 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。若请求未从内部监听器进入，生命周期接口拒绝写入，不得 fail-open。
+Context Loader 携带 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。若请求未从内部监听器进入，生命周期接口拒绝写入，不得 fail-open。证据生产者则必须携带 ingest token；内部网络身份不能绕过该校验。
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
