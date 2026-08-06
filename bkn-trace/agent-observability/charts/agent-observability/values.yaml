@@ -128,8 +128,9 @@ affinity: {}
 
 opensearch:
   endpoint:  http://opensearch-cluster-master.resource.svc.cluster.local:9200
-  traceIndex: ss4o_traces-default-anyshare
-  logIndex: ss4o_logs-default-anyshare
+  # Keep these aligned with the bundled Collector's ss4o dataset/namespace.
+  traceIndex: ss4o_traces-default-namespace
+  logIndex: ss4o_logs-default-namespace
   auth:
     enabled: false
     username: ""

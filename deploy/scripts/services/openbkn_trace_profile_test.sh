@@ -46,9 +46,22 @@ contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
 contains "AO creates evidence index" "${ao_sets}" "evidence.indexManagement.createJob.enabled=true"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
-contains "AO reads Collector Trace index" "${ao_sets}" "opensearch.traceIndex=ss4o_traces-default-namespace"
-contains "AO reads Collector log index" "${ao_sets}" "opensearch.logIndex=ss4o_logs-default-namespace"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
+
+otel_values="$(<"${SCRIPT_DIR}/../bkn-trace/otelcol-contribute-chart/charts/otelcol-contrib/values.yaml")"
+contains "collector uses the Trace profile dataset" "${otel_values}" "dataset: default"
+contains "collector uses the Trace profile namespace" "${otel_values}" "namespace: namespace"
+contains "collector uses SS4O index names" "${otel_values}" "mode: ss4o"
+collector_dataset="$(awk '/^  dataset:/ { print $2; exit }' <<<"${otel_values}")"
+collector_namespace="$(awk '/^  namespace:/ { print $2; exit }' <<<"${otel_values}")"
+expected_trace_index="ss4o_traces-${collector_dataset}-${collector_namespace}"
+expected_log_index="ss4o_logs-${collector_dataset}-${collector_namespace}"
+contains "AO profile reads the Collector Trace index" "${ao_sets}" "opensearch.traceIndex=${expected_trace_index}"
+contains "AO profile reads the Collector log index" "${ao_sets}" "opensearch.logIndex=${expected_log_index}"
+
+agent_observability_values="$(<"${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability/values.yaml")"
+contains "standalone AO reads the Collector Trace index" "${agent_observability_values}" "traceIndex: ${expected_trace_index}"
+contains "standalone AO reads the Collector log index" "${agent_observability_values}" "logIndex: ${expected_log_index}"
 
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_trace_profile_sets agent-retrieval

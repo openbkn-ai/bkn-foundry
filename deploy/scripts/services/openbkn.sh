@@ -440,7 +440,8 @@ OPENBKN_TRACE_INGEST_SECRET="${OPENBKN_TRACE_INGEST_SECRET:-bkn-trace-evidence-i
 
 # The chart defaults keep standalone development lightweight. A complete
 # OpenBKN installation, however, must make managed Agent conversations durable
-# and queryable after agent-observability restarts.
+# and queryable after agent-observability restarts. The trace/log indexes below
+# must track the bundled Collector's ss4o dataset=default and namespace=namespace.
 _openbkn_trace_profile_sets() {
     local release_name="$1"
     case "${release_name}" in
