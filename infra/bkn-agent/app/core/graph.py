@@ -242,6 +242,21 @@ async def stream_chat(
                                     tool_names=tool_names,
                                 )
                         _completed = True
+                        # 在 yield done 之前收尾，不能留给 finally。
+                        #
+                        # SSE 的 finally 挂在异步生成器的终结上：客户端收完就断，
+                        # 驱动生成器的任务被取消，生成器停在 yield 上，finally 要等
+                        # GC 触发 aclose 才跑——甚至可能不跑。VM 三轮实测的表现是
+                        # 第一轮开的交互一直 active，第二、三轮全被
+                        # interaction_in_progress 挡掉。跨服务状态的释放不能依赖
+                        # 生成器终结时机。close_session 是幂等的，finally 那次是兜底。
+                        _answer_now = (
+                            _final_answer if _final_answer is not None else "".join(answer_parts)
+                        )
+                        if _answer_now:
+                            await context_loader.close_session(
+                                cl_session, outcome="completed", answer=_answer_now
+                            )
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
                         yield _sse(

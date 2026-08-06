@@ -101,6 +101,8 @@ class ContextLoaderSession:
     def __init__(self, conversation_id: str, interaction_id: str):
         self.conversation_id = conversation_id
         self.interaction_id = interaction_id
+        # 收尾在正常路径上提前做一次、finally 再兜一次，必须幂等
+        self.closed = False
         self._tools: list[Any] = []
         self._finish: Any = None
 
@@ -289,8 +291,9 @@ async def close_session(
 ) -> None:
     """收尾 bkn_finish_interaction。失败只告警：一轮已经跑完，不该因为收尾失败
     把成功的结果翻成失败。"""
-    if session is None or session._finish is None:
+    if session is None or session._finish is None or session.closed:
         return
+    session.closed = True
     if outcome not in _OUTCOMES:
         outcome = "completed"
     args: dict[str, Any] = {

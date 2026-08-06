@@ -355,3 +355,16 @@ def test_load_tools_never_opens_its_own_session(monkeypatch):
 
     assert opened == [], "load_tools 自己开了会话——那个交互没人关，会挡住下一轮"
     assert result == []
+
+
+def test_close_session_is_idempotent():
+    """正常路径提前关一次、finally 再兜一次，第二次必须是 no-op。
+
+    不幂等的话第二次会打到服务端，拿一个已经 completed 的交互再 finish，
+    白落一条告警。
+    """
+    s, fin = _session_with_finish()
+    asyncio.run(context_loader.close_session(s, outcome="completed", answer="a"))
+    asyncio.run(context_loader.close_session(s, outcome="completed", answer="a"))
+    assert len(fin.calls) == 1
+    assert s.closed is True
