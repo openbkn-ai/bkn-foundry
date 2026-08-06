@@ -17,35 +17,37 @@ type ActionSummary struct {
 }
 
 type RequestSummary struct {
-	RequestID              string        `json:"request_id"`
-	OperationID            string        `json:"operation_id,omitempty"`
-	OperationKey           string        `json:"operation_key,omitempty"`
-	ToolName               string        `json:"tool_name,omitempty"`
-	ControlledSummary      string        `json:"controlled_summary,omitempty"`
-	ConversationID         string        `json:"conversation_id,omitempty"`
-	InteractionID          string        `json:"interaction_id,omitempty"`
-	StartedAt              string        `json:"started_at,omitempty"`
-	CompletedAt            string        `json:"completed_at,omitempty"`
-	Initiator              string        `json:"initiator,omitempty"`
-	AgentOrApp             string        `json:"agent_or_app,omitempty"`
-	AgentName              string        `json:"agent_name,omitempty"`
-	ApplicationPrincipalID string        `json:"application_principal_id,omitempty"`
-	EffectiveSubjectID     string        `json:"effective_subject_id,omitempty"`
-	BusinessDomain         string        `json:"business_domain,omitempty"`
-	KnowledgeNetworks      []string      `json:"knowledge_networks,omitempty"`
-	QuestionPreview        string        `json:"question_preview,omitempty"`
-	ResultPreview          string        `json:"result_preview,omitempty"`
-	ResultCount            *int          `json:"result_count,omitempty"`
-	Status                 string        `json:"status"`
-	EvidenceCompleteness   string        `json:"evidence_completeness"`
-	PartialReasons         []string      `json:"partial_reasons,omitempty"`
-	BusinessRefs           []string      `json:"business_refs,omitempty"`
-	ActionSummary          ActionSummary `json:"action_summary"`
-	TraceCount             int           `json:"trace_count"`
-	DurationMS             int64         `json:"duration_ms,omitempty"`
-	ErrorSummary           string        `json:"error_summary,omitempty"`
-	InteractionQuestion    string        `json:"-"`
-	InteractionResult      string        `json:"-"`
+	RequestID                      string        `json:"request_id"`
+	OperationID                    string        `json:"operation_id,omitempty"`
+	OperationKey                   string        `json:"operation_key,omitempty"`
+	ToolName                       string        `json:"tool_name,omitempty"`
+	ControlledSummary              string        `json:"controlled_summary,omitempty"`
+	ConversationID                 string        `json:"conversation_id,omitempty"`
+	InteractionID                  string        `json:"interaction_id,omitempty"`
+	StartedAt                      string        `json:"started_at,omitempty"`
+	CompletedAt                    string        `json:"completed_at,omitempty"`
+	Initiator                      string        `json:"initiator,omitempty"`
+	AgentOrApp                     string        `json:"agent_or_app,omitempty"`
+	AgentName                      string        `json:"agent_name,omitempty"`
+	ApplicationPrincipalID         string        `json:"application_principal_id,omitempty"`
+	EffectiveSubjectID             string        `json:"effective_subject_id,omitempty"`
+	BusinessDomain                 string        `json:"business_domain,omitempty"`
+	KnowledgeNetworks              []string      `json:"knowledge_networks,omitempty"`
+	QuestionPreview                string        `json:"question_preview,omitempty"`
+	ResultPreview                  string        `json:"result_preview,omitempty"`
+	ResultCount                    *int          `json:"result_count,omitempty"`
+	Status                         string        `json:"status"`
+	EvidenceCompleteness           string        `json:"evidence_completeness"`
+	PartialReasons                 []string      `json:"partial_reasons,omitempty"`
+	BusinessRefs                   []string      `json:"business_refs,omitempty"`
+	ActionSummary                  ActionSummary `json:"action_summary"`
+	TraceCount                     int           `json:"trace_count"`
+	DurationMS                     int64         `json:"duration_ms,omitempty"`
+	ErrorSummary                   string        `json:"error_summary,omitempty"`
+	InteractionQuestion            string        `json:"-"`
+	InteractionResult              string        `json:"-"`
+	InteractionQuestionArtifactRef string        `json:"-"`
+	InteractionResultArtifactRef   string        `json:"-"`
 }
 
 type TraceSummary struct {
@@ -185,7 +187,9 @@ type InteractionSummary struct {
 	StartedAt              string           `json:"started_at,omitempty"`
 	CompletedAt            string           `json:"completed_at,omitempty"`
 	QuestionPreview        string           `json:"question_preview,omitempty"`
+	QuestionArtifactRef    string           `json:"question_artifact_ref,omitempty"`
 	ResultPreview          string           `json:"result_preview,omitempty"`
+	ResultArtifactRef      string           `json:"result_artifact_ref,omitempty"`
 	Status                 string           `json:"status"`
 	EvidenceCompleteness   string           `json:"evidence_completeness"`
 	PartialReasons         []string         `json:"partial_reasons,omitempty"`
@@ -383,6 +387,9 @@ func buildRequestSummary(
 		}
 		switch artifact.ArtifactType {
 		case ArtifactTypeQuestion:
+			if interactionScopedArtifact(artifact) {
+				firstNonEmpty(&summary.InteractionQuestionArtifactRef, artifactReference(artifact.ArtifactID))
+			}
 			if preview := artifactPreview(artifact); preview != "" {
 				if interactionScopedArtifact(artifact) {
 					firstNonEmpty(&summary.InteractionQuestion, preview)
@@ -392,6 +399,9 @@ func buildRequestSummary(
 				}
 			}
 		case ArtifactTypeResult:
+			if interactionScopedArtifact(artifact) {
+				firstNonEmpty(&summary.InteractionResultArtifactRef, artifactReference(artifact.ArtifactID))
+			}
 			if preview := artifactPreview(artifact); preview != "" {
 				if interactionScopedArtifact(artifact) {
 					summary.InteractionResult = preview
@@ -517,6 +527,13 @@ func summaryStringValues(value any) []string {
 
 func interactionScopedArtifact(artifact EvidenceArtifact) bool {
 	return artifact.InteractionID != "" && artifact.OperationID == ""
+}
+
+func artifactReference(artifactID string) string {
+	if artifactID == "" {
+		return ""
+	}
+	return "artifact:" + strings.TrimPrefix(artifactID, "artifact:")
 }
 
 func summaryIntPointer(payload map[string]any, key string) *int {

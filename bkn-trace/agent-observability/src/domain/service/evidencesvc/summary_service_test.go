@@ -77,6 +77,9 @@ func TestListConversationsUsesCanonicalSessionStatus(t *testing.T) {
 	if page.Entries[0].DurationMS != 3000 {
 		t.Fatalf("active conversation must retain completed interaction duration: %+v", page.Entries[0])
 	}
+	if page.Entries[0].StartedAt != "2026-08-03T08:00:00Z" {
+		t.Fatalf("conversation start must come from the Core lifecycle: %+v", page.Entries[0])
+	}
 }
 
 func TestListConversationsSumsCompletedInteractionDurations(t *testing.T) {

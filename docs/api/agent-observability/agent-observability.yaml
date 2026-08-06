@@ -574,12 +574,16 @@ definitions:
         items:
           type: string
         type: array
+      question_artifact_ref:
+        type: string
       question_preview:
         type: string
       requests:
         items:
           $ref: '#/definitions/evidencevo.RequestSummary'
         type: array
+      result_artifact_ref:
+        type: string
       result_preview:
         type: string
       started_at:

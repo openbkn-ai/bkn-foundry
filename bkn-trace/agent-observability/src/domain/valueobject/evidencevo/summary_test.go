@@ -459,6 +459,9 @@ func TestBuildExecutionSummariesDoesNotCopyInteractionResultIntoOperation(t *tes
 	if requests[0].ResultPreview != "" {
 		t.Fatalf("interaction result must not be copied into an OpenBKN operation: %+v", requests[0])
 	}
+	if requests[0].InteractionResultArtifactRef != "artifact:interaction_result" {
+		t.Fatalf("interaction result artifact must remain available to the interaction read model: %+v", requests[0])
+	}
 	if len(executions) != 1 || executions[0].Status != "error" {
 		t.Fatalf("failed trace must remain visible: %+v", executions)
 	}

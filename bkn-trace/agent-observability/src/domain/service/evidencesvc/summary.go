@@ -302,6 +302,8 @@ func aggregateRequestGroup(requests []evidencevo.RequestSummary) (evidencevo.Req
 		firstNonEmptySummary(&result.EffectiveSubjectID, request.EffectiveSubjectID)
 		firstNonEmptySummary(&result.BusinessDomain, request.BusinessDomain)
 		firstNonEmptySummary(&result.ErrorSummary, request.ErrorSummary)
+		firstNonEmptySummary(&result.InteractionQuestionArtifactRef, request.InteractionQuestionArtifactRef)
+		firstNonEmptySummary(&result.InteractionResultArtifactRef, request.InteractionResultArtifactRef)
 		result.TraceCount += request.TraceCount
 		if request.InteractionID != "" {
 			interactions[request.InteractionID] = struct{}{}
@@ -437,6 +439,9 @@ func (s *Service) applyCanonicalConversationState(
 				tx, requestsByConversation[entries[index].ConversationID],
 			)
 			entries[index].Status = string(conversation.Status)
+			if !conversation.CreatedAt.IsZero() {
+				entries[index].StartedAt = conversation.CreatedAt.UTC().Format(time.RFC3339Nano)
+			}
 			entries[index].AgentName = conversation.AgentName
 			entries[index].ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
 			entries[index].EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
@@ -844,7 +849,9 @@ func (s *Service) GetInteractionSummary(
 	summary.ApplicationPrincipalID = base.ApplicationPrincipalID
 	summary.EffectiveSubjectID = base.EffectiveSubjectID
 	summary.QuestionPreview = base.QuestionPreview
+	summary.QuestionArtifactRef = base.InteractionQuestionArtifactRef
 	summary.ResultPreview = base.ResultPreview
+	summary.ResultArtifactRef = base.InteractionResultArtifactRef
 	summary.EvidenceCompleteness = base.EvidenceCompleteness
 	summary.PartialReasons = append([]string{}, base.PartialReasons...)
 	summary.ErrorSummary = base.ErrorSummary

@@ -606,13 +606,13 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 			switch event.EventType {
 			case "claim.created":
 				claimSourceEventIDs = append(claimSourceEventIDs, stringArrayField(event.Payload, "source_event_ids")...)
-				if visible(event.Payload) {
-					response.Data.Claims = append(response.Data.Claims, cloneMap(event.Payload))
-				} else {
-					countVisibility(event.Payload, &response.VisibilitySummary)
-				}
 				if claimID, ok := stringField(event.Payload, "claim_id"); ok && claimID != "" {
 					knownClaims[claimID] = struct{}{}
+					if visible(event.Payload) {
+						response.Data.Claims = append(response.Data.Claims, cloneMap(event.Payload))
+					} else {
+						countVisibility(event.Payload, &response.VisibilitySummary)
+					}
 				}
 			case "evidence.refs.created":
 				claimID, _ := stringField(event.Payload, "claim_id")
@@ -1234,6 +1234,11 @@ func conclusionScope(traces []evidencevo.NormalizedTrace, knownClaims map[string
 	}
 	for _, trace := range traces {
 		for _, event := range trace.Events {
+			if event.EventType == "claim.created" && event.InteractionID != "" {
+				if claimID, _ := stringField(event.Payload, "claim_id"); claimID == "" {
+					return "interaction"
+				}
+			}
 			if isExecutionFact(event.EventType) && event.InteractionID != "" && event.OperationID != "" {
 				return "interaction"
 			}

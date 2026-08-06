@@ -3895,6 +3895,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "question_artifact_ref": {
+                    "type": "string"
+                },
                 "question_preview": {
                     "type": "string"
                 },
@@ -3903,6 +3906,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/evidencevo.RequestSummary"
                     }
+                },
+                "result_artifact_ref": {
+                    "type": "string"
                 },
                 "result_preview": {
                     "type": "string"

@@ -3887,6 +3887,9 @@
                         "type": "string"
                     }
                 },
+                "question_artifact_ref": {
+                    "type": "string"
+                },
                 "question_preview": {
                     "type": "string"
                 },
@@ -3895,6 +3898,9 @@
                     "items": {
                         "$ref": "#/definitions/evidencevo.RequestSummary"
                     }
+                },
+                "result_artifact_ref": {
+                    "type": "string"
                 },
                 "result_preview": {
                     "type": "string"
