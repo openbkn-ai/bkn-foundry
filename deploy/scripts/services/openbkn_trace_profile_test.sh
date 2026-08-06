@@ -46,6 +46,8 @@ contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
 contains "AO creates evidence index" "${ao_sets}" "evidence.indexManagement.createJob.enabled=true"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
+contains "AO reads Collector Trace index" "${ao_sets}" "opensearch.traceIndex=ss4o_traces-default-namespace"
+contains "AO reads Collector log index" "${ao_sets}" "opensearch.logIndex=ss4o_logs-default-namespace"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
 
 CORE_RELEASE_EXTRA_SETS=()
@@ -53,6 +55,7 @@ _openbkn_trace_profile_sets agent-retrieval
 ar_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "retrieval targets internal Trace Core" "${ar_sets}" "observability.lifecycle.core_url=http://agent-observability-internal:8081"
 contains "retrieval emits Trace spans" "${ar_sets}" "observability.trace.enabled=true"
+contains "retrieval emits searchable runtime logs" "${ar_sets}" "observability.log.enabled=true"
 contains "retrieval emits evidence through token-protected ingest" "${ar_sets}" "observability.evidence.ingest_url=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
 contains "retrieval uses evidence ingest Secret" "${ar_sets}" "observability.evidence.ingest_token_secret_name=bkn-trace-evidence-ingest"
 not_contains "retrieval has no query gateway Secret" "${ar_sets}" "gateway_token_secret_name="
