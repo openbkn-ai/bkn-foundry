@@ -9,6 +9,7 @@
 - 模块目录由 `trace-ai/` 改名为 `bkn-trace/`，与平台 `bkn-*` 命名统一（展示名：BKN Trace）。Go module path 变更为 `github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability`；CI/发布流程、CODEOWNERS、Issue 路由同步更新。镜像与 Chart 名（`agent-observability`、`otelcol-contrib`）不变。
 - 完整 OpenBKN 安装将 Trace Core 持久化到固定的 `bkn_trace` MariaDB 数据库，并将 Evidence 持久化到 OpenSearch；离线安装会把 Evidence 索引 Hook 镜像同步到离线仓库，在线安装保持 Chart 默认仓库，除非显式覆盖。
 - 受管生命周期写入仅通过集群内部 `8081` Service 开放；Evidence Event/Artifact 继续通过公开 `8080` 端口和独立 ingest token 写入。
+- 完整安装器在安装 release 前创建或验证 Evidence ingest Secret，使 Context Loader 获取 token 的行为不依赖发布清单顺序。
 
 ### 升级说明
 

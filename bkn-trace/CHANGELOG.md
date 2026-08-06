@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Renamed the module directory from `trace-ai/` to `bkn-trace/` to align with the platform-wide `bkn-*` naming (display name: BKN Trace). The Go module path changed to `github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability`; CI/release workflows, CODEOWNERS, and issue routing were updated accordingly. Image and chart names (`agent-observability`, `otelcol-contrib`) are unchanged.
 - Complete OpenBKN installations persist Trace Core in the fixed `bkn_trace` MariaDB database and Evidence in OpenSearch. Offline installations mirror the Evidence index hook image into the configured offline registry; online installations keep the chart registry unless explicitly overridden.
 - Managed lifecycle writes are exposed only through the cluster-internal `8081` Service. Evidence Event/Artifact writes remain on public port `8080` and use the independent ingest token.
+- The complete installer creates or validates the Evidence ingest Secret before installing releases, so Context Loader receives the token regardless of release manifest order.
 
 ### Upgrade Notes
 

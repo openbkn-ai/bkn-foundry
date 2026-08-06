@@ -87,13 +87,15 @@ _openbkn_apply_default_set_values
 explicit_sets="${CORE_SET_VALUES[*]:-}"
 not_contains "application registry overrides do not imply a third-party mirror" "${explicit_sets}" "evidence.indexManagement.createJob.image.registry="
 
-CORE_SET_VALUES=(
-    "image.registry=registry.example/openbkn"
-    "evidence.indexManagement.createJob.image.registry=hooks.example"
-)
+CORE_SET_VALUES=("evidence.indexManagement.createJob.image.registry=hooks.example")
+OFFLINE_MODE=true
+OFFLINE_REGISTRY=registry.test:5000
 _openbkn_apply_default_set_values
 explicit_hook_sets="${CORE_SET_VALUES[*]:-}"
-contains "explicit hook registries are preserved" "${explicit_hook_sets}" "evidence.indexManagement.createJob.image.registry=hooks.example"
+contains "offline installs preserve explicit hook registries" "${explicit_hook_sets}" "evidence.indexManagement.createJob.image.registry=hooks.example"
+not_contains "offline installs do not append a competing hook registry" "${explicit_hook_sets}" "evidence.indexManagement.createJob.image.registry=registry.test:5000/openbkn-ai"
+
+OFFLINE_MODE=false
 
 cat >"${CONFIG_REGISTRY_FILE}" <<'EOF'
 image:
