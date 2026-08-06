@@ -1106,7 +1106,7 @@ jobs:
           state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
           [ "$state" = "OPEN" ] || exit 0
           MARKER='<!-- claude-review-empty -->'
-          body=$(printf '%s\n### 本轮评审空转\n\n没有分片产出结论，**这个 PR 本轮未经评审**。未落评审状态是因为没审过——既不该 request-changes，也不该 approve。\n\n常见原因：分片撞轮次上限、模型未写出结论文件、汇总步骤失败、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。下一轮真出了结论，这条会自动消失。' "$MARKER" "$RUN_URL")
+          body=$(printf '%s\n### 本轮评审空转\n\n本轮没有落下评审结论，**这个 PR 的改动没有拿到评审意见**。未落评审状态是因为没有可表态的结论——既不该 request-changes，也不该 approve。\n\n常见原因：分片撞轮次上限、模型未写出结论文件、汇总步骤失败、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。下一轮真出了结论，这条会自动消失。' "$MARKER" "$RUN_URL")
           # 复用同一条：synchronize 每次推送跑一轮，凭据缺失这类持续故障否则会在 PR 上
           # 堆出一串一模一样的通告，正是进度评论当初特意避开的噪声。
           existing=$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
