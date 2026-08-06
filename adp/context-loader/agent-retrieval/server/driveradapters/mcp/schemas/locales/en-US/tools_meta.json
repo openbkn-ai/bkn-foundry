@@ -54,7 +54,7 @@
   },
   "find_skills": {
     "title": "Find Skills",
-    "group_title": "Resources & Skills",
+    "group_title": "Skills",
     "description": "Find available skills that match a knowledge network, object type, instance context, or user intent."
   },
   "list_knowledge_networks": {
@@ -84,32 +84,32 @@
   },
   "list_resources": {
     "title": "Data Resources",
-    "group_title": "Resources & Skills",
+    "group_title": "Data Resources",
     "description": "List visible data-layer resources independent of ontology object types. Use this when resources are not modeled as object types or when querying raw data directly."
   },
   "describe_resource": {
     "title": "Resource Detail",
-    "group_title": "Resources & Skills",
+    "group_title": "Data Resources",
     "description": "Describe one data resource's physical schema, including connector type and columns. Use this before writing run_sql against raw resources."
   },
   "list_skills": {
     "title": "Skill List",
-    "group_title": "Resources & Skills",
+    "group_title": "Skills",
     "description": "Browse published skills without a knowledge-network context. Complements find_skills, which recalls by object type or instance: this one pages a list filtered by name or category. Take the skill_id to get_skill_content for SKILL.md, read_skill_file for bundled files, execute_skill to run the entry command."
   },
   "get_skill_content": {
     "title": "Skill Content",
-    "group_title": "Resources & Skills",
+    "group_title": "Skills",
     "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage and entry commands are documented there; fetch individual bundled files with read_skill_file instead of reading the whole package."
   },
   "read_skill_file": {
     "title": "Read Skill File",
-    "group_title": "Resources & Skills",
+    "group_title": "Skills",
     "description": "Read one file from a skill bundle; rel_path comes from the files listing returned by get_skill_content. For progressive loading — large files need not stay in context. Binary files return metadata only, no body."
   },
   "execute_skill": {
     "title": "Execute Skill",
-    "group_title": "Resources & Skills",
+    "group_title": "Skills",
     "description": "Run a skill's entry command inside the sandbox and return exit_code / stdout / stderr. entry_shell must come from the entry declared in SKILL.md — read it with get_skill_content first."
   }
 }
