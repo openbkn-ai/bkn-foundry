@@ -282,8 +282,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # --paginate 是逐页应用 --jq 的，评论超过一页时输出会是多个 JSON 数组首尾
+          # 相接、不是一个合法数组。所以先取原始页，再用 jq -s 合并成一个数组。
+          # 只留最近 100 条：这里取的是全部历史轮次的 inline 评论，攒多了会挤占分片
+          # 的上下文，而复评真正要看的是最近几轮。
           gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}/comments" --paginate \
-            --jq '[.[] | {path, line, user: .user.login, body}]' \
+            | jq -s '[.[][] | {path, line, user: .user.login, body}] | .[-100:]' \
             > prior-comments.json || echo '[]' > prior-comments.json
 
       - name: Claude review
@@ -785,15 +789,18 @@ jobs:
                   lines.append("  %s%s" % (T["why"], v.get("reason", "")))
               lines.append("\n</details>\n")
 
+          # 标量字段同样是不可信输入：这里用 + 拼接（而非 %s 格式化）要求 str，
+          # 模型把 impact 写成数组就抛 TypeError，失败形态与上面挡掉的畸形元素一致
+          # ——Assemble 非零退出后既无表态也无告警。一律套 str()。
           lines.append("## %s\n" % T["byshard"])
           for s, data in done:
               lines.append("### %s" % s["label"])
               if data.get("summary"):
-                  lines.append(data["summary"])
+                  lines.append(str(data["summary"]))
               if data.get("impact"):
-                  lines.append(T["impact"] + data["impact"])
+                  lines.append(T["impact"] + str(data["impact"]))
               if data.get("not_covered"):
-                  lines.append(T["notcov"] + data["not_covered"])
+                  lines.append(T["notcov"] + str(data["not_covered"]))
               lines.append("")
 
           if unconfirmed:
