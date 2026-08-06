@@ -23,6 +23,7 @@ func TestEnsureReadOnlySQL_Allowed(t *testing.T) {
 		`SELECT * FROM {{.res1}} WHERE note = 'please delete later'`,
 		`SELECT COUNT(*) FROM {{.res_audit}} WHERE op = "delete" GROUP BY user_id`,
 		`SELECT * FROM {{.res_logs}} WHERE note = 'it\'s fine' AND op = 'delete'`,
+		`SELECT * FROM {{.res_logs}} WHERE note = "he said \"hi\"; ok"`,
 		"SELECT * FROM {{.res_logs}} WHERE note = 'it''s fine' AND op = 'delete'",
 		"SELECT `delete` FROM {{.res_logs}}",
 		`SELECT * FROM {{.res-001}}`,
@@ -51,7 +52,7 @@ func TestEnsureReadOnlySQL_Rejected(t *testing.T) {
 		`SELECT * FROM {{.res1}} -- harmless
 			 ; DELETE FROM {{.res1}}`,
 		"SELECT `a\\` , x FROM {{.res1}}; DROP TABLE t",
-		`SELECT "a\" , x FROM {{.res1}}; DROP TABLE t`,
+		`SELECT "a\"" FROM {{.res1}}; DROP TABLE t`,
 		`SELECT * INTO OUTFILE '/tmp/x' FROM {{.res1}}`,
 		`SHOW TABLES`,
 		`CALL some_proc()`,

@@ -354,9 +354,10 @@ components:
           type: string
           description: |
             MySQL 方言 SQL。表名必须写成 `{{.<resource_id>}}` 占位符，
-            也接受 `{{<resource_id>}}` 形式。标识符需要引用时使用反引号；双引号在
-            MySQL 方言下是字符串字面量，不能用于标识符。只允许单条 `SELECT`（不支持
-            `WITH` / CTE）。
+            也接受 `{{<resource_id>}}` 形式；`resource_id` 必须匹配
+            `[a-z0-9][a-z0-9_-]{0,39}`（小写，最长 40 个字符），否则占位符不会被识别。
+            标识符需要引用时使用反引号；双引号在 MySQL 方言下是字符串字面量，不能用于
+            标识符。只允许单条 `SELECT`（不支持 `WITH` / CTE）。
           example: SELECT * FROM {{.res_orders}} LIMIT 100
         query_timeout:
           type: integer

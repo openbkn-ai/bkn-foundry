@@ -87,11 +87,11 @@ func stripSQLNoise(sql string) string {
 }
 
 // skipQuotedSQLLiteral 返回从 openingQuote 开始的 MySQL 字符串或反引号标识符的结束位置。
-// 成对引号不会提前结束字面量；反斜杠转义只对单引号字符串生效，
-// 反引号标识符与双引号字符串内的反斜杠是普通字符。
+// 成对引号不会提前结束字面量；反斜杠转义对字符串字面量生效，
+// 反引号标识符内的反斜杠是普通字符。
 func skipQuotedSQLLiteral(runes []rune, start int, quote rune) int {
 	for i := start + 1; i < len(runes); i++ {
-		if quote == '\'' && runes[i] == '\\' && i+1 < len(runes) {
+		if quote != '`' && runes[i] == '\\' && i+1 < len(runes) {
 			i++
 			continue
 		}
