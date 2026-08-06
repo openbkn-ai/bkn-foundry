@@ -15,7 +15,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/intcomp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/toolbox"
@@ -33,7 +32,6 @@ type mcpServiceImpl struct {
 	DBMCPServerRelease        model.DBMCPServerRelease
 	DBMCPServerReleaseHistory model.DBMCPServerReleaseHistory
 	DBMCPTool                 model.DBMCPTool
-	IntCompConfigService      interfaces.IIntCompConfigService
 	UserMgnt                  interfaces.UserManagement
 	Validator                 interfaces.Validator
 	CategoryManager           interfaces.CategoryManager
@@ -54,7 +52,6 @@ func NewMCPServiceImpl() interfaces.IMCPService {
 			DBMCPServerRelease:        dbaccess.NewMCPServerReleaseDBSingleton(),
 			DBMCPServerReleaseHistory: dbaccess.NewMCPServerReleaseHistoryDBSingleton(),
 			DBMCPTool:                 dbaccess.NewMCPToolDBSingleton(),
-			IntCompConfigService:      intcomp.NewIntCompConfigService(),
 			UserMgnt:                  drivenadapters.NewUserManagementClient(),
 			Validator:                 validator.NewValidator(),
 			CategoryManager:           category.NewCategoryManager(),

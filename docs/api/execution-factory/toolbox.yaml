@@ -748,40 +748,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /tool-box/intcomp:
-    post:
-      tags:
-        - ToolBox
-      summary: 注册内置工具箱
-      operationId: createInternalToolBox
-      description: |
-        注册平台内置工具箱。与普通新建的差别：`box_id` **由调用方指定**（业务方
-        自己保证唯一），并要求带配置版本与配置来源，用于内置能力的版本管理。
-      parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/InternalToolBoxRequest'
-      responses:
-        '200':
-          description: 注册结果
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  box_id:
-                    type: string
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
   /tool-box/market:
     get:
       tags:
@@ -1666,36 +1632,6 @@ components:
           items:
             type: string
           description: 失败明细。无失败时不返回。
-
-    InternalToolBoxRequest:
-      type: object
-      required:
-        - box_id
-        - box_name
-        - box_desc
-        - source
-        - config_version
-        - config_source
-      properties:
-        box_id:
-          type: string
-          description: 工具箱 ID。**由调用方指定**，业务方自己保证唯一。
-        box_name:
-          type: string
-        box_desc:
-          type: string
-        source:
-          type: string
-          description: 来源。
-        config_version:
-          type: string
-          description: 配置版本，用于内置能力的版本管理。
-        config_source:
-          type: string
-          enum:
-            - auto
-            - manual
-          description: 配置来源。
 
     ReleaseToolBoxInfo:
       type: object

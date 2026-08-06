@@ -231,18 +231,6 @@ func (v *validator) ValidatorToolDesc(ctx context.Context, desc string) (err err
 	return
 }
 
-// ValidatorIntCompVersion 验证内置组件版本
-func (v *validator) ValidatorIntCompVersion(ctx context.Context, version string) (err error) {
-	pattern := `^[0-9]+(\.[0-9]+){2,}$` // 允许x.y.z或更长格式（如x.y.z.w）
-	matched, err := regexp.MatchString(pattern, version)
-	if !matched || err != nil {
-		err = fmt.Errorf("internal component version:%s, format is invalid", version)
-		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtInternalToolBoxVersion, err.Error(),
-			version)
-	}
-	return
-}
-
 func (v *validator) ValidatorMCPName(ctx context.Context, name string) (err error) {
 	if name == "" {
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtMCPNameEmpty, "mcp name cannot be empty")

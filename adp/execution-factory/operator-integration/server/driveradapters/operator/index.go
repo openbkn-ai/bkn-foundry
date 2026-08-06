@@ -36,9 +36,6 @@ type OperatorHandler interface {
 	/*算子市场查询操作*/
 	QueryOperatorMarketList(c *gin.Context)
 	QueryOperatorMarketDetail(c *gin.Context)
-
-	/*内部算子注册*/
-	RegisterInternalOperator(c *gin.Context)
 }
 
 var (

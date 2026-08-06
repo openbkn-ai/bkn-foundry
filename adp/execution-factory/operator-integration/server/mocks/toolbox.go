@@ -57,21 +57,6 @@ func (mr *MockIToolServiceMockRecorder) ConvertOperatorToTool(ctx, req any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConvertOperatorToTool", reflect.TypeOf((*MockIToolService)(nil).ConvertOperatorToTool), ctx, req)
 }
 
-// CreateInternalToolBox mocks base method.
-func (m *MockIToolService) CreateInternalToolBox(ctx context.Context, req *interfaces.CreateInternalToolBoxReq) (*interfaces.CreateInternalToolBoxResp, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateInternalToolBox", ctx, req)
-	ret0, _ := ret[0].(*interfaces.CreateInternalToolBoxResp)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateInternalToolBox indicates an expected call of CreateInternalToolBox.
-func (mr *MockIToolServiceMockRecorder) CreateInternalToolBox(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateInternalToolBox", reflect.TypeOf((*MockIToolService)(nil).CreateInternalToolBox), ctx, req)
-}
-
 // CreateTool mocks base method.
 func (m *MockIToolService) CreateTool(ctx context.Context, req *interfaces.CreateToolReq) (*interfaces.CreateToolResp, error) {
 	m.ctrl.T.Helper()

@@ -96,18 +96,3 @@ class Operator():
     def GetOperatorMarketDetail(self, operator_id, headers):
         url = self.base_url + f"/market/{operator_id}"
         return Request.get(self, url, headers)
-    
-    '''注册或更新内置算子'''
-    def RegisterBuiltinOperator(self, data, headers):
-        url = self.base_url + "/intcomp"
-        return Request.post(self, url, data, headers)
-
-    '''注册或更新内置算子 (Multipart)'''
-    def RegisterBuiltinOperatorMultipart(self, files, data, headers):
-        url = self.base_url + "/intcomp"
-        return Request.post_multipart(self, url, files, data, headers)
-    
-    '''注册或更新内置算子(内部接口)'''
-    def InternalBuiltinOperator(self, data, headers) :
-        url = "http://agent-operator-integration:9000/api/agent-operator-integration/internal-v1/operator/intcomp"
-        return Request.post(self, url, data, headers)

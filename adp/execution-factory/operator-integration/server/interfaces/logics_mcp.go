@@ -307,41 +307,6 @@ type MCPProxyCallToolResponse struct {
 	IsError bool          `json:"is_error"` // 是否为错误
 }
 
-// MCPBuiltinRegisterRequest MCP内置注册请求
-type MCPBuiltinRegisterRequest struct {
-	MCPCoreConfigInfo `json:",inline"`
-	BusinessDomainID  string           `header:"x-business-domain" validate:"required"`             // 业务域ID
-	UserID            string           `header:"user_id"`                                           // 用户ID,内部使用
-	IsPublic          bool             `header:"is_public"`                                         // 是否为公开
-	MCPID             string           `json:"mcp_id"`                                              // MCP Server ID
-	Name              string           `json:"name,omitempty"`                                      // MCP Server名称
-	Description       string           `json:"description,omitempty"`                               // 描述信息
-	Status            string           `json:"status,omitempty"`                                    // 状态
-	Source            string           `json:"source,omitempty"`                                    // 来源
-	IsInternal        bool             `json:"is_internal"`                                         // 是否为内置
-	CreateUser        string           `json:"create_user,omitempty"`                               // 创建用户
-	CreateTime        int64            `json:"create_time,omitempty"`                               // 创建时间
-	UpdateUser        string           `json:"update_user,omitempty"`                               // 更新用户
-	UpdateTime        int64            `json:"update_time,omitempty"`                               // 更新时间
-	ReleaseTime       int64            `json:"release_time,omitempty"`                              // 发布时间
-	ReleaseUser       string           `json:"release_user,omitempty"`                              // 发布用户
-	ProtectedFlag     bool             `json:"protected_flag"`                                      // 版本周期内保护标志，true表示保护，false表示不保护，这个字段主要作用于内置MCP Server
-	ConfigVersion     string           `json:"config_version" validate:"required"`                  // 配置版本
-	ConfigSource      ConfigSourceType `json:"config_source" validate:"required,oneof=auto manual"` // 配置来源(自动/手动)
-}
-
-type MCPBuiltinRegisterResponse struct {
-	MCPID  string    `json:"mcp_id"` // MCP Server ID
-	Status BizStatus `json:"status"` // 状态
-}
-
-// MCPBuiltinUnregisterRequest MCP内置注销请求
-type MCPBuiltinUnregisterRequest struct {
-	UserID   string `header:"user_id" validate:"required"` // 用户ID,内部使用
-	IsPublic bool   `header:"is_public"`                   // 是否为公开
-	MCPID    string `uri:"mcp_id" validate:"required"`     // MCP Server ID
-}
-
 // IMCPManageService MCP管理接口
 type IMCPManageService interface {
 	// ParseSSE 解析SSE MCPServer
@@ -380,14 +345,6 @@ type IMCPExecuteService interface {
 	CallMCPTool(ctx context.Context, req *MCPProxyCallToolRequest) (*MCPProxyCallToolResponse, error)
 }
 
-// IMCPBuiltinService MCP内置接口
-type IMCPBuiltinService interface {
-	// RegisterBuiltinMCPServer 注册内置MCP Server
-	RegisterBuiltinMCPServer(ctx context.Context, req *MCPBuiltinRegisterRequest) (*MCPBuiltinRegisterResponse, error)
-	// UnregisterBuiltinMCPServer 注销内置MCP Server
-	UnregisterBuiltinMCPServer(ctx context.Context, req *MCPBuiltinUnregisterRequest) error
-}
-
 // IMCPService MCP服务接口
 type IMCPService interface {
 	// MCPManageService MCP管理接口
@@ -396,8 +353,6 @@ type IMCPService interface {
 	IMCPReleaseService
 	// MCPExecuteService MCP代理接口
 	IMCPExecuteService
-	// MCPBuiltinService MCP内置接口
-	IMCPBuiltinService
 	// IMCPImpexService MCP导入导出接口
 	IMCPImpexService
 	// UpgradeMCPInstance 升级MCP Server实例

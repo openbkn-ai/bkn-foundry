@@ -117,7 +117,6 @@ type Validator interface {
 	ValidatorToolBoxDesc(ctx context.Context, desc string) (err error)
 	ValidatorToolName(ctx context.Context, name string) (err error)
 	ValidatorToolDesc(ctx context.Context, desc string) (err error)
-	ValidatorIntCompVersion(ctx context.Context, version string) (err error)
 	ValidatorMCPName(ctx context.Context, name string) (err error)
 	ValidatorMCPDesc(ctx context.Context, desc string) (err error)
 	ValidatorCategoryName(ctx context.Context, name string) (err error)

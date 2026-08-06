@@ -16,7 +16,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/intcomp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/proxy"
@@ -32,7 +31,6 @@ type operatorManager struct {
 	Proxy                 interfaces.ProxyHandler
 	OpReleaseDB           model.IOperatorReleaseDB
 	OpReleaseHistoryDB    model.IOperatorReleaseHistoryDB
-	IntCompConfigSvc      interfaces.IIntCompConfigService
 	AuthService           interfaces.IAuthorizationService
 	AuditLog              interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
 	MQClient              mq.MQClient
@@ -59,7 +57,6 @@ func NewOperatorManager() interfaces.OperatorManager {
 			Proxy:                 proxy.NewProxyServer(),
 			OpReleaseDB:           dbaccess.NewOperatorReleaseDB(),
 			OpReleaseHistoryDB:    dbaccess.NewOperatorReleaseHistoryDB(),
-			IntCompConfigSvc:      intcomp.NewIntCompConfigService(),
 			AuthService:           auth.NewAuthServiceImpl(),
 			AuditLog:              metric.NewAuditLogBuilder(),
 			MQClient:              mq.NewMQClient(),

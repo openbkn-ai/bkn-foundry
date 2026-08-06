@@ -46,22 +46,20 @@ func NewToolBoxRestHandler() ToolBoxRestHandler {
 func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	/*工具箱相关接口*/
 	// 查询工具箱信息
-	engine.GET("/tool-box/list", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
+	engine.GET("/tool-box/list", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
 	engine.GET("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.QueryTool)
 	engine.GET("/tool-box/:box_id/tools/list", r.ToolBoxHandler.QueryBoxToolPage)
 	engine.POST("/tool-box/:box_id/proxy/:tool_id", middlewareProxyRequest(), r.ToolBoxHandler.ExecuteTool)
-	// 内置工具注册
-	engine.POST("/tool-box/intcomp", middlewareBusinessDomain(true, true, r.businessDomainService), r.ToolBoxHandler.CreateInternalToolBox)
 }
 
 // RegisterPublic 注册外部API
 func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
-	engine.POST("/tool-box", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.CreateToolBox)
+	engine.POST("/tool-box", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.CreateToolBox)
 	engine.POST("/tool-box/:box_id", r.ToolBoxHandler.UpdateToolBox)
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
-	engine.DELETE("/tool-box/:box_id", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.DeleteToolBox)
-	engine.GET("/tool-box/list", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
+	engine.DELETE("/tool-box/:box_id", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.DeleteToolBox)
+	engine.GET("/tool-box/list", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
 	// POST /api/agent-operator-integration/v1/tool-box/names 按工具箱ID批量取名(前端对象级授权页回显)
 	engine.POST("/tool-box/names", r.ToolBoxHandler.QueryToolBoxNamesByIDs)
 	// 工具
@@ -78,14 +76,12 @@ func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	// 算子转换成工具
 	engine.POST("/operator/convert/tool", r.ToolBoxHandler.OperatorToTool)
 	// OpenAPI 能力包：算子注册 + convert 工具（统一血缘）
-	engine.POST("/capabilities/openapi-bundle", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.RegisterOpenApiBundle)
-	// 内置工具注册
-	engine.POST("/tool-box/intcomp", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.CreateInternalToolBox)
+	engine.POST("/capabilities/openapi-bundle", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.RegisterOpenApiBundle)
 	// 批量获取已发布工具箱信息
 	engine.GET("/tool-box/market/:box_id/:fields", r.ToolBoxHandler.GetReleaseToolBoxInfo)
 
 	/*工具箱市场界面*/
-	engine.GET("/tool-box/market", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.QueryMarketToolBoxPage)
+	engine.GET("/tool-box/market", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryMarketToolBoxPage)
 	engine.GET("/tool-box/market/:box_id", r.ToolBoxHandler.QueryMarketToolBox)
-	engine.GET("/tool-box/market/tools", middlewareBusinessDomain(true, false, r.businessDomainService), r.ToolBoxHandler.GetMarketToolList)
+	engine.GET("/tool-box/market/tools", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.GetMarketToolList)
 }

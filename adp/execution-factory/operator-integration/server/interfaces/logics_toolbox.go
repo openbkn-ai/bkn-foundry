@@ -452,9 +452,6 @@ type IToolService interface {
 	// OpenAPI 能力包：算子注册 + convert 工具（统一血缘）
 	RegisterOpenApiBundle(ctx context.Context, req *RegisterOpenApiBundleReq) (resp *RegisterOpenApiBundleResp, err error)
 	GetReleaseToolBoxInfo(ctx context.Context, req *GetReleaseToolBoxInfoReq) (resp []*GetReleaseToolBoxInfoResp, err error)
-	// 内部接口
-	CreateInternalToolBox(ctx context.Context, req *CreateInternalToolBoxReq) (resp *CreateInternalToolBoxResp, err error)
-
 	// 市场接口
 	GetMarketToolList(ctx context.Context, req *QueryMarketToolListReq) (resp *QueryMarketToolListResp, err error) // 获取所有的工具
 
@@ -471,36 +468,3 @@ type ToolBoxEventHandler interface {
 	HandleOperatorDeleteEvent(ctx context.Context, message []byte) error
 }
 
-// CreateInternalToolBoxReq 内部工具箱注册请求
-// 仅供内部接口使用
-// MetadataType 目前仅支持 openapi
-// Data 为 openapi 元数据
-// Version 为版本号:由业务方注册,版本号格式为: x.x.x,例如: 1.0.0，如果版本号不变化，认为没有新版本，不更新元数据
-// BoxID 为工具箱ID,
-// TODO: 内置工具权限验证，可见范围、使用范围、使用规则
-type CreateInternalToolBoxReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`      // 业务域ID
-	UserID           string `header:"user_id"`                                    // 用户ID,内部使用
-	BoxID            string `json:"box_id" form:"box_id" validate:"required"`     // 工具箱ID
-	BoxName          string `json:"box_name" form:"box_name" validate:"required"` // 工具箱名称
-	BoxDesc          string `json:"box_desc" form:"box_desc" validate:"required"` // 描述
-	Source           string `json:"source" form:"source" validate:"required"`     // 来源
-	// 配置信息
-	ConfigVersion string           `json:"config_version" form:"config_version" validate:"required"`                 // 配置版本
-	ConfigSource  ConfigSourceType `json:"config_source" form:"config_source" validate:"required,oneof=auto manual"` // 配置来源(自动/手动)
-	ProtectedFlag bool             `json:"protected_flag" form:"protected_flag"`                                     // 手动配置保护锁(内部)
-	IsPublic      bool             // 判断是否是外部接口
-	// 数据源
-	MetadataType  MetadataType `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // 元数据类型
-	*OpenAPIInput `json:",inline"`
-	Functions     []*FunctionInput `json:"functions,omitempty"` // 函数列表
-}
-
-// CreateInternalToolBoxResp 创建内部工具箱返回
-// 当注册资源冲突时，根据版本等信息判断是否升级。
-// 当工具箱名称冲突时，返回409, 详情里面返回 “CreateInternalToolBoxResp” 信息
-type CreateInternalToolBoxResp struct {
-	BoxID   string      `json:"box_id"`   // 工具箱ID
-	BoxName string      `json:"box_name"` // 工具箱名称
-	Tools   []*ToolInfo `json:"tools"`    // 工具ID列表
-}

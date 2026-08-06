@@ -284,59 +284,6 @@ func (mr *MockIMCPExecuteServiceMockRecorder) GetMCPTools(ctx, req any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMCPTools", reflect.TypeOf((*MockIMCPExecuteService)(nil).GetMCPTools), ctx, req)
 }
 
-// MockIMCPBuiltinService is a mock of IMCPBuiltinService interface.
-type MockIMCPBuiltinService struct {
-	ctrl     *gomock.Controller
-	recorder *MockIMCPBuiltinServiceMockRecorder
-	isgomock struct{}
-}
-
-// MockIMCPBuiltinServiceMockRecorder is the mock recorder for MockIMCPBuiltinService.
-type MockIMCPBuiltinServiceMockRecorder struct {
-	mock *MockIMCPBuiltinService
-}
-
-// NewMockIMCPBuiltinService creates a new mock instance.
-func NewMockIMCPBuiltinService(ctrl *gomock.Controller) *MockIMCPBuiltinService {
-	mock := &MockIMCPBuiltinService{ctrl: ctrl}
-	mock.recorder = &MockIMCPBuiltinServiceMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockIMCPBuiltinService) EXPECT() *MockIMCPBuiltinServiceMockRecorder {
-	return m.recorder
-}
-
-// RegisterBuiltinMCPServer mocks base method.
-func (m *MockIMCPBuiltinService) RegisterBuiltinMCPServer(ctx context.Context, req *interfaces.MCPBuiltinRegisterRequest) (*interfaces.MCPBuiltinRegisterResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterBuiltinMCPServer", ctx, req)
-	ret0, _ := ret[0].(*interfaces.MCPBuiltinRegisterResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RegisterBuiltinMCPServer indicates an expected call of RegisterBuiltinMCPServer.
-func (mr *MockIMCPBuiltinServiceMockRecorder) RegisterBuiltinMCPServer(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterBuiltinMCPServer", reflect.TypeOf((*MockIMCPBuiltinService)(nil).RegisterBuiltinMCPServer), ctx, req)
-}
-
-// UnregisterBuiltinMCPServer mocks base method.
-func (m *MockIMCPBuiltinService) UnregisterBuiltinMCPServer(ctx context.Context, req *interfaces.MCPBuiltinUnregisterRequest) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnregisterBuiltinMCPServer", ctx, req)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UnregisterBuiltinMCPServer indicates an expected call of UnregisterBuiltinMCPServer.
-func (mr *MockIMCPBuiltinServiceMockRecorder) UnregisterBuiltinMCPServer(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterBuiltinMCPServer", reflect.TypeOf((*MockIMCPBuiltinService)(nil).UnregisterBuiltinMCPServer), ctx, req)
-}
-
 // MockIMCPService is a mock of IMCPService interface.
 type MockIMCPService struct {
 	ctrl     *gomock.Controller
@@ -582,35 +529,6 @@ func (m *MockIMCPService) QueryReleaseBatch(ctx context.Context, req *interfaces
 func (mr *MockIMCPServiceMockRecorder) QueryReleaseBatch(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryReleaseBatch", reflect.TypeOf((*MockIMCPService)(nil).QueryReleaseBatch), ctx, req)
-}
-
-// RegisterBuiltinMCPServer mocks base method.
-func (m *MockIMCPService) RegisterBuiltinMCPServer(ctx context.Context, req *interfaces.MCPBuiltinRegisterRequest) (*interfaces.MCPBuiltinRegisterResponse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterBuiltinMCPServer", ctx, req)
-	ret0, _ := ret[0].(*interfaces.MCPBuiltinRegisterResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RegisterBuiltinMCPServer indicates an expected call of RegisterBuiltinMCPServer.
-func (mr *MockIMCPServiceMockRecorder) RegisterBuiltinMCPServer(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterBuiltinMCPServer", reflect.TypeOf((*MockIMCPService)(nil).RegisterBuiltinMCPServer), ctx, req)
-}
-
-// UnregisterBuiltinMCPServer mocks base method.
-func (m *MockIMCPService) UnregisterBuiltinMCPServer(ctx context.Context, req *interfaces.MCPBuiltinUnregisterRequest) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnregisterBuiltinMCPServer", ctx, req)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UnregisterBuiltinMCPServer indicates an expected call of UnregisterBuiltinMCPServer.
-func (mr *MockIMCPServiceMockRecorder) UnregisterBuiltinMCPServer(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterBuiltinMCPServer", reflect.TypeOf((*MockIMCPService)(nil).UnregisterBuiltinMCPServer), ctx, req)
 }
 
 // UpdateMCPServer mocks base method.

@@ -65,7 +65,7 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	r.SandboxHandler.RegisterPublic(engine)
 	// 导入导出
 	engine.GET("/impex/export/:type/:id", r.ImpexHandler.Export)
-	engine.POST("/impex/import/:type", middlewareBusinessDomain(true, false, r.businessDomainService), r.ImpexHandler.Import)
+	engine.POST("/impex/import/:type", middlewareBusinessDomain(true, r.businessDomainService), r.ImpexHandler.Import)
 	// 函数执行
 	engine.POST("/function/execute", r.UnifiedProxyHandler.FunctionExecute)
 

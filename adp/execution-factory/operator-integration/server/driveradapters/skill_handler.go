@@ -36,7 +36,7 @@ func NewSkillRestHandler() SkillRestHandler {
 	return sHandler
 }
 func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
-	engine.Use(middlewareBusinessDomain(false, false, r.businessDomainService))
+	engine.Use(middlewareBusinessDomain(false, r.businessDomainService))
 	/*市场接口*/
 	// 查询技能市场列表
 	engine.GET("/skills/market", r.SkillHandler.QuerySkillMarketList)
@@ -56,7 +56,7 @@ func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 }
 
 func (r *skillRestHandler) RegisterPublic(engine *gin.RouterGroup) {
-	engine.Use(middlewareBusinessDomain(true, false, r.businessDomainService))
+	engine.Use(middlewareBusinessDomain(true, r.businessDomainService))
 	/*管理接口*/
 	// 注册技能
 	engine.POST("/skills", r.SkillHandler.RegisterSkill)

@@ -31,7 +31,6 @@ func TestImport(t *testing.T) {
 		mockProxy := mocks.NewMockProxyHandler(ctrl)
 		mockOpReleaseDB := mocks.NewMockIOperatorReleaseDB(ctrl)
 		mockOpReleaseHistoryDB := mocks.NewMockIOperatorReleaseHistoryDB(ctrl)
-		mockIntCompConfigSvc := mocks.NewMockIIntCompConfigService(ctrl)
 		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 		mockAuditLog := mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl)
 		mockMetadataService := mocks.NewMockIMetadataService(ctrl)
@@ -46,7 +45,6 @@ func TestImport(t *testing.T) {
 			Proxy:              mockProxy,
 			OpReleaseDB:        mockOpReleaseDB,
 			OpReleaseHistoryDB: mockOpReleaseHistoryDB,
-			IntCompConfigSvc:   mockIntCompConfigSvc,
 			AuthService:        mockAuthService,
 			AuditLog:           mockAuditLog,
 			MetadataService:    mockMetadataService,
@@ -440,7 +438,6 @@ func TestExport(t *testing.T) {
 		mockProxy := mocks.NewMockProxyHandler(ctrl)
 		mockOpReleaseDB := mocks.NewMockIOperatorReleaseDB(ctrl)
 		mockOpReleaseHistoryDB := mocks.NewMockIOperatorReleaseHistoryDB(ctrl)
-		mockIntCompConfigSvc := mocks.NewMockIIntCompConfigService(ctrl)
 		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 		mockAuditLog := mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl)
 		operator := &operatorManager{
@@ -453,7 +450,6 @@ func TestExport(t *testing.T) {
 			Proxy:              mockProxy,
 			OpReleaseDB:        mockOpReleaseDB,
 			OpReleaseHistoryDB: mockOpReleaseHistoryDB,
-			IntCompConfigSvc:   mockIntCompConfigSvc,
 			AuthService:        mockAuthService,
 			AuditLog:           mockAuditLog,
 		}

@@ -116,25 +116,10 @@ class ToolBox():
         url = f"{self.base_url.replace('/tool-box', '/operator/convert/tool')}"
         return Request.post(self, url, data, headers)
 
-    '''创建/更新内置工具'''
-    def Builtin(self, data, headers):
-        url = f"{self.base_url}/intcomp"
-        return Request.post(self, url, data, headers)
-
-    '''创建/更新内置工具 (Multipart)'''
-    def BuiltinMultipart(self, files, data, headers):
-        url = f"{self.base_url}/intcomp"
-        return Request.post_multipart(self, url, files, data, headers)
-
     '''获取工具箱市场详情'''
     def GetMarketDetail(self, box_id, fields, headers):
         url = f"{self.base_url}/market/{box_id}/{fields}"
         return Request.get(self, url, headers)
-
-    '''创建/更新内置工具（内部接口）'''
-    def InternalBuiltin(self, data, headers):
-        url = "http://agent-operator-integration:9000/api/agent-operator-integration/internal-v1/tool-box/intcomp"
-        return Request.post(self, url, data, headers)
 
     '''获取市场工具箱信息'''
     def GetMarketToolbox(self, box_id, headers):

@@ -10,12 +10,12 @@
 | [function.yaml](function.yaml) | 函数 | `POST /function/execute`、`POST /function/infer-schema`、`GET /function/dependencies`、`GET /function/dependency-versions/{package_name}`、`GET /template/{template_type}`、`POST /ai_generate/function/{type}`、`GET /ai_generate/prompt/{type}` |
 | [sandbox.yaml](sandbox.yaml) | 沙箱观测 | `GET /sandbox/health`、`GET /sandbox/pool`、`GET /sandbox/sessions`、`GET /sandbox/sessions/{id}` |
 | [impex.yaml](impex.yaml) | 导入导出 | `GET /impex/export/{type}/{id}`、`POST /impex/import/{type}` |
-| [operator.yaml](operator.yaml) | 算子 | 注册 / 编辑 / 更新 / 列表 / 详情 / 批量取名 / 状态 / 删除 / 调试 / 历史版本 / 市场 / 分类 / 内置算子，共 15 条 |
+| [operator.yaml](operator.yaml) | 算子 | 注册 / 编辑 / 更新 / 列表 / 详情 / 批量取名 / 状态 / 删除 / 调试 / 历史版本 / 市场 / 分类，共 14 条 |
 | [mcp.yaml](mcp.yaml) | MCP | 探测 / 增删改查 / 状态 / 工具调试 / 市场 3 条 / 代理列工具与调用 / 对外端点 3 条，共 16 条 |
-| [toolbox.yaml](toolbox.yaml) | 工具箱 | 工具箱 CRUD 与状态 / 箱内工具增删改查与启停 / 调试与代理调用 / 算子转工具 / OpenAPI 能力包 / 市场 4 条，共 22 条 |
+| [toolbox.yaml](toolbox.yaml) | 工具箱 | 工具箱 CRUD 与状态 / 箱内工具增删改查与启停 / 调试与代理调用 / 算子转工具 / OpenAPI 能力包 / 市场 4 条，共 21 条 |
 | [skill.yaml](skill.yaml) | Skill | 注册 / 列表 / 详情 / 元数据与包更新 / 发布与历史 / 市场 2 条 / 消费态与管理态读取各 3 条 / 执行 / 索引构建 5 条，共 25 条 |
 
-**公开面 91 条已全部收录。**
+**公开面 89 条已全部收录。**
 
 ## 写一个函数：完整走一遍
 
@@ -118,17 +118,19 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 ## 覆盖边界
 
-**公开面 `/api/agent-operator-integration/v1` 的 91 个端点已全部收录**：
-函数 7 + 沙箱观测 4 + 导入导出 2 + 算子 15 + MCP 16 + 工具箱 22 + Skill 25。
+**公开面 `/api/agent-operator-integration/v1` 的 89 个端点已全部收录**：
+函数 7 + 沙箱观测 4 + 导入导出 2 + 算子 14 + MCP 16 + 工具箱 21 + Skill 25。
 
 > 端点总数两次修正：89 → 90（MCP 的 `Any /mcp/app/{mcp_id}/mcp` 被漏，抽路由的
 > 正则没算 `Any`）→ 91（`POST /function/infer-schema` 被漏，最初枚举时读的是过期
-> 分支上的 handler 文件）。现在的数字与代码 `RegisterPublic` 逐条对过，
+> 分支上的 handler 文件）。第三次变化是删除而非修正：91 → 89，`POST /operator/intcomp`
+> 与 `POST /tool-box/intcomp` 两条内置组件注册端点随内置注册机制一并移除。
+> 现在的数字与代码 `RegisterPublic` 逐条对过，
 > 并用实机访问日志交叉验证过没有「日志里有、文档里没有」的路径。
 
 ### 验证程度分两级，不要混为一谈
 
-- **路由与收录范围**：全部从代码的 `RegisterPublic` 逐条核过，91 条不多不少。
+- **路由与收录范围**：全部从代码的 `RegisterPublic` 逐条核过，89 条不多不少。
 - **字段级**：只有实机打过的才算验证过（见下节），其余按 Go 类型写成，
   **未经实机验证**，改动时请人工核对。
 
@@ -137,6 +139,10 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 不要直接当作真相源。
 
 ### 实机验证覆盖
+
+> 本节的数字取自端点总数还是 91 条时的那次巡检，**早于两条 intcomp 端点被删除**。
+> 那两条属于下表「写操作 / 未标只读」一类，巡检本就不发送，因此除总数由 91 变 89、
+> 写操作由 42 变 40 外，其余分类的结论不受影响。数字保留原值，不追改成 89。
 
 在开发 VM（`parallels@10.211.55.4`，镜像
 `0.1.3-main.20260730112246.sha185a9c2`）跑契约巡检，**91 条里 30 条完成字段级比对、

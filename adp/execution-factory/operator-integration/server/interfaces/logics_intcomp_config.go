@@ -36,31 +36,8 @@ func (c ConfigSourceType) String() string {
 	return string(c)
 }
 
-// IntCompConfig 内置组件配置
-type IntCompConfig struct {
-	ComponentID   string           `json:"component_id" validate:"required"`
-	ComponentType ComponentType    `json:"component_type" validate:"required"`
-	ConfigVersion string           `json:"config_version" validate:"required"`                  // 配置版本
-	ConfigSource  ConfigSourceType `json:"config_source" validate:"required,oneof=auto manual"` // 配置来源(自动/手动)
-	ProtectedFlag bool             `json:"protected_flag"`                                      // 手动配置保护锁(内部)
-}
-
-// IntCompConfigAction 内置组件配置操作
-type IntCompConfigAction string
-
-const (
-	// IntCompConfigActionTypeCreate 创建
-	IntCompConfigActionTypeCreate IntCompConfigAction = "create"
-	// IntCompConfigActionTypeUpdate 修改
-	IntCompConfigActionTypeUpdate IntCompConfigAction = "update"
-	// IntCompConfigActionTypeSkip 跳过
-	IntCompConfigActionTypeSkip IntCompConfigAction = "skip"
-)
-
 // IIntCompConfigService 内置组件配置服务
 type IIntCompConfigService interface {
-	// CompareConfig 比较当前配置和待检查的配置，返回结果
-	CompareConfig(ctx context.Context, check *IntCompConfig) (action IntCompConfigAction, err error)
-	UpdateConfig(ctx context.Context, tx *sql.Tx, config *IntCompConfig) (err error)
+	// DeleteConfig 删除内置组件的配置记录（组件本身被删时的收尾）
 	DeleteConfig(ctx context.Context, tx *sql.Tx, configType, configID string) error
 }

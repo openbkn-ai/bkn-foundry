@@ -597,20 +597,6 @@ func (mr *MockValidatorMockRecorder) ValidatorCategoryName(ctx, name any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidatorCategoryName", reflect.TypeOf((*MockValidator)(nil).ValidatorCategoryName), ctx, name)
 }
 
-// ValidatorIntCompVersion mocks base method.
-func (m *MockValidator) ValidatorIntCompVersion(ctx context.Context, version string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidatorIntCompVersion", ctx, version)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ValidatorIntCompVersion indicates an expected call of ValidatorIntCompVersion.
-func (mr *MockValidatorMockRecorder) ValidatorIntCompVersion(ctx, version any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidatorIntCompVersion", reflect.TypeOf((*MockValidator)(nil).ValidatorIntCompVersion), ctx, version)
-}
-
 // ValidatorMCPDesc mocks base method.
 func (m *MockValidator) ValidatorMCPDesc(ctx context.Context, desc string) error {
 	m.ctrl.T.Helper()

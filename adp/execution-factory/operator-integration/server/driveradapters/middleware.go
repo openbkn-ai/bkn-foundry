@@ -184,7 +184,7 @@ func byteToInterface(byt []byte) interface{} {
 }
 
 // middlewareBusinessDomain 处理x-business-domain逻辑
-func middlewareBusinessDomain(isPublic, isBuiltin bool, businessDomainService interfaces.IBusinessDomainService) gin.HandlerFunc {
+func middlewareBusinessDomain(isPublic bool, businessDomainService interfaces.IBusinessDomainService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		businessDomain := businessDomainService.GetBusinessDomainFromHeader(c)
@@ -194,14 +194,6 @@ func middlewareBusinessDomain(isPublic, isBuiltin bool, businessDomainService in
 			if businessDomain == "" {
 				businessDomain = interfaces.DefaultBusinessDomain
 				c.Request.Header.Set(string(interfaces.HeaderXBusinessDomain), businessDomain)
-			}
-		} else {
-			// 2. 内部接口中的内置算子、工具、MCP：默认bd_public
-			if isBuiltin {
-				if businessDomain == "" {
-					businessDomain = interfaces.DefaultBusinessDomain
-					c.Request.Header.Set(string(interfaces.HeaderXBusinessDomain), businessDomain)
-				}
 			}
 		}
 		// 设置到context中供后续使用

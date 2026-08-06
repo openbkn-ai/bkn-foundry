@@ -259,8 +259,6 @@ type OperatorManager interface {
 	QueryOperatorMarketList(ctx context.Context, req *PageQueryOperatorMarketReq) (*PageQueryResponse, error)
 	// QueryOperatorMarketDetail 算子市场详情查询
 	QueryOperatorMarketDetail(ctx context.Context, req *OperatorMarketDetailReq) (*OperatorDataInfo, error)
-	// 注册内置算子
-	RegisterInternalOperator(ctx context.Context, req *RegisterInternalOperatorReq) (resp *OperatorRegisterResp, err error)
 	/*导入导出*/
 	// Impex[*OperatorImpexData]
 	Export(ctx context.Context, req *ExportReq) (data *ComponentImpexConfigModel, err error)
@@ -280,25 +278,4 @@ type CheckAddAsToolResp struct {
 type InternalOperatorManager interface {
 	// 检查是否允许添加为工具
 	CheckAddAsTool(ctx context.Context, operatorID, userID string) (resp *CheckAddAsToolResp, err error)
-}
-
-// RegisterInternalOperatorReq 注册内置算子请求
-type RegisterInternalOperatorReq struct {
-	BusinessDomainID       string                  `header:"x-business-domain" validate:"required"`                                             // 业务域ID
-	UserID                 string                  `header:"user_id"`                                                                           // 用户ID
-	OperatorID             string                  `json:"operator_id" form:"operator_id" validate:"required,uuid4"`                            // 算子ID
-	MetadataType           MetadataType            `json:"metadata_type" form:"metadata_type" validate:"required" oneof:"openapi function"`     // 算子元数据类型(强制参数)
-	Name                   string                  `json:"name" form:"name" validate:"required"`                                                // 算子数据
-	OperatorType           OperatorType            `json:"operator_type" form:"operator_type" default:"basic" validate:"oneof=basic composite"` // 算子类型(basic/composite)
-	ExecutionMode          ExecutionMode           `json:"execution_mode" form:"execution_mode" default:"sync"  validate:"oneof=sync async"`    // 执行模式(async/sync)
-	Source                 string                  `json:"source" form:"source" default:"internal" validate:"required"`                         // 算子来源
-	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control" form:"operator_execute_control"`                            // 控制参数
-	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty" form:"extend_info,omitempty"`                                  // 拓展信息
-	ConfigSource           ConfigSourceType        `json:"config_source" form:"config_source" validate:"required,oneof=auto manual"`            // 配置来源(自动/手动)
-	ConfigVersion          string                  `json:"config_version" form:"config_version" validate:"required"`                            // 配置版本
-	ProtectedFlag          bool                    `json:"protected_flag" form:"protected_flag"`                                                // 版本周期内保护标志，true表示保护，false表示不保护，这个字段主要作用于内置MCPServer
-	IsDataSource           *bool                   `json:"is_data_source" form:"is_data_source"`                                                // 是否为数据源算子
-	*OpenAPIInput          `json:",inline"`
-	Functions              []*FunctionInput `json:"functions,omitempty"` // 函数列表
-	IsPublic               bool             // 判断是否是外部接口
 }

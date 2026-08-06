@@ -55,11 +55,6 @@ type MCPPrivateHandler interface {
 	GetMCPTools(c *gin.Context)
 	// CallMCPTool 调用MCP服务工具
 	CallMCPTool(c *gin.Context)
-
-	// RegisterBuiltinMCPServerPrivate 注册内置MCP服务
-	RegisterBuiltinMCPServerPrivate(c *gin.Context)
-	// UnregisterBuiltinMCPServerPrivate 注销内置MCP服务
-	UnregisterBuiltinMCPServerPrivate(c *gin.Context)
 }
 
 var (

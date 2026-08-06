@@ -250,21 +250,6 @@ func (mr *MockOperatorManagerMockRecorder) QueryOperatorMarketList(ctx, req any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryOperatorMarketList", reflect.TypeOf((*MockOperatorManager)(nil).QueryOperatorMarketList), ctx, req)
 }
 
-// RegisterInternalOperator mocks base method.
-func (m *MockOperatorManager) RegisterInternalOperator(ctx context.Context, req *interfaces.RegisterInternalOperatorReq) (*interfaces.OperatorRegisterResp, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterInternalOperator", ctx, req)
-	ret0, _ := ret[0].(*interfaces.OperatorRegisterResp)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RegisterInternalOperator indicates an expected call of RegisterInternalOperator.
-func (mr *MockOperatorManagerMockRecorder) RegisterInternalOperator(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterInternalOperator", reflect.TypeOf((*MockOperatorManager)(nil).RegisterInternalOperator), ctx, req)
-}
-
 // RegisterOperatorByOpenAPI mocks base method.
 func (m *MockOperatorManager) RegisterOperatorByOpenAPI(ctx context.Context, req *interfaces.OperatorRegisterReq, userID string) ([]*interfaces.OperatorRegisterResp, error) {
 	m.ctrl.T.Helper()

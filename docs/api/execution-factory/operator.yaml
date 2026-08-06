@@ -627,37 +627,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /operator/intcomp:
-    post:
-      tags:
-        - Operator
-      summary: 注册内置算子
-      operationId: registerInternalOperator
-      description: |
-        注册**内置算子**——随平台预置、在列表里带 `is_internal: true` 标记的那类。
-        请求体与普通注册一致，区别在于归属与可见性由平台控制。
-      parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OperatorRegisterRequest'
-      responses:
-        '200':
-          description: 注册结果
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OperatorRegisterResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
 components:
   securitySchemes:
     OAuth2:

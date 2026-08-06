@@ -59,7 +59,5 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	// V0.6.0 -> V0.7.0升级接口
 	engine.POST("/upgrade/v070/migrate-history", r.UpgradeHandler.UpgradeSkillV070)
 	// 函数沙箱执行
-	engine.POST("/function/exec/:version", middlewareBusinessDomain(true, false, r.businessDomainService), r.UnifiedProxyHandler.FunctionExecuteProxy)
-	// 内部依赖包导入
-	engine.POST("/impex/intcomp/import/:type", middlewareBusinessDomain(false, true, r.businessDomainService), r.ImpexHandler.Import)
+	engine.POST("/function/exec/:version", middlewareBusinessDomain(true, r.businessDomainService), r.UnifiedProxyHandler.FunctionExecuteProxy)
 }

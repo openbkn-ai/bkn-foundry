@@ -90,20 +90,3 @@ func TestValidateName(t *testing.T) {
 	})
 }
 
-func TestValidatorInternalToolBoxVersion(t *testing.T) {
-	v := &validator{
-		NameLimit: 50,
-		Validator: validatorv10.New(),
-	}
-	ctx := context.Background()
-	ctx = common.SetLanguageToCtx(ctx, common.SimplifiedChinese)
-	var err error
-	Convey("TestValidatorInternalToolBoxVersion:检查内置工具版本", t, func() {
-		err = v.ValidatorIntCompVersion(ctx, "1.0.0")
-		So(err, ShouldBeNil)
-		err = v.ValidatorIntCompVersion(ctx, "1.0.aaa")
-		So(err, ShouldNotBeNil)
-		err = v.ValidatorIntCompVersion(ctx, "10.0.0")
-		So(err, ShouldBeNil)
-	})
-}
