@@ -922,6 +922,7 @@ jobs:
     env:
       PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
       SHARDS: ${{ needs.plan.outputs.shards }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       FILE_TOTAL: ${{ needs.plan.outputs.file_total }}
       FILE_LISTED: ${{ needs.plan.outputs.file_listed }}
       GH_TOKEN: ${{ github.token }}
@@ -1175,11 +1176,13 @@ jobs:
           app-id: ${{ vars.REVIEW_APP_ID }}
           private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
 
+      # 没配 App 凭据时 approve 交给下一步的 claude[bot] 身份；这里只发
+      # request-changes——那不算批准，github-actions[bot] 发得出去。
       - name: Post review
         id: post
         env:
           GH_TOKEN: ${{ steps.apptoken.outputs.token || github.token }}
-        if: steps.assemble.outputs.action != 'none'
+        if: steps.assemble.outputs.action != 'none' && (vars.REVIEW_APP_ID != '' || steps.assemble.outputs.action == 'request-changes')
         run: |
           set -euo pipefail
           state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
@@ -1202,6 +1205,35 @@ jobs:
             gh pr comment "$PR_NUMBER" --body-file verdict-comment.md
           fi
 
+      # 第二级：没配 App 凭据、且这轮判为 approve 时，借 claude-code-action 的身份发。
+      # 它以 claude[bot] 这个 GitHub App 登场，不在「Actions 不能批准」的禁令内——
+      # 分片前的 approval 正是这么落的。
+      #
+      # 这确实把模型放回了表态路径，而那是「汇总用确定性脚本」特意挡掉的。所以压到
+      # 最薄：结论正文已在 verdict.md 里，命令用 --body-file 传路径，模型不需要复述
+      # 任何文本，也无从改动；approve 还是 request-changes 在上一步就定死了，这里只
+      # 会走到 approve 一条路；allowedTools 只给一条 gh pr review。
+      - name: Post approval as the app identity
+        id: postapp
+        if: steps.assemble.outputs.action == 'approve' && vars.REVIEW_APP_ID == '' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: false
+          prompt: |
+            只做一件事，做完就停：执行下面这条命令，一个字都不要改。
+
+            gh pr review ${{ env.PR_NUMBER }} --approve --body-file ${{ github.workspace }}/verdict.md
+
+            不要评审这个 PR，不要读 verdict.md 再复述它的内容，不要追加任何说明，
+            不要改用别的 flag。结论已经由上游环节定好，你只是执行者。
+          claude_args: |
+            --model claude-opus-5
+            --effort low
+            --max-turns 5
+            --allowedTools "Bash(gh pr review:*)"
+
       # always()：不管有没有落表态（PR 中途被合并也会跳过表态），这条过程态评论都要
       # 清掉，否则会永远停在「评审进行中」误导后来的人。
       - name: Remove progress comment
@@ -1222,7 +1254,7 @@ jobs:
       # 这一轮真落了表态，就把上一轮的空转通告删掉——否则作者会在第 4 轮的结论旁边
       # 读到第 3 轮的「本轮评审空转」。
       - name: Clear stale empty-round notice
-        if: steps.post.outcome == 'success'
+        if: steps.post.outcome == 'success' || steps.postapp.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -1236,8 +1268,9 @@ jobs:
       # 判据取 Post review 的**实际结果**，不取 Assemble 的意图：Assemble 崩掉时
       # output 没写出来、Post review 被跳过；gh pr review 自己失败时意图是 approve
       # 但 PR 上什么都没有。两种都必须通告，否则进度评论被删、原地不留任何东西。
+      # 两条表态路径任一成功就不算空转。
       - name: Report empty round
-        if: always() && steps.post.outcome != 'success'
+        if: always() && steps.post.outcome != 'success' && steps.postapp.outcome != 'success'
         continue-on-error: true
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
