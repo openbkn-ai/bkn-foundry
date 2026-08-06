@@ -10,6 +10,14 @@ name: Claude Code Review
 # 合并掉的只是重复劳动：存活的那轮 checkout 拿的是 PR 最新 HEAD（含新提交），而下方
 # prompt 本就要求读回既有 inline 评论与其下的回复，代码与回复两边都不会漏。
 #
+# 口令过滤有个必须靠 prompt 兜住的副作用：作者「推提交 + 紧接着发一条处理说明」时，
+# 那条说明多半不含口令，过不了下方 job 的 if，也就不会去取消正在跑的那轮；而推送那轮
+# 的评论是在 job 开头预取的，说明发在它开头之后就永远读不到。#619 第九轮实测：02:28:42
+# 推送触发评审，02:28:56 作者发说明「appSetting 死字段本轮不采纳」，02:31:56 的结论仍把
+# 这条原样列了出来——作者会认为没人在听。debounce 那 15 秒对此完全无效，它只让**合格
+# 的**评论有机会取消推送轮，不合格的评论按 comment.id 单独分组、根本不参与取消。
+# 因此分片 prompt 要求「写 findings 之前最后再拉一次顶层评论」，把这个窗口堵死。
+#
 # 评论也能触发复评，但必须在正文里显式写 `/review` 或 `@claude`。早先是每条评论都跑
 # 一轮，作者每回一帖就复评一次，轮次膨胀且额度白烧——待确认项现在不阻断放行（见下方
 # prompt），自动复评失去了存在理由，改成按需触发。两个口令都收是因为 `@claude` 已是
@@ -399,6 +407,13 @@ jobs:
               完美，更不要凭「可能」把同一条追问第二遍。
             - 上面的触发式深挖只在首轮做；复评的范围限定在上一轮之后新增的提交与文件。
             - 第二轮起，除非发现你能说清失效场景的确定阻断项，否则不要再报阻塞项。
+            - **写 findings 之前，最后再拉一次顶层评论**：
+              `gh pr view "$PR_NUMBER" --json comments`。`prior-comments.json` 是本 job
+              开头预取的，而评审要跑好几分钟；作者常在这段时间里推完提交紧接着发一条
+              处理说明——哪条采纳了、哪条不采纳、为什么。只读预取文件就会把他刚说过的
+              话原样再问一遍。#619 第九轮实测：作者在推送后 14 秒发说明「appSetting
+              死字段本轮不采纳」，那轮结论仍把这条原样列了出来。新读到的按上面两条
+              规则处理：已解释的算过，明确不采纳的从 unconfirmed 里去掉。
 
             ## 产出
 
@@ -762,7 +777,8 @@ jobs:
                      "missing_body": "下面这些分片没有产出结论（撞轮次上限、超时或运行失败），**这些文件本轮未经评审**：",
                      "trunc": "文件清单被截断",
                      "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（`gh pr view --json files` 单次上限 100），**其余 %d 个未进入任何分片、本轮未经评审**。",
-                     "footer": "改完请推新提交，或回复 `/review` 要一轮复评。"},
+                     "footer": "改完请推新提交，或回复 `/review` 要一轮复评。",
+                     "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评。"},
               "en": {"block": "Blockers", "verified": "Each item below survived an independent verification pass (refuted by default; kept only when confirmed against the source).",
                      "unrev": " (**unverified** — the verification stage produced no result)", "scen": "Failure scenario: ",
                      "dropped": "%d item(s) dropped by verification", "why": "Refuted because: ",
@@ -771,7 +787,8 @@ jobs:
                      "missing_body": "These shards produced no findings (turn limit, timeout, or job failure) — **their files were not reviewed this round**:",
                      "trunc": "File list truncated",
                      "trunc_body": "This PR changes %s files but only %s reached the planner (`gh pr view --json files` caps at 100) — **the remaining %d were not assigned to any shard and were not reviewed**.",
-                     "footer": "Push a new commit when addressed, or reply `/review` for another round."},
+                     "footer": "Push a new commit when addressed, or reply `/review` for another round.",
+                     "footer_ok": "Disagree, or want another pass? Reply `/review` — a plain comment does not trigger one."},
           }[lang]
 
           survived, refuted, unreviewed = [], [], []
@@ -843,8 +860,9 @@ jobs:
               lines.append(T["trunc_body"] % (os.environ["FILE_TOTAL"],
                                           os.environ["FILE_LISTED"], dropped) + "\n")
 
-          if blockers:
-              lines.append(T["footer"])
+          # approve 之后作者仍可能想争一句，而普通回帖不触发复评（评论正文必须含
+          # /review 或 @claude）。不写这句，他没有别的途径知道这件事。
+          lines.append(T["footer"] if blockers else T["footer_ok"])
 
           pathlib.Path("verdict.md").write_text("\n".join(lines), encoding="utf-8")
           print("action=" + ("request-changes" if blockers else "approve"))
