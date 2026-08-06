@@ -165,3 +165,47 @@ type ResourceRequest struct {
 
 	Extensions *map[string]string `json:"extensions,omitempty"`
 }
+
+// LocalIndexVectorFieldSuffix 是构建任务为向量化字段生成的物理字段后缀。
+//
+// 这些字段只存在于本地索引里，不回写资源 schema：它们是索引实现的一部分，不是
+// 数据源的列。查询侧要发 knn 就得知道这个名字，因此命名规则集中在这里，由构建侧
+// 生成、查询侧识别、BKN 随对象类 Schema 下发，三处引用同一个来源。
+const LocalIndexVectorFieldSuffix = "_vector"
+
+// LocalIndexVectorFieldName 返回某个字段对应的向量字段名。
+func LocalIndexVectorFieldName(field string) string {
+	return field + LocalIndexVectorFieldSuffix
+}
+
+// LocalIndexGeneratedFields 返回资源本地索引里由构建任务生成、但不在资源 schema 上的字段。
+//
+// 资源没有本地索引时返回 nil：那些字段还不存在，接受针对它们的过滤条件只会让
+// 查询在更下游炸掉，不如在条件构造阶段就拒绝。
+func LocalIndexGeneratedFields(res *Resource) map[string]*Property {
+	if res == nil || res.LocalIndexName == "" {
+		return nil
+	}
+
+	generated := map[string]*Property{}
+	for _, prop := range res.SchemaDefinition {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != PropertyFeatureType_Vector {
+				continue
+			}
+			field := prop.Name
+			if feature.RefProperty != "" {
+				field = feature.RefProperty
+			}
+			name := LocalIndexVectorFieldName(field)
+			generated[name] = &Property{Name: name, Type: DataType_Vector}
+		}
+	}
+	if len(generated) == 0 {
+		return nil
+	}
+	return generated
+}

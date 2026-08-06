@@ -189,7 +189,7 @@ func appendTaskEmbeddingVectorFields(schema []*interfaces.Property, buildTask *i
 			continue
 		}
 		newSchema = append(newSchema, &interfaces.Property{
-			Name: field + "_vector",
+			Name: interfaces.LocalIndexVectorFieldName(field),
 			Type: interfaces.DataType_Vector,
 			Features: []interfaces.PropertyFeature{
 				{

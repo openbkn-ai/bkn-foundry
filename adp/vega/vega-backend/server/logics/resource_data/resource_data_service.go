@@ -139,6 +139,11 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	for _, prop := range resource.SchemaDefinition {
 		fieldMap[prop.Name] = prop
 	}
+	// 本地索引里还有构建任务生成的向量字段，它们不在资源 schema 上。不补进来，
+	// knn_vector 条件会在字段查找阶段就被判成「字段不存在」。
+	for name, prop := range interfaces.LocalIndexGeneratedFields(resource) {
+		fieldMap[name] = prop
+	}
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
 	if err != nil {
 		otellog.LogError(ctx, "Create filter condition failed", err)
