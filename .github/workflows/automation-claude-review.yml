@@ -1104,8 +1104,16 @@ jobs:
           fi
           if [ "${{ steps.assemble.outputs.action }}" = "request-changes" ]; then
             gh pr review "$PR_NUMBER" --request-changes --body-file verdict.md
-          else
-            gh pr review "$PR_NUMBER" --approve --body-file verdict.md
+          elif ! gh pr review "$PR_NUMBER" --approve --body-file verdict.md; then
+            # 仓库若关闭「Allow GitHub Actions to create and approve pull requests」，
+            # approve 会被 GraphQL 拒（request-changes 不受限，因为那不算批准）。
+            # 结论不能因此丢掉——改贴普通评论，并说清为什么没有评审状态。
+            echo "::warning::approve 被拒，改以评论形式给出结论。"
+            {
+              cat verdict.md
+              printf '\n\n---\n\n_本轮没有阻塞项。仓库当前禁止 GitHub Actions 批准 PR，因此以评论形式给出结论，没有 APPROVED 状态。需要自动批准的话，在 Settings → Actions → General 打开「Allow GitHub Actions to create and approve pull requests」。_\n'
+            } > verdict-comment.md
+            gh pr comment "$PR_NUMBER" --body-file verdict-comment.md
           fi
 
       # always()：不管有没有落表态（PR 中途被合并也会跳过表态），这条过程态评论都要
