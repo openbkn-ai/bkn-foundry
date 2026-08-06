@@ -10,6 +10,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 //go:embed schemas/*.json schemas/locales/*/*.json schemas/locales/*/*.txt
@@ -43,8 +44,13 @@ func loadToolMeta(toolKey string) ToolMeta {
 	return t
 }
 
-// allToolMeta decodes the embedded tools_meta.json.
-func allToolMeta() map[string]ToolMeta {
+// allToolMeta returns the decoded tools_meta.json.
+//
+// Decoded once: the file is embedded and immutable, while /mcp/info resolves
+// every tool's metadata on every request — without this, one request re-parses
+// the whole file once per tool. The returned map is shared, so callers must
+// treat it as read-only.
+var allToolMeta = sync.OnceValue(func() map[string]ToolMeta {
 	data, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		panic("cannot read tools_meta.json: " + err.Error())
@@ -54,7 +60,7 @@ func allToolMeta() map[string]ToolMeta {
 		panic("invalid tools_meta.json: " + err.Error())
 	}
 	return meta
-}
+})
 
 // toolSchemaFile defines the structure of a merged tool schema JSON file.
 type toolSchemaFile struct {

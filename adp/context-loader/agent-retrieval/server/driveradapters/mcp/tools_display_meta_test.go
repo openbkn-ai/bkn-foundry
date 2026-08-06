@@ -105,6 +105,11 @@ func TestLocalizedToolMetaTranslatesWithoutRemodelling(t *testing.T) {
 		if m.Group != "" || m.Order != 0 {
 			t.Errorf("localized tool %q declares group/order; those belong to tools_meta.json alone", key)
 		}
+		// Name 是 tools/call 携带的标识。本地化文件写了它，同一个工具在中文和
+		// 英文部署上就会有两个名字，照着一边写的客户端在另一边直接调不通。
+		if m.Name != "" {
+			t.Errorf("localized tool %q declares a name; the wire identifier must not depend on the deployment's language", key)
+		}
 	}
 }
 
@@ -170,6 +175,47 @@ func TestEveryRegistrationPathHonoursTheLocale(t *testing.T) {
 		if tool.Title != want.Title {
 			t.Errorf("tool %q advertises title %q under en-US, the localized file says %q — its registration path does not go through the locale bundle",
 				tool.Name, tool.Title, want.Title)
+		}
+	}
+}
+
+// 这条钉的是 /mcp/info 那一侧的 locale 接线，而且必须在非默认 locale 下钉。
+//
+// zh-CN 下本地化覆盖层是空的：OverlaySchemas 原样返回，ToolMeta 也落回基准
+// 文件，于是把 BuildMCPInfo 里的 locale 参数删掉两侧照样相等——默认 locale 的
+// 那条一致性测试永远绿，看不出任何东西。en-US 下两侧才真正走不同的代码路径。
+func TestMCPInfoAgreesWithToolsListUnderANonDefaultLocale(t *testing.T) {
+	noExtensions(t)
+	t.Setenv("MCP_LOCALE", "en-US")
+
+	info, err := BuildMCPInfo("https://example.invalid/mcp")
+	if err != nil {
+		t.Fatalf("BuildMCPInfo: %v", err)
+	}
+	listed := map[string]mcp.Tool{}
+	for _, tool := range assembledTools(t) {
+		listed[tool.Name] = tool
+	}
+	if len(info.Tools) != len(listed) {
+		t.Fatalf("/mcp/info 有 %d 个工具，tools/list 有 %d 个", len(info.Tools), len(listed))
+	}
+
+	for _, tool := range info.Tools {
+		got, ok := listed[tool.Name]
+		if !ok {
+			t.Fatalf("/mcp/info advertises %q, which tools/list does not", tool.Name)
+		}
+		if tool.Description != got.Description {
+			t.Errorf("tool %q description differs between the two endpoints:\n/mcp/info : %s\ntools/list: %s",
+				tool.Name, tool.Description, got.Description)
+		}
+		if string(tool.InputSchema) != string(got.RawInputSchema) {
+			t.Errorf("tool %q input schema differs between the two endpoints:\n/mcp/info : %s\ntools/list: %s",
+				tool.Name, tool.InputSchema, got.RawInputSchema)
+		}
+		if string(tool.OutputSchema) != string(got.RawOutputSchema) {
+			t.Errorf("tool %q output schema differs between the two endpoints:\n/mcp/info : %s\ntools/list: %s",
+				tool.Name, tool.OutputSchema, got.RawOutputSchema)
 		}
 	}
 }

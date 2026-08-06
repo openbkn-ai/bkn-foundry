@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 )
 
 const defaultMCPLocale = "zh-CN"
@@ -22,8 +23,24 @@ type mcpLocaleBundle struct {
 	schemaDescriptions map[string]map[string]string
 }
 
+// localeBundles memoises the parsed bundles.
+//
+// /mcp/info builds one per request, and each build re-reads and re-decodes
+// three embedded files. A bundle is immutable once constructed and the set of
+// locales is closed, so caching them is free of the usual staleness risk.
+var localeBundles sync.Map // normalised locale -> *mcpLocaleBundle
+
 func loadMCPLocaleBundle(locale string) *mcpLocaleBundle {
 	normalized := normalizeMCPLocale(locale)
+	if cached, ok := localeBundles.Load(normalized); ok {
+		return cached.(*mcpLocaleBundle)
+	}
+	bundle := buildMCPLocaleBundle(normalized)
+	localeBundles.Store(normalized, bundle)
+	return bundle
+}
+
+func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
 	bundle := &mcpLocaleBundle{
 		locale:       normalized,
 		instructions: serverInstructions,
@@ -86,6 +103,13 @@ func (b *mcpLocaleBundle) ServerInstructions() string {
 // to the base file — a translator who adds a title but no group must not drop
 // the tool out of its group, and Order is a layout decision that has no reason
 // to differ between languages at all.
+//
+// Name is deliberately not overlayable. It is the identifier a tools/call
+// carries, and a locale file that renamed it would give the same tool two
+// different names depending on the deployment's language — every client
+// integration written against one would break on the other. Before Title
+// existed a locale file could set it, which was the only way to localise how a
+// tool reads; now that Title is where display names live, that door closes.
 func (b *mcpLocaleBundle) ToolMeta(toolKey string) ToolMeta {
 	meta := loadToolMeta(toolKey)
 	if b.toolMeta == nil {
@@ -94,9 +118,6 @@ func (b *mcpLocaleBundle) ToolMeta(toolKey string) ToolMeta {
 	localized, ok := b.toolMeta[toolKey]
 	if !ok {
 		return meta
-	}
-	if localized.Name != "" {
-		meta.Name = localized.Name
 	}
 	if localized.Title != "" {
 		meta.Title = localized.Title

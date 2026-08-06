@@ -1,136 +1,113 @@
 {
   "bkn_finish_interaction": {
-    "name": "bkn_finish_interaction",
     "title": "Finish Interaction",
     "group_title": "Session Lifecycle"
   },
   "bkn_start_interaction": {
-    "name": "bkn_start_interaction",
     "title": "Start Interaction",
     "group_title": "Session Lifecycle"
   },
   "search_schema": {
-    "name": "search_schema",
     "title": "Explore Schema",
     "group_title": "Networks & Schema",
     "description": "Explore schema by natural language. Returns relevant object types, relation types, action types, metric types, condition operations, and data source metadata for downstream query tools. Object types come first: metric_types here is only a hint — the authoritative list of a metric for an object type is related_metrics from get_object_types."
   },
   "query_object_instance": {
-    "name": "query_object_instance",
     "title": "Query Instances",
     "group_title": "Instance Queries",
     "description": "Query instances of one known object type with filters, sorting, selected properties, and cursor-style pagination. Use this for row-level object retrieval, not joins or aggregation."
   },
   "query_instance_subgraph": {
-    "name": "query_instance_subgraph",
     "title": "Query Subgraph",
     "group_title": "Instance Queries",
     "description": "Fetch instance subgraphs by following relation paths across object types. Use this when the question needs related objects around one or more seed instances."
   },
   "get_logic_properties_values": {
-    "name": "get_logic_properties_values",
     "title": "Compute Logic Properties",
     "group_title": "Instance Queries",
     "description": "Resolve calculated logic properties, such as metrics or operator-backed properties, for a batch of object instances. This is the instance-level branch of the metric path (a metric already bound to a logic property); class-level metrics and metrics not bound to a logic property go to query_metric."
   },
   "query_metric": {
-    "name": "query_metric",
     "title": "Query Metrics",
     "group_title": "Instance Queries",
     "description": "Compute a modelled metric by its own definition (step 3 of the OT-first metric path). Recall the object type with search_schema / get_kn_detail, pick a metric_id from get_object_types' related_metrics, then call this tool — the formula lives in the MetricDefinition, so do not re-derive it with run_sql. Routing: instance-level values of a bound logic property go through get_logic_properties_values; class-level metrics, and metrics not bound to any logic property, come here. Optional condition filter, analysis_dimensions breakdown, and a time block for a single point or a series. Time window: omitting instant means a trend query, which requires step; start and end must both be set or both omitted."
   },
   "get_action_info": {
-    "name": "get_action_info",
     "title": "Action Info",
     "group_title": "Actions",
     "description": "Return executable action definitions for object instances, including dynamic tool schemas that an agent can call."
   },
   "execute_action": {
-    "name": "execute_action",
     "title": "Execute Action",
     "group_title": "Actions",
     "description": "Execute an action. First call get_action_info to obtain the action's dynamic_params schema, then fill in the real dynamic parameter values to trigger execution (asynchronous, returns an execution_id). Duplicate submissions for the same kn + action type + instance set + dynamic_params within the duplicate window return HTTP 409; do not retry—use get_action_execution to poll the existing execution instead."
   },
   "get_action_execution": {
-    "name": "get_action_execution",
     "title": "Action Result",
     "group_title": "Actions",
     "description": "Query the status and results of a single action execution. Use the execution_id returned by execute_action to fetch the overall status and per-object results."
   },
   "list_action_executions": {
-    "name": "list_action_executions",
     "title": "Action History",
     "group_title": "Actions",
     "description": "List action execution history, filterable by action type, status, and trigger type, with pagination."
   },
   "find_skills": {
-    "name": "find_skills",
     "title": "Find Skills",
     "group_title": "Resources & Skills",
     "description": "Find available skills that match a knowledge network, object type, instance context, or user intent."
   },
   "list_knowledge_networks": {
-    "name": "list_knowledge_networks",
     "title": "Knowledge Networks",
     "group_title": "Networks & Schema",
     "description": "List knowledge networks visible to the current account. Call this first to obtain kn_id for other tools."
   },
   "get_kn_detail": {
-    "name": "get_kn_detail",
     "title": "Network Structure",
     "group_title": "Networks & Schema",
     "description": "Get full knowledge network details, including concept groups, object types, relation types, and action types. Use this when a known kn_id needs a complete schema snapshot. Object type entries carry related_metric_count, the number of metrics modelled on that object type, so you can tell whether drilling in for metrics is worth it."
   },
   "get_object_types": {
-    "name": "get_object_types",
     "title": "Object Type Detail",
     "group_title": "Networks & Schema",
     "description": "Fetch full object type definitions by id (data_properties carry mapped_field/condition_operations, logic_properties carry data_source/parameters). For progressive drill-down: call get_kn_detail (summary) for the object ids first, then expand only the ones you need. ids takes several at once; ids that match nothing come back under missing."
   },
   "get_relation_types": {
-    "name": "get_relation_types",
     "title": "Relation Type Detail",
     "group_title": "Networks & Schema",
     "description": "Fetch full relation type definitions by id (including mapping_rules and the source/target object names). For progressive drill-down: call get_kn_detail (summary) for the relation ids first, then expand them here. ids takes several at once; ids that match nothing come back under missing."
   },
   "run_sql": {
-    "name": "run_sql",
     "title": "Run SQL",
     "group_title": "Instance Queries",
     "description": "Run one read-only SELECT statement in Trino SQL against data resources mounted by a knowledge network. Use table placeholders such as {{.resource_id}} and physical column names. JOIN, WHERE, GROUP BY/HAVING, ORDER BY, LIMIT, and common aggregates are supported within one catalog. WITH/CTE, UNION/INTERSECT/EXCEPT, multiple statements, writes/DDL, and cross-catalog joins are unsupported; subqueries and window functions are not part of the compatibility contract. Do not re-derive a modelled metric in SQL: pick it from get_object_types' related_metrics and call query_metric (or get_logic_properties_values for a bound logic property). run_sql is for ad-hoc aggregation that has not been modelled as a metric."
   },
   "list_resources": {
-    "name": "list_resources",
     "title": "Data Resources",
     "group_title": "Resources & Skills",
     "description": "List visible data-layer resources independent of ontology object types. Use this when resources are not modeled as object types or when querying raw data directly."
   },
   "describe_resource": {
-    "name": "describe_resource",
     "title": "Resource Detail",
     "group_title": "Resources & Skills",
     "description": "Describe one data resource's physical schema, including connector type and columns. Use this before writing run_sql against raw resources."
   },
   "list_skills": {
-    "name": "list_skills",
     "title": "Skill List",
     "group_title": "Resources & Skills",
     "description": "Browse published skills without a knowledge-network context. Complements find_skills, which recalls by object type or instance: this one pages a list filtered by name or category. Take the skill_id to get_skill_content for SKILL.md, read_skill_file for bundled files, execute_skill to run the entry command."
   },
   "get_skill_content": {
-    "name": "get_skill_content",
     "title": "Skill Content",
     "group_title": "Resources & Skills",
     "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage and entry commands are documented there; fetch individual bundled files with read_skill_file instead of reading the whole package."
   },
   "read_skill_file": {
-    "name": "read_skill_file",
     "title": "Read Skill File",
     "group_title": "Resources & Skills",
     "description": "Read one file from a skill bundle; rel_path comes from the files listing returned by get_skill_content. For progressive loading — large files need not stay in context. Binary files return metadata only, no body."
   },
   "execute_skill": {
-    "name": "execute_skill",
     "title": "Execute Skill",
     "group_title": "Resources & Skills",
     "description": "Run a skill's entry command inside the sandbox and return exit_code / stdout / stderr. entry_shell must come from the entry declared in SKILL.md — read it with get_skill_content first."
