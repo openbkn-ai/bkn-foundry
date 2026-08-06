@@ -7,6 +7,14 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Renamed the module directory from `trace-ai/` to `bkn-trace/` to align with the platform-wide `bkn-*` naming (display name: BKN Trace). The Go module path changed to `github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability`; CI/release workflows, CODEOWNERS, and issue routing were updated accordingly. Image and chart names (`agent-observability`, `otelcol-contrib`) are unchanged.
+- Complete OpenBKN installations persist Trace Core in the fixed `bkn_trace` MariaDB database and Evidence in OpenSearch. The Evidence index hook now follows the application image registry.
+- Managed lifecycle writes are exposed only through the cluster-internal `8081` Service. Evidence Event/Artifact writes remain on public port `8080` and use the independent ingest token.
+
+### Upgrade Notes
+
+- `X-BKN-Trace-Query-Token` query authentication and the `evidence.queryAuth.*` chart values were removed. Platform queries use OAuth; custom external readers must migrate to OAuth because the legacy values no longer take effect after upgrade.
+- External RDS installations must create the fixed `bkn_trace` database before upgrade and configure the `dsn` key in Secret `bkn-trace-core-mariadb` to target it. The installation prerequisite rejects missing, invalid, or differently targeted DSNs.
+- Internal MariaDB creates the `openbkn`, `safe`, and `bkn_trace` databases with `utf8mb4/utf8mb4_unicode_ci`. Existing databases are not recreated or converted.
 
 ## [0.2.2] - 2026-04-10
 

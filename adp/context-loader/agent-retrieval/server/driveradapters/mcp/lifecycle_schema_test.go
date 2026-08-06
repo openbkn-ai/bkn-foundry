@@ -431,6 +431,9 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(rendering, `BKN_TRACE_EVIDENCE_INGEST_TOKEN`) {
 		t.Fatal("Helm must retain the evidence ingest token for the public producer contract")
 	}
+	if !strings.Contains(rendering, `optional: true`) {
+		t.Fatal("evidence ingest Secret reference must stay optional so standalone retrieval still starts")
+	}
 	if !strings.Contains(rendering, `name: BKN_TRACE_DEFAULT_TENANT_ID`) {
 		t.Fatal("Helm must support an explicit single-tenant trust scope")
 	}

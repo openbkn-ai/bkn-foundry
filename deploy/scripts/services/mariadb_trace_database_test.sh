@@ -38,9 +38,11 @@ kubectl() {
 
 setup_mariadb_databases
 
-if ! grep -Fq 'CREATE DATABASE IF NOT EXISTS `bkn_trace`' "${sql_log}"; then
-    echo "pre-stage data-migrator must not bypass the Trace database fallback" >&2
-    exit 1
-fi
+for database in openbkn safe bkn_trace; do
+    if ! grep -Fq "CREATE DATABASE IF NOT EXISTS \`${database}\` CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci" "${sql_log}"; then
+        echo "database fallback must create ${database} with the canonical utf8mb4 charset" >&2
+        exit 1
+    fi
+done
 
 echo "mariadb_trace_database_test: passed"

@@ -7,6 +7,14 @@
 ### 变更
 
 - 模块目录由 `trace-ai/` 改名为 `bkn-trace/`，与平台 `bkn-*` 命名统一（展示名：BKN Trace）。Go module path 变更为 `github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability`；CI/发布流程、CODEOWNERS、Issue 路由同步更新。镜像与 Chart 名（`agent-observability`、`otelcol-contrib`）不变。
+- 完整 OpenBKN 安装将 Trace Core 持久化到固定的 `bkn_trace` MariaDB 数据库，并将 Evidence 持久化到 OpenSearch；Evidence 索引 Hook 与应用镜像使用同一镜像仓库。
+- 受管生命周期写入仅通过集群内部 `8081` Service 开放；Evidence Event/Artifact 继续通过公开 `8080` 端口和独立 ingest token 写入。
+
+### 升级说明
+
+- `X-BKN-Trace-Query-Token` 读取鉴权及 `evidence.queryAuth.*` Chart 参数已移除。平台内查询使用 OAuth；自定义集群外读取客户端必须迁移到 OAuth，旧参数升级后不会继续生效。
+- 使用 external RDS 时，升级前必须创建固定数据库 `bkn_trace`，并让 `bkn-trace-core-mariadb` Secret 的 `dsn` 指向该数据库。安装前置检查会拒绝缺失、无效或指向其他数据库的 DSN。
+- 内置 MariaDB 的 `openbkn`、`safe` 与 `bkn_trace` 数据库统一使用 `utf8mb4/utf8mb4_unicode_ci`；已有数据库不会被重建或修改字符集。
 
 ## [0.2.2] - 2026-04-10
 

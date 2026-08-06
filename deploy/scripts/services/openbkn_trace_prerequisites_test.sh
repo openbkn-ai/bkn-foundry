@@ -6,7 +6,7 @@ PASS=0
 FAILED=0
 CALLS=()
 EXISTING_SECRETS=""
-EXISTING_DSN_DATA="dGVzdC1kc24="
+EXISTING_DSN_DATA="dHJhY2U6c2VjcmV0QHRjcChkYi5leGFtcGxlOjMzMDYpL2Jrbl90cmFjZT9jaGFyc2V0PXV0ZjhtYjQ="
 KUBECTL_LOG="$(mktemp)"
 
 ok() { PASS=$((PASS + 1)); }
@@ -148,7 +148,16 @@ fi
 
 CALLS=()
 : >"${KUBECTL_LOG}"
-EXISTING_DSN_DATA="dGVzdC1kc24="
+EXISTING_DSN_DATA="dHJhY2U6c2VjcmV0QHRjcChkYi5leGFtcGxlOjMzMDYpL290aGVyP2NoYXJzZXQ9dXRmOG1iNA=="
+if _openbkn_prepare_trace_profile openbkn; then
+    fail "external Core DSN must target the fixed bkn_trace database"
+else
+    ok
+fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
+EXISTING_DSN_DATA="dHJhY2U6c2VjcmV0QHRjcChkYi5leGFtcGxlOjMzMDYpL2Jrbl90cmFjZT9jaGFyc2V0PXV0ZjhtYjQ="
 _openbkn_prepare_trace_profile openbkn
 if grep -q "create secret generic" "${KUBECTL_LOG}"; then
     fail "external Core DSN Secret must be reused"
@@ -171,7 +180,7 @@ _openbkn_prepare_trace_profile openbkn
 assert_contains "internal Core DSN Secret is refreshed from current RDS configuration" "create secret generic bkn-trace-core-mariadb"
 assert_contains "internal Core DSN Secret is updated idempotently" "apply -f -"
 
-if grep -Fq -- "bkn_trace" "${SCRIPT_DIR}/../data-migrator/config.monorepo.yaml"; then
+if grep -Eq -- '^[[:space:]]{2}-[[:space:]]+bkn_trace([[:space:]]|$)' "${SCRIPT_DIR}/../data-migrator/config.monorepo.yaml"; then
     ok
 else
     fail "data-migrator must pre-create the bkn_trace database"

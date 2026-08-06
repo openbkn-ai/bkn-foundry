@@ -168,9 +168,9 @@ setup_mariadb_databases() {
 
     # Execute SQL commands to create databases
     log_info "Creating databases..."
-    local sql_commands="CREATE DATABASE IF NOT EXISTS \`${MARIADB_DATABASE}\`;"
+    local sql_commands="CREATE DATABASE IF NOT EXISTS \`${MARIADB_DATABASE}\` CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
     for db in "${databases[@]}"; do
-        sql_commands+=" CREATE DATABASE IF NOT EXISTS \`${db}\`;"
+        sql_commands+=" CREATE DATABASE IF NOT EXISTS \`${db}\` CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
     done
 
     if echo "${sql_commands}" | kubectl -n "${ns}" exec -i "${pod_name}" -- mariadb -u root -p"${MARIADB_ROOT_PASSWORD}" 2>&1; then

@@ -16,8 +16,22 @@ not_contains() {
     if [[ "${value}" != *"${unexpected}"* ]]; then ok; else fail "${label}: unexpected [${unexpected}] in [${value}]"; fi
 }
 log_info() { :; }
+get_set_value() {
+    local key="$1"
+    shift
+    local item
+    for item in "$@"; do
+        if [[ "${item}" == "${key}="* ]]; then
+            printf '%s\n' "${item#*=}"
+            return 0
+        fi
+    done
+    return 1
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+CONFIG_REGISTRY_FILE="$(mktemp)"
+trap 'rm -f "${CONFIG_REGISTRY_FILE}"' EXIT
 # shellcheck source=../services/openbkn.sh
 source "${SCRIPT_DIR}/scripts/services/openbkn.sh"
 
@@ -50,6 +64,31 @@ _openbkn_apply_default_set_values
 offline_sets="${CORE_SET_VALUES[*]:-}"
 contains "offline installs rewrite application images" "${offline_sets}" "image.registry=registry.test:5000/openbkn-ai"
 contains "offline installs rewrite the evidence index hook image" "${offline_sets}" "evidence.indexManagement.createJob.image.registry=registry.test:5000/openbkn-ai"
+
+CORE_SET_VALUES=()
+OFFLINE_MODE=false
+CORE_IMAGE_REGISTRY=ghcr
+CONFIG_YAML_PATH=/nonexistent/openbkn-config.yaml
+_openbkn_apply_default_set_values
+online_sets="${CORE_SET_VALUES[*]:-}"
+contains "online registry flags rewrite application images" "${online_sets}" "image.registry=ghcr.io/openbkn-ai"
+contains "online registry flags rewrite the evidence index hook image" "${online_sets}" "evidence.indexManagement.createJob.image.registry=ghcr.io/openbkn-ai"
+
+CORE_SET_VALUES=("image.registry=registry.example/openbkn")
+CORE_IMAGE_REGISTRY=""
+_openbkn_apply_default_set_values
+explicit_sets="${CORE_SET_VALUES[*]:-}"
+contains "explicit application registries also rewrite the evidence index hook image" "${explicit_sets}" "evidence.indexManagement.createJob.image.registry=registry.example/openbkn"
+
+cat >"${CONFIG_REGISTRY_FILE}" <<'EOF'
+image:
+  registry: "registry.config/openbkn"
+EOF
+CORE_SET_VALUES=()
+CONFIG_YAML_PATH="${CONFIG_REGISTRY_FILE}"
+_openbkn_apply_default_set_values
+config_sets="${CORE_SET_VALUES[*]:-}"
+contains "config application registries rewrite the evidence index hook image" "${config_sets}" "evidence.indexManagement.createJob.image.registry=registry.config/openbkn"
 
 sync_script="$(<"${SCRIPT_DIR}/scripts/sync-k8s-images.sh")"
 contains "offline sync includes the evidence index hook image" "${sync_script}" 'curlimages/curl:8.10.1'

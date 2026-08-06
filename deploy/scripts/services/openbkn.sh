@@ -490,8 +490,19 @@ _openbkn_prepare_trace_profile() {
             log_error "BKN Trace requires Secret ${OPENBKN_TRACE_CORE_SECRET} with key dsn when depServices.rds.source_type is external"
             return 1
         fi
-        if [[ -z "$(kubectl get secret "${OPENBKN_TRACE_CORE_SECRET}" -n "${namespace}" -o jsonpath='{.data.dsn}' 2>/dev/null)" ]]; then
+        local encoded_dsn external_dsn dsn_without_query
+        encoded_dsn="$(kubectl get secret "${OPENBKN_TRACE_CORE_SECRET}" -n "${namespace}" -o jsonpath='{.data.dsn}' 2>/dev/null)"
+        if [[ -z "${encoded_dsn}" ]]; then
             log_error "BKN Trace Core Secret ${OPENBKN_TRACE_CORE_SECRET} must contain key dsn"
+            return 1
+        fi
+        external_dsn="$(printf '%s' "${encoded_dsn}" | base64 --decode 2>/dev/null)" || {
+            log_error "BKN Trace Core Secret ${OPENBKN_TRACE_CORE_SECRET} contains an invalid base64 dsn"
+            return 1
+        }
+        dsn_without_query="${external_dsn%%\?*}"
+        if [[ "${dsn_without_query}" != */"${OPENBKN_TRACE_DATABASE}" ]]; then
+            log_error "External BKN Trace DSN must target the fixed ${OPENBKN_TRACE_DATABASE} database; create that database before installation and update Secret ${OPENBKN_TRACE_CORE_SECRET}"
             return 1
         fi
         return 0
@@ -737,6 +748,18 @@ _openbkn_config_sets_image_registry() {
     ' "${CONFIG_YAML_PATH}"
 }
 
+_openbkn_config_image_registry() {
+    [[ -n "${CONFIG_YAML_PATH:-}" && -f "${CONFIG_YAML_PATH}" ]] || return 1
+    awk '
+        /^image:[[:space:]]*$/ {inimg=1; next}
+        /^[^[:space:]#]/        {inimg=0}
+        inimg && /^[[:space:]]+registry:[[:space:]]*[^[:space:]#]/ {
+            print $2
+            exit
+        }
+    ' "${CONFIG_YAML_PATH}" | tr -d "\"'"
+}
+
 # Inject default --set values for bkn-foundry if user did not override them.
 # Currently: businessDomain.enabled defaults to false at install time.
 _openbkn_apply_default_set_values() {
@@ -755,7 +778,7 @@ _openbkn_apply_default_set_values() {
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
         CORE_SET_VALUES+=("evidence.indexManagement.createJob.image.registry=${_reg_resolved}")
         log_info "Offline mode: Forcing image.registry=${_reg_resolved} via --set (overrides config.yaml)"
-    elif get_set_value "image.registry" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
+    elif get_set_value "image.registry" "${CORE_SET_VALUES[@]-}" >/dev/null 2>&1; then
         : # user passed --set image.registry=… explicitly; do not override
     elif [[ -n "${CORE_IMAGE_REGISTRY}" ]]; then
         local _reg_resolved
@@ -771,7 +794,21 @@ _openbkn_apply_default_set_values() {
         log_info "Image registry default applied: --set image.registry=${_reg_resolved} (override with --registry=ghcr or --set image.registry=...)."
     fi
 
-    if ! get_set_value "businessDomain.enabled" "${CORE_SET_VALUES[@]}" >/dev/null 2>&1; then
+    # The Evidence index Job is a pre-install/pre-upgrade hook. Keep it on the
+    # same registry as application images so restricted online environments do
+    # not fall back to docker.io and stall the entire Helm release.
+    if ! get_set_value "evidence.indexManagement.createJob.image.registry" "${CORE_SET_VALUES[@]-}" >/dev/null 2>&1; then
+        local _application_registry
+        _application_registry="$(get_set_value "image.registry" "${CORE_SET_VALUES[@]-}" 2>/dev/null || true)"
+        if [[ -z "${_application_registry}" ]]; then
+            _application_registry="$(_openbkn_config_image_registry 2>/dev/null || true)"
+        fi
+        if [[ -n "${_application_registry}" ]]; then
+            CORE_SET_VALUES+=("evidence.indexManagement.createJob.image.registry=${_application_registry}")
+        fi
+    fi
+
+    if ! get_set_value "businessDomain.enabled" "${CORE_SET_VALUES[@]-}" >/dev/null 2>&1; then
         CORE_SET_VALUES+=("businessDomain.enabled=false")
         log_info "Default applied: --set businessDomain.enabled=false (override with --set businessDomain.enabled=true)"
     fi
