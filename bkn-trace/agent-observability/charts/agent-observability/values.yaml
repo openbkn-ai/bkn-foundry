@@ -109,7 +109,7 @@ core:
     enabled: false
     index: bkn-trace-core
     interval: 1s
-    rebuildVersion: bkn-trace-core-v013
+    rebuildVersion: bkn-trace-core-v014
   mariadb:
     existingSecret: bkn-trace-core-mariadb
     dsnKey: dsn

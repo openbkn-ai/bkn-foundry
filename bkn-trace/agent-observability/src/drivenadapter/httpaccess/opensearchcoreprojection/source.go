@@ -297,13 +297,13 @@ func receiptScopeCandidates(scope evidencevo.QueryScope) []map[string]any {
 	if scope.AccessProfile == nil {
 		return receiptLegacyOwnerCandidate(scope)
 	}
+	profile := *scope.AccessProfile
 	if scope.View != "" && scope.View != evidencevo.AccessViewBusiness {
 		if evidencevo.NeedsCrossAccountCandidates(scope) {
 			return nil
 		}
-		return receiptLegacyOwnerCandidate(scope)
+		return receiptProfileOwnerCandidates(profile)
 	}
-	profile := *scope.AccessProfile
 	should := make([]map[string]any, 0, 3)
 	if profile.EffectiveSubjectID != "" {
 		should = append(should, exactKeywordQuery("owner.effective_subject_id", profile.EffectiveSubjectID))
@@ -327,9 +327,20 @@ func receiptKnowledgeNetworks(receipt receiptDocument) []string {
 }
 
 func receiptLegacyOwnerCandidate(scope evidencevo.QueryScope) []map[string]any {
+	return receiptCandidateSubjects(scope.AccountID, "")
+}
+
+func receiptProfileOwnerCandidates(profile evidencevo.AccessProfile) []map[string]any {
+	return receiptCandidateSubjects(profile.EffectiveSubjectID, profile.ApplicationPrincipalID)
+}
+
+func receiptCandidateSubjects(effectiveSubjectID, applicationPrincipalID string) []map[string]any {
 	should := make([]map[string]any, 0, 2)
-	if scope.AccountID != "" {
-		should = append(should, exactKeywordQuery("owner.effective_subject_id", scope.AccountID))
+	if effectiveSubjectID != "" {
+		should = append(should, exactKeywordQuery("owner.effective_subject_id", effectiveSubjectID))
+	}
+	if applicationPrincipalID != "" {
+		should = append(should, exactKeywordQuery("owner.application_principal_id", applicationPrincipalID))
 	}
 	if len(should) == 0 {
 		return nil

@@ -89,6 +89,32 @@ func TestResolveDoesNotTreatGlobalAdminWildcardAsNetworkManagement(t *testing.T)
 	}
 }
 
+func TestResolveKeepsOwnerScopeWhenDirectGrantEndpointIsNotDeployed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/safe/v1/me":
+			_, _ = w.Write([]byte(`{"id":"actor-a","enabled":true,"roles":["network_builder"]}`))
+		case "/api/safe/v1/me/knowledge-network-grants":
+			http.NotFound(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	profile, err := New(server.URL, server.Client()).Resolve(
+		context.Background(), "Bearer current-token", iauthorizationscope.TrustedIdentity{
+			TenantID: "tenant-a", ActorID: "actor-a", EffectiveSubjectID: "user-a",
+		},
+	)
+	if err != nil {
+		t.Fatalf("missing direct-grant endpoint must preserve owner scope: %v", err)
+	}
+	if len(profile.ManagedKnowledgeNetworkIDs) != 0 {
+		t.Fatalf("missing direct-grant endpoint must not grant cross-network access: %v", profile.ManagedKnowledgeNetworkIDs)
+	}
+}
+
 func TestResolveFailsClosedForDisabledOrMismatchedIdentity(t *testing.T) {
 	for _, body := range []string{
 		`{"id":"actor-a","account_type":"user","enabled":false,"roles":["normal_user"]}`,

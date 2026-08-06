@@ -233,6 +233,47 @@ func TestSourceUsesManagedKnowledgeNetworksAsBusinessCandidates(t *testing.T) {
 	}
 }
 
+func TestSourceUsesApplicationPrincipalAsTechnicalOwnerCandidate(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"owner.application_principal_id.keyword"`) ||
+			!strings.Contains(string(body), `"app-a"`) {
+			t.Fatalf("application owner candidate missing: %s", body)
+		}
+		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
+			"receipt_id":"rcpt-app","schema_version":"3.0.0",
+			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"app-a","effective_subject_type":"user","effective_subject_id":"other-user"},
+			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-1",
+			"tool_name":"query_object_instance","receipt_status":"completed","evidence_durability":"durable",
+			"request_id":"req-1","trace_id":"11111111111111111111111111111111",
+			"issued_at":"2026-08-02T07:35:26Z","terminal_at":"2026-08-02T07:35:27Z"
+		}}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	source := opensearchcoreprojection.New(
+		opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", nil,
+	)
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{
+			View: evidencevo.AccessViewTechnical,
+			AccessProfile: &evidencevo.AccessProfile{
+				TenantID: "tenant-1", BusinessDomain: "domain-1",
+				EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
+				AccountActive: true, TenantActive: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if len(result.Traces) != 1 || result.Traces[0].AccountID != "other-user" {
+		t.Fatalf("application-owned receipt was not projected: %#v", result.Traces)
+	}
+}
+
 type artifactProjectionSource struct {
 	result iprojectionsource.Result
 }

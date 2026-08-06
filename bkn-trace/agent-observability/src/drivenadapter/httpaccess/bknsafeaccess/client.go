@@ -32,6 +32,14 @@ type Client struct {
 	http    *http.Client
 }
 
+type responseStatusError struct {
+	status int
+}
+
+func (e responseStatusError) Error() string {
+	return fmt.Sprintf("BKN Safe returned status %d", e.status)
+}
+
 type meResponse struct {
 	ID      string   `json:"id"`
 	Enabled bool     `json:"enabled"`
@@ -83,7 +91,10 @@ func (c *Client) Resolve(
 
 	var grants knowledgeNetworkGrantsResponse
 	if err := c.get(ctx, "/api/safe/v1/me/knowledge-network-grants", authorization, &grants); err != nil {
-		return evidencevo.AccessProfile{}, fmt.Errorf("resolve current BKN Safe knowledge-network grants: %w", err)
+		var statusErr responseStatusError
+		if !errors.As(err, &statusErr) || statusErr.status != http.StatusNotFound {
+			return evidencevo.AccessProfile{}, fmt.Errorf("resolve current BKN Safe knowledge-network grants: %w", err)
+		}
 	}
 
 	roles := currentBuiltInRoles(me.Roles)
@@ -117,7 +128,7 @@ func (c *Client) get(ctx context.Context, path, authorization string, target any
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxSafeResponseBytes))
-		return fmt.Errorf("BKN Safe returned status %d", response.StatusCode)
+		return responseStatusError{status: response.StatusCode}
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxSafeResponseBytes))
 	if err := decoder.Decode(target); err != nil {
