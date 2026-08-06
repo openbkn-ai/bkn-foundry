@@ -1,0 +1,51 @@
+openapi: 3.0.3
+info:
+  title: BKN Safe 自助授权范围 API
+  version: 0.1.3
+  description: |
+    供已认证主体读取自身的直接知识网络实例授权。BKN Trace 用此接口恢复
+    network_builder 的精确受管知识网络范围；它不是角色权限清单，也不返回
+    角色继承授权、通配授权或其他主体的授权信息。
+servers:
+  - url: /api/safe/v1
+security:
+  - BearerAuth: []
+paths:
+  /me/knowledge-network-grants:
+    get:
+      tags: [Self service]
+      operationId: getMyKnowledgeNetworkGrants
+      summary: 获取当前主体的直接知识网络实例授权
+      description: |
+        返回 bearer token 对应主体在具体知识网络实例上的直接授权及操作集合。
+        `knowledge_network:*` 等角色级或类型级授权不会出现在响应中，调用方不得
+        将角色能力通配符解释为业务内容读取范围。
+      responses:
+        '200':
+          description: 当前主体的直接知识网络实例授权
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [grants]
+                properties:
+                  grants:
+                    type: array
+                    items:
+                      type: object
+                      required: [knowledge_network_id, operations]
+                      properties:
+                        knowledge_network_id:
+                          type: string
+                          description: 具体知识网络 ID，永不为 '*'
+                        operations:
+                          type: array
+                          items:
+                            type: string
+        '401':
+          description: 缺少或无效 bearer token
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

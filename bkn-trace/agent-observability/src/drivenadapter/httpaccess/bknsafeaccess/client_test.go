@@ -26,6 +26,12 @@ func TestResolveBuildsProfileFromCurrentSafeIdentityAndNetworkGrants(t *testing.
 				{"resource":{"type":"knowledge_network","id":"kn-a"},"operations":["authorize"]},
 				{"resource":{"type":"knowledge_network","id":"kn-c"},"operations":["view_detail"]}
 			]}`))
+		case "/api/safe/v1/me/knowledge-network-grants":
+			_, _ = w.Write([]byte(`{"grants":[
+				{"knowledge_network_id":"kn-b","operations":["view_detail","task_manage"]},
+				{"knowledge_network_id":"kn-a","operations":["authorize"]},
+				{"knowledge_network_id":"kn-c","operations":["view_detail"]}
+			]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -62,6 +68,8 @@ func TestResolveDoesNotTreatGlobalAdminWildcardAsNetworkManagement(t *testing.T)
 			_, _ = w.Write([]byte(`{"id":"actor-a","enabled":true,"roles":["super_admin"]}`))
 		case "/api/safe/v1/me/permissions":
 			_, _ = w.Write([]byte(`{"permissions":[{"resource":{"type":"*","id":"*"},"operations":["*"]}]}`))
+		case "/api/safe/v1/me/knowledge-network-grants":
+			_, _ = w.Write([]byte(`{"grants":[]}`))
 		default:
 			http.NotFound(w, r)
 		}

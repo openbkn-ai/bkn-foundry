@@ -1518,7 +1518,11 @@ func hashValue(value any) string {
 }
 
 func (s *Service) appendProjection(tx isessionstore.Transaction, aggregateType, aggregateID, eventType string, value any) error {
-	payload, err := json.Marshal(value)
+	projectionValue := value
+	if receipt, ok := value.(sessionvo.Receipt); ok {
+		projectionValue = sessionvo.NewReceiptProjectionDocument(receipt)
+	}
+	payload, err := json.Marshal(projectionValue)
 	if err != nil {
 		return err
 	}

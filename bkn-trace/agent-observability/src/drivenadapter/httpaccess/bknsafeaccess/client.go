@@ -38,14 +38,11 @@ type meResponse struct {
 	Roles   []string `json:"roles"`
 }
 
-type permissionsResponse struct {
-	Permissions []struct {
-		Resource struct {
-			Type string `json:"type"`
-			ID   string `json:"id"`
-		} `json:"resource"`
-		Operations []string `json:"operations"`
-	} `json:"permissions"`
+type knowledgeNetworkGrantsResponse struct {
+	Grants []struct {
+		KnowledgeNetworkID string   `json:"knowledge_network_id"`
+		Operations         []string `json:"operations"`
+	} `json:"grants"`
 }
 
 type fingerprintInput struct {
@@ -84,13 +81,13 @@ func (c *Client) Resolve(
 		return evidencevo.AccessProfile{}, errors.New("current BKN Safe identity is disabled or does not match the trusted actor")
 	}
 
-	var permissions permissionsResponse
-	if err := c.get(ctx, "/api/safe/v1/me/permissions", authorization, &permissions); err != nil {
-		return evidencevo.AccessProfile{}, fmt.Errorf("resolve current BKN Safe permissions: %w", err)
+	var grants knowledgeNetworkGrantsResponse
+	if err := c.get(ctx, "/api/safe/v1/me/knowledge-network-grants", authorization, &grants); err != nil {
+		return evidencevo.AccessProfile{}, fmt.Errorf("resolve current BKN Safe knowledge-network grants: %w", err)
 	}
 
 	roles := currentBuiltInRoles(me.Roles)
-	managedNetworks := concreteManagedNetworks(permissions)
+	managedNetworks := concreteManagedNetworks(grants)
 	input := fingerprintInput{
 		TenantID: identity.TenantID, BusinessDomain: identity.BusinessDomain,
 		ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
@@ -147,15 +144,15 @@ func currentBuiltInRoles(values []string) []string {
 	return roles
 }
 
-func concreteManagedNetworks(response permissionsResponse) []string {
+func concreteManagedNetworks(response knowledgeNetworkGrantsResponse) []string {
 	networks := map[string]struct{}{}
-	for _, permission := range response.Permissions {
-		if permission.Resource.Type != "knowledge_network" || permission.Resource.ID == "" || permission.Resource.ID == "*" {
+	for _, grant := range response.Grants {
+		if grant.KnowledgeNetworkID == "" || grant.KnowledgeNetworkID == "*" {
 			continue
 		}
-		for _, operation := range permission.Operations {
+		for _, operation := range grant.Operations {
 			if _, allowed := networkManagementOperations[operation]; allowed {
-				networks[permission.Resource.ID] = struct{}{}
+				networks[grant.KnowledgeNetworkID] = struct{}{}
 				break
 			}
 		}

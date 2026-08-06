@@ -58,6 +58,7 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 					{"ref_type":"knowledge_network","ref_id":"kn:supplychain_hd0202","business_domain_id":"domain-1","version":"v3"},
 					{"ref_type":"object_type","ref_id":"object:supplychain_hd0202:forecast","business_domain_id":"domain-1","version":"v3"}
 				],
+				"knowledge_network_ids":["supplychain_hd0202"],
 				"artifact_refs":[],"partial_reasons":[],
 				"issued_at":"2026-08-02T07:35:26Z","terminal_at":"2026-08-02T07:35:27Z"
 			}}, {"_source":{
@@ -187,6 +188,48 @@ func TestRequestProjectionHydratesArtifactsByReceiptInteraction(t *testing.T) {
 	}
 	if len(result.Traces) != 1 || len(result.Traces[0].Events) != 2 || len(result.Artifacts) != 1 {
 		t.Fatalf("only interaction-scoped artifacts may be projected onto another request: traces=%+v artifacts=%+v", result.Traces, result.Artifacts)
+	}
+}
+
+func TestSourceUsesManagedKnowledgeNetworksAsBusinessCandidates(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"knowledge_network_ids.keyword"`) ||
+			!strings.Contains(string(body), `"kn-managed"`) {
+			t.Fatalf("managed KN candidate filter missing: %s", body)
+		}
+		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
+			"receipt_id":"rcpt-managed","schema_version":"3.0.0",
+			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"other-app","effective_subject_type":"user","effective_subject_id":"other-user"},
+			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-1",
+			"tool_name":"query_object_instance","receipt_status":"completed","evidence_durability":"durable",
+			"request_id":"req-1","trace_id":"11111111111111111111111111111111",
+			"knowledge_network_ids":["kn-managed"],
+			"issued_at":"2026-08-02T07:35:26Z","terminal_at":"2026-08-02T07:35:27Z"
+		}}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	source := opensearchcoreprojection.New(
+		opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", nil,
+	)
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{
+			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "builder-1", AccountType: "user",
+			AccessProfile: &evidencevo.AccessProfile{
+				TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+				Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-managed"},
+				AccountActive: true, TenantActive: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if len(result.Traces) != 1 || result.Traces[0].AccountID != "other-user" {
+		t.Fatalf("managed KN receipt was not projected: %#v", result.Traces)
 	}
 }
 

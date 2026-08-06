@@ -28,8 +28,9 @@
 | 🟫 context-loader | [`context-loader/`](context-loader/) | Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP。**外部面全量**（内部 `/in/v1` 面不收录） |
 | 🟩 execution-factory | [`execution-factory/`](execution-factory/) | 执行工厂：函数 / 沙箱观测 / 导入导出 / 算子 / MCP / 工具箱 / Skill。**公开面全量**（89 个端点）。只收 Ingress 暴露的 `/v1`，内部面 `internal-v1` 刻意不收（不校验令牌），能力面 `/api/capabilities-lab/v1` 暂未收 |
 | 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
+| 🟦 bkn-safe | [`bkn-safe/`](bkn-safe/) | BKN Trace 依赖的自助知识网络授权范围读取。**部分** |
 
-> 未文档化的服务：`bkn-safe`。
+> `bkn-safe` 仅收录已由外部运行时依赖的自助读取接口，不将管理面 API 误作为通用集成合同。
 
 ### ⚠️ `/api/ontology-manager/v1` 是历史别名，不要再用
 

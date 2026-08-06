@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
@@ -26,23 +25,24 @@ func New(client *opensearch.Client, index string, artifacts iprojectionsource.Pr
 }
 
 type receiptDocument struct {
-	ReceiptID          string                  `json:"receipt_id"`
-	SchemaVersion      string                  `json:"schema_version"`
-	Owner              sessionvo.Owner         `json:"owner"`
-	ConversationID     string                  `json:"conversation_id"`
-	InteractionID      string                  `json:"interaction_id"`
-	OperationID        string                  `json:"operation_id"`
-	OperationKey       string                  `json:"operation_key"`
-	ToolName           string                  `json:"tool_name"`
-	Status             string                  `json:"receipt_status"`
-	EvidenceDurability string                  `json:"evidence_durability"`
-	RequestID          string                  `json:"request_id"`
-	TraceID            string                  `json:"trace_id"`
-	BusinessRefs       []sessionvo.BusinessRef `json:"business_refs"`
-	ArtifactRefs       []string                `json:"artifact_refs"`
-	PartialReasons     []string                `json:"partial_reasons"`
-	IssuedAt           string                  `json:"issued_at"`
-	TerminalAt         string                  `json:"terminal_at"`
+	ReceiptID           string                  `json:"receipt_id"`
+	SchemaVersion       string                  `json:"schema_version"`
+	Owner               sessionvo.Owner         `json:"owner"`
+	ConversationID      string                  `json:"conversation_id"`
+	InteractionID       string                  `json:"interaction_id"`
+	OperationID         string                  `json:"operation_id"`
+	OperationKey        string                  `json:"operation_key"`
+	ToolName            string                  `json:"tool_name"`
+	Status              string                  `json:"receipt_status"`
+	EvidenceDurability  string                  `json:"evidence_durability"`
+	RequestID           string                  `json:"request_id"`
+	TraceID             string                  `json:"trace_id"`
+	BusinessRefs        []sessionvo.BusinessRef `json:"business_refs"`
+	ArtifactRefs        []string                `json:"artifact_refs"`
+	PartialReasons      []string                `json:"partial_reasons"`
+	KnowledgeNetworkIDs []string                `json:"knowledge_network_ids"`
+	IssuedAt            string                  `json:"issued_at"`
+	TerminalAt          string                  `json:"terminal_at"`
 }
 
 func (s *Source) LoadExecutionProjection(ctx context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
@@ -107,6 +107,7 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 			must = append(must, exactKeywordQuery(field, value))
 		}
 	}
+	must = append(must, receiptScopeCandidates(query.Scope)...)
 	if !query.From.IsZero() || !query.To.IsZero() {
 		bounds := map[string]any{}
 		if !query.From.IsZero() {
@@ -153,7 +154,7 @@ func exactKeywordQuery(field string, value string) map[string]any {
 }
 
 func receiptMatchesScope(receipt receiptDocument, scope evidencevo.QueryScope) bool {
-	networks := knowledgeNetworks(receipt.BusinessRefs)
+	networks := receiptKnowledgeNetworks(receipt)
 	record := evidencevo.RecordScope{
 		TenantID: receipt.Owner.TenantID, BusinessDomain: receipt.Owner.BusinessDomainID,
 		EffectiveSubjectID:     receipt.Owner.EffectiveSubjectID,
@@ -185,7 +186,7 @@ func tracesFromReceipts(receipts []receiptDocument) []evidencevo.NormalizedTrace
 				AccountType:            string(receipt.Owner.EffectiveSubjectType),
 				EffectiveSubjectID:     receipt.Owner.EffectiveSubjectID,
 				ApplicationPrincipalID: receipt.Owner.ApplicationPrincipalID,
-				KnowledgeNetworkIDs:    knowledgeNetworks(receipt.BusinessRefs),
+				KnowledgeNetworkIDs:    receiptKnowledgeNetworks(receipt),
 				SchemaVersion:          receipt.SchemaVersion,
 			}
 			trace = &value
@@ -292,20 +293,48 @@ func artifactLink(artifactType evidencevo.ArtifactType) (string, string) {
 	}
 }
 
-func knowledgeNetworks(refs []sessionvo.BusinessRef) []string {
-	set := map[string]struct{}{}
-	for _, ref := range refs {
-		parts := strings.Split(ref.RefID, ":")
-		if len(parts) >= 2 && parts[1] != "" && parts[0] != "resource" {
-			set[parts[1]] = struct{}{}
+func receiptScopeCandidates(scope evidencevo.QueryScope) []map[string]any {
+	if scope.AccessProfile == nil {
+		return receiptLegacyOwnerCandidate(scope)
+	}
+	if scope.View != "" && scope.View != evidencevo.AccessViewBusiness {
+		if evidencevo.NeedsCrossAccountCandidates(scope) {
+			return nil
 		}
+		return receiptLegacyOwnerCandidate(scope)
 	}
-	result := make([]string, 0, len(set))
-	for value := range set {
-		result = append(result, value)
+	profile := *scope.AccessProfile
+	should := make([]map[string]any, 0, 3)
+	if profile.EffectiveSubjectID != "" {
+		should = append(should, exactKeywordQuery("owner.effective_subject_id", profile.EffectiveSubjectID))
 	}
-	sort.Strings(result)
-	return result
+	if profile.ApplicationPrincipalID != "" {
+		should = append(should, exactKeywordQuery("owner.application_principal_id", profile.ApplicationPrincipalID))
+	}
+	if evidencevo.NeedsCrossAccountCandidates(scope) {
+		should = append(should, map[string]any{"terms": map[string]any{
+			"knowledge_network_ids.keyword": profile.ManagedKnowledgeNetworkIDs,
+		}})
+	}
+	if len(should) == 0 {
+		return receiptLegacyOwnerCandidate(scope)
+	}
+	return []map[string]any{{"bool": map[string]any{"should": should, "minimum_should_match": 1}}}
+}
+
+func receiptKnowledgeNetworks(receipt receiptDocument) []string {
+	return receipt.KnowledgeNetworkIDs
+}
+
+func receiptLegacyOwnerCandidate(scope evidencevo.QueryScope) []map[string]any {
+	should := make([]map[string]any, 0, 2)
+	if scope.AccountID != "" {
+		should = append(should, exactKeywordQuery("owner.effective_subject_id", scope.AccountID))
+	}
+	if len(should) == 0 {
+		return nil
+	}
+	return []map[string]any{{"bool": map[string]any{"should": should, "minimum_should_match": 1}}}
 }
 
 func firstNonEmpty(values ...string) string {
