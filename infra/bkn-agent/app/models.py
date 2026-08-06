@@ -117,8 +117,19 @@ class AgentToolRef(_ToolRefBase):
     agent_id: str = Field(min_length=1, max_length=100)
 
 
+class ContextLoaderToolRef(_ToolRefBase):
+    """Context Loader 的知识网络检索工具，经其 MCP 面装载。
+
+    刻意不带 url：端点来自 CONTEXT_LOADER_MCP_URL，agent 定义因此可以跨环境
+    导入导出而不带环境地址（type=mcp 写死 url 就不行）。
+    """
+
+    type: Literal["context_loader"]
+
+
 ToolRef = Annotated[
-    McpToolRef | ToolboxToolRef | AgentToolRef, Field(discriminator="type")
+    McpToolRef | ToolboxToolRef | AgentToolRef | ContextLoaderToolRef,
+    Field(discriminator="type"),
 ]
 
 

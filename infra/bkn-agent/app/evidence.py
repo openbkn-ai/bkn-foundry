@@ -238,11 +238,22 @@ def begin_interaction(
     operation_name: str,
     *,
     conversation_id: str | None = None,
+    interaction_id: str | None = None,
 ):
+    """开一轮交互。
+
+    interaction_id 传入时用传入的，否则本地铸一个。传入的来源是 Context Loader
+    的 bkn_start_interaction —— 那条路上的 id 必须是生命周期服务发的（本地铸的会被
+    MCP 面按 owner tuple 拒掉），同时也让证据链与 Context Loader 落在同一轮交互上，
+    不至于一次对话在 trace 里裂成两条。
+
+    没挂 Context Loader 工具的 agent 仍走本地铸：为了拿一个服务端 id 就让每次执行
+    都依赖生命周期服务，会把一个可选能力变成硬依赖。
+    """
     ctx = observability.current_context()
     if not ctx:
         return _interaction.set(None)
-    interaction_id = "int_" + _stable_id(
+    interaction_id = interaction_id or "int_" + _stable_id(
         "interaction", ctx.trace_id, ctx.request_id, mode, agent_id, operation_name
     )
     started = _event(

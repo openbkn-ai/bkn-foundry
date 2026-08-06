@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao, evidence, observability
 from app.config import config
+from app.core import context_loader
 from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
 from app.core.structured import structured_extract_with_path
@@ -68,6 +69,12 @@ async def stream_chat(
         )
         skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
         system_prompt += await load_skills(skill_ids, account_id, account_type)
+        # 与 runner 同序：Context Loader 会话先开，它领到的 interaction_id 同时是
+        # 证据链这一轮的 id。load_tools 会复用这个已开的会话，不重复握手。
+        cl_session = None
+        if context_loader.wanted(agent.tools):
+            cl_session = await context_loader.open_session()
+            context_loader.set_current(cl_session)
         tools = await load_tools(
             agent.tools,
             account_id,
@@ -117,7 +124,8 @@ async def stream_chat(
             "chat",
             agent.agent_id,
             "bkn.agent.chat",
-            conversation_id=thread_id,
+            conversation_id=cl_session.conversation_id if cl_session else thread_id,
+            interaction_id=cl_session.interaction_id if cl_session else None,
         )
         try:
             await evidence.submit_interaction_started(account_id, account_type)
@@ -219,6 +227,7 @@ async def stream_chat(
             yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
         finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
             evidence.end_interaction(interaction_token)
+            await context_loader.close_session(cl_session)
             _busy_threads.discard(thread_id)
 
     return _events()

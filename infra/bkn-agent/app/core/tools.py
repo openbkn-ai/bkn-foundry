@@ -7,6 +7,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app import evidence, observability
 from app.config import config
+from app.core import context_loader
 from app.core.skills import normalize_skill_id
 from app.core.toolbox import _safe_name, load_toolbox_tools
 from app.errors import bad_request
@@ -36,8 +37,10 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
                 "url": url,
                 "headers": headers,
             }
-        elif kind in ("agent", "toolbox"):
-            continue  # agent-as-tool 见 _agent_tool；toolbox 见 _toolbox_tools
+        elif kind in ("agent", "toolbox", "context_loader"):
+            # agent-as-tool 见 _agent_tool；toolbox 见 _toolbox_tools；
+            # context_loader 见 app/core/context_loader.py（端点来自配置，且要先握手）
+            continue
         else:
             raise bad_request("ToolRef", "未知工具类型", str(ref))
     return conns
@@ -182,6 +185,14 @@ async def load_tools(
     skill_ids: list[str] | None = None,
 ) -> list[Any]:
     tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
+    if context_loader.wanted(tool_refs):
+        # 会话通常已由调用方（runner / graph）在 begin_interaction 之前开好——那对
+        # 真 id 要先拿到才能让证据链和 Context Loader 落在同一轮交互上。这里兜住
+        # 直接调 load_tools 的场景（测试、将来的其他入口），不重复握手。
+        session = context_loader.current_session() or await context_loader.open_session()
+        if session is not None:
+            context_loader.set_current(session)
+            tools.extend(session.tools())
     conns = _mcp_connections(tool_refs, account_id, account_type)
     if conns:
         client = MultiServerMCPClient(conns, tool_interceptors=[_trace_mcp_call])

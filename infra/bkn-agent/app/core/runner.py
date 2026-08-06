@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from app import dao, evidence, observability
 from app.config import config
+from app.core import context_loader
 from app.core.llm import build_chat_model
 from app.core.structured import structured_extract_with_path
 from app.core.prompt import resolve_prompt
@@ -46,7 +47,21 @@ async def run_agent_once(
             response_format,
             task_id,
         )
-    token = evidence.begin_interaction(message, "task", agent.agent_id, "bkn.agent.task")
+    # Context Loader 的会话要在 begin_interaction 之前开：它领到的 interaction_id
+    # 同时是证据链这一轮的 id，两边共用一对，trace 才不会裂。
+    cl_session = None
+    cl_token = None
+    if context_loader.wanted(agent.tools):
+        cl_session = await context_loader.open_session()
+        cl_token = context_loader.set_current(cl_session)
+    token = evidence.begin_interaction(
+        message,
+        "task",
+        agent.agent_id,
+        "bkn.agent.task",
+        conversation_id=cl_session.conversation_id if cl_session else None,
+        interaction_id=cl_session.interaction_id if cl_session else None,
+    )
     try:
         await evidence.submit_interaction_started(account_id, account_type)
         return await _run_agent_once_core(
@@ -63,6 +78,9 @@ async def run_agent_once(
         )
     finally:
         evidence.end_interaction(token)
+        await context_loader.close_session(cl_session)
+        if cl_token is not None:
+            context_loader.reset_current(cl_token)
 
 
 async def _run_agent_once_core(
