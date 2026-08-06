@@ -73,9 +73,6 @@ def print_completion_report_config_yaml(namespace: str) -> None:
     env["ONBOARD_REPORT_TEST_USER"] = (
         "not run: --config mode has no test-user wizard"
     )
-    env["ONBOARD_REPORT_CONTEXT_LOADER"] = (
-        "not applicable: Context Loader serves its tools over MCP; nothing is imported"
-    )
     subprocess.run(
         [
             "bash",

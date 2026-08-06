@@ -102,7 +102,7 @@ onboard_print_completion_report() {
                 ;;
         esac
         echo "   • Verify:    openbkn bkn list -bd ${_bd} --pretty"
-        echo "   • Tools:     Context Loader exposes its tools over MCP (openbkn context info); it registers no toolbox."
+        echo "   • Tools:     openbkn context info   (Context Loader tool catalog, served over MCP)"
         echo "   • Docs:      https://github.com/openbkn-ai/bkn-foundry/blob/main/help/README.md"
         echo "                https://github.com/openbkn-ai/bkn-foundry/blob/main/help/en/README.md  (EN)"
         echo "                https://github.com/openbkn-ai/bkn-foundry/blob/main/help/zh/README.md  (中文)"
