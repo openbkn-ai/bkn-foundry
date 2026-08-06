@@ -282,13 +282,27 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # 两个来源都要取：/issues/N/comments 是顶层评论、/pulls/N/comments 是 inline
+          # 评论及其回复。作者的处理说明（哪条采纳、哪条不采纳）多半发在顶层，只取
+          # inline 等于没在听——#619 第九轮就是这么把作者「本轮不采纳」的表态漏掉的。
+          #
           # --paginate 是逐页应用 --jq 的，评论超过一页时输出会是多个 JSON 数组首尾
           # 相接、不是一个合法数组。所以先取原始页，再用 jq -s 合并成一个数组。
-          # 只留最近 100 条：这里取的是全部历史轮次的 inline 评论，攒多了会挤占分片
-          # 的上下文，而复评真正要看的是最近几轮。
-          gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}/comments" --paginate \
-            | jq -s '[.[][] | {path, line, user: .user.login, body}] | .[-100:]' \
-            > prior-comments.json || echo '[]' > prior-comments.json
+          # 各留最近 100 条：这里取的是全部历史轮次，攒多了会挤占分片的上下文，
+          # 而复评真正要看的是最近几轮。
+          fetch() {
+            gh api "repos/${GH_REPO}/$1" --paginate | jq -s "[.[][] | $2] | .[-100:]"
+          }
+          {
+            echo '{"issue_comments":'
+            fetch "issues/${PR_NUMBER}/comments" \
+              '{user: .user.login, created_at, body}' || echo '[]'
+            echo ',"review_comments":'
+            fetch "pulls/${PR_NUMBER}/comments" \
+              '{path, line, user: .user.login, created_at, body}' || echo '[]'
+            echo '}'
+          } > prior-comments.json || echo '{"issue_comments":[],"review_comments":[]}' \
+            > prior-comments.json
 
       - name: Claude review
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
@@ -373,8 +387,14 @@ jobs:
 
             目标是收敛，不是每轮重开一次全面评审：
 
-            - 先读回上一轮的 inline 评论：已经预取到 `${{ github.workspace }}/prior-comments.json`
-              （绝对路径），直接读文件，不要自己去调 API。只看落在你这片文件上的那些。
+            - 先读回上一轮的评论：已经预取到 `${{ github.workspace }}/prior-comments.json`（绝对
+              路径），直接读文件，不要自己去调 API。里面两个来源都有：`issue_comments`
+              是顶层评论——作者的处理说明（哪条采纳、哪条不采纳）多半发在这里，
+              `review_comments` 是 inline 评论及其回复。inline 那部分只看落在你这片
+              文件上的；顶层那部分全看。
+            - **作者明确表示不采纳的建议，记一次就够，本轮不要再列**——包括写进
+              unconfirmed。他已经做过判断，再列一遍只是在告诉他你没读他的回复。只有
+              出现新证据推翻他的理由时才重提，并在 what 里说清新证据是什么。
             - 已经提过的问题，作者改了、或给出对得上疑点的解释，就算过。不必追求措辞
               完美，更不要凭「可能」把同一条追问第二遍。
             - 上面的触发式深挖只在首轮做；复评的范围限定在上一轮之后新增的提交与文件。
