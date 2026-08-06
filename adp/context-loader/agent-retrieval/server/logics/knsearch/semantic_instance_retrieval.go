@@ -45,9 +45,9 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
 
-	// 遍历每个对象类型进行语义检索
-	for _, objType := range objectTypes {
-		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig)
+	// 遍历每个对象类型进行语义检索。rank 是概念召回给出的顺序，向量条件只发给靠前的几个。
+	for rank, objType := range objectTypes {
+		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, rank)
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Failed to retrieve instances for %s: %v",
 				objType.ConceptID, err)
@@ -107,6 +107,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 	req *interfaces.KnSearchLocalRequest,
 	objType *interfaces.KnSearchObjectType,
 	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	rank int,
 ) ([]*interfaces.KnSearchNode, error) {
 	searchable := findSemanticSearchableFields(objType)
 	if len(searchable) == 0 {
@@ -114,7 +115,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 		return nil, nil
 	}
 
-	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config)
+	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config, knnAllowed(config, rank))
 	if cond == nil {
 		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no index-backed condition to issue, skip", objType.ConceptID)
 		return nil, nil
@@ -173,6 +174,7 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 	query string,
 	searchable []searchableField,
 	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	allowKnn bool,
 ) *interfaces.KnCondition {
 	if len(searchable) == 0 {
 		return nil
@@ -188,14 +190,22 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 
 	var subConditions []*interfaces.KnCondition
 
+	knnBudget := 0
+	if allowKnn {
+		knnBudget = config.MaxKnnSubConditionsPerType
+		if knnBudget <= 0 {
+			knnBudget = 1
+		}
+	}
 	for i := range searchable {
-		if len(subConditions) >= maxSub {
+		if len(subConditions) >= maxSub || knnBudget <= 0 {
 			break
 		}
 		f := &searchable[i]
 		if !f.HasKnn {
 			continue
 		}
+		knnBudget--
 		subConditions = append(subConditions, &interfaces.KnCondition{
 			Field:      f.Name,
 			Operation:  interfaces.KnOperationTypeKnn,
@@ -398,4 +408,18 @@ func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode,
 		}
 	}
 	return nodes
+}
+
+// knnAllowed 判断某个排名的对象类这一轮是否发向量条件。
+//
+// 概念召回已经按相关度排过序，尾部对象类基本进不了最终结果；为它们向量化查询词
+// 是纯成本。默认只放行前几个，配置成 0 表示不限制。
+func knnAllowed(config *interfaces.KnSearchSemanticInstanceRetrievalConfig, rank int) bool {
+	if config == nil || !boolValue(config.EnableKnnInstanceRetrieval) {
+		return false
+	}
+	if config.KnnObjectTypeLimit <= 0 {
+		return true
+	}
+	return rank < config.KnnObjectTypeLimit
 }

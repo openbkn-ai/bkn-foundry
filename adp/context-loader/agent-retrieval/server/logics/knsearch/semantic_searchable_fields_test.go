@@ -55,7 +55,7 @@ func TestBuildSemanticSearchConditionStruct_WithSearchableFields(t *testing.T) {
 			{Name: "title", Type: "text", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeKnn, interfaces.KnOperationTypeMatch}},
 		},
 	}
-	cond := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objType), config)
+	cond := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objType), config, true)
 	if cond.Operation != interfaces.KnOperationTypeOr {
 		t.Errorf("Expected OR operation, got %s", cond.Operation)
 	}

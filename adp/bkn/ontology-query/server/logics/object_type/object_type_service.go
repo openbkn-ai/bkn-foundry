@@ -349,9 +349,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	if query.ActualCondition != nil {
 		rewriteCondition, err := cond.RewriteCondition(ctx, query.ActualCondition,
 			logics.TransferPropsToPropMap(objectType.DataProperties),
-			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
+			logics.MemoizeVectorizer(func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
 				return ots.handlerVector(ctx, property, word)
-			})
+			}))
 		if err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_InvalidParameter_Condition).
@@ -439,9 +439,10 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 		}
 
 		// 转换到dsl
-		conditionDslStr, err = condtion.Convert(ctx, func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
-			return ots.handlerVector(ctx, property, word)
-		})
+		conditionDslStr, err = condtion.Convert(ctx, logics.MemoizeVectorizer(
+			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
+				return ots.handlerVector(ctx, property, word)
+			}))
 		if err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_InvalidParameter_Condition).

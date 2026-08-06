@@ -169,7 +169,7 @@ func TestRetrieveInstancesForObjectType(t *testing.T) {
 		ExactNameMatchScore:   1.0,
 	}
 
-	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config)
+	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config, 0)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestRetrieveInstancesForObjectType_NoSearchableFields(t *testing.T) {
 	objType := &interfaces.KnSearchObjectType{ConceptID: "ot1"} // 无 DataProperties
 	config := &interfaces.KnSearchSemanticInstanceRetrievalConfig{InitialCandidateCount: 10, PerTypeInstanceLimit: 2}
 
-	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config)
+	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config, 0)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestBuildSemanticSearchConditionStruct(t *testing.T) {
 	}
 	// 无可搜字段时返回 nil（与 Python 一致，无 "*" 回退）
 	objTypeEmpty := &interfaces.KnSearchObjectType{ConceptID: "ot1"}
-	condEmpty := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objTypeEmpty), config)
+	condEmpty := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objTypeEmpty), config, true)
 	if condEmpty != nil {
 		t.Errorf("Expected nil when no searchable fields (align with Python), got %v", condEmpty)
 	}
@@ -222,7 +222,7 @@ func TestBuildSemanticSearchConditionStruct(t *testing.T) {
 			{Name: "title", Type: "text", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeKnn, interfaces.KnOperationTypeMatch}},
 		},
 	}
-	cond := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objTypeWithProps), config)
+	cond := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objTypeWithProps), config, true)
 	if cond == nil {
 		t.Fatal("Expected non-nil condition when searchable fields present")
 	}
@@ -369,7 +369,7 @@ func TestBuildSemanticSearchConditionStruct_ExactOnlyFieldsYieldNoCondition(t *t
 		{Name: "team_id", HasExactMatch: true},
 	}
 
-	if cond := svc.buildSemanticSearchConditionStruct("Brazil", searchable, config); cond != nil {
+	if cond := svc.buildSemanticSearchConditionStruct("Brazil", searchable, config, true); cond != nil {
 		t.Fatalf("expected nil condition for exact-only fields, got %+v", cond)
 	}
 }
@@ -385,12 +385,101 @@ func TestBuildSemanticSearchConditionStruct_MatchFieldYieldsCondition(t *testing
 		{Name: "team_name", HasExactMatch: true, HasMatch: true},
 	}
 
-	cond := svc.buildSemanticSearchConditionStruct("Brazil", searchable, config)
+	cond := svc.buildSemanticSearchConditionStruct("Brazil", searchable, config, true)
 	if cond == nil || len(cond.SubConditions) != 1 {
 		t.Fatalf("expected exactly one match sub-condition, got %+v", cond)
 	}
 	if cond.SubConditions[0].Field != "team_name" ||
 		cond.SubConditions[0].Operation != interfaces.KnOperationTypeMatch {
 		t.Fatalf("unexpected sub-condition: %+v", cond.SubConditions[0])
+	}
+}
+
+func knnTestConfig() *interfaces.KnSearchSemanticInstanceRetrievalConfig {
+	enabled := true
+	return &interfaces.KnSearchSemanticInstanceRetrievalConfig{
+		MaxSemanticSubConditions:   10,
+		PerTypeInstanceLimit:       5,
+		EnableKnnInstanceRetrieval: &enabled,
+		MaxKnnSubConditionsPerType: 1,
+		KnnObjectTypeLimit:         3,
+	}
+}
+
+func countOps(cond *interfaces.KnCondition, op interfaces.KnOperationType) int {
+	if cond == nil {
+		return 0
+	}
+	n := 0
+	for _, sub := range cond.SubConditions {
+		if sub.Operation == op {
+			n++
+		}
+	}
+	return n
+}
+
+// 同一行的多个向量字段各发一次 knn，成本线性叠加而召回增益很小：每个对象类只发一个。
+func TestBuildSemanticSearchConditionStruct_KnnBudgetPerType(t *testing.T) {
+	svc := &localSearchImpl{}
+	searchable := []searchableField{
+		{Name: "stadium_name", HasKnn: true, HasMatch: true},
+		{Name: "city_name", HasKnn: true, HasMatch: true},
+		{Name: "country_name", HasKnn: true, HasMatch: true},
+	}
+
+	cond := svc.buildSemanticSearchConditionStruct("Mexico", searchable, knnTestConfig(), true)
+
+	if got := countOps(cond, interfaces.KnOperationTypeKnn); got != 1 {
+		t.Fatalf("expected a single knn sub-condition, got %d", got)
+	}
+	if got := countOps(cond, interfaces.KnOperationTypeMatch); got != 3 {
+		t.Fatalf("every fulltext field should still be matched, got %d", got)
+	}
+}
+
+// 尾部对象类不发向量条件，但全文照常——否则等于把它们整个丢掉。
+func TestBuildSemanticSearchConditionStruct_KnnDeniedKeepsMatch(t *testing.T) {
+	svc := &localSearchImpl{}
+	searchable := []searchableField{{Name: "stadium_name", HasKnn: true, HasMatch: true}}
+
+	cond := svc.buildSemanticSearchConditionStruct("Mexico", searchable, knnTestConfig(), false)
+
+	if got := countOps(cond, interfaces.KnOperationTypeKnn); got != 0 {
+		t.Fatalf("knn must be withheld when not allowed, got %d", got)
+	}
+	if got := countOps(cond, interfaces.KnOperationTypeMatch); got != 1 {
+		t.Fatalf("fulltext must survive, got %d", got)
+	}
+}
+
+// 只有向量字段、又不许发 knn 时拼不出条件，必须返回 nil 而不是空 OR。
+func TestBuildSemanticSearchConditionStruct_KnnOnlyFieldDeniedYieldsNil(t *testing.T) {
+	svc := &localSearchImpl{}
+	searchable := []searchableField{{Name: "embedding_only", HasKnn: true}}
+
+	if cond := svc.buildSemanticSearchConditionStruct("Mexico", searchable, knnTestConfig(), false); cond != nil {
+		t.Fatalf("expected nil condition, got %+v", cond)
+	}
+}
+
+func TestKnnAllowed(t *testing.T) {
+	config := knnTestConfig()
+	if !knnAllowed(config, 0) || !knnAllowed(config, 2) {
+		t.Fatalf("ranks inside the limit must be allowed")
+	}
+	if knnAllowed(config, 3) {
+		t.Fatalf("rank at the limit must be denied")
+	}
+
+	config.KnnObjectTypeLimit = 0
+	if !knnAllowed(config, 99) {
+		t.Fatalf("limit 0 means no limit")
+	}
+
+	disabled := false
+	config.EnableKnnInstanceRetrieval = &disabled
+	if knnAllowed(config, 0) {
+		t.Fatalf("disabling knn must win over any limit")
 	}
 }

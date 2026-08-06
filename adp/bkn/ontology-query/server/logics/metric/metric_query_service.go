@@ -287,9 +287,9 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	var fc map[string]any
 	if merged != nil {
 		rewriteCondition, err := cond.RewriteCondition(ctx, merged, propMap,
-			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
+			logics.MemoizeVectorizer(func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
 				return s.handlerVector(ctx, property, word)
-			})
+			}))
 		if err != nil {
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
 				WithErrorDetails(fmt.Sprintf("failed to rewrite ontology condition for resource, %s", err.Error()))
