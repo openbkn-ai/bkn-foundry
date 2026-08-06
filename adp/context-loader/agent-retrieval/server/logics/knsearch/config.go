@@ -40,6 +40,9 @@ func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstan
 		EnableGlobalFinalScoreRatioFilter: boolPtr(true),
 		GlobalFinalScoreRatio:             0.25,
 		ExactNameMatchScore:               0.85,
+		EnableKnnInstanceRetrieval:        boolPtr(true),
+		MaxKnnSubConditionsPerType:        1,
+		KnnObjectTypeLimit:                3,
 	}
 }
 
@@ -143,6 +146,16 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	}
 	if user.MinDirectRelevance > 0 {
 		base.MinDirectRelevance = user.MinDirectRelevance
+	}
+	if user.EnableKnnInstanceRetrieval != nil {
+		base.EnableKnnInstanceRetrieval = user.EnableKnnInstanceRetrieval
+	}
+	if user.MaxKnnSubConditionsPerType > 0 {
+		base.MaxKnnSubConditionsPerType = user.MaxKnnSubConditionsPerType
+	}
+	// 0 是「不限制」这个有意义的取值，负数才当没传。
+	if user.KnnObjectTypeLimit >= 0 {
+		base.KnnObjectTypeLimit = user.KnnObjectTypeLimit
 	}
 	if user.EnableGlobalFinalScoreRatioFilter != nil {
 		base.EnableGlobalFinalScoreRatioFilter = user.EnableGlobalFinalScoreRatioFilter

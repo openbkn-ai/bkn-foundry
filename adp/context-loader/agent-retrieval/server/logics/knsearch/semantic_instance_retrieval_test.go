@@ -169,7 +169,7 @@ func TestRetrieveInstancesForObjectType(t *testing.T) {
 		ExactNameMatchScore:   1.0,
 	}
 
-	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config, 0)
+	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config, true)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestRetrieveInstancesForObjectType_NoSearchableFields(t *testing.T) {
 	objType := &interfaces.KnSearchObjectType{ConceptID: "ot1"} // 无 DataProperties
 	config := &interfaces.KnSearchSemanticInstanceRetrievalConfig{InitialCandidateCount: 10, PerTypeInstanceLimit: 2}
 
-	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config, 0)
+	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config, true)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -463,23 +463,67 @@ func TestBuildSemanticSearchConditionStruct_KnnOnlyFieldDeniedYieldsNil(t *testi
 	}
 }
 
-func TestKnnAllowed(t *testing.T) {
-	config := knnTestConfig()
-	if !knnAllowed(config, 0) || !knnAllowed(config, 2) {
-		t.Fatalf("ranks inside the limit must be allowed")
-	}
-	if knnAllowed(config, 3) {
-		t.Fatalf("rank at the limit must be denied")
+// 向量预算必须按相关度分配：概念召回命中关系类型时列表是网络原始顺序，
+// 照位置截会把预算发给排在前面的无关对象类。
+func TestKnnEligibleObjectTypes_RanksByScoreNotPosition(t *testing.T) {
+	config := knnTestConfig() // KnnObjectTypeLimit = 3
+	objectTypes := []*interfaces.KnSearchObjectType{
+		{ConceptID: "irrelevant_a", ConceptScore: 0.1},
+		{ConceptID: "irrelevant_b", ConceptScore: 0.2},
+		{ConceptID: "irrelevant_c", ConceptScore: 0.3},
+		{ConceptID: "stadiums", ConceptScore: 9.5},
+		{ConceptID: "teams", ConceptScore: 8.0},
+		{ConceptID: "squads", ConceptScore: 7.0},
 	}
 
+	eligible := knnEligibleObjectTypes(objectTypes, config)
+
+	if len(eligible) != 3 {
+		t.Fatalf("expected exactly the limit, got %d", len(eligible))
+	}
+	for _, want := range []string{"stadiums", "teams", "squads"} {
+		if !eligible[want] {
+			t.Fatalf("%s scored high and must get the vector budget, got %+v", want, eligible)
+		}
+	}
+	if eligible["irrelevant_a"] {
+		t.Fatalf("list position must not buy a vector budget: %+v", eligible)
+	}
+}
+
+func TestKnnEligibleObjectTypes_LimitAndSwitch(t *testing.T) {
+	objectTypes := []*interfaces.KnSearchObjectType{
+		{ConceptID: "a", ConceptScore: 1},
+		{ConceptID: "b", ConceptScore: 2},
+	}
+
+	config := knnTestConfig()
 	config.KnnObjectTypeLimit = 0
-	if !knnAllowed(config, 99) {
-		t.Fatalf("limit 0 means no limit")
+	if got := knnEligibleObjectTypes(objectTypes, config); len(got) != 2 {
+		t.Fatalf("limit 0 means no limit, got %+v", got)
 	}
 
 	disabled := false
 	config.EnableKnnInstanceRetrieval = &disabled
-	if knnAllowed(config, 0) {
-		t.Fatalf("disabling knn must win over any limit")
+	if got := knnEligibleObjectTypes(objectTypes, config); len(got) != 0 {
+		t.Fatalf("disabling knn must win over any limit, got %+v", got)
+	}
+}
+
+// 默认配置必须真的把向量检索打开：struct tag 上的 default 在这条链路不生效，
+// 漏了就等于功能整个关掉，而且不会有任何报错。
+func TestDefaultConfig_EnablesKnn(t *testing.T) {
+	config := DefaultSemanticInstanceRetrievalConfig()
+
+	if !boolValue(config.EnableKnnInstanceRetrieval) {
+		t.Fatalf("knn must be on by default")
+	}
+	if config.MaxKnnSubConditionsPerType <= 0 || config.KnnObjectTypeLimit <= 0 {
+		t.Fatalf("knn budgets must have real defaults, got %+v", config)
+	}
+
+	merged := MergeRetrievalConfig(nil)
+	if !boolValue(merged.SemanticInstanceRetrieval.EnableKnnInstanceRetrieval) {
+		t.Fatalf("the merged config is what runtime actually uses; knn must survive it")
 	}
 }

@@ -104,6 +104,9 @@ type KnSearchObjectType struct {
 	ConceptType     string                   `json:"concept_type,omitempty"`
 	ConceptID       string                   `json:"concept_id"`
 	ConceptName     string                   `json:"concept_name"`
+	// ConceptScore 是概念召回给出的相关度，仅供检索内部排序使用（例如把向量条件的
+	// 预算分给最相关的几个对象类），不进响应契约——响应里的顺序由概念召回决定。
+	ConceptScore float64 `json:"-"`
 	Comment         string                   `json:"comment,omitempty"`
 	Tags            []string                 `json:"tags,omitempty"`
 	DataSource      *ResourceInfo            `json:"data_source,omitempty"`

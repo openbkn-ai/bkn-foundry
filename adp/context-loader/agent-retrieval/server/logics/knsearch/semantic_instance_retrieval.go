@@ -45,9 +45,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
 
-	// 遍历每个对象类型进行语义检索。rank 是概念召回给出的顺序，向量条件只发给靠前的几个。
-	for rank, objType := range objectTypes {
-		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, rank)
+	// 向量预算按相关度分配，不按列表位置：概念召回命中关系类型时返回的顺序是知识网络
+	// 里对象类的自然顺序，不是相关度序，照位置截会把预算发给不相关的对象类。
+	knnEligible := knnEligibleObjectTypes(objectTypes, instanceConfig)
+
+	for _, objType := range objectTypes {
+		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, knnEligible[objType.ConceptID])
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Failed to retrieve instances for %s: %v",
 				objType.ConceptID, err)
@@ -107,7 +110,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 	req *interfaces.KnSearchLocalRequest,
 	objType *interfaces.KnSearchObjectType,
 	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
-	rank int,
+	allowKnn bool,
 ) ([]*interfaces.KnSearchNode, error) {
 	searchable := findSemanticSearchableFields(objType)
 	if len(searchable) == 0 {
@@ -115,7 +118,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 		return nil, nil
 	}
 
-	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config, knnAllowed(config, rank))
+	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config, allowKnn)
 	if cond == nil {
 		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no index-backed condition to issue, skip", objType.ConceptID)
 		return nil, nil
@@ -410,16 +413,48 @@ func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode,
 	return nodes
 }
 
-// knnAllowed 判断某个排名的对象类这一轮是否发向量条件。
+// knnEligibleObjectTypes 选出这一轮可以发向量条件的对象类，返回按 concept_id 索引的集合。
 //
-// 概念召回已经按相关度排过序，尾部对象类基本进不了最终结果；为它们向量化查询词
-// 是纯成本。默认只放行前几个，配置成 0 表示不限制。
-func knnAllowed(config *interfaces.KnSearchSemanticInstanceRetrievalConfig, rank int) bool {
+// 为什么不按遍历位置截：概念召回命中关系类型时，selectObjectTypesForConceptRetrieval
+// 返回的是按知识网络原始顺序过滤出来的列表，不是相关度序。照位置取前 N 会把向量预算
+// 发给排在前面但不相关的对象类，真正相关的反而只能走全文。这里按概念召回给出的分数
+// 重新挑，列表顺序本身不动（响应顺序不受影响）。
+//
+// KnnObjectTypeLimit <= 0 表示不限制；关掉向量检索时返回空集。
+func knnEligibleObjectTypes(
+	objectTypes []*interfaces.KnSearchObjectType,
+	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+) map[string]bool {
+	eligible := map[string]bool{}
 	if config == nil || !boolValue(config.EnableKnnInstanceRetrieval) {
-		return false
+		return eligible
 	}
 	if config.KnnObjectTypeLimit <= 0 {
-		return true
+		for _, objType := range objectTypes {
+			if objType != nil {
+				eligible[objType.ConceptID] = true
+			}
+		}
+		return eligible
 	}
-	return rank < config.KnnObjectTypeLimit
+
+	ranked := make([]*interfaces.KnSearchObjectType, 0, len(objectTypes))
+	for _, objType := range objectTypes {
+		if objType != nil {
+			ranked = append(ranked, objType)
+		}
+	}
+	// 稳定排序：分数相同时保持概念召回给出的先后，结果可复现。
+	sort.SliceStable(ranked, func(i, j int) bool {
+		return ranked[i].ConceptScore > ranked[j].ConceptScore
+	})
+
+	limit := config.KnnObjectTypeLimit
+	if limit > len(ranked) {
+		limit = len(ranked)
+	}
+	for _, objType := range ranked[:limit] {
+		eligible[objType.ConceptID] = true
+	}
+	return eligible
 }
