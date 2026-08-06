@@ -135,7 +135,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      # write 是为了贴那条进度评论：分片模式关掉了 claude-code-action 的
+      # track_progress（每片各贴一条会把 PR 刷满），PR 上从触发到出结论的七八分钟里
+      # 便完全没有动静，看起来像没触发。这里补一条**唯一**的进度评论，由 verdict 收尾
+      # 时删掉——过程态不该留在 PR 的历史里，结论本身才是记录。
+      pull-requests: write
     outputs:
       pr_number: ${{ steps.meta.outputs.pr_number }}
       shards: ${{ steps.plan.outputs.shards }}
@@ -236,6 +240,39 @@ jobs:
           print("file_total=%d" % total)
           print("file_listed=%d" % len(paths))
           PY
+
+      # 同一条评论反复复用（靠 body 里的 HTML 标记定位），复评不会越堆越多。
+      # 失败不阻断评审：进度提示挂了没关系，评审本身要继续。
+      - name: Post progress comment
+        if: steps.plan.outputs.has_shards == 'true'
+        continue-on-error: true
+        env:
+          SHARDS: ${{ steps.plan.outputs.shards }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          MARKER='<!-- claude-review-progress -->'
+          body=$(python3 - <<'PY'
+          import json, os
+          shards = json.loads(os.environ["SHARDS"])
+          lines = ["<!-- claude-review-progress -->",
+                   "### 评审进行中",
+                   "",
+                   "按模块分 %d 片并行，逐片完成后统一给出一次结论。" % len(shards),
+                   ""]
+          lines += ["- `%s`" % s["label"] for s in shards]
+          lines += ["", "[查看运行日志](%s)" % os.environ["RUN_URL"],
+                    "", "_结论落地后这条会自动消失。_"]
+          print("\n".join(lines))
+          PY
+          )
+          existing=$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\")) | .id] | last // empty")
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${GH_REPO}/issues/comments/${existing}" -f body="$body" >/dev/null
+          else
+            gh api -X POST "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
+          fi
 
   review:
     needs: plan
@@ -922,6 +959,20 @@ jobs:
           else
             gh pr review "$PR_NUMBER" --approve --body-file verdict.md
           fi
+
+      # always()：不管有没有落表态（PR 中途被合并也会跳过表态），这条过程态评论都要
+      # 清掉，否则会永远停在「评审进行中」误导后来的人。
+      - name: Remove progress comment
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          MARKER='<!-- claude-review-progress -->'
+          gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\")) | .id] | .[]" \
+          | while read -r id; do
+              gh api -X DELETE "repos/${GH_REPO}/issues/comments/${id}" >/dev/null
+            done
 
       - name: Warn when nothing was produced
         if: steps.assemble.outputs.action == 'none'
