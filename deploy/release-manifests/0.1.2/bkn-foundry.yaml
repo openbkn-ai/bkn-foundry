@@ -14,17 +14,20 @@ releases:
     chart: core-data-migrator
     version: 0.1.2
     stage: pre
+  bkn-safe:
+    chart: bkn-safe
+    version: 0.1.2
   mf-model-manager:
     chart: mf-model-manager
     version: 0.1.2
   mf-model-api:
     chart: mf-model-api
     version: 0.1.2
-  oss-gateway-backend:
-    chart: oss-gateway-backend
+  kafka-connect:
+    chart: kafka-connect
     version: 0.1.2
-  sandbox:
-    chart: sandbox
+  vega-backend:
+    chart: vega-backend
     version: 0.1.2
   bkn-backend:
     chart: bkn-backend
@@ -32,14 +35,14 @@ releases:
   ontology-query:
     chart: ontology-query
     version: 0.1.2
-  vega-backend:
-    chart: vega-backend
-    version: 0.1.2
-  kafka-connect:
-    chart: kafka-connect
-    version: 0.1.2
   agent-operator-integration:
     chart: agent-operator-integration
+    version: 0.1.2
+  oss-gateway-backend:
+    chart: oss-gateway-backend
+    version: 0.1.2
+  sandbox:
+    chart: sandbox
     version: 0.1.2
   agent-retrieval:
     chart: agent-retrieval
@@ -52,9 +55,6 @@ releases:
     version: 0.1.2
   otelcol-contrib:
     chart: otelcol-contrib
-    version: 0.1.2
-  bkn-safe:
-    chart: bkn-safe
     version: 0.1.2
   bkn-studio:
     chart: bkn-studio
