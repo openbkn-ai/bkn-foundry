@@ -18,7 +18,7 @@ async def invoke(
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ):
-    """同步一次性执行，等到终态才返回（算子工厂 toolbox 工具经此调用）。
+    """同步一次性执行，等到终态才返回。
 
     仅 published agent 可调（draft 与不存在同响应）；chat/task 模式均可，
     执行为无状态单轮，不落 thread。任务记录照常落库可监控。

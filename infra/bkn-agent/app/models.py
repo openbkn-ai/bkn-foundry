@@ -140,11 +140,10 @@ class AgentSpec(BaseModel):
     # 预设 id（可选）：创建时指定，便于模块用固定 id 跨环境引用；不传则服务端生成 uuid。
     # 已存在则创建冲突（不覆盖，跨环境同步用 import 的 upsert）。仅创建生效，更新忽略。
     agent_id: Optional[str] = Field(default=None, min_length=1, max_length=50, pattern=_ID_PATTERN)
-    # 名字直接用作算子工厂 toolbox 的工具名，字符集须与工厂校验一致
-    # （operator-integration validator: ^[[:word:]\p{Han}]+$ —— ASCII 字母数字下划线
-    # 或汉字；空格、连字符都不收）。这里前置拦住：否则一个非法名会让整包注册 400、
-    # 无限重试，连带堵死所有 published agent 的上下架。
-    # 刻意比 Go 侧略严（汉字取基本区），宁可这里先拒，不让工厂 400。
+    # 字符集：ASCII 字母数字下划线或汉字（基本区），空格与连字符不收。
+    # 该约束原本是为了对齐算子工厂 toolbox 的工具名校验，自动注册取消后
+    # （见 README「算子工厂注册」）它已是 bkn-agent 自身的约定；保持不放宽，
+    # 放宽属行为变更，要单独评估存量 agent 与导入导出的影响。
     name: str = Field(min_length=1, max_length=100, pattern=r"^[0-9A-Za-z_一-鿿]+$")
     mode: Literal["chat", "task"] = "chat"
     prompt_id: Optional[str] = None
@@ -174,8 +173,8 @@ class AgentSpec(BaseModel):
 
 class AgentOut(AgentSpec):
     # 出库（DB 行 → 输出对象）不复验：升级前的存量脏数据若在这里炸，会连坐
-    # /agents 整页 500、单查无法读取修复、list_published_agents 中断导致启动同步
-    # 永久重试。写入模型（AgentSpec）严校验，输出模型放行原样数据——
+    # /agents 整页 500、单查无法读取修复。
+    # 写入模型（AgentSpec）严校验，输出模型放行原样数据——
     # tools 覆写为裸 dict，agent_id/name 去掉 pattern 复验。
     agent_id: str = Field(min_length=1)
     name: str = Field(min_length=1, max_length=100)
@@ -239,7 +238,7 @@ class ChatRequest(BaseModel):
 
 
 class InvokeRequest(BaseModel):
-    """同步一次性执行（agent_id 在路径上；算子工厂 toolbox 工具经此调用）。"""
+    """同步一次性执行（agent_id 在路径上）。"""
 
     message: str = Field(min_length=1)
     skills: list[str] = Field(default_factory=list)
