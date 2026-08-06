@@ -19,8 +19,6 @@ type InternalComponentConfigDB struct {
 
 // IInternalComponentConfigDB 内置组件配置接口
 type IInternalComponentConfigDB interface {
-	InsertConfig(ctx context.Context, tx *sql.Tx, config *InternalComponentConfigDB) error                   // 添加配置
-	UpdateConfig(ctx context.Context, tx *sql.Tx, config *InternalComponentConfigDB) error                   // 更新配置
 	DeleteConfig(ctx context.Context, tx *sql.Tx, configType, configID string) error                         // 删除配置
 	SelectConfig(ctx context.Context, configType, configID string) (bool, *InternalComponentConfigDB, error) // 查询配置
 }

@@ -23,19 +23,6 @@ func (c ComponentType) String() string {
 	return string(c)
 }
 
-type ConfigSourceType string
-
-const (
-	// ConfigSourceTypeAuto 自动配置
-	ConfigSourceTypeAuto ConfigSourceType = "auto"
-	// ConfigSourceTypeManual 手动配置
-	ConfigSourceTypeManual ConfigSourceType = "manual"
-)
-
-func (c ConfigSourceType) String() string {
-	return string(c)
-}
-
 // IIntCompConfigService 内置组件配置服务
 type IIntCompConfigService interface {
 	// DeleteConfig 删除内置组件的配置记录（组件本身被删时的收尾）

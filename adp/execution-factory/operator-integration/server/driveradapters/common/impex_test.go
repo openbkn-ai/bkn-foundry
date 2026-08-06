@@ -47,38 +47,6 @@ func TestImport(t *testing.T) {
 	})
 }
 
-func TestInternalImportRouteReuseImportHandler(t *testing.T) {
-	Convey("TestInternalImportRouteReuseImportHandler", t, func() {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockImpex := mocks.NewMockIComponentImpexConfig(ctrl)
-		mockValidator := mocks.NewMockValidator(ctrl)
-		handler := &impexHandler{
-			ComponentImpexConfig: mockImpex,
-			Validator:            mockValidator,
-		}
-
-		mockValidator.EXPECT().ValidatorStruct(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ImportConfigReq{})).Return(nil)
-		mockImpex.EXPECT().ImportConfig(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ImportConfigReq{})).DoAndReturn(
-			func(_ interface{}, req *interfaces.ImportConfigReq) error {
-				So(req.Type, ShouldEqual, interfaces.ComponentTypeToolBox)
-				So(string(req.Data), ShouldEqual, `{"toolbox":{"configs":[]}}`)
-				return nil
-			},
-		)
-
-		recorder := performMultipartImportRequest(http.MethodPost, "/impex/intcomp/import/:type", "/impex/intcomp/import/toolbox", map[string]string{
-			"user_id":           "system",
-			"x-business-domain": "bd_public",
-		}, map[string]string{
-			"mode": "upsert",
-		}, "data", `{"toolbox":{"configs":[]}}`, handler.Import)
-
-		So(recorder.Code, ShouldEqual, http.StatusCreated)
-	})
-}
-
 func performMultipartImportRequest(method, routePath, requestPath string, headers map[string]string, fields map[string]string,
 	fileField, fileContent string, handler func(c *gin.Context)) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)

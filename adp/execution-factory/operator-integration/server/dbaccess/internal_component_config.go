@@ -47,55 +47,6 @@ func NewInternalComponentConfigDBSingleton() model.IInternalComponentConfigDB {
 	return ic
 }
 
-// InsertConfig 添加配置
-func (ic *internalComponentConfigDB) InsertConfig(ctx context.Context, tx *sql.Tx, config *model.InternalComponentConfigDB) (err error) {
-	orm := ic.orm
-	if tx != nil {
-		orm = ic.orm.WithTx(tx)
-	}
-	row, err := orm.Insert().Into(tbInternalComponentConfig).Values(map[string]interface{}{
-		"f_component_type": config.ComponentType,
-		"f_component_id":   config.ComponentID,
-		"f_config_version": config.ConfigVersion,
-		"f_config_source":  config.ConfigSource,
-		"f_protected_flag": config.ProtectedFlag,
-	}).Execute(ctx)
-	if err != nil {
-		err = errors.Wrapf(err, "insert internal component config error")
-		return
-	}
-	ok, err := checkAffected(row)
-	if err != nil {
-		return
-	}
-	if !ok {
-		err = errors.New("insert internal component config error")
-	}
-	return
-}
-
-// UpdateConfig 更新配置
-func (ic *internalComponentConfigDB) UpdateConfig(ctx context.Context, tx *sql.Tx, config *model.InternalComponentConfigDB) (err error) {
-	orm := ic.orm
-	if tx != nil {
-		orm = ic.orm.WithTx(tx)
-	}
-
-	row, err := orm.Update(tbInternalComponentConfig).SetData(map[string]interface{}{
-		"f_config_version": config.ConfigVersion,
-		"f_config_source":  config.ConfigSource,
-		"f_protected_flag": config.ProtectedFlag,
-	}).WhereEq("f_component_type", config.ComponentType).
-		WhereEq("f_component_id", config.ComponentID).Execute(ctx)
-	if err != nil {
-		err = errors.Wrapf(err, "update internal component config error")
-		return
-	}
-	_, err = checkAffected(row)
-	return
-}
-
-// DeleteConfig 删除配置
 func (ic *internalComponentConfigDB) DeleteConfig(ctx context.Context, tx *sql.Tx, configType, configID string) (err error) {
 	orm := ic.orm
 	if tx != nil {
