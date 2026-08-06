@@ -419,6 +419,9 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 		t.Fatalf("read Helm deployment: %v", err)
 	}
 	rendering := string(deployment)
+	if !strings.Contains(rendering, `app.kubernetes.io/name: agent-retrieval`) {
+		t.Fatal("Helm must retain the stable pod label admitted by the Trace lifecycle NetworkPolicy")
+	}
 	if !strings.Contains(rendering, `required "observability.lifecycle.core_url is required"`) {
 		t.Fatal("Helm must reject lifecycle enforcement with an empty Core URL")
 	}

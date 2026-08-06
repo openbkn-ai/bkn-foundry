@@ -24,10 +24,10 @@ spec:
     # remains on the token-protected public API for platform producers.
     - from:
         {{- range $allowedClients }}
-        {{- if not (gt (len .podLabels) 0) }}
+        {{- $podLabels := default (dict) .podLabels }}
+        {{- if not (gt (len $podLabels) 0) }}
         {{- fail "networkPolicy.allowedClients[].podLabels is required" }}
         {{- end }}
-        {{- $podLabels := .podLabels }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ default $.Release.Namespace .namespace | quote }}

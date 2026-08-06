@@ -72,13 +72,21 @@ CONFIG_YAML_PATH=/nonexistent/openbkn-config.yaml
 _openbkn_apply_default_set_values
 online_sets="${CORE_SET_VALUES[*]:-}"
 contains "online registry flags rewrite application images" "${online_sets}" "image.registry=ghcr.io/openbkn-ai"
-contains "online registry flags rewrite the evidence index hook image" "${online_sets}" "evidence.indexManagement.createJob.image.registry=ghcr.io/openbkn-ai"
+not_contains "online registry flags leave third-party hook images on their chart registry" "${online_sets}" "evidence.indexManagement.createJob.image.registry="
 
 CORE_SET_VALUES=("image.registry=registry.example/openbkn")
 CORE_IMAGE_REGISTRY=""
 _openbkn_apply_default_set_values
 explicit_sets="${CORE_SET_VALUES[*]:-}"
-contains "explicit application registries also rewrite the evidence index hook image" "${explicit_sets}" "evidence.indexManagement.createJob.image.registry=registry.example/openbkn"
+not_contains "application registry overrides do not imply a third-party mirror" "${explicit_sets}" "evidence.indexManagement.createJob.image.registry="
+
+CORE_SET_VALUES=(
+    "image.registry=registry.example/openbkn"
+    "evidence.indexManagement.createJob.image.registry=hooks.example"
+)
+_openbkn_apply_default_set_values
+explicit_hook_sets="${CORE_SET_VALUES[*]:-}"
+contains "explicit hook registries are preserved" "${explicit_hook_sets}" "evidence.indexManagement.createJob.image.registry=hooks.example"
 
 cat >"${CONFIG_REGISTRY_FILE}" <<'EOF'
 image:
@@ -88,7 +96,7 @@ CORE_SET_VALUES=()
 CONFIG_YAML_PATH="${CONFIG_REGISTRY_FILE}"
 _openbkn_apply_default_set_values
 config_sets="${CORE_SET_VALUES[*]:-}"
-contains "config application registries rewrite the evidence index hook image" "${config_sets}" "evidence.indexManagement.createJob.image.registry=registry.config/openbkn"
+not_contains "config application registries do not imply a third-party mirror" "${config_sets}" "evidence.indexManagement.createJob.image.registry="
 
 sync_script="$(<"${SCRIPT_DIR}/scripts/sync-k8s-images.sh")"
 contains "offline sync includes the evidence index hook image" "${sync_script}" 'curlimages/curl:8.10.1'

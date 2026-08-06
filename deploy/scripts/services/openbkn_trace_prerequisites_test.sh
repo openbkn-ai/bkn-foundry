@@ -167,6 +167,15 @@ fi
 
 CALLS=()
 : >"${KUBECTL_LOG}"
+EXISTING_DSN_DATA="$(printf '%s' 'trace:pa?ss@tcp(db.example:3306)/bkn_trace?charset=utf8mb4' | base64)"
+if _openbkn_prepare_trace_profile openbkn; then
+    ok
+else
+    fail "external Core DSN must allow question marks in the password"
+fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
 cat > "${CONFIG_YAML_PATH}" <<'EOF'
 depServices:
   rds:

@@ -38,9 +38,24 @@ if ! grep -Fq 'kind: NetworkPolicy' <<<"${default_rendered}" ||
   echo "chart must restrict the private lifecycle port to agent-retrieval" >&2
   exit 1
 fi
+render_error="$(mktemp)"
+trap 'rm -f "${render_error}"' EXIT
 if helm template agent-observability "${chart_dir}" \
-  --set-json 'networkPolicy.allowedClients=[]' >/dev/null 2>&1; then
+  --set-json 'networkPolicy.allowedClients=[]' >/dev/null 2>"${render_error}"; then
   echo "enabled private lifecycle policy must fail closed without allowed clients" >&2
+  exit 1
+fi
+if ! grep -Fq 'networkPolicy.allowedClients must contain at least one private lifecycle client' "${render_error}"; then
+  echo "empty private lifecycle clients must fail for the intended reason" >&2
+  exit 1
+fi
+if helm template agent-observability "${chart_dir}" \
+  --set-json 'networkPolicy.allowedClients=[{}]' >/dev/null 2>"${render_error}"; then
+  echo "private lifecycle clients without pod labels must fail closed" >&2
+  exit 1
+fi
+if ! grep -Fq 'networkPolicy.allowedClients[].podLabels is required' "${render_error}"; then
+  echo "missing private lifecycle client labels must fail for the intended reason" >&2
   exit 1
 fi
 
