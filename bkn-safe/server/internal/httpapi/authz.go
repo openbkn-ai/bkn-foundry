@@ -76,6 +76,91 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, gin.H{"operations": allowed})
 	})
 
+	// POST /resource-filter — batched decision for a whole list page: which of
+	// the given resources the accessor may see, and which of the candidate
+	// operations it holds on each.
+	//
+	//	{ accessor_id, resources:[{type,id}], visibility_operations:[...], candidate_operations:[...] }
+	//	-> { resources:[ {resource_type, resource_id, operations:[...]} ] }
+	//
+	// Resources may also be given as resource_type + resource_ids (the
+	// single-type list-page form); both forms may be combined, and types may be
+	// mixed within one request.
+	//
+	// The two operation lists are separate axes on purpose. visibility_operations
+	// filters — a resource is returned only if the accessor holds every one of
+	// them; an empty list returns each requested resource. candidate_operations
+	// projects — the returned operations are the subset held, regardless of what
+	// made the resource visible. Omitting candidate_operations falls back to the
+	// resource type's catalog ops, as POST /operations does.
+	//
+	// Errors: 400 on a malformed body or a missing accessor_id; 500 on an engine
+	// failure. An empty resource list is not an error — it returns an empty
+	// result, so paginating callers need no special case.
+	g.POST("/resource-filter", func(c *gin.Context) {
+		var req struct {
+			AccessorID           string        `json:"accessor_id" binding:"required"`
+			Resources            []resourceRef `json:"resources"`
+			ResourceType         string        `json:"resource_type"`
+			ResourceIDs          []string      `json:"resource_ids"`
+			VisibilityOperations []string      `json:"visibility_operations"`
+			CandidateOperations  []string      `json:"candidate_operations"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		refs := make([]authz.ResourceRef, 0, len(req.Resources)+len(req.ResourceIDs))
+		for _, r := range req.Resources {
+			refs = append(refs, authz.ResourceRef{Type: r.Type, ID: r.ID})
+		}
+		if len(req.ResourceIDs) > 0 {
+			if req.ResourceType == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required with resource_ids"})
+				return
+			}
+			for _, id := range req.ResourceIDs {
+				refs = append(refs, authz.ResourceRef{Type: req.ResourceType, ID: id})
+			}
+		}
+
+		// Candidate ops default to each type's catalog. Resolved per distinct
+		// type so a mixed-type batch stays one request, then evaluated type by
+		// type; a single shared candidate list is the common case and costs one
+		// pass.
+		byType := map[string][]authz.ResourceRef{}
+		order := make([]string, 0, 4)
+		for _, r := range refs {
+			if _, seen := byType[r.Type]; !seen {
+				order = append(order, r.Type)
+			}
+			byType[r.Type] = append(byType[r.Type], r)
+		}
+		out := make([]gin.H, 0, len(refs))
+		for _, rtype := range order {
+			candidates := req.CandidateOperations
+			if len(candidates) == 0 {
+				var err error
+				if candidates, err = catalogOps(db, rtype); err != nil {
+					serverError(c, err)
+					return
+				}
+			}
+			results, err := e.FilterResourceOps(req.AccessorID, byType[rtype], req.VisibilityOperations, candidates)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			for _, r := range results {
+				out = append(out, gin.H{
+					"resource_type": r.Type,
+					"resource_id":   r.ID,
+					"operations":    r.Operations,
+				})
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"resources": out})
+	})
+
 	// POST /policies — grant an accessor concrete ops on one resource instance
 	// (the create-resource pattern). { accessor_id, resource, operations:[...] }
 	g.POST("/policies", func(c *gin.Context) {

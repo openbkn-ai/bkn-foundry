@@ -96,10 +96,56 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 ## HTTP 接口（节选）
 
 - 认证（hydra 重定向到这里）：`GET/POST /login`、`GET /consent`、`GET/POST /device`
-- 鉴权 `/api/safe/v1/authz`：`POST /check`、`POST /operations`、`POST|DELETE /policies`、`POST /role-bindings`
+- 鉴权 `/api/safe/v1/authz`：`POST /check`、`POST /operations`、`POST /resource-filter`、
+  `POST|DELETE /policies`、`POST /role-bindings`
 - 目录 `/api/safe/v1/directory`：`GET /users/:id`、`POST /names`、`GET /departments`、
   `GET /groups/:id/members`、`POST /search-org`、`POST /users`、`PUT /users/:id/password`
 - 健康：`GET /health/ready`、`/health/alive`
+
+### `POST /api/safe/v1/authz/resource-filter`（列表页批量判定）
+
+一次请求判完一页资源：既回**哪些可见**，也回**每个资源上持有哪些操作**。业务服务的
+列表/详情响应据此填 `operations` 字段，无需按资源、按操作逐次调 `/check`。
+
+```json
+{
+  "accessor_id": "u-1",
+  "resources": [{ "type": "knowledge_network", "id": "kn-1" }],
+  "visibility_operations": ["view_detail"],
+  "candidate_operations": ["view_detail", "create", "modify", "delete"]
+}
+```
+
+```json
+{
+  "resources": [
+    {
+      "resource_type": "knowledge_network",
+      "resource_id": "kn-1",
+      "operations": ["view_detail", "modify", "delete"]
+    }
+  ]
+}
+```
+
+**两个操作列表是彼此独立的两个维度，这正是本端点存在的理由：**
+
+| 字段 | 作用 | 留空时 |
+| --- | --- | --- |
+| `visibility_operations` | 过滤：资源需**全部**持有这些操作才返回 | 不过滤，请求的资源全部返回（各自带操作集，可能为空） |
+| `candidate_operations` | 投影：返回的 `operations` 从该候选集中取子集，与资源因何可见无关 | 回落到该资源类型的操作目录（与 `POST /operations` 一致） |
+
+资源可用 `resources: [{type,id}]` 给出，也可用 `resource_type` + `resource_ids`
+的单类型形式；两者可同时出现，一次请求内允许混合资源类型。
+
+判定语义与单条 `POST /check` 完全一致：直接授权、角色继承（含角色间传递）、
+根部门公共授权、超管通配、`act` 通配一视同仁。内部不逐 (资源 × 操作) 调用引擎，
+而是先解析该访问者的授权集再在内存中投影，故耗时与资源数近似线性；两条路径由
+`TestFilterResourceOpsMatchesCheck` 钉住一致性。
+
+错误行为：请求体不合法或缺 `accessor_id` 返回 `400`；给了 `resource_ids` 却没给
+`resource_type` 返回 `400`；引擎失败返回 `500`。**空资源列表不是错误**，返回
+`{"resources": []}`，分页调用方无需特判。
 
 ## 授权档位（付费能力门控）
 
