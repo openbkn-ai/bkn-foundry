@@ -20,7 +20,10 @@ func newAndCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap m
 	subConds := []Condition{}
 
 	if len(cfg.SubConds) == 0 {
-		return nil, fmt.Errorf("sub condition size is 0")
+		return &AndCond{
+			mCfg:      cfg,
+			mSubConds: subConds,
+		}, nil
 	}
 
 	if len(cfg.SubConds) > MaxSubCondition {
@@ -96,6 +99,10 @@ func (cond *AndCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 }
 
 func (cond *AndCond) Convert2SQL(ctx context.Context) (string, error) {
+	if len(cond.mSubConds) == 0 {
+		return "1 = 1", nil
+	}
+
 	sql := ""
 	for i, subCond := range cond.mSubConds {
 		where, err := subCond.Convert2SQL(ctx)
@@ -118,7 +125,7 @@ func (cond *AndCond) Convert2SQL(ctx context.Context) (string, error) {
 func convertAndCondToDatasetFilterCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*ViewField,
 	vectorizer func(ctx context.Context, word string) ([]*VectorResp, error)) (map[string]any, error) {
 	if len(cfg.SubConds) == 0 {
-		return nil, fmt.Errorf("sub condition size is 0")
+		return nil, nil
 	}
 
 	if len(cfg.SubConds) > MaxSubCondition {

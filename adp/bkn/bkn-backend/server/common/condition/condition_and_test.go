@@ -29,15 +29,15 @@ func TestNewAndCond(t *testing.T) {
 			},
 		}
 
-		Convey("empty sub conditions should return error", func() {
+		Convey("empty sub conditions should create a match-all condition", func() {
 			cfg := &CondCfg{
 				Operation: OperationAnd,
 				SubConds:  []*CondCfg{},
 			}
 			cond, err := newAndCond(ctx, cfg, CUSTOM, fieldsMap)
-			So(err, ShouldNotBeNil)
-			So(cond, ShouldBeNil)
-			So(err.Error(), ShouldContainSubstring, "sub condition size is 0")
+			So(err, ShouldBeNil)
+			So(cond, ShouldNotBeNil)
+			So(len(cond.(*AndCond).mSubConds), ShouldEqual, 0)
 		})
 
 		Convey("sub conditions exceed MaxSubCondition should return error", func() {
@@ -278,6 +278,16 @@ func TestAndCond_Convert2SQL(t *testing.T) {
 			So(sql, ShouldContainSubstring, "field1")
 		})
 
+		Convey("empty sub conditions should convert to SQL tautology", func() {
+			cfg := &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{}}
+			cond, err := newAndCond(ctx, cfg, CUSTOM, fieldsMap)
+			So(err, ShouldBeNil)
+
+			sql, err := cond.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(sql, ShouldEqual, "1 = 1")
+		})
+
 		Convey("multiple sub conditions should be joined with AND", func() {
 			cfg := &CondCfg{
 				Operation: OperationAnd,
@@ -333,5 +343,16 @@ func TestAndCond_Convert2SQL(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(sql, ShouldBeEmpty)
 		})
+	})
+}
+
+func TestConvertAndCondToDatasetFilterCondition(t *testing.T) {
+	Convey("Test convertAndCondToDatasetFilterCondition", t, func() {
+		result, err := convertAndCondToDatasetFilterCondition(context.Background(), &CondCfg{
+			Operation: OperationAnd,
+			SubConds:  []*CondCfg{},
+		}, nil, nil)
+		So(err, ShouldBeNil)
+		So(result, ShouldBeNil)
 	})
 }
