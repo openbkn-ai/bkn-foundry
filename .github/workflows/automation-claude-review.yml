@@ -144,6 +144,7 @@ jobs:
       pr_number: ${{ steps.meta.outputs.pr_number }}
       shards: ${{ steps.plan.outputs.shards }}
       has_shards: ${{ steps.plan.outputs.has_shards }}
+      prior_rounds: ${{ steps.plan.outputs.prior_rounds }}
       file_total: ${{ steps.plan.outputs.file_total }}
       file_listed: ${{ steps.plan.outputs.file_listed }}
     env:
@@ -287,6 +288,14 @@ jobs:
 
           print("shards=" + json.dumps(shards, ensure_ascii=False))
           print("has_shards=" + ("true" if shards else "false"))
+          # 已有过几轮结论。分片与 verdict 共用这一个数来收紧配额，免得各自从评论历史
+          # 里推断「这是第几轮」还推出不同结果。
+          prior = subprocess.run(
+              ["gh", "api", "repos/%s/pulls/%s/reviews" % (os.environ["GH_REPO"], pr),
+               "--paginate", "--jq", '[.[] | select((.body // "") != "")] | length'],
+              capture_output=True, text=True)
+          print("prior_rounds=%s"
+                % ((prior.stdout.split() or ["0"])[0] if prior.returncode == 0 else "0"))
           print("file_total=%d" % total)
           print("file_listed=%d" % len(paths))
           PY
@@ -553,6 +562,13 @@ jobs:
 
             **一律用中文**写 inline comment 与 findings JSON 里的所有文字。代码标识符、
             错误信息、命令、路径保持原样，不翻译。
+
+            **inline comment 的配额**：此前已有 ${{ needs.plan.outputs.prior_rounds }}
+            轮结论。为 0 时本片最多贴 3 条；不为 0 时最多 1 条，且只针对本轮新增提交。
+            每条 inline 都是一次通知和一个要人去关掉的会话，堆在 Files 视图里不会自己
+            消失——实测出现过 31 个文件的 PR 一轮贴 15 条、1 个文件的 PR 贴 5 条。
+            同一个问题**不要既贴 inline 又写进 unconfirmed**：位置明确、作者照着改就行
+            的贴 inline；需要他判断的写 unconfirmed。
 
             **一、先写 `${{ github.workspace }}/findings/${{ matrix.shard.key }}.json`**
             （绝对路径）。**这一步排在最前面是有意的**：它是你这片唯一会进入最终结论的
