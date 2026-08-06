@@ -499,21 +499,31 @@ jobs:
             {
               "shard": "${{ matrix.shard.label }}",
               "status": "completed",
-              "summary": "一到三句话的整体判断",
-              "impact": "这片改动波及哪些服务、接口、存量数据",
+              "summary": "整体判断，最多两句",
+              "impact": "这片改动可能波及什么，一句话；没什么可说就填空串",
               "blockers": [
                 {"file": "adp/bkn/x.go", "line": 42, "what": "问题是什么",
                  "scenario": "什么输入、什么状态、坏成什么样",
                  "evidence": ["comm-go/x/y.go:88-95 这几行里读到的、支撑这条结论的事实"]}
               ],
-              "unconfirmed": [{"file": "...", "what": "待确认项，不阻断放行"}],
-              "not_covered": "本轮没来得及核的面，没有就写空串"
+              "unconfirmed": [{"file": "...", "what": "待确认项，一到两句，不阻断放行"}],
+              "not_covered": "本轮没核到的面，一句话；全核到了就填空串"
             }
             ```
 
             **blockers 的门槛**：你已经读过源码核实，能说清具体的失效场景，并且自评
             把握 ≥ 90 分。说不清、或失效场景里有任何一环没在代码里核实过，都不算阻塞
             项——降级进 unconfirmed，或者直接丢掉。
+
+            **正文长度是有代价的。** 所有分片的输出会拼进同一条评审结论，作者要一次读完；
+            一份没人读完的评审等于没评。所以：
+
+            - `summary` 最多两句；`impact` 一句，说「可能坏成什么样」而不是列举清单，
+              没有实质影响就填空串；`not_covered` 一句，全核到了就填空串。
+            - `unconfirmed` **最多 2 条**，每条一到两句，只给结论和位置，不复述推理过程。
+              超过 3 条说明你在凑数——留下最值得作者看的那几条。
+            - 上一轮已经提过、这一轮没有新证据的，**不要再列一遍做状态标注**。作者已经
+              看过了，重复列出只会让每一轮的结论比上一轮更长。
 
             `evidence` 必填且必须是你**这一轮真读过的** file:line。写不出具体位置，
             说明这条是从 diff 表面推出来的，不是核实出来的——那它就不是阻塞项。
@@ -940,6 +950,9 @@ jobs:
                "scen": "Failure scenario: ",
                "dropped": "%d item(s) dropped by verification", "why": "Refuted because: ",
                "byshard": "Per-shard findings", "impact": "Blast radius: ", "notcov": "Not covered: ",
+               "clean": "_(no issues)_", "counts": "_(%d blocking, %d open)_",
+               "detail": "Blast radius and coverage gaps, per shard",
+               "more_unconf": "%d further open questions were trimmed to keep this readable; see the shard logs.",
                "unconf": "Open questions (non-blocking)", "missing": "Shards with no result",
                "missing_body": "These shards produced no findings — **their files were not reviewed this round**:",
                "reason_no_output": "ran, but wrote no conclusion (most likely the turn limit, or it wrapped up early)",
@@ -949,6 +962,11 @@ jobs:
                "trunc_body": "This PR changes %s files but only %s reached the planner (`gh pr view --json files` caps at 100) — **the remaining %d were not assigned to any shard and were not reviewed**.",
                "footer": "Push a new commit when addressed, or reply `/review` for another round.",
                "footer_ok": "Disagree, or want another pass? Reply `/review` — a plain comment does not trigger one, and the replier must be an OWNER/MEMBER/COLLABORATOR of this repo."}
+
+          # 模型不一定听话，长度要有确定性兜底——与「模型输出是不可信输入」同一思路。
+          def clip(x, n):
+              x = " ".join(str(x).split())
+              return x if len(x) <= n else x[:n - 1].rstrip() + "…"
 
           survived, refuted, unreviewed = [], [], []
           for s_, b in blockers:
@@ -972,9 +990,9 @@ jobs:
                       loc += ":%s" % b["line"]
                   mark = "" if verdicts.get(b["id"]) else T["unrev"]
                   lines.append("- **[%s] %s** — %s%s"
-                               % (s_["label"], loc, b.get("what", ""), mark))
+                               % (s_["label"], loc, clip(b.get("what", ""), 300), mark))
                   if b.get("scenario"):
-                      lines.append("  %s%s" % (T["scen"], b["scenario"]))
+                      lines.append("  %s%s" % (T["scen"], clip(b["scenario"], 300)))
               lines.append("")
 
           if refuted:
@@ -988,22 +1006,45 @@ jobs:
           # 标量字段同样是不可信输入：这里用 + 拼接（而非 %s 格式化）要求 str，
           # 模型把 impact 写成数组就抛 TypeError，失败形态与上面挡掉的畸形元素一致
           # ——Assemble 非零退出后既无表态也无告警。一律套 str()。
+          # 每片一行，详情折叠。改造前影响范围是整个 PR 写一次，分片后变成每片各写一段，
+          # 实测把结论正文撑到了改造前的 3 倍——阻塞项被埋在中间没人看得见。
           lines.append("## %s\n" % T["byshard"])
           for s, data in done:
-              lines.append("### %s" % s["label"])
-              if data.get("summary"):
-                  lines.append(str(data["summary"]))
-              if data.get("impact"):
-                  lines.append(T["impact"] + str(data["impact"]))
-              if data.get("not_covered"):
-                  lines.append(T["notcov"] + str(data["not_covered"]))
-              lines.append("")
+              n_b = len([b for _, b in blockers if _ is s])
+              n_u = len([u for ss, u in unconfirmed if ss is s])
+              tag = T["clean"] if not (n_b or n_u) else T["counts"] % (n_b, n_u)
+              lines.append("- **%s** — %s %s" % (s["label"], clip(data.get("summary") or "", 140), tag))
+          lines.append("")
 
+          detail = []
+          for s, data in done:
+              extra = [(T["impact"], data.get("impact")), (T["notcov"], data.get("not_covered"))]
+              extra = [(k, v) for k, v in extra if str(v or "").strip()]
+              if not extra:
+                  continue
+              detail.append("**%s**" % s["label"])
+              detail += ["- %s%s" % (k, clip(v, 200)) for k, v in extra]
+              detail.append("")
+          if detail:
+              lines.append("<details><summary>%s</summary>\n" % T["detail"])
+              lines += detail
+              lines.append("</details>\n")
+
+          # 每片至多 3 条，且整体封顶——各片各写各的，不封顶就会线性膨胀。
           if unconfirmed:
               lines.append("## %s\n" % T["unconf"])
+              seen_per_shard, shown = {}, 0
               for s, u in unconfirmed:
+                  k = s["key"]
+                  if seen_per_shard.get(k, 0) >= 2 or shown >= 6:
+                      continue
+                  seen_per_shard[k] = seen_per_shard.get(k, 0) + 1
+                  shown += 1
                   lines.append("- **[%s] %s** — %s"
-                               % (s["label"], u.get("file", ""), u.get("what", "")))
+                               % (s["label"], u.get("file", ""), clip(u.get("what", ""), 220)))
+              dropped_u = len(unconfirmed) - shown
+              if dropped_u > 0:
+                  lines.append("- _%s_" % (T["more_unconf"] % dropped_u))
               lines.append("")
 
           if missing:
