@@ -468,12 +468,12 @@ func TestBuildSemanticSearchConditionStruct_KnnOnlyFieldDeniedYieldsNil(t *testi
 func TestKnnEligibleObjectTypes_RanksByScoreNotPosition(t *testing.T) {
 	config := knnTestConfig() // KnnObjectTypeLimit = 3
 	objectTypes := []*interfaces.KnSearchObjectType{
-		{ConceptID: "irrelevant_a", ConceptScore: 0.1},
-		{ConceptID: "irrelevant_b", ConceptScore: 0.2},
-		{ConceptID: "irrelevant_c", ConceptScore: 0.3},
-		{ConceptID: "stadiums", ConceptScore: 9.5},
-		{ConceptID: "teams", ConceptScore: 8.0},
-		{ConceptID: "squads", ConceptScore: 7.0},
+		knnCapableObjectType("irrelevant_a", 0.1, true),
+		knnCapableObjectType("irrelevant_b", 0.2, true),
+		knnCapableObjectType("irrelevant_c", 0.3, true),
+		knnCapableObjectType("stadiums", 9.5, true),
+		knnCapableObjectType("teams", 8.0, true),
+		knnCapableObjectType("squads", 7.0, true),
 	}
 
 	eligible := knnEligibleObjectTypes(objectTypes, config)
@@ -493,8 +493,8 @@ func TestKnnEligibleObjectTypes_RanksByScoreNotPosition(t *testing.T) {
 
 func TestKnnEligibleObjectTypes_LimitAndSwitch(t *testing.T) {
 	objectTypes := []*interfaces.KnSearchObjectType{
-		{ConceptID: "a", ConceptScore: 1},
-		{ConceptID: "b", ConceptScore: 2},
+		knnCapableObjectType("a", 1, true),
+		knnCapableObjectType("b", 2, true),
 	}
 
 	config := knnTestConfig()
@@ -525,5 +525,40 @@ func TestDefaultConfig_EnablesKnn(t *testing.T) {
 	merged := MergeRetrievalConfig(nil)
 	if !boolValue(merged.SemanticInstanceRetrieval.EnableKnnInstanceRetrieval) {
 		t.Fatalf("the merged config is what runtime actually uses; knn must survive it")
+	}
+}
+
+func knnCapableObjectType(id string, score float64, withVector bool) *interfaces.KnSearchObjectType {
+	ops := []interfaces.KnOperationType{interfaces.KnOperationTypeEqual, interfaces.KnOperationTypeMatch}
+	if withVector {
+		ops = append(ops, interfaces.KnOperationTypeKnn)
+	}
+	return &interfaces.KnSearchObjectType{
+		ConceptID:    id,
+		ConceptScore: score,
+		DataProperties: []*interfaces.KnSearchDataProperty{
+			{Name: "name", Type: "string", ConditionOperations: ops},
+		},
+	}
+}
+
+// 名额只能发给真有向量字段的对象类：粗召回只给命中的对象类打分，作为关系端点
+// 捎带进来的分数是 0，照单排序会让没有向量字段的对象类占满名额。
+func TestKnnEligibleObjectTypes_SkipsTypesWithoutVectorField(t *testing.T) {
+	config := knnTestConfig() // limit = 3
+	objectTypes := []*interfaces.KnSearchObjectType{
+		knnCapableObjectType("no_vector_a", 0, false),
+		knnCapableObjectType("no_vector_b", 0, false),
+		knnCapableObjectType("no_vector_c", 0, false),
+		knnCapableObjectType("stadiums", 0, true),
+	}
+
+	eligible := knnEligibleObjectTypes(objectTypes, config)
+
+	if !eligible["stadiums"] {
+		t.Fatalf("the only vector-capable object type must get the budget, got %+v", eligible)
+	}
+	if len(eligible) != 1 {
+		t.Fatalf("types without a vector field must not consume a slot, got %+v", eligible)
 	}
 }

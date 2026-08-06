@@ -438,11 +438,14 @@ func knnEligibleObjectTypes(
 		return eligible
 	}
 
+	// 只有真有向量字段的对象类才参与分配。否则名额会被没有向量字段的对象类占掉
+	// （它们本来也发不出 knn），真正能用向量的反而排不进来。
 	ranked := make([]*interfaces.KnSearchObjectType, 0, len(objectTypes))
 	for _, objType := range objectTypes {
-		if objType != nil {
-			ranked = append(ranked, objType)
+		if objType == nil || !hasKnnField(objType) {
+			continue
 		}
+		ranked = append(ranked, objType)
 	}
 	// 稳定排序：分数相同时保持概念召回给出的先后，结果可复现。
 	sort.SliceStable(ranked, func(i, j int) bool {
@@ -457,4 +460,14 @@ func knnEligibleObjectTypes(
 		eligible[objType.ConceptID] = true
 	}
 	return eligible
+}
+
+// hasKnnField 判断对象类上有没有可以发向量条件的属性。
+func hasKnnField(objType *interfaces.KnSearchObjectType) bool {
+	for _, f := range findSemanticSearchableFields(objType) {
+		if f.HasKnn {
+			return true
+		}
+	}
+	return false
 }
