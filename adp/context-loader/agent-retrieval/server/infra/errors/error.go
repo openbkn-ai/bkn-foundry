@@ -58,15 +58,20 @@ var (
 	errServerName = "agentRetrieval"
 
 	errCodeMap = map[int]string{
-		http.StatusBadRequest:          "BadRequest",
-		http.StatusUnauthorized:        "Unauthorized",
-		http.StatusForbidden:           "Forbidden",
-		http.StatusNotFound:            "NotFound",
-		http.StatusMethodNotAllowed:    "MethodNotAllowed",
-		http.StatusConflict:            "Conflict",
-		http.StatusInternalServerError: "InternalServerError",
-		http.StatusNotImplemented:      "NotImplemented",
-		http.StatusServiceUnavailable:  "ServiceUnavailable",
+		http.StatusBadRequest:       "BadRequest",
+		http.StatusUnauthorized:     "Unauthorized",
+		http.StatusForbidden:        "Forbidden",
+		http.StatusNotFound:         "NotFound",
+		http.StatusMethodNotAllowed: "MethodNotAllowed",
+		http.StatusConflict:         "Conflict",
+		// 413 与 502 曾不在表里，落到 fallback 后 code 一律是 InternalServerError——
+		// 调用方（尤其是模型）据 code 判断该不该重试，「文件太大」和「上游挂了」
+		// 都被说成内部错误，于是它会重试一个永远不会变小的文件。
+		http.StatusRequestEntityTooLarge: "RequestEntityTooLarge",
+		http.StatusBadGateway:            "BadGateway",
+		http.StatusInternalServerError:   "InternalServerError",
+		http.StatusNotImplemented:        "NotImplemented",
+		http.StatusServiceUnavailable:    "ServiceUnavailable",
 	}
 )
 
