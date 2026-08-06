@@ -3845,9 +3845,13 @@ func Test_applyIndexCapOps(t *testing.T) {
 			So(contains(ops, cond.OperationEq), ShouldBeTrue)
 		})
 
-		Convey("Vector cap alone stays silent: knn needs a vector-typed property\n", func() {
+		Convey("Vector cap opens knn: the property carries the generated vector field\n", func() {
 			ops := applyIndexCapOps(baseline, logics.PropertyIndexCaps{Vector: true})
-			So(contains(ops, cond.OperationKNN), ShouldBeFalse)
+			So(contains(ops, cond.OperationKNN), ShouldBeTrue)
+		})
+
+		Convey("A property with no capability at all keeps the baseline untouched\n", func() {
+			ops := applyIndexCapOps(baseline, logics.PropertyIndexCaps{})
 			So(ops, ShouldResemble, baseline)
 		})
 

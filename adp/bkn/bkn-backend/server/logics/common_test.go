@@ -196,3 +196,53 @@ func TestVegaResourceIndexCaps_RefPropertyRedirectsCapability(t *testing.T) {
 		t.Fatalf("summary should carry both the redirected fulltext and its own keyword, got %+v", got)
 	}
 }
+
+func TestVegaResourceIndexCaps_VectorCarriesGeneratedFieldAndModel(t *testing.T) {
+	res := &interfaces.VegaResource{
+		LocalIndexName: "vega-build-abc",
+		IndexConfig:    &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "text-embedding-v4"},
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "stadium_name",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.FieldFeatureType_Vector},
+					{FeatureType: interfaces.FieldFeatureType_Fulltext},
+				},
+			},
+			{
+				Name: "city_name",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.FieldFeatureType_Vector, Config: map[string]any{"embedding_model": "bge-m3"}},
+				},
+			},
+		},
+	}
+
+	caps := VegaResourceIndexCaps(res)
+
+	stadium := caps["stadium_name"]
+	if !stadium.Vector || stadium.VectorField != "stadium_name_vector" {
+		t.Fatalf("vector field must follow the build task naming, got %+v", stadium)
+	}
+	if stadium.EmbeddingModel != "text-embedding-v4" {
+		t.Fatalf("missing per-field model should fall back to the resource default, got %q", stadium.EmbeddingModel)
+	}
+	if !stadium.Fulltext {
+		t.Fatalf("fulltext must survive alongside vector, got %+v", stadium)
+	}
+	if got := caps["city_name"].EmbeddingModel; got != "bge-m3" {
+		t.Fatalf("per-field model must win over the resource default, got %q", got)
+	}
+}
+
+func TestVegaResourceIndexCaps_NoVectorFieldWithoutLocalIndex(t *testing.T) {
+	res := &interfaces.VegaResource{
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "stadium_name", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Vector}}},
+		},
+	}
+
+	if caps := VegaResourceIndexCaps(res); len(caps) != 0 {
+		t.Fatalf("declared features without a built index must yield no capability, got %+v", caps)
+	}
+}

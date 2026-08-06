@@ -236,6 +236,9 @@ type FulltextConfig struct {
 type VectorConfig struct {
 	Enabled bool   `json:"enabled"`
 	ModelID string `json:"model_id"`
+	// VectorField 是向量所在的物理字段，由 BKN 随对象类 Schema 下发。资源类对象类的
+	// 属性本身是字符串，向量落在构建任务生成的另一个字段上。
+	VectorField string `json:"vector_field,omitempty"`
 }
 
 // type ViewField struct {

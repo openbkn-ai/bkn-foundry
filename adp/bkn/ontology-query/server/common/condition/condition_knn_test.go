@@ -600,3 +600,58 @@ func Test_rewriteKnnCond(t *testing.T) {
 
 	})
 }
+
+// 资源类对象类的属性是标量，向量落在构建任务生成的字段上：只看属性类型会把
+// 建好的向量索引全部判死，必须认 index_config 里下发的 vector_field。
+func Test_rewriteKnnCond_ResourceBackedScalarField(t *testing.T) {
+	Convey("Test rewriteKnnCond on a resource-backed scalar field", t, func() {
+		ctx := context.Background()
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			return []VectorResp{{Vector: []float32{0.1, 0.2}}}, nil
+		}
+
+		Convey("vector_field 存在时改写到生成字段", func() {
+			cfg := &CondCfg{
+				Name:      "stadium_name",
+				Operation: OperationKNN,
+				NameField: &DataProperty{
+					Name:        "stadium_name",
+					Type:        dtype.DATATYPE_STRING,
+					MappedField: Field{Name: "stadium_name"},
+					IndexConfig: &IndexConfig{
+						VectorConfig: VectorConfig{
+							Enabled:     true,
+							ModelID:     "m-embed-1",
+							VectorField: "stadium_name_vector",
+						},
+					},
+				},
+				ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
+			}
+
+			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
+
+			So(err, ShouldBeNil)
+			So(result.Name, ShouldEqual, "stadium_name_vector")
+			So(result.Operation, ShouldEqual, OperationKNNVector)
+		})
+
+		Convey("没有向量索引时仍然拒绝", func() {
+			cfg := &CondCfg{
+				Name:      "stadium_id",
+				Operation: OperationKNN,
+				NameField: &DataProperty{
+					Name:        "stadium_id",
+					Type:        dtype.DATATYPE_STRING,
+					MappedField: Field{Name: "stadium_id"},
+				},
+				ValueOptCfg: ValueOptCfg{Value: "anything"},
+			}
+
+			_, err := rewriteKnnCond(ctx, cfg, vectorizer)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "has no vector index")
+		})
+	})
+}

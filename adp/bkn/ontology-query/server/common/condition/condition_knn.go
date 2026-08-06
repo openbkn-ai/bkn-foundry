@@ -138,12 +138,23 @@ func rewriteKnnCond(ctx context.Context, cfg *CondCfg,
 		return nil, fmt.Errorf("向量过滤[knn]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
 	}
 
-	// 转为视图的 knn_vector 的查询，则要求字段是 vector 字段，且小模型不为空
-	if cfg.NameField.Type != dtype.DATATYPE_VECTOR {
-		return nil, fmt.Errorf("condition [knn] left field is not a vector field: %s:%s", cfg.NameField.Name, cfg.NameField.Type)
+	// knn 落到两种字段上：
+	//   1. 属性本身就是 vector 类型（数据视图那条老路），向量就在映射字段上；
+	//   2. 属性是普通标量，但绑定资源为它建了向量索引——向量写在构建任务生成的另一个
+	//      字段上，字段名由 BKN 随 Schema 下发在 index_config.vector_config.vector_field。
+	// 第二种是资源类对象类的常态：源列是 string，属性类型不可能是 vector，只看类型会
+	// 把建好的向量索引全部判死。
+	vectorField := ""
+	switch {
+	case cfg.NameField.Type == dtype.DATATYPE_VECTOR:
+		vectorField = cfg.NameField.MappedField.Name
+	case cfg.NameField.IndexConfig != nil && cfg.NameField.IndexConfig.VectorConfig.VectorField != "":
+		vectorField = cfg.NameField.IndexConfig.VectorConfig.VectorField
+	default:
+		return nil, fmt.Errorf("condition [knn] left field is not a vector field and has no vector index: %s:%s", cfg.NameField.Name, cfg.NameField.Type)
 	}
 
-	// knn能支持的场景: 字段类型是 vector 或者字段配置了向量索引的构建
+	// 向量化必须有模型；缺了就没法把查询词变成向量。
 	if cfg.NameField.IndexConfig == nil || cfg.NameField.IndexConfig.VectorConfig.ModelID == "" {
 		return nil, fmt.Errorf("condition [knn] left field field: %s need config a small model, current small model is empty", cfg.NameField.Name)
 	}
@@ -157,7 +168,7 @@ func rewriteKnnCond(ctx context.Context, cfg *CondCfg,
 	}
 
 	return &CondCfg{
-		Name:      cfg.NameField.MappedField.Name,
+		Name:      vectorField,
 		Operation: OperationKNNVector, // 操作符为 knn_vector
 		ValueOptCfg: ValueOptCfg{
 			Value: vector[0].Vector, // 值用向量化后的内容

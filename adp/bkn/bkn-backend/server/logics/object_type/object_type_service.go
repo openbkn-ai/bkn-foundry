@@ -1796,6 +1796,9 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 				objectType.DataSource.Name = res.Name
 				fieldsMap := logics.VegaResourceSchemaToFieldsMap(res)
 				indexCaps := logics.VegaResourceIndexCaps(res)
+				// 同一个资源上多个字段常共用一个 embedding 模型，按对象类缓存，别把
+				// 模型工厂问上十几遍。
+				embeddingModelIDs := map[string]string{}
 				dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
 				for j, prop := range objectType.DataProperties {
 					if prop.MappedField != nil {
@@ -1806,7 +1809,18 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 					}
 					ops := ots.processConditionOperations(objectType, prop, dslView)
 					if prop.MappedField != nil {
-						ops = applyIndexCapOps(ops, indexCaps[prop.MappedField.Name])
+						propCaps := indexCaps[prop.MappedField.Name]
+						// 向量能力要先把模型解析成 ID 才算数：解析不了就等于发不出 knn，
+						// 此时宁可不登记，也不能让调用方拿到一个必然 400 的算子。
+						if propCaps.Vector {
+							modelID := ots.resolveEmbeddingModelID(ctx, propCaps.EmbeddingModel, embeddingModelIDs)
+							if modelID == "" {
+								propCaps.Vector = false
+							} else {
+								applyVectorIndexConfig(objectType.DataProperties[j], propCaps.VectorField, modelID)
+							}
+						}
+						ops = applyIndexCapOps(ops, propCaps)
 					}
 					objectType.DataProperties[j].ConditionOperations = ops
 				}
@@ -1952,6 +1966,46 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 	return objectType, nil
 }
 
+// resolveEmbeddingModelID 把资源上记录的 embedding 模型解析成模型 ID。
+//
+// 资源存的是构建时用户给的值，可能是模型名（`openbkn vega dataset build
+// --embedding-model text-embedding-v4`），也可能已经是 ID；而查询侧向量化只认 ID。
+// 先按名字查，查不到就当它本来就是 ID 用。解析失败返回空串，调用方据此不登记 knn。
+func (ots *objectTypeService) resolveEmbeddingModelID(ctx context.Context, model string, cache map[string]string) string {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return ""
+	}
+	if resolved, ok := cache[model]; ok {
+		return resolved
+	}
+
+	resolved := model
+	if found, err := ots.mfs.GetModelByName(ctx, model); err == nil && found != nil && found.ModelID != "" {
+		resolved = found.ModelID
+	}
+	cache[model] = resolved
+	return resolved
+}
+
+// applyVectorIndexConfig 在属性上补齐向量索引信息，供查询侧改写 knn 使用。
+//
+// 资源类对象类的属性类型是字符串，向量落在构建任务生成的另一个字段上，因此必须
+// 显式带上物理字段名；下游拼后缀等于把 vega 的命名规则复制一份，早晚对不上。
+func applyVectorIndexConfig(prop *interfaces.DataProperty, vectorField, modelID string) {
+	if prop == nil || vectorField == "" || modelID == "" {
+		return
+	}
+	if prop.IndexConfig == nil {
+		prop.IndexConfig = &interfaces.IndexConfig{}
+	}
+	prop.IndexConfig.VectorConfig = interfaces.VectorConfig{
+		Enabled:     true,
+		ModelID:     modelID,
+		VectorField: vectorField,
+	}
+}
+
 // applyIndexCapOps 把资源本地索引上已经具备的检索能力叠加进属性的算子集合。
 //
 // 叠加而不是替换：属性类型推出来的那批算子是基线（对象类可以完全没有索引），
@@ -1959,15 +2013,16 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 // multi_match 的执行链路本来就是通的（bkn 改写 → Vega 路由到 fulltext 子字段），
 // 这里只是把它如实登记出来，让上层检索知道可以用。
 //
-// 向量能力有意不映射成 knn：knn 改写要求属性类型字面是 vector，而表资源的源字段
-// 是 string，向量落在构建任务生成的字段上，对象类里并没有对应属性——现在放开
-// 只会让上层稳定收到 400。等「生成向量字段 → 对象类属性」的映射契约落地后再说。
+// 向量能力映射成 knn 的前提是属性上已经带了 index_config.vector_config（物理向量
+// 字段 + 已解析的模型 ID）：表资源的源字段是 string，向量落在构建任务生成的字段上，
+// 查询侧靠这份配置改写，缺了就发不出去。调用方在解析不到模型时会先把 Vector 置回
+// false，所以这里只管如实登记。
 func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string {
-	if !propCaps.Keyword && !propCaps.Fulltext {
+	if !propCaps.Keyword && !propCaps.Fulltext && !propCaps.Vector {
 		return ops
 	}
 
-	merged := make([]string, len(ops), len(ops)+len(interfaces.DSL_KEYWORD_OPS)+len(interfaces.DSL_TEXT_OPS))
+	merged := make([]string, len(ops), len(ops)+len(interfaces.DSL_KEYWORD_OPS)+len(interfaces.DSL_TEXT_OPS)+len(interfaces.DSL_VECTOR_OPS))
 	copy(merged, ops)
 	seen := make(map[string]struct{}, cap(merged))
 	for _, op := range merged {
@@ -1988,6 +2043,9 @@ func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string 
 	}
 	if propCaps.Fulltext {
 		appendOps(interfaces.DSL_TEXT_OPS)
+	}
+	if propCaps.Vector {
+		appendOps(interfaces.DSL_VECTOR_OPS)
 	}
 	return merged
 }
