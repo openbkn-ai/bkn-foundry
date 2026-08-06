@@ -35,18 +35,49 @@ async def run_agent_once(
     task_id: Optional[str] = None,
 ) -> str:
     if evidence.has_interaction():
-        return await _run_agent_once_core(
-            agent,
-            message,
-            prompt_vars,
-            skills,
-            prompt_override,
-            account_id,
-            account_type,
-            depth,
-            response_format,
-            task_id,
-        )
+        # 父轮已经开着交互——agent-as-tool 走的就是这条。证据链沿用父轮的 id，
+        # 但 Context Loader 会话不一定有：父 agent 没声明 context_loader 时，
+        # current_session() 是 None，子 agent 就会带着零个 CL 工具作答，
+        # 而且因为 open_session 根本没被调用，连那条 warning 都不会出现。
+        #
+        # 所以这里补一次「谁开谁关」：能继承就继承（不重复握手，也不去关别人
+        # 开的会话），继承不到又确实要用，就自己开、自己关。
+        inherited = context_loader.current_session()
+        own = None
+        own_token = None
+        if inherited is None and context_loader.wanted(agent.tools):
+            own = await context_loader.open_session(message, agent_name=agent.name)
+            if own is not None:
+                own_token = context_loader.set_current(own)
+        sub_answer: str | None = None
+        sub_failure: str | None = None
+        try:
+            sub_answer = await _run_agent_once_core(
+                agent,
+                message,
+                prompt_vars,
+                skills,
+                prompt_override,
+                account_id,
+                account_type,
+                depth,
+                response_format,
+                task_id,
+            )
+            return sub_answer
+        except Exception as e:
+            sub_failure = f"{type(e).__name__}: {e}"
+            raise
+        finally:
+            if own_token is not None:
+                context_loader.reset_current(own_token)
+            # 只关自己开的那个；继承来的归开它的人关
+            await context_loader.close_session(
+                own,
+                outcome="completed" if sub_answer is not None else "failed",
+                answer=sub_answer,
+                reason=sub_failure or (None if sub_answer is not None else "子 agent 未产出回复"),
+            )
     # Context Loader 的会话要在 begin_interaction 之前开：它领到的 interaction_id
     # 同时是证据链这一轮的 id，两边共用一对，trace 才不会裂。
     cl_session = None

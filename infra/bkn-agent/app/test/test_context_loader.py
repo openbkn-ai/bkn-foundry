@@ -440,3 +440,95 @@ def test_busy_release_is_first_in_sse_finally():
         f"finally 的第一条不是放位，而是：{body[0]}\n"
         "排在放位前面的任何抛出都会让该 thread 永久停在 409"
     )
+
+
+def test_sub_agent_opens_and_closes_its_own_session(monkeypatch):
+    """agent-as-tool：父轮已开交互时，子 agent 也要拿得到 CL 会话。
+
+    run_agent_once 在 has_interaction() 为真时直接短路进 core，从不调
+    open_session。父 agent 没声明 context_loader 时 current_session() 是 None，
+    子 agent 于是带着零个 CL 工具作答——而且 open_session 没被调用过，
+    连 warning 都没有，日志里什么都看不到。
+
+    继承得到就不重复握手、也不去关别人开的会话；继承不到才自己开、自己关。
+    """
+    from app.core import runner as runner_mod
+
+    opened, closed = [], []
+    sess = context_loader.ContextLoaderSession("c-sub", "i-sub")
+
+    async def fake_open(*_a, **_k):
+        opened.append(1)
+        return sess
+
+    async def fake_close(s, **kw):
+        closed.append((s, kw))
+
+    async def fake_core(*_a, **_k):
+        assert context_loader.current_session() is sess, "子 agent 执行期看不到会话"
+        return "子 agent 的回答"
+
+    monkeypatch.setattr(runner_mod.evidence, "has_interaction", lambda: True)
+    monkeypatch.setattr(runner_mod.context_loader, "open_session", fake_open)
+    monkeypatch.setattr(runner_mod.context_loader, "close_session", fake_close)
+    monkeypatch.setattr(runner_mod, "_run_agent_once_core", fake_core)
+
+    class _Sub:
+        agent_id = "b"
+        name = "b"
+        tools = [{"type": "context_loader"}]
+        skills: list = []
+        limits = None
+        model = ""
+
+    out = asyncio.run(
+        runner_mod.run_agent_once(_Sub(), "问题", {}, [], None, "acct", "user", 1)
+    )
+
+    assert out == "子 agent 的回答"
+    assert opened == [1], "子 agent 没拿到会话——它会静默少掉全部检索工具"
+    assert closed and closed[0][0] is sess, "自己开的会话必须自己关"
+    assert closed[0][1]["outcome"] == "completed"
+    assert context_loader.current_session() is None, "ContextVar 没复位"
+
+
+def test_sub_agent_does_not_close_inherited_session(monkeypatch):
+    """继承来的会话归开它的人关，子 agent 不许代关。"""
+    from app.core import runner as runner_mod
+
+    parent = context_loader.ContextLoaderSession("c-p", "i-p")
+    opened, closed = [], []
+
+    async def fake_open(*_a, **_k):
+        opened.append(1)
+        return context_loader.ContextLoaderSession("c-x", "i-x")
+
+    async def fake_close(s, **kw):
+        closed.append(s)
+
+    async def fake_core(*_a, **_k):
+        return "ok"
+
+    monkeypatch.setattr(runner_mod.evidence, "has_interaction", lambda: True)
+    monkeypatch.setattr(runner_mod.context_loader, "open_session", fake_open)
+    monkeypatch.setattr(runner_mod.context_loader, "close_session", fake_close)
+    monkeypatch.setattr(runner_mod, "_run_agent_once_core", fake_core)
+
+    class _Sub:
+        agent_id = "b"
+        name = "b"
+        tools = [{"type": "context_loader"}]
+        skills: list = []
+        limits = None
+        model = ""
+
+    token = context_loader.set_current(parent)
+    try:
+        asyncio.run(
+            runner_mod.run_agent_once(_Sub(), "问题", {}, [], None, "acct", "user", 1)
+        )
+    finally:
+        context_loader.reset_current(token)
+
+    assert opened == [], "继承得到会话还去重复握手"
+    assert all(s is not parent for s in closed), "把继承来的会话关掉了"
