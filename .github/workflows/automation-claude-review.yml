@@ -240,17 +240,28 @@ jobs:
                   groups.setdefault("misc", []).extend(v)
                   del groups[k]
 
+          # 单片代码文件数上限。实测 #619 有一片 31 个代码文件、#657 19 个——一片要在
+          # 80 轮内逐个读完还要追引用点，只能靠少审来收场，而「少审了」在结论里是看不见
+          # 的。超了就按文件继续切，切出来的片各自独立跑，覆盖不因规模缩水。
+          MAX_DEEP_PER_SHARD = 12
+
           shards = []
           for key, files in groups.items():
               deep = sorted(f for f in files if klass(f) == "deep")
               shallow = sorted(f for f in files if klass(f) == "shallow")
-              shards.append({
-                  "key": key.replace("/", "-"),
-                  "label": key,
-                  "kind": "misc" if key == "misc" else "module",
-                  "files": "\n".join("- " + f for f in deep) or "（本片没有代码改动）",
-                  "files_shallow": "\n".join("- " + f for f in shallow),
-              })
+              chunks = [deep[i:i + MAX_DEEP_PER_SHARD]
+                        for i in range(0, len(deep), MAX_DEEP_PER_SHARD)] or [[]]
+              for n, chunk in enumerate(chunks, 1):
+                  suffix = "" if len(chunks) == 1 else " (%d/%d)" % (n, len(chunks))
+                  shards.append({
+                      "key": (key.replace("/", "-")
+                              + ("" if len(chunks) == 1 else "-%d" % n)),
+                      "label": key + suffix,
+                      "kind": "misc" if key == "misc" else "module",
+                      "files": "\n".join("- " + f for f in chunk) or "（本片没有代码改动）",
+                      # 测试文件只挂在第一片上，避免每片都重复拿到同一批
+                      "files_shallow": "\n".join("- " + f for f in shallow) if n == 1 else "",
+                  })
 
           # 低风险文件单独成片而不是直接丢掉：静默不审比多花几分钱糟得多，
           # 而且文档与代码对不上本身就是要报的问题。
@@ -556,11 +567,35 @@ jobs:
             把握 ≥ 90 分。说不清、或失效场景里有任何一环没在代码里核实过，都不算阻塞
             项——降级进 unconfirmed，或者直接丢掉。
 
-            **写法**：只写结论和位置，不写你怎么推出来的。不要说明某个发现有多难查、
-            你排除了哪些可能、你注意到了什么细节——读的人要的是「哪里坏了、怎么坏」。
-            不要评论文件有没有结尾换行、是不是仓里唯一的某类文件、命名风格如何这类
-            与行为无关的事；也不要在 not_covered 里论证「这个面在本 PR 上不适用所以
-            不算漏审」，一句「无此面」就够。
+            ## 怎么写一条意见
+
+            固定形状，两句话：**哪里坏了** + **什么情况下坏**。位置放 `file`/`line`，
+            证据放 `evidence`，都不要写进正文。
+
+            > `factory.go:179` 删除分支后 map 项不再清理。连接器被删又同名注册时会命中
+            > 旧实例，直到进程重启。
+
+            不要写的东西，一条都不要：
+
+            - 铺垫与转折（「值得注意的是」「这不是假设」「问题出在另一半」）
+            - 你的推理过程、排除了哪些可能、这条有多难查
+            - 复述 PR 描述或 diff 内容
+            - 自评可信度的旁白（门槛不到就不该提，提了就别再解释自己多确信）
+            - 与行为无关的事：格式、命名、结尾换行、注释措辞、文件放在哪一层
+            - 在 not_covered 里论证「这个面在本 PR 上不适用所以不算漏审」——
+              没这个面就填空串
+
+            读的人是在改代码的间隙看这条，不是在读你的工作报告。
+
+            ## 范围
+
+            **作者划的范围就是本轮范围。** 评论里写了「只看这个提交」「这轮只改了 X」，
+            就照办，不要因为顺手看见别处可疑而扩进来——那属于下一轮，或者作者自己会问。
+
+            **但覆盖不能缩。** 责任清单里的每个文件都要过一遍。下面的条数与长度上限
+            **只作用于你写出来多少，不作用于你审了多少**：审满，然后挑最值得说的写。
+            清单太长跑不完，就在 not_covered 里写明「X 之后未覆盖」，不要默默略过——
+            漏审而不说，比漏审本身糟。
 
             **正文长度是有代价的。** 所有分片的输出会拼进同一条评审结论，作者要一次读完；
             一份没人读完的评审等于没评。所以：
@@ -922,7 +957,6 @@ jobs:
     env:
       PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
       SHARDS: ${{ needs.plan.outputs.shards }}
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       FILE_TOTAL: ${{ needs.plan.outputs.file_total }}
       FILE_LISTED: ${{ needs.plan.outputs.file_listed }}
       GH_TOKEN: ${{ github.token }}
@@ -1176,13 +1210,11 @@ jobs:
           app-id: ${{ vars.REVIEW_APP_ID }}
           private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
 
-      # 没配 App 凭据时 approve 交给下一步的 claude[bot] 身份；这里只发
-      # request-changes——那不算批准，github-actions[bot] 发得出去。
       - name: Post review
         id: post
         env:
           GH_TOKEN: ${{ steps.apptoken.outputs.token || github.token }}
-        if: steps.assemble.outputs.action != 'none' && (vars.REVIEW_APP_ID != '' || steps.assemble.outputs.action == 'request-changes')
+        if: steps.assemble.outputs.action != 'none'
         run: |
           set -euo pipefail
           state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
@@ -1205,35 +1237,6 @@ jobs:
             gh pr comment "$PR_NUMBER" --body-file verdict-comment.md
           fi
 
-      # 第二级：没配 App 凭据、且这轮判为 approve 时，借 claude-code-action 的身份发。
-      # 它以 claude[bot] 这个 GitHub App 登场，不在「Actions 不能批准」的禁令内——
-      # 分片前的 approval 正是这么落的。
-      #
-      # 这确实把模型放回了表态路径，而那是「汇总用确定性脚本」特意挡掉的。所以压到
-      # 最薄：结论正文已在 verdict.md 里，命令用 --body-file 传路径，模型不需要复述
-      # 任何文本，也无从改动；approve 还是 request-changes 在上一步就定死了，这里只
-      # 会走到 approve 一条路；allowedTools 只给一条 gh pr review。
-      - name: Post approval as the app identity
-        id: postapp
-        if: steps.assemble.outputs.action == 'approve' && vars.REVIEW_APP_ID == '' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
-        continue-on-error: true
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: false
-          prompt: |
-            只做一件事，做完就停：执行下面这条命令，一个字都不要改。
-
-            gh pr review ${{ env.PR_NUMBER }} --approve --body-file ${{ github.workspace }}/verdict.md
-
-            不要评审这个 PR，不要读 verdict.md 再复述它的内容，不要追加任何说明，
-            不要改用别的 flag。结论已经由上游环节定好，你只是执行者。
-          claude_args: |
-            --model claude-opus-5
-            --effort low
-            --max-turns 5
-            --allowedTools "Bash(gh pr review:*)"
-
       # always()：不管有没有落表态（PR 中途被合并也会跳过表态），这条过程态评论都要
       # 清掉，否则会永远停在「评审进行中」误导后来的人。
       - name: Remove progress comment
@@ -1254,7 +1257,7 @@ jobs:
       # 这一轮真落了表态，就把上一轮的空转通告删掉——否则作者会在第 4 轮的结论旁边
       # 读到第 3 轮的「本轮评审空转」。
       - name: Clear stale empty-round notice
-        if: steps.post.outcome == 'success' || steps.postapp.outcome == 'success'
+        if: steps.post.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -1268,9 +1271,8 @@ jobs:
       # 判据取 Post review 的**实际结果**，不取 Assemble 的意图：Assemble 崩掉时
       # output 没写出来、Post review 被跳过；gh pr review 自己失败时意图是 approve
       # 但 PR 上什么都没有。两种都必须通告，否则进度评论被删、原地不留任何东西。
-      # 两条表态路径任一成功就不算空转。
       - name: Report empty round
-        if: always() && steps.post.outcome != 'success' && steps.postapp.outcome != 'success'
+        if: always() && steps.post.outcome != 'success'
         continue-on-error: true
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
