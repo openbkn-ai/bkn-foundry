@@ -39,9 +39,15 @@ func scopeCandidateMust(scope evidencevo.QueryScope) []map[string]any {
 		should = append(should, map[string]any{"bool": map[string]any{"must": ownerMust}})
 	}
 	if evidencevo.NeedsCrossAccountCandidates(scope) {
-		should = append(should, map[string]any{"terms": map[string]any{
-			"knowledge_network_ids": profile.ManagedKnowledgeNetworkIDs,
-		}})
+		if evidencevo.HasManagedKnowledgeNetworkWildcard(profile) {
+			should = append(should, map[string]any{"exists": map[string]any{
+				"field": "knowledge_network_ids",
+			}})
+		} else {
+			should = append(should, map[string]any{"terms": map[string]any{
+				"knowledge_network_ids": profile.ManagedKnowledgeNetworkIDs,
+			}})
+		}
 	}
 	if len(should) == 0 {
 		return appendLegacyOwnerMust(must, scope)

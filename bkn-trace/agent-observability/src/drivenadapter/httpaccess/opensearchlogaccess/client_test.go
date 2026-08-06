@@ -158,6 +158,25 @@ func TestSearchUsesCandidateScopeInsteadOfRequiringEveryManagedNetwork(t *testin
 	}
 }
 
+func TestSearchUsesScopedExistenceForNetworkBuilderWildcard(t *testing.T) {
+	query := buildQuery(observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a",
+		AuthorizedSubjectID:           "builder-a",
+		AuthorizedCategories:          []string{observabilityvo.CategoryRuntimeBusiness},
+		AuthorizedKnowledgeNetworkIDs: []string{"*"}, RequireRecordScope: true,
+	})
+	body, err := json.Marshal(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsBytes(body, "attributes.knowledge_network_ids.keyword") || !containsBytes(body, "exists") {
+		t.Fatalf("network wildcard must still require a trusted knowledge-network scope: %s", body)
+	}
+	if containsBytes(body, `"terms":{"attributes.knowledge_network_ids.keyword":["*"]}`) {
+		t.Fatalf("network wildcard must not be sent as a literal terms value: %s", body)
+	}
+}
+
 func TestListLogIDCanRoundTripThroughGet(t *testing.T) {
 	backend := &fakeSearchClient{response: []byte(`{
 		"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"source-log-a","_source":{

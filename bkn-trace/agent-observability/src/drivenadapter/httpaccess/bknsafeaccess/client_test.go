@@ -47,8 +47,8 @@ func TestResolveBuildsProfileFromCurrentSafeIdentityAndNetworkGrants(t *testing.
 	if !reflect.DeepEqual(profile.Roles, []string{"network_builder"}) {
 		t.Fatalf("only current built-in roles may enter the profile: %v", profile.Roles)
 	}
-	if !reflect.DeepEqual(profile.ManagedKnowledgeNetworkIDs, []string{"kn-a", "kn-b"}) {
-		t.Fatalf("only concrete management grants may enter the profile: %v", profile.ManagedKnowledgeNetworkIDs)
+	if !reflect.DeepEqual(profile.ManagedKnowledgeNetworkIDs, []string{"*", "kn-a", "kn-b"}) {
+		t.Fatalf("knowledge-network management grants may enter the profile: %v", profile.ManagedKnowledgeNetworkIDs)
 	}
 	if profile.Fingerprint == "" {
 		t.Fatal("access scope fingerprint is required")
