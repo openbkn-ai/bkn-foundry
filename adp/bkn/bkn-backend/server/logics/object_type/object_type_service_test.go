@@ -677,7 +677,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil).AnyTimes()
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(ot, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
@@ -1521,7 +1520,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1559,7 +1557,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
@@ -1579,7 +1576,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
@@ -1600,7 +1596,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
@@ -3097,270 +3092,56 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 
 func Test_objectTypeService_processConditionOperations(t *testing.T) {
 	Convey("Test processConditionOperations\n", t, func() {
-		appSetting := &common.AppSetting{
-			ServerSetting: common.ServerSetting{
-				DefaultSmallModelEnabled: true,
+		service := &objectTypeService{
+			appSetting: &common.AppSetting{
+				ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true},
 			},
 		}
-		service := &objectTypeService{
-			appSetting: appSetting,
-		}
+		dsl := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
+		sqlView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_SQL}
 
-		Convey("Index not available - keyword type\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "keyword",
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
+		Convey("keyword type gets keyword ops\n", func() {
+			ops := service.processConditionOperations(nil, &interfaces.DataProperty{Type: "keyword"}, dsl)
+			So(ops, ShouldResemble, interfaces.DSL_KEYWORD_OPS)
 		})
 
-		Convey("Index not available - varchar type with DSL query\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "varchar",
-			}
-			dataView := &interfaces.DataView{
-				QueryType: interfaces.VIEW_QueryType_DSL,
-			}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
+		Convey("string type follows the view query type\n", func() {
+			So(service.processConditionOperations(nil, &interfaces.DataProperty{Type: "string"}, dsl),
+				ShouldResemble, interfaces.DSL_KEYWORD_OPS)
+			So(service.processConditionOperations(nil, &interfaces.DataProperty{Type: "string"}, sqlView),
+				ShouldResemble, interfaces.SQL_STRING_OPS)
 		})
 
-		Convey("Index not available - varchar type with SQL query\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "varchar",
-			}
-			dataView := &interfaces.DataView{
-				QueryType: interfaces.VIEW_QueryType_SQL,
-			}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
+		Convey("text type on a DSL view carries match\n", func() {
+			ops := service.processConditionOperations(nil, &interfaces.DataProperty{Type: "text"}, dsl)
+			So(ops, ShouldContain, cond.OperationMatch)
+			So(ops, ShouldContain, cond.OperationMultiMatch)
+			So(ops, ShouldContain, cond.OperationEq)
 		})
 
-		Convey("Index not available - string type with DSL query\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
+		Convey("vector type gets knn only when the small model is enabled\n", func() {
+			ops := service.processConditionOperations(nil, &interfaces.DataProperty{Type: "vector"}, dsl)
+			So(ops, ShouldResemble, []string{cond.OperationKNN})
+
+			off := &objectTypeService{appSetting: &common.AppSetting{}}
+			So(off.processConditionOperations(nil, &interfaces.DataProperty{Type: "vector"}, dsl), ShouldBeEmpty)
+		})
+
+		Convey("property-level index_config no longer affects the result\n", func() {
+			// index_config 早已随 #223 归属 Vega 资源；对象类属性上这份配置不再参与推导。
+			withCfg := &interfaces.DataProperty{
 				Type: "string",
-			}
-			dataView := &interfaces.DataView{
-				QueryType: interfaces.VIEW_QueryType_DSL,
-			}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index not available - text type with DSL query\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "text",
-			}
-			dataView := &interfaces.DataView{
-				QueryType: interfaces.VIEW_QueryType_DSL,
-			}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index not available - text type with SQL query\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "text",
-			}
-			dataView := &interfaces.DataView{
-				QueryType: interfaces.VIEW_QueryType_SQL,
-			}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index not available - vector type with model enabled\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "vector",
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index not available - vector type with model disabled\n", func() {
-			appSetting2 := &common.AppSetting{
-				ServerSetting: common.ServerSetting{
-					DefaultSmallModelEnabled: false,
-				},
-			}
-			service2 := &objectTypeService{
-				appSetting: appSetting2,
-			}
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: false,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "vector",
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service2.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldEqual, 0)
-		})
-
-		Convey("Index available - text type\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: true,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "text",
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index available - non-text type\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: true,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "keyword",
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index available - with keyword config\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: true,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "keyword",
 				IndexConfig: &interfaces.IndexConfig{
-					KeywordConfig: interfaces.KeywordConfig{
-						Enabled: true,
-					},
+					FulltextConfig: interfaces.FulltextConfig{Enabled: true},
 				},
 			}
-			dataView := &interfaces.DataView{}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
+			So(service.processConditionOperations(nil, withCfg, dsl), ShouldResemble, interfaces.DSL_KEYWORD_OPS)
 		})
 
-		Convey("Index available - with fulltext config\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: true,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "keyword",
-				IndexConfig: &interfaces.IndexConfig{
-					FulltextConfig: interfaces.FulltextConfig{
-						Enabled: true,
-					},
-				},
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index available - with vector config and model enabled\n", func() {
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: true,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "vector",
-				IndexConfig: &interfaces.IndexConfig{
-					VectorConfig: interfaces.VectorConfig{
-						Enabled: true,
-					},
-				},
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service.processConditionOperations(objectType, prop, dataView)
-			So(len(ops), ShouldBeGreaterThan, 0)
-		})
-
-		Convey("Index available - with vector config and model disabled\n", func() {
-			appSetting2 := &common.AppSetting{
-				ServerSetting: common.ServerSetting{
-					DefaultSmallModelEnabled: false,
-				},
-			}
-			service2 := &objectTypeService{
-				appSetting: appSetting2,
-			}
-			objectType := &interfaces.ObjectType{
-				Status: &interfaces.ObjectTypeStatus{
-					IndexAvailable: true,
-				},
-			}
-			prop := &interfaces.DataProperty{
-				Type: "vector",
-				IndexConfig: &interfaces.IndexConfig{
-					VectorConfig: interfaces.VectorConfig{
-						Enabled: true,
-					},
-				},
-			}
-			dataView := &interfaces.DataView{}
-
-			ops := service2.processConditionOperations(objectType, prop, dataView)
-			// 即使vector config enabled，但model disabled，也不应该有knn操作
-			So(len(ops), ShouldBeGreaterThanOrEqualTo, 0)
+		Convey("returns a copy, never the shared package slice\n", func() {
+			ops := service.processConditionOperations(nil, &interfaces.DataProperty{Type: "keyword"}, dsl)
+			ops = append(ops, "polluted")
+			So(interfaces.DSL_KEYWORD_OPS, ShouldNotContain, "polluted")
 		})
 	})
 }
@@ -3722,84 +3503,6 @@ func Test_objectTypeService_DeleteObjectTypesByKnID(t *testing.T) {
 			ota.EXPECT().DeleteObjectTypeStatusByKnID(gomock.Any(), tx, knID, branch).Return(int64(3), nil)
 			err := service.DeleteObjectTypesByKnID(context.Background(), tx, knID, branch)
 			So(err, ShouldBeNil)
-		})
-	})
-}
-
-func Test_compareIndexConfig(t *testing.T) {
-	Convey("Test compareIndexConfig\n", t, func() {
-		Convey("Both nil returns true\n", func() {
-			So(compareIndexConfig(nil, nil), ShouldBeTrue)
-		})
-
-		Convey("Old nil, new non-nil returns false\n", func() {
-			newCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true},
-			}
-			So(compareIndexConfig(nil, newCfg), ShouldBeFalse)
-		})
-
-		Convey("Old non-nil, new nil returns false\n", func() {
-			oldCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true},
-			}
-			So(compareIndexConfig(oldCfg, nil), ShouldBeFalse)
-		})
-
-		Convey("Both equal returns true\n", func() {
-			cfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			cfg2 := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			So(compareIndexConfig(cfg, cfg2), ShouldBeTrue)
-		})
-
-		Convey("Different config returns false\n", func() {
-			oldCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			newCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: false, IgnoreAboveLen: 256},
-			}
-			So(compareIndexConfig(oldCfg, newCfg), ShouldBeFalse)
-		})
-	})
-}
-
-func Test_compareMappedField(t *testing.T) {
-	Convey("Test compareMappedField\n", t, func() {
-		Convey("Both nil returns true\n", func() {
-			So(compareMappedField(nil, nil), ShouldBeTrue)
-		})
-
-		Convey("Old nil, new non-nil returns false\n", func() {
-			newField := &interfaces.Field{Name: "id", Type: "keyword"}
-			So(compareMappedField(nil, newField), ShouldBeFalse)
-		})
-
-		Convey("Old non-nil, new nil returns false\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			So(compareMappedField(oldField, nil), ShouldBeFalse)
-		})
-
-		Convey("Different Name returns false\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			newField := &interfaces.Field{Name: "pk", Type: "keyword"}
-			So(compareMappedField(oldField, newField), ShouldBeFalse)
-		})
-
-		Convey("Different Type returns false\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			newField := &interfaces.Field{Name: "id", Type: "text"}
-			So(compareMappedField(oldField, newField), ShouldBeFalse)
-		})
-
-		Convey("Both equal returns true\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			newField := &interfaces.Field{Name: "id", Type: "keyword"}
-			So(compareMappedField(oldField, newField), ShouldBeTrue)
 		})
 	})
 }
