@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from typing import AsyncIterator
 
@@ -24,6 +25,8 @@ from app.models import AgentOut, ChatRequest, ThreadMessage
 # 否则 setup 阶段的多个 await 之间会有竞态窗口，两个请求双双通过检查再排队执行，
 # 交错写同一份 checkpoint；用完 discard，也不会像锁表那样按 thread_id 无限增长。
 # 多副本的跨副本串行化仍待定（会话粘滞或 DB 锁）。
+logger = logging.getLogger("bkn-agent.chat")
+
 _busy_threads: set[str] = set()
 
 
@@ -49,6 +52,10 @@ async def stream_chat(
         )
     _busy_threads.add(thread_id)  # 检查与占位之间不能有 await，否则并发请求双双通过
 
+    # 在 try 之前绑定：setup 早期抛异常时 except 分支也要能安全引用
+    cl_session = None
+    cl_token = None
+
     try:
         thread_row = await dao.get_thread_row(session, thread_id)
         if thread_row:
@@ -71,8 +78,6 @@ async def stream_chat(
         system_prompt += await load_skills(skill_ids, account_id, account_type)
         # 与 runner 同序：Context Loader 会话先开，它领到的 interaction_id 同时是
         # 证据链这一轮的 id。load_tools 会复用这个已开的会话，不重复握手。
-        cl_session = None
-        cl_token = None
         if context_loader.wanted(agent.tools):
             # thread_id 当会话锚：同一 thread 的多轮归进同一个 conversation
             cl_session = await context_loader.open_session(
@@ -113,6 +118,20 @@ async def stream_chat(
         )
     except BaseException:
         _busy_threads.discard(thread_id)  # setup 失败必须放位，否则该 thread 永久 409
+        if cl_token is not None:
+            context_loader.reset_current(cl_token)
+        # setup 阶段抛异常时 _events() 根本没被构造，它的 finally 也就永远不会跑。
+        # 握手若已经成功，那次交互会永久停在 active——而且是确定性的：同一个请求
+        # 每重试一次就再泄一个。这里补收尾。
+        #
+        # 收尾自身再出错不能改写原始异常：调用方要看到的是 setup 为什么失败，
+        # 不是收尾为什么失败。
+        try:
+            await context_loader.close_session(
+                cl_session, outcome="failed", reason="会话建立阶段失败，本轮未开始"
+            )
+        except BaseException as close_err:  # noqa: BLE001 - 收尾失败不得掩盖原始异常
+            logger.warning("[ContextLoader] setup 失败后的收尾也失败了：%s", close_err)
         raise
 
     span_attrs = {

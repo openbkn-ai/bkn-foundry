@@ -252,3 +252,73 @@ def test_close_failure_is_warned_not_raised():
 
 def test_close_on_none_session_is_noop():
     asyncio.run(context_loader.close_session(None, outcome="completed", answer="a"))
+
+
+def test_setup_failure_still_finishes_interaction(monkeypatch):
+    """setup 阶段抛异常时，已握手的交互必须被收尾。
+
+    _events() 在 stream_chat 抛异常时根本没被构造，它的 finally 永远不跑。
+    握手若已成功，那次交互会永久停在 active，且每次重试再泄一个。
+    """
+    from app.core import graph
+
+    closed = []
+
+    async def fake_close(session, **kw):
+        closed.append((session, kw))
+
+    fake_session = context_loader.ContextLoaderSession("conv_s", "int_s")
+
+    async def fake_open(*_a, **_k):
+        return fake_session
+
+    monkeypatch.setattr(graph.context_loader, "open_session", fake_open)
+    monkeypatch.setattr(graph.context_loader, "close_session", fake_close)
+    monkeypatch.setattr(graph.context_loader, "wanted", lambda _refs: True)
+
+    async def boom(*_a, **_k):
+        raise RuntimeError("toolbox 解析不了")
+
+    monkeypatch.setattr(graph, "load_tools", boom)
+    monkeypatch.setattr(graph, "load_skills", lambda *_a, **_k: _async_str())
+    monkeypatch.setattr(graph, "resolve_prompt", lambda *_a, **_k: _async_prompt())
+
+    class _Dao:
+        async def get_thread_row(self, *_a, **_k):
+            return None
+
+        async def touch_thread(self, *_a, **_k):
+            return None
+
+    monkeypatch.setattr(graph, "dao", _Dao())
+
+    class _Req:
+        thread_id = "thread-setup-fail"
+        message = "hi"
+        skills: list = []
+        prompt_override = None
+        prompt_vars: dict = {}
+        response_format = None
+
+    class _Agent:
+        agent_id = "a"
+        name = "a"
+        tools = [{"type": "context_loader"}]
+        skills: list = []
+        limits = None
+        model = ""
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(graph.stream_chat(None, _Agent(), _Req(), "acct", "user"))
+
+    assert closed, "setup 失败后必须调 close_session，否则交互永久 active"
+    assert closed[0][1]["outcome"] == "failed"
+    assert "thread-setup-fail" not in graph._busy_threads
+
+
+async def _async_str():
+    return ""
+
+
+async def _async_prompt():
+    return ("prompt", "src", "v1")
