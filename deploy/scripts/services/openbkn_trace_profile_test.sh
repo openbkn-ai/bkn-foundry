@@ -74,6 +74,13 @@ online_sets="${CORE_SET_VALUES[*]:-}"
 contains "online registry flags rewrite application images" "${online_sets}" "image.registry=ghcr.io/openbkn-ai"
 not_contains "online registry flags leave third-party hook images on their chart registry" "${online_sets}" "evidence.indexManagement.createJob.image.registry="
 
+CORE_SET_VALUES=()
+CORE_IMAGE_REGISTRY=""
+_openbkn_apply_default_set_values
+default_online_sets="${CORE_SET_VALUES[*]:-}"
+contains "default online installs use the SWR application registry" "${default_online_sets}" "image.registry=swr.cn-east-3.myhuaweicloud.com/openbkn-ai"
+not_contains "default online installs leave third-party hook images on their chart registry" "${default_online_sets}" "evidence.indexManagement.createJob.image.registry="
+
 CORE_SET_VALUES=("image.registry=registry.example/openbkn")
 CORE_IMAGE_REGISTRY=""
 _openbkn_apply_default_set_values
