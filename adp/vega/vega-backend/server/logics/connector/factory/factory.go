@@ -177,11 +177,13 @@ func (cf *connectorFactory) DeleteConnector(tp string) {
 
 	connector, exist := cf.connectors[tp]
 	if !exist {
+		logger.Infof("Skip runtime connector deletion for %s: not registered in this process", tp)
 		return
 	}
 	if connector.GetMode() == interfaces.ConnectorModeLocal {
 		// Local connectors represent capabilities compiled into the binary.
 		// Deleting their database registration must not remove the implementation.
+		logger.Infof("Skip runtime connector deletion for %s: local connector implementations cannot be removed", tp)
 		return
 	}
 	delete(cf.connectors, tp)
@@ -194,7 +196,9 @@ func (cf *connectorFactory) SetConnectorEnabled(tp string, enabled bool) {
 	connector, exist := cf.connectors[tp]
 	if exist {
 		connector.SetEnabled(enabled)
+		return
 	}
+	logger.Infof("Skip runtime enabled update for connector %s: not registered in this process", tp)
 }
 
 // IsConnectorAvailable reports whether the running binary contains a registered
