@@ -163,7 +163,7 @@ paths:
                     has_next: true
                     has_prev: false
                     data:
-                      - box_id: e521d454-4a0b-4dc9-8a28-d0986de1cef9
+                      - box_id: 3f2a1c58-7b4e-4d19-9a06-2e5c8d71bf43
                         box_name: 订单查询工具集
                         box_desc: 订单域的 OpenAPI 工具
                         box_svc_url: http://orders.example.com
@@ -926,7 +926,7 @@ paths:
           schema:
             type: string
           description: 工具箱 ID 列表，逗号分隔。参数名是单数，实际收列表。
-          example: e521d454-4a0b-4dc9-8a28-d0986de1cef9,ccf29df2-f43d-414a-b644-db7c186cda77
+          example: 3f2a1c58-7b4e-4d19-9a06-2e5c8d71bf43,ccf29df2-f43d-414a-b644-db7c186cda77
         - name: fields
           in: path
           required: true

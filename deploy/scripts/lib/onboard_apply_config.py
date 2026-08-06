@@ -74,7 +74,7 @@ def print_completion_report_config_yaml(namespace: str) -> None:
         "not run: --config mode has no test-user wizard"
     )
     env["ONBOARD_REPORT_CONTEXT_LOADER"] = (
-        "not run: no probe step; run deploy/onboard.sh separately for ADP toolbox import"
+        "not applicable: Context Loader serves its tools over MCP; nothing is imported"
     )
     subprocess.run(
         [

@@ -87,12 +87,12 @@ kubectl get pods -A
 
 5. **安装后引导：`onboard.sh`**（推荐）
 
-   在**同一台机器**（kubectl 能访问集群）上执行安装后引导脚本：注册一个 LLM + 一个 embedding；只有当**默认 embedding 实际变更**时才会 patch BKN ConfigMap 并滚动重启 `bkn-backend` / `ontology-query`；在**完整安装**下还会创建业务用户 **`test`**、把 `openbkn admin role list` 中的所有角色都挂上、切换 `openbkn` 到该用户身份，并导入 Context Loader 工具集：
+   在**同一台机器**（kubectl 能访问集群）上执行安装后引导脚本：注册一个 LLM + 一个 embedding；只有当**默认 embedding 实际变更**时才会 patch BKN ConfigMap 并滚动重启 `bkn-backend` / `ontology-query`；在**完整安装**下还会创建业务用户 **`test`**、把 `openbkn admin role list` 中的所有角色都挂上、切换 `openbkn` 到该用户身份：
 
 ```bash
 cd deploy
 sudo bash ./onboard.sh        # 交互模式；或：sudo bash ./onboard.sh -y
-sudo bash ./onboard.sh --help # 所有参数（--config=models.yaml、--enable-bkn-search、--skip-context-loader 等）
+sudo bash ./onboard.sh --help # 所有参数（--config=models.yaml、--enable-bkn-search 等）
 ```
 
    > **为什么要 `sudo`？** `onboard.sh` 会读 `$HOME/.openbkn-ai/config.yaml`（由 `sudo deploy.sh` 写到 `/root/.openbkn-ai/` 下）并把 `openbkn` 认证 token 写到 `$HOME/.bkn`。不加 `sudo` 会回退到仓库内模板 `deploy/conf/config.yaml`，可能解析出和安装时不一致的 access URL。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不需要** `sudo`。
