@@ -116,6 +116,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 
 	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config)
 	if cond == nil {
+		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no index-backed condition to issue, skip", objType.ConceptID)
 		return nil, nil
 	}
 
@@ -221,6 +222,12 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 
 	if len(subConditions) > maxSub {
 		subConditions = subConditions[:maxSub]
+	}
+
+	// 字段只支持等值时一个子条件都拼不出来。空的 OR 条件 ontology-query 会直接判 400
+	// （"sub condition size is 0"），所以这里返回 nil 让调用方跳过该对象类。
+	if len(subConditions) == 0 {
+		return nil
 	}
 
 	return &interfaces.KnCondition{
