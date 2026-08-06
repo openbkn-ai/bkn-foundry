@@ -123,10 +123,31 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			}
 		}
 
-		// Candidate ops default to each type's catalog. Resolved per distinct
-		// type so a mixed-type batch stays one request, then evaluated type by
-		// type; a single shared candidate list is the common case and costs one
-		// pass.
+		// One evaluation pass for the whole batch — including mixed types — when
+		// the caller states the candidate operations, which is the list-page
+		// case. Only the catalog fallback has to split by type, because there
+		// the candidate set is a property of the type rather than the request.
+		out := make([]gin.H, 0, len(refs))
+		appendResults := func(results []authz.FilteredResource) {
+			for _, r := range results {
+				out = append(out, gin.H{
+					"resource_type": r.Type,
+					"resource_id":   r.ID,
+					"operations":    r.Operations,
+				})
+			}
+		}
+		if len(req.CandidateOperations) > 0 {
+			results, err := e.FilterResourceOps(req.AccessorID, refs, req.VisibilityOperations, req.CandidateOperations)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			appendResults(results)
+			c.JSON(http.StatusOK, gin.H{"resources": out})
+			return
+		}
+
 		byType := map[string][]authz.ResourceRef{}
 		order := make([]string, 0, 4)
 		for _, r := range refs {
@@ -135,28 +156,18 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			}
 			byType[r.Type] = append(byType[r.Type], r)
 		}
-		out := make([]gin.H, 0, len(refs))
 		for _, rtype := range order {
-			candidates := req.CandidateOperations
-			if len(candidates) == 0 {
-				var err error
-				if candidates, err = catalogOps(db, rtype); err != nil {
-					serverError(c, err)
-					return
-				}
+			candidates, err := catalogOps(db, rtype)
+			if err != nil {
+				serverError(c, err)
+				return
 			}
 			results, err := e.FilterResourceOps(req.AccessorID, byType[rtype], req.VisibilityOperations, candidates)
 			if err != nil {
 				serverError(c, err)
 				return
 			}
-			for _, r := range results {
-				out = append(out, gin.H{
-					"resource_type": r.Type,
-					"resource_id":   r.ID,
-					"operations":    r.Operations,
-				})
-			}
+			appendResults(results)
 		}
 		c.JSON(http.StatusOK, gin.H{"resources": out})
 	})

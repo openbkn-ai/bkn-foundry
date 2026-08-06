@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -181,5 +182,39 @@ func TestResourceFilterEndpointCatalogFallback(t *testing.T) {
 	}
 	if want := []string{"view_detail"}; !reflect.DeepEqual(got[0].Operations, want) {
 		t.Errorf("ops = %v, want %v", got[0].Operations, want)
+	}
+}
+
+// TestResourceFilterEndpointCatalogFallbackMixedTypes covers the one case where
+// the batch has to be split: without candidate_operations each type projects its
+// own catalog, so the two types must not borrow each other's operations.
+func TestResourceFilterEndpointCatalogFallbackMixedTypes(t *testing.T) {
+	r, e, db := newTestServer(t)
+	const user = "u-1"
+	seedCatalogOps(t, db, "knowledge_network", "view_detail", "modify")
+	seedCatalogOps(t, db, "toolbox", "use")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail")
+	_ = e.GrantObjectPermission(user, "knowledge_network", "kn-1", "modify")
+	_ = e.GrantObjectPermission(user, "toolbox", "tb-1", "use")
+
+	got := postFilter(t, r, map[string]any{
+		"accessor_id": user,
+		"resources": []map[string]string{
+			{"type": "knowledge_network", "id": "kn-1"},
+			{"type": "toolbox", "id": "tb-1"},
+		},
+	})
+
+	// Catalog order is a database detail, so compare the projections as sets.
+	ops := map[string][]string{}
+	for _, entry := range got {
+		sort.Strings(entry.Operations)
+		ops[entry.ResourceType] = entry.Operations
+	}
+	if want := []string{"modify", "view_detail"}; !reflect.DeepEqual(ops["knowledge_network"], want) {
+		t.Errorf("knowledge_network ops = %v, want %v", ops["knowledge_network"], want)
+	}
+	if want := []string{"use"}; !reflect.DeepEqual(ops["toolbox"], want) {
+		t.Errorf("toolbox ops = %v, want %v", ops["toolbox"], want)
 	}
 }
