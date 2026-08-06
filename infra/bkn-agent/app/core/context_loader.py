@@ -67,14 +67,25 @@ def _credential() -> Optional[str]:
     return caller_token()
 
 
-def _client(authorization: str) -> MultiServerMCPClient:
+# 服务端据此把多轮归到同一个 managed conversation；不给就每轮新铸一个，
+# 一段多轮对话会被存成 N 个各含一次交互的独立会话，且事后无法合并。
+# 见 adp/context-loader/.../mcp/host_lifecycle_hints.go:22。
+_HOST_CONVERSATION_KEY_HEADER = "X-OpenBKN-Host-Conversation-Key"
+
+
+def _client(
+    authorization: str, host_conversation_key: Optional[str] = None
+) -> MultiServerMCPClient:
     headers = {"Authorization": authorization, **observability.outbound_headers()}
+    if host_conversation_key:
+        headers[_HOST_CONVERSATION_KEY_HEADER] = host_conversation_key
     return MultiServerMCPClient(
         {
             _CONNECTION_NAME: {
                 "transport": "streamable_http",
                 "url": config.CONTEXT_LOADER_MCP_URL,
                 "headers": headers,
+                "timeout": config.CONTEXT_LOADER_MCP_TIMEOUT_S,
             }
         }
     )
@@ -142,12 +153,19 @@ def _bind_context(tool: Any, session: ContextLoaderSession) -> Any:
 
 
 async def open_session(
-    question: str = "", *, agent_name: str | None = None
+    question: str = "",
+    *,
+    agent_name: str | None = None,
+    host_conversation_key: str | None = None,
 ) -> Optional[ContextLoaderSession]:
     """握手并装载工具。凭据缺失或握手失败返回 None（调用方决定是否致命）。
 
     question 是 bkn_start_interaction 的必填项，语义是「这一轮用户问了什么」，
     传本轮真实输入而不是空串——生命周期服务按它归档这一轮。
+
+    host_conversation_key 是多轮连续性的锚：chat 传 thread_id，服务端据此把
+    同一 thread 的各轮归到同一个 conversation。不传就每轮新铸一个，一段五轮
+    对话会被存成五个互不相干的单轮会话，且是持久化数据、事后补不回来。
     """
     authorization = _credential()
     if not authorization:
@@ -157,7 +175,7 @@ async def open_session(
         )
         return None
 
-    client = _client(authorization)
+    client = _client(authorization, host_conversation_key)
     try:
         tools = await client.get_tools()
     except Exception as e:
@@ -280,7 +298,11 @@ async def close_session(
         "outcome": outcome,
     }
     if answer:
-        args["answer"] = answer[:4000]
+        # 归档的答案是持久化数据，截断必须留痕，否则存档与用户实际收到的
+        # 内容会静默不一致。
+        args["answer"] = (
+            answer if len(answer) <= 4000 else answer[:4000] + "…[truncated by bkn-agent]"
+        )
     if reason:
         args["reason"] = reason[:1000]
     try:

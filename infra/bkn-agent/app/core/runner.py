@@ -52,6 +52,8 @@ async def run_agent_once(
     cl_session = None
     cl_token = None
     if context_loader.wanted(agent.tools):
+        # 不传 host_conversation_key：/run 与 /invoke 是一次性执行，每次本就该
+        # 各自成一个 conversation。多轮连续性只有 chat 有（graph.py 传 thread_id）。
         cl_session = await context_loader.open_session(message, agent_name=agent.name)
         cl_token = context_loader.set_current(cl_session)
     token = evidence.begin_interaction(

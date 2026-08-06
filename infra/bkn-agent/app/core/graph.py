@@ -72,9 +72,17 @@ async def stream_chat(
         # 与 runner 同序：Context Loader 会话先开，它领到的 interaction_id 同时是
         # 证据链这一轮的 id。load_tools 会复用这个已开的会话，不重复握手。
         cl_session = None
+        cl_token = None
         if context_loader.wanted(agent.tools):
-            cl_session = await context_loader.open_session(req.message, agent_name=agent.name)
-            context_loader.set_current(cl_session)
+            # thread_id 当会话锚：同一 thread 的多轮归进同一个 conversation
+            cl_session = await context_loader.open_session(
+                req.message, agent_name=agent.name, host_conversation_key=thread_id
+            )
+            if cl_session is not None:
+                # 只有真开出会话才置 ContextVar：置成 None 会让 tools.py 的
+                # `current_session() or await open_session()` 再握一次手，
+                # 那次的 interaction_id evidence 从来没见过。
+                cl_token = context_loader.set_current(cl_session)
         tools = await load_tools(
             agent.tools,
             account_id,
@@ -118,6 +126,11 @@ async def stream_chat(
 
     async def _events() -> AsyncIterator[str]:
         answer_parts: list[str] = []
+        # 收尾要报的终态。_completed 只在真正走到 done 时置位；结构化输出那条
+        # 路的答案不在 answer_parts 里，单独记进 _final_answer。
+        _completed = False
+        _final_answer: str | None = None
+        _failure_reason: str | None = "本轮未产出回复（异常或客户端断连）"
         tool_names: list[str] = []
         interaction_token = evidence.begin_interaction(
             req.message,
@@ -180,6 +193,7 @@ async def stream_chat(
                                     req.response_format,
                                     system_prompt,
                                 )
+                                _final_answer = json.dumps(obj, ensure_ascii=False)
                                 yield _sse("structured", {"content": obj})
                                 await _emit_chat_evidence(
                                     agent=agent,
@@ -208,6 +222,7 @@ async def stream_chat(
                                     structured_validation_path=None,
                                     tool_names=tool_names,
                                 )
+                        _completed = True
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
                         yield _sse(
@@ -227,16 +242,25 @@ async def stream_chat(
             yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
         finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
             evidence.end_interaction(interaction_token)
-            # completed 必须带 answer（不带会被 closure_manifest_invalid 拒），
-            # 所以用累积到的回复；一个 token 都没产出就按 failed 收，别谎报完成。
-            _answer = "".join(answer_parts)
+            # 放位必须排在收尾的网络调用之前：close_session 只 catch Exception，
+            # 客户端断连时的 CancelledError（BaseException）与 MCP TaskGroup 抛的
+            # BaseExceptionGroup 都会穿透 finally，排在它后面的语句永远跑不到，
+            # 该 thread 就会一直卡在 409 Thread.Busy 直到进程重启。
+            _busy_threads.discard(thread_id)
+            if cl_token is not None:
+                context_loader.reset_current(cl_token)
+            # completed 必须带 answer（不带会被 closure_manifest_invalid 拒）。
+            # 用显式的成功标记而不是「答案非空」：结构化输出那条路走 structured
+            # 事件、answer_parts 是空的，按空判会把成功的一轮误报成 failed；
+            # 反过来流了一半再超时，答案非空却不是完成。
+            _answer = _final_answer if _final_answer is not None else "".join(answer_parts)
+            _ok = _completed and bool(_answer)
             await context_loader.close_session(
                 cl_session,
-                outcome="completed" if _answer else "failed",
-                answer=_answer or None,
-                reason=None if _answer else "本轮未产出回复（异常或客户端断连）",
+                outcome="completed" if _ok else "failed",
+                answer=_answer if _ok else None,
+                reason=None if _ok else _failure_reason,
             )
-            _busy_threads.discard(thread_id)
 
     return _events()
 

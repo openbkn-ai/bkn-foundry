@@ -54,7 +54,7 @@ def _install(monkeypatch, tools):
         async def get_tools(self):
             return tools
 
-    monkeypatch.setattr(context_loader, "_client", lambda _auth: _Client())
+    monkeypatch.setattr(context_loader, "_client", lambda *_a, **_k: _Client())
 
 
 def test_no_credential_skips_and_warns(monkeypatch, caplog):
@@ -189,3 +189,66 @@ def test_caller_token_absent_when_header_missing():
 
     TestClient(probe).get("/t")
     assert seen["token"] is None
+
+
+class _FinishTool:
+    def __init__(self):
+        self.calls = []
+
+    async def coroutine(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"execution_status": "completed"}
+
+
+def _session_with_finish():
+    s = context_loader.ContextLoaderSession("conv_x", "int_x")
+    fin = _FinishTool()
+    s._finish = fin
+    return s, fin
+
+
+def test_close_sends_interaction_id_not_bkn_context():
+    """服务端要平铺的 interaction_id；包进 bkn_context 会被 resource_not_disclosed 拒。"""
+    s, fin = _session_with_finish()
+    asyncio.run(context_loader.close_session(s, outcome="completed", answer="a"))
+    assert fin.calls[0]["interaction_id"] == "int_x"
+    assert "bkn_context" not in fin.calls[0]
+
+
+def test_close_completed_always_carries_answer():
+    """outcome=completed 不带 answer 会被 closure_manifest_invalid 拒。"""
+    s, fin = _session_with_finish()
+    asyncio.run(context_loader.close_session(s, outcome="completed", answer="hello"))
+    assert fin.calls[0]["outcome"] == "completed"
+    assert fin.calls[0]["answer"] == "hello"
+
+
+@pytest.mark.parametrize("bad", ["succeeded", "ok", "", None, "COMPLETED"])
+def test_close_clamps_outcome_to_enum(bad):
+    """枚举只有 completed/failed/cancelled/handed_off，别的一律夹回 completed。"""
+    s, fin = _session_with_finish()
+    asyncio.run(context_loader.close_session(s, outcome=bad, answer="a"))
+    assert fin.calls[0]["outcome"] in context_loader._OUTCOMES
+
+
+def test_close_failed_carries_reason_and_no_answer():
+    s, fin = _session_with_finish()
+    asyncio.run(context_loader.close_session(s, outcome="failed", reason="没产出"))
+    assert fin.calls[0]["outcome"] == "failed"
+    assert fin.calls[0]["reason"] == "没产出"
+    assert "answer" not in fin.calls[0]
+
+
+def test_close_failure_is_warned_not_raised():
+    """收尾失败不该把已经跑完的一轮翻成失败。"""
+    s, fin = _session_with_finish()
+
+    async def boom(**_):
+        raise RuntimeError("resource_not_disclosed")
+
+    fin.coroutine = boom
+    asyncio.run(context_loader.close_session(s, outcome="completed", answer="a"))
+
+
+def test_close_on_none_session_is_noop():
+    asyncio.run(context_loader.close_session(None, outcome="completed", answer="a"))

@@ -33,7 +33,7 @@ class Config:
     #
     # 这是 Context Loader 的**公开面**：它挂 middlewareIntrospectVerify，只认真实
     # 令牌（OAuth access token 或 bak_ AppKey），不吃 /in 那套 x-account-id 头部身份。
-    # 所以下面两个凭据配置是这条路的前提，不是可选优化。
+    # 所以调用方必须透传最终用户的令牌，这条路才成立。
     CONTEXT_LOADER_MCP_URL = _env(
         "CONTEXT_LOADER_MCP_URL",
         "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/",
