@@ -88,8 +88,9 @@ paths:
           resource_id: '{cl_resource_id}'
       description: |
         取单个资源的物理列与连接器类型——写 `run_sql` 之前该看的东西。
-        `connector_type` 决定实际目标方言；`run_sql` 统一接收 MySQL 方言，目标方言不是
-        MySQL 时由 Vega 转译，MySQL / MariaDB 资源则直接下发。
+        `connector_type` 决定实际目标方言；`run_sql` 仅支持 `mysql` / `mariadb` /
+        `postgresql` / `sqlserver` 资源，统一接收 MySQL 方言。目标方言不是 MySQL 时由
+        Vega 转译，MySQL / MariaDB 资源则直接下发；其他连接器（如 `opensearch`）会被拒绝。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
@@ -353,7 +354,9 @@ components:
           type: string
           description: |
             MySQL 方言 SQL。表名必须写成 `{{.<resource_id>}}` 占位符，
-            也接受 `{{<resource_id>}}` 形式。只允许单条 `SELECT`（不支持 `WITH` / CTE）。
+            也接受 `{{<resource_id>}}` 形式。标识符需要引用时使用反引号；双引号在
+            MySQL 方言下是字符串字面量，不能用于标识符。只允许单条 `SELECT`（不支持
+            `WITH` / CTE）。
           example: SELECT * FROM {{.res_orders}} LIMIT 100
         query_timeout:
           type: integer

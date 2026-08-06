@@ -23,7 +23,7 @@ import (
 
 var (
 	// resourcePlaceholderRe 与 vega extractResourceIDs 保持一致：{{.resource_id}} 或 {{resource_id}}。
-	resourcePlaceholderRe = regexp.MustCompile(`\{\{\.?([a-zA-Z0-9][a-zA-Z0-9_-]{0,39})\}\}`)
+	resourcePlaceholderRe = regexp.MustCompile(`\{\{\.?([a-z0-9][a-z0-9_-]{0,39})\}\}`)
 	// anyPlaceholderRe 在关键字判定前把占位符整体替换掉，避免 {{.delete}} 之类内部词触发误判。
 	anyPlaceholderRe = regexp.MustCompile(`\{\{[^}]*\}\}`)
 	// startsWithSelectRe 只校验入口形态，允许前导空白与左括号；集合运算可能通过本地守卫，
@@ -87,10 +87,11 @@ func stripSQLNoise(sql string) string {
 }
 
 // skipQuotedSQLLiteral 返回从 openingQuote 开始的 MySQL 字符串或反引号标识符的结束位置。
-// 反斜杠转义与成对引号均不会提前结束字面量。
+// 成对引号不会提前结束字面量；反斜杠转义只对单引号字符串生效，
+// 反引号标识符与双引号字符串内的反斜杠是普通字符。
 func skipQuotedSQLLiteral(runes []rune, start int, quote rune) int {
 	for i := start + 1; i < len(runes); i++ {
-		if quote != '`' && runes[i] == '\\' && i+1 < len(runes) {
+		if quote == '\'' && runes[i] == '\\' && i+1 < len(runes) {
 			i++
 			continue
 		}

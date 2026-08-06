@@ -51,6 +51,7 @@ func TestEnsureReadOnlySQL_Rejected(t *testing.T) {
 		`SELECT * FROM {{.res1}} -- harmless
 			 ; DELETE FROM {{.res1}}`,
 		"SELECT `a\\` , x FROM {{.res1}}; DROP TABLE t",
+		`SELECT "a\" , x FROM {{.res1}}; DROP TABLE t`,
 		`SELECT * INTO OUTFILE '/tmp/x' FROM {{.res1}}`,
 		`SHOW TABLES`,
 		`CALL some_proc()`,
@@ -73,5 +74,8 @@ func TestExtractResourceIDs(t *testing.T) {
 	}
 	if ids := ExtractResourceIDs(`SELECT * FROM {{.res-001}}`); !reflect.DeepEqual(ids, []string{"res-001"}) {
 		t.Errorf("expected hyphenated resource id, got %v", ids)
+	}
+	if ids := ExtractResourceIDs(`SELECT * FROM {{.RES-001}}`); len(ids) != 0 {
+		t.Errorf("expected uppercase resource id to be rejected, got %v", ids)
 	}
 }
