@@ -71,9 +71,9 @@ spec:
               - name: TZ
                 value: {{ .Values.env.timezone }}
             {{- end}}
-            {{- if .Values.mcp }}
-              - name: MCP_EXECUTE_SKILL_ENABLED
-                value: {{ .Values.mcp.executeSkillEnabled | default false | quote }}
+            {{- if .Values.skill }}
+              - name: EXECUTE_SKILL_ENABLED
+                value: {{ .Values.skill.executeEnabled | default false | quote }}
             {{- end}}
             {{- if .Values.depServices.rds.type}}
               - name: DB_TYPE

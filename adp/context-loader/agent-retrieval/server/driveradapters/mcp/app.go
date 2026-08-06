@@ -186,7 +186,7 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 	b.add(toolKeyGetSkillContent, handleGetSkillContent(skillsService))
 	b.add(toolKeyReadSkillFile, handleReadSkillFile(skillsService))
 	// execute_skill 是工具面唯一的命令执行通道，默认不装配（见 executeSkillEnabled）。
-	if executeSkillEnabled() {
+	if knskills.ExecuteEnabled() {
 		b.add(toolKeyExecuteSkill, handleExecuteSkill(skillsService))
 	}
 

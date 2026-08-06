@@ -7,6 +7,8 @@ package mcp
 import (
 	"slices"
 	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
 // TestExecuteSkillOnlyAppearsWhenEnabled 盯住那条命令执行通道的默认状态。
@@ -30,7 +32,7 @@ func TestExecuteSkillOnlyAppearsWhenEnabled(t *testing.T) {
 		}
 	}
 
-	t.Setenv(executeSkillEnabledEnv, "true")
+	t.Setenv(knskills.ExecuteEnabledEnv, "true")
 
 	if !slices.Contains(assembledNames(t), toolKeyExecuteSkill) {
 		t.Fatalf("开启后 execute_skill 仍未出现在 tools/list")

@@ -13,6 +13,7 @@ package knskills
 import (
 	"context"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -329,4 +330,29 @@ func isTextual(mimeType string, content []byte) bool {
 	}
 	// 合法 UTF-8 里混着 NUL 基本只可能是二进制。
 	return !strings.ContainsRune(string(content), '\x00')
+}
+
+// ExecuteEnabledEnv 控制 execute_skill 是否装配（MCP 工具面与 REST 路由共用）。
+const ExecuteEnabledEnv = "EXECUTE_SKILL_ENABLED"
+
+// legacyExecuteEnabledEnv 是 MCP-only 时期的旧名。那会儿开关只管工具面，
+// 名字里带 MCP 是准确的；改成总闸后名字不再合适，但已经有人按旧名配过，
+// 继续认它，免得升上来的部署突然把开着的能力关掉。
+const legacyExecuteEnabledEnv = "MCP_EXECUTE_SKILL_ENABLED"
+
+// ExecuteEnabled 判断本部署是否提供技能执行能力。默认关。
+//
+// 它是总闸而不只是工具面开关：关闭时 MCP 不装配 execute_skill，/in 与公开面的
+// execute_skill 路由也不注册。文档把这条描述成「唯一的命令执行通道」，若 REST
+// 那侧仍然开着，这句话就是假的——而看文档决定要不要开的人会据此误判风险。
+func ExecuteEnabled() bool {
+	for _, key := range []string{ExecuteEnabledEnv, legacyExecuteEnabledEnv} {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value == "" {
+			continue
+		}
+		enabled, err := strconv.ParseBool(value)
+		return err == nil && enabled
+	}
+	return false
 }

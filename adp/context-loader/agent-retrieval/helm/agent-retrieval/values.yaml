@@ -148,12 +148,12 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 
-# MCP 工具面开关。
-# executeSkillEnabled 控制 execute_skill 是否装配：它把入口命令送进沙箱执行，
-# 是工具面唯一的命令执行通道，默认关——关闭时它既不在 tools/list 也不在
-# /mcp/info，与「没编译进来」无异。开启前请确认沙箱隔离与技能授权已按需配置。
-mcp:
-  executeSkillEnabled: false
+# 技能执行能力的总闸，默认关。
+# 关闭时 execute_skill 既不装配为 MCP 工具（tools/list 与 /mcp/info 都没有），
+# 对应的 REST 路由也不注册——「这个部署没有技能执行能力」在路由表上成立。
+# 它把模型生成的入口命令送进沙箱执行，开启前请确认沙箱隔离与技能授权已按需配置。
+skill:
+  executeEnabled: false
 
 resources:
   requests:

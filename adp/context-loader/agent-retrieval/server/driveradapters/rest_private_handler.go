@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	logicsSkills "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
 type restPrivateHandler struct {
@@ -91,7 +92,12 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/list_skills", r.KnSkillsHandler.ListSkills)
 	engine.POST("/kn/get_skill_content", r.KnSkillsHandler.GetSkillContent)
 	engine.POST("/kn/read_skill_file", r.KnSkillsHandler.ReadSkillFile)
-	engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
+	// 与 MCP 工具面同一道闸：关闭时这条路由根本不注册，而不是注册后再拒绝。
+	// 「这个部署没有技能执行能力」要在路由表上成立，否则文档里那句「唯一的
+	// 命令执行通道」在 REST 这侧就是假的。
+	if logicsSkills.ExecuteEnabled() {
+		engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
+	}
 
 	// MCP Proxy
 	engine.POST("/mcp/proxy/:mcp_id/tools/:tool_name/call", r.MCPProxyHandler.CallMCPTool)

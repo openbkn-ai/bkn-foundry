@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
 // MCPToolInfo 单个工具的对外说明（名称 / 展示元数据 / 描述 / 输入输出 schema）。
@@ -87,7 +88,7 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 	for key := range meta {
 		// 未装配的工具不能出现在这里：这个端点的用途是「不握手就看清能力面」，
 		// 广播一条 tools/call 会答「无此工具」的条目比不广播更糟。
-		if key == toolKeyExecuteSkill && !executeSkillEnabled() {
+		if key == toolKeyExecuteSkill && !knskills.ExecuteEnabled() {
 			continue
 		}
 		m := locale.ToolMeta(key)

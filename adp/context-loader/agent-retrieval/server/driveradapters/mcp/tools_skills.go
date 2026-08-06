@@ -6,31 +6,12 @@ package mcp
 
 import (
 	"context"
-	"os"
-	"strconv"
-	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
-
-// executeSkillEnabledEnv 控制 execute_skill 是否出现在工具面。
-//
-// 这条工具把模型生成的 shell 命令送进沙箱执行，是整个工具面唯一的命令执行通道，
-// 所以默认不装配：未开启时它既不在 tools/list 也不在 /mcp/info，与从未编译进来无异。
-const executeSkillEnabledEnv = "MCP_EXECUTE_SKILL_ENABLED"
-
-// executeSkillEnabled 判断是否装配 execute_skill。默认关。
-func executeSkillEnabled() bool {
-	value := strings.TrimSpace(os.Getenv(executeSkillEnabledEnv))
-	if value == "" {
-		return false
-	}
-	enabled, err := strconv.ParseBool(value)
-	return err == nil && enabled
-}
 
 // handleListSkills handles list_skills tool calls: 浏览已发布技能，不需要知识网络上下文。
 func handleListSkills(svc knskills.KnSkillsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

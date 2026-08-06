@@ -363,9 +363,10 @@ paths:
 
         `stdout` / `stderr` 各自超过 8000 字符会截断（`truncated=true`）。
 
-        **同名 MCP 工具默认不装配**：MCP 面的 `execute_skill` 需要显式开启
-        （`MCP_EXECUTE_SKILL_ENABLED=true`）；未开启时它既不出现在 `tools/list`
-        也不出现在 `GET /mcp/info`。本 REST 端点不受该开关影响。
+        **本端点由技能执行总闸控制**：`EXECUTE_SKILL_ENABLED=true` 时才注册这条
+        路由，同名 MCP 工具也才出现在 `tools/list` 与 `GET /mcp/info`。默认关闭，
+        此时这条路径返回 404——「这个部署没有技能执行能力」在路由表上成立。
+        （旧名 `MCP_EXECUTE_SKILL_ENABLED` 仍被识别，用于兼容已按旧名配置的部署。）
       requestBody:
         required: true
         content:
