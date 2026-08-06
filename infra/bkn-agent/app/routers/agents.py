@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account, get_account
-from app.bootstrap import toolbox_sync
 from app.db import get_session
 from app.errors import bad_request, forbidden, not_found
 from app.models import AgentDeleted, AgentList, AgentOut, AgentSpec
@@ -50,7 +49,6 @@ async def create_agent(
             "Conflict", "agent 名称或 id 已存在",
             f"name={spec.name} id={spec.agent_id}", "换一个 name，或换/去掉预设 agent_id。",
         )
-    toolbox_sync.schedule_resync()
     return agent
 
 
@@ -91,7 +89,6 @@ async def update_agent(
         raise bad_request("Conflict", "agent 名称已存在", f"name={spec.name}", "换一个 name。")
     if not agent:
         raise not_found("agent", agent_id)
-    toolbox_sync.schedule_resync()
     return agent
 
 
@@ -104,5 +101,4 @@ async def delete_agent(
     await _load_owned_agent(session, agent_id, account)
     if not await dao.delete_agent(session, agent_id):
         raise not_found("agent", agent_id)
-    toolbox_sync.schedule_resync()
     return {"deleted": agent_id}

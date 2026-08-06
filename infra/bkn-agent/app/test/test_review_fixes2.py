@@ -63,36 +63,6 @@ def test_native_valid_returned():
     assert out == {"greeting": "pong"}
 
 
-# ---------- P1-D toolbox 同步串行 + 合并 ----------
-
-def test_resync_serialized_and_coalesced(monkeypatch):
-    from app.bootstrap import toolbox_sync
-
-    monkeypatch.setattr(toolbox_sync.config, "TOOLBOX_SYNC_ENABLED", True)
-    state = {"concurrent": 0, "max": 0, "count": 0}
-
-    async def fake_sync_once():
-        state["concurrent"] += 1
-        state["max"] = max(state["max"], state["concurrent"])
-        state["count"] += 1
-        await asyncio.sleep(0.01)
-        state["concurrent"] -= 1
-        return 0
-
-    monkeypatch.setattr(toolbox_sync, "sync_once", fake_sync_once)
-    toolbox_sync._resync_queued = False
-
-    async def drive():
-        for _ in range(5):  # 突发 5 次变更
-            toolbox_sync.schedule_resync()
-        while toolbox_sync._background:
-            await asyncio.gather(*list(toolbox_sync._background))
-
-    asyncio.run(drive())
-    assert state["max"] == 1  # 从不并发（串行，消除旧快照覆盖新的）
-    assert state["count"] <= 2  # 突发合并成 ≤2 次实际同步
-
-
 # ---------- P2-B import 单事务：agent 失败整体回滚 ----------
 
 def test_import_single_transaction_rolls_back(monkeypatch):
@@ -100,7 +70,6 @@ def test_import_single_transaction_rolls_back(monkeypatch):
     from sqlalchemy.exc import IntegrityError
 
     from app import dao
-    from app.bootstrap import toolbox_sync
     from app.db import get_session
     from app.main import app
 
@@ -130,7 +99,6 @@ def test_import_single_transaction_rolls_back(monkeypatch):
     monkeypatch.setattr(dao, "check_import_conflict", fake_conflict)
     monkeypatch.setattr(dao, "upsert_prompt_with_id", fake_prompt)
     monkeypatch.setattr(dao, "upsert_agent_with_id", fake_agent)
-    monkeypatch.setattr(toolbox_sync, "schedule_resync", lambda: None)
     try:
         client = TestClient(app, raise_server_exceptions=False)
         pkg = {"package": {"format": "bkn-agent/v1", "exported_at": 1, "items": [{

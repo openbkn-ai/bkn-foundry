@@ -1,8 +1,7 @@
-"""导入导出：roundtrip 语义、同名冲突不中断、引用 warning、resync 触发。"""
+"""导入导出：roundtrip 语义、同名冲突不中断、引用 warning。"""
 from fastapi.testclient import TestClient
 
 from app import dao
-from app.bootstrap import toolbox_sync
 from app.db import get_session
 from app.main import app
 from app.models import AgentOut, PromptOut
@@ -80,11 +79,9 @@ def test_export_then_import_roundtrip(monkeypatch):
     async def no_conflict(session, agent_id, agent_name, prompt_id, prompt_name, account_id=""):
         return None
 
-    resynced = []
     monkeypatch.setattr(dao, "check_import_conflict", no_conflict)
     monkeypatch.setattr(dao, "upsert_agent_with_id", fake_upsert_agent)
     monkeypatch.setattr(dao, "upsert_prompt_with_id", fake_upsert_prompt)
-    monkeypatch.setattr(toolbox_sync, "schedule_resync", lambda: resynced.append(1))
 
     r = client.post("/api/bkn-agent/v1/import", json={"package": pkg}, headers=HDR)
     assert r.status_code == 200, r.text
@@ -93,7 +90,6 @@ def test_export_then_import_roundtrip(monkeypatch):
     assert body["results"][0]["prompt_action"] == "version_published"
     assert upserts == ["a-1", "a-2"]
     assert body["warnings"] == []  # a-2 引用的 a-1 在包内
-    assert resynced == [1]
     app.dependency_overrides.pop(get_session, None)
 
 
@@ -124,7 +120,6 @@ def test_import_conflict_precheck_writes_nothing_and_isolates_item(monkeypatch):
     monkeypatch.setattr(dao, "upsert_agent_with_id", fake_upsert_agent)
     monkeypatch.setattr(dao, "upsert_prompt_with_id", fake_upsert_prompt)
     monkeypatch.setattr(dao, "get_agent", fake_get_agent)
-    monkeypatch.setattr(toolbox_sync, "schedule_resync", lambda: None)
 
     pkg = {
         "format": "bkn-agent/v1",

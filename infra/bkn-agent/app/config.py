@@ -24,14 +24,9 @@ class Config:
     )
     DEFAULT_MODEL = _env("BKN_AGENT_DEFAULT_MODEL", "")
 
-    # 算子工厂（operator-integration）：published agent 注册为 toolbox 工具（#212）；
-    # 工具面与技能面统一走这里的 internal-v1（#322 把技能面从 capabilities-lab 收敛过来）
+    # 算子工厂（operator-integration）：工具面与技能面统一走这里的 internal-v1
+    # （#322 把技能面从 capabilities-lab 收敛过来）
     OPERATOR_INTEGRATION_BASE = _env("OPERATOR_INTEGRATION_BASE", "http://agent-operator-integration:9000/api/agent-operator-integration")
-    TOOLBOX_SYNC_ENABLED = _env("BKN_AGENT_TOOLBOX_SYNC", "true").lower() == "true"
-    TOOLBOX_SYNC_RETRY_INITIAL_S = int(_env("BKN_AGENT_TOOLBOX_RETRY_INITIAL_S", "5"))
-    TOOLBOX_SYNC_RETRY_MAX_S = int(_env("BKN_AGENT_TOOLBOX_RETRY_MAX_S", "60"))
-    # toolbox 工具回调本服务的地址（box_svc_url）
-    SELF_BASE_URL = _env("BKN_AGENT_SELF_BASE_URL", "http://bkn-agent:30800")
 
     # BKN Trace phase-two evidence ingestion. Empty URL = construct evidence facts
     # locally but do not submit them, so bkn-agent can deploy before bkn-trace.

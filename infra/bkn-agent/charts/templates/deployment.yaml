@@ -72,10 +72,6 @@ spec:
               value: {{ .Values.runtime.mfModelApiPrivateBase | quote }}
             - name: OPERATOR_INTEGRATION_BASE
               value: {{ .Values.runtime.operatorIntegrationBase | quote }}
-            - name: BKN_AGENT_TOOLBOX_SYNC
-              value: {{ .Values.runtime.toolboxSync | quote }}
-            - name: BKN_AGENT_SELF_BASE_URL
-              value: {{ .Values.runtime.selfBaseUrl | quote }}
             - name: BKN_AGENT_DEFAULT_MODEL
               value: {{ .Values.runtime.defaultModel | quote }}
             - name: CHECKPOINTER_BACKEND

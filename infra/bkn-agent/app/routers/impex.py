@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account, get_account
-from app.bootstrap import toolbox_sync
 from app.db import get_session
 from app.errors import bad_request, not_found
 from app.models import (
@@ -138,6 +137,4 @@ async def import_agents(
                         f"agent {item.spec.name} 引用的子 agent {ref_id} 不在包内也不在目标环境"
                     )
 
-    if any(r.action in ("created", "updated") for r in results):
-        toolbox_sync.schedule_resync()  # published agent 上架/更新到执行工厂
     return ImportResult(results=results, warnings=warnings)

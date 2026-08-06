@@ -36,13 +36,8 @@ depServices:
 
 runtime:
   mfModelApiPrivateBase: "http://mf-model-api:9898/api/private/mf-model-api/v1"
-  # published agent 注册进算子工厂 toolbox（#212）；工具面与技能面统一走这里（#322）
+  # 工具面与技能面统一走这里（#322）
   operatorIntegrationBase: "http://agent-operator-integration:9000/api/agent-operator-integration"
-  # 暂时下线内置「bkn_agent内置agent」工具箱：关掉后启动同步与变更 resync 均 no-op，
-  # 不再注册/复活该 box（存量 box 需手动删；恢复=改回 "true" 重新部署，box 会幂等重建）
-  toolboxSync: "false"
-  # toolbox 工具回调本服务的地址（box_svc_url）
-  selfBaseUrl: "http://bkn-agent:30800"
   defaultModel: ""
   checkpointerBackend: "mysql"
   # 建表统一归 migrations/bkn-agent/（core-data-migrator）。

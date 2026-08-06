@@ -61,7 +61,6 @@ def test_put_agent_name_conflict_not_500(monkeypatch):
     app.dependency_overrides[get_session] = fake_session
     monkeypatch.setattr(dao, "get_agent", fake_get_agent)
     monkeypatch.setattr(dao, "update_agent", fake_update)
-    monkeypatch.setattr("app.routers.agents.toolbox_sync.schedule_resync", lambda: None)
     try:
         r = client.put(
             "/api/bkn-agent/v1/agents/a-1",
