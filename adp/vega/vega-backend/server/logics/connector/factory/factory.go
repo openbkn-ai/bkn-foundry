@@ -46,23 +46,6 @@ type connectorFactory struct {
 	connectors map[string]interfaces.Connector // 内置 connector 构建器
 }
 
-func validateConnectorRegistration(tp string, ct *interfaces.ConnectorType, connector interfaces.Connector) error {
-	if tp != ct.Type {
-		return fmt.Errorf("connector registration key mismatch: key=%s, requested=%s", tp, ct.Type)
-	}
-	registeredMode := connector.GetMode()
-	registeredCategory := connector.GetCategory()
-	if registeredMode != ct.Mode {
-		return fmt.Errorf("connector type %s mode mismatch: registered=%s, requested=%s",
-			ct.Type, registeredMode, ct.Mode)
-	}
-	if registeredCategory != ct.Category {
-		return fmt.Errorf("connector type %s category mismatch: registered=%s, requested=%s",
-			ct.Type, registeredCategory, ct.Category)
-	}
-	return nil
-}
-
 // Init 初始化 connector factory
 func GetFactory(appSetting *common.AppSetting) interfaces.ConnectorFactory {
 	cFactoryOnce.Do(func() {
@@ -72,15 +55,15 @@ func GetFactory(appSetting *common.AppSetting) interfaces.ConnectorFactory {
 			connectors: make(map[string]interfaces.Connector, 0),
 		}
 
-		cf.InitLocalConnectors()
-		cf.RegisterAllConnectors(appSetting)
+		cf.initLocalConnectors()
+		cf.registerAllConnectors()
 		cFactory = cf
 	})
 	return cFactory
 }
 
-// RegisterAllConnectors 注册所有 connector 构建器
-func (cf *connectorFactory) RegisterAllConnectors(appSetting *common.AppSetting) {
+// registerAllConnectors 注册所有 connector 构建器
+func (cf *connectorFactory) registerAllConnectors() {
 
 	ctx := context.Background()
 	cts, _, err := cf.cta.List(ctx, interfaces.ConnectorTypesQueryParams{
@@ -111,7 +94,7 @@ func (cf *connectorFactory) RegisterConnector(ctx context.Context, tp string, ct
 
 	connector, exist := cf.connectors[tp]
 	if exist {
-		if err := validateConnectorRegistration(tp, ct, connector); err != nil {
+		if err := cf.validateConnectorRegistration(tp, ct, connector); err != nil {
 			return err
 		}
 		if ct.Mode == interfaces.ConnectorModeLocal {
@@ -137,6 +120,23 @@ func (cf *connectorFactory) RegisterConnector(ctx context.Context, tp string, ct
 	return nil
 }
 
+func (cf *connectorFactory) validateConnectorRegistration(tp string, ct *interfaces.ConnectorType, connector interfaces.Connector) error {
+	if tp != ct.Type {
+		return fmt.Errorf("connector registration key mismatch: key=%s, requested=%s", tp, ct.Type)
+	}
+	registeredMode := connector.GetMode()
+	registeredCategory := connector.GetCategory()
+	if registeredMode != ct.Mode {
+		return fmt.Errorf("connector type %s mode mismatch: registered=%s, requested=%s",
+			ct.Type, registeredMode, ct.Mode)
+	}
+	if registeredCategory != ct.Category {
+		return fmt.Errorf("connector type %s category mismatch: registered=%s, requested=%s",
+			ct.Type, registeredCategory, ct.Category)
+	}
+	return nil
+}
+
 // ResolveConnectorTypeRegistration validates a connector type registration
 // against the implementations assembled in the running binary. Only local
 // connector definitions come from code; non-local definitions remain exactly
@@ -152,7 +152,7 @@ func (cf *connectorFactory) ResolveConnectorTypeRegistration(_ context.Context,
 
 	connector, exists := cf.connectors[ct.Type]
 	if exists {
-		if err := validateConnectorRegistration(ct.Type, ct, connector); err != nil {
+		if err := cf.validateConnectorRegistration(ct.Type, ct, connector); err != nil {
 			return nil, err
 		}
 	}
@@ -171,37 +171,30 @@ func (cf *connectorFactory) ResolveConnectorTypeRegistration(_ context.Context,
 }
 
 // DeleteConnector 删除 connector 构建器
-func (cf *connectorFactory) DeleteConnector(ctx context.Context, tp string) error {
+func (cf *connectorFactory) DeleteConnector(tp string) {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
 
 	connector, exist := cf.connectors[tp]
-	if exist {
-		if connector.GetMode() == interfaces.ConnectorModeLocal {
-			logger.Errorf("can not delete local connector %s:%s", tp, connector.GetName())
-			return fmt.Errorf("can not delete local connector %s:%s", tp, connector.GetName())
-		} else {
-			delete(cf.connectors, tp)
-		}
-	} else {
-		logger.Errorf("connector %s not implemented", tp)
-		return fmt.Errorf("connector %s not implemented: %w", tp, ErrConnectorUnavailable)
+	if !exist {
+		return
 	}
-	return nil
+	if connector.GetMode() == interfaces.ConnectorModeLocal {
+		// Local connectors represent capabilities compiled into the binary.
+		// Deleting their database registration must not remove the implementation.
+		return
+	}
+	delete(cf.connectors, tp)
 }
 
-func (cf *connectorFactory) SetConnectorEnabled(ctx context.Context, tp string, enabled bool) error {
+func (cf *connectorFactory) SetConnectorEnabled(tp string, enabled bool) {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
 
 	connector, exist := cf.connectors[tp]
 	if exist {
 		connector.SetEnabled(enabled)
-	} else {
-		logger.Errorf("connector %s not implemented", tp)
-		return fmt.Errorf("connector %s not implemented: %w", tp, ErrConnectorUnavailable)
 	}
-	return nil
 }
 
 // IsConnectorAvailable reports whether the running binary contains a registered

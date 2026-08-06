@@ -22,7 +22,7 @@ func TestConnectorFactoryInitLocalConnectors(t *testing.T) {
 	t.Run("connector factory init local connectors", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
 
-		cf.InitLocalConnectors()
+		cf.initLocalConnectors()
 
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMySQL)
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMariaDB)
@@ -60,7 +60,7 @@ func TestConnectorFactoryRegisterAllConnectors(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		cf.RegisterAllConnectors(nil)
+		cf.registerAllConnectors()
 	})
 	assert.NotContains(t, cf.connectors, "future-local")
 	require.Contains(t, cf.connectors, "remote-api")
@@ -181,7 +181,7 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 	})
 }
 
-func TestValidateConnectorRegistration(t *testing.T) {
+func TestConnectorFactoryValidateConnectorRegistration(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*interfaces.ConnectorType)
@@ -203,7 +203,8 @@ func TestValidateConnectorRegistration(t *testing.T) {
 			}
 			test.mutate(request)
 
-			err := validateConnectorRegistration("localdb", request, connector)
+			cf := &connectorFactory{}
+			err := cf.validateConnectorRegistration("localdb", request, connector)
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.field+" mismatch")
@@ -216,7 +217,8 @@ func TestValidateConnectorRegistration(t *testing.T) {
 		connector.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
 
-		err := validateConnectorRegistration("localdb", &interfaces.ConnectorType{
+		cf := &connectorFactory{}
+		err := cf.validateConnectorRegistration("localdb", &interfaces.ConnectorType{
 			Type: "localdb", Name: "Renamed Local DB", Mode: interfaces.ConnectorModeLocal,
 			Category: interfaces.ConnectorCategoryTable,
 		}, connector)
@@ -225,7 +227,8 @@ func TestValidateConnectorRegistration(t *testing.T) {
 	})
 
 	t.Run("rejects registration key mismatch", func(t *testing.T) {
-		err := validateConnectorRegistration("localdb", &interfaces.ConnectorType{Type: "other"}, nil)
+		cf := &connectorFactory{}
+		err := cf.validateConnectorRegistration("localdb", &interfaces.ConnectorType{Type: "other"}, nil)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "key mismatch")
@@ -264,7 +267,7 @@ func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
 
 	t.Run("supports mysql registration through mariadb implementation", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
-		cf.InitLocalConnectors()
+		cf.initLocalConnectors()
 		request := &interfaces.ConnectorType{
 			Type: interfaces.ConnectorTypeMySQL, Name: "MySQL", Mode: interfaces.ConnectorModeLocal,
 			Category: interfaces.ConnectorCategoryTable, Enabled: true,
@@ -338,15 +341,13 @@ func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
 }
 
 func TestConnectorFactoryDeleteConnector(t *testing.T) {
-	t.Run("connector factory delete connector", func(t *testing.T) {
+	t.Run("deletes remote connector and keeps local implementation", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
-		ctx := context.Background()
 		local := vmock.NewMockConnector(ctrl)
 		remote := vmock.NewMockConnector(ctrl)
 		remote.EXPECT().GetMode().Return(interfaces.ConnectorModeRemote)
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
-		local.EXPECT().GetName().Return("localdb").Times(2)
 		cf := &connectorFactory{
 			connectors: map[string]interfaces.Connector{
 				"localdb": local,
@@ -354,16 +355,13 @@ func TestConnectorFactoryDeleteConnector(t *testing.T) {
 			},
 		}
 
-		require.NoError(t, cf.DeleteConnector(ctx, "remote"))
+		cf.DeleteConnector("remote")
 		assert.NotContains(t, cf.connectors, "remote")
 
-		err := cf.DeleteConnector(ctx, "localdb")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "can not delete local connector")
+		cf.DeleteConnector("localdb")
+		assert.Contains(t, cf.connectors, "localdb")
 
-		err = cf.DeleteConnector(ctx, "missing")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
+		cf.DeleteConnector("missing")
 	})
 }
 
@@ -393,7 +391,7 @@ func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "is disabled")
 
-		require.NoError(t, cf.SetConnectorEnabled(ctx, "localdb", true))
+		cf.SetConnectorEnabled("localdb", true)
 		got, err = cf.CreateConnectorInstance(ctx, "localdb", cfg)
 		require.NoError(t, err)
 		assert.Same(t, instance, got)
@@ -401,10 +399,7 @@ func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
 		assert.Equal(t, []string{"password"}, cf.GetSensitiveFields("localdb"))
 		assert.Nil(t, cf.GetSensitiveFields("missing"))
 
-		err = cf.SetConnectorEnabled(ctx, "missing", true)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
-		assert.ErrorIs(t, err, ErrConnectorUnavailable)
+		cf.SetConnectorEnabled("missing", true)
 
 		got, err = cf.CreateConnectorInstance(ctx, "missing", nil)
 		require.Error(t, err)

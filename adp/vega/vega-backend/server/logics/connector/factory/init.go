@@ -15,8 +15,11 @@ import (
 	"vega-backend/logics/connector/local/table/sqlserver"
 )
 
-// InitLocalConnectors 初始化本地 connector
-func (cf *connectorFactory) InitLocalConnectors() {
+// initLocalConnectors 初始化本地 connector
+func (cf *connectorFactory) initLocalConnectors() {
+	cf.mu.Lock()
+	defer cf.mu.Unlock()
+
 	cf.connectors[interfaces.ConnectorTypeMySQL] = mariadb.NewMariaDBConnector()
 	cf.connectors[interfaces.ConnectorTypeOpenSearch] = opensearch.NewOpenSearchConnector()
 	cf.connectors[interfaces.ConnectorTypeMariaDB] = mariadb.NewMariaDBConnector()

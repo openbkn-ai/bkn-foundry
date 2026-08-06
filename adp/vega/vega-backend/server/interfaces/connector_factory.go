@@ -16,8 +16,8 @@ import (
 type ConnectorFactory interface {
 	ResolveConnectorTypeRegistration(ctx context.Context, ct *ConnectorType) (*ConnectorType, error)
 	RegisterConnector(ctx context.Context, tp string, ct *ConnectorType) error
-	DeleteConnector(ctx context.Context, tp string) error
-	SetConnectorEnabled(ctx context.Context, tp string, enabled bool) error
+	DeleteConnector(tp string)
+	SetConnectorEnabled(tp string, enabled bool)
 	CreateConnectorInstance(ctx context.Context, tp string, cfg ConnectorConfig) (Connector, error)
 
 	IsConnectorAvailable(tp string) bool

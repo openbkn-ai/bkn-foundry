@@ -57,17 +57,15 @@ func (mr *MockConnectorFactoryMockRecorder) CreateConnectorInstance(ctx, tp, cfg
 }
 
 // DeleteConnector mocks base method.
-func (m *MockConnectorFactory) DeleteConnector(ctx context.Context, tp string) error {
+func (m *MockConnectorFactory) DeleteConnector(tp string) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteConnector", ctx, tp)
-	ret0, _ := ret[0].(error)
-	return ret0
+	m.ctrl.Call(m, "DeleteConnector", tp)
 }
 
 // DeleteConnector indicates an expected call of DeleteConnector.
-func (mr *MockConnectorFactoryMockRecorder) DeleteConnector(ctx, tp any) *gomock.Call {
+func (mr *MockConnectorFactoryMockRecorder) DeleteConnector(tp any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*MockConnectorFactory)(nil).DeleteConnector), ctx, tp)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConnector", reflect.TypeOf((*MockConnectorFactory)(nil).DeleteConnector), tp)
 }
 
 // GetSensitiveFields mocks base method.
@@ -128,15 +126,13 @@ func (mr *MockConnectorFactoryMockRecorder) ResolveConnectorTypeRegistration(ctx
 }
 
 // SetConnectorEnabled mocks base method.
-func (m *MockConnectorFactory) SetConnectorEnabled(ctx context.Context, tp string, enabled bool) error {
+func (m *MockConnectorFactory) SetConnectorEnabled(tp string, enabled bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetConnectorEnabled", ctx, tp, enabled)
-	ret0, _ := ret[0].(error)
-	return ret0
+	m.ctrl.Call(m, "SetConnectorEnabled", tp, enabled)
 }
 
 // SetConnectorEnabled indicates an expected call of SetConnectorEnabled.
-func (mr *MockConnectorFactoryMockRecorder) SetConnectorEnabled(ctx, tp, enabled any) *gomock.Call {
+func (mr *MockConnectorFactoryMockRecorder) SetConnectorEnabled(tp, enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetConnectorEnabled", reflect.TypeOf((*MockConnectorFactory)(nil).SetConnectorEnabled), ctx, tp, enabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetConnectorEnabled", reflect.TypeOf((*MockConnectorFactory)(nil).SetConnectorEnabled), tp, enabled)
 }

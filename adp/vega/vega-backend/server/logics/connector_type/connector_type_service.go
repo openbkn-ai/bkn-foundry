@@ -9,7 +9,6 @@ package connector_type
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -317,18 +316,19 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Category)
 	}
 
-	updated := *ct
-	updated.Type = req.Type
-	updated.Name = req.Name
-	updated.Tags = req.Tags
-	updated.Description = req.Description
-	updated.Mode = req.Mode
-	updated.Category = req.Category
-	updated.Endpoint = req.Endpoint
-	updated.FieldConfig = req.FieldConfig
-	updated.Enabled = req.Enabled
+	updated := &interfaces.ConnectorType{
+		Type:        req.Type,
+		Name:        req.Name,
+		Tags:        req.Tags,
+		Description: req.Description,
+		Mode:        req.Mode,
+		Category:    req.Category,
+		Endpoint:    req.Endpoint,
+		FieldConfig: req.FieldConfig,
+		Enabled:     req.Enabled,
+	}
 
-	resolved, err := cts.cf.ResolveConnectorTypeRegistration(ctx, &updated)
+	resolved, err := cts.cf.ResolveConnectorTypeRegistration(ctx, updated)
 	if err != nil {
 		otellog.LogError(ctx, "Validate connector type update failed", err)
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_BadRequest).
@@ -383,11 +383,7 @@ func (cts *connectorTypeService) DeleteByType(ctx context.Context, tp string) er
 			WithErrorDetails(err.Error())
 	}
 
-	if err := cts.cf.DeleteConnector(ctx, tp); err != nil {
-		otellog.LogError(ctx, "Delete connector type failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_DeleteFailed).
-			WithErrorDetails(err.Error())
-	}
+	cts.cf.DeleteConnector(tp)
 
 	//  清除资源策略
 	err = cts.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{tp})
@@ -418,11 +414,7 @@ func (cts *connectorTypeService) SetEnabled(ctx context.Context, tp string, enab
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
-	if err := cts.cf.SetConnectorEnabled(ctx, tp, enabled); err != nil && !errors.Is(err, factory.ErrConnectorUnavailable) {
-		otellog.LogError(ctx, "Set runtime connector enabled state failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_UpdateFailed).
-			WithErrorDetails(err.Error())
-	}
+	cts.cf.SetConnectorEnabled(tp, enabled)
 
 	span.SetStatus(codes.Ok, "")
 	return nil

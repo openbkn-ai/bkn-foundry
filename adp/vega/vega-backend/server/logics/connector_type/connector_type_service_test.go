@@ -9,7 +9,6 @@ package connector_type
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +17,6 @@ import (
 
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
-	"vega-backend/logics/connector/factory"
 )
 
 func newTestConnectorTypeService(t *testing.T) (*connectorTypeService, *vmock.MockConnectorTypeAccess, *vmock.MockPermissionService) {
@@ -443,6 +441,27 @@ func TestConnectorTypeServiceCheckExistByName(t *testing.T) {
 
 }
 
+func TestConnectorTypeServiceDeleteByType(t *testing.T) {
+	t.Run("deletes registration and permission resource", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+		service.cf = connectorFactory
+
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
+			ID:   "remote-api",
+		}, []string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
+		cta.EXPECT().DeleteByType(gomock.Any(), "remote-api").Return(nil)
+		connectorFactory.EXPECT().DeleteConnector("remote-api")
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{"remote-api"}).
+			Return(nil)
+
+		err := service.DeleteByType(context.Background(), "remote-api")
+
+		require.NoError(t, err)
+	})
+}
+
 func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 	t.Run("set enabled checks permission and updates access", func(t *testing.T) {
 		service, cta, ps := newTestConnectorTypeService(t)
@@ -455,7 +474,7 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 			}, []string{interfaces.OPERATION_TYPE_MODIFY}).
 			Return(nil)
 		cta.EXPECT().SetEnabled(gomock.Any(), "remote-api", true).Return(nil)
-		connectorFactory.EXPECT().SetConnectorEnabled(gomock.Any(), "remote-api", true).Return(nil)
+		connectorFactory.EXPECT().SetConnectorEnabled("remote-api", true)
 
 		require.NoError(t, service.SetEnabled(context.Background(), "remote-api", true))
 	})
@@ -477,8 +496,7 @@ func TestConnectorTypeServiceSetEnabled(t *testing.T) {
 		service.cf = connectorFactory
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		cta.EXPECT().SetEnabled(gomock.Any(), "enterprise-local", false).Return(nil)
-		connectorFactory.EXPECT().SetConnectorEnabled(gomock.Any(), "enterprise-local", false).
-			Return(fmt.Errorf("missing connector: %w", factory.ErrConnectorUnavailable))
+		connectorFactory.EXPECT().SetConnectorEnabled("enterprise-local", false)
 
 		require.NoError(t, service.SetEnabled(context.Background(), "enterprise-local", false))
 	})
