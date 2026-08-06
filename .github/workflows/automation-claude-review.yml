@@ -252,7 +252,9 @@ jobs:
           # 转圈图标。自己存在仓里而不是复用 claude-code-action 那个 user-attachment：
           # 那是别人项目的资产，删掉就成裂图。本仓是 public，raw 链接可被 GitHub 的
           # 图片代理取到；私有仓则不行，届时要换成上传到 user-attachments。
-          SPINNER: ${{ github.server_url }}/${{ github.repository }}/raw/main/.github/assets/review-spinner.gif
+          # 分支取默认分支而不是写死 main：改名或迁移资产后这里会静默变成裂图，
+          # workflow 侧看不出任何异常，只有渲染出来的评论里才看得见。
+          SPINNER: ${{ github.server_url }}/${{ github.repository }}/raw/${{ github.event.repository.default_branch || 'main' }}/.github/assets/review-spinner.gif
         run: |
           set -euo pipefail
           MARKER='<!-- claude-review-progress -->'
@@ -573,6 +575,12 @@ jobs:
         if: always() && steps.prbranch.outputs.skip != 'true'
         continue-on-error: true
         env:
+          # 这两个必须显式给：本文件没有 workflow 级 env，review job 的 env 里也没有，
+          # 只有 Prefetch 那步自带。缺了会在本步第一条语句就 KeyError，而
+          # continue-on-error 把它咽成绿色——本地手测时它们来自开发者自己的 shell，
+          # 这类缺失测不出来。
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           SHARD_LABEL: ${{ matrix.shard.label }}
           SHARD_KEY: ${{ matrix.shard.key }}
         run: |
@@ -790,7 +798,7 @@ jobs:
             {
               "verdicts": [
                 {"id": "adp-bkn#0", "refuted": true,
-                 "reason": "驳回或确认的理由，指明你读了哪个文件的哪几行"}
+                 "reason": "why it was refuted or confirmed, naming the file and lines you read"}
               ],
               "notes": "复核过程中顺带发现的、但不属于本次阻塞项的事情，可以为空串"
             }
@@ -799,8 +807,8 @@ jobs:
             `reason` 里必须出现你**这一轮真读过的** file:line。这是复核结论本身的
             evidence，写不出来的结论和它要驳回的东西是同一种毛病。
 
-            `reason` 的语言跟随 PR 标题与描述的主体语言——它会原样进 verdict 正文，
-            与分片给的文字并排显示，语言不一致会读成两份东西。
+            `reason` **一律用英文**。它会原样进 verdict 正文，夹在英文骨架
+            （`Refuted because:` 与折叠区标题）之间，写中文就又成了一份混排文档。
           claude_args: |
             --model claude-opus-5
             --effort xhigh
@@ -885,7 +893,7 @@ jobs:
                   # 从没被审过的 PR——比不表态糟得多。
                   status = data.get("status")
               except (ValueError, OSError, AttributeError):
-                  missing.append((s, "absent"))
+                  missing.append((s, "malformed"))
                   continue
               if status == "no_output":
                   missing.append((s, "no_output"))
@@ -936,6 +944,7 @@ jobs:
                "missing_body": "These shards produced no findings — **their files were not reviewed this round**:",
                "reason_no_output": "ran, but wrote no conclusion (most likely the turn limit, or it wrapped up early)",
                "reason_absent": "never ran, or died partway through",
+               "reason_malformed": "wrote a conclusion file that could not be parsed",
                "trunc": "File list truncated",
                "trunc_body": "This PR changes %s files but only %s reached the planner (`gh pr view --json files` caps at 100) — **the remaining %d were not assigned to any shard and were not reviewed**.",
                "footer": "Push a new commit when addressed, or reply `/review` for another round.",
@@ -1027,6 +1036,7 @@ jobs:
       # 合进去的东西有阻塞项。job if 里的 state == 'open' 是在事件到达时求值的，拦不住
       # 跑到一半才发生的合并，只能在落地前再查一次。
       - name: Post review
+        id: post
         if: steps.assemble.outputs.action != 'none'
         run: |
           set -euo pipefail
@@ -1059,13 +1069,10 @@ jobs:
       # 静默是最坏的结果：PR 上什么都没有，与「压根没触发」无法区分——#671 首轮就是
       # 这样被当成没触发的。这里不落评审状态（没审过就不该 request-changes，也不该
       # approve），但必须留一条普通评论说明这轮空转了。
-      # 条件不能写成 `action == 'none'`：那是隐式 success()，Assemble 自己崩掉时
-      # output 根本没写出来，于是 Post review 与本步双双跳过——整轮又回到静默，
-      # 正是这个 PR 要消掉的东西。改成「只要没落成表态就通告」。
       # 这一轮真落了表态，就把上一轮的空转通告删掉——否则作者会在第 4 轮的结论旁边
       # 读到第 3 轮的「本轮评审空转」。
       - name: Clear stale empty-round notice
-        if: steps.assemble.outputs.action == 'approve' || steps.assemble.outputs.action == 'request-changes'
+        if: steps.post.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -1076,8 +1083,11 @@ jobs:
               gh api -X DELETE "repos/${GH_REPO}/issues/comments/${id}" >/dev/null
             done
 
+      # 判据取 Post review 的**实际结果**，不取 Assemble 的意图：Assemble 崩掉时
+      # output 没写出来、Post review 被跳过；gh pr review 自己失败时意图是 approve
+      # 但 PR 上什么都没有。两种都必须通告，否则进度评论被删、原地不留任何东西。
       - name: Report empty round
-        if: always() && steps.assemble.outputs.action != 'approve' && steps.assemble.outputs.action != 'request-changes'
+        if: always() && steps.post.outcome != 'success'
         continue-on-error: true
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
