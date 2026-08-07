@@ -538,15 +538,23 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 			return mcp.NewToolResultError("ids is required (object type ids from get_kn_detail)"), nil
 		}
 
-		// 走按 id 取详情的端点，而不是知识网络导出视图：导出视图只列对象类，不做数据源
-		// 富化，属性上的 condition_operations 一律为空——调用方据此判断字段能不能做
-		// match / knn，拿到空的就只能靠猜。id 由调用方显式给出，规模有界，富化的代价
-		// 与之成正比。
+		// 优先走按 id 取详情的端点：导出视图只列对象类、不做数据源富化，属性上的
+		// condition_operations 一律为空，而调用方正是据此判断字段能不能做 match / knn。
+		//
+		// 但这个端点要求 id 全部命中，混进一个失效 id 就整批 404。此时退回导出视图：
+		// 宁可这一批少了算子，也不能因为一个失效 id 把其余有效的对象类一起丢掉——
+		// 导出视图还支持按名字回退匹配，那也是既有行为。
 		matched, err := bkn.GetObjectTypeDetail(ctx, knID, args.IDs, true)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		var missing []string
+		if err != nil || len(matched) < len(args.IDs) {
+			detail, detailErr := bkn.GetKnowledgeNetworkDetail(ctx, knID)
+			if detailErr != nil {
+				return mcp.NewToolResultError(detailErr.Error()), nil
+			}
+			matched, missing = detail.FilterObjectTypes(args.IDs)
+		} else {
+			missing = missingObjectTypeIDs(args.IDs, matched)
 		}
-		missing := missingObjectTypeIDs(args.IDs, matched)
 		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
 		// property is unreachable from the object type without this.
 		metrics.AttachRelatedMetrics(ctx, knID, matched)

@@ -24,12 +24,6 @@ import (
 // 被跳过，语义实例召回永远返回空。
 //
 // 只补真正缺算子的对象类，且合并成一次批量请求。
-//
-// indexOpsOnly 为真时只补索引带来的那几个算子（match / multi_match / knn），略去按
-// 属性类型就能推出来的比较算子。实测一次 10 个对象类、172 个属性的检索：补全量多
-// 10,453 字节（+27%），只补索引类多 151 字节（+0.4%），差 69 倍——多出来的几乎全是
-// 每个字符串属性重复一遍的 ==/in/like 之类，服务端逐个告知没有信息量。精简 Schema
-// 本就是为省体积而设，不该被这部分吃掉。
 func (s *localSearchImpl) backfillConditionOperations(
 	ctx context.Context,
 	knID string,
@@ -117,6 +111,32 @@ func conditionOperationsPresent(objType *interfaces.KnSearchObjectType) bool {
 		}
 	}
 	return false
+}
+
+// trimToIndexBackedOperations 出响应前把算子收敛到索引带来的那几个。
+//
+// 实测一次 10 个对象类、172 个属性的检索：全量算子多 10,453 字节（+27%），只留索引类
+// 多 151 字节（+0.4%），差 69 倍。多出来的几乎全是每个字符串属性重复一遍的
+// ==/in/like 之类，那些从属性 type 就能推出来，服务端逐个告知没有信息量；而精简
+// Schema 本就是为省体积而设。
+//
+// 只在出响应时做，不影响检索：实例召回靠算子挑可检索字段，提前裁掉会让只支持等值的
+// 字段整个消失——那是响应开关改了召回口径。
+func trimToIndexBackedOperations(objectTypes []*interfaces.KnSearchObjectType, brief bool) {
+	if !brief {
+		return
+	}
+	for _, objType := range objectTypes {
+		if objType == nil {
+			continue
+		}
+		for _, p := range objType.DataProperties {
+			if p == nil {
+				continue
+			}
+			p.ConditionOperations = indexBackedOperations(p.ConditionOperations)
+		}
+	}
 }
 
 // indexBackedOperations 挑出只有服务端才知道的那几个算子——它们取决于底层索引建没建，

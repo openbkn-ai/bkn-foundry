@@ -128,54 +128,47 @@ func TestBackfillConditionOperations_MakesCapabilityVisibleInSchema(t *testing.T
 	}
 }
 
-// 精简 Schema 只补索引带来的算子：比较算子按属性类型可推导，逐个下发纯属浪费体积。
-// 实测一次检索差 69 倍（+10,453 字节 vs +151 字节）。
-func TestBackfillConditionOperations_BriefKeepsOnlyIndexBackedOps(t *testing.T) {
-	backend := &mockBknBackend{
-		objectDetailResp: []*interfaces.ObjectType{
-			{
-				ID: "stadiums",
-				DataProperties: []*interfaces.DataProperty{
-					{Name: "stadium_name", ConditionOperations: []interfaces.KnOperationType{
-						interfaces.KnOperationTypeEqual,
-						interfaces.KnOperationTypeIn,
-						interfaces.KnOperationTypeLike,
-						interfaces.KnOperationTypeMatch,
-						interfaces.KnOperationTypeMultiMatch,
-						interfaces.KnOperationTypeKnn,
-					}},
-					{Name: "stadium_id", ConditionOperations: []interfaces.KnOperationType{
-						interfaces.KnOperationTypeEqual,
-						interfaces.KnOperationTypeIn,
-					}},
-				},
+// 精简只在出响应前做：实例召回要靠算子挑可检索字段，提前裁掉会让只支持等值的字段
+// 整个消失——那是响应开关改了召回口径。实测全量比索引类多 10,453 字节（69 倍）。
+func TestTrimToIndexBackedOperations(t *testing.T) {
+	full := []interfaces.KnOperationType{
+		interfaces.KnOperationTypeEqual,
+		interfaces.KnOperationTypeIn,
+		interfaces.KnOperationTypeLike,
+		interfaces.KnOperationTypeMatch,
+		interfaces.KnOperationTypeMultiMatch,
+		interfaces.KnOperationTypeKnn,
+	}
+	newObjType := func() *interfaces.KnSearchObjectType {
+		return &interfaces.KnSearchObjectType{
+			ConceptID: "stadiums",
+			DataProperties: []*interfaces.KnSearchDataProperty{
+				{Name: "stadium_name", Type: "string", ConditionOperations: append([]interfaces.KnOperationType(nil), full...)},
+				{Name: "stadium_id", Type: "string", ConditionOperations: []interfaces.KnOperationType{
+					interfaces.KnOperationTypeEqual, interfaces.KnOperationTypeIn,
+				}},
 			},
-		},
-	}
-	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
-	objType := &interfaces.KnSearchObjectType{
-		ConceptID: "stadiums",
-		DataProperties: []*interfaces.KnSearchDataProperty{
-			{Name: "stadium_name", Type: "string"},
-			{Name: "stadium_id", Type: "string"},
-		},
-	}
-
-	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType}, true)
-
-	got := objType.DataProperties[0].ConditionOperations
-	if len(got) != 3 {
-		t.Fatalf("brief mode keeps only the index-backed operations, got %+v", got)
-	}
-	for _, op := range got {
-		switch op {
-		case interfaces.KnOperationTypeMatch, interfaces.KnOperationTypeMultiMatch, interfaces.KnOperationTypeKnn:
-		default:
-			t.Fatalf("derivable comparison operator leaked into brief mode: %s", op)
 		}
 	}
-	// 没有索引能力的属性在精简模式下整个字段都不出现，省掉一份重复的比较算子清单。
-	if len(objType.DataProperties[1].ConditionOperations) != 0 {
-		t.Fatalf("a field with no index capability should stay bare, got %+v", objType.DataProperties[1].ConditionOperations)
+
+	brief := newObjType()
+	trimToIndexBackedOperations([]*interfaces.KnSearchObjectType{brief}, true)
+	if len(brief.DataProperties[0].ConditionOperations) != 3 {
+		t.Fatalf("brief keeps only index-backed operations, got %+v", brief.DataProperties[0].ConditionOperations)
+	}
+	if len(brief.DataProperties[1].ConditionOperations) != 0 {
+		t.Fatalf("a field with no index capability goes bare, got %+v", brief.DataProperties[1].ConditionOperations)
+	}
+
+	kept := newObjType()
+	trimToIndexBackedOperations([]*interfaces.KnSearchObjectType{kept}, false)
+	if len(kept.DataProperties[0].ConditionOperations) != len(full) {
+		t.Fatalf("full mode must keep every operation, got %+v", kept.DataProperties[0].ConditionOperations)
+	}
+
+	// 裁剪之前，只支持等值的字段必须仍然是可检索的——否则实例召回会漏掉它。
+	searchable := findSemanticSearchableFields(newObjType())
+	if len(searchable) != 2 {
+		t.Fatalf("retrieval must see every field before trimming, got %+v", searchable)
 	}
 }
