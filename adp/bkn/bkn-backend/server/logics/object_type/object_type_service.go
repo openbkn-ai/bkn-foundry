@@ -1952,8 +1952,6 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 	return objectType, nil
 }
 
-
-
 // applyIndexCapOps 把资源本地索引上已经具备的检索能力叠加进属性的算子集合。
 //
 // 叠加而不是替换：属性类型推出来的那批算子是基线（对象类可以完全没有索引），

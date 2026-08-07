@@ -171,7 +171,7 @@ type ExecuteActionsResponse struct {
 
 // KnGetActionExecutionRequest 查询单次行动执行的状态与结果
 type KnGetActionExecutionRequest struct {
-	KnID        string `json:"kn_id" validate:"required"`       // Knowledge Network ID
+	KnID        string `json:"kn_id" validate:"required"`        // Knowledge Network ID
 	ExecutionID string `json:"execution_id" validate:"required"` // 由 execute_action 返回的执行 ID
 
 	AccountID   string `json:"-" header:"x-account-id"`

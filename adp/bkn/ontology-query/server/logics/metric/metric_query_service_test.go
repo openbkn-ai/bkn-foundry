@@ -141,8 +141,8 @@ func Test_buildResourceDataQueryParams_conditionMerge(t *testing.T) {
 		def := &interfaces.MetricDefinition{
 			CalculationFormula: &interfaces.MetricCalculationFormula{
 				Condition: &cond.CondCfg{
-					Operation: cond.OperationIn,
-					Name:      "warehouse",
+					Operation:   cond.OperationIn,
+					Name:        "warehouse",
 					ValueOptCfg: cond.ValueOptCfg{Value: []any{"昆山成品仓"}},
 				},
 				Aggregation: interfaces.MetricAggregation{Property: "amount", Aggr: interfaces.MetricAggrSum},

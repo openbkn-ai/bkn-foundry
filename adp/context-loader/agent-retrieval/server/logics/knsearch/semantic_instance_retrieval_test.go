@@ -510,4 +510,3 @@ func knnCapableObjectType(id string, _ float64, withVector bool) *interfaces.KnS
 		},
 	}
 }
-

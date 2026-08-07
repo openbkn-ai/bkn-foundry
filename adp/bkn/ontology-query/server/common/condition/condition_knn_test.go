@@ -480,10 +480,6 @@ func Test_rewriteKnnCond(t *testing.T) {
 			So(result, ShouldBeNil)
 		})
 
-
-
-
-
 	})
 }
 

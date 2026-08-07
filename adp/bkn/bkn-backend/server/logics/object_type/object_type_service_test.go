@@ -3862,4 +3862,3 @@ func Test_applyIndexCapOps(t *testing.T) {
 		})
 	})
 }
-

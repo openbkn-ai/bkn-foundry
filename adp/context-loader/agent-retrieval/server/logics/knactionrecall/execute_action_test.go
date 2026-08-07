@@ -197,17 +197,17 @@ func TestListActionExecutions_Success(t *testing.T) {
 func TestSlimActionExecution(t *testing.T) {
 	convey.Convey("TestSlimActionExecution", t, func() {
 		full := map[string]any{
-			"id":                  "exec-1",
-			"status":              "failed",
-			"total_count":         1,
-			"success_count":       0,
-			"failed_count":        1,
-			"dynamic_params":      map[string]any{"message": "hi"},
+			"id":                   "exec-1",
+			"status":               "failed",
+			"total_count":          1,
+			"success_count":        0,
+			"failed_count":         1,
+			"dynamic_params":       map[string]any{"message": "hi"},
 			"action_type_snapshot": map[string]any{"parameters": []any{"a", "b"}}, // 重货，应剔除
-			"executor":            map[string]any{"id": "u1"},                     // 冗余，应剔除
-			"executor_id":         "u1",                                           // 冗余，应剔除
-			"action_source":       map[string]any{"tool_id": "t1"},               // 冗余，应剔除
-			"results_limit":       1000,                                           // 分页元数据，应剔除
+			"executor":             map[string]any{"id": "u1"},                    // 冗余，应剔除
+			"executor_id":          "u1",                                          // 冗余，应剔除
+			"action_source":        map[string]any{"tool_id": "t1"},               // 冗余，应剔除
+			"results_limit":        1000,                                          // 分页元数据，应剔除
 			"results": []any{
 				map[string]any{
 					"_instance_id":  "obj-14",

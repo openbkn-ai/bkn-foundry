@@ -19,18 +19,18 @@ const (
 
 // QueryObjectInstancesReq Request object for querying detailed object instances
 type QueryObjectInstancesReq struct {
-	KnID               string       `form:"kn_id"`                                         // Knowledge Network ID
-	OtID               string       `form:"ot_id"`                                         // Object Type ID
-	IncludeTypeInfo    bool         `form:"include_type_info"`                             // Whether to include object type info
-	IncludeLogicParams bool         `form:"include_logic_params"`                          // Include calculation parameters for logic properties, default false
-	Cond               *KnCondition `json:"condition"`                                     // Retrieval conditions
+	KnID               string       `form:"kn_id"`                // Knowledge Network ID
+	OtID               string       `form:"ot_id"`                // Object Type ID
+	IncludeTypeInfo    bool         `form:"include_type_info"`    // Whether to include object type info
+	IncludeLogicParams bool         `form:"include_logic_params"` // Include calculation parameters for logic properties, default false
+	Cond               *KnCondition `json:"condition"`            // Retrieval conditions
 	// Filters is a flat shortcut for the common "field op value [AND ...]" case.
 	// When set and Cond is empty, the driven adapter AND-combines them into Cond
 	// (value_from defaults to const). Mutually exclusive with condition; condition
 	// wins if both are provided.
-	Filters            []FlatFilter `json:"filters,omitempty"`
-	Limit              int          `json:"limit" validate:"min=1,max=10000" default:"10"` // Quantity limit, default 10, range 1-10000
-	Properties         []string     `json:"properties"`                                    // 指定返回的对象属性字段列表，默认返回所有属性
+	Filters    []FlatFilter `json:"filters,omitempty"`
+	Limit      int          `json:"limit" validate:"min=1,max=10000" default:"10"` // Quantity limit, default 10, range 1-10000
+	Properties []string     `json:"properties"`                                    // 指定返回的对象属性字段列表，默认返回所有属性
 	// SearchAfter 游标分页：传入上一页响应返回的 search_after，用于顺序拉取下一页；首次查询留空。
 	// 适用于对象索引 / 数据视图路径（顺翻，不跳页）。
 	SearchAfter []any `json:"search_after,omitempty"`

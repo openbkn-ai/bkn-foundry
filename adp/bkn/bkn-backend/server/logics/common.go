@@ -109,4 +109,3 @@ func VegaResourceSchemaToFieldsMap(res *interfaces.VegaResource) map[string]*int
 	}
 	return fields
 }
-

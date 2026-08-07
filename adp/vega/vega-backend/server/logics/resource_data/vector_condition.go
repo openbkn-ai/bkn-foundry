@@ -129,4 +129,3 @@ func (rds *resourceDataService) embeddingModelForIndex(ctx context.Context,
 	}
 	return feature.Vector.ModelID, nil
 }
-
