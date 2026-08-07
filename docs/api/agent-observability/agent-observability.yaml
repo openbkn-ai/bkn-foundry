@@ -2747,13 +2747,17 @@ paths:
       - evidence
   /evidence/artifacts/{artifact_id}:
     get:
-      description: Returns artifact content only when all persisted ownership dimensions
-        match the trusted query identity.
+      description: Returns an artifact through its own record scope, or through an
+        authorized Interaction when interaction_id is supplied.
       parameters:
       - description: Artifact ID
         in: path
         name: artifact_id
         required: true
+        type: string
+      - description: Authorized Interaction ID
+        in: query
+        name: interaction_id
         type: string
       produces:
       - application/json

@@ -1274,7 +1274,7 @@ const docTemplate = `{
         },
         "/evidence/artifacts/{artifact_id}": {
             "get": {
-                "description": "Returns artifact content only when all persisted ownership dimensions match the trusted query identity.",
+                "description": "Returns an artifact through its own record scope, or through an authorized Interaction when interaction_id is supplied.",
                 "produces": [
                     "application/json"
                 ],
@@ -1289,6 +1289,12 @@ const docTemplate = `{
                         "name": "artifact_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Authorized Interaction ID",
+                        "name": "interaction_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {

@@ -8,6 +8,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
 func TestIngestArtifactStoresNormalizedContentAndIsIdempotent(t *testing.T) {
@@ -72,6 +73,39 @@ func TestGetArtifactReturnsOnlyArtifactVisibleToScope(t *testing.T) {
 	})
 	if err != nil || found {
 		t.Fatalf("query without tenant or business domain must fail closed: found=%v err=%v", found, err)
+	}
+}
+
+func TestGetArtifactForAuthorizedInteractionReturnsArtifactToManagedBuilder(t *testing.T) {
+	store := evidencestore.New()
+	artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
+		ArtifactID: "artifact_interaction_result", ArtifactType: evidencevo.ArtifactTypeResult,
+		RequestID: "req_interaction_result", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		InteractionID: "int-1", ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
+		ObservedAt: "2026-08-07T15:00:00Z", Content: map[string]any{"summary": "库存为 100"},
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "owner", AccountType: "app",
+	})
+	if len(validationErrors) != 0 {
+		t.Fatalf("normalize artifact: %+v", validationErrors)
+	}
+	if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	projection := &artifactInteractionProjection{result: iprojectionsource.Result{Artifacts: []evidencevo.EvidenceArtifact{artifact}}}
+	service := New(store, WithProjectionSource(projection))
+	scope := evidencevo.QueryScope{AccessProfile: &evidencevo.AccessProfile{
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", EffectiveSubjectID: "builder",
+		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-managed"},
+		AccountActive: true, TenantActive: true,
+	}}
+
+	got, found, err := service.GetArtifactForInteraction(context.Background(), artifact.ArtifactID, "int-1", scope)
+
+	if err != nil || !found || got.Content == nil {
+		t.Fatalf("authorized interaction must disclose artifact: artifact=%+v found=%v err=%v", got, found, err)
+	}
+	if len(projection.queries) != 1 || projection.queries[0].InteractionID != "int-1" {
+		t.Fatalf("artifact fallback must use the authorized interaction only: %+v", projection.queries)
 	}
 }
 
@@ -252,4 +286,14 @@ func hasErrorCode(errors evidencevo.ValidationErrors, code string) bool {
 		}
 	}
 	return false
+}
+
+type artifactInteractionProjection struct {
+	result  iprojectionsource.Result
+	queries []iprojectionsource.Query
+}
+
+func (s *artifactInteractionProjection) LoadExecutionProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
+	s.queries = append(s.queries, query)
+	return s.result, nil
 }

@@ -348,6 +348,33 @@ func (s *Service) GetArtifact(ctx context.Context, artifactID string, scope evid
 	return artifact, true, nil
 }
 
+// GetArtifactForInteraction resolves an artifact through an Interaction that has
+// already been selected by the caller. The projection source performs the
+// Interaction-level access decision before any artifact content is returned.
+func (s *Service) GetArtifactForInteraction(
+	ctx context.Context,
+	artifactID string,
+	interactionID string,
+	scope evidencevo.QueryScope,
+) (evidencevo.EvidenceArtifact, bool, error) {
+	artifact, found, err := s.GetArtifact(ctx, artifactID, scope)
+	if err != nil || found || interactionID == "" || s.projectionSource == nil {
+		return artifact, found, err
+	}
+	result, err := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
+		Scope: scope, InteractionID: interactionID, Limit: MaxEvidenceQueryLimit,
+	})
+	if err != nil {
+		return evidencevo.EvidenceArtifact{}, false, err
+	}
+	for _, candidate := range result.Artifacts {
+		if candidate.ArtifactID == artifactID {
+			return candidate, true, nil
+		}
+	}
+	return evidencevo.EvidenceArtifact{}, false, nil
+}
+
 func artifactMatchesTrace(artifact evidencevo.EvidenceArtifact, trace evidencevo.NormalizedTrace) bool {
 	return artifact.TraceID == trace.TraceID &&
 		artifact.RequestID == trace.RequestID &&

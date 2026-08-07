@@ -218,10 +218,11 @@ func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.
 
 // GetEvidenceArtifact godoc
 // @Summary Get an authorized evidence artifact by ID
-// @Description Returns artifact content only when all persisted ownership dimensions match the trusted query identity.
+// @Description Returns an artifact through its own record scope, or through an authorized Interaction when interaction_id is supplied.
 // @Tags evidence
 // @Produce json
 // @Param artifact_id path string true "Artifact ID"
+// @Param interaction_id query string false "Authorized Interaction ID"
 // @Success 200 {object} evidencevo.EvidenceArtifact
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse
@@ -243,7 +244,9 @@ func (h *EvidenceHandler) GetEvidenceArtifact(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	artifact, found, err := h.evidenceService.GetArtifact(r.Context(), artifactID, options.Scope)
+	artifact, found, err := h.evidenceService.GetArtifactForInteraction(
+		r.Context(), artifactID, strings.TrimSpace(r.URL.Query().Get("interaction_id")), options.Scope,
+	)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query evidence artifact"})
 		return
