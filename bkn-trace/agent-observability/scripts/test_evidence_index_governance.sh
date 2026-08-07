@@ -106,29 +106,13 @@ if ! grep -A1 -Fq 'name: BKN_TRACE_DEPLOYMENT_TENANT_ID
   exit 1
 fi
 
-rendered="$(render_chart agent-observability "${chart_dir}" \
+legacy_rendered="$(render_chart agent-observability "${chart_dir}" \
   --set evidence.store=opensearch \
   --set evidence.index=bkn-trace-evidence-test \
   --set evidence.indexManagement.enabled=true \
   --set evidence.indexManagement.createJob.enabled=true)"
 
-assert_contains() {
-  local needle="$1"
-  if ! grep -Fq "$needle" <<<"${rendered}"; then
-    echo "expected rendered chart to contain: ${needle}" >&2
-    exit 1
-  fi
-}
-
-assert_contains "kind: ConfigMap"
-assert_contains "agent-observability-evidence-index-template"
-assert_contains '"helm.sh/hook": pre-install,pre-upgrade'
-assert_contains '"helm.sh/hook-weight": "-5"'
-assert_contains '"helm.sh/hook-delete-policy": before-hook-creation'
-assert_contains '"ingested_at":'
-assert_contains '"type": "date"'
-assert_contains '"max_result_window": 10000'
-assert_contains "kind: Job"
-assert_contains "agent-observability-evidence-index-setup"
-assert_contains '"helm.sh/hook-weight": "0"'
-assert_contains "bkn-trace-evidence-test"
+if grep -Eq 'agent-observability-evidence-index-(template|setup)|curlimages/curl|kind: Job' <<<"${legacy_rendered}"; then
+  echo "legacy evidence index settings must not restore the duplicate Helm Hook" >&2
+  exit 1
+fi

@@ -451,8 +451,6 @@ _openbkn_trace_profile_sets() {
                 "core.mariadb.existingSecret=${OPENBKN_TRACE_CORE_SECRET}"
                 "core.projection.enabled=true"
                 "evidence.store=opensearch"
-                "evidence.indexManagement.enabled=true"
-                "evidence.indexManagement.createJob.enabled=true"
                 "evidence.ingestAuth.existingSecret=${OPENBKN_TRACE_INGEST_SECRET}"
                 "evidence.ingestAuth.secretKey=token"
                 "opensearch.traceIndex=ss4o_traces-default-namespace"
@@ -796,9 +794,6 @@ _openbkn_apply_default_set_values() {
         local _reg_resolved
         _reg_resolved="$(_openbkn_resolve_registry "offline")"
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
-        if ! get_set_value "evidence.indexManagement.createJob.image.registry" "${CORE_SET_VALUES[@]-}" >/dev/null 2>&1; then
-            CORE_SET_VALUES+=("evidence.indexManagement.createJob.image.registry=${_reg_resolved}")
-        fi
         log_info "Offline mode: Forcing image.registry=${_reg_resolved} via --set (overrides config.yaml)"
     elif get_set_value "image.registry" "${CORE_SET_VALUES[@]-}" >/dev/null 2>&1; then
         : # user passed --set image.registry=… explicitly; do not override

@@ -97,11 +97,6 @@ OTHER_IMAGES=(
     "openbkn-ai/library/nginx:1.27-alpine"
 )
 
-# Required by Helm pre-install/pre-upgrade hooks.
-HOOK_IMAGES=(
-    "curlimages/curl:8.10.1"
-)
-
 # Required images for OpenBKN Applications
 # NOTE: OpenBKN application images are defined in Helm Charts
 # The actual image names depend on the specific version being deployed

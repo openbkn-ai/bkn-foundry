@@ -44,7 +44,7 @@ contains "AO uses durable Core" "${ao_sets}" "core.store=mariadb"
 contains "AO requires Core DSN Secret" "${ao_sets}" "core.mariadb.existingSecret=bkn-trace-core-mariadb"
 contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
-contains "AO creates evidence index" "${ao_sets}" "evidence.indexManagement.createJob.enabled=true"
+not_contains "AO leaves index initialization to runtime" "${ao_sets}" "evidence.indexManagement"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
 
@@ -79,7 +79,7 @@ OFFLINE_REGISTRY=registry.test:5000
 _openbkn_apply_default_set_values
 offline_sets="${CORE_SET_VALUES[*]:-}"
 contains "offline installs rewrite application images" "${offline_sets}" "image.registry=registry.test:5000/openbkn-ai"
-contains "offline installs rewrite the evidence index hook image" "${offline_sets}" "evidence.indexManagement.createJob.image.registry=registry.test:5000/openbkn-ai"
+not_contains "offline installs do not rewrite deleted Hook images" "${offline_sets}" "evidence.indexManagement"
 
 CORE_SET_VALUES=()
 OFFLINE_MODE=false
@@ -88,30 +88,20 @@ CONFIG_YAML_PATH=/nonexistent/openbkn-config.yaml
 _openbkn_apply_default_set_values
 online_sets="${CORE_SET_VALUES[*]:-}"
 contains "online registry flags rewrite application images" "${online_sets}" "image.registry=ghcr.io/openbkn-ai"
-not_contains "online registry flags leave third-party hook images on their chart registry" "${online_sets}" "evidence.indexManagement.createJob.image.registry="
+not_contains "online registry flags do not configure deleted Hook images" "${online_sets}" "evidence.indexManagement"
 
 CORE_SET_VALUES=()
 CORE_IMAGE_REGISTRY=""
 _openbkn_apply_default_set_values
 default_online_sets="${CORE_SET_VALUES[*]:-}"
 contains "default online installs use the SWR application registry" "${default_online_sets}" "image.registry=swr.cn-east-3.myhuaweicloud.com/openbkn-ai"
-not_contains "default online installs leave third-party hook images on their chart registry" "${default_online_sets}" "evidence.indexManagement.createJob.image.registry="
+not_contains "default online installs do not configure deleted Hook images" "${default_online_sets}" "evidence.indexManagement"
 
 CORE_SET_VALUES=("image.registry=registry.example/openbkn")
 CORE_IMAGE_REGISTRY=""
 _openbkn_apply_default_set_values
 explicit_sets="${CORE_SET_VALUES[*]:-}"
 not_contains "application registry overrides do not imply a third-party mirror" "${explicit_sets}" "evidence.indexManagement.createJob.image.registry="
-
-CORE_SET_VALUES=("evidence.indexManagement.createJob.image.registry=hooks.example")
-OFFLINE_MODE=true
-OFFLINE_REGISTRY=registry.test:5000
-_openbkn_apply_default_set_values
-explicit_hook_sets="${CORE_SET_VALUES[*]:-}"
-contains "offline installs preserve explicit hook registries" "${explicit_hook_sets}" "evidence.indexManagement.createJob.image.registry=hooks.example"
-not_contains "offline installs do not append a competing hook registry" "${explicit_hook_sets}" "evidence.indexManagement.createJob.image.registry=registry.test:5000/openbkn-ai"
-
-OFFLINE_MODE=false
 
 cat >"${CONFIG_REGISTRY_FILE}" <<'EOF'
 image:
@@ -124,8 +114,7 @@ config_sets="${CORE_SET_VALUES[*]:-}"
 not_contains "config application registries do not imply a third-party mirror" "${config_sets}" "evidence.indexManagement.createJob.image.registry="
 
 sync_script="$(<"${SCRIPT_DIR}/scripts/sync-k8s-images.sh")"
-contains "offline sync includes the evidence index hook image" "${sync_script}" 'curlimages/curl:8.10.1'
-contains "offline sync mirrors hooks into the OpenBKN namespace" "${sync_script}" 'target_image="${TARGET_REGISTRY}/openbkn-ai/${image}"'
+not_contains "offline sync excludes the deleted Hook image" "${sync_script}" 'curlimages/curl:8.10.1'
 
 if [[ "${FAILED}" -eq 0 ]]; then
     echo "openbkn_trace_profile_test: all ${PASS} checks passed"
