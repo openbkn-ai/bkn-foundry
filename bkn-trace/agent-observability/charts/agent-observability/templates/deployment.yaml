@@ -125,6 +125,16 @@ spec:
               value: {{ .Values.observability.sourceTimeout | quote }}
             - name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
               value: {{ .Values.observability.maxConcurrentSources | quote }}
+            {{- if .Values.observability.sourceCoverage.enabled }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT
+              value: {{ required "observability.sourceCoverage.metricsEndpoint is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.metricsEndpoint | quote }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_SOURCE_ID
+              value: {{ required "observability.sourceCoverage.sourceID is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.sourceID | quote }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_DEPLOYMENT_ID
+              value: {{ required "observability.sourceCoverage.deploymentID is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.deploymentID | quote }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_INTERVAL
+              value: {{ .Values.observability.sourceCoverage.interval | quote }}
+            {{- end }}
           livenessProbe:
             tcpSocket:
               port: http

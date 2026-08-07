@@ -96,6 +96,15 @@ observability:
     secretKey: key
   sourceTimeout: 3s
   maxConcurrentSources: 4
+  sourceCoverage:
+    # Optional independent health probe. It is disabled unless the installation
+    # uses the persistent MariaDB Core store and provides a cluster-internal
+    # Collector metrics endpoint.
+    enabled: false
+    metricsEndpoint: ""
+    sourceID: otel-runtime
+    deploymentID: observability/otelcol-contrib
+    interval: 30s
 
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable

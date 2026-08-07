@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectorsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
@@ -31,6 +32,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchlogaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/otelcolmetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	memorysessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
@@ -46,6 +48,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionrebuild"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isourcecoveragestore"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
@@ -95,6 +98,14 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	coverageStore, coverageStoreSupported := sessionStore.(isourcecoveragestore.Store)
+	coverageMonitorEnabled := observabilityConfig.SourceCoverageMetricsEndpoint != ""
+	if coverageMonitorEnabled && (!coverageStoreSupported || observabilityConfig.SourceCoverageSourceID == "" || observabilityConfig.SourceCoverageDeploymentID == "") {
+		if closeDatabase != nil {
+			_ = closeDatabase()
+		}
+		return nil, errors.New("configured source coverage monitor requires MariaDB Core store, source ID, and deployment ID")
+	}
 	var summaryProjection iprojectionsource.ProjectionSourcePort
 	if legacyProjection, ok := evidenceStore.(iprojectionsource.ProjectionSourcePort); ok {
 		summaryProjection = legacyProjection
@@ -121,6 +132,14 @@ func NewApp() (*App, error) {
 		&http.Client{Timeout: accessScopeConfig.Timeout},
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
+	logOptions := logsvc.Options{
+		CursorKey: observabilityConfig.CursorSigningKey, SourceTimeout: observabilityConfig.SourceTimeout,
+		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
+	}
+	if coverageStoreSupported && observabilityConfig.SourceCoverageDeploymentID != "" {
+		logOptions.CoverageStore = coverageStore
+		logOptions.CoverageDeploymentID = observabilityConfig.SourceCoverageDeploymentID
+	}
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions([]logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
 		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
@@ -130,11 +149,7 @@ func NewApp() (*App, error) {
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
-	}, logsvc.Options{
-		CursorKey:            observabilityConfig.CursorSigningKey,
-		SourceTimeout:        observabilityConfig.SourceTimeout,
-		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
-	}), evidenceHandler)
+	}, logOptions), evidenceHandler)
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
 		EvidenceCollectionState: func() string {
 			if coreConfig.EvidenceCollectionState == "" {
@@ -164,6 +179,20 @@ func NewApp() (*App, error) {
 			sessionService,
 		)
 	}()
+	if coverageMonitorEnabled {
+		coverageMonitor := sourcecoveragesvc.New(
+			coverageStore,
+			otelcolmetrics.New(observabilityConfig.SourceCoverageMetricsEndpoint, &http.Client{Timeout: 3 * time.Second}),
+			sourcecoveragesvc.Options{
+				SourceID: observabilityConfig.SourceCoverageSourceID, DeploymentID: observabilityConfig.SourceCoverageDeploymentID,
+			},
+		)
+		app.workers.Add(1)
+		go func() {
+			defer app.workers.Done()
+			runSourceCoverageMonitor(workerContext, observabilityConfig.SourceCoverageInterval, coverageMonitor)
+		}()
+	}
 	if coreConfig.ProjectionEnabled {
 		outboxStore, supported := sessionStore.(iprojectionoutbox.Store)
 		if !supported {
@@ -262,6 +291,25 @@ func runLeaseReaper(
 			_, _ = service.AbandonExpiredInteractions(ctx, 100)
 			_, _ = service.ExpireIdleOneShotConversations(ctx, oneShotIdleTTL, 100)
 			_, _ = service.AssembleDueInteractions(ctx, 100)
+		}
+	}
+}
+
+func runSourceCoverageMonitor(ctx context.Context, interval time.Duration, service *sourcecoveragesvc.Service) {
+	observe := func() {
+		if err := service.Observe(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("BKN Trace source coverage monitor failed: %v", err)
+		}
+	}
+	observe()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			observe()
 		}
 	}
 }
