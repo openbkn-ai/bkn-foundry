@@ -176,7 +176,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import collections, json, os, subprocess
+          import collections, json, os, pathlib, subprocess
 
           pr = os.environ["PR_NUMBER"]
           out = subprocess.run(
@@ -291,15 +291,42 @@ jobs:
           RISKY = ("migrations/", "/helm/", "bkn-safe/")
           risky = [p_ for p_ in paths
                    if any(m in p_ for m in RISKY) or p_.endswith("values.yaml")]
+          # 文件清单被 gh 的 100 上限截断时不跳过：截掉的那部分里可能正有 migrations
+          # 或 helm 改动，按「未触及高危面」放过就是拿看不见的东西赌。
+          truncated = total > len(paths)
           skip = (os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
-                  and states and states[-1] == "APPROVED" and not risky)
+                  and states and states[-1] == "APPROVED"
+                  and not risky and not truncated)
+          # 这个块的 stdout 整个重定向进 $GITHUB_OUTPUT，任何不含 = 的行都会让 runner
+          # 以 Invalid format 报错、plan 步骤失败——所以 ::notice:: 不能从这里打，
+          # 落成文件由下面的 shell 发出。
           if skip:
-              print("::notice::PR #%s 上一轮已放行，且本次改动未触及高危面，跳过自动复评。"
-                    "需要复评请回复 /review。" % pr)
+              pathlib.Path("skip-notice.txt").write_text(
+                  "PR #%s 上一轮已放行，且本次改动未触及高危面，跳过自动复评。"
+                  "需要复评请回复 /review。" % pr, encoding="utf-8")
           print("skip_round=%s" % ("true" if skip else "false"))
           print("file_total=%d" % total)
           print("file_listed=%d" % len(paths))
           PY
+          # 跳过提示在这里发：上面的 stdout 是 $GITHUB_OUTPUT，发不了 workflow command。
+          if [ -f skip-notice.txt ]; then
+            echo "::notice::$(cat skip-notice.txt)"
+          fi
+
+      # 跳过这一轮时 verdict 不跑，进度评论的清理也就不跑——上一轮被 concurrency 取消
+      # 后残留的那条会永久停在「评审进行中」，与它自己写的「结论落地后这条会自动消失」
+      # 直接矛盾。所以跳过路径也要清一次。
+      - name: Remove stale progress comment when skipping
+        if: steps.plan.outputs.skip_round == 'true'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          MARKER='<!-- claude-review-progress -->'
+          gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\")) | .id] | .[]" \
+          | while read -r id; do
+              gh api -X DELETE "repos/${GH_REPO}/issues/comments/${id}" >/dev/null
+            done
 
       # 同一条评论反复复用（靠 body 里的 HTML 标记定位），复评不会越堆越多。
       # 失败不阻断评审：进度提示挂了没关系，评审本身要继续。
