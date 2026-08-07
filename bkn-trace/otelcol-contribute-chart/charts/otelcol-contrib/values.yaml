@@ -100,12 +100,12 @@ opensearchExporter:
   bulkAction: create
   sendingQueue:
     enabled: true
-    numConsumers: 2
-    queueSize: 2048
+    numConsumers: 4
+    queueSize: 512
   retryOnFailure:
     enabled: true
     initialInterval: 1s
-    maxInterval: 30s
+    maxInterval: 10s
     maxElapsedTime: 5m
 
 debugExporter:
@@ -128,10 +128,10 @@ config:
   processors:
     memory_limiter:
       check_interval: 1s
-      limit_mib: 384
-      spike_limit_mib: 96
+      limit_mib: 512
+      spike_limit_mib: 128
     batch:
-      timeout: 5s
+      timeout: 1s
       send_batch_size: 512
       send_batch_max_size: 1024
 

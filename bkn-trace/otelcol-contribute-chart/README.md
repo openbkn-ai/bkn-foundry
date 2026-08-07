@@ -88,12 +88,12 @@ exporters:
     bulk_action: create
     sending_queue:
       enabled: true
-      num_consumers: 2
-      queue_size: 2048
+      num_consumers: 4
+      queue_size: 512
     retry_on_failure:
       enabled: true
       initial_interval: 1s
-      max_interval: 30s
+      max_interval: 10s
       max_elapsed_time: 5m
     mapping:
       mode: ss4o
@@ -107,11 +107,13 @@ exporters:
 
 默认单副本 Collector 限制为 `500m CPU / 512MiB`，适配 OpenBKN `4C8G` 最小环境：
 
-- `memory_limiter`：`384MiB` 上限、`96MiB` 突发余量，位于 `batch` 之前；
-- `batch`：512 条目标批次、1024 条硬上限、5 秒刷新；
-- OpenSearch 发送队列：2048 批、2 个消费者；
+- `memory_limiter`：`512MiB` 上限、`128MiB` 突发余量，位于 `batch` 之前；
+- `batch`：512 条目标批次、1024 条硬上限、1 秒刷新；
+- OpenSearch 发送队列：512 批、4 个消费者；
 - OpenSearch 失败重试：指数退避，最长 5 分钟；
 - 健康端点：`:13133/`；Collector 指标：`:8888/metrics`。
+
+已有部署若通过 `helm upgrade --reuse-values` 升级，需显式更新上述参数；Helm 会保留旧的覆盖值，不会以新的 Chart 默认值替换它们。
 
 `monitoring.prometheusRule.enabled=true` 时渲染队列接近容量、日志导出失败和遥测拒绝告警。`networkPolicy.enabled=true` 时只允许带 `openbkn.ai/otel-producer=true` 标签的同命名空间 Pod 写入 OTLP，并允许指定监控命名空间抓取指标。两项默认关闭，启用前必须核对目标集群的 CRD、命名空间和工作负载标签。
 
