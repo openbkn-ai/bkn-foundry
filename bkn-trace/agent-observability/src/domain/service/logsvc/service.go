@@ -384,10 +384,6 @@ func (service *Service) searchSources(
 		if results[index].status.Status == "not_integrated" {
 			continue
 		}
-		if results[index].status.Status == "unavailable" && results[index].status.Reason == "source_status_probe_failed" {
-			results[index].err = errors.New("source coverage state is unavailable")
-			continue
-		}
 		waitGroup.Add(1)
 		go func(index int, source Source) {
 			defer waitGroup.Done()
@@ -610,9 +606,9 @@ func (service *Service) sourceStatus(ctx context.Context, source Source) observa
 	}
 	coverage, found, err := service.coverageStore.Get(ctx, source.ID(), service.coverageDeploymentID)
 	if err != nil {
-		status.Status = "unavailable"
+		status.Status = observabilityvo.SourceCoverageDegraded
 		status.Reason = "source_status_probe_failed"
-		status.CountAccuracy = "unavailable"
+		status.CountAccuracy = "partial"
 		return status
 	}
 	if found {

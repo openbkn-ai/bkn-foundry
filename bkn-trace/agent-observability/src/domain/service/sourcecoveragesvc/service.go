@@ -51,8 +51,13 @@ func (service *Service) Observe(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read collector coverage metrics: %w", err)
 	}
-	dropped := counterDelta(snapshot.RefusedLogs, service.previous.RefusedLogs, service.hasPrevious) +
-		counterDelta(snapshot.FailedLogs, service.previous.FailedLogs, service.hasPrevious)
+	if !service.hasPrevious {
+		service.previous = snapshot
+		service.hasPrevious = true
+		return nil
+	}
+	dropped := counterDelta(snapshot.RefusedLogs, service.previous.RefusedLogs) +
+		counterDelta(snapshot.FailedLogs, service.previous.FailedLogs)
 	service.previous = snapshot
 	service.hasPrevious = true
 	coverage, found, err := service.store.Get(ctx, service.options.SourceID, service.options.DeploymentID)
@@ -73,7 +78,7 @@ func (service *Service) Observe(ctx context.Context) error {
 		coverage.LastObservedAt = time.Now().UTC()
 		return service.store.UpsertDegraded(ctx, coverage)
 	}
-	if !found || coverage.State != observabilityvo.SourceCoverageDegraded || snapshot.QueueSize != 0 {
+	if !found || coverage.State != observabilityvo.SourceCoverageDegraded {
 		service.healthySamples = 0
 		return nil
 	}
@@ -88,11 +93,11 @@ func (service *Service) Observe(ctx context.Context) error {
 	return nil
 }
 
-func counterDelta(current, previous int64, hasPrevious bool) int64 {
+func counterDelta(current, previous int64) int64 {
 	if current < 0 {
 		return 0
 	}
-	if !hasPrevious || current >= previous {
+	if current >= previous {
 		return current - previous
 	}
 	// A Collector restart resets counters. Any post-reset nonzero value is still

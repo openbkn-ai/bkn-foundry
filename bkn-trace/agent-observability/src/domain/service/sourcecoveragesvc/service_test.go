@@ -10,16 +10,33 @@ import (
 
 func TestObserveDegradesSourceWhenCollectorDropsRecords(t *testing.T) {
 	store := &fakeStore{}
-	service := New(store, &fakeReader{snapshots: []Snapshot{{RefusedLogs: 3}}}, Options{
+	service := New(store, &fakeReader{snapshots: []Snapshot{{RefusedLogs: 0}, {RefusedLogs: 3}}}, Options{
 		SourceID: "otel-runtime", DeploymentID: "observability/otelcol-contrib",
 	})
 
 	if err := service.Observe(context.Background()); err != nil {
-		t.Fatalf("observe: %v", err)
+		t.Fatalf("baseline observe: %v", err)
+	}
+	if err := service.Observe(context.Background()); err != nil {
+		t.Fatalf("loss observe: %v", err)
 	}
 	coverage, found, err := store.Get(context.Background(), "otel-runtime", "observability/otelcol-contrib")
 	if err != nil || !found || coverage.State != observabilityvo.SourceCoverageDegraded || coverage.DroppedRecords != 3 {
 		t.Fatalf("expected degraded coverage, got %+v found=%t err=%v", coverage, found, err)
+	}
+}
+
+func TestObserveUsesFirstCollectorSnapshotOnlyAsBaseline(t *testing.T) {
+	store := &fakeStore{}
+	service := New(store, &fakeReader{snapshots: []Snapshot{{RefusedLogs: 1000, FailedLogs: 20}}}, Options{
+		SourceID: "otel-runtime", DeploymentID: "observability/otelcol-contrib",
+	})
+
+	if err := service.Observe(context.Background()); err != nil {
+		t.Fatalf("baseline observe: %v", err)
+	}
+	if _, found, _ := store.Get(context.Background(), "otel-runtime", "observability/otelcol-contrib"); found {
+		t.Fatal("first snapshot must not re-count historical Collector counters")
 	}
 }
 
@@ -31,8 +48,9 @@ func TestObserveRecoversOnlyAfterTwoHealthyDrainedSamples(t *testing.T) {
 		FirstObservedAt: now.Add(-time.Minute), LastObservedAt: now, Version: 1,
 	}}
 	service := New(store, &fakeReader{snapshots: []Snapshot{
-		{QueueSize: 0, QueueCapacity: 512},
-		{QueueSize: 0, QueueCapacity: 512},
+		{QueueSize: 512, QueueCapacity: 512},
+		{QueueSize: 512, QueueCapacity: 512},
+		{QueueSize: 512, QueueCapacity: 512},
 	}}, Options{SourceID: "otel-runtime", DeploymentID: "observability/otelcol-contrib"})
 
 	if err := service.Observe(context.Background()); err != nil {
@@ -42,7 +60,10 @@ func TestObserveRecoversOnlyAfterTwoHealthyDrainedSamples(t *testing.T) {
 		t.Fatalf("recovered after one healthy sample: %+v", store.coverage)
 	}
 	if err := service.Observe(context.Background()); err != nil {
-		t.Fatalf("second observe: %v", err)
+		t.Fatalf("second healthy observe: %v", err)
+	}
+	if err := service.Observe(context.Background()); err != nil {
+		t.Fatalf("third healthy observe: %v", err)
 	}
 	if store.coverage.State != observabilityvo.SourceCoverageHealthy || store.coverage.RecoveredAt == nil {
 		t.Fatalf("expected recovered coverage after two samples: %+v", store.coverage)

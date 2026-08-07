@@ -125,15 +125,21 @@ func TestListDisclosesDurableDegradedCoverageAfterSuccessfulSourceQuery(t *testi
 	}
 }
 
-func TestListDoesNotClaimHealthyWhenCoverageStateCannotBeRead(t *testing.T) {
+func TestListReturnsLogsButMarksCoveragePartialWhenStateCannotBeRead(t *testing.T) {
 	coverageStore := &coverageStore{err: errors.New("coverage database unavailable")}
-	service := NewWithOptions([]Source{fakeSource{id: "runtime"}}, Options{
+	service := NewWithOptions([]Source{fakeSource{id: "runtime", records: []observabilityvo.LogRecord{{
+		LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a",
+		EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+	}}}}, Options{
 		CursorKey: []byte("coverage-error-test"), CoverageStore: coverageStore, CoverageDeploymentID: "local",
 	})
 
-	_, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 10})
-	if !errors.Is(err, ErrSourcesUnavailable) {
-		t.Fatalf("expected unavailable sources when coverage cannot be read, got %v", err)
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 10})
+	if err != nil || !result.Partial || len(result.SourceStatus) != 1 {
+		t.Fatalf("expected available partial log result, got result=%+v err=%v", result, err)
+	}
+	if result.SourceStatus[0].Status != "degraded" || result.SourceStatus[0].Reason != "source_status_probe_failed" {
+		t.Fatalf("coverage uncertainty was not disclosed: %+v", result.SourceStatus[0])
 	}
 }
 
