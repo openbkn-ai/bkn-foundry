@@ -107,10 +107,10 @@ exporters:
 
 默认单副本 Collector 限制为 `500m CPU / 768MiB`，适配 OpenBKN `4C8G` 最小环境：
 
-- `memory_limiter`：`512MiB` 上限、`128MiB` 突发余量，位于 `batch` 之前；
+- `memory_limiter`：`512MiB` 上限、`128MiB` 突发余量，位于 `batch` 之前；容器保留 `256MiB` 余量，避免硬限与 cgroup 上限重合；
 - `batch`：512 条目标批次、1024 条硬上限、1 秒刷新；
 - OpenSearch 发送队列：512 批、4 个消费者；
-- OpenSearch 失败重试：指数退避，最长 5 分钟；
+- OpenSearch 失败重试：指数退避，最大单次间隔 10 秒、最长 5 分钟；
 - 健康端点：`:13133/`；Collector 指标：`:8888/metrics`。
 
 容器内存上限高于 `memory_limiter`，为 Go 运行时和非堆内存保留余量，避免 cgroup OOM 在 Collector 拒收遥测前终止进程。

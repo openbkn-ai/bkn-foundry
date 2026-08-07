@@ -39,6 +39,14 @@ if ! grep -Fq "memory: 768Mi" <<<"${rendered}"; then
   exit 1
 fi
 
+readme="$(<README.md)"
+for documented_value in "500m CPU / 768MiB" "512MiB" "128MiB" "1 秒刷新" "512 批、4 个消费者" "10 秒"; do
+  if ! grep -Fq -- "${documented_value}" <<<"${readme}"; then
+    echo "4C8G README baseline is missing: ${documented_value}" >&2
+    exit 1
+  fi
+done
+
 if grep -Fq "kind: PrometheusRule" <<<"${rendered}" || grep -Fq "kind: NetworkPolicy" <<<"${rendered}"; then
   echo "cluster-specific monitoring and network policy resources must be opt in" >&2
   exit 1
