@@ -35,8 +35,8 @@ assert_contains "host: 0.0.0.0"
 assert_contains "port: 8888"
 
 if ! grep -Fq "memory: 768Mi" <<<"${rendered}"; then
-	echo "collector memory limit must leave headroom above the memory limiter" >&2
-	exit 1
+  echo "collector memory limit must leave headroom above the 512MiB limiter" >&2
+  exit 1
 fi
 
 if grep -Fq "kind: PrometheusRule" <<<"${rendered}" || grep -Fq "kind: NetworkPolicy" <<<"${rendered}"; then
