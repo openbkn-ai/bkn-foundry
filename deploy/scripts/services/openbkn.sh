@@ -856,41 +856,11 @@ _secret_is_owned_by_release() {
     [[ "${owner}" == "${release_name}|${namespace}|Helm" ]]
 }
 
-# Turn a release's optional manifest `image:` block into per-release --set
-# values.
-#
-# This is the enterprise install: the same charts at the same versions, with the
-# two releases that have an enterprise build pointed at their -ee image. Doing it
-# per release matters — the enterprise namespace holds only those two
-# repositories, so the global --registry would leave every other release pulling
-# from somewhere that has nothing for it.
-#
-# Emitted before the per-release blocks below and before CORE_SET_VALUES, so an
-# explicit --set from the operator still wins.
-_openbkn_manifest_image_sets() {
-    local release_name="$1"
-    local field value
-
-    [[ -n "${CORE_VERSION_MANIFEST_FILE:-}" && -f "${CORE_VERSION_MANIFEST_FILE}" ]] || return 0
-
-    for field in registry repository tag; do
-        value="$(get_release_manifest_release_image_field \
-            "${CORE_VERSION_MANIFEST_FILE}" "bkn-foundry" "${HELM_CHART_VERSION:-}" \
-            "${release_name}" "${field}" 2>/dev/null)"
-        [[ -n "${value}" ]] || continue
-        CORE_RELEASE_EXTRA_SETS+=("image.${field}=${value}")
-        log_info "${release_name}: manifest pins image.${field}=${value}"
-    done
-}
-
 _openbkn_release_extra_sets() {
     local release_name="$1"
     local namespace="${2:-${CORE_NAMESPACE}}"
     CORE_RELEASE_EXTRA_SETS=()
     CORE_RELEASE_EXTRA_SET_STRINGS=()
-
-    _openbkn_manifest_image_sets "${release_name}"
-
     if [[ "${release_name}" == "agent-observability" ]]; then
         _openbkn_trace_profile_sets "${release_name}"
         if ! kubectl get secret "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" >/dev/null 2>&1; then
