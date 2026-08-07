@@ -513,16 +513,45 @@ _openbkn_release_list_contains() {
     return 1
 }
 
+# The key this Secret is read under is "token". Deployments that predate that
+# name hold the same value under "ingest-token" — still the default of every
+# producer chart's ingestTokenSecretKey — so an upgrade finds a Secret that
+# exists but looks empty.
+#
+# Such an installation must upgrade, not stop: an existing community deployment
+# being able to move to the enterprise images is the whole upgrade path, and it
+# cannot depend on an operator knowing to rename a Secret key by hand.
+#
+# The legacy value is carried across rather than replaced with a fresh one.
+# Producers already hold the old token; minting a new one would silently break
+# every evidence write that works today — the failure would show up as missing
+# evidence long after the upgrade, with nothing pointing back to it.
+#
+# The old key is left in place. Rolling back to the previous chart must keep
+# working, and an unused key costs nothing.
 _openbkn_prepare_trace_ingest_secret() {
     local namespace="$1"
     if kubectl get secret "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" >/dev/null 2>&1; then
         local encoded_token
         encoded_token="$(kubectl get secret "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" -o jsonpath='{.data.token}' 2>/dev/null)"
-        if [[ -z "${encoded_token}" ]]; then
-            log_error "BKN Trace Evidence ingest Secret ${OPENBKN_TRACE_INGEST_SECRET} must contain key token"
-            return 1
+        if [[ -n "${encoded_token}" ]]; then
+            return 0
         fi
-        return 0
+
+        local legacy_token
+        legacy_token="$(kubectl get secret "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" -o jsonpath='{.data.ingest-token}' 2>/dev/null)"
+        if [[ -n "${legacy_token}" ]]; then
+            if ! kubectl patch secret "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" --type=json \
+                -p "[{\"op\":\"add\",\"path\":\"/data/token\",\"value\":\"${legacy_token}\"}]" >/dev/null; then
+                log_error "BKN Trace cannot migrate Evidence ingest Secret ${OPENBKN_TRACE_INGEST_SECRET} from key ingest-token to token"
+                return 1
+            fi
+            log_info "BKN Trace Evidence ingest Secret ${OPENBKN_TRACE_INGEST_SECRET}: copied legacy key ingest-token to token (same value; old key kept)"
+            return 0
+        fi
+
+        log_error "BKN Trace Evidence ingest Secret ${OPENBKN_TRACE_INGEST_SECRET} must contain key token, and has no legacy ingest-token to migrate from"
+        return 1
     fi
 
     if ! generate_random_password 48 | kubectl create secret generic "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" \

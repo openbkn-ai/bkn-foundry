@@ -8,6 +8,7 @@ CALLS=()
 EXISTING_SECRETS=""
 EXISTING_DSN_DATA="dHJhY2U6c2VjcmV0QHRjcChkYi5leGFtcGxlOjMzMDYpL2Jrbl90cmFjZT9jaGFyc2V0PXV0ZjhtYjQ="
 EXISTING_TOKEN_DATA=""
+EXISTING_LEGACY_TOKEN_DATA=""
 EXISTING_OPENSEARCH_USERNAME_DATA=""
 EXISTING_OPENSEARCH_PASSWORD_DATA=""
 KUBECTL_LOG="$(mktemp)"
@@ -48,6 +49,8 @@ kubectl() {
                 printf '%s' "${EXISTING_DSN_DATA}"
             elif [[ "$*" == *"jsonpath={.data.token}"* ]]; then
                 printf '%s' "${EXISTING_TOKEN_DATA}"
+            elif [[ "$*" == *"jsonpath={.data.ingest-token}"* ]]; then
+                printf '%s' "${EXISTING_LEGACY_TOKEN_DATA}"
             elif [[ "$*" == *"jsonpath={.data.username}"* ]]; then
                 printf '%s' "${EXISTING_OPENSEARCH_USERNAME_DATA}"
             elif [[ "$*" == *"jsonpath={.data.password}"* ]]; then
@@ -155,10 +158,35 @@ CALLS=()
 : >"${KUBECTL_LOG}"
 EXISTING_TOKEN_DATA=""
 if _openbkn_prepare_trace_ingest_secret openbkn; then
-    fail "existing Evidence ingest Secret without token must fail"
+    fail "existing Evidence ingest Secret without token or legacy key must fail"
 else
     ok
 fi
+
+# Upgrading a deployment that predates the "token" key: the value lives under
+# ingest-token and must be carried across, not regenerated — producers already
+# hold it — and the upgrade must proceed rather than stop.
+CALLS=()
+: >"${KUBECTL_LOG}"
+EXISTING_TOKEN_DATA=""
+EXISTING_LEGACY_TOKEN_DATA="bGVnYWN5LWluZ2VzdC10b2tlbg=="
+if _openbkn_prepare_trace_ingest_secret openbkn; then
+    ok
+else
+    fail "legacy ingest-token must be migrated instead of failing the upgrade"
+fi
+assert_contains "copies the legacy value to the token key" "\"path\":\"/data/token\",\"value\":\"bGVnYWN5LWluZ2VzdC10b2tlbg==\""
+if grep -Fq "create secret generic bkn-trace-evidence-ingest" "${KUBECTL_LOG}"; then
+    fail "migration must not mint a new Evidence ingest token"
+else
+    ok
+fi
+if grep -Fq -- "op\":\"remove" "${KUBECTL_LOG}"; then
+    fail "migration must keep the legacy key so a rollback still resolves it"
+else
+    ok
+fi
+EXISTING_LEGACY_TOKEN_DATA=""
 
 CALLS=()
 : >"${KUBECTL_LOG}"
