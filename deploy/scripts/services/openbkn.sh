@@ -590,6 +590,81 @@ _openbkn_drop_literal_env_now_from_secret() {
     done
 }
 
+# Run one release's helm upgrade, adopting pre-Helm objects if that is what
+# blocked it, then retrying once.
+#
+# Output keeps streaming — an install waits minutes on cold pulls and a silent
+# terminal reads as a hang — so helm's own exit code comes from PIPESTATUS.
+_openbkn_helm_upgrade_release() {
+    local release_name="$1" namespace="$2"
+    shift 2
+    local -a helm_args=("$@")
+
+    local helm_log
+    helm_log="$(mktemp)"
+    helm "${helm_args[@]}" 2>&1 | tee "${helm_log}"
+    local helm_status=${PIPESTATUS[0]}
+
+    if [[ ${helm_status} -ne 0 ]] && _openbkn_adopt_unowned_resources "${helm_log}" "${release_name}" "${namespace}"; then
+        log_info "Retrying ${release_name} now that its pre-Helm objects are adopted..."
+        helm "${helm_args[@]}" 2>&1 | tee "${helm_log}"
+        helm_status=${PIPESTATUS[0]}
+    fi
+    rm -f "${helm_log}"
+
+    if [[ ${helm_status} -eq 0 ]]; then
+        log_info "✓ ${release_name} installed successfully"
+        return 0
+    fi
+    log_error "✗ Failed to install ${release_name}"
+    return 1
+}
+
+# Helm 3 refuses to take over an object it did not create:
+#
+#   Service "agent-observability-internal" in namespace "openbkn" exists and
+#   cannot be imported into the current release: invalid ownership metadata
+#
+# Installations old enough to predate an object moving into a chart hit this,
+# and the upgrade stops on an error that names no remedy. Stamping the three
+# fields Helm looks for is the documented way to hand an existing object over.
+#
+# Only objects that NO release claims are adopted. One already annotated for a
+# different release is a real collision — two charts believing they own the same
+# object — and silently reassigning it would let the rightful owner's next
+# upgrade delete something this release depends on. That case is reported and
+# left alone.
+#
+# Succeeds only when something was adopted, i.e. when a retry is worth doing.
+_openbkn_adopt_unowned_resources() {
+    local helm_log="$1" release_name="$2" namespace="$3"
+    local adopted=1 kind name res_ns owner
+
+    while IFS=$'\t' read -r kind name res_ns; do
+        [[ -n "${kind}" && -n "${name}" && -n "${res_ns}" ]] || continue
+
+        owner="$(kubectl -n "${res_ns}" get "${kind}" "${name}" \
+            -o 'jsonpath={.metadata.annotations.meta\.helm\.sh/release-name}' 2>/dev/null)"
+        if [[ -n "${owner}" ]]; then
+            log_error "${kind}/${name} in ${res_ns} is already owned by release ${owner}; not reassigning it to ${release_name}"
+            continue
+        fi
+
+        if kubectl -n "${res_ns}" label "${kind}" "${name}" \
+                "app.kubernetes.io/managed-by=Helm" --overwrite >/dev/null 2>&1 &&
+           kubectl -n "${res_ns}" annotate "${kind}" "${name}" \
+                "meta.helm.sh/release-name=${release_name}" \
+                "meta.helm.sh/release-namespace=${namespace}" --overwrite >/dev/null 2>&1; then
+            log_info "Adopted pre-Helm ${kind}/${name} in ${res_ns} into release ${release_name}"
+            adopted=0
+        else
+            log_warn "Could not adopt ${kind}/${name} in ${res_ns}; ${release_name} will keep failing on ownership"
+        fi
+    done < <(sed -nE 's/.*[[:space:]]([A-Za-z]+) "([^"]+)" in namespace "([^"]+)" exists and cannot be imported.*/\1\t\2\t\3/p' "${helm_log}")
+
+    return ${adopted}
+}
+
 _openbkn_warn_unwired_evidence_producers() {
     local -a unwired=()
     local release_name
@@ -878,12 +953,7 @@ _install_openbkn_release_local() {
         helm_args+=("--set" "${set_value}")
     done
 
-    if helm "${helm_args[@]}"; then
-        log_info "✓ ${release_name} installed successfully"
-    else
-        log_error "✗ Failed to install ${release_name}"
-        return 1
-    fi
+    _openbkn_helm_upgrade_release "${release_name}" "${namespace}" "${helm_args[@]}"
 }
 
 # Install a single bkn-foundry release from a Helm repository
@@ -953,12 +1023,7 @@ _install_openbkn_release_repo() {
         helm_args+=("--set" "${set_value}")
     done
 
-    if helm "${helm_args[@]}"; then
-        log_info "✓ ${release_name} installed successfully"
-    else
-        log_error "✗ Failed to install ${release_name}"
-        return 1
-    fi
+    _openbkn_helm_upgrade_release "${release_name}" "${namespace}" "${helm_args[@]}"
 }
 
 # Resolve a --registry shorthand to a full registry/namespace string.
