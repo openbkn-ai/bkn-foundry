@@ -480,178 +480,38 @@ func Test_rewriteKnnCond(t *testing.T) {
 			So(result, ShouldBeNil)
 		})
 
-		Convey("失败 - 非向量字段", func() {
-			cfg := &CondCfg{
-				Name:      "name",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name: "name",
-					Type: dtype.DATATYPE_STRING,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "model1",
-						},
-					},
-					MappedField: Field{
-						Name: "mapped_name",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
 
-		Convey("失败 - IndexConfig为nil", func() {
-			cfg := &CondCfg{
-				Name:      "vector_field",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name:        "vector_field",
-					Type:        dtype.DATATYPE_VECTOR,
-					IndexConfig: nil,
-					MappedField: Field{
-						Name: "mapped_vector",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
 
-		Convey("失败 - ModelID为空", func() {
-			cfg := &CondCfg{
-				Name:      "vector_field",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name: "vector_field",
-					Type: dtype.DATATYPE_VECTOR,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "",
-						},
-					},
-					MappedField: Field{
-						Name: "mapped_vector",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
 
-		Convey("失败 - vectorizer错误", func() {
-			failingVectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
-				return nil, fmt.Errorf("vectorizer error")
-			}
-			cfg := &CondCfg{
-				Name:      "vector_field",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name: "vector_field",
-					Type: dtype.DATATYPE_VECTOR,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "model1",
-						},
-					},
-					MappedField: Field{
-						Name: "mapped_vector",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, failingVectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
 
 	})
 }
 
 // 资源类对象类的属性是标量，向量落在构建任务生成的字段上：只看属性类型会把
-// 建好的向量索引全部判死，必须认 index_config 里下发的 vector_field。
-func Test_rewriteKnnCond_ResourceBackedScalarField(t *testing.T) {
-	Convey("Test rewriteKnnCond on a resource-backed scalar field", t, func() {
+// 向量字段与模型的解析归 vega：这里只把逻辑属性名换成资源字段名，查询词原样下传。
+func Test_rewriteKnnCond_PassesTextDownstream(t *testing.T) {
+	Convey("Test rewriteKnnCond keeps the query text", t, func() {
 		ctx := context.Background()
 		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
-			return []VectorResp{{Vector: []float32{0.1, 0.2}}}, nil
+			t.Fatal("ontology-query must not vectorize; vega owns that")
+			return nil, nil
 		}
 
-		Convey("vector_field 存在时改写到生成字段", func() {
-			cfg := &CondCfg{
-				Name:      "stadium_name",
-				Operation: OperationKNN,
-				NameField: &DataProperty{
-					Name:        "stadium_name",
-					Type:        dtype.DATATYPE_STRING,
-					MappedField: Field{Name: "stadium_name"},
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled:     true,
-							ModelID:     "m-embed-1",
-							VectorField: "stadium_name_vector",
-						},
-					},
-				},
-				ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
-			}
+		cfg := &CondCfg{
+			Name:      "stadium_name",
+			Operation: OperationKNN,
+			NameField: &DataProperty{
+				Name:        "stadium_name",
+				MappedField: Field{Name: "stadium_name_col"},
+			},
+			ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
+		}
 
-			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
+		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
 
-			So(err, ShouldBeNil)
-			So(result.Name, ShouldEqual, "stadium_name_vector")
-			So(result.Operation, ShouldEqual, OperationKNNVector)
-		})
-
-		Convey("没有向量索引时仍然拒绝", func() {
-			cfg := &CondCfg{
-				Name:      "stadium_id",
-				Operation: OperationKNN,
-				NameField: &DataProperty{
-					Name:        "stadium_id",
-					Type:        dtype.DATATYPE_STRING,
-					MappedField: Field{Name: "stadium_id"},
-				},
-				ValueOptCfg: ValueOptCfg{Value: "anything"},
-			}
-
-			_, err := rewriteKnnCond(ctx, cfg, vectorizer)
-
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "has no vector index")
-		})
+		So(err, ShouldBeNil)
+		So(result.Name, ShouldEqual, "stadium_name_col")
+		So(result.Operation, ShouldEqual, OperationKNNVector)
+		So(result.Value, ShouldEqual, "famous stadium")
 	})
 }

@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
@@ -54,17 +53,7 @@ type PropertyIndexCaps struct {
 	Keyword  bool
 	Fulltext bool
 	Vector   bool
-	// EmbeddingModel 是该字段建向量索引时用的模型，取自字段特性的 embedding_model，
-	// 缺省回落到资源级 default_embedding_model。资源上存的可能是模型名而不是 ID。
-	EmbeddingModel string
-	// VectorField 是构建任务为该字段生成的向量字段名。命名规则由 vega 构建侧决定
-	// （见 worker/build_task_common.go 的 appendTaskEmbeddingVectorFields），这里
-	// 跟着它走，避免下游各自拼一遍。
-	VectorField string
 }
-
-// VectorFieldSuffix 与 vega 构建任务生成向量字段时使用的后缀保持一致。
-const VectorFieldSuffix = "_vector"
 
 // VegaResourceIndexCaps 派生资源各字段的索引能力，key 是资源字段名。
 //
@@ -95,11 +84,6 @@ func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyInde
 				propCaps.Fulltext = true
 			case interfaces.FieldFeatureType_Vector:
 				propCaps.Vector = true
-				propCaps.VectorField = field + VectorFieldSuffix
-				propCaps.EmbeddingModel = stringConfigValue(feature.Config, "embedding_model")
-				if propCaps.EmbeddingModel == "" && res.IndexConfig != nil {
-					propCaps.EmbeddingModel = res.IndexConfig.DefaultEmbeddingModel
-				}
 			default:
 				continue
 			}
@@ -126,14 +110,3 @@ func VegaResourceSchemaToFieldsMap(res *interfaces.VegaResource) map[string]*int
 	return fields
 }
 
-// stringConfigValue 读取特性 config 里的字符串项，缺失或类型不符时返回空串。
-func stringConfigValue(config map[string]any, key string) string {
-	if len(config) == 0 {
-		return ""
-	}
-	value, ok := config[key].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(value)
-}

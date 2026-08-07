@@ -21,6 +21,7 @@ import (
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
+	"vega-backend/logics/model_factory"
 	querylogic "vega-backend/logics/query"
 	"vega-backend/logics/rate"
 	"vega-backend/logics/resource"
@@ -40,6 +41,7 @@ type resourceDataService struct {
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
 	lvs        interfaces.LogicViewService
+	mfs        interfaces.ModelFactoryService
 	cl         rate.ConcurrencyLimiter
 }
 
@@ -54,6 +56,7 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resource.NewResourceService(appSetting),
 			lvs:        logic_view.NewLogicViewService(appSetting),
+			mfs:        model_factory.NewModelFactoryService(appSetting),
 		}
 
 		// Initialize concurrency limiter if enabled
@@ -143,6 +146,13 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	// knn_vector 条件会在字段查找阶段就被判成「字段不存在」。
 	for name, prop := range interfaces.LocalIndexGeneratedFields(resource) {
 		fieldMap[name] = prop
+	}
+
+	// 向量检索的条件带的是查询文本与源字段名，在这里换成向量与物理向量字段。
+	if err := rds.resolveVectorConditions(ctx, resource, params.FilterCondCfg); err != nil {
+		otellog.LogError(ctx, "Resolve vector condition failed", err)
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails(err.Error())
 	}
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
 	if err != nil {

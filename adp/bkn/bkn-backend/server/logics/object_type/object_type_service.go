@@ -1796,9 +1796,6 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 				objectType.DataSource.Name = res.Name
 				fieldsMap := logics.VegaResourceSchemaToFieldsMap(res)
 				indexCaps := logics.VegaResourceIndexCaps(res)
-				// 同一个资源上多个字段常共用一个 embedding 模型，按对象类缓存，别把
-				// 模型工厂问上十几遍。
-				embeddingModelIDs := map[string]string{}
 				dslView := &interfaces.DataView{QueryType: interfaces.VIEW_QueryType_DSL}
 				for j, prop := range objectType.DataProperties {
 					if prop.MappedField != nil {
@@ -1809,18 +1806,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 					}
 					ops := ots.processConditionOperations(objectType, prop, dslView)
 					if prop.MappedField != nil {
-						propCaps := indexCaps[prop.MappedField.Name]
-						// 向量能力要先把模型解析成 ID 才算数：解析不了就等于发不出 knn，
-						// 此时宁可不登记，也不能让调用方拿到一个必然 400 的算子。
-						if propCaps.Vector {
-							modelID := ots.resolveEmbeddingModelID(ctx, propCaps.EmbeddingModel, embeddingModelIDs)
-							if modelID == "" {
-								propCaps.Vector = false
-							} else {
-								applyVectorIndexConfig(objectType.DataProperties[j], propCaps.VectorField, modelID)
-							}
-						}
-						ops = applyIndexCapOps(ops, propCaps)
+						ops = applyIndexCapOps(ops, indexCaps[prop.MappedField.Name])
 					}
 					objectType.DataProperties[j].ConditionOperations = ops
 				}
@@ -1966,51 +1952,7 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 	return objectType, nil
 }
 
-// resolveEmbeddingModelID 把资源上记录的 embedding 模型解析成模型 ID。
-//
-// 资源存的是构建时用户给的值，可能是模型名（`openbkn vega dataset build
-// --embedding-model text-embedding-v4`），也可能已经是 ID；而查询侧向量化只认 ID。
-// 按名字查 → 按 ID 查，两条都落空才算解析失败，返回空串让调用方不登记 knn。
-//
-// 不能拿名字冒充 ID 兜底：那样查询期才在向量化环节炸，调用方拿到的是 5xx，而不是
-// 「这个字段本来就不支持 knn」这一事实。能力清单要么说得准，要么就别说。
-func (ots *objectTypeService) resolveEmbeddingModelID(ctx context.Context, model string, cache map[string]string) string {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return ""
-	}
-	if resolved, ok := cache[model]; ok {
-		return resolved
-	}
 
-	resolved := ""
-	if found, err := ots.mfs.GetModelByName(ctx, model); err == nil && found != nil && found.ModelID != "" {
-		resolved = found.ModelID
-	} else if found, err := ots.mfs.GetModelByID(ctx, model); err == nil && found != nil && found.ModelID != "" {
-		// 资源上直接记的就是 ID 时走这条。
-		resolved = found.ModelID
-	}
-	cache[model] = resolved
-	return resolved
-}
-
-// applyVectorIndexConfig 在属性上补齐向量索引信息，供查询侧改写 knn 使用。
-//
-// 资源类对象类的属性类型是字符串，向量落在构建任务生成的另一个字段上，因此必须
-// 显式带上物理字段名；下游拼后缀等于把 vega 的命名规则复制一份，早晚对不上。
-func applyVectorIndexConfig(prop *interfaces.DataProperty, vectorField, modelID string) {
-	if prop == nil || vectorField == "" || modelID == "" {
-		return
-	}
-	if prop.IndexConfig == nil {
-		prop.IndexConfig = &interfaces.IndexConfig{}
-	}
-	prop.IndexConfig.VectorConfig = interfaces.VectorConfig{
-		Enabled:     true,
-		ModelID:     modelID,
-		VectorField: vectorField,
-	}
-}
 
 // applyIndexCapOps 把资源本地索引上已经具备的检索能力叠加进属性的算子集合。
 //

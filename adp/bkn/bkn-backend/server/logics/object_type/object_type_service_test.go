@@ -7,7 +7,6 @@
 package object_type
 
 import (
-	"errors"
 	"context"
 	"database/sql"
 	"net/http"
@@ -3864,50 +3863,3 @@ func Test_applyIndexCapOps(t *testing.T) {
 	})
 }
 
-// 能力清单要么说得准要么别说：模型解析不出来时不能拿名字冒充 ID 兜底，
-// 否则调用方会拿到一个查询期才炸的 knn。
-func Test_resolveEmbeddingModelID(t *testing.T) {
-	Convey("Test resolveEmbeddingModelID\n", t, func() {
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-		mfs := bmock.NewMockModelFactoryService(mockCtrl)
-		ots := &objectTypeService{mfs: mfs}
-		ctx := context.Background()
-
-		Convey("按名字解析成 ID\n", func() {
-			mfs.EXPECT().GetModelByName(ctx, "text-embedding-v4").
-				Return(&interfaces.SmallModel{ModelID: "m-123"}, nil)
-			cache := map[string]string{}
-
-			So(ots.resolveEmbeddingModelID(ctx, "text-embedding-v4", cache), ShouldEqual, "m-123")
-			So(cache["text-embedding-v4"], ShouldEqual, "m-123")
-		})
-
-		Convey("资源上记的本来就是 ID 时按 ID 解析\n", func() {
-			mfs.EXPECT().GetModelByName(ctx, "m-123").Return(nil, errors.New("not found"))
-			mfs.EXPECT().GetModelByID(ctx, "m-123").Return(&interfaces.SmallModel{ModelID: "m-123"}, nil)
-
-			So(ots.resolveEmbeddingModelID(ctx, "m-123", map[string]string{}), ShouldEqual, "m-123")
-		})
-
-		Convey("两条都落空时返回空串，调用方据此不登记 knn\n", func() {
-			mfs.EXPECT().GetModelByName(ctx, "ghost").Return(nil, errors.New("not found"))
-			mfs.EXPECT().GetModelByID(ctx, "ghost").Return(nil, errors.New("not found"))
-
-			So(ots.resolveEmbeddingModelID(ctx, "ghost", map[string]string{}), ShouldEqual, "")
-		})
-
-		Convey("同一个模型只解析一次\n", func() {
-			mfs.EXPECT().GetModelByName(ctx, "text-embedding-v4").
-				Return(&interfaces.SmallModel{ModelID: "m-123"}, nil).Times(1)
-			cache := map[string]string{}
-
-			ots.resolveEmbeddingModelID(ctx, "text-embedding-v4", cache)
-			So(ots.resolveEmbeddingModelID(ctx, "text-embedding-v4", cache), ShouldEqual, "m-123")
-		})
-
-		Convey("没配模型时不查下游\n", func() {
-			So(ots.resolveEmbeddingModelID(ctx, "  ", map[string]string{}), ShouldEqual, "")
-		})
-	})
-}

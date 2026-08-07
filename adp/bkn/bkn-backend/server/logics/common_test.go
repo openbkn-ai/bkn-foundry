@@ -197,10 +197,9 @@ func TestVegaResourceIndexCaps_RefPropertyRedirectsCapability(t *testing.T) {
 	}
 }
 
-func TestVegaResourceIndexCaps_VectorCarriesGeneratedFieldAndModel(t *testing.T) {
+func TestVegaResourceIndexCaps_VectorCapabilityFollowsFeature(t *testing.T) {
 	res := &interfaces.VegaResource{
 		LocalIndexName: "vega-build-abc",
-		IndexConfig:    &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "text-embedding-v4"},
 		SchemaDefinition: []*interfaces.Property{
 			{
 				Name: "stadium_name",
@@ -209,29 +208,17 @@ func TestVegaResourceIndexCaps_VectorCarriesGeneratedFieldAndModel(t *testing.T)
 					{FeatureType: interfaces.FieldFeatureType_Fulltext},
 				},
 			},
-			{
-				Name: "city_name",
-				Features: []interfaces.PropertyFeature{
-					{FeatureType: interfaces.FieldFeatureType_Vector, Config: map[string]any{"embedding_model": "bge-m3"}},
-				},
-			},
+			{Name: "stadium_id"},
 		},
 	}
 
 	caps := VegaResourceIndexCaps(res)
 
-	stadium := caps["stadium_name"]
-	if !stadium.Vector || stadium.VectorField != "stadium_name_vector" {
-		t.Fatalf("vector field must follow the build task naming, got %+v", stadium)
+	if !caps["stadium_name"].Vector || !caps["stadium_name"].Fulltext {
+		t.Fatalf("both features must survive on the same field, got %+v", caps["stadium_name"])
 	}
-	if stadium.EmbeddingModel != "text-embedding-v4" {
-		t.Fatalf("missing per-field model should fall back to the resource default, got %q", stadium.EmbeddingModel)
-	}
-	if !stadium.Fulltext {
-		t.Fatalf("fulltext must survive alongside vector, got %+v", stadium)
-	}
-	if got := caps["city_name"].EmbeddingModel; got != "bge-m3" {
-		t.Fatalf("per-field model must win over the resource default, got %q", got)
+	if _, exists := caps["stadium_id"]; exists {
+		t.Fatalf("a field without features has no index capability, got %+v", caps)
 	}
 }
 

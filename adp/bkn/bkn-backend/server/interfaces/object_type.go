@@ -191,11 +191,6 @@ type FulltextConfig struct {
 type VectorConfig struct {
 	Enabled bool   `json:"enabled" mapstructure:"enabled"`
 	ModelID string `json:"model_id" mapstructure:"model_id"`
-	// VectorField 是向量实际所在的物理字段。资源类对象类的源列是字符串，向量由
-	// 构建任务写到另一个生成字段上，属性本身并没有 vector 类型；查询侧要发 knn
-	// 就必须知道打到哪个字段。命名规则属于 vega 构建侧，由这里如实转述，不让
-	// 下游去猜。为空表示该属性没有可用的向量索引。
-	VectorField string `json:"vector_field,omitempty" mapstructure:"vector_field,omitempty"`
 
 	//Model *SmallModel `json:"-"`
 }
