@@ -9,7 +9,6 @@ package resource_data
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
@@ -45,7 +44,11 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 		return nil
 	}
 
-	field, model, err := vectorFieldAndModel(resource, cfg.Name)
+	field, err := vectorFieldFor(resource, cfg.Name)
+	if err != nil {
+		return err
+	}
+	model, err := rds.embeddingModelForIndex(ctx, resource, cfg.Name)
 	if err != nil {
 		return err
 	}
@@ -63,22 +66,17 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 	return nil
 }
 
-// vectorFieldAndModel 找出某个源字段对应的向量字段与建索引时用的 embedding 模型。
+// vectorFieldFor 找出某个源字段对应的物理向量字段。
 //
 // 字段本身就是向量类型时（数据视图那条路）直接用它。否则要求源字段上声明了向量
 // 特性，向量在构建任务生成的字段上。找不到就报错——这里不做降级：把向量检索悄悄
 // 换成别的算子，调用方拿到的是一个语义完全不同却看起来成功的结果。
-func vectorFieldAndModel(resource *interfaces.Resource, name string) (string, string, error) {
+func vectorFieldFor(resource *interfaces.Resource, name string) (string, error) {
 	if resource == nil {
-		return "", "", fmt.Errorf("condition [knn_vector] left field '%s' has no resource context", name)
+		return "", fmt.Errorf("condition [knn_vector] left field '%s' has no resource context", name)
 	}
 	if resource.LocalIndexName == "" {
-		return "", "", fmt.Errorf("condition [knn_vector] resource '%s' has no local index; build one before vector search", resource.Name)
-	}
-
-	defaultModel := ""
-	if resource.IndexConfig != nil {
-		defaultModel = strings.TrimSpace(resource.IndexConfig.DefaultEmbeddingModel)
+		return "", fmt.Errorf("condition [knn_vector] resource '%s' has no local index; build one before vector search", resource.Name)
 	}
 
 	for _, prop := range resource.SchemaDefinition {
@@ -86,7 +84,7 @@ func vectorFieldAndModel(resource *interfaces.Resource, name string) (string, st
 			continue
 		}
 		if prop.Name == name && prop.Type == interfaces.DataType_Vector {
-			return name, defaultModel, nil
+			return name, nil
 		}
 		for _, feature := range prop.Features {
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
@@ -96,31 +94,39 @@ func vectorFieldAndModel(resource *interfaces.Resource, name string) (string, st
 			if feature.RefProperty != "" {
 				source = feature.RefProperty
 			}
-			if source != name {
-				continue
+			if source == name {
+				return interfaces.LocalIndexVectorFieldName(source), nil
 			}
-			model := defaultModel
-			if configured := stringConfigValue(feature.Config, "embedding_model"); configured != "" {
-				model = configured
-			}
-			if model == "" {
-				return "", "", fmt.Errorf("condition [knn_vector] field '%s' has a vector feature but no embedding model", name)
-			}
-			return interfaces.LocalIndexVectorFieldName(source), model, nil
 		}
 	}
 
-	return "", "", fmt.Errorf("condition [knn_vector] field '%s' has no vector index on resource '%s'", name, resource.Name)
+	return "", fmt.Errorf("condition [knn_vector] field '%s' has no vector index on resource '%s'", name, resource.Name)
 }
 
-// stringConfigValue 读取特性 config 里的字符串项。
-func stringConfigValue(config map[string]any, key string) string {
-	if len(config) == 0 {
-		return ""
+// embeddingModelForIndex 取建这个索引时用的 embedding 模型 id。
+//
+// 权威来源是产出该索引的构建任务快照，不是资源上现在写着什么：资源的特性配置改了
+// 但没重建索引时，两者会不一致，用错模型算出来的向量与索引里的不可比。快照里存的
+// 已经是解析过的模型 id，与构建时写入向量用的完全一致。
+func (rds *resourceDataService) embeddingModelForIndex(ctx context.Context,
+	resource *interfaces.Resource, field string) (string, error) {
+
+	taskID := interfaces.BuildTaskIDFromIndexName(resource.LocalIndexName)
+	if taskID == "" {
+		return "", fmt.Errorf("condition [knn_vector] cannot tell which build task produced index '%s'", resource.LocalIndexName)
 	}
-	value, ok := config[key].(string)
-	if !ok {
-		return ""
+
+	task, err := rds.bta.GetByID(ctx, taskID)
+	if err != nil {
+		return "", fmt.Errorf("condition [knn_vector] load build task %s failed: %w", taskID, err)
 	}
-	return strings.TrimSpace(value)
+	if task == nil || task.IndexConfig == nil {
+		return "", fmt.Errorf("condition [knn_vector] build task %s has no index config", taskID)
+	}
+	feature, ok := task.IndexConfig.Features[field]
+	if !ok || feature.Vector == nil || feature.Vector.ModelID == "" {
+		return "", fmt.Errorf("condition [knn_vector] field '%s' was not vectorized by build task %s", field, taskID)
+	}
+	return feature.Vector.ModelID, nil
 }
+

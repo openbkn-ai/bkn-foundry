@@ -32,3 +32,17 @@ func TestLocalIndexGeneratedFields(t *testing.T) {
 		t.Fatalf("without a built index nothing is generated yet, got %+v", got)
 	}
 }
+
+func TestBuildTaskIDFromIndexName(t *testing.T) {
+	name := BuildIndexName("d8sl8edr563s73afv2mg", "d9q4gng1gnis73fmet10")
+
+	if got := BuildTaskIDFromIndexName(name); got != "d9q4gng1gnis73fmet10" {
+		t.Fatalf("must recover the build task that produced the index, got %q", got)
+	}
+	if got := BuildTaskIDFromIndexName("someone-elses-index"); got != "" {
+		t.Fatalf("foreign index names yield nothing, got %q", got)
+	}
+	if got := BuildTaskIDFromIndexName(""); got != "" {
+		t.Fatalf("empty index name yields nothing, got %q", got)
+	}
+}

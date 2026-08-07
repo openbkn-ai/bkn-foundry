@@ -16,6 +16,7 @@ import (
 	"vega-backend/common"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/dataset"
@@ -42,6 +43,7 @@ type resourceDataService struct {
 	rs         interfaces.ResourceService
 	lvs        interfaces.LogicViewService
 	mfs        interfaces.ModelFactoryService
+	bta        interfaces.BuildTaskAccess
 	cl         rate.ConcurrencyLimiter
 }
 
@@ -57,6 +59,7 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 			rs:         resource.NewResourceService(appSetting),
 			lvs:        logic_view.NewLogicViewService(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
+			bta:        logics.BTA,
 		}
 
 		// Initialize concurrency limiter if enabled

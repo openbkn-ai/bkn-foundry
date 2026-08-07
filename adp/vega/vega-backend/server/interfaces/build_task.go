@@ -6,6 +6,8 @@
 
 package interfaces
 
+import "strings"
+
 const (
 	BuildTaskStatusInit      string = "init"
 	BuildTaskStatusRunning   string = "running"
@@ -198,4 +200,23 @@ type KeyValue struct {
 // 单一来源：worker 建索引与各处级联清理都用它，别在多处手拼。
 func BuildIndexName(resourceID, buildTaskID string) string {
 	return BUILD_PREFIX + "-" + resourceID + "-" + buildTaskID
+}
+
+// BuildTaskIDFromIndexName 从本地索引名反解出产出它的构建任务 id。
+//
+// 索引由哪个构建任务产出，决定了里面的字段是按哪份配置建的——查询侧要用建索引时
+// 的 embedding 模型，就得找回那份快照，而不是读资源上「现在」写着什么。资源上的
+// 配置改了但没重建索引时，这两者会不一致。
+// 不是本服务生成的索引名返回空串。
+func BuildTaskIDFromIndexName(indexName string) string {
+	prefix := BUILD_PREFIX + "-"
+	if !strings.HasPrefix(indexName, prefix) {
+		return ""
+	}
+	// 形如 vega-build-<resourceID>-<buildTaskID>
+	parts := strings.Split(strings.TrimPrefix(indexName, prefix), "-")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-1]
 }
