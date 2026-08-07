@@ -461,17 +461,6 @@ EOF
             storage_class_yaml="        storageClassName: \"${MARIADB_STORAGE_CLASS}\""
         fi
 
-        local resource_limits_block=""
-        if [[ -n "${MARIADB_CPU_LIMIT}" || -n "${MARIADB_MEMORY_LIMIT}" ]]; then
-            resource_limits_block="            limits:"
-            if [[ -n "${MARIADB_CPU_LIMIT}" ]]; then
-                resource_limits_block+=$'\n              cpu: '"${MARIADB_CPU_LIMIT}"
-            fi
-            if [[ -n "${MARIADB_MEMORY_LIMIT}" ]]; then
-                resource_limits_block+=$'\n              memory: '"${MARIADB_MEMORY_LIMIT}"
-            fi
-        fi
-
         cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: StatefulSet
@@ -536,7 +525,9 @@ spec:
             requests:
               cpu: 250m
               memory: 256Mi
-${resource_limits_block}
+            limits:
+              cpu: 375m
+              memory: 384Mi
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -549,16 +540,6 @@ ${resource_limits_block}
 ${storage_class_yaml}
 EOF
     else
-        local resource_limits_block=""
-        if [[ -n "${MARIADB_CPU_LIMIT}" || -n "${MARIADB_MEMORY_LIMIT}" ]]; then
-            resource_limits_block="            limits:"
-            if [[ -n "${MARIADB_CPU_LIMIT}" ]]; then
-                resource_limits_block+=$'\n              cpu: '"${MARIADB_CPU_LIMIT}"
-            fi
-            if [[ -n "${MARIADB_MEMORY_LIMIT}" ]]; then
-                resource_limits_block+=$'\n              memory: '"${MARIADB_MEMORY_LIMIT}"
-            fi
-        fi
         cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: StatefulSet
@@ -623,7 +604,9 @@ spec:
             requests:
               cpu: 250m
               memory: 256Mi
-${resource_limits_block}
+            limits:
+              cpu: 375m
+              memory: 384Mi
       volumes:
         - name: data
           emptyDir: {}
