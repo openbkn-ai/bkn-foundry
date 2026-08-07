@@ -131,6 +131,37 @@ func TestListConversationsSumsCompletedInteractionDurations(t *testing.T) {
 	}
 }
 
+func TestBuildConversationSummaryUsesLatestCoherentInteractionAndHidesChildCallError(t *testing.T) {
+
+	summary := buildConversationSummary("conversation_supply", []evidencevo.RequestSummary{
+		{
+			RequestID: "req_first", InteractionID: "interaction_first",
+			StartedAt: "2026-08-07T08:00:00Z", CompletedAt: "2026-08-07T08:00:01Z",
+			Status: "completed", EvidenceCompleteness: "complete",
+			InteractionQuestion: "6月份有哪些需求预测单？", InteractionResult: "6月份需求总量为 11594。",
+		},
+		{
+			RequestID: "req_rejected", InteractionID: "interaction_latest",
+			StartedAt: "2026-08-07T08:02:00Z", CompletedAt: "2026-08-07T08:02:01Z",
+			Status: "error", EvidenceCompleteness: "complete", ErrorSummary: "OpenBKN operation failed",
+		},
+		{
+			RequestID: "req_latest", InteractionID: "interaction_latest",
+			StartedAt: "2026-08-07T08:02:02Z", CompletedAt: "2026-08-07T08:02:03Z",
+			Status: "completed", EvidenceCompleteness: "complete",
+			InteractionQuestion: "迄今为止有多少销售订单？", InteractionResult: "共有 1441 张销售订单。",
+		},
+	})
+
+	if summary.QuestionPreview != "迄今为止有多少销售订单？" ||
+		summary.ResultPreview != "共有 1441 张销售订单。" {
+		t.Fatalf("conversation must show one coherent latest interaction: %+v", summary)
+	}
+	if summary.ErrorSummary != "" {
+		t.Fatalf("a recoverable child call error must remain at request level: %+v", summary)
+	}
+}
+
 func TestListConversationsFiltersAfterApplyingCanonicalSessionStatus(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequest(

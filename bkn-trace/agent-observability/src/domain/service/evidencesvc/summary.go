@@ -197,17 +197,46 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 
 func buildConversationSummary(conversationID string, requests []evidencevo.RequestSummary) evidencevo.ConversationSummary {
 	base, interactionCount := aggregateRequestGroup(requests)
+	questionPreview, resultPreview := latestConversationInteractionPreview(requests)
 	return evidencevo.ConversationSummary{
 		ConversationID: conversationID,
 		StartedAt:      base.StartedAt, CompletedAt: base.CompletedAt,
 		Initiator: base.Initiator, AgentOrApp: base.AgentOrApp, BusinessDomain: base.BusinessDomain,
 		AgentName: base.AgentName, ApplicationPrincipalID: base.ApplicationPrincipalID,
 		EffectiveSubjectID: base.EffectiveSubjectID,
-		KnowledgeNetworks:  base.KnowledgeNetworks, QuestionPreview: base.QuestionPreview, ResultPreview: base.ResultPreview,
+		KnowledgeNetworks:  base.KnowledgeNetworks, QuestionPreview: questionPreview, ResultPreview: resultPreview,
 		Status: base.Status, EvidenceCompleteness: base.EvidenceCompleteness, PartialReasons: base.PartialReasons,
 		InteractionCount: interactionCount, RequestCount: len(requests), TraceCount: base.TraceCount,
-		DurationMS: conversationDurationMS(requests), ErrorSummary: base.ErrorSummary,
+		DurationMS: conversationDurationMS(requests),
 	}
+}
+
+// A conversation is a sequence of interactions. Its list preview must describe
+// one interaction, rather than combining an earlier question with a later result.
+func latestConversationInteractionPreview(requests []evidencevo.RequestSummary) (string, string) {
+	byInteraction := map[string][]evidencevo.RequestSummary{}
+	for _, request := range requests {
+		if request.InteractionID != "" {
+			byInteraction[request.InteractionID] = append(byInteraction[request.InteractionID], request)
+		}
+	}
+
+	var question, result, latestAt, latestID string
+	for interactionID, interactionRequests := range byInteraction {
+		summary, _ := aggregateRequestGroup(interactionRequests)
+		if summary.QuestionPreview == "" || summary.ResultPreview == "" {
+			continue
+		}
+		at := firstPresentSummary(summary.CompletedAt, summary.StartedAt)
+		if question == "" || summaryTimeAfter(at, latestAt) || (at == latestAt && interactionID > latestID) {
+			question, result, latestAt, latestID = summary.QuestionPreview, summary.ResultPreview, at, interactionID
+		}
+	}
+	if question != "" {
+		return question, result
+	}
+	base, _ := aggregateRequestGroup(requests)
+	return base.QuestionPreview, base.ResultPreview
 }
 
 func buildInteractionListSummary(interactionID string, requests []evidencevo.RequestSummary) evidencevo.InteractionListSummary {
