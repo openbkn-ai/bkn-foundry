@@ -140,6 +140,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableCon
 
 		// 更新 Resource
 		resource.LastDiscoverStatus = discoverStatus
+		resource.StatusMessage = ""
 		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
 			logger.Errorf("Failed to update metadata for table %s: %v", table.Name, err)
 			return err

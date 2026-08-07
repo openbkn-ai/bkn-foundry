@@ -159,6 +159,7 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 			ID:                 "r2",
 			SourceIdentifier:   "public.erp_material",
 			LastDiscoverStatus: interfaces.DiscoverStatusNew,
+			StatusMessage:      "discover metadata failed: table metadata not found or inaccessible: public.erp_material",
 			SourceMetadata:     map[string]any{"original_name": "public.erp_material"},
 		}
 		connector := vmock.NewMockTableConnector(ctrl)
@@ -184,6 +185,7 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 				assert.Equal(t, "r2", resource.ID)
 				require.Len(t, resource.SchemaDefinition, 1)
 				assert.Equal(t, "id", resource.SchemaDefinition[0].Name)
+				assert.Empty(t, resource.StatusMessage)
 				return nil
 			})
 
