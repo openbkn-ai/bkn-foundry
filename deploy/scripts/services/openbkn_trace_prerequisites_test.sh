@@ -274,6 +274,21 @@ _openbkn_prepare_trace_profile openbkn
 assert_contains "internal Core DSN Secret is refreshed from current RDS configuration" "create secret generic bkn-trace-core-mariadb"
 assert_contains "internal Core DSN Secret is updated idempotently" "apply -f -"
 
+CALLS=()
+: >"${KUBECTL_LOG}"
+EXISTING_SECRETS="bkn-trace-evidence-ingest"
+EXISTING_TOKEN_DATA=""
+if _openbkn_prepare_trace_profile openbkn; then
+    fail "Trace profile must fail when the existing Evidence ingest Secret has no token"
+else
+    ok
+fi
+if [[ "${LAST_ERROR}" == *"Evidence ingest Secret"*"must contain key token"* ]]; then
+    ok
+else
+    fail "Trace profile must preserve the Evidence ingest Secret validation error"
+fi
+
 if grep -Eq -- '^[[:space:]]{2}-[[:space:]]+bkn_trace([[:space:]]|$)' "${SCRIPT_DIR}/../data-migrator/config.monorepo.yaml"; then
     ok
 else

@@ -83,6 +83,15 @@ contains "secure Collector enables OpenSearch auth" "${secure_collector_sets}" "
 contains "secure Collector references the shared OpenSearch Secret" "${secure_collector_sets}" "opensearchExporter.auth.existingSecret=bkn-trace-opensearch"
 not_contains "secure Collector never forwards an OpenSearch password to Helm" "${secure_collector_sets}" "password="
 
+# The installer must apply the Collector profile, not merely expose a helper
+# that unit tests can call directly.
+CORE_RELEASE_EXTRA_SETS=()
+CORE_RELEASE_EXTRA_SET_STRINGS=()
+_openbkn_release_extra_sets otelcol-contrib openbkn
+installed_collector_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "installer applies secure Collector endpoint" "${installed_collector_sets}" "opensearchExporter.http.endpoint=https://opensearch-secure.resource.svc.cluster.local:9200"
+contains "installer applies secure Collector auth Secret" "${installed_collector_sets}" "opensearchExporter.auth.existingSecret=bkn-trace-opensearch"
+
 otel_values="$(<"${SCRIPT_DIR}/../bkn-trace/otelcol-contribute-chart/charts/otelcol-contrib/values.yaml")"
 contains "collector uses the Trace profile dataset" "${otel_values}" "dataset: default"
 contains "collector uses the Trace profile namespace" "${otel_values}" "namespace: namespace"

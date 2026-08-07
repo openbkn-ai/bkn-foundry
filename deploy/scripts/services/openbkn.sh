@@ -633,7 +633,9 @@ _openbkn_prepare_trace_profile() {
         return 1
     fi
 
-    _openbkn_prepare_trace_ingest_secret "${namespace}"
+    if ! _openbkn_prepare_trace_ingest_secret "${namespace}"; then
+        return 1
+    fi
     _openbkn_prepare_trace_opensearch_secret "${namespace}"
 }
 
@@ -662,11 +664,13 @@ _openbkn_release_extra_sets() {
         else
             CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=false")
         fi
-    elif [[ "${release_name}" == "agent-retrieval" ]]; then
+    elif [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "otelcol-contrib" ]]; then
         _openbkn_trace_profile_sets "${release_name}"
-        # This chart renders metadata.namespace from values; keep it aligned
-        # with Helm's target namespace so the private lifecycle policy matches.
-        CORE_RELEASE_EXTRA_SETS+=("namespace=${namespace}")
+        if [[ "${release_name}" == "agent-retrieval" ]]; then
+            # This chart renders metadata.namespace from values; keep it aligned
+            # with Helm's target namespace so the private lifecycle policy matches.
+            CORE_RELEASE_EXTRA_SETS+=("namespace=${namespace}")
+        fi
     elif [[ "${release_name}" == "bkn-safe" ]]; then
         local initial_pwd
         initial_pwd="$(config_yaml_top_field bknSafe initialPassword)"
