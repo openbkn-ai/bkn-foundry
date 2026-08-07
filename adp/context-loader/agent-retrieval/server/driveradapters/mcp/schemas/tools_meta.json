@@ -21,7 +21,7 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 130,
-    "description": "统一的 Schema 探索入口，先锁定对象类（object_types）。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费；其中 metric_types 只是辅助线索，指标的权威清单以 get_object_types 返回的 related_metrics 为准（按对象类 scope 全量枚举）。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type/condition_operations，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
+    "description": "统一的 Schema 探索入口，先锁定对象类（object_types）。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费；其中 metric_types 只是辅助线索，指标的权威清单以 get_object_types 返回的 related_metrics 为准（按对象类 scope 全量枚举）。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type，并只列索引带来的算子 match/multi_match/knn，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
   },
   "query_object_instance": {
     "name": "query_object_instance",

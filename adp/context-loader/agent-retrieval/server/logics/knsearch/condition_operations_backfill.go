@@ -24,10 +24,17 @@ import (
 // 被跳过，语义实例召回永远返回空。
 //
 // 只补真正缺算子的对象类，且合并成一次批量请求。
+//
+// indexOpsOnly 为真时只补索引带来的那几个算子（match / multi_match / knn），略去按
+// 属性类型就能推出来的比较算子。实测一次 10 个对象类、172 个属性的检索：补全量多
+// 10,453 字节（+27%），只补索引类多 151 字节（+0.4%），差 69 倍——多出来的几乎全是
+// 每个字符串属性重复一遍的 ==/in/like 之类，服务端逐个告知没有信息量。精简 Schema
+// 本就是为省体积而设，不该被这部分吃掉。
 func (s *localSearchImpl) backfillConditionOperations(
 	ctx context.Context,
 	knID string,
 	objectTypes []*interfaces.KnSearchObjectType,
+	indexOpsOnly bool,
 ) {
 	if knID == "" || len(objectTypes) == 0 {
 		return
@@ -74,7 +81,14 @@ func (s *localSearchImpl) backfillConditionOperations(
 			if p == nil || len(p.ConditionOperations) == 0 {
 				continue
 			}
-			ops[p.Name] = p.ConditionOperations
+			selected := p.ConditionOperations
+			if indexOpsOnly {
+				selected = indexBackedOperations(selected)
+			}
+			if len(selected) == 0 {
+				continue
+			}
+			ops[p.Name] = selected
 		}
 		if len(ops) == 0 {
 			continue
@@ -103,4 +117,17 @@ func conditionOperationsPresent(objType *interfaces.KnSearchObjectType) bool {
 		}
 	}
 	return false
+}
+
+// indexBackedOperations 挑出只有服务端才知道的那几个算子——它们取决于底层索引建没建，
+// 从属性类型推不出来。其余比较算子调用方按 type 自行判断即可。
+func indexBackedOperations(ops []interfaces.KnOperationType) []interfaces.KnOperationType {
+	var out []interfaces.KnOperationType
+	for _, op := range ops {
+		switch op {
+		case interfaces.KnOperationTypeMatch, interfaces.KnOperationTypeMultiMatch, interfaces.KnOperationTypeKnn:
+			out = append(out, op)
+		}
+	}
+	return out
 }

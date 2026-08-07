@@ -42,7 +42,7 @@ func TestBackfillConditionOperations_FillsFromDetail(t *testing.T) {
 	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
 	objType := backfillTestObjectType("teams", nil)
 
-	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType})
+	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType}, false)
 
 	if backend.objectDetailCalls != 1 {
 		t.Fatalf("expected exactly one batched detail call, got %d", backend.objectDetailCalls)
@@ -66,7 +66,7 @@ func TestBackfillConditionOperations_SkipsWhenAlreadyPresent(t *testing.T) {
 	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
 	objType := backfillTestObjectType("teams", []interfaces.KnOperationType{interfaces.KnOperationTypeMatch})
 
-	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType})
+	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType}, false)
 
 	if backend.objectDetailCalls != 0 {
 		t.Fatalf("object types that already carry operations must not trigger a detail call, got %d", backend.objectDetailCalls)
@@ -78,7 +78,7 @@ func TestBackfillConditionOperations_DegradesOnError(t *testing.T) {
 	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
 	objType := backfillTestObjectType("teams", nil)
 
-	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType})
+	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType}, false)
 
 	if len(objType.DataProperties[0].ConditionOperations) != 0 {
 		t.Fatalf("failed backfill must leave the object type untouched, got %+v", objType.DataProperties[0].ConditionOperations)
@@ -111,7 +111,7 @@ func TestBackfillConditionOperations_MakesCapabilityVisibleInSchema(t *testing.T
 		},
 	}
 
-	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType})
+	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType}, false)
 
 	ops := objType.DataProperties[0].ConditionOperations
 	var hasMatch, hasKnn bool
@@ -125,5 +125,57 @@ func TestBackfillConditionOperations_MakesCapabilityVisibleInSchema(t *testing.T
 	}
 	if !hasMatch || !hasKnn {
 		t.Fatalf("schema must expose what the field can actually do, got %+v", ops)
+	}
+}
+
+// 精简 Schema 只补索引带来的算子：比较算子按属性类型可推导，逐个下发纯属浪费体积。
+// 实测一次检索差 69 倍（+10,453 字节 vs +151 字节）。
+func TestBackfillConditionOperations_BriefKeepsOnlyIndexBackedOps(t *testing.T) {
+	backend := &mockBknBackend{
+		objectDetailResp: []*interfaces.ObjectType{
+			{
+				ID: "stadiums",
+				DataProperties: []*interfaces.DataProperty{
+					{Name: "stadium_name", ConditionOperations: []interfaces.KnOperationType{
+						interfaces.KnOperationTypeEqual,
+						interfaces.KnOperationTypeIn,
+						interfaces.KnOperationTypeLike,
+						interfaces.KnOperationTypeMatch,
+						interfaces.KnOperationTypeMultiMatch,
+						interfaces.KnOperationTypeKnn,
+					}},
+					{Name: "stadium_id", ConditionOperations: []interfaces.KnOperationType{
+						interfaces.KnOperationTypeEqual,
+						interfaces.KnOperationTypeIn,
+					}},
+				},
+			},
+		},
+	}
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	objType := &interfaces.KnSearchObjectType{
+		ConceptID: "stadiums",
+		DataProperties: []*interfaces.KnSearchDataProperty{
+			{Name: "stadium_name", Type: "string"},
+			{Name: "stadium_id", Type: "string"},
+		},
+	}
+
+	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType}, true)
+
+	got := objType.DataProperties[0].ConditionOperations
+	if len(got) != 3 {
+		t.Fatalf("brief mode keeps only the index-backed operations, got %+v", got)
+	}
+	for _, op := range got {
+		switch op {
+		case interfaces.KnOperationTypeMatch, interfaces.KnOperationTypeMultiMatch, interfaces.KnOperationTypeKnn:
+		default:
+			t.Fatalf("derivable comparison operator leaked into brief mode: %s", op)
+		}
+	}
+	// 没有索引能力的属性在精简模式下整个字段都不出现，省掉一份重复的比较算子清单。
+	if len(objType.DataProperties[1].ConditionOperations) != 0 {
+		t.Fatalf("a field with no index capability should stay bare, got %+v", objType.DataProperties[1].ConditionOperations)
 	}
 }

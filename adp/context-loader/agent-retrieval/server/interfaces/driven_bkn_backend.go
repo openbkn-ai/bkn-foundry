@@ -33,6 +33,8 @@ const (
 	KnOperationTypeRegex          KnOperationType = "regex"     // regex
 	KnOperationTypeMatch          KnOperationType = "match"     // match
 	KnOperationTypeKnn            KnOperationType = "knn"       // knn
+	// KnOperationTypeMultiMatch 由 BKN 随 match 一起登记，代表字段建了全文索引。
+	KnOperationTypeMultiMatch KnOperationType = "multi_match"
 )
 
 // LogicPropertyType Logic property type

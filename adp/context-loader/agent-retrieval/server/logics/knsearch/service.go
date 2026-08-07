@@ -46,7 +46,8 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 	// condition_operations 一律为空。调用方（尤其是 Agent）正是靠它判断字段能不能做
 	// match / knn，拿到空的就只能靠猜——能力再准，取不到等于没有。在这里补齐，
 	// Schema 响应与后续实例召回共用同一份结果。
-	s.backfillConditionOperations(ctx, req.KnID, conceptResult.ObjectTypes)
+	s.backfillConditionOperations(ctx, req.KnID, conceptResult.ObjectTypes,
+		boolValue(mergedConfig.ConceptRetrieval.SchemaBrief))
 
 	// 3. 构建响应
 	response := &interfaces.KnSearchLocalResponse{
