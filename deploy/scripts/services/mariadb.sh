@@ -296,7 +296,7 @@ install_mariadb_helm() {
         fi
     fi
 
-    # Container resources: empty means chart defaults (req 250m/256Mi, lim 375m/384Mi).
+    # Container resources: empty means requests only; limits are opt-in.
     if [[ -n "${MARIADB_MEMORY_REQUEST}" ]]; then
         helm_args+=(--set resources.requests.memory="${MARIADB_MEMORY_REQUEST}")
     fi
@@ -465,6 +465,17 @@ EOF
             storage_class_yaml="        storageClassName: \"${MARIADB_STORAGE_CLASS}\""
         fi
 
+        local resource_limits_block=""
+        if [[ -n "${MARIADB_CPU_LIMIT}" || -n "${MARIADB_MEMORY_LIMIT}" ]]; then
+            resource_limits_block="            limits:"
+            if [[ -n "${MARIADB_CPU_LIMIT}" ]]; then
+                resource_limits_block+=$'\n              cpu: '"${MARIADB_CPU_LIMIT}"
+            fi
+            if [[ -n "${MARIADB_MEMORY_LIMIT}" ]]; then
+                resource_limits_block+=$'\n              memory: '"${MARIADB_MEMORY_LIMIT}"
+            fi
+        fi
+
         cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: StatefulSet
@@ -529,9 +540,7 @@ spec:
             requests:
               cpu: 250m
               memory: 256Mi
-            limits:
-              cpu: 375m
-              memory: 384Mi
+${resource_limits_block}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -544,6 +553,16 @@ spec:
 ${storage_class_yaml}
 EOF
     else
+        local resource_limits_block=""
+        if [[ -n "${MARIADB_CPU_LIMIT}" || -n "${MARIADB_MEMORY_LIMIT}" ]]; then
+            resource_limits_block="            limits:"
+            if [[ -n "${MARIADB_CPU_LIMIT}" ]]; then
+                resource_limits_block+=$'\n              cpu: '"${MARIADB_CPU_LIMIT}"
+            fi
+            if [[ -n "${MARIADB_MEMORY_LIMIT}" ]]; then
+                resource_limits_block+=$'\n              memory: '"${MARIADB_MEMORY_LIMIT}"
+            fi
+        fi
         cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: StatefulSet
@@ -608,9 +627,7 @@ spec:
             requests:
               cpu: 250m
               memory: 256Mi
-            limits:
-              cpu: 375m
-              memory: 384Mi
+${resource_limits_block}
       volumes:
         - name: data
           emptyDir: {}
