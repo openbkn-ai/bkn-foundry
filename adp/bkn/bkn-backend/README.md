@@ -1,5 +1,7 @@
 # BKN Backend
 
+[中文](README.zh.md) | English
+
 `bkn-backend` is the BKN Engine modeling and management service. It owns the
 metadata model for Business Knowledge Networks and exposes APIs for creating,
 validating, updating, searching, importing, and exporting BKN definitions.
