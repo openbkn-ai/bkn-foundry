@@ -119,6 +119,8 @@ exporters:
 
 `monitoring.prometheusRule.enabled=true` 时渲染队列接近容量、日志导出失败和遥测拒绝告警。`networkPolicy.enabled=true` 时只允许带 `openbkn.ai/otel-producer=true` 标签的同命名空间 Pod 写入 OTLP，并允许指定监控命名空间抓取指标。两项默认关闭，启用前必须核对目标集群的 CRD、命名空间和工作负载标签。
 
+使用 `scripts/run_otlp_capacity_probe.sh` 做本地 Collector 验收。脚本默认只发送 5 条无敏感内容的 OTLP 日志；显式设置 `RATE_PER_SECOND=100 DURATION_SECONDS=300` 可执行稳态门，设置为 `300 / 300` 可执行突发门。脚本按 Collector 指标校验接收、导出、拒收和失败计数，并在结束时清理临时端口转发。
+
 ---
 
 ## 4. Pipeline 设计
