@@ -21,12 +21,49 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 )
+
+func TestSourceCoverageSurvivesStoreRestart(t *testing.T) {
+	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
+	if dsn == "" {
+		t.Skip("BKN_TRACE_TEST_MARIADB_DSN is not set")
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Fatalf("open MariaDB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	store := sessionstore.New(db)
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	coverage := observabilityvo.SourceCoverage{
+		SourceID: "otel-runtime-test", DeploymentID: "cluster-test",
+		State: observabilityvo.SourceCoverageDegraded, Reason: "telemetry_dropped",
+		DroppedRecords: 3, FirstObservedAt: time.Now().UTC(), LastObservedAt: time.Now().UTC(),
+	}
+	if err := store.UpsertDegraded(context.Background(), coverage); err != nil {
+		t.Fatalf("upsert coverage: %v", err)
+	}
+	restarted := sessionstore.New(db)
+	stored, found, err := restarted.Get(context.Background(), coverage.SourceID, coverage.DeploymentID)
+	if err != nil || !found || stored.State != observabilityvo.SourceCoverageDegraded || stored.DroppedRecords != 3 {
+		t.Fatalf("coverage was not durable after restart: coverage=%+v found=%t err=%v", stored, found, err)
+	}
+	if err := restarted.MarkHealthyAfterCatchUp(context.Background(), coverage.SourceID, coverage.DeploymentID, stored.Version); err != nil {
+		t.Fatalf("recover coverage: %v", err)
+	}
+	recovered, found, err := restarted.Get(context.Background(), coverage.SourceID, coverage.DeploymentID)
+	if err != nil || !found || recovered.State != observabilityvo.SourceCoverageHealthy || recovered.RecoveredAt == nil || recovered.DroppedRecords != 3 {
+		t.Fatalf("coverage recovery lost audit state: coverage=%+v found=%t err=%v", recovered, found, err)
+	}
+}
 
 func TestConcurrentEnsureCurrentHasOneGeneration(t *testing.T) {
 	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")

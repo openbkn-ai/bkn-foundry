@@ -31,6 +31,9 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 		"bkn_trace_projection_checkpoints",
 		"bkn_trace_dlq",
 		"bkn_trace_dlq_replay_audit",
+		"bkn_trace_log_source_coverage",
+		"PRIMARY KEY (source_id, deployment_id)",
+		"dropped_records BIGINT UNSIGNED NOT NULL DEFAULT 0",
 	}
 	for _, fragment := range required {
 		if !strings.Contains(schema, fragment) {
