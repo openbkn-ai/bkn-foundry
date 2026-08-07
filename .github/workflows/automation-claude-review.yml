@@ -143,6 +143,7 @@ jobs:
       pr_number: ${{ steps.meta.outputs.pr_number }}
       shards: ${{ steps.plan.outputs.shards }}
       has_shards: ${{ steps.plan.outputs.has_shards }}
+      skip_round: ${{ steps.plan.outputs.skip_round }}
       prior_rounds: ${{ steps.plan.outputs.prior_rounds }}
       file_total: ${{ steps.plan.outputs.file_total }}
       file_listed: ${{ steps.plan.outputs.file_listed }}
@@ -263,12 +264,39 @@ jobs:
           print("has_shards=" + ("true" if shards else "false"))
           # 已有过几轮结论。分片与 verdict 共用这一个数来收紧配额，免得各自从评论历史
           # 里推断「这是第几轮」还推出不同结果。
+          # 历史结论：轮数用来收紧配额，最后一轮的表态用来决定这次要不要跑。
           prior = subprocess.run(
               ["gh", "api", "repos/%s/pulls/%s/reviews" % (os.environ["GH_REPO"], pr),
-               "--paginate", "--jq", '[.[] | select((.body // "") != "")] | length'],
+               "--paginate", "--jq", '[.[] | select((.body // "") != "") | .state] | @json'],
               capture_output=True, text=True)
-          print("prior_rounds=%s"
-                % ((prior.stdout.split() or ["0"])[0] if prior.returncode == 0 else "0"))
+          states = []
+          if prior.returncode == 0:
+              for chunk in prior.stdout.splitlines():
+                  try:
+                      states += json.loads(chunk)
+                  except ValueError:
+                      pass
+          print("prior_rounds=%d" % len(states))
+
+          # 已经 approve 过之后，作者多半在打磨（补测试、改注释、rebase）。本周实测：
+          # 首次 approve 之后的重复 approve 占全部结论轮的 18%，#683 与 #695 各浪费四五轮，
+          # 每轮都在重复确认同一个结论。这些轮次不自动跑，作者要复评回一句 /review 即可
+          # ——上一轮 approve 的正文里就写着这句。
+          #
+          # 例外：新提交碰了高危面照跑。这几类是「改一行毁一个环境」的地方，而 main 的
+          # ruleset 是 dismiss_stale_reviews_on_push: false——approve 不会因为推送而失效，
+          # 所以这里跳过就等于门也不拦、人也不看。
+          #
+          # CHANGES_REQUESTED 之后不受影响：那时作者在修问题，正是最该盯的阶段。
+          RISKY = ("migrations/", "/helm/", "bkn-safe/")
+          risky = [p_ for p_ in paths
+                   if any(m in p_ for m in RISKY) or p_.endswith("values.yaml")]
+          skip = (os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+                  and states and states[-1] == "APPROVED" and not risky)
+          if skip:
+              print("::notice::PR #%s 上一轮已放行，且本次改动未触及高危面，跳过自动复评。"
+                    "需要复评请回复 /review。" % pr)
+          print("skip_round=%s" % ("true" if skip else "false"))
           print("file_total=%d" % total)
           print("file_listed=%d" % len(paths))
           PY
@@ -276,7 +304,7 @@ jobs:
       # 同一条评论反复复用（靠 body 里的 HTML 标记定位），复评不会越堆越多。
       # 失败不阻断评审：进度提示挂了没关系，评审本身要继续。
       - name: Post progress comment
-        if: steps.plan.outputs.has_shards == 'true'
+        if: steps.plan.outputs.has_shards == 'true' && steps.plan.outputs.skip_round != 'true'
         continue-on-error: true
         env:
           SHARDS: ${{ steps.plan.outputs.shards }}
@@ -316,7 +344,7 @@ jobs:
 
   review:
     needs: plan
-    if: needs.plan.outputs.has_shards == 'true'
+    if: needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
     name: review (${{ matrix.shard.label }})
     runs-on: ubuntu-latest
     # agent 卡住时不能让 job 一路跑到 runner 的 6 小时上限：verdict 在 needs 上等着，
@@ -801,7 +829,7 @@ jobs:
   verify:
     timeout-minutes: 20
     needs: [plan, review]
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true'
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -966,7 +994,7 @@ jobs:
     # always()：任一分片撞上限、超时或崩掉，都要照样表态并写明哪片没覆盖。
     # 「跑挂了 PR 上什么都没有」正是分片要消掉的失败模式，这里是它的落点。
     needs: [plan, review, verify]
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true'
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
