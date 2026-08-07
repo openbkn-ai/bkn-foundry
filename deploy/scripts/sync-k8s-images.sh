@@ -158,11 +158,6 @@ for img in "${OTHER_IMAGES[@]}"; do
     echo "  - ${img}"
 done
 echo ""
-echo "Helm Hooks:"
-for img in "${HOOK_IMAGES[@]}"; do
-    echo "  - ${img}"
-done
-echo ""
 echo "OpenBKN Applications (configure based on your deployment):"
 if [[ ${#OPENBKN_APP_IMAGES[@]} -gt 0 ]]; then
     for img in "${OPENBKN_APP_IMAGES[@]}"; do
@@ -235,21 +230,6 @@ log_info "Syncing Kubernetes images..."
 for image in "${K8S_IMAGES[@]}"; do
     source_image="${SOURCE_REGISTRY}/${image}"
     target_image="${TARGET_REGISTRY}/${TARGET_NAMESPACE}/${image}"
-
-    if sync_image "${source_image}" "${target_image}"; then
-        SYNCED_COUNT=$((SYNCED_COUNT + 1))
-    else
-        FAILED_IMAGES+=("${source_image}")
-        FAILED_COUNT=$((FAILED_COUNT + 1))
-    fi
-done
-
-# Hook images are sourced from Docker Hub and mirrored under the same
-# openbkn-ai namespace used by offline Helm values.
-log_info "Syncing Helm hook images..."
-for image in "${HOOK_IMAGES[@]}"; do
-    source_image="docker.io/${image}"
-    target_image="${TARGET_REGISTRY}/openbkn-ai/${image}"
 
     if sync_image "${source_image}" "${target_image}"; then
         SYNCED_COUNT=$((SYNCED_COUNT + 1))

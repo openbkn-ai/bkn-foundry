@@ -115,6 +115,7 @@ not_contains "config application registries do not imply a third-party mirror" "
 
 sync_script="$(<"${SCRIPT_DIR}/scripts/sync-k8s-images.sh")"
 not_contains "offline sync excludes the deleted Hook image" "${sync_script}" 'curlimages/curl:8.10.1'
+not_contains "offline sync drops the Hook image array" "${sync_script}" 'HOOK_IMAGES'
 
 if [[ "${FAILED}" -eq 0 ]]; then
     echo "openbkn_trace_profile_test: all ${PASS} checks passed"
