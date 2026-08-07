@@ -121,8 +121,12 @@ not_contains "retrieval has no query gateway Secret" "${ar_sets}" "gateway_token
 # facts, different keys. Its chart defaults ingestTokenSecretName to empty and
 # the template only injects the token env when that name is set, so leaving it
 # unwired means Evidence posted with no token — which the receiver rejects.
+# Through _openbkn_release_extra_sets, not _openbkn_trace_profile_sets: the
+# outer function gates which releases reach the inner case at all, so testing
+# the inner one directly passes while the release stays unwired in a real
+# install. That is exactly how vega-backend was missed the first time.
 CORE_RELEASE_EXTRA_SETS=()
-_openbkn_trace_profile_sets vega-backend
+_openbkn_release_extra_sets vega-backend openbkn
 vega_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
 contains "vega posts evidence to the ingest route" "${vega_sets}" "bknTrace.evidence.ingestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
 contains "vega posts artifacts to the artifact route" "${vega_sets}" "bknTrace.evidence.artifactIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"

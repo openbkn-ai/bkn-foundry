@@ -870,7 +870,11 @@ _openbkn_release_extra_sets() {
         else
             CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=false")
         fi
-    elif [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "otelcol-contrib" ]]; then
+    elif [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "otelcol-contrib" ||
+            "${release_name}" == "vega-backend" ]]; then
+        # This list gates _openbkn_trace_profile_sets: a release absent here
+        # never reaches the case inside it, however complete that case looks.
+        # Adding a producer means adding it in both places.
         _openbkn_trace_profile_sets "${release_name}"
         if [[ "${release_name}" == "agent-retrieval" ]]; then
             # This chart renders metadata.namespace from values; keep it aligned
