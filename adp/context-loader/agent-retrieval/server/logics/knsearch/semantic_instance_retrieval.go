@@ -45,12 +45,8 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
 
-	// 向量预算按相关度分配，不按列表位置：概念召回命中关系类型时返回的顺序是知识网络
-	// 里对象类的自然顺序，不是相关度序，照位置截会把预算发给不相关的对象类。
-	knnEligible := knnEligibleObjectTypes(objectTypes, instanceConfig)
-
 	for _, objType := range objectTypes {
-		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, knnEligible[objType.ConceptID])
+		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, knnAllowedFor(objType, instanceConfig))
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Failed to retrieve instances for %s: %v",
 				objType.ConceptID, err)
@@ -413,53 +409,19 @@ func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode,
 	return nodes
 }
 
-// knnEligibleObjectTypes 选出这一轮可以发向量条件的对象类，返回按 concept_id 索引的集合。
+// knnAllowedFor 判断某个对象类这一轮是否发向量条件。
 //
-// 为什么不按遍历位置截：概念召回命中关系类型时，selectObjectTypesForConceptRetrieval
-// 返回的是按知识网络原始顺序过滤出来的列表，不是相关度序。照位置取前 N 会把向量预算
-// 发给排在前面但不相关的对象类，真正相关的反而只能走全文。这里按概念召回给出的分数
-// 重新挑，列表顺序本身不动（响应顺序不受影响）。
-//
-// KnnObjectTypeLimit <= 0 表示不限制；关掉向量检索时返回空集。
-func knnEligibleObjectTypes(
-	objectTypes []*interfaces.KnSearchObjectType,
-	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
-) map[string]bool {
-	eligible := map[string]bool{}
+// 唯一的门槛是它真有向量字段：没有的话本来也拼不出 knn，白占成本。至于「只挑最相关
+// 的几个对象类」——概念召回在主路径上不给对象类打分（Schema 取自知识网络详情，没有
+// _score），排出来的名次是知识网络里的自然顺序而不是相关度，按它截取只会随机地把
+// 向量能力从某些对象类上拿掉。实测在筛掉无向量字段的对象类之后，限不限个数的延迟
+// 没有差别，因此不设这个旋钮。成本随「建了向量索引的对象类数量」增长，那由建索引
+// 的人决定。
+func knnAllowedFor(objType *interfaces.KnSearchObjectType, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) bool {
 	if config == nil || !boolValue(config.EnableKnnInstanceRetrieval) {
-		return eligible
+		return false
 	}
-	if config.KnnObjectTypeLimit <= 0 {
-		for _, objType := range objectTypes {
-			if objType != nil {
-				eligible[objType.ConceptID] = true
-			}
-		}
-		return eligible
-	}
-
-	// 只有真有向量字段的对象类才参与分配。否则名额会被没有向量字段的对象类占掉
-	// （它们本来也发不出 knn），真正能用向量的反而排不进来。
-	ranked := make([]*interfaces.KnSearchObjectType, 0, len(objectTypes))
-	for _, objType := range objectTypes {
-		if objType == nil || !hasKnnField(objType) {
-			continue
-		}
-		ranked = append(ranked, objType)
-	}
-	// 稳定排序：分数相同时保持概念召回给出的先后，结果可复现。
-	sort.SliceStable(ranked, func(i, j int) bool {
-		return ranked[i].ConceptScore > ranked[j].ConceptScore
-	})
-
-	limit := config.KnnObjectTypeLimit
-	if limit > len(ranked) {
-		limit = len(ranked)
-	}
-	for _, objType := range ranked[:limit] {
-		eligible[objType.ConceptID] = true
-	}
-	return eligible
+	return hasKnnField(objType)
 }
 
 // hasKnnField 判断对象类上有没有可以发向量条件的属性。

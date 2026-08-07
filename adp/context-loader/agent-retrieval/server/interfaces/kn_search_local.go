@@ -75,10 +75,6 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	// 同一行的多个文本字段各发一次 knn，召回增益很小，成本却是线性叠加，默认只取
 	// 最靠前的一个字段。
 	MaxKnnSubConditionsPerType int `json:"max_knn_sub_conditions_per_type" default:"1"`
-	// KnnObjectTypeLimit 限制只对概念召回排名靠前的几个对象类发向量条件，其余只走
-	// 全文。概念召回已经按相关度排过序，尾部对象类本来就进不了最终结果，为它们付
-	// 向量化的钱是纯浪费。0 表示不限制。
-	KnnObjectTypeLimit int `json:"knn_object_type_limit" default:"3"`
 }
 
 // KnSearchPropertyFilterConfig 实例属性过滤配置
@@ -104,9 +100,6 @@ type KnSearchObjectType struct {
 	ConceptType     string                   `json:"concept_type,omitempty"`
 	ConceptID       string                   `json:"concept_id"`
 	ConceptName     string                   `json:"concept_name"`
-	// ConceptScore 是概念召回给出的相关度，仅供检索内部排序使用（例如把向量条件的
-	// 预算分给最相关的几个对象类），不进响应契约——响应里的顺序由概念召回决定。
-	ConceptScore float64 `json:"-"`
 	Comment         string                   `json:"comment,omitempty"`
 	Tags            []string                 `json:"tags,omitempty"`
 	DataSource      *ResourceInfo            `json:"data_source,omitempty"`

@@ -921,10 +921,9 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 			tags = obj.Tags
 		}
 		localObj := &interfaces.KnSearchObjectType{
-			ConceptType:  conceptType,
-			ConceptID:    obj.ID,
-			ConceptName:  obj.Name,
-			ConceptScore: obj.Score,
+			ConceptType: conceptType,
+			ConceptID:   obj.ID,
+			ConceptName: obj.Name,
 			Comment:     obj.Comment,
 			Tags:        tags,
 			DataSource:  dataSource,

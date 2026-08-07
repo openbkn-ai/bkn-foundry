@@ -402,7 +402,6 @@ func knnTestConfig() *interfaces.KnSearchSemanticInstanceRetrievalConfig {
 		PerTypeInstanceLimit:       5,
 		EnableKnnInstanceRetrieval: &enabled,
 		MaxKnnSubConditionsPerType: 1,
-		KnnObjectTypeLimit:         3,
 	}
 }
 
@@ -463,50 +462,21 @@ func TestBuildSemanticSearchConditionStruct_KnnOnlyFieldDeniedYieldsNil(t *testi
 	}
 }
 
-// 向量预算必须按相关度分配：概念召回命中关系类型时列表是网络原始顺序，
-// 照位置截会把预算发给排在前面的无关对象类。
-func TestKnnEligibleObjectTypes_RanksByScoreNotPosition(t *testing.T) {
-	config := knnTestConfig() // KnnObjectTypeLimit = 3
-	objectTypes := []*interfaces.KnSearchObjectType{
-		knnCapableObjectType("irrelevant_a", 0.1, true),
-		knnCapableObjectType("irrelevant_b", 0.2, true),
-		knnCapableObjectType("irrelevant_c", 0.3, true),
-		knnCapableObjectType("stadiums", 9.5, true),
-		knnCapableObjectType("teams", 8.0, true),
-		knnCapableObjectType("squads", 7.0, true),
-	}
-
-	eligible := knnEligibleObjectTypes(objectTypes, config)
-
-	if len(eligible) != 3 {
-		t.Fatalf("expected exactly the limit, got %d", len(eligible))
-	}
-	for _, want := range []string{"stadiums", "teams", "squads"} {
-		if !eligible[want] {
-			t.Fatalf("%s scored high and must get the vector budget, got %+v", want, eligible)
-		}
-	}
-	if eligible["irrelevant_a"] {
-		t.Fatalf("list position must not buy a vector budget: %+v", eligible)
-	}
-}
-
-func TestKnnEligibleObjectTypes_LimitAndSwitch(t *testing.T) {
-	objectTypes := []*interfaces.KnSearchObjectType{
-		knnCapableObjectType("a", 1, true),
-		knnCapableObjectType("b", 2, true),
-	}
-
+// 只有真有向量字段的对象类才发向量条件：没有的话本来也拼不出 knn。
+func TestKnnAllowedFor(t *testing.T) {
 	config := knnTestConfig()
-	config.KnnObjectTypeLimit = 0
-	if got := knnEligibleObjectTypes(objectTypes, config); len(got) != 2 {
-		t.Fatalf("limit 0 means no limit, got %+v", got)
+
+	if !knnAllowedFor(knnCapableObjectType("stadiums", 0, true), config) {
+		t.Fatalf("vector-capable object type must be allowed")
+	}
+	if knnAllowedFor(knnCapableObjectType("teams", 9.9, false), config) {
+		t.Fatalf("object type without a vector field must not be allowed regardless of anything else")
 	}
 
 	disabled := false
 	config.EnableKnnInstanceRetrieval = &disabled
-	if got := knnEligibleObjectTypes(objectTypes, config); len(got) != 0 {
-		t.Fatalf("disabling knn must win over any limit, got %+v", got)
+	if knnAllowedFor(knnCapableObjectType("stadiums", 0, true), config) {
+		t.Fatalf("the switch must win")
 	}
 }
 
@@ -518,8 +488,8 @@ func TestDefaultConfig_EnablesKnn(t *testing.T) {
 	if !boolValue(config.EnableKnnInstanceRetrieval) {
 		t.Fatalf("knn must be on by default")
 	}
-	if config.MaxKnnSubConditionsPerType <= 0 || config.KnnObjectTypeLimit <= 0 {
-		t.Fatalf("knn budgets must have real defaults, got %+v", config)
+	if config.MaxKnnSubConditionsPerType <= 0 {
+		t.Fatalf("knn budget must have a real default, got %+v", config)
 	}
 
 	merged := MergeRetrievalConfig(nil)
@@ -528,37 +498,16 @@ func TestDefaultConfig_EnablesKnn(t *testing.T) {
 	}
 }
 
-func knnCapableObjectType(id string, score float64, withVector bool) *interfaces.KnSearchObjectType {
+func knnCapableObjectType(id string, _ float64, withVector bool) *interfaces.KnSearchObjectType {
 	ops := []interfaces.KnOperationType{interfaces.KnOperationTypeEqual, interfaces.KnOperationTypeMatch}
 	if withVector {
 		ops = append(ops, interfaces.KnOperationTypeKnn)
 	}
 	return &interfaces.KnSearchObjectType{
-		ConceptID:    id,
-		ConceptScore: score,
+		ConceptID: id,
 		DataProperties: []*interfaces.KnSearchDataProperty{
 			{Name: "name", Type: "string", ConditionOperations: ops},
 		},
 	}
 }
 
-// 名额只能发给真有向量字段的对象类：粗召回只给命中的对象类打分，作为关系端点
-// 捎带进来的分数是 0，照单排序会让没有向量字段的对象类占满名额。
-func TestKnnEligibleObjectTypes_SkipsTypesWithoutVectorField(t *testing.T) {
-	config := knnTestConfig() // limit = 3
-	objectTypes := []*interfaces.KnSearchObjectType{
-		knnCapableObjectType("no_vector_a", 0, false),
-		knnCapableObjectType("no_vector_b", 0, false),
-		knnCapableObjectType("no_vector_c", 0, false),
-		knnCapableObjectType("stadiums", 0, true),
-	}
-
-	eligible := knnEligibleObjectTypes(objectTypes, config)
-
-	if !eligible["stadiums"] {
-		t.Fatalf("the only vector-capable object type must get the budget, got %+v", eligible)
-	}
-	if len(eligible) != 1 {
-		t.Fatalf("types without a vector field must not consume a slot, got %+v", eligible)
-	}
-}
