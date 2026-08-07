@@ -16,7 +16,10 @@ type Query struct {
 	RequestID      string
 	TraceID        string
 	InteractionID  string
-	Limit          int
+	// AuthorizedInteractionIDs is an internal handoff from the Core projection.
+	// It carries an Interaction-level authorization decision to its artifact reader.
+	AuthorizedInteractionIDs []string
+	Limit                    int
 }
 
 type Result struct {
