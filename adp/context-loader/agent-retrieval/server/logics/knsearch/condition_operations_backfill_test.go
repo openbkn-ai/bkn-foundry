@@ -84,3 +84,46 @@ func TestBackfillConditionOperations_DegradesOnError(t *testing.T) {
 		t.Fatalf("failed backfill must leave the object type untouched, got %+v", objType.DataProperties[0].ConditionOperations)
 	}
 }
+
+// 概念召回的 Schema 取自知识网络导出视图，属性上不带算子。补齐必须发生在这一阶段，
+// 否则 search_schema 的响应里没有能力信息——Agent 就无从知道字段能不能 match / knn，
+// 而这正是它规划查询的唯一依据。
+func TestBackfillConditionOperations_MakesCapabilityVisibleInSchema(t *testing.T) {
+	backend := &mockBknBackend{
+		objectDetailResp: []*interfaces.ObjectType{
+			{
+				ID: "stadiums",
+				DataProperties: []*interfaces.DataProperty{
+					{Name: "stadium_name", ConditionOperations: []interfaces.KnOperationType{
+						interfaces.KnOperationTypeEqual,
+						interfaces.KnOperationTypeMatch,
+						interfaces.KnOperationTypeKnn,
+					}},
+				},
+			},
+		},
+	}
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	objType := &interfaces.KnSearchObjectType{
+		ConceptID: "stadiums",
+		DataProperties: []*interfaces.KnSearchDataProperty{
+			{Name: "stadium_name", Type: "string"},
+		},
+	}
+
+	svc.backfillConditionOperations(context.Background(), "kn1", []*interfaces.KnSearchObjectType{objType})
+
+	ops := objType.DataProperties[0].ConditionOperations
+	var hasMatch, hasKnn bool
+	for _, op := range ops {
+		switch op {
+		case interfaces.KnOperationTypeMatch:
+			hasMatch = true
+		case interfaces.KnOperationTypeKnn:
+			hasKnn = true
+		}
+	}
+	if !hasMatch || !hasKnn {
+		t.Fatalf("schema must expose what the field can actually do, got %+v", ops)
+	}
+}

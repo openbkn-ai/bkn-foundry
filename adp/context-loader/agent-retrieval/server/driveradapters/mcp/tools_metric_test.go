@@ -6,8 +6,10 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 	"github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -28,6 +30,29 @@ func (s *stubMetricBknBackend) GetKnowledgeNetworkDetail(_ context.Context, _ st
 
 func (s *stubMetricBknBackend) ListMetricsByObjectTypes(_ context.Context, _ string, _ []string) ([]*interfaces.RelatedMetric, error) {
 	return s.metrics, nil
+}
+
+// GetObjectTypeDetail 按 id 返回详情，模拟 BKN 的富化端点：get_object_types 改走它
+// 之后，桩不实现就会空指针。
+func (s *stubMetricBknBackend) GetObjectTypeDetail(_ context.Context, _ string, ids []string, _ bool) ([]*interfaces.ObjectType, error) {
+	if s.detail == nil {
+		return nil, nil
+	}
+	wanted := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
+
+	var matched []*interfaces.ObjectType
+	for _, ot := range s.detail.ObjectTypes {
+		if ot == nil {
+			continue
+		}
+		if _, ok := wanted[ot.ID]; ok {
+			matched = append(matched, ot)
+		}
+	}
+	return matched, nil
 }
 
 type stubMetricOntologyQuery struct {
@@ -105,4 +130,61 @@ func TestHandleQueryMetric(t *testing.T) {
 		convey.So(result.IsError, convey.ShouldBeTrue)
 		convey.So(oq.gotMetric, convey.ShouldBeEmpty)
 	})
+}
+
+// get_object_types 必须走按 id 取详情的富化端点：导出视图不带 condition_operations，
+// 调用方（Agent）据此判断字段能不能 match / knn，拿到空的就只能靠猜。
+func TestHandleGetObjectTypes_UsesEnrichedEndpoint(t *testing.T) {
+	convey.Convey("Test get_object_types reads the enriched detail endpoint", t, func() {
+		stub := &capsBknBackend{
+			ops: []interfaces.KnOperationType{
+				interfaces.KnOperationTypeEqual,
+				interfaces.KnOperationTypeMatch,
+				interfaces.KnOperationTypeKnn,
+			},
+		}
+
+		handler := handleGetObjectTypes(stub, knmetrics.NewKnMetricsServiceWith(nil, stub, nil))
+		req := mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
+			Arguments: map[string]any{
+				"kn_id": "kn1",
+				"ids":   []any{"stadiums"},
+			},
+		}}
+
+		result, err := handler(context.Background(), req)
+
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(stub.detailCalls, convey.ShouldEqual, 1)
+		convey.So(stub.exportCalls, convey.ShouldEqual, 0)
+		convey.So(fmt.Sprintf("%v", result), convey.ShouldContainSubstring, "knn")
+	})
+}
+
+// capsBknBackend 只回一个带算子的对象类，并分别记录两条取数路径被调用的次数。
+type capsBknBackend struct {
+	interfaces.BknBackendAccess
+	ops         []interfaces.KnOperationType
+	detailCalls int
+	exportCalls int
+}
+
+func (s *capsBknBackend) GetObjectTypeDetail(_ context.Context, _ string, _ []string, _ bool) ([]*interfaces.ObjectType, error) {
+	s.detailCalls++
+	return []*interfaces.ObjectType{{
+		ID:   "stadiums",
+		Name: "球场",
+		DataProperties: []*interfaces.DataProperty{
+			{Name: "stadium_name", Type: "string", ConditionOperations: s.ops},
+		},
+	}}, nil
+}
+
+func (s *capsBknBackend) GetKnowledgeNetworkDetail(_ context.Context, _ string) (*interfaces.KnowledgeNetworkDetail, error) {
+	s.exportCalls++
+	return &interfaces.KnowledgeNetworkDetail{}, nil
+}
+
+func (s *capsBknBackend) ListMetricsByObjectTypes(_ context.Context, _ string, _ []string) ([]*interfaces.RelatedMetric, error) {
+	return nil, nil
 }
