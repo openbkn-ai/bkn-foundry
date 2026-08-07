@@ -324,13 +324,15 @@ func TestResourceAccessUpdate(t *testing.T) {
 		defer cleanup()
 		res := sampleResource()
 		res.LocalIndexName = "vega-build-resource-1-task-1"
+		res.StatusMessage = "discover metadata failed: table metadata not found or inaccessible: public.orders"
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_catalog_id = ?, f_name = ?, f_tags = ?, f_description = ?, f_source_metadata = ?, f_schema_definition = ?, f_index_config = ?, f_logic_type = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ?, f_local_index_name = ?, f_last_discover_status = ? WHERE f_id = ?")).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_catalog_id = ?, f_name = ?, f_tags = ?, f_description = ?, f_status_message = ?, f_source_metadata = ?, f_schema_definition = ?, f_index_config = ?, f_logic_type = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ?, f_local_index_name = ?, f_last_discover_status = ? WHERE f_id = ?")).
 			WithArgs(
 				res.CatalogID,
 				res.Name,
 				`"pii","core"`,
 				res.Description,
+				res.StatusMessage,
 				`{"properties":{"row_count":42}}`,
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
 				`{"build_key_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,

@@ -864,6 +864,7 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *inte
 		Set("f_name", resource.Name).
 		Set("f_tags", tagsStr).
 		Set("f_description", resource.Description).
+		Set("f_status_message", resource.StatusMessage).
 		Set("f_source_metadata", string(sourceMetadataBytes)).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).
 		Set("f_index_config", string(indexConfigBytes)).
