@@ -437,6 +437,11 @@ CORE_RELEASE_EXTRA_SET_STRINGS=()
 OPENBKN_TRACE_CORE_SECRET="${OPENBKN_TRACE_CORE_SECRET:-bkn-trace-core-mariadb}"
 OPENBKN_TRACE_DATABASE="bkn_trace"
 OPENBKN_TRACE_INGEST_SECRET="${OPENBKN_TRACE_INGEST_SECRET:-bkn-trace-evidence-ingest}"
+# One definition of where Evidence goes. Producers use different value keys, so
+# repeating the literal per release is how they drift apart — and a producer
+# posting to the wrong path fails the same silent way an unwired one does.
+OPENBKN_TRACE_EVIDENCE_INGEST_URL="${OPENBKN_TRACE_EVIDENCE_INGEST_URL:-http://agent-observability:8080/api/agent-observability/v1/evidence/events}"
+OPENBKN_TRACE_ARTIFACT_INGEST_URL="${OPENBKN_TRACE_ARTIFACT_INGEST_URL:-http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts}"
 OPENBKN_TRACE_OPENSEARCH_SECRET="${OPENBKN_TRACE_OPENSEARCH_SECRET:-bkn-trace-opensearch}"
 
 _openbkn_trace_opensearch_protocol() {
@@ -495,12 +500,57 @@ _openbkn_trace_profile_sets() {
                 "observability.trace.enabled=true"
                 "observability.log.enabled=true"
                 "observability.lifecycle.core_url=http://agent-observability-internal:8081"
-                "observability.evidence.ingest_url=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+                "observability.evidence.ingest_url=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
                 "observability.evidence.ingest_token_secret_name=${OPENBKN_TRACE_INGEST_SECRET}"
                 "observability.evidence.ingest_token_secret_key=token"
             )
             ;;
+        vega-backend)
+            # A different chart generation, so the same three facts live under
+            # different keys. Both the URL and the Secret name must be set: each
+            # gates its own env block in the template, and the token alone —
+            # without an ingest URL — writes nowhere.
+            CORE_RELEASE_EXTRA_SETS+=(
+                "bknTrace.evidence.ingestUrl=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
+                "bknTrace.evidence.artifactIngestUrl=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}"
+                "bknTrace.evidence.ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
+                "bknTrace.evidence.ingestTokenSecretKey=token"
+            )
+            ;;
     esac
+}
+
+# Releases that write Evidence and therefore need the ingest token. Their charts
+# all default ingestTokenSecretName to the empty string, and the template only
+# injects the token env when that name is set — so a producer nobody wires here
+# posts Evidence with no token at all, which agent-observability rejects
+# (allowUnauthenticated defaults to false).
+#
+# That failure is silent: the pod stays green and only the Evidence goes
+# missing. Naming the unwired ones at install time is the difference between a
+# known gap and a mystery weeks later.
+_OPENBKN_TRACE_EVIDENCE_PRODUCERS=(
+    agent-retrieval
+    vega-backend
+    bkn-backend
+    ontology-query
+    bkn-agent
+    agent-operator-integration
+)
+
+_openbkn_warn_unwired_evidence_producers() {
+    local -a unwired=()
+    local release_name
+    for release_name in "$@"; do
+        _openbkn_release_list_contains "${release_name}" "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" || continue
+        case "${release_name}" in
+            agent-retrieval|vega-backend) ;;
+            *) unwired+=("${release_name}") ;;
+        esac
+    done
+    if [[ ${#unwired[@]} -gt 0 ]]; then
+        log_warn "BKN Trace: no Evidence ingest token wired for ${unwired[*]} — their Evidence writes will be rejected until their charts are wired here"
+    fi
 }
 
 _openbkn_release_list_contains() {
@@ -1140,6 +1190,7 @@ install_openbkn() {
             log_error "BKN Trace installation profile is not ready"
             return 1
         fi
+        _openbkn_warn_unwired_evidence_producers "${release_names[@]}"
     fi
 
     local release_version
