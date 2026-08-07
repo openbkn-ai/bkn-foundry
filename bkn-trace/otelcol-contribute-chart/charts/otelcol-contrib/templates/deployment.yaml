@@ -54,12 +54,12 @@ spec:
             - name: OPENSEARCH_AUTH_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "opensearch.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearchExporter.auth.existingSecret | quote }}
+                  name: {{ required "opensearchExporter.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearchExporter.auth.existingSecret | quote }}
                   key: {{ .Values.opensearchExporter.auth.usernameKey | quote }}
             - name: OPENSEARCH_AUTH_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "opensearch.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearchExporter.auth.existingSecret | quote }}
+                  name: {{ required "opensearchExporter.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearchExporter.auth.existingSecret | quote }}
                   key: {{ .Values.opensearchExporter.auth.passwordKey | quote }}
             {{- end }}
             {{- with .Values.extraEnvs }}

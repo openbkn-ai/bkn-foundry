@@ -29,6 +29,7 @@ assert_requires_secret() {
   local chart_name="$1"
   local chart_path="$2"
   local auth_path="$3"
+  local required_message="$4"
   local stderr_file
   stderr_file="$(mktemp)"
 
@@ -37,7 +38,7 @@ assert_requires_secret() {
     echo "${chart_name} must fail closed when OpenSearch auth has no existingSecret" >&2
     exit 1
   fi
-  if ! grep -Fq "opensearch.auth.existingSecret is required" "${stderr_file}"; then
+  if ! grep -Fq "${required_message}" "${stderr_file}"; then
     rm -f "${stderr_file}"
     echo "${chart_name} must report the missing OpenSearch existingSecret" >&2
     exit 1
@@ -52,8 +53,8 @@ assert_not_contains "${agent_default}" "OPENSEARCH_AUTH_PASSWORD"
 assert_not_contains "${collector_default}" "OPENSEARCH_AUTH_USERNAME"
 assert_not_contains "${collector_default}" "OPENSEARCH_AUTH_PASSWORD"
 
-assert_requires_secret agent-observability "${agent_chart}" opensearch.auth
-assert_requires_secret otelcol-contrib "${collector_chart}" opensearchExporter.auth
+assert_requires_secret agent-observability "${agent_chart}" opensearch.auth "opensearch.auth.existingSecret is required"
+assert_requires_secret otelcol-contrib "${collector_chart}" opensearchExporter.auth "opensearchExporter.auth.existingSecret is required"
 
 agent_secure="$(helm template agent-observability "${agent_chart}" \
   --set evidence.store=opensearch \
