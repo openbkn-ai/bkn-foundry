@@ -81,8 +81,9 @@ opensearchExporter:
       insecure: true
   auth:
     enabled: false
-    username: ""
-    password: ""
+    existingSecret: ""
+    usernameKey: username
+    passwordKey: password
   dataset: default
   namespace: namespace
   logsIndex: ""

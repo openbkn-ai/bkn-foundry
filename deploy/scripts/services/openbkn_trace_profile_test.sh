@@ -35,6 +35,17 @@ trap 'rm -f "${CONFIG_REGISTRY_FILE}"' EXIT
 # shellcheck source=../services/openbkn.sh
 source "${SCRIPT_DIR}/scripts/services/openbkn.sh"
 
+# The production installer loads common.sh before this module. Keep this unit
+# test cluster-free while exercising the same config contract.
+config_yaml_dep_field() {
+    local section="$1" field="$2"
+    awk -v sec="${section}:" -v fld="${field}:" '
+        !in_block && $1 == sec && substr($0, 1, 2) == "  " {in_block=1; next}
+        in_block && NF && $0 !~ /^    / {exit}
+        in_block && $1 == fld {gsub(/'"'"'|"/, "", $2); print $2; exit}
+    ' "${CONFIG_REGISTRY_FILE}" 2>/dev/null
+}
+
 # The profile builder is deliberately pure: install tests can validate the product
 # contract without a cluster, credentials, or a Helm chart archive.
 CORE_RELEASE_EXTRA_SETS=()
@@ -47,6 +58,30 @@ contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
 not_contains "AO leaves index initialization to runtime" "${ao_sets}" "evidence.indexManagement"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
+
+cat >"${CONFIG_REGISTRY_FILE}" <<'EOF'
+depServices:
+  opensearch:
+    host: opensearch-secure.resource.svc.cluster.local
+    port: 9200
+    protocol: https
+EOF
+CORE_RELEASE_EXTRA_SETS=()
+_openbkn_trace_profile_sets agent-observability
+secure_ao_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "secure AO uses the OpenSearch endpoint from config" "${secure_ao_sets}" "opensearch.endpoint=https://opensearch-secure.resource.svc.cluster.local:9200"
+contains "secure AO enables OpenSearch auth" "${secure_ao_sets}" "opensearch.auth.enabled=true"
+contains "secure AO references the shared OpenSearch Secret" "${secure_ao_sets}" "opensearch.auth.existingSecret=bkn-trace-opensearch"
+not_contains "secure AO never forwards an OpenSearch password to Helm" "${secure_ao_sets}" "password="
+
+CORE_RELEASE_EXTRA_SETS=()
+_openbkn_trace_profile_sets otelcol-contrib
+secure_collector_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "secure Collector uses the OpenSearch endpoint from config" "${secure_collector_sets}" "opensearchExporter.http.endpoint=https://opensearch-secure.resource.svc.cluster.local:9200"
+contains "secure Collector verifies the OpenSearch TLS peer" "${secure_collector_sets}" "opensearchExporter.http.tls.insecure=false"
+contains "secure Collector enables OpenSearch auth" "${secure_collector_sets}" "opensearchExporter.auth.enabled=true"
+contains "secure Collector references the shared OpenSearch Secret" "${secure_collector_sets}" "opensearchExporter.auth.existingSecret=bkn-trace-opensearch"
+not_contains "secure Collector never forwards an OpenSearch password to Helm" "${secure_collector_sets}" "password="
 
 otel_values="$(<"${SCRIPT_DIR}/../bkn-trace/otelcol-contribute-chart/charts/otelcol-contrib/values.yaml")"
 contains "collector uses the Trace profile dataset" "${otel_values}" "dataset: default"

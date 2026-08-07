@@ -8,6 +8,8 @@ CALLS=()
 EXISTING_SECRETS=""
 EXISTING_DSN_DATA="dHJhY2U6c2VjcmV0QHRjcChkYi5leGFtcGxlOjMzMDYpL2Jrbl90cmFjZT9jaGFyc2V0PXV0ZjhtYjQ="
 EXISTING_TOKEN_DATA=""
+EXISTING_OPENSEARCH_USERNAME_DATA=""
+EXISTING_OPENSEARCH_PASSWORD_DATA=""
 KUBECTL_LOG="$(mktemp)"
 LAST_ERROR=""
 
@@ -46,13 +48,19 @@ kubectl() {
                 printf '%s' "${EXISTING_DSN_DATA}"
             elif [[ "$*" == *"jsonpath={.data.token}"* ]]; then
                 printf '%s' "${EXISTING_TOKEN_DATA}"
+            elif [[ "$*" == *"jsonpath={.data.username}"* ]]; then
+                printf '%s' "${EXISTING_OPENSEARCH_USERNAME_DATA}"
+            elif [[ "$*" == *"jsonpath={.data.password}"* ]]; then
+                printf '%s' "${EXISTING_OPENSEARCH_PASSWORD_DATA}"
             fi
             return 0
             ;;
         *"create secret"*)
-            local stdin_value
-            stdin_value="$(cat)"
-            printf 'stdin:%s\n' "${stdin_value}" >>"${KUBECTL_LOG}"
+            if [[ "$*" != *"--from-file=username="* ]]; then
+                local stdin_value
+                stdin_value="$(cat)"
+                printf 'stdin:%s\n' "${stdin_value}" >>"${KUBECTL_LOG}"
+            fi
             printf '%s\n' 'apiVersion: v1' 'kind: Secret'
             return 0
             ;;
@@ -79,6 +87,12 @@ depServices:
     port: "3306"
     user: "openbkn"
     password: "trace-password"
+  opensearch:
+    host: "opensearch-secure.resource.svc.cluster.local"
+    user: "trace-reader"
+    password: "opensearch-password"
+    port: "9200"
+    protocol: https
 EOF
 _openbkn_prepare_trace_profile openbkn
 assert_contains "creates the Evidence ingest Secret before releases" "create secret generic bkn-trace-evidence-ingest"
@@ -91,8 +105,37 @@ fi
 assert_contains "creates the Core DSN Secret" "create secret generic bkn-trace-core-mariadb"
 assert_contains "uses the Trace database DSN" "/bkn_trace?charset=utf8mb4"
 assert_contains "passes the DSN through stdin" "--from-file=dsn=/dev/stdin"
+assert_contains "creates the secure OpenSearch Secret" "create secret generic bkn-trace-opensearch"
+assert_contains "passes the OpenSearch username through a file descriptor" "--from-file=username="
+assert_contains "passes the OpenSearch password through a file descriptor" "--from-file=password="
 if grep -Fq -- "--from-literal=dsn=" "${KUBECTL_LOG}"; then
     fail "Core DSN must not be exposed in kubectl process arguments"
+else
+    ok
+fi
+if grep -Fq -- "opensearch-password" "${KUBECTL_LOG}" || grep -Fq -- "--from-literal=password=" "${KUBECTL_LOG}"; then
+    fail "OpenSearch password must not be exposed in kubectl process arguments or logs"
+else
+    ok
+fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
+EXISTING_SECRETS="bkn-trace-opensearch"
+EXISTING_OPENSEARCH_USERNAME_DATA="dHJhY2UtcmVhZGVy"
+EXISTING_OPENSEARCH_PASSWORD_DATA="c2VjdXJlLXBhc3N3b3Jk"
+_openbkn_prepare_trace_opensearch_secret openbkn
+if grep -Fq "create secret generic bkn-trace-opensearch" "${KUBECTL_LOG}"; then
+    fail "existing OpenSearch Secret must be reused"
+else
+    ok
+fi
+
+CALLS=()
+: >"${KUBECTL_LOG}"
+EXISTING_OPENSEARCH_PASSWORD_DATA=""
+if _openbkn_prepare_trace_opensearch_secret openbkn; then
+    fail "existing OpenSearch Secret without password must fail"
 else
     ok
 fi

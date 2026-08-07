@@ -437,6 +437,22 @@ CORE_RELEASE_EXTRA_SET_STRINGS=()
 OPENBKN_TRACE_CORE_SECRET="${OPENBKN_TRACE_CORE_SECRET:-bkn-trace-core-mariadb}"
 OPENBKN_TRACE_DATABASE="bkn_trace"
 OPENBKN_TRACE_INGEST_SECRET="${OPENBKN_TRACE_INGEST_SECRET:-bkn-trace-evidence-ingest}"
+OPENBKN_TRACE_OPENSEARCH_SECRET="${OPENBKN_TRACE_OPENSEARCH_SECRET:-bkn-trace-opensearch}"
+
+_openbkn_trace_opensearch_protocol() {
+    local protocol="${1:-}"
+    protocol="${protocol:-$(config_yaml_dep_field opensearch protocol)}"
+    printf '%s' "${protocol:-http}"
+}
+
+_openbkn_trace_opensearch_endpoint() {
+    local protocol host port
+    protocol="$(_openbkn_trace_opensearch_protocol)"
+    host="$(config_yaml_dep_field opensearch host)"
+    port="$(config_yaml_dep_field opensearch port)"
+    port="${port:-9200}"
+    printf '%s://%s:%s' "${protocol}" "${host}" "${port}"
+}
 
 # The chart defaults keep standalone development lightweight. A complete
 # OpenBKN installation, however, must make managed Agent conversations durable
@@ -456,6 +472,23 @@ _openbkn_trace_profile_sets() {
                 "opensearch.traceIndex=ss4o_traces-default-namespace"
                 "opensearch.logIndex=ss4o_logs-default-namespace"
             )
+            if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
+                CORE_RELEASE_EXTRA_SETS+=(
+                    "opensearch.endpoint=$(_openbkn_trace_opensearch_endpoint)"
+                    "opensearch.auth.enabled=true"
+                    "opensearch.auth.existingSecret=${OPENBKN_TRACE_OPENSEARCH_SECRET}"
+                )
+            fi
+            ;;
+        otelcol-contrib)
+            if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
+                CORE_RELEASE_EXTRA_SETS+=(
+                    "opensearchExporter.http.endpoint=$(_openbkn_trace_opensearch_endpoint)"
+                    "opensearchExporter.http.tls.insecure=false"
+                    "opensearchExporter.auth.enabled=true"
+                    "opensearchExporter.auth.existingSecret=${OPENBKN_TRACE_OPENSEARCH_SECRET}"
+                )
+            fi
             ;;
         agent-retrieval)
             CORE_RELEASE_EXTRA_SETS+=(
@@ -495,6 +528,49 @@ _openbkn_prepare_trace_ingest_secret() {
     if ! generate_random_password 48 | kubectl create secret generic "${OPENBKN_TRACE_INGEST_SECRET}" -n "${namespace}" \
         --from-file=token=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null; then
         log_error "BKN Trace cannot create Evidence ingest Secret ${OPENBKN_TRACE_INGEST_SECRET}"
+        return 1
+    fi
+}
+
+_openbkn_prepare_trace_opensearch_secret() {
+    local namespace="$1"
+    local protocol host user password username_data password_data
+    protocol="$(_openbkn_trace_opensearch_protocol)"
+    if [[ "${protocol}" == "http" ]]; then
+        return 0
+    fi
+    if [[ "${protocol}" != "https" ]]; then
+        log_error "BKN Trace depServices.opensearch.protocol must be http or https; got ${protocol}"
+        return 1
+    fi
+
+    host="$(config_yaml_dep_field opensearch host)"
+    if [[ -z "${host}" ]]; then
+        log_error "BKN Trace secure OpenSearch requires depServices.opensearch.host"
+        return 1
+    fi
+
+    if kubectl get secret "${OPENBKN_TRACE_OPENSEARCH_SECRET}" -n "${namespace}" >/dev/null 2>&1; then
+        username_data="$(kubectl get secret "${OPENBKN_TRACE_OPENSEARCH_SECRET}" -n "${namespace}" -o jsonpath='{.data.username}' 2>/dev/null)"
+        password_data="$(kubectl get secret "${OPENBKN_TRACE_OPENSEARCH_SECRET}" -n "${namespace}" -o jsonpath='{.data.password}' 2>/dev/null)"
+        if [[ -z "${username_data}" || -z "${password_data}" ]]; then
+            log_error "BKN Trace OpenSearch Secret ${OPENBKN_TRACE_OPENSEARCH_SECRET} must contain username and password"
+            return 1
+        fi
+        return 0
+    fi
+
+    user="$(config_yaml_dep_field opensearch user)"
+    password="$(config_yaml_dep_field opensearch password)"
+    if [[ -z "${user}" || -z "${password}" ]]; then
+        log_error "BKN Trace secure OpenSearch requires depServices.opensearch user and password, or an existing Secret ${OPENBKN_TRACE_OPENSEARCH_SECRET}"
+        return 1
+    fi
+    if ! kubectl create secret generic "${OPENBKN_TRACE_OPENSEARCH_SECRET}" -n "${namespace}" \
+        --from-file=username=<(printf '%s' "${user}") \
+        --from-file=password=<(printf '%s' "${password}") \
+        --dry-run=client -o yaml | kubectl apply -f - >/dev/null; then
+        log_error "BKN Trace cannot create OpenSearch Secret ${OPENBKN_TRACE_OPENSEARCH_SECRET}"
         return 1
     fi
 }
@@ -558,6 +634,7 @@ _openbkn_prepare_trace_profile() {
     fi
 
     _openbkn_prepare_trace_ingest_secret "${namespace}"
+    _openbkn_prepare_trace_opensearch_secret "${namespace}"
 }
 
 _secret_is_owned_by_release() {

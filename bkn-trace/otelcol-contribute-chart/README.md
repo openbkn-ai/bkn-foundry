@@ -205,13 +205,19 @@ helm upgrade --install otelcol-contrib charts/otelcol-contrib \
 开启 Basic Auth 示例：
 
 ```bash
+kubectl create secret generic bkn-trace-opensearch \
+  -n observability \
+  --from-file=username=/path/to/opensearch-username \
+  --from-file=password=/path/to/opensearch-password
+
 helm upgrade --install otelcol-contrib charts/otelcol-contrib \
   -n observability \
   --create-namespace \
   --set opensearchExporter.auth.enabled=true \
-  --set opensearchExporter.auth.username=admin \
-  --set opensearchExporter.auth.password=admin
+  --set opensearchExporter.auth.existingSecret=bkn-trace-opensearch
 ```
+
+不要通过 Helm `--set` 传递 OpenSearch 用户名或密码。Chart 只接受已有 Secret 的名称；用户名与密码键默认为 `username`、`password`，可用 `opensearchExporter.auth.usernameKey` 与 `passwordKey` 覆盖。
 
 ## 7. 使用 telemetrygen 生成测试 Trace
 

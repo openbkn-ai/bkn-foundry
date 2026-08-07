@@ -103,9 +103,15 @@ spec:
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}
             {{- if .Values.opensearch.auth.enabled }}
             - name: OPENSEARCH_AUTH_USERNAME
-              value: {{ .Values.opensearch.auth.username | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "opensearch.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearch.auth.existingSecret | quote }}
+                  key: {{ .Values.opensearch.auth.usernameKey | quote }}
             - name: OPENSEARCH_AUTH_PASSWORD
-              value: {{ .Values.opensearch.auth.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "opensearch.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearch.auth.existingSecret | quote }}
+                  key: {{ .Values.opensearch.auth.passwordKey | quote }}
             {{- end }}
             {{- if .Values.evidence.ingestAuth.existingSecret }}
             - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN

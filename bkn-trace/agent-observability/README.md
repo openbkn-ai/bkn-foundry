@@ -414,15 +414,21 @@ helm upgrade --install agent-observability charts/agent-observability \
 启用 OpenSearch Basic Auth：
 
 ```bash
+kubectl create secret generic bkn-trace-opensearch \
+  -n observability \
+  --from-file=username=/path/to/opensearch-username \
+  --from-file=password=/path/to/opensearch-password
+
 helm upgrade --install agent-observability charts/agent-observability \
   --set image.repository=swr.cn-east-3.myhuaweicloud.com/kweaver-ai/agent-observability \
   --set image.tag=0.1.1 \
   --set opensearch.endpoint=http://opensearch-cluster-master:9200 \
   --set opensearch.auth.enabled=true \
-  --set opensearch.auth.username=your-username \
-  --set opensearch.auth.password=your-password \
+  --set opensearch.auth.existingSecret=bkn-trace-opensearch \
   -n observability --create-namespace
 ```
+
+不要通过 Helm `--set` 传递 OpenSearch 用户名或密码。Chart 只接受已有 Secret 的名称；用户名与密码键默认为 `username`、`password`，可用 `opensearch.auth.usernameKey` 与 `passwordKey` 覆盖。
 
 ## CI/CD
 

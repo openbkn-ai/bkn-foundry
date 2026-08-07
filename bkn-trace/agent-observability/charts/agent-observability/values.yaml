@@ -130,5 +130,6 @@ opensearch:
   logIndex: ss4o_logs-default-namespace
   auth:
     enabled: false
-    username: ""
-    password: ""
+    existingSecret: ""
+    usernameKey: username
+    passwordKey: password
