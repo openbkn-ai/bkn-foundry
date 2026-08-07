@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	dtype "ontology-query/interfaces/data_type"
 )
 
 type KnnCond struct {
@@ -132,18 +133,40 @@ func (cond *KnnCond) Convert2SQL(ctx context.Context) (string, error) {
 func rewriteKnnCond(ctx context.Context, cfg *CondCfg,
 	vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的资源字段
 	if cfg.NameField.Name == "" {
 		return nil, fmt.Errorf("向量过滤[knn]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
 	}
 
-	// 向量落在哪个字段、用哪个模型算，都是资源本地索引的实现细节，由 vega 自己解析：
-	// 它知道构建索引时给每个字段配了什么特性、用的哪个 embedding 模型。这里只把逻辑
-	// 属性名换成资源字段名，查询词原样传下去——和全文检索的分工一致（那边同样由 vega
-	// 把字段解析到分词子字段）。
+	// 属性本身就是 vector 类型：向量就存在这个字段上，用哪个模型也由对象类自己声明
+	// （index_config.vector_config.model_id）。这是对象类的 Schema，不是底层索引的
+	// 实现细节，所以在这里算好向量传下去——这类资源可能根本没有本地构建索引
+	// （例如直接对接的向量索引资源），下游没有别的依据可用。
+	if cfg.NameField.Type == dtype.DATATYPE_VECTOR {
+		if cfg.NameField.IndexConfig == nil || cfg.NameField.IndexConfig.VectorConfig.ModelID == "" {
+			return nil, fmt.Errorf("condition [knn] left field field: %s need config a small model, current small model is empty", cfg.NameField.Name)
+		}
+
+		vector, err := vectorizer(ctx, cfg.NameField, fmt.Sprintf("%v", cfg.Value))
+		if err != nil {
+			return nil, fmt.Errorf("condition [knn]: vectorizer [%v] failed, error: %s", cfg.Value, err.Error())
+		}
+
+		return &CondCfg{
+			Name:      cfg.NameField.MappedField.Name,
+			Operation: OperationKNNVector,
+			ValueOptCfg: ValueOptCfg{
+				Value: vector[0].Vector,
+			},
+			RemainCfg: cfg.RemainCfg,
+		}, nil
+	}
+
+	// 标量属性：向量落在构建任务生成的字段上，字段名与模型都是本地索引的实现细节，
+	// 交给 vega 自己解析——它知道索引是哪个构建任务建的、当时用的哪个模型。这里只把
+	// 逻辑属性名换成资源字段名，查询词原样下传（与全文检索的分工一致）。
 	return &CondCfg{
 		Name:      cfg.NameField.MappedField.Name,
-		Operation: OperationKNNVector, // 操作符为 knn_vector
+		Operation: OperationKNNVector,
 		ValueOptCfg: ValueOptCfg{
 			Value: cfg.Value,
 		},

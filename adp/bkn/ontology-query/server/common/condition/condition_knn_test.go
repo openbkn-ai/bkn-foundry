@@ -484,6 +484,64 @@ func Test_rewriteKnnCond(t *testing.T) {
 }
 
 // 资源类对象类的属性是标量，向量落在构建任务生成的字段上：只看属性类型会把
+// 两条路径分工不同，必须分开钉住：
+//   - 属性本身是 vector 类型：向量就在该字段上，模型由对象类声明，在这里算好传下去。
+//     这类资源可能没有本地构建索引，下游没有别的依据可用。
+//   - 标量属性：向量在构建任务生成的字段上，字段名与模型都归 vega 解析，文本原样下传。
+func Test_rewriteKnnCond_NativeVectorPropertyVectorizesHere(t *testing.T) {
+	Convey("Test rewriteKnnCond on a native vector property", t, func() {
+		ctx := context.Background()
+		called := false
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			called = true
+			return []VectorResp{{Vector: []float32{0.1, 0.2}}}, nil
+		}
+
+		cfg := &CondCfg{
+			Name:      "embedding",
+			Operation: OperationKNN,
+			NameField: &DataProperty{
+				Name:        "embedding",
+				Type:        dtype.DATATYPE_VECTOR,
+				MappedField: Field{Name: "embedding_col"},
+				IndexConfig: &IndexConfig{VectorConfig: VectorConfig{Enabled: true, ModelID: "m-1"}},
+			},
+			ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
+		}
+
+		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
+
+		So(err, ShouldBeNil)
+		So(called, ShouldBeTrue)
+		So(result.Name, ShouldEqual, "embedding_col")
+		So(result.Value, ShouldResemble, []float32{0.1, 0.2})
+	})
+}
+
+func Test_rewriteKnnCond_NativeVectorPropertyNeedsModel(t *testing.T) {
+	Convey("Test rewriteKnnCond rejects a vector property without a model", t, func() {
+		ctx := context.Background()
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			return []VectorResp{{Vector: []float32{0.1}}}, nil
+		}
+
+		cfg := &CondCfg{
+			Name:      "embedding",
+			Operation: OperationKNN,
+			NameField: &DataProperty{
+				Name:        "embedding",
+				Type:        dtype.DATATYPE_VECTOR,
+				MappedField: Field{Name: "embedding_col"},
+			},
+			ValueOptCfg: ValueOptCfg{Value: "x"},
+		}
+
+		_, err := rewriteKnnCond(ctx, cfg, vectorizer)
+
+		So(err, ShouldNotBeNil)
+	})
+}
+
 // 向量字段与模型的解析归 vega：这里只把逻辑属性名换成资源字段名，查询词原样下传。
 func Test_rewriteKnnCond_PassesTextDownstream(t *testing.T) {
 	Convey("Test rewriteKnnCond keeps the query text", t, func() {
