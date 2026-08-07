@@ -538,6 +538,58 @@ _OPENBKN_TRACE_EVIDENCE_PRODUCERS=(
     agent-operator-integration
 )
 
+# Env vars that used to be written into the Deployment as a literal value and
+# are now sourced from a Secret.
+_OPENBKN_ENV_MOVED_TO_SECRET=(
+    BKN_TRACE_EVIDENCE_INGEST_TOKEN
+)
+
+# Kubernetes merges a container's env list by name, so an entry that carried a
+# literal `value` keeps it while the new render adds `valueFrom` — and a
+# container may not have both:
+#
+#   env[N].valueFrom: Invalid value: "": may not be specified when `value` is not empty
+#
+# helm upgrade cannot resolve that on its own; the stale entry has to go first.
+# Every deployment installed before the token moved into a Secret hits this, so
+# without this step "upgrade the existing installation" simply fails — the same
+# class of blocker as the Secret key rename, and the one an operator is least
+# equipped to diagnose from the message above.
+#
+# Dropping the whole entry rather than just its value keeps this a single
+# strategic-merge patch, and the chart re-adds it in the same upgrade.
+# Deliberately quiet when there is nothing to do: fresh installs and
+# already-migrated ones must not print a scary line about Secrets.
+_openbkn_drop_literal_env_now_from_secret() {
+    local release_name="$1"
+    local namespace="$2"
+    local env_name current_value container_name
+
+    kubectl get deployment "${release_name}" -n "${namespace}" >/dev/null 2>&1 || return 0
+
+    # The strategic patch addresses the container by name. It happens to equal
+    # the release name for every release here, but reading it costs one call and
+    # removes a coincidence the next chart is free to break.
+    container_name="$(kubectl get deployment "${release_name}" -n "${namespace}" \
+        -o jsonpath='{.spec.template.spec.containers[0].name}' 2>/dev/null)"
+    [[ -n "${container_name}" ]] || return 0
+
+    for env_name in "${_OPENBKN_ENV_MOVED_TO_SECRET[@]}"; do
+        # A literal survivor has .value set. One already sourced from a Secret
+        # has only .valueFrom, so this reads empty and is left alone.
+        current_value="$(kubectl get deployment "${release_name}" -n "${namespace}" \
+            -o "jsonpath={.spec.template.spec.containers[0].env[?(@.name=='${env_name}')].value}" 2>/dev/null)"
+        [[ -n "${current_value}" ]] || continue
+
+        if kubectl patch deployment "${release_name}" -n "${namespace}" --type=strategic \
+            -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"${container_name}\",\"env\":[{\"name\":\"${env_name}\",\"\$patch\":\"delete\"}]}]}}}}" >/dev/null 2>&1; then
+            log_info "${release_name}: dropped literal ${env_name} so the upgrade can source it from a Secret"
+        else
+            log_warn "${release_name}: could not drop literal ${env_name}; the upgrade will fail while both value and valueFrom are set"
+        fi
+    done
+}
+
 _openbkn_warn_unwired_evidence_producers() {
     local -a unwired=()
     local release_name
@@ -862,6 +914,8 @@ _install_openbkn_release_repo() {
         log_info "Cleaning up ${release_name} (status: ${current_status})..."
         helm uninstall "${release_name}" -n "${namespace}" 2>/dev/null || true
     fi
+
+    _openbkn_drop_literal_env_now_from_secret "${release_name}" "${namespace}"
 
     log_info "Installing ${release_name} from ${chart_ref}..."
 
