@@ -39,6 +39,7 @@ func KnSearchReqToLocal(req *interfaces.KnSearchReq) *interfaces.KnSearchLocalRe
 	if req.RerankModel != nil {
 		local.RerankModel = *req.RerankModel
 	}
+	local.IndexOpsOnly = req.IndexOpsOnly
 	if req.IncludeColumns != nil {
 		local.IncludeColumns = *req.IncludeColumns
 	}

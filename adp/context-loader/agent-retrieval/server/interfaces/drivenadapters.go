@@ -288,6 +288,10 @@ type KnSearchReq struct {
 	EnableRerank    *bool                 `json:"enable_rerank,omitempty"`
 	RerankModel     *string               `json:"rerank_model,omitempty"` // 精排小模型名覆盖；空走部署级默认
 	IncludeColumns  *bool                 `json:"include_columns,omitempty"`
+	// IndexOpsOnly 让响应里的 condition_operations 只保留索引带来的算子。由 MCP 层设置，
+	// 不进请求契约：比较算子按属性 type 可推导，逐个下发对 Agent 是纯噪音；REST 调用方
+	// 与直连 BKN 的消费者（如 Studio）仍拿全量。
+	IndexOpsOnly bool `json:"-"`
 }
 
 // SetKnIDs Sets knIDs (internal use, converted from KnID)

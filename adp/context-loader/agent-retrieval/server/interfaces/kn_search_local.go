@@ -29,6 +29,8 @@ type KnSearchLocalRequest struct {
 	// IncludeColumns adds each data property's physical column name (mapped_field)
 	// to the response for run_sql. Off by default to keep responses compact.
 	IncludeColumns bool `json:"include_columns" default:"false"`
+	// IndexOpsOnly 见 SearchSchemaReq 同名字段。
+	IndexOpsOnly bool `json:"-"`
 }
 
 // KnSearchRetrievalConfig 召回配置参数

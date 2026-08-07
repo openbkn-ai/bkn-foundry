@@ -128,7 +128,7 @@ func TestBackfillConditionOperations_MakesCapabilityVisibleInSchema(t *testing.T
 	}
 }
 
-// 精简只在出响应前做：实例召回要靠算子挑可检索字段，提前裁掉会让只支持等值的字段
+// 裁剪只在出响应前做，且只对 MCP 面：实例召回要靠算子挑可检索字段，提前裁掉会让只支持等值的字段
 // 整个消失——那是响应开关改了召回口径。实测全量比索引类多 10,453 字节（69 倍）。
 func TestTrimToIndexBackedOperations(t *testing.T) {
 	full := []interfaces.KnOperationType{

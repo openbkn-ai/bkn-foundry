@@ -121,9 +121,9 @@ func conditionOperationsPresent(objType *interfaces.KnSearchObjectType) bool {
 // Schema 本就是为省体积而设。
 //
 // 只在出响应时做，不影响检索：实例召回靠算子挑可检索字段，提前裁掉会让只支持等值的
-// 字段整个消失——那是响应开关改了召回口径。
-func trimToIndexBackedOperations(objectTypes []*interfaces.KnSearchObjectType, brief bool) {
-	if !brief {
+// 字段整个消失。也只对 MCP 面生效，REST 调用方仍拿全量。
+func trimToIndexBackedOperations(objectTypes []*interfaces.KnSearchObjectType, indexOpsOnly bool) {
+	if !indexOpsOnly {
 		return
 	}
 	for _, objType := range objectTypes {

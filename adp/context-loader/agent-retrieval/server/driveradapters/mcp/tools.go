@@ -41,6 +41,8 @@ func handleSearchSchema(knSearchService knsearch.KnSearchService) func(ctx conte
 		}
 
 		schemaReq := buildSearchSchemaReqFromMCP(req, authCtx)
+		// MCP 面只发不可推导的算子，比较算子由属性 type 决定。
+		schemaReq.IndexOpsOnly = true
 
 		resp, err := knSearchService.SearchSchema(ctx, schemaReq)
 		if err != nil {
@@ -555,6 +557,10 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		} else {
 			missing = missingObjectTypeIDs(args.IDs, matched)
 		}
+		// 与 search_schema 同一条规则：只发不可推导的算子。比较算子（==/in/like/range…）
+		// 由属性 type 决定，每个属性重复一遍十来个是纯噪音——对象类少也照样占上下文。
+		trimObjectTypesToIndexBackedOps(matched)
+
 		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
 		// property is unreachable from the object type without this.
 		metrics.AttachRelatedMetrics(ctx, knID, matched)
@@ -730,4 +736,35 @@ func missingObjectTypeIDs(requested []string, matched []*interfaces.ObjectType) 
 		}
 	}
 	return missing
+}
+
+// trimObjectTypesToIndexBackedOps 把算子收敛到索引带来的那几个。
+//
+// 规则与 search_schema 一致：condition_operations 只登记从属性类型推不出来的能力
+// （match / multi_match / knn，取决于底层索引建没建）。比较算子按 type 判断，服务端
+// 逐个下发没有信息量。这只影响 MCP 面；Studio 直接对接 BKN，拿到的仍是全量。
+func trimObjectTypesToIndexBackedOps(objectTypes []*interfaces.ObjectType) {
+	for _, ot := range objectTypes {
+		if ot == nil {
+			continue
+		}
+		for _, p := range ot.DataProperties {
+			if p == nil {
+				continue
+			}
+			p.ConditionOperations = indexBackedConditionOperations(p.ConditionOperations)
+		}
+	}
+}
+
+// indexBackedConditionOperations 只保留索引带来的算子。
+func indexBackedConditionOperations(ops []interfaces.KnOperationType) []interfaces.KnOperationType {
+	var out []interfaces.KnOperationType
+	for _, op := range ops {
+		switch op {
+		case interfaces.KnOperationTypeMatch, interfaces.KnOperationTypeMultiMatch, interfaces.KnOperationTypeKnn:
+			out = append(out, op)
+		}
+	}
+	return out
 }
