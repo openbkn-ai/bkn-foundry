@@ -1015,7 +1015,7 @@ func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx,
 }
 
 func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {
-	tasks, _, err := rs.bta.List(ctx, interfaces.BuildTasksQueryParams{
+	tasks, _, err := rs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
 		ResourceID:            resource.ID,
 		Statuses:              activeResourceBuildTaskStatuses,

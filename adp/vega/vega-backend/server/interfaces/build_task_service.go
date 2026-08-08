@@ -23,8 +23,8 @@ type BuildTaskService interface {
 	GetByID(ctx context.Context, id string) (*BuildTask, error)
 	// GetByResourceID retrieves a build task by resource ID.
 	GetByResourceID(ctx context.Context, resourceID string) (*BuildTask, error)
-	// List retrieves build tasks with filters and pagination.
-	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
+	// List retrieves build task summaries with filters and pagination.
+	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTaskSummary, int64, error)
 	// Start transitions a task from {init, stopped} to running (asynchronous; status persisted by worker).
 	Start(ctx context.Context, taskID string, reset bool) error
 	// Stop transitions a task from running to stopping (asynchronous; status persisted by worker).

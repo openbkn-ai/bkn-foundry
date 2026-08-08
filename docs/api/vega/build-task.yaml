@@ -76,17 +76,16 @@ paths:
             format: int64
             default: 20
         - name: order_by
-          description: 排序字段；默认 `default`（构建中的任务优先）
+          description: 排序字段，默认按创建时间排序
           in: query
           schema:
             type: string
             enum:
-              - default
               - created_at
               - updated_at
-            default: default
+            default: created_at
         - name: order
-          description: 排序方向，默认 desc；`order_by=default` 时固定使用服务端复合排序
+          description: 排序方向，默认 desc
           in: query
           schema:
             type: string
@@ -433,6 +432,28 @@ components:
           $ref: "#/components/schemas/BuildTaskIndexConfig"
         index_health:
           $ref: "#/components/schemas/IndexHealth"
+    BuildTaskSummary:
+      description: 构建任务列表摘要；索引配置快照和 failure_detail 请调用单条详情接口获取。
+      type: object
+      required: [id, resource_id, catalog_id, status, mode, total_count, synced_count, vectorized_count, synced_mark, creator, create_time, update_time]
+      properties:
+        id: { type: string }
+        resource_id: { type: string }
+        resource_name: { type: string }
+        catalog_id: { type: string }
+        catalog_name: { type: string }
+        status: { type: string }
+        mode: { type: string }
+        execute_type: { type: string }
+        total_count: { type: integer, format: int64 }
+        synced_count: { type: integer, format: int64 }
+        vectorized_count: { type: integer, format: int64 }
+        synced_mark: { type: string }
+        error_msg: { type: string }
+        creator: { $ref: "#/components/schemas/AccountInfo" }
+        create_time: { type: integer, format: int64 }
+        update_time: { type: integer, format: int64 }
+        index_health: { $ref: "#/components/schemas/IndexHealth" }
     BuildTaskIndexConfig:
       description: 创建任务时从 Resource 派生的索引配置快照
       type: object
@@ -527,7 +548,7 @@ components:
           description: 条目列表
           type: array
           items:
-            $ref: "#/components/schemas/BuildTask"
+            $ref: "#/components/schemas/BuildTaskSummary"
         total_count:
           description: 总条数
           type: integer

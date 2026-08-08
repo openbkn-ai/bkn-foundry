@@ -659,7 +659,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 		// 级联：无构建任务时 List 返回空，不再走 GetByResourceID 拦截
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{}, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{}, int64(0), nil)
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -676,7 +676,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
 		// 一个已完成任务 t1 → 期望 drop 其索引并删任务行
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
@@ -693,7 +693,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}}, int64(1), nil)
 		// 不应调用 DeleteByIDs / bta.Delete / ds.Delete
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
@@ -838,7 +838,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 	t.Run("update rejects build relevant change when active build task exists", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "r1" {
 					t.Fatalf("expected resource r1, got %q", params.ResourceID)
@@ -919,7 +919,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "r1" {
 					t.Fatalf("expected resource r1, got %q", params.ResourceID)
@@ -966,7 +966,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 	t.Run("update rejects index config change when active build task exists", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "r1" {
 					t.Fatalf("expected resource r1, got %q", params.ResourceID)
@@ -1011,7 +1011,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
@@ -1055,7 +1055,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockMFS.EXPECT().GetModelByName(gomock.Any(), "missing-model").Return(nil, fmt.Errorf("model not found"))
 
 		err := rs.Update(context.Background(), &interfaces.Resource{
@@ -1099,7 +1099,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 

@@ -59,6 +59,27 @@ func buildTaskColumns() []string {
 	}
 }
 
+func buildTaskSummaryColumns() []string {
+	return []string{
+		"f_id",
+		"f_resource_id",
+		"f_catalog_id",
+		"f_mode",
+		"f_execute_type",
+		"f_index_config",
+		"f_status",
+		"f_total_count",
+		"f_synced_count",
+		"f_vectorized_count",
+		"f_synced_mark",
+		"f_error_msg",
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+		"f_update_time",
+	}
+}
+
 type buildTaskAccess struct {
 	db *sql.DB
 }
@@ -102,6 +123,39 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 
 	buildTask.Creator = interfaces.AccountInfo{ID: creatorID, Type: creatorType}
 	return buildTask, nil
+}
+
+func scanBuildTaskSummary(scanner buildTaskScanner) (*interfaces.BuildTaskSummary, error) {
+	task := &interfaces.BuildTaskSummary{}
+	var creatorID, creatorType, indexConfigJSON string
+	err := scanner.Scan(
+		&task.ID,
+		&task.ResourceID,
+		&task.CatalogID,
+		&task.Mode,
+		&task.ExecuteType,
+		&indexConfigJSON,
+		&task.Status,
+		&task.TotalCount,
+		&task.SyncedCount,
+		&task.VectorizedCount,
+		&task.SyncedMark,
+		&task.ErrorMsg,
+		&creatorID,
+		&creatorType,
+		&task.CreateTime,
+		&task.UpdateTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if indexConfigJSON != "" {
+		if err := sonic.UnmarshalString(indexConfigJSON, &task.IndexConfig); err != nil {
+			return nil, err
+		}
+	}
+	task.Creator = interfaces.AccountInfo{ID: creatorID, Type: creatorType}
+	return task, nil
 }
 
 // NewBuildTaskAccess creates a new BuildTaskAccess.
@@ -199,7 +253,7 @@ func (bta *buildTaskAccess) GetByResourceID(ctx context.Context, resourceID stri
 	sqlStr, vals, err := sq.Select(buildTaskColumns()...).
 		From(BUILD_TASK_TABLE_NAME).
 		Where(sq.Eq{"f_resource_id": resourceID}).
-		OrderBy(buildOrderByClause(interfaces.BuildTaskOrderByDefault, interfaces.DESC_DIRECTION)).
+		OrderBy("f_create_time DESC").
 		Limit(1).
 		ToSql()
 	if err != nil {
@@ -357,8 +411,8 @@ func (bta *buildTaskAccess) GetStatus(ctx context.Context, id string) (string, e
 	return status, nil
 }
 
-// List retrieves build tasks with optional filters and pagination.
-func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+// InternalList retrieves complete build tasks with optional filters and pagination.
+func (bta *buildTaskAccess) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get build tasks with filters")
 	defer span.End()
 
@@ -433,9 +487,66 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 	return buildTasks, totalCount, nil
 }
 
-// buildOrderByClause 把 order_by/order 翻译成 ORDER BY 子句。排序在 List 中先于
-// LIMIT/OFFSET 全局应用,故活跃任务总落在第一页。order_by=default 忽略 order
-// (固定复合序);其余维度方向跟 order,并以 f_create_time DESC 兜底平手。
+// List retrieves build task summaries with optional filters and pagination.
+func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List build task summaries")
+	defer span.End()
+
+	builder := sq.Select(buildTaskSummaryColumns()...).From(BUILD_TASK_TABLE_NAME)
+	countBuilder := sq.Select("COUNT(*)").From(BUILD_TASK_TABLE_NAME)
+	if params.ResourceID != "" {
+		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})
+		countBuilder = countBuilder.Where(sq.Eq{"f_resource_id": params.ResourceID})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	}
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
+	}
+	if params.Mode != "" {
+		builder = builder.Where(sq.Eq{"f_mode": params.Mode})
+		countBuilder = countBuilder.Where(sq.Eq{"f_mode": params.Mode})
+	}
+	countSQL, countVals, err := countBuilder.ToSql()
+	if err != nil {
+		return nil, 0, err
+	}
+	var total int64
+	if err := bta.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	builder = builder.OrderBy(buildOrderByClause(params.OrderBy, params.Order))
+	if params.Limit > 0 {
+		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
+	}
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := bta.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	tasks := make([]*interfaces.BuildTaskSummary, 0)
+	for rows.Next() {
+		task, err := scanBuildTaskSummary(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		tasks = append(tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return tasks, total, nil
+}
+
+// buildOrderByClause 把 order_by/order 翻译成 ORDER BY 子句。列表缺省和未知排序
+// 均按创建时间倒序；其他维度跟随 order，并以 f_create_time DESC 兜底平手。
 func buildOrderByClause(orderBy, order string) string {
 	dir := "DESC"
 	if strings.EqualFold(order, interfaces.ASC_DIRECTION) {
@@ -446,25 +557,9 @@ func buildOrderByClause(orderBy, order string) string {
 		return "f_create_time " + dir
 	case interfaces.BuildTaskOrderByUpdatedAt:
 		return "f_update_time " + dir
-	case interfaces.BuildTaskOrderByMode:
-		return "f_mode " + dir + ", f_create_time DESC"
-	case interfaces.BuildTaskOrderByStatus:
-		return statusBucketCase() + " " + dir + ", f_create_time DESC"
-	default: // BuildTaskOrderByDefault 及未知值:活跃置顶(桶 ASC)+ 桶内最新在前
-		return statusBucketCase() + " ASC, f_create_time DESC"
+	default:
+		return "f_create_time DESC"
 	}
-}
-
-// statusBucketCase 由 interfaces.BuildTaskStatusOrder 生成状态优先级 CASE 表达式。
-// 值全是后端常量,非用户输入,无 SQL 注入风险。
-func statusBucketCase() string {
-	var b strings.Builder
-	b.WriteString("CASE f_status")
-	for i, s := range interfaces.BuildTaskStatusOrder {
-		fmt.Fprintf(&b, " WHEN '%s' THEN %d", s, i+1)
-	}
-	b.WriteString(" ELSE 99 END")
-	return b.String()
 }
 
 // Delete deletes a build task by ID.

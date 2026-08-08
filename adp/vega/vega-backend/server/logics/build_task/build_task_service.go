@@ -236,7 +236,7 @@ func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.Cr
 }
 
 func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID string, excludeTaskID string) error {
-	tasks, _, err := bts.bta.List(ctx, interfaces.BuildTasksQueryParams{
+	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 2},
 		ResourceID:            resourceID,
 		Statuses:              activeBuildTaskStatuses,
@@ -469,7 +469,7 @@ func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalList")
 	defer span.End()
 
-	return bts.bta.List(ctx, params)
+	return bts.bta.InternalList(ctx, params)
 }
 
 func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
@@ -532,6 +532,52 @@ func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, bu
 		}
 		if catalog := catalogsByID[buildTask.CatalogID]; catalog != nil {
 			buildTask.CatalogName = catalog.Name
+		}
+	}
+	return errors.Join(referenceErrors...)
+}
+
+func (bts *buildTaskService) populateBuildTaskSummaryReferences(ctx context.Context, tasks []*interfaces.BuildTaskSummary) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	resourceIDs := make([]string, 0, len(tasks))
+	resourceIDSet := make(map[string]struct{}, len(tasks))
+	catalogIDs := make([]string, 0, len(tasks))
+	catalogIDSet := make(map[string]struct{}, len(tasks))
+	for _, task := range tasks {
+		if _, ok := resourceIDSet[task.ResourceID]; !ok && task.ResourceID != "" {
+			resourceIDSet[task.ResourceID] = struct{}{}
+			resourceIDs = append(resourceIDs, task.ResourceID)
+		}
+		if _, ok := catalogIDSet[task.CatalogID]; !ok && task.CatalogID != "" {
+			catalogIDSet[task.CatalogID] = struct{}{}
+			catalogIDs = append(catalogIDs, task.CatalogID)
+		}
+	}
+	var referenceErrors []error
+	resources, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
+	if err != nil {
+		referenceErrors = append(referenceErrors, err)
+	}
+	resourceByID := make(map[string]*interfaces.Resource, len(resources))
+	for _, resource := range resources {
+		resourceByID[resource.ID] = resource
+	}
+	catalogs, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		referenceErrors = append(referenceErrors, err)
+	}
+	catalogByID := make(map[string]*interfaces.Catalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogByID[catalog.ID] = catalog
+	}
+	for _, task := range tasks {
+		if resource := resourceByID[task.ResourceID]; resource != nil {
+			task.ResourceName = resource.Name
+		}
+		if catalog := catalogByID[task.CatalogID]; catalog != nil {
+			task.CatalogName = catalog.Name
 		}
 	}
 	return errors.Join(referenceErrors...)
@@ -621,7 +667,7 @@ func (bts *buildTaskService) GetByResourceID(ctx context.Context, resourceID str
 }
 
 // List retrieves build tasks with filters and pagination.
-func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
 	defer span.End()
 
@@ -631,7 +677,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	if err := bts.populateBuildTaskReferences(ctx, buildTasks); err != nil {
+	if err := bts.populateBuildTaskSummaryReferences(ctx, buildTasks); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate build task references: %v", err)
 	}
@@ -639,7 +685,12 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks))
 	for _, bt := range buildTasks {
 		accountInfos = append(accountInfos, &bt.Creator)
-		bt.IndexHealth = computeIndexHealth(bt)
+		bt.IndexHealth = computeIndexHealth(&interfaces.BuildTask{
+			Status:          bt.Status,
+			SyncedCount:     bt.SyncedCount,
+			VectorizedCount: bt.VectorizedCount,
+			IndexConfig:     bt.IndexConfig,
+		})
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
 		span.RecordError(err)
@@ -745,7 +796,7 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 			WithErrorDetails("resource index config has changed; create a new build task instead")
 	}
 
-	tasks, _, err := bts.bta.List(ctx, interfaces.BuildTasksQueryParams{
+	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
 		ResourceID:            buildTask.ResourceID,
 		Statuses:              []string{interfaces.BuildTaskStatusCompleted},

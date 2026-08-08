@@ -70,7 +70,7 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 		},
 	}, nil)
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-	mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+	mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 
 	_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
 	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
@@ -116,7 +116,7 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
-		tasks := []*interfaces.BuildTask{
+		tasks := []*interfaces.BuildTaskSummary{
 			{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"},
 			{ID: "task-2", ResourceID: "resource-2", CatalogID: "catalog-1"},
 		}
@@ -168,7 +168,7 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
-		tasks := []*interfaces.BuildTask{{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}}
+		tasks := []*interfaces.BuildTaskSummary{{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}}
 
 		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(1), nil)
 		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return(nil, errors.New("resource service down"))
@@ -280,7 +280,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "active-task", ResourceID: "resource-1", Status: interfaces.BuildTaskStatusRunning}}, int64(1), nil)
 
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
@@ -314,7 +314,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockBTA.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
@@ -382,7 +382,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "resource-1" {
 					require.Equal(t, "resource-1", params.ResourceID)
@@ -444,7 +444,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockMFS.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
 			Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
@@ -505,7 +505,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "resource-1" {
 					require.Equal(t, "resource-1", params.ResourceID)
@@ -582,7 +582,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockMFS.EXPECT().GetModelByName(gomock.Any(), "model-a").
 			Return(&interfaces.SmallModel{ModelID: "model-a-id", ModelName: "model-a", EmbeddingDim: 768}, nil)
 		mockMFS.EXPECT().GetModelByName(gomock.Any(), "model-b").
@@ -638,7 +638,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "resource-1" {
 					require.Equal(t, "resource-1", params.ResourceID)
@@ -765,7 +765,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
 					return []*interfaces.BuildTask{task}, int64(1), nil
@@ -796,7 +796,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "resource-1" {
 					require.Equal(t, "resource-1", params.ResourceID)
@@ -830,7 +830,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
 			ID:        "resource-1",
 			CatalogID: "catalog-1",
@@ -863,7 +863,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
 					if params.OrderBy != interfaces.BuildTaskOrderByCreatedAt || params.Limit != 1 {
@@ -909,7 +909,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
 					return nil, int64(0), nil
@@ -956,7 +956,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
 					return nil, int64(0), nil

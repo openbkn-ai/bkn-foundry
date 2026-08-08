@@ -137,6 +137,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 		{name: "invalid offset", query: "?offset=-1", wantBody: "VegaBackend.InvalidParameter.Offset"},
 		{name: "invalid limit", query: "?limit=99999999", wantBody: "VegaBackend.InvalidParameter.Limit"},
 		{name: "invalid order_by", query: "?order_by=unknown_field", wantBody: "VegaBackend.InvalidParameter.Sort"},
+		{name: "removed default order_by", query: "?order_by=default", wantBody: "VegaBackend.InvalidParameter.Sort"},
 		{name: "invalid order", query: "?order=foo", wantBody: "VegaBackend.InvalidParameter.Direction"},
 		{name: "invalid status", query: "?status=foo", wantBody: "VegaBackend.BuildTask.InvalidStatus"},
 		{name: "invalid mode", query: "?mode=foo", wantBody: "VegaBackend.BuildTask.InvalidParameter.Mode"},
@@ -158,12 +159,12 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	t.Run("success with default pagination", func(t *testing.T) {
 		engine, bts := setup(t)
 		bts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, interfaces.BuildTaskOrderByDefault, params.OrderBy)
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, params.OrderBy)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Order)
-				return []*interfaces.BuildTask{}, int64(0), nil
+				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url, nil)
@@ -177,7 +178,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	t.Run("success with explicit query params", func(t *testing.T) {
 		engine, bts := setup(t)
 		bts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Equal(t, "res-1", params.ResourceID)
 				assert.Equal(t, "cat-1", params.CatalogID)
 				assert.Equal(t, []string{interfaces.BuildTaskStatusCompleted}, params.Statuses)
@@ -186,7 +187,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, params.OrderBy)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Order)
-				return []*interfaces.BuildTask{}, int64(0), nil
+				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?resource_id=res-1&catalog_id=cat-1&status=completed&mode=batch&offset=5&limit=10&order_by=created_at&order=asc", nil)

@@ -1143,7 +1143,7 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
 		// catalog c1 下一个已完成任务 t1(资源 r1) → 级联 drop 索引 + 删任务
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
@@ -1176,7 +1176,7 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Not(nil), []string{"c1"}).
 			Return(errors.New(sensitiveError))
 
@@ -1204,7 +1204,7 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}}, int64(1), nil)
 		// 不应调用 ca.DeleteByIDs / bta.Delete / ds.Delete
 

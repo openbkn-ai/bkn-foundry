@@ -24,11 +24,8 @@ const (
 	BuildTaskModeBatch     string = "batch"     // 批量
 
 	// build-task 列表排序维度(query: order_by)
-	BuildTaskOrderByDefault   string = "default"    // 活跃置顶分桶序(缺省)
 	BuildTaskOrderByCreatedAt string = "created_at" // 按创建时间
 	BuildTaskOrderByUpdatedAt string = "updated_at" // 按更新时间
-	BuildTaskOrderByStatus    string = "status"     // 按状态优先级桶序
-	BuildTaskOrderByMode      string = "mode"       // 按模式
 
 	BuildTaskExecuteTypeIncremental string = "incremental" // 增量
 	BuildTaskExecuteTypeFull        string = "full"        // 全量
@@ -40,22 +37,9 @@ const (
 	BUILD_PREFIX = "vega-build"
 )
 
-// BuildTaskStatusOrder 定义 default/status 排序的状态桶优先级(下标+1 即优先级)。
-// 活跃任务(running/init)置顶是核心诉求;顺序写死,既是 SQL CASE 的唯一来源,
-// 也保证「构建中」永远排在第一页。
-var BuildTaskStatusOrder = []string{
-	BuildTaskStatusRunning,   // 1 构建中/流式监听中
-	BuildTaskStatusInit,      // 2 排队中
-	BuildTaskStatusStopping,  // 3 停止中
-	BuildTaskStatusStopped,   // 4 已停止
-	BuildTaskStatusFailed,    // 5 失败
-	BuildTaskStatusCompleted, // 6 已完成
-}
-
 // BUILD_TASK_SORT is a whitelist of supported order_by values. Values are unused;
 // the data access layer owns the mapping from API fields to database columns.
 var BUILD_TASK_SORT = map[string]string{
-	BuildTaskOrderByDefault:   "",
 	BuildTaskOrderByCreatedAt: "",
 	BuildTaskOrderByUpdatedAt: "",
 }
@@ -85,6 +69,32 @@ type BuildTask struct {
 	// IndexHealth 为响应时计算的派生状态，**不落库**：让消费方无需自己推断
 	// "completed 其实是失败"。service 层在返回前填充。
 	IndexHealth *IndexHealth `json:"index_health,omitempty"`
+}
+
+// BuildTaskSummary is the lightweight representation returned by list APIs.
+// Index configuration snapshots and detailed partial-failure diagnostics are
+// available from GetByID.
+type BuildTaskSummary struct {
+	ID              string       `json:"id"`
+	ResourceID      string       `json:"resource_id"`
+	ResourceName    string       `json:"resource_name,omitempty"`
+	CatalogID       string       `json:"catalog_id"`
+	CatalogName     string       `json:"catalog_name,omitempty"`
+	Status          string       `json:"status"`
+	Mode            string       `json:"mode"`
+	ExecuteType     string       `json:"execute_type,omitempty"`
+	TotalCount      int64        `json:"total_count"`
+	SyncedCount     int64        `json:"synced_count"`
+	VectorizedCount int64        `json:"vectorized_count"`
+	SyncedMark      string       `json:"synced_mark"`
+	ErrorMsg        string       `json:"error_msg,omitempty"`
+	Creator         AccountInfo  `json:"creator"`
+	CreateTime      int64        `json:"create_time"`
+	UpdateTime      int64        `json:"update_time"`
+	IndexHealth     *IndexHealth `json:"index_health,omitempty"`
+
+	// IndexConfig is loaded only to derive IndexHealth and is never serialized.
+	IndexConfig *BuildTaskIndexConfig `json:"-"`
 }
 
 // BuildTaskUpdate describes a partial build task update. Nil fields are left unchanged.
@@ -186,8 +196,8 @@ type BuildTasksQueryParams struct {
 	CatalogID  string
 	Statuses   []string // 多值状态过滤(IN);空为不过滤。active=true 等价 [running,init]
 	Mode       string
-	OrderBy    string // default|created_at|status|mode；缺省 default
-	Order      string // asc|desc；缺省 desc。order_by=default 时忽略(固定复合序)
+	OrderBy    string // created_at|updated_at；缺省 created_at
+	Order      string // asc|desc；缺省 desc
 }
 
 type KeyValue struct {

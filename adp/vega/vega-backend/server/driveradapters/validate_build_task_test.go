@@ -78,11 +78,11 @@ func Test_isValidBuildTaskOrderBy(t *testing.T) {
 		orderBy string
 		want    bool
 	}{
-		{orderBy: interfaces.BuildTaskOrderByDefault, want: true},
+		{orderBy: "default", want: false},
 		{orderBy: interfaces.BuildTaskOrderByCreatedAt, want: true},
 		{orderBy: interfaces.BuildTaskOrderByUpdatedAt, want: true},
-		{orderBy: interfaces.BuildTaskOrderByStatus, want: false},
-		{orderBy: interfaces.BuildTaskOrderByMode, want: false},
+		{orderBy: "status", want: false},
+		{orderBy: "mode", want: false},
 		{orderBy: "progress", want: false},
 		{orderBy: "", want: false},
 	}
@@ -109,7 +109,7 @@ func Test_parseBuildTaskListParams(t *testing.T) {
 			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
 				assert.Equal(t, 0, got.Offset)
 				assert.Equal(t, 20, got.Limit)
-				assert.Equal(t, interfaces.BuildTaskOrderByDefault, got.OrderBy)
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
 				assert.Equal(t, interfaces.DESC_DIRECTION, got.Order)
 				assert.Empty(t, got.Statuses)
 			},
