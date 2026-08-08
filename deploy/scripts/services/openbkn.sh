@@ -600,6 +600,12 @@ _openbkn_helm_upgrade_release() {
     shift 2
     local -a helm_args=("$@")
 
+    # Here rather than at either call site: both the repository and the local
+    # --charts-dir paths reach helm through this function, and a cleanup wired
+    # to only one of them leaves the other stuck on exactly the error it exists
+    # to remove.
+    _openbkn_drop_literal_env_now_from_secret "${release_name}" "${namespace}"
+
     local helm_log
     helm_log="$(mktemp)"
     helm "${helm_args[@]}" 2>&1 | tee "${helm_log}"
@@ -629,6 +635,13 @@ _openbkn_helm_upgrade_release() {
 # and the upgrade stops on an error that names no remedy. Stamping the three
 # fields Helm looks for is the documented way to hand an existing object over.
 #
+# Cluster-scoped objects (ClusterRole, ClusterRoleBinding, …) appear in the same
+# error with an EMPTY namespace — helm still says `in namespace ""`. They are
+# adopted the same way, addressed without -n; the release-namespace annotation
+# still names the release's namespace, which is what helm compares against.
+# Dropping them for want of a namespace would leave the upgrade stuck on exactly
+# the error this function exists to clear, and silently.
+#
 # Only objects that NO release claims are adopted. One already annotated for a
 # different release is a real collision — two charts believing they own the same
 # object — and silently reassigning it would let the rightful owner's next
@@ -638,29 +651,38 @@ _openbkn_helm_upgrade_release() {
 # Succeeds only when something was adopted, i.e. when a retry is worth doing.
 _openbkn_adopt_unowned_resources() {
     local helm_log="$1" release_name="$2" namespace="$3"
-    local adopted=1 kind name res_ns owner
+    local adopted=1 kind name res_ns owner scope
+    local -a ns_args
 
     while IFS=$'\t' read -r kind name res_ns; do
-        [[ -n "${kind}" && -n "${name}" && -n "${res_ns}" ]] || continue
+        [[ -n "${kind}" && -n "${name}" ]] || continue
 
-        owner="$(kubectl -n "${res_ns}" get "${kind}" "${name}" \
+        if [[ -n "${res_ns}" ]]; then
+            ns_args=(-n "${res_ns}")
+            scope="in ${res_ns}"
+        else
+            ns_args=()
+            scope="(cluster-scoped)"
+        fi
+
+        owner="$(kubectl "${ns_args[@]}" get "${kind}" "${name}" \
             -o 'jsonpath={.metadata.annotations.meta\.helm\.sh/release-name}' 2>/dev/null)"
         if [[ -n "${owner}" ]]; then
-            log_error "${kind}/${name} in ${res_ns} is already owned by release ${owner}; not reassigning it to ${release_name}"
+            log_error "${kind}/${name} ${scope} is already owned by release ${owner}; not reassigning it to ${release_name}"
             continue
         fi
 
-        if kubectl -n "${res_ns}" label "${kind}" "${name}" \
+        if kubectl "${ns_args[@]}" label "${kind}" "${name}" \
                 "app.kubernetes.io/managed-by=Helm" --overwrite >/dev/null 2>&1 &&
-           kubectl -n "${res_ns}" annotate "${kind}" "${name}" \
+           kubectl "${ns_args[@]}" annotate "${kind}" "${name}" \
                 "meta.helm.sh/release-name=${release_name}" \
                 "meta.helm.sh/release-namespace=${namespace}" --overwrite >/dev/null 2>&1; then
-            log_info "Adopted pre-Helm ${kind}/${name} in ${res_ns} into release ${release_name}"
+            log_info "Adopted pre-Helm ${kind}/${name} ${scope} into release ${release_name}"
             adopted=0
         else
-            log_warn "Could not adopt ${kind}/${name} in ${res_ns}; ${release_name} will keep failing on ownership"
+            log_warn "Could not adopt ${kind}/${name} ${scope}; ${release_name} will keep failing on ownership"
         fi
-    done < <(sed -nE 's/.*[[:space:]]([A-Za-z]+) "([^"]+)" in namespace "([^"]+)" exists and cannot be imported.*/\1\t\2\t\3/p' "${helm_log}")
+    done < <(sed -nE 's/.*[[:space:]]([A-Za-z]+) "([^"]+)" in namespace "([^"]*)" exists and cannot be imported.*/\1\t\2\t\3/p' "${helm_log}")
 
     return ${adopted}
 }
@@ -988,8 +1010,6 @@ _install_openbkn_release_repo() {
         log_info "Cleaning up ${release_name} (status: ${current_status})..."
         helm uninstall "${release_name}" -n "${namespace}" 2>/dev/null || true
     fi
-
-    _openbkn_drop_literal_env_now_from_secret "${release_name}" "${namespace}"
 
     log_info "Installing ${release_name} from ${chart_ref}..."
 
