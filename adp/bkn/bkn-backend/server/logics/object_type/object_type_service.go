@@ -1209,7 +1209,15 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除对象类概念索引失败")
-			return err
+
+			// Vega 返回的是普通 error，必须归一为 HTTPError 后再上抛，
+			// 否则 handler 侧的类型断言会 panic，连接在写响应头前断开，网关只能报 502。
+			var httpErr *rest.HTTPError
+			if errors.As(err, &httpErr) {
+				return httpErr
+			}
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
 

@@ -253,21 +253,27 @@ func (r *restHandler) PutResourceDataByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.putResourceData(c, visitor)
+	r.putResourceData(c, visitor, false)
 }
 
 // PutResourceDataByIn handles PUT /api/vega-backend/in/v1/resources/:id/data (Internal).
 func (r *restHandler) PutResourceDataByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	r.putResourceData(c, visitor)
+	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	r.putResourceData(c, visitor, true)
 }
 
-func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor) {
+// putResourceData 批量 upsert 文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
+// 内部目录资源跳过 per-account view_detail 校验。
+func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
 	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	if s2sInternal {
+		ctx = interfaces.WithS2SInternalAccess(ctx)
+	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
@@ -330,21 +336,27 @@ func (r *restHandler) GetResourceDataDocByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.getResourceDataDoc(c, visitor)
+	r.getResourceDataDoc(c, visitor, false)
 }
 
 // GetResourceDataDocByIn handles GET /api/vega-backend/in/v1/resources/:id/data/:doc_id (Internal).
 func (r *restHandler) GetResourceDataDocByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	r.getResourceDataDoc(c, visitor)
+	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	r.getResourceDataDoc(c, visitor, true)
 }
 
-func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor) {
+// getResourceDataDoc 读取单个文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
+// 内部目录资源跳过 per-account view_detail 校验。
+func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
 	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	if s2sInternal {
+		ctx = interfaces.WithS2SInternalAccess(ctx)
+	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
@@ -381,21 +393,27 @@ func (r *restHandler) PutResourceDataDocByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.putResourceDataDoc(c, visitor)
+	r.putResourceDataDoc(c, visitor, false)
 }
 
 // PutResourceDataDocByIn handles PUT /api/vega-backend/in/v1/resources/:id/data/:doc_id (Internal).
 func (r *restHandler) PutResourceDataDocByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	r.putResourceDataDoc(c, visitor)
+	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	r.putResourceDataDoc(c, visitor, true)
 }
 
-func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor) {
+// putResourceDataDoc 更新单个文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
+// 内部目录资源跳过 per-account view_detail 校验。
+func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
 	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	if s2sInternal {
+		ctx = interfaces.WithS2SInternalAccess(ctx)
+	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))
@@ -444,21 +462,27 @@ func (r *restHandler) DeleteResourceDataByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.deleteResourceData(c, visitor)
+	r.deleteResourceData(c, visitor, false)
 }
 
 // DeleteResourceDataByIn handles DELETE /api/vega-backend/in/v1/resources/:id/data/:doc_ids (Internal).
 func (r *restHandler) DeleteResourceDataByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	r.deleteResourceData(c, visitor)
+	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	r.deleteResourceData(c, visitor, true)
 }
 
-func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor) {
+// deleteResourceData 按 ID 批量删除文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
+// 内部目录资源跳过 per-account view_detail 校验。
+func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
 	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	if s2sInternal {
+		ctx = interfaces.WithS2SInternalAccess(ctx)
+	}
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"))

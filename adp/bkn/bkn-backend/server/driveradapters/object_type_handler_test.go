@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -405,6 +406,26 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		// 下游（如 Vega）返回普通 error 时，handler 不得做裸类型断言：
+		// panic 会让连接在写响应头前断开，网关只能回 502。必须映射为可诊断的 500。
+		Convey("DeleteObjectTypes maps plain downstream error without panic\n", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
+			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), knID, gomock.Any(), "ot1").Return("object1", true, nil)
+			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), knID, gomock.Any(), "ot2").Return("object2", true, nil)
+			ots.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, gomock.Any(), gomock.Any()).
+				Return(errors.New("DeleteDatasetDocumentByID returned HTTP 403"))
+			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
+			ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
+
+			req := httptest.NewRequest(http.MethodDelete, url, nil)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
+			// 断言错误码存在，用以区分「规范错误响应」与「Recovery 中间件兜住的 panic」。
+			So(w.Body.String(), ShouldContainSubstring, berrors.BknBackend_ObjectType_InternalError)
 		})
 	})
 }

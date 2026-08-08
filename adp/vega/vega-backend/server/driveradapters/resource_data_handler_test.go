@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -342,5 +343,119 @@ func Test_ResourceDataRestHandler_RequireDatasetResource(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "operation requires resource category=dataset")
+	})
+}
+
+// Test_ResourceDataRestHandler_S2SInternalAccessMarker 锁定 /in/ 与外部端点的鉴权语义差异：
+// 内网端点必须带 S2S 标记，否则内部基础设施数据集会按 per-account view_detail 校验而误拒 403；
+// 外部端点必须不带，否则等于让普通用户绕过资源鉴权。
+func Test_ResourceDataRestHandler_S2SInternalAccessMarker(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	// captureS2S 记录 GetByID 收到的 ctx 是否被标记为 S2S 内部访问。
+	captureS2S := func(rs *vmock.MockResourceService, got *bool) {
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").
+			DoAndReturn(func(ctx context.Context, _ string) (*interfaces.Resource, error) {
+				*got = interfaces.IsS2SInternalAccess(ctx)
+				return sampleDatasetResource(), nil
+			})
+	}
+
+	internalCases := []struct {
+		name       string
+		method     string
+		url        string
+		body       string
+		expectCode int
+		expectCall func(ds *vmock.MockDatasetService)
+	}{
+		{
+			name:       "DELETE /in/ documents by ids",
+			method:     http.MethodDelete,
+			url:        "/api/vega-backend/in/v1/resources/res-1/data/doc-1",
+			expectCode: http.StatusNoContent,
+			expectCall: func(ds *vmock.MockDatasetService) {
+				ds.EXPECT().DeleteDocuments(gomock.Any(), "res-1", "doc-1").Return(nil)
+			},
+		},
+		{
+			name:       "PUT /in/ documents",
+			method:     http.MethodPut,
+			url:        "/api/vega-backend/in/v1/resources/res-1/data",
+			body:       `[{"id":"doc-1"}]`,
+			expectCode: http.StatusOK,
+			expectCall: func(ds *vmock.MockDatasetService) {
+				ds.EXPECT().UpsertDocuments(gomock.Any(), "res-1", gomock.Any()).Return([]string{"doc-1"}, nil)
+			},
+		},
+		{
+			name:       "GET /in/ single document",
+			method:     http.MethodGet,
+			url:        "/api/vega-backend/in/v1/resources/res-1/data/doc-1",
+			expectCode: http.StatusOK,
+			expectCall: func(ds *vmock.MockDatasetService) {
+				ds.EXPECT().GetDocument(gomock.Any(), "res-1", "doc-1").Return(map[string]any{"id": "doc-1"}, nil)
+			},
+		},
+		{
+			name:       "PUT /in/ single document",
+			method:     http.MethodPut,
+			url:        "/api/vega-backend/in/v1/resources/res-1/data/doc-1",
+			body:       `{"title":"one"}`,
+			expectCode: http.StatusOK,
+			expectCall: func(ds *vmock.MockDatasetService) {
+				ds.EXPECT().UpsertDocuments(gomock.Any(), "res-1", gomock.Any()).Return([]string{"doc-1"}, nil)
+			},
+		},
+	}
+
+	for _, tc := range internalCases {
+		t.Run(tc.name+" marks S2S internal access", func(t *testing.T) {
+			engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+
+			var gotS2S bool
+			captureS2S(rs, &gotS2S)
+			tc.expectCall(ds)
+
+			var bodyReader *strings.Reader
+			if tc.body != "" {
+				bodyReader = strings.NewReader(tc.body)
+			} else {
+				bodyReader = strings.NewReader("")
+			}
+			req := httptest.NewRequest(tc.method, tc.url, bodyReader)
+			if tc.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			w := httptest.NewRecorder()
+
+			engine.ServeHTTP(w, req)
+
+			require.Equal(t, tc.expectCode, w.Result().StatusCode)
+			assert.True(t, gotS2S, "internal /in/ endpoint must mark the context as S2S internal access")
+		})
+	}
+
+	// 外部端点走 OAuth 校验，无法经路由直达；直接调用内部方法验证 s2sInternal=false 的语义。
+	t.Run("external delete does not mark S2S internal access", func(t *testing.T) {
+		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+
+		var gotS2S bool
+		captureS2S(rs, &gotS2S)
+		ds.EXPECT().DeleteDocuments(gomock.Any(), "res-1", "doc-1").Return(nil)
+
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, nil, nil)
+		engine.DELETE("/ex/resources/:id/data/:doc_ids", func(c *gin.Context) {
+			handler.deleteResourceData(c, hydra.Visitor{ID: "user-1"}, false)
+		})
+
+		req := httptest.NewRequest(http.MethodDelete, "/ex/resources/res-1/data/doc-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+		assert.False(t, gotS2S, "external endpoint must keep per-account authorization")
 	})
 }

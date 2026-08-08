@@ -782,7 +782,12 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 	// 批量删除对象类
 	err = r.ots.DeleteObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		// 兜底：下游若回普通 error，直接断言会 panic 成 502。归一为 500 再回。
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+		}
 		// 设置 trace 的错误信息的 attributes
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
