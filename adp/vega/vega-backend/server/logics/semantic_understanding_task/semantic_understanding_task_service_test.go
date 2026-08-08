@@ -571,7 +571,7 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 	}
 
 	t.Run("list batches current page reference ids", func(t *testing.T) {
-		tasks := []*interfaces.SemanticUnderstandingTask{
+		tasks := []*interfaces.SemanticUnderstandingTaskSummary{
 			{ID: "task-1", CatalogID: "catalog-1", ResourceID: "resource-1"},
 			{ID: "task-2", CatalogID: "catalog-1", ResourceID: "resource-1"},
 		}
@@ -601,7 +601,7 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 	})
 
 	t.Run("list keeps tasks when reference lookup fails", func(t *testing.T) {
-		tasks := []*interfaces.SemanticUnderstandingTask{{ID: "task-4", CatalogID: "catalog-3", ResourceID: "resource-3"}}
+		tasks := []*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-4", CatalogID: "catalog-3", ResourceID: "resource-3"}}
 		taskAccess.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(1), nil)
 		resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-3"}).Return(nil, errors.New("resource service down"))
 		catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-3"}).Return([]*interfaces.Catalog{{ID: "catalog-3", Name: "目录三"}}, nil)

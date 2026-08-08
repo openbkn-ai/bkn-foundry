@@ -69,6 +69,29 @@ func semanticUnderstandingTaskColumns() []string {
 	}
 }
 
+// semanticUnderstandingTaskListColumns excludes task payloads and execution
+// details, which are only needed by the single-task detail API.
+func semanticUnderstandingTaskListColumns() []string {
+	return []string{
+		"f_id",
+		"f_scope",
+		"f_catalog_id",
+		"f_resource_id",
+		"f_agent_task_id",
+		"f_agent_id",
+		"f_status",
+		"f_apply_mode",
+		"f_confidence_threshold",
+		"f_confidence",
+		"f_applied",
+		"f_applied_time",
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+		"f_update_time",
+	}
+}
+
 func scanSemanticUnderstandingTask(scanner semanticUnderstandingTaskScanner) (*interfaces.SemanticUnderstandingTask, error) {
 	task := &interfaces.SemanticUnderstandingTask{}
 	err := scanner.Scan(
@@ -90,6 +113,32 @@ func scanSemanticUnderstandingTask(scanner semanticUnderstandingTaskScanner) (*i
 		&task.Applied,
 		&task.AppliedTime,
 		&task.FailureDetail,
+		&task.Creator.ID,
+		&task.Creator.Type,
+		&task.CreateTime,
+		&task.UpdateTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
+func scanSemanticUnderstandingTaskListItem(scanner semanticUnderstandingTaskScanner) (*interfaces.SemanticUnderstandingTaskSummary, error) {
+	task := &interfaces.SemanticUnderstandingTaskSummary{}
+	err := scanner.Scan(
+		&task.ID,
+		&task.Scope,
+		&task.CatalogID,
+		&task.ResourceID,
+		&task.AgentTaskID,
+		&task.AgentID,
+		&task.Status,
+		&task.ApplyMode,
+		&task.ConfidenceThreshold,
+		&task.Confidence,
+		&task.Applied,
+		&task.AppliedTime,
 		&task.Creator.ID,
 		&task.Creator.Type,
 		&task.CreateTime,
@@ -255,11 +304,11 @@ func (a *semanticUnderstandingTaskAccess) FindActiveByInputHash(ctx context.Cont
 	return task, nil
 }
 
-func (a *semanticUnderstandingTaskAccess) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTask, int64, error) {
+func (a *semanticUnderstandingTaskAccess) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List semantic understanding tasks")
 	defer span.End()
 
-	builder := sq.Select(semanticUnderstandingTaskColumns()...).From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
+	builder := sq.Select(semanticUnderstandingTaskListColumns()...).From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
 	countBuilder := sq.Select("COUNT(*)").From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
 
 	applyFilters := func(b sq.SelectBuilder) sq.SelectBuilder {
@@ -316,9 +365,9 @@ func (a *semanticUnderstandingTaskAccess) List(ctx context.Context, params inter
 	}
 	defer func() { _ = rows.Close() }()
 
-	tasks := []*interfaces.SemanticUnderstandingTask{}
+	tasks := []*interfaces.SemanticUnderstandingTaskSummary{}
 	for rows.Next() {
-		task, err := scanSemanticUnderstandingTask(rows)
+		task, err := scanSemanticUnderstandingTaskListItem(rows)
 		if err != nil {
 			otellog.LogError(ctx, "Scan semantic understanding task row failed", err)
 			return nil, 0, err
@@ -494,9 +543,6 @@ func (a *semanticUnderstandingTaskAccess) updateWithTx(ctx context.Context, tx *
 }
 
 func buildOrderByClause(sort, direction string) string {
-	if sort == "default" {
-		return "CASE f_status WHEN 'running' THEN 1 WHEN 'pending' THEN 2 WHEN 'failed' THEN 3 WHEN 'succeeded' THEN 4 ELSE 999 END ASC, f_create_time DESC"
-	}
 	column := "f_create_time"
 	switch sort {
 	case "update_time":

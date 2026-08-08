@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"testing"
@@ -144,9 +145,9 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ?")).
 			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskListColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
 			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
-			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskColumns()).AddRow(semanticUnderstandingTaskRowValues(task)...))
+			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskListColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
 
 		got, total, err := access.List(context.Background(), params)
 
@@ -154,6 +155,14 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, task.ID, got[0].ID)
+		payload, err := json.Marshal(got[0])
+		require.NoError(t, err)
+		assert.NotContains(t, string(payload), `"input"`)
+		assert.NotContains(t, string(payload), `"input_hash"`)
+		assert.NotContains(t, string(payload), `"result_json"`)
+		assert.NotContains(t, string(payload), `"confidence_detail_json"`)
+		assert.NotContains(t, string(payload), `"apply_detail_json"`)
+		assert.NotContains(t, string(payload), `"failure_detail"`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -316,4 +325,29 @@ func semanticUnderstandingTaskInsertArgs(task *interfaces.SemanticUnderstandingT
 
 func joinSemanticUnderstandingTaskColumns() string {
 	return strings.Join(semanticUnderstandingTaskColumns(), ", ")
+}
+
+func semanticUnderstandingTaskListRowValues(task *interfaces.SemanticUnderstandingTask) []driver.Value {
+	return []driver.Value{
+		task.ID,
+		task.Scope,
+		task.CatalogID,
+		task.ResourceID,
+		task.AgentTaskID,
+		task.AgentID,
+		task.Status,
+		task.ApplyMode,
+		task.ConfidenceThreshold,
+		task.Confidence,
+		task.Applied,
+		task.AppliedTime,
+		task.Creator.ID,
+		task.Creator.Type,
+		task.CreateTime,
+		task.UpdateTime,
+	}
+}
+
+func joinSemanticUnderstandingTaskListColumns() string {
+	return strings.Join(semanticUnderstandingTaskListColumns(), ", ")
 }

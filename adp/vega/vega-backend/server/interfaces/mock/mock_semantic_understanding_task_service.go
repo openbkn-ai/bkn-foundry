@@ -162,10 +162,10 @@ func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkApplied(
 }
 
 // List mocks base method.
-func (m *MockSemanticUnderstandingTaskService) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTask, int64, error) {
+func (m *MockSemanticUnderstandingTaskService) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.SemanticUnderstandingTask)
+	ret0, _ := ret[0].([]*interfaces.SemanticUnderstandingTaskSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

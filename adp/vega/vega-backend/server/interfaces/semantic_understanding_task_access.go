@@ -17,7 +17,7 @@ type SemanticUnderstandingTaskAccess interface {
 	GetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
 	GetByIDs(ctx context.Context, ids []string) ([]*SemanticUnderstandingTask, error)
 	FindActiveByInputHash(ctx context.Context, scope string, inputHash string) (*SemanticUnderstandingTask, error)
-	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTask, int64, error)
+	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
 	Delete(ctx context.Context, id string) error
 	DeleteByIDs(ctx context.Context, ids []string) (int64, error)
 

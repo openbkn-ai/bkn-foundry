@@ -18,7 +18,7 @@ type SemanticUnderstandingTaskService interface {
 	CreateResourceTask(ctx context.Context, resourceID string, req *CreateSemanticUnderstandingTaskRequest) (*SemanticUnderstandingTask, error)
 	CreateCatalogTask(ctx context.Context, catalogID string, req *CreateSemanticUnderstandingTaskRequest) (*SemanticUnderstandingTask, error)
 	GetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
-	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTask, int64, error)
+	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
 	Delete(ctx context.Context, ids []string, ignoreMissing bool) error
 
 	MarkRunning(ctx context.Context, id string, agentTaskID string) (bool, error)

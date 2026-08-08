@@ -264,7 +264,7 @@ func (suts *semanticUnderstandingTaskService) InternalMarkApplied(ctx context.Co
 	return suts.suta.MarkAppliedWithTx(ctx, tx, id, applied, time.Now().UnixMilli(), applyDetailJSON)
 }
 
-func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTask, int64, error) {
+func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.List")
 	defer span.End()
 
@@ -274,11 +274,66 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
 	}
-	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, tasks); err != nil {
+	if err := suts.populateSemanticUnderstandingTaskSummaryReferences(ctx, tasks); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
 	}
 	return tasks, total, nil
+}
+
+// populateSemanticUnderstandingTaskSummaryReferences 批量补齐列表任务关联的目录与资源展示名称。
+func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskSummaryReferences(ctx context.Context, tasks []*interfaces.SemanticUnderstandingTaskSummary) error {
+	catalogIDs := make([]string, 0, len(tasks))
+	catalogIDSet := make(map[string]struct{}, len(tasks))
+	resourceIDs := make([]string, 0, len(tasks))
+	resourceIDSet := make(map[string]struct{}, len(tasks))
+	for _, task := range tasks {
+		if task.CatalogID != "" {
+			if _, exists := catalogIDSet[task.CatalogID]; !exists {
+				catalogIDSet[task.CatalogID] = struct{}{}
+				catalogIDs = append(catalogIDs, task.CatalogID)
+			}
+		}
+		if task.ResourceID != "" {
+			if _, exists := resourceIDSet[task.ResourceID]; !exists {
+				resourceIDSet[task.ResourceID] = struct{}{}
+				resourceIDs = append(resourceIDs, task.ResourceID)
+			}
+		}
+	}
+
+	var referenceErrors []error
+	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	if len(resourceIDs) > 0 {
+		resources, err := suts.rs.InternalGetByIDs(ctx, resourceIDs)
+		if err != nil {
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, resource := range resources {
+				resourcesByID[resource.ID] = resource
+			}
+		}
+	}
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	if len(catalogIDs) > 0 {
+		catalogs, err := suts.cs.InternalGetByIDs(ctx, catalogIDs)
+		if err != nil {
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, catalog := range catalogs {
+				catalogsByID[catalog.ID] = catalog
+			}
+		}
+	}
+	for _, task := range tasks {
+		if resource := resourcesByID[task.ResourceID]; resource != nil {
+			task.ResourceName = resource.Name
+		}
+		if catalog := catalogsByID[task.CatalogID]; catalog != nil {
+			task.CatalogName = catalog.Name
+		}
+	}
+	return errors.Join(referenceErrors...)
 }
 
 // populateSemanticUnderstandingTaskReferences 批量补齐当前页任务关联的目录与资源展示名称。

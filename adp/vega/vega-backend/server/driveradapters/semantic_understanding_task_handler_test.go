@@ -179,7 +179,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 	t.Run("success with explicit query params", func(t *testing.T) {
 		engine, suts := setupSemanticUnderstandingTaskHandlerTest(t)
 		suts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
 				assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeResource, params.Scope)
 				assert.Equal(t, "catalog-1", params.CatalogID)
 				assert.Equal(t, "res-1", params.ResourceID)
@@ -194,14 +194,13 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, "create_time", params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-				return []*interfaces.SemanticUnderstandingTask{
+				return []*interfaces.SemanticUnderstandingTaskSummary{
 					{
 						ID:         "task-1",
 						Scope:      interfaces.SemanticUnderstandingTaskScopeResource,
 						CatalogID:  "catalog-1",
 						ResourceID: "res-1",
 						Status:     interfaces.SemanticUnderstandingTaskStatusPending,
-						Input:      `{"private":"snapshot"}`,
 					},
 				}, int64(1), nil
 			})
@@ -214,7 +213,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"total_count":1`)
 		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
-		assert.Contains(t, w.Body.String(), "private")
+		assert.NotContains(t, w.Body.String(), `"input"`)
 	})
 
 	t.Run("success by external api with active shortcut", func(t *testing.T) {
@@ -222,10 +221,12 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).
 			Return(hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User}, nil)
 		suts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
 				assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeCatalog, params.Scope)
 				assert.Equal(t, []string(interfaces.SemanticUnderstandingTaskActiveStatuses), params.Statuses)
-				return []*interfaces.SemanticUnderstandingTask{}, int64(0), nil
+				assert.Equal(t, "create_time", params.Sort)
+				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
+				return []*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, semanticUnderstandingTaskExternalURL+"?scope=catalog&active=true", nil)

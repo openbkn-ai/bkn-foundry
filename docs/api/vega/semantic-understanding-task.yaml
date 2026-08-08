@@ -55,8 +55,8 @@ paths:
           in: query
           schema:
             type: string
-            enum: [default, create_time, update_time]
-            default: default
+            enum: [create_time, update_time]
+            default: create_time
         - name: direction
           in: query
           schema:
@@ -216,5 +216,26 @@ components:
       properties:
         entries:
           type: array
-          items: { $ref: "#/components/schemas/SemanticUnderstandingTask" }
+          items: { $ref: "#/components/schemas/SemanticUnderstandingTaskSummary" }
         total_count: { type: integer, format: int64 }
+    SemanticUnderstandingTaskSummary:
+      type: object
+      required: [id, scope, catalog_id, agent_id, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time, update_time]
+      properties:
+        id: { type: string }
+        scope: { type: string, enum: [resource, catalog] }
+        catalog_id: { type: string }
+        catalog_name: { type: string }
+        resource_id: { type: string }
+        resource_name: { type: string }
+        agent_task_id: { type: string }
+        agent_id: { type: string }
+        status: { type: string, enum: [pending, running, succeeded, failed] }
+        apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
+        confidence_threshold: { type: number, format: double }
+        confidence: { type: number, format: double }
+        applied: { type: boolean }
+        applied_time: { type: integer, format: int64 }
+        creator: { $ref: "#/components/schemas/AccountInfo" }
+        create_time: { type: integer, format: int64 }
+        update_time: { type: integer, format: int64 }
