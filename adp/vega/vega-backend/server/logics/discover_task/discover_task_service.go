@@ -192,7 +192,7 @@ func (dts *discoverTaskService) InternalGetByID(ctx context.Context, id string) 
 }
 
 // List lists DiscoverTasks for a catalog.
-func (dts *discoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+func (dts *discoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.List")
 	defer span.End()
 
@@ -202,7 +202,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	if err := dts.populateDiscoverTaskReferences(ctx, tasks); err != nil {
+	if err := dts.populateDiscoverTaskSummaryReferences(ctx, tasks); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task references: %v", err)
 	}
@@ -218,7 +218,40 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	return tasks, total, nil
 }
 
-// populateDiscoverTaskReferences 批量补齐当前页任务关联目录的展示名称。
+// populateDiscoverTaskSummaryReferences 批量补齐当前页任务关联目录的展示名称。
+func (dts *discoverTaskService) populateDiscoverTaskSummaryReferences(ctx context.Context, tasks []*interfaces.DiscoverTaskSummary) error {
+	catalogIDs := make([]string, 0, len(tasks))
+	seen := make(map[string]struct{}, len(tasks))
+	for _, task := range tasks {
+		if task.CatalogID == "" {
+			continue
+		}
+		if _, exists := seen[task.CatalogID]; !exists {
+			seen[task.CatalogID] = struct{}{}
+			catalogIDs = append(catalogIDs, task.CatalogID)
+		}
+	}
+	if len(catalogIDs) == 0 {
+		return nil
+	}
+
+	catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		return err
+	}
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogsByID[catalog.ID] = catalog
+	}
+	for _, task := range tasks {
+		if catalog := catalogsByID[task.CatalogID]; catalog != nil {
+			task.CatalogName = catalog.Name
+		}
+	}
+	return nil
+}
+
+// populateDiscoverTaskReferences 批量补齐任务关联目录的展示名称。
 func (dts *discoverTaskService) populateDiscoverTaskReferences(ctx context.Context, tasks []*interfaces.DiscoverTask) error {
 	catalogIDs := make([]string, 0, len(tasks))
 	seen := make(map[string]struct{}, len(tasks))

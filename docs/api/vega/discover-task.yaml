@@ -81,12 +81,12 @@ paths:
             format: int64
             default: 20
         - name: sort
-          description: 排序字段；默认 `default`（执行中、等待中、失败、已完成，同状态按创建时间倒序）。
+          description: 排序字段；默认按创建时间倒序。
           in: query
           schema:
             type: string
-            enum: [default, create_time, start_time, finish_time]
-            default: default
+            enum: [create_time, start_time, finish_time]
+            default: create_time
         - name: direction
           description: 排序方向
           in: query
@@ -374,6 +374,42 @@ components:
           description: 创建时间，毫秒级时间戳
           type: integer
           format: int64
+    DiscoverTaskResultSummary:
+      description: 发现任务列表使用的结果计数；执行说明仅在单条详情接口中返回。
+      type: object
+      required: [catalog_id, new_count, stale_count, unchanged_count, updated_count, restored_count, failed_count]
+      properties:
+        catalog_id: { type: string }
+        new_count: { type: integer }
+        stale_count: { type: integer }
+        unchanged_count: { type: integer }
+        updated_count: { type: integer }
+        restored_count: { type: integer }
+        failed_count: { type: integer }
+    DiscoverTaskSummary:
+      description: 发现任务列表摘要；完整执行结果及其 message 请调用单条详情接口获取。
+      type: object
+      required: [id, catalog_id, schedule_id, strategy, trigger_type, status, progress, creator, create_time]
+      properties:
+        id: { type: string }
+        catalog_id: { type: string }
+        catalog_name: { type: string }
+        schedule_id: { type: string }
+        strategy:
+          type: string
+          enum: [full_sync, create_only, cleanup_only]
+        trigger_type:
+          type: string
+          enum: [manual, scheduled]
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        progress: { type: integer }
+        start_time: { type: integer, format: int64 }
+        finish_time: { type: integer, format: int64 }
+        result: { $ref: "#/components/schemas/DiscoverTaskResultSummary" }
+        creator: { $ref: "#/components/schemas/AccountInfo" }
+        create_time: { type: integer, format: int64 }
     DiscoverTriggerResponse:
       description: 手动触发响应（异步——返回新建的 DiscoverTask ID）
       type: object
@@ -394,7 +430,7 @@ components:
             - create_only
             - cleanup_only
     ListDiscoverTasks:
-      description: 发现任务列表
+      description: 发现任务摘要列表；完整结果请调用单条详情接口。
       type: object
       required:
         - entries
@@ -404,7 +440,7 @@ components:
           description: 条目列表
           type: array
           items:
-            $ref: "#/components/schemas/DiscoverTask"
+            $ref: "#/components/schemas/DiscoverTaskSummary"
         total_count:
           description: 总条数
           type: integer

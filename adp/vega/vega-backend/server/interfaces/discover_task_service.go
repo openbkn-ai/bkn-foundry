@@ -21,8 +21,8 @@ type DiscoverTaskService interface {
 	Create(ctx context.Context, req *CreateDiscoverTaskRequest) (string, error)
 	// GetByID retrieves a DiscoverTask by ID.
 	GetByID(ctx context.Context, id string) (*DiscoverTask, error)
-	// List lists DiscoverTasks for a catalog.
-	List(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTask, int64, error)
+	// List lists DiscoverTask summaries for a catalog.
+	List(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, int64, error)
 	// UpdateStatus updates a DiscoverTask's status.
 	UpdateStatus(ctx context.Context, id string, status string, message string, stime int64) error
 	// UpdateResult updates a DiscoverTask's result.

@@ -83,7 +83,7 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 	t.Run("list enriches creators", func(t *testing.T) {
 		service, dta, ums := newTestDiscoverTaskService(t)
 		params := interfaces.DiscoverTaskQueryParams{CatalogID: "catalog-1"}
-		tasks := []*interfaces.DiscoverTask{
+		tasks := []*interfaces.DiscoverTaskSummary{
 			{ID: "task-1", Creator: interfaces.AccountInfo{ID: "u1"}},
 			{ID: "task-2", Creator: interfaces.AccountInfo{ID: "u2"}},
 		}
@@ -108,7 +108,7 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 	t.Run("list keeps tasks when account lookup fails", func(t *testing.T) {
 		service, dta, ums := newTestDiscoverTaskService(t)
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).
-			Return([]*interfaces.DiscoverTask{{ID: "task-1"}}, int64(1), nil)
+			Return([]*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, int64(1), nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user service down"))
 
 		got, total, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
@@ -141,7 +141,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
 
 	t.Run("list batches current page catalog ids", func(t *testing.T) {
-		tasks := []*interfaces.DiscoverTask{
+		tasks := []*interfaces.DiscoverTaskSummary{
 			{ID: "task-1", CatalogID: "catalog-1"},
 			{ID: "task-2", CatalogID: "catalog-1"},
 		}
@@ -174,7 +174,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		ums := vmock.NewMockUserMgmtService(ctrl)
 		service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
-		tasks := []*interfaces.DiscoverTask{{ID: "task-4", CatalogID: "catalog-3"}}
+		tasks := []*interfaces.DiscoverTaskSummary{{ID: "task-4", CatalogID: "catalog-3"}}
 
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(1), nil)
 		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-3"}).Return(nil, errors.New("catalog service down"))

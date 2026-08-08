@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -69,9 +70,9 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_task WHERE f_catalog_id = ? AND f_status = ? AND f_strategy = ? AND f_trigger_type = ?").
 			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverStrategyFullSync, interfaces.DiscoverTaskTriggerScheduled).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery("SELECT f_id, f_catalog_id, f_schedule_id, f_strategy, f_trigger_type, f_status, f_progress, f_message, f_start_time, f_finish_time, f_result, f_creator, f_creator_type, f_create_time FROM t_discover_task WHERE f_catalog_id = ? AND f_status = ? AND f_strategy = ? AND f_trigger_type = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5").
+		mock.ExpectQuery("SELECT f_id, f_catalog_id, f_schedule_id, f_strategy, f_trigger_type, f_status, f_progress, f_start_time, f_finish_time, f_result, f_creator, f_creator_type, f_create_time FROM t_discover_task WHERE f_catalog_id = ? AND f_status = ? AND f_strategy = ? AND f_trigger_type = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5").
 			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverStrategyFullSync, interfaces.DiscoverTaskTriggerScheduled).
-			WillReturnRows(discoverTaskRows().AddRow("task-1", "catalog-1", "schedule-1", "full_sync", interfaces.DiscoverTaskTriggerScheduled, interfaces.DiscoverTaskStatusRunning, 10, "", int64(0), int64(0), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
+			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "schedule-1", "full_sync", interfaces.DiscoverTaskTriggerScheduled, interfaces.DiscoverTaskStatusRunning, 10, int64(0), int64(0), `{"catalog_id":"catalog-1","new_count":2,"message":"large detail"}`, "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
 
 		got, total, err := access.List(context.Background(), params)
 
@@ -79,6 +80,11 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, "task-1", got[0].ID)
+		require.NotNil(t, got[0].Result)
+		assert.Equal(t, 2, got[0].Result.NewCount)
+		serialized, err := sonic.MarshalString(got[0])
+		require.NoError(t, err)
+		assert.NotContains(t, serialized, "large detail")
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -283,4 +289,8 @@ func newDiscoverTaskAccessMock(t *testing.T) (*discoverTaskAccess, sqlmock.Sqlmo
 
 func discoverTaskRows() *sqlmock.Rows {
 	return sqlmock.NewRows(discoverTaskColumns())
+}
+
+func discoverTaskSummaryRows() *sqlmock.Rows {
+	return sqlmock.NewRows(discoverTaskListColumns())
 }

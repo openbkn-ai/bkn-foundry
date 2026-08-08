@@ -159,10 +159,10 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalUpdateStatus(ctx, id, sta
 }
 
 // List mocks base method.
-func (m *MockDiscoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+func (m *MockDiscoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.DiscoverTask)
+	ret0, _ := ret[0].([]*interfaces.DiscoverTaskSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

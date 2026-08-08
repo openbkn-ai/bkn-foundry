@@ -65,6 +65,26 @@ func discoverTaskColumns() []string {
 	}
 }
 
+// discoverTaskListColumns excludes execution messages. It retains result JSON
+// only to extract the compact counters required by list consumers.
+func discoverTaskListColumns() []string {
+	return []string{
+		"f_id",
+		"f_catalog_id",
+		"f_schedule_id",
+		"f_strategy",
+		"f_trigger_type",
+		"f_status",
+		"f_progress",
+		"f_start_time",
+		"f_finish_time",
+		"f_result",
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+	}
+}
+
 func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, error) {
 	task := &interfaces.DiscoverTask{}
 	var resultStr sql.NullString
@@ -92,6 +112,47 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 	if resultStr.Valid && resultStr.String != "" {
 		task.Result = &interfaces.DiscoverResult{}
 		_ = sonic.UnmarshalString(resultStr.String, task.Result)
+	}
+
+	return task, nil
+}
+
+func scanDiscoverTaskListItem(scanner discoverTaskScanner) (*interfaces.DiscoverTaskSummary, error) {
+	task := &interfaces.DiscoverTaskSummary{}
+	var resultStr sql.NullString
+
+	err := scanner.Scan(
+		&task.ID,
+		&task.CatalogID,
+		&task.ScheduleID,
+		&task.Strategy,
+		&task.TriggerType,
+		&task.Status,
+		&task.Progress,
+		&task.StartTime,
+		&task.FinishTime,
+		&resultStr,
+		&task.Creator.ID,
+		&task.Creator.Type,
+		&task.CreateTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if resultStr.Valid && resultStr.String != "" {
+		var result interfaces.DiscoverResult
+		if err := sonic.UnmarshalString(resultStr.String, &result); err == nil {
+			task.Result = &interfaces.DiscoverTaskResultSummary{
+				CatalogID:      result.CatalogID,
+				NewCount:       result.NewCount,
+				StaleCount:     result.StaleCount,
+				UnchangedCount: result.UnchangedCount,
+				UpdatedCount:   result.UpdatedCount,
+				RestoredCount:  result.RestoredCount,
+				FailedCount:    result.FailedCount,
+			}
+		}
 	}
 
 	return task, nil
@@ -220,11 +281,11 @@ func (dta *discoverTaskAccess) GetByID(ctx context.Context, id string) (*interfa
 }
 
 // List lists DiscoverTasks with filters.
-func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List discover_tasks")
 	defer span.End()
 
-	builder := sq.Select(discoverTaskColumns()...).From(DISCOVER_TASK_TABLE_NAME)
+	builder := sq.Select(discoverTaskListColumns()...).From(DISCOVER_TASK_TABLE_NAME)
 
 	countBuilder := sq.Select("COUNT(*)").From(DISCOVER_TASK_TABLE_NAME)
 
@@ -277,9 +338,9 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 	}
 	defer func() { _ = rows.Close() }()
 
-	tasks := make([]*interfaces.DiscoverTask, 0)
+	tasks := make([]*interfaces.DiscoverTaskSummary, 0)
 	for rows.Next() {
-		task, err := scanDiscoverTask(rows)
+		task, err := scanDiscoverTaskListItem(rows)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, 0, err
@@ -298,10 +359,6 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 }
 
 func buildOrderByClause(sort, direction string) string {
-	if sort == "default" {
-		return "CASE f_status WHEN 'running' THEN 1 WHEN 'pending' THEN 2 WHEN 'failed' THEN 3 WHEN 'completed' THEN 4 ELSE 999 END ASC, f_create_time DESC"
-	}
-
 	column := "f_create_time"
 	switch sort {
 	case "start_time":
