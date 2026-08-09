@@ -5288,6 +5288,88 @@ components:
             - $ref: '#/components/schemas/ToolSource'
             - $ref: '#/components/schemas/MCPSource'
           description: 行动绑定的执行资源（工具箱工具或 MCP 工具）
+    ActionExecutionSummary:
+      description: |
+        列表里的执行记录摘要。字段与 ActionExecution 相同，但不含 results、
+        action_type_snapshot 与 action_source——要逐实例明细请单查详情端点。
+      type: object
+      properties:
+        id:
+          description: 执行ID
+          type: string
+        kn_id:
+          description: 业务知识网络ID
+          type: string
+        action_type_id:
+          description: 行动类ID
+          type: string
+        action_type_name:
+          description: 行动类名称
+          type: string
+        action_source_type:
+          description: 行动源类型
+          enum:
+            - tool
+            - mcp
+          type: string
+        object_type_id:
+          description: 对象类ID
+          type: string
+        trigger_type:
+          description: 触发类型
+          enum:
+            - manual
+            - scheduled
+          type: string
+        status:
+          description: 执行状态
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
+          type: string
+        execution_mode:
+          description: 执行粒度，取值同 ActionExecution。
+          enum:
+            - once
+            - per_instance
+          type: string
+        target_count:
+          description: 命中的目标实例数。
+          type: integer
+        total_count:
+          description: 工具调用次数。once 下恒为 1。
+          type: integer
+        success_count:
+          description: 成功的工具调用次数
+          type: integer
+        failed_count:
+          description: 失败的工具调用次数
+          type: integer
+        dynamic_params:
+          description: 动态参数
+          type: object
+          additionalProperties: true
+        executor_id:
+          description: 执行者ID（已废弃，请使用 executor）
+          type: string
+        executor:
+          $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+        start_time:
+          description: 开始时间（Unix 毫秒）
+          type: integer
+          format: int64
+        end_time:
+          description: 结束时间（Unix 毫秒）
+          type: integer
+          format: int64
+        duration_ms:
+          description: 执行耗时（毫秒）
+          type: integer
+          format: int64
+
     ObjectExecutionResult:
       description: 单次工具调用的执行结果。per_instance 模式下对应一个实例，once 模式下对应整次执行。
       type: object
@@ -5395,10 +5477,12 @@ components:
       type: object
       properties:
         entries:
-          description: 执行记录列表
+          description: |
+            执行记录列表。每条只是任务摘要：results、action_type_snapshot、action_source
+            三项在 OpenSearch 查询层就被排除，不随列表返回——逐实例明细请按 log_id 查详情。
           type: array
           items:
-            $ref: "#/components/schemas/ActionExecution"
+            $ref: "#/components/schemas/ActionExecutionSummary"
         total_count:
           description: 总数（当 need_total 为 true 时返回）
           type: integer
