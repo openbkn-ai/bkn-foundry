@@ -68,6 +68,43 @@ func TestSinkAcknowledgesStaleAggregateVersionWithoutRetry(t *testing.T) {
 	}
 }
 
+func TestPrepareVersionDefinesMappingsRequiredByEmptyReceiptQuery(t *testing.T) {
+	t.Parallel()
+
+	var mapping map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/bkn-trace-core-v014" {
+			t.Fatalf("unexpected index preparation request: %s %s", r.Method, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&mapping); err != nil {
+			t.Fatalf("decode index mapping: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	t.Cleanup(server.Close)
+
+	sink := opensearchprojection.New(
+		opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second),
+		"bkn-trace-core",
+	)
+	if err := sink.PrepareVersion(context.Background(), "bkn-trace-core-v014"); err != nil {
+		t.Fatalf("prepare projection index: %v", err)
+	}
+
+	properties, ok := mapping["mappings"].(map[string]any)["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("receipt projection mapping must define properties: %#v", mapping)
+	}
+	issuedAt, ok := properties["issued_at"].(map[string]any)
+	if !ok || issuedAt["type"] != "date" {
+		t.Fatalf("issued_at must be mapped as date for empty-index sorting: %#v", issuedAt)
+	}
+	requestID, ok := properties["request_id"].(map[string]any)
+	if !ok || requestID["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
+		t.Fatalf("request_id must retain the exact keyword subfield used by summary queries: %#v", requestID)
+	}
+}
+
 func TestValidateVersionRejectsCorruptedDocumentContent(t *testing.T) {
 	t.Parallel()
 
