@@ -5208,17 +5208,28 @@ components:
             - failed
             - cancelled
           type: string
+        execution_mode:
+          description: |
+            执行粒度，由行动类参数来源推导：参数中存在 value_from=property 的项时为 per_instance，
+            每个命中实例各调用一次工具；否则所有命中实例解析出的参数完全相同，为 once，只调用一次工具。
+          enum:
+            - once
+            - per_instance
+          type: string
+        target_count:
+          description: 命中的目标实例数。per_instance 下与 total_count 相等；once 下可大于 total_count。
+          type: integer
         total_count:
-          description: 对象总数
+          description: 本次执行的工具调用次数。per_instance 下等于命中实例数；once 下恒为 1。
           type: integer
         success_count:
-          description: 成功数量
+          description: 成功的工具调用次数
           type: integer
         failed_count:
-          description: 失败数量
+          description: 失败的工具调用次数
           type: integer
         results:
-          description: 每个对象的执行结果（分页返回）
+          description: 每次工具调用的执行结果（分页返回）。once 模式下只有一条，其覆盖的实例见 targets。
           type: array
           items:
             $ref: "#/components/schemas/ObjectExecutionResult"
@@ -5278,13 +5289,19 @@ components:
             - $ref: '#/components/schemas/MCPSource'
           description: 行动绑定的执行资源（工具箱工具或 MCP 工具）
     ObjectExecutionResult:
-      description: 单个对象的执行结果
+      description: 单次工具调用的执行结果。per_instance 模式下对应一个实例，once 模式下对应整次执行。
       type: object
       properties:
         instance_identity:
           description: 对象实例标识
           type: object
           additionalProperties: true
+        targets:
+          description: 本次调用覆盖的目标实例（仅 once 模式返回）
+          type: array
+          items:
+            type: object
+            additionalProperties: true
         status:
           description: 执行状态
           enum:

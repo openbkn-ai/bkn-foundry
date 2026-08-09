@@ -575,6 +575,175 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 	})
 }
 
+func Test_resolveExecutionMode(t *testing.T) {
+	Convey("resolveExecutionMode 按参数来源判定执行粒度", t, func() {
+		Convey("含 property 参数时逐实例执行", func() {
+			at := &interfaces.ActionType{Parameters: []interfaces.Parameter{
+				{Name: "text", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT},
+				{Name: "order_no", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "order_no"},
+			}}
+			So(resolveExecutionMode(at), ShouldEqual, interfaces.ExecutionModePerInstance)
+		})
+
+		Convey("参数全部来自 input/const 时只执行一次", func() {
+			at := &interfaces.ActionType{Parameters: []interfaces.Parameter{
+				{Name: "source", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_CONST, Value: "bkn"},
+				{Name: "text", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT},
+			}}
+			So(resolveExecutionMode(at), ShouldEqual, interfaces.ExecutionModeOnce)
+		})
+
+		Convey("无参数时只执行一次", func() {
+			at := &interfaces.ActionType{Parameters: []interfaces.Parameter{}}
+			So(resolveExecutionMode(at), ShouldEqual, interfaces.ExecutionModeOnce)
+		})
+	})
+}
+
+func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
+	Convey("聚合参数命中多个实例时只调用一次工具（#724）", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		logsService := omock.NewMockActionLogsService(mockCtrl)
+		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService}
+
+		execution := &interfaces.ActionExecution{
+			ID:            "exec_agg",
+			KNID:          "kn_001",
+			Status:        interfaces.ExecutionStatusPending,
+			ExecutionMode: interfaces.ExecutionModeOnce,
+			TargetCount:   7,
+			TotalCount:    1,
+			StartTime:     1700000000000,
+		}
+		actionType := &interfaces.ActionType{
+			ActionSource: interfaces.ActionSource{
+				Type:   interfaces.ActionSourceTypeTool,
+				BoxID:  "box_001",
+				ToolID: "tool_001",
+			},
+			Parameters: []interfaces.Parameter{
+				{Name: "source", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_CONST, Value: "bkn"},
+				{Name: "text", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT},
+			},
+		}
+
+		instances := make([]interfaces.ObjectSystemInfo, 0, 7)
+		objDatas := make([]map[string]any, 0, 7)
+		for i := 0; i < 7; i++ {
+			id := fmt.Sprintf("order_%d", i)
+			instances = append(instances, interfaces.ObjectSystemInfo{InstanceIdentity: map[string]any{"id": id}})
+			objDatas = append(objDatas, map[string]any{"id": id})
+		}
+		req := &interfaces.ActionExecutionRequest{
+			Instances:     instances,
+			ObjDatas:      objDatas,
+			DynamicParams: map[string]any{"text": "订单编号,订单状态,下单时间\n..."},
+		}
+
+		var finalUpdate map[string]any
+		logsService.EXPECT().UpdateExecution(gomock.Any(), "kn_001", "exec_agg", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, knID, execID string, updates map[string]any) error {
+				if _, ok := updates["results"]; ok {
+					finalUpdate = updates
+				}
+				return nil
+			}).AnyTimes()
+
+		// 核心断言：7 个目标实例只产生 1 次工具调用
+		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
+				return map[string]any{"message_id": "m_1"}, nil
+			}).Times(1)
+
+		service.executeAsync(execution, actionType, req)
+
+		So(finalUpdate, ShouldNotBeNil)
+		So(finalUpdate["status"], ShouldEqual, interfaces.ExecutionStatusCompleted)
+		So(finalUpdate["success_count"], ShouldEqual, 1)
+		So(finalUpdate["failed_count"], ShouldEqual, 0)
+
+		results, ok := finalUpdate["results"].([]interfaces.ObjectExecutionResult)
+		So(ok, ShouldBeTrue)
+		So(len(results), ShouldEqual, 1)
+		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
+		// 目标实例不丢失
+		So(len(results[0].Targets), ShouldEqual, 7)
+		So(results[0].Parameters["text"], ShouldEqual, "订单编号,订单状态,下单时间\n...")
+	})
+}
+
+func Test_executeAsync_PerInstanceStillFansOut(t *testing.T) {
+	Convey("含 property 参数时仍逐实例执行，计数与改动前一致", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		logsService := omock.NewMockActionLogsService(mockCtrl)
+		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService}
+
+		execution := &interfaces.ActionExecution{
+			ID:            "exec_fan",
+			KNID:          "kn_001",
+			Status:        interfaces.ExecutionStatusPending,
+			ExecutionMode: interfaces.ExecutionModePerInstance,
+			TargetCount:   3,
+			TotalCount:    3,
+			StartTime:     1700000000000,
+		}
+		actionType := &interfaces.ActionType{
+			ActionSource: interfaces.ActionSource{
+				Type:   interfaces.ActionSourceTypeTool,
+				BoxID:  "box_001",
+				ToolID: "tool_001",
+			},
+			Parameters: []interfaces.Parameter{
+				{Name: "order_no", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "order_no"},
+			},
+		}
+		req := &interfaces.ActionExecutionRequest{
+			Instances: []interfaces.ObjectSystemInfo{
+				{InstanceIdentity: map[string]any{"id": "1"}},
+				{InstanceIdentity: map[string]any{"id": "2"}},
+				{InstanceIdentity: map[string]any{"id": "3"}},
+			},
+			ObjDatas: []map[string]any{
+				{"order_no": "A"}, {"order_no": "B"}, {"order_no": "C"},
+			},
+		}
+
+		var finalUpdate map[string]any
+		logsService.EXPECT().UpdateExecution(gomock.Any(), "kn_001", "exec_fan", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, knID, execID string, updates map[string]any) error {
+				if _, ok := updates["end_time"]; ok {
+					finalUpdate = updates
+				}
+				return nil
+			}).AnyTimes()
+		logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
+			Status: interfaces.ExecutionStatusRunning,
+		}, nil).AnyTimes()
+
+		sentOrderNos := []any{}
+		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
+				sentOrderNos = append(sentOrderNos, execRequest.Body["order_no"])
+				return map[string]any{"ok": true}, nil
+			}).Times(3)
+
+		service.executeAsync(execution, actionType, req)
+
+		So(sentOrderNos, ShouldResemble, []any{"A", "B", "C"})
+		So(finalUpdate["success_count"], ShouldEqual, 3)
+		results, ok := finalUpdate["results"].([]interfaces.ObjectExecutionResult)
+		So(ok, ShouldBeTrue)
+		So(len(results), ShouldEqual, 3)
+		So(results[0].Targets, ShouldBeNil)
+	})
+}
+
 func Test_ExecuteAction_InputDynamicParamsValidation(t *testing.T) {
 	Convey("行动执行：行动类含 input 参数时，dynamic_params 未给齐则返回 400", t, func() {
 		mockCtrl := gomock.NewController(t)
