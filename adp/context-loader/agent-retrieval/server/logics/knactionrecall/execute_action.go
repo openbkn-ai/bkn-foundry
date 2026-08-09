@@ -96,6 +96,13 @@ var actionResultKeepKeys = []string{
 	"status", "parameters", "duration_ms", "error_message", "result",
 }
 
+// maxSlimTargets 是单条结果里 targets 的返回上限。
+// once 模式下 results 恒为 1 条，results_limit 只裁结果条数、裁不到条内的 targets，
+// 而一次不带 _instance_identities 的扫描最多可命中 ACTION_EXECUTION_MAX_OBJECTS
+// （默认 10000）个实例。不设上限，一次查询就能把 MB 级实例明细灌进 Agent 上下文，
+// 与这一层压 token 的目的相反。覆盖总数看 target_count，这里只给样本。
+const maxSlimTargets = 20
+
 func slimActionResults(results []any) []any {
 	slim := make([]any, 0, len(results))
 	for _, item := range results {
@@ -109,6 +116,11 @@ func slimActionResults(results []any) []any {
 			if v, ok := r[k]; ok {
 				out[k] = v
 			}
+		}
+		if targets, ok := out["targets"].([]any); ok && len(targets) > maxSlimTargets {
+			out["targets"] = targets[:maxSlimTargets]
+			out["targets_total"] = len(targets)
+			out["targets_truncated"] = true
 		}
 		slim = append(slim, out)
 	}

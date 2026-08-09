@@ -528,6 +528,10 @@ components:
           description: |
             命中的目标实例数。`per_instance` 下与 `total_count` 相等；`once` 下可远大于
             `total_count`——**读这个字段判断这次行动覆盖了多少对象，不要读 total_count**。
+
+            本特性上线前落库的历史记录没有这个字段，也没有 `execution_mode`：那些记录
+            一律是逐实例执行，`total_count` 就是对象数。**判定方法**：`execution_mode`
+            缺失时按 `per_instance` 处理，覆盖范围读 `total_count`。
         total_count:
           type: integer
           description: |
@@ -607,6 +611,10 @@ components:
           description: |
             命中的目标实例数。`per_instance` 下与 `total_count` 相等；`once` 下可远大于
             `total_count`——**读这个字段判断这次行动覆盖了多少对象，不要读 total_count**。
+
+            本特性上线前落库的历史记录没有这个字段，也没有 `execution_mode`：那些记录
+            一律是逐实例执行，`total_count` 就是对象数。**判定方法**：`execution_mode`
+            缺失时按 `per_instance` 处理，覆盖范围读 `total_count`。
         total_count:
           type: integer
           description: |
@@ -653,8 +661,14 @@ components:
             type: object
             additionalProperties: true
           description: |
-            本次调用覆盖的目标实例，仅 `once` 模式返回。要知道这条聚合结果对应哪些
-            对象，读这个字段。
+            本次调用覆盖的目标实例，仅 `once` 模式返回，**最多 20 条**。命中实例可能上万，
+            全量返回会撑爆上下文，所以这里只是样本；覆盖总数看外层的 `target_count`。
+        targets_total:
+          type: integer
+          description: 被截断前的 targets 总数，仅截断时返回。
+        targets_truncated:
+          type: boolean
+          description: targets 是否被截断。为 true 时说明实际覆盖实例多于返回的条数。
         status:
           type: string
           description: 该对象的执行结果状态（如 `success` / `failed`）。
