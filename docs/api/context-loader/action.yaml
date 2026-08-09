@@ -514,15 +514,30 @@ components:
             - manual
             - scheduled
           description: 触发方式。
+        execution_mode:
+          type: string
+          enum:
+            - once
+            - per_instance
+          description: |
+            执行粒度，由行动类的参数来源推导。参数中存在 `value_from=property` 的项时
+            为 `per_instance`，每个命中实例各调用一次工具；否则所有命中实例解析出的
+            参数完全相同，为 `once`，只调用一次工具。
+        target_count:
+          type: integer
+          description: |
+            命中的目标实例数。`per_instance` 下与 `total_count` 相等；`once` 下可远大于
+            `total_count`——**读这个字段判断这次行动覆盖了多少对象，不要读 total_count**。
         total_count:
           type: integer
-          description: 目标对象总数。
+          description: |
+            本次执行的工具调用次数。`per_instance` 下等于命中实例数；`once` 下恒为 1。
         success_count:
           type: integer
-          description: 成功对象数。
+          description: 成功的工具调用次数。
         failed_count:
           type: integer
-          description: 失败对象数。
+          description: 失败的工具调用次数。
         start_time:
           type: integer
           format: int64
@@ -578,15 +593,30 @@ components:
             - manual
             - scheduled
           description: 触发方式。
+        execution_mode:
+          type: string
+          enum:
+            - once
+            - per_instance
+          description: |
+            执行粒度，由行动类的参数来源推导。参数中存在 `value_from=property` 的项时
+            为 `per_instance`，每个命中实例各调用一次工具；否则所有命中实例解析出的
+            参数完全相同，为 `once`，只调用一次工具。
+        target_count:
+          type: integer
+          description: |
+            命中的目标实例数。`per_instance` 下与 `total_count` 相等；`once` 下可远大于
+            `total_count`——**读这个字段判断这次行动覆盖了多少对象，不要读 total_count**。
         total_count:
           type: integer
-          description: 目标对象总数。
+          description: |
+            本次执行的工具调用次数。`per_instance` 下等于命中实例数；`once` 下恒为 1。
         success_count:
           type: integer
-          description: 成功对象数。
+          description: 成功的工具调用次数。
         failed_count:
           type: integer
-          description: 失败对象数。
+          description: 失败的工具调用次数。
         start_time:
           type: integer
           format: int64
@@ -606,15 +636,25 @@ components:
 
     ActionExecutionResult:
       type: object
-      description: 单个对象的执行结果（同样是裁剪后的投影）。
+      description: |
+        单次工具调用的执行结果（同样是裁剪后的投影）。`per_instance` 模式下一条对应一个
+        实例；`once` 模式下整次执行只有一条，它覆盖的实例在 `targets` 里。
       properties:
         _instance_id:
           type: string
-          description: 对象唯一标识。
+          description: 对象唯一标识。`once` 模式下为空。
         _instance_identity:
           $ref: '#/components/schemas/InstanceIdentity'
         _display:
-          description: 对象的显示值。
+          description: 对象的显示值。`once` 模式下是「N 个目标实例合并为 1 次调用」。
+        targets:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: |
+            本次调用覆盖的目标实例，仅 `once` 模式返回。要知道这条聚合结果对应哪些
+            对象，读这个字段。
         status:
           type: string
           description: 该对象的执行结果状态（如 `success` / `failed`）。

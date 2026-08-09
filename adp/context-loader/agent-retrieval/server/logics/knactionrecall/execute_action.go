@@ -60,9 +60,12 @@ func (s *knActionRecallServiceImpl) GetActionExecution(ctx context.Context, req 
 }
 
 // actionExecutionKeepKeys 是单次执行详情中对 Agent 有用、需保留的顶层字段。
+// execution_mode/target_count 必须留：once 模式下 total_count 是工具调用次数（恒为 1），
+// 没有这两个字段，Agent 会把「30 个实例合并成 1 次调用」误读成「只处理了 1 个对象」。
 var actionExecutionKeepKeys = []string{
 	"id", "kn_id", "action_type_id", "action_type_name",
-	"status", "trigger_type", "total_count", "success_count", "failed_count",
+	"status", "trigger_type", "execution_mode", "target_count",
+	"total_count", "success_count", "failed_count",
 	"start_time", "end_time", "duration_ms", "dynamic_params", "results",
 }
 
@@ -86,8 +89,10 @@ func slimActionExecution(full map[string]any) map[string]any {
 }
 
 // actionResultKeepKeys 是逐对象结果中需保留的字段。
+// targets 只在 once 模式出现，装着这一次调用覆盖的实例，是 Agent 判断
+// 「这条聚合结果对应哪些对象」的唯一依据。
 var actionResultKeepKeys = []string{
-	"_instance_id", "_instance_identity", "_display",
+	"_instance_id", "_instance_identity", "_display", "targets",
 	"status", "parameters", "duration_ms", "error_message", "result",
 }
 
