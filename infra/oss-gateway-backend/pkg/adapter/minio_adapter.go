@@ -104,9 +104,15 @@ func (a *MinIOAdapter) GetHeadURL(ctx context.Context, objectKey string, validSe
 
 func (a *MinIOAdapter) GetUploadURL(ctx context.Context, objectKey string, validSeconds int64) (*PresignedURL, error) {
 	policy := minio.NewPostPolicy()
-	policy.SetBucket(a.bucketName)
-	policy.SetKey(objectKey)
-	policy.SetExpires(time.Now().UTC().Add(time.Duration(validSeconds) * time.Second))
+	if err := policy.SetBucket(a.bucketName); err != nil {
+		return nil, fmt.Errorf("failed to set post policy bucket: %w", err)
+	}
+	if err := policy.SetKey(objectKey); err != nil {
+		return nil, fmt.Errorf("failed to set post policy key: %w", err)
+	}
+	if err := policy.SetExpires(time.Now().UTC().Add(time.Duration(validSeconds) * time.Second)); err != nil {
+		return nil, fmt.Errorf("failed to set post policy expiry: %w", err)
+	}
 
 	presignedURL, formData, err := a.client.PresignedPostPolicy(ctx, policy)
 	if err != nil {
