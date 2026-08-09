@@ -448,11 +448,11 @@ func (t *transaction) SaveOperation(operation sessionvo.Operation) {
 		_, t.err = t.tx.ExecContext(t.ctx, `
 			INSERT INTO bkn_trace_operations (
 				operation_id, conversation_id, interaction_id, operation_key, tool_name,
-				normalized_input_hash, parent_operation_id, causation_event_ids,
+				parent_operation_id, causation_event_ids,
 				attempt_no, attempt_status, retryable, row_version, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?)`,
 			operation.ID, operation.ConversationID, operation.InteractionID, operation.OperationKey,
-			operation.ToolName, operation.NormalizedInputHash, operation.ParentOperationID,
+			operation.ToolName, operation.ParentOperationID,
 			causation, operation.Attempt, operation.AttemptStatus, operation.Retryable,
 			operation.RowVersion, operation.CreatedAt, operation.UpdatedAt,
 		)
@@ -464,6 +464,84 @@ func (t *transaction) SaveOperation(operation sessionvo.Operation) {
 				row_version=?, updated_at=? WHERE operation_id=?`,
 			operation.Attempt, operation.AttemptStatus, operation.Retryable,
 			operation.RowVersion, operation.UpdatedAt, operation.ID,
+		)
+	}
+}
+
+func (t *transaction) FindOperationCallFact(
+	operationID string,
+	attempt uint32,
+) (sessionvo.OperationCallFact, bool) {
+	if t.err != nil {
+		return sessionvo.OperationCallFact{}, false
+	}
+	return t.scanOperationCallFact(t.tx.QueryRowContext(t.ctx, operationCallFactSelect+`
+		WHERE operation_id=? AND attempt_no=? FOR UPDATE`, operationID, attempt))
+}
+
+func (t *transaction) ListOperationCallFacts(interactionID string) []sessionvo.OperationCallFact {
+	if t.err != nil {
+		return nil
+	}
+	rows, err := t.tx.QueryContext(t.ctx, operationCallFactSelect+`
+		WHERE interaction_id=? ORDER BY started_at, operation_id, attempt_no`, interactionID)
+	if err != nil {
+		t.err = err
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]sessionvo.OperationCallFact, 0)
+	for rows.Next() {
+		value, found := t.scanOperationCallFact(rows)
+		if !found {
+			return nil
+		}
+		result = append(result, value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
+func (t *transaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
+	if t.err != nil {
+		return
+	}
+	var exists int
+	err := t.tx.QueryRowContext(t.ctx,
+		"SELECT 1 FROM bkn_trace_operation_call_facts WHERE operation_id=? AND attempt_no=?",
+		fact.OperationID, fact.Attempt,
+	).Scan(&exists)
+	input := marshalJSON(fact.Input)
+	output := marshalOptionalPayload(fact.Output)
+	errorPayload := marshalOptionalPayload(fact.Error)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		_, t.err = t.tx.ExecContext(t.ctx, `
+			INSERT INTO bkn_trace_operation_call_facts (
+				operation_id, attempt_no, conversation_id, interaction_id, receipt_id,
+				tool_name, protocol, source_module, parent_operation_id,
+				input_payload, output_payload, error_payload,
+				request_id, trace_id, span_id, started_at, finished_at, status, retryable
+			) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''),
+				NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`,
+			fact.OperationID, fact.Attempt, fact.ConversationID, fact.InteractionID,
+			fact.ReceiptID, fact.ToolName, fact.Protocol, fact.SourceModule,
+			fact.ParentOperationID, input, output, errorPayload,
+			fact.RequestID, fact.TraceID, fact.SpanID, fact.StartedAt,
+			nullableTime(fact.FinishedAt), fact.Status, fact.Retryable,
+		)
+	case err != nil:
+		t.err = err
+	default:
+		_, t.err = t.tx.ExecContext(t.ctx, `
+			UPDATE bkn_trace_operation_call_facts SET receipt_id=NULLIF(?, ''),
+				output_payload=NULLIF(?, ''), error_payload=NULLIF(?, ''),
+				request_id=NULLIF(?, ''), trace_id=NULLIF(?, ''), span_id=NULLIF(?, ''), finished_at=?,
+				status=?, retryable=?
+			WHERE operation_id=? AND attempt_no=?`,
+			fact.ReceiptID, output, errorPayload, fact.RequestID, fact.TraceID, fact.SpanID,
+			nullableTime(fact.FinishedAt), fact.Status, fact.Retryable,
+			fact.OperationID, fact.Attempt,
 		)
 	}
 }
@@ -532,23 +610,23 @@ func (t *transaction) SaveReceipt(receipt sessionvo.Receipt) {
 				receipt_id, schema_version, tenant_id, business_domain_id,
 				application_principal_id, effective_subject_type, effective_subject_id,
 				delegation_id, conversation_id, interaction_id, operation_id, attempt_no,
-				operation_key, tool_name, normalized_input_hash, receipt_status,
+				operation_key, tool_name, receipt_status,
 				evidence_durability, required_receipt, request_id, trace_id,
 				causation_event_ids, observed_evidence_refs, business_refs, artifact_refs,
-				partial_reasons, row_version, issued_at, terminal_at, payload_hash
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+				partial_reasons, row_version, issued_at, terminal_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 				NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''),
-				NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, NULLIF(?, ''))`,
+				NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?)`,
 			receipt.ID, receipt.SchemaVersion, receipt.Owner.TenantID, receipt.Owner.BusinessDomainID,
 			receipt.Owner.ApplicationPrincipalID, receipt.Owner.EffectiveSubjectType,
 			receipt.Owner.EffectiveSubjectID, receipt.Owner.DelegationID,
 			receipt.ConversationID, receipt.InteractionID, receipt.OperationID, receipt.Attempt,
-			receipt.OperationKey, receipt.ToolName, receipt.NormalizedInputHash,
-			receipt.Status, receipt.EvidenceDurability, receipt.Required, receipt.RequestID,
+			receipt.OperationKey, receipt.ToolName, receipt.Status,
+			receipt.EvidenceDurability, receipt.Required, receipt.RequestID,
 			receipt.TraceID, marshalJSON(receipt.CausationEventIDs),
 			marshalJSON(receipt.ObservedEvidenceRefs), marshalJSON(receipt.BusinessRefs),
 			marshalJSON(receipt.ArtifactRefs), marshalJSON(receipt.PartialReasons),
-			receipt.RowVersion, receipt.IssuedAt, nullableTime(receipt.TerminalAt), receipt.PayloadHash,
+			receipt.RowVersion, receipt.IssuedAt, nullableTime(receipt.TerminalAt),
 		)
 	case err != nil:
 		t.err = err
@@ -557,13 +635,12 @@ func (t *transaction) SaveReceipt(receipt sessionvo.Receipt) {
 			UPDATE bkn_trace_receipts SET receipt_status=?, evidence_durability=?,
 				request_id=NULLIF(?, ''), trace_id=NULLIF(?, ''), observed_evidence_refs=NULLIF(?, ''),
 				business_refs=NULLIF(?, ''), artifact_refs=NULLIF(?, ''),
-				partial_reasons=NULLIF(?, ''), row_version=?, terminal_at=?,
-				payload_hash=NULLIF(?, '')
+				partial_reasons=NULLIF(?, ''), row_version=?, terminal_at=?
 			WHERE receipt_id=?`,
 			receipt.Status, receipt.EvidenceDurability, receipt.RequestID, receipt.TraceID,
 			marshalJSON(receipt.ObservedEvidenceRefs), marshalJSON(receipt.BusinessRefs),
 			marshalJSON(receipt.ArtifactRefs), marshalJSON(receipt.PartialReasons),
-			receipt.RowVersion, nullableTime(receipt.TerminalAt), receipt.PayloadHash, receipt.ID,
+			receipt.RowVersion, nullableTime(receipt.TerminalAt), receipt.ID,
 		)
 	}
 }
@@ -930,7 +1007,7 @@ func scanInteractionRows(row rowScanner) (sessionvo.Interaction, error) {
 }
 
 const operationSelect = `SELECT operation_id, conversation_id, interaction_id,
-	operation_key, tool_name, normalized_input_hash, COALESCE(parent_operation_id, ''),
+	operation_key, tool_name, COALESCE(parent_operation_id, ''),
 	COALESCE(causation_event_ids, ''), attempt_no, attempt_status, retryable,
 	row_version, created_at, updated_at FROM bkn_trace_operations`
 
@@ -951,7 +1028,7 @@ func scanOperationRows(row rowScanner) (sessionvo.Operation, error) {
 	var causation string
 	err := row.Scan(
 		&value.ID, &value.ConversationID, &value.InteractionID, &value.OperationKey,
-		&value.ToolName, &value.NormalizedInputHash, &value.ParentOperationID, &causation,
+		&value.ToolName, &value.ParentOperationID, &causation,
 		&value.Attempt, &value.AttemptStatus, &value.Retryable, &value.RowVersion,
 		&value.CreatedAt, &value.UpdatedAt,
 	)
@@ -962,14 +1039,70 @@ func scanOperationRows(row rowScanner) (sessionvo.Operation, error) {
 	return value, nil
 }
 
+const operationCallFactSelect = `SELECT operation_id, attempt_no, conversation_id,
+	interaction_id, COALESCE(receipt_id, ''), tool_name, protocol, source_module,
+	COALESCE(parent_operation_id, ''), input_payload,
+	COALESCE(output_payload, ''), COALESCE(error_payload, ''),
+	COALESCE(request_id, ''), COALESCE(trace_id, ''), COALESCE(span_id, ''), started_at, finished_at,
+	status, retryable FROM bkn_trace_operation_call_facts `
+
+func (t *transaction) scanOperationCallFact(row rowScanner) (sessionvo.OperationCallFact, bool) {
+	var value sessionvo.OperationCallFact
+	var input, output, errorPayload string
+	var finishedAt sql.NullTime
+	err := row.Scan(
+		&value.OperationID, &value.Attempt, &value.ConversationID, &value.InteractionID,
+		&value.ReceiptID, &value.ToolName, &value.Protocol, &value.SourceModule,
+		&value.ParentOperationID, &input, &output, &errorPayload,
+		&value.RequestID, &value.TraceID, &value.SpanID, &value.StartedAt, &finishedAt,
+		&value.Status, &value.Retryable,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sessionvo.OperationCallFact{}, false
+	}
+	if err != nil {
+		t.err = err
+		return sessionvo.OperationCallFact{}, false
+	}
+	if err := json.Unmarshal([]byte(input), &value.Input); err != nil {
+		t.err = err
+		return sessionvo.OperationCallFact{}, false
+	}
+	if output != "" {
+		value.Output = &sessionvo.PayloadEnvelope{}
+		if err := json.Unmarshal([]byte(output), value.Output); err != nil {
+			t.err = err
+			return sessionvo.OperationCallFact{}, false
+		}
+	}
+	if errorPayload != "" {
+		value.Error = &sessionvo.PayloadEnvelope{}
+		if err := json.Unmarshal([]byte(errorPayload), value.Error); err != nil {
+			t.err = err
+			return sessionvo.OperationCallFact{}, false
+		}
+	}
+	if finishedAt.Valid {
+		value.FinishedAt = &finishedAt.Time
+	}
+	return value, true
+}
+
+func marshalOptionalPayload(payload *sessionvo.PayloadEnvelope) string {
+	if payload == nil {
+		return ""
+	}
+	return marshalJSON(*payload)
+}
+
 const receiptSelect = `SELECT receipt_id, schema_version, tenant_id, business_domain_id,
 	application_principal_id, effective_subject_type, effective_subject_id,
 	COALESCE(delegation_id, ''), conversation_id, interaction_id, operation_id,
-	attempt_no, operation_key, tool_name, normalized_input_hash, receipt_status,
+	attempt_no, operation_key, tool_name, receipt_status,
 	evidence_durability, required_receipt, COALESCE(request_id, ''), COALESCE(trace_id, ''),
 	COALESCE(causation_event_ids, ''), COALESCE(observed_evidence_refs, ''),
 	COALESCE(business_refs, ''), COALESCE(artifact_refs, ''), COALESCE(partial_reasons, ''),
-	row_version, issued_at, terminal_at, COALESCE(payload_hash, '') FROM bkn_trace_receipts`
+	row_version, issued_at, terminal_at FROM bkn_trace_receipts`
 
 func (t *transaction) scanReceipt(row rowScanner) (sessionvo.Receipt, bool) {
 	value, err := scanReceiptRows(row)
@@ -992,10 +1125,10 @@ func scanReceiptRows(row rowScanner) (sessionvo.Receipt, error) {
 		&value.Owner.ApplicationPrincipalID, &value.Owner.EffectiveSubjectType,
 		&value.Owner.EffectiveSubjectID, &value.Owner.DelegationID,
 		&value.ConversationID, &value.InteractionID, &value.OperationID, &value.Attempt,
-		&value.OperationKey, &value.ToolName, &value.NormalizedInputHash,
+		&value.OperationKey, &value.ToolName,
 		&value.Status, &value.EvidenceDurability, &value.Required,
 		&value.RequestID, &value.TraceID, &causation, &evidence, &business, &artifacts,
-		&reasons, &value.RowVersion, &value.IssuedAt, &terminalAt, &value.PayloadHash,
+		&reasons, &value.RowVersion, &value.IssuedAt, &terminalAt,
 	)
 	if err != nil {
 		return sessionvo.Receipt{}, err

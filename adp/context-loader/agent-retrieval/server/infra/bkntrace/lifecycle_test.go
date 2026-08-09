@@ -34,6 +34,11 @@ func TestGuardBeginUsesCoreCreatedAtForOperationEvidence(t *testing.T) {
 				ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1,
 			}), nil
 		case "/api/agent-observability/v1/conversations/conv-1/interactions/int-1/operations:ensure":
+			var body map[string]any
+			_ = json.NewDecoder(request.Body).Decode(&body)
+			if body["protocol"] != "mcp" || body["source_module"] != "context-loader" {
+				t.Errorf("guard ensure lost producer identity: %#v", body)
+			}
 			return lifecycleJSONResponse(http.StatusCreated, OperationResult{
 				Created: true, Execute: true,
 				Operation: Operation{
@@ -57,7 +62,8 @@ func TestGuardBeginUsesCoreCreatedAtForOperationEvidence(t *testing.T) {
 		Context: BusinessContext{
 			ConversationID: "conv-1", InteractionID: "int-1", OperationKey: "schema-1",
 		},
-		ToolName: "search_schema", NormalizedInputHash: "sha256:input",
+		ToolName: "search_schema", Protocol: "mcp", SourceModule: "context-loader",
+		Input: json.RawMessage(`{"query":"material"}`),
 	})
 	if err != nil || apiErr != nil {
 		t.Fatalf("begin operation failed: api=%#v err=%v", apiErr, err)
@@ -100,11 +106,26 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		case "/api/agent-observability/v1/conversations/conv-1/interactions/int-1/operations:ensure":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["protocol"] != "mcp" || body["source_module"] != "context-loader" {
+				t.Errorf("ensure request lost producer identity: %#v", body)
+			}
 			if body["lease_token"] != "lease-1" || body["lease_epoch"] != float64(7) {
 				t.Errorf("ensure request did not reuse authoritative lease: %#v", body)
 			}
 			if _, forged := body["tenant_id"]; forged {
 				t.Errorf("owner identity must not be sent in JSON: %#v", body)
+			}
+			input, _ := body["input"].(map[string]any)
+			inputByteLength, _ := input["byte_length"].(float64)
+			if input["mode"] != "inline" || input["media_type"] != "application/json" ||
+				inputByteLength <= 0 ||
+				!reflect.DeepEqual(input["inline"], map[string]any{
+					"query": "物料", "knowledge_network_id": "supply-chain",
+				}) {
+				t.Errorf("ensure request did not send a bounded real-input envelope: %#v", body)
+			}
+			if _, legacy := body["normalized_input_hash"]; legacy {
+				t.Errorf("ensure request still exposes normalized_input_hash: %#v", body)
 			}
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(OperationResult{
@@ -118,6 +139,18 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if body["evidence_durability"] != "durable" {
 				t.Errorf("failed attempt must preserve durable lifecycle evidence: %#v", body)
+			}
+			errorPayload, _ := body["error"].(map[string]any)
+			errorByteLength, _ := errorPayload["byte_length"].(float64)
+			if errorPayload["mode"] != "inline" || errorPayload["media_type"] != "application/json" ||
+				errorByteLength <= 0 ||
+				!reflect.DeepEqual(errorPayload["inline"], map[string]any{
+					"code": "ontology_query_failed", "message": "upstream timeout", "stage": "downstream",
+				}) {
+				t.Errorf("failed attempt did not send a bounded real-error envelope: %#v", body)
+			}
+			if _, legacy := body["payload_hash"]; legacy {
+				t.Errorf("failed attempt still exposes payload_hash: %#v", body)
 			}
 			_ = json.NewEncoder(w).Encode(OperationResult{
 				Operation: Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "failed"},
@@ -139,7 +172,8 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	client := NewLifecycleClient(server.URL, server.Client())
 	result, apiErr, err := client.EnsureOperation(ctx, EnsureOperationInput{
 		ConversationID: "conv-1", InteractionID: "int-1", OperationKey: "logical-1",
-		ToolName: "search_schema", NormalizedInputHash: "sha256:input",
+		ToolName: "search_schema", Protocol: "mcp", SourceModule: "context-loader",
+		Input: json.RawMessage(`{"query":"物料","knowledge_network_id":"supply-chain"}`),
 	})
 	if err != nil || apiErr != nil {
 		t.Fatalf("ensure operation failed: api=%#v err=%v", apiErr, err)
@@ -149,7 +183,7 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	}
 	failed, apiErr, err := client.FailAttempt(ctx, FinishAttemptInput{
 		OperationID: "op-1", Attempt: 1, ReceiptID: "receipt-1",
-		PayloadHash: "sha256:failure",
+		Error: json.RawMessage(`{"code":"ontology_query_failed","message":"upstream timeout","stage":"downstream"}`),
 	})
 	if err != nil || apiErr != nil || requests != 3 || failed.Receipt.ReceiptStatus != "failed" {
 		t.Fatalf("fail attempt did not persist receipt: requests=%d api=%#v err=%v result=%#v", requests, apiErr, err, failed)
@@ -193,7 +227,7 @@ func TestLifecycleClientDoesNotClaimDurableEvidenceWithoutAck(t *testing.T) {
 		trustedLifecycleTestContext(),
 		FinishAttemptInput{
 			OperationID: "op-1", Attempt: 1, ReceiptID: "receipt-1",
-			PayloadHash: "sha256:result", RequestID: "req_01JZVALIDREQUESTID000000011",
+			Output: json.RawMessage(`{"rows":[]}`), RequestID: "req_01JZVALIDREQUESTID000000011",
 			TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		},
 	)
@@ -454,15 +488,15 @@ func TestLifecycleValueTypesPreserveCore30RequiredFields(t *testing.T) {
 		}},
 		{"operation", &Operation{}, []string{
 			"operation_id", "conversation_id", "interaction_id", "operation_key", "tool_name",
-			"normalized_input_hash", "attempt", "attempt_status", "retryable", "row_version",
+			"attempt", "attempt_status", "retryable", "row_version",
 			"created_at", "updated_at",
 		}},
 		{"receipt", &Receipt{}, []string{
 			"receipt_id", "schema_version", "owner", "conversation_id", "interaction_id",
-			"operation_id", "attempt", "operation_key", "tool_name", "normalized_input_hash",
+			"operation_id", "attempt", "operation_key", "tool_name",
 			"receipt_status", "evidence_durability", "required", "request_id", "trace_id",
 			"causation_event_ids", "observed_evidence_refs", "business_refs", "artifact_refs",
-			"partial_reasons", "row_version", "issued_at", "payload_hash",
+			"partial_reasons", "row_version", "issued_at",
 		}},
 	}
 	for _, fixture := range fixtures {
@@ -517,7 +551,6 @@ func TestGuardFinishRecoversWhenCommittedResponseIsLost(t *testing.T) {
 			}
 			receipt := matchingFinishReceipt(status, "sha256:result")
 			if status == "pending" {
-				receipt.PayloadHash = ""
 				receipt.RequestID = ""
 				receipt.TraceID = ""
 			}
@@ -601,25 +634,28 @@ func TestGuardFinishRejectsOppositeTerminalReceiptAfterResponseLoss(t *testing.T
 	}
 }
 
-func TestGuardFinishRejectsReceiptPayloadMismatchAfterResponseLoss(t *testing.T) {
+func TestGuardFinishRecoversTerminalReceiptWithoutClientPayloadHash(t *testing.T) {
 	client := lifecycleClientWithTransport(func(request *http.Request) (*http.Response, error) {
 		switch {
 		case request.Method == http.MethodPost:
 			return nil, errors.New("response lost after commit")
 		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/receipts/"):
 			return lifecycleJSONResponse(http.StatusOK,
-				matchingFinishReceipt("completed", "sha256:different")), nil
+				matchingFinishReceipt("completed", "")), nil
+		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/operations/"):
+			return lifecycleJSONResponse(http.StatusOK, Operation{
+				OperationID: "op-1", Attempt: 1, AttemptStatus: "completed",
+			}), nil
 		default:
 			return lifecycleJSONResponse(http.StatusNotFound, nil), nil
 		}
 	})
 
-	_, apiErr, err := NewGuard(client).Finish(
+	result, apiErr, err := NewGuard(client).Finish(
 		finishLifecycleContext(false), pendingGuardState(), "sha256:result", false, false,
 	)
-	if err != nil || apiErr == nil || apiErr.Code != "idempotency_conflict" ||
-		apiErr.RequiredAction != "use_new_idempotency_key" {
-		t.Fatalf("mismatched receipt was accepted: api=%#v err=%v", apiErr, err)
+	if err != nil || apiErr != nil || result.Receipt.ReceiptStatus != "completed" {
+		t.Fatalf("terminal receipt was not recovered without client hash: result=%#v api=%#v err=%v", result, apiErr, err)
 	}
 }
 
@@ -800,11 +836,11 @@ func finishLifecycleContext(cancel bool) context.Context {
 	return canceled
 }
 
-func matchingFinishReceipt(status, payloadHash string) Receipt {
+func matchingFinishReceipt(status, _ string) Receipt {
 	return Receipt{
 		ReceiptID: "receipt-1", OperationID: "op-1", Attempt: 1,
-		ReceiptStatus: status, PayloadHash: payloadHash,
-		RequestID: "req_finish_recovery_0001",
-		TraceID:   "4b3d59daeff5bfbb23d46c47a5051ec9",
+		ReceiptStatus: status,
+		RequestID:     "req_finish_recovery_0001",
+		TraceID:       "4b3d59daeff5bfbb23d46c47a5051ec9",
 	}
 }

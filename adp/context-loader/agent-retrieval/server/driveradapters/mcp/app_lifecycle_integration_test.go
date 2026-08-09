@@ -53,12 +53,14 @@ func TestMCPProtocolLifecycleThreeRoundsAcrossConversationsAndReconnect(t *testi
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
 			var body struct {
-				OperationKey        string `json:"operation_key"`
-				ToolName            string `json:"tool_name"`
-				NormalizedInputHash string `json:"normalized_input_hash"`
+				OperationKey string         `json:"operation_key"`
+				ToolName     string         `json:"tool_name"`
+				Input        map[string]any `json:"input"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body.OperationKey == "" || body.ToolName != "run_sql" || body.NormalizedInputHash == "" {
+			inline, _ := body.Input["inline"].(map[string]any)
+			if body.OperationKey == "" || body.ToolName != "run_sql" ||
+				body.Input["mode"] != "inline" || inline["sql"] != "DELETE FROM forbidden" {
 				t.Errorf("invalid ensure body: %#v", body)
 			}
 			parts := strings.Split(r.URL.Path, "/")
@@ -83,13 +85,15 @@ func TestMCPProtocolLifecycleThreeRoundsAcrossConversationsAndReconnect(t *testi
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attempts/1:fail"):
 			var body struct {
-				ReceiptID string `json:"receipt_id"`
-				RequestID string `json:"request_id"`
-				TraceID   string `json:"trace_id"`
-				Retryable bool   `json:"retryable"`
+				ReceiptID string                   `json:"receipt_id"`
+				Error     bkntrace.PayloadEnvelope `json:"error"`
+				RequestID string                   `json:"request_id"`
+				TraceID   string                   `json:"trace_id"`
+				Retryable bool                     `json:"retryable"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body.ReceiptID == "" || body.RequestID == "" || len(body.TraceID) != 32 || body.Retryable {
+			if body.ReceiptID == "" || body.Error.Mode != "inline" || len(body.Error.Inline) == 0 || body.RequestID == "" ||
+				len(body.TraceID) != 32 || body.Retryable {
 				t.Errorf("invalid business IsError finish body: %#v", body)
 			}
 			operationID := strings.TrimSuffix(pathTail(r.URL.Path), ":fail")

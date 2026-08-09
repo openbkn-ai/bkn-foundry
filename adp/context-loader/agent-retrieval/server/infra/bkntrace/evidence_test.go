@@ -278,11 +278,11 @@ func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T)
 	if payload["row_count"] != 1 || payload["query_type"] != "sql" || payload["query_hash"] == "" {
 		t.Fatalf("missing query facts: %#v", payload)
 	}
-	if ref, _ := payload["query_artifact_ref"].(string); !strings.HasPrefix(ref, "artifact:art_query_") {
-		t.Fatalf("query artifact ref=%q, want stable query artifact", ref)
+	if _, duplicated := payload["query_artifact_ref"]; duplicated {
+		t.Fatalf("aggregate event must not refer to deleted duplicate query artifact: %#v", payload)
 	}
-	if ref, _ := payload["result_artifact_ref"].(string); !strings.HasPrefix(ref, "artifact:art_data_result_") {
-		t.Fatalf("result artifact ref=%q, want stable data result artifact", ref)
+	if _, duplicated := payload["result_artifact_ref"]; duplicated {
+		t.Fatalf("aggregate event must not refer to deleted duplicate result artifact: %#v", payload)
 	}
 	raw, _ := json.Marshal(events)
 	text := string(raw)
@@ -671,20 +671,22 @@ func TestEmitSearchSchemaEventsNoopsWhenIngestDisabled(t *testing.T) {
 	})
 }
 
-func TestEmitRunSQLEventsStoresReplayableQueryArtifact(t *testing.T) {
-	var artifacts []map[string]any
+func TestEmitRunSQLEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
+	artifactWrites := 0
+	var submittedEvents []Event
 	previous := evidenceHTTPClient
 	t.Cleanup(func() { evidenceHTTPClient = previous })
 	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
 		case "/api/agent-observability/v1/evidence/artifacts":
-			var artifact map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&artifact); err != nil {
-				t.Fatalf("decode run_sql artifact: %v", err)
-			}
-			artifacts = append(artifacts, artifact)
+			artifactWrites++
 			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(""))}, nil
 		case "/api/agent-observability/v1/evidence/events":
+			var body trace30Event
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode run_sql events: %v", err)
+			}
+			submittedEvents = append(submittedEvents, body.Envelope)
 			return &http.Response{StatusCode: http.StatusAccepted, Body: io.NopCloser(strings.NewReader(""))}, nil
 		default:
 			t.Fatalf("unexpected evidence path: %s", r.URL.Path)
@@ -698,47 +700,27 @@ func TestEmitRunSQLEventsStoresReplayableQueryArtifact(t *testing.T) {
 		Entries: []map[string]any{{"material_id": "M-001", "SUM(quantity)": 42}},
 	})
 
-	if len(artifacts) != 2 {
-		t.Fatalf("artifacts=%#v, want query and data_result", artifacts)
+	if artifactWrites != 0 {
+		t.Fatalf("run_sql wrote %d duplicate artifacts; OperationCallFact is the payload authority", artifactWrites)
 	}
-	queryArtifact := artifacts[0]
-	if queryArtifact["artifact_type"] != "query" || queryArtifact["operation_id"] != "op_context_retrieval_0001" {
-		t.Fatalf("unexpected query artifact identity: %#v", queryArtifact)
+	if len(submittedEvents) != 1 || submittedEvents[0]["event_type"] != "data.query.observed" {
+		t.Fatalf("submitted events=%#v, want one aggregate data.query.observed", submittedEvents)
 	}
-	content, _ := queryArtifact["content"].(map[string]any)
-	if content["sql"] != sql {
-		t.Fatalf("artifact SQL=%v, want replayable input %q", content["sql"], sql)
-	}
-	resources, _ := content["resource_ids"].([]any)
-	if len(resources) != 1 || resources[0] != "inventory" {
-		t.Fatalf("artifact resource_ids=%#v, want inventory", content["resource_ids"])
-	}
-	resultArtifact := artifacts[1]
-	if resultArtifact["artifact_type"] != "data_result" || resultArtifact["operation_id"] != "op_context_retrieval_0001" {
-		t.Fatalf("unexpected result artifact identity: %#v", resultArtifact)
-	}
-	resultContent, _ := resultArtifact["content"].(map[string]any)
-	if resultContent["row_count"] != float64(1) || resultContent["truncated"] != false {
-		t.Fatalf("unexpected result summary: %#v", resultContent)
-	}
-	if _, leaked := resultContent["entries"]; leaked {
-		t.Fatalf("result artifact must not copy raw rows: %#v", resultContent)
+	payload, _ := submittedEvents[0]["payload"].(map[string]any)
+	if payload["row_count"] != float64(1) || payload["query_hash"] == "" {
+		t.Fatalf("aggregate query facts missing: %#v", payload)
 	}
 }
 
-func TestEmitRunSQLFailureStoresReplayableQueryAndStructuredError(t *testing.T) {
-	var artifacts []map[string]any
+func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
+	artifactWrites := 0
 	var submittedEvents []Event
 	previous := evidenceHTTPClient
 	t.Cleanup(func() { evidenceHTTPClient = previous })
 	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
 		case "/api/agent-observability/v1/evidence/artifacts":
-			var artifact map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&artifact); err != nil {
-				t.Fatalf("decode run_sql failure artifact: %v", err)
-			}
-			artifacts = append(artifacts, artifact)
+			artifactWrites++
 			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(""))}, nil
 		case "/api/agent-observability/v1/evidence/events":
 			var body trace30Event
@@ -759,18 +741,8 @@ func TestEmitRunSQLFailureStoresReplayableQueryAndStructuredError(t *testing.T) 
 		Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "unknown column available_qty",
 	})
 
-	if len(artifacts) != 2 {
-		t.Fatalf("artifacts=%#v, want query and failed data_result", artifacts)
-	}
-	queryContent, _ := artifacts[0]["content"].(map[string]any)
-	if artifacts[0]["artifact_type"] != "query" || queryContent["sql"] != sql {
-		t.Fatalf("failure query is not replayable: %#v", artifacts[0])
-	}
-	resultContent, _ := artifacts[1]["content"].(map[string]any)
-	if artifacts[1]["artifact_type"] != "data_result" || resultContent["status"] != "error" ||
-		resultContent["error_stage"] != "vega_query" || resultContent["error_code"] != "RUN_SQL_VEGA_QUERY_FAILED" ||
-		resultContent["error_summary"] != "unknown column available_qty" {
-		t.Fatalf("failure result is not diagnostic: %#v", artifacts[1])
+	if artifactWrites != 0 {
+		t.Fatalf("failed run_sql wrote %d duplicate artifacts; OperationCallFact is the payload authority", artifactWrites)
 	}
 	if len(submittedEvents) != 1 || submittedEvents[0]["event_type"] != "data.query.observed" {
 		t.Fatalf("submitted events=%#v, want one data.query.observed", submittedEvents)

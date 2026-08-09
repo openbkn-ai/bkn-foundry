@@ -15,7 +15,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
-const maxLifecycleBodyBytes = 1 << 20
+// The payload itself remains capped at 1 MiB. The lifecycle request needs
+// bounded room for the envelope and correlation/reference metadata around it.
+const maxLifecycleBodyBytes = 2 << 20
 
 type SessionHandler struct {
 	service  *sessionsvc.Service
@@ -68,14 +70,16 @@ type startInteractionRequest struct {
 }
 
 type ensureOperationRequest struct {
-	OperationKey        string   `json:"operation_key" binding:"required"`
-	ToolName            string   `json:"tool_name" binding:"required"`
-	NormalizedInputHash string   `json:"normalized_input_hash" binding:"required"`
-	ParentOperationID   string   `json:"parent_operation_id,omitempty"`
-	CausationEventIDs   []string `json:"causation_event_ids,omitempty"`
-	Required            bool     `json:"required"`
-	LeaseToken          string   `json:"lease_token" binding:"required"`
-	LeaseEpoch          uint64   `json:"lease_epoch" binding:"required"`
+	OperationKey      string                      `json:"operation_key" binding:"required"`
+	ToolName          string                      `json:"tool_name" binding:"required"`
+	Protocol          sessionvo.OperationProtocol `json:"protocol" binding:"required"`
+	SourceModule      string                      `json:"source_module" binding:"required"`
+	Input             sessionvo.PayloadEnvelope   `json:"input" binding:"required"`
+	ParentOperationID string                      `json:"parent_operation_id,omitempty"`
+	CausationEventIDs []string                    `json:"causation_event_ids,omitempty"`
+	Required          bool                        `json:"required"`
+	LeaseToken        string                      `json:"lease_token" binding:"required"`
+	LeaseEpoch        uint64                      `json:"lease_epoch" binding:"required"`
 }
 
 type interactionLeaseRequest struct {
@@ -85,11 +89,13 @@ type interactionLeaseRequest struct {
 
 type finishAttemptRequest struct {
 	ReceiptID            string                       `json:"receipt_id" binding:"required"`
-	PayloadHash          string                       `json:"payload_hash" binding:"required"`
+	Output               sessionvo.PayloadEnvelope    `json:"output,omitempty"`
+	Error                sessionvo.PayloadEnvelope    `json:"error,omitempty"`
 	EvidenceDurability   sessionvo.EvidenceDurability `json:"evidence_durability" binding:"required"`
 	Retryable            bool                         `json:"retryable"`
 	RequestID            string                       `json:"request_id" binding:"required"`
 	TraceID              string                       `json:"trace_id" binding:"required"`
+	SpanID               string                       `json:"span_id,omitempty"`
 	ObservedEvidenceRefs []string                     `json:"observed_evidence_refs,omitempty"`
 	BusinessRefs         []sessionvo.BusinessRef      `json:"business_refs,omitempty"`
 	ArtifactRefs         []string                     `json:"artifact_refs,omitempty"`
@@ -132,6 +138,11 @@ type operationResult struct {
 	Receipt   sessionvo.Receipt   `json:"receipt" binding:"required"`
 	Created   bool                `json:"created" binding:"required"`
 	Execute   bool                `json:"execute" binding:"required"`
+}
+
+type operationCallFactsResponse struct {
+	Entries []sessionvo.OperationCallFact `json:"entries"`
+	Total   int                           `json:"total"`
 }
 
 func RegisterSessionRoutes(
@@ -322,12 +333,17 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 			writeLifecycleError(w, r, http.StatusBadRequest, "operation_required", err.Error())
 			return
 		}
+		if request.Protocol == "" || strings.TrimSpace(request.SourceModule) == "" {
+			writeLifecycleError(w, r, http.StatusBadRequest, "operation_required", "protocol and source_module are required")
+			return
+		}
 		result, err := h.service.EnsureOperationWithDisposition(r.Context(), sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: parts[0], InteractionID: parts[2],
 			OperationKey: request.OperationKey, ToolName: request.ToolName,
-			NormalizedInputHash: request.NormalizedInputHash,
-			ParentOperationID:   request.ParentOperationID,
-			CausationEventIDs:   request.CausationEventIDs, Required: request.Required,
+			Protocol: request.Protocol, SourceModule: request.SourceModule,
+			Input:             request.Input,
+			ParentOperationID: request.ParentOperationID,
+			CausationEventIDs: request.CausationEventIDs, Required: request.Required,
 			LeaseToken: request.LeaseToken, LeaseEpoch: request.LeaseEpoch,
 		})
 		h.writeLifecycleResult(w, r, operationResult{
@@ -354,6 +370,13 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 	if len(parts) == 1 && r.Method == http.MethodGet {
 		value, err := h.service.GetInteraction(r.Context(), owner, parts[0])
 		h.writeLifecycleResult(w, r, value, err, http.StatusOK)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "operations" && r.Method == http.MethodGet {
+		values, err := h.service.ListOperationCallFacts(r.Context(), owner, parts[0])
+		h.writeLifecycleResult(w, r, operationCallFactsResponse{
+			Entries: values, Total: len(values),
+		}, err, http.StatusOK)
 		return
 	}
 	if len(parts) != 2 || r.Method != http.MethodPost {
@@ -546,6 +569,16 @@ func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *ht
 		}, err, http.StatusCreated)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "attempts" && r.Method == http.MethodGet {
+		attempt, err := strconv.ParseUint(parts[2], 10, 32)
+		if err != nil || attempt == 0 {
+			writeLifecycleError(w, r, http.StatusBadRequest, "operation_required", "attempt must be a positive integer")
+			return
+		}
+		fact, err := h.service.GetOperationCallFact(r.Context(), owner, parts[0], uint32(attempt))
+		h.writeLifecycleResult(w, r, fact, err, http.StatusOK)
+		return
+	}
 	if len(parts) != 3 || parts[1] != "attempts" || r.Method != http.MethodPost {
 		writeLifecycleError(w, r, http.StatusNotFound, "operation_required", "operation route was not found")
 		return
@@ -567,9 +600,10 @@ func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *ht
 	}
 	command := sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: parts[0], Attempt: uint32(attempt),
-		ReceiptID: request.ReceiptID, PayloadHash: request.PayloadHash,
+		ReceiptID: request.ReceiptID, Output: request.Output, Error: request.Error,
 		EvidenceDurability: request.EvidenceDurability, Retryable: request.Retryable,
 		RequestID: request.RequestID, TraceID: request.TraceID,
+		SpanID:               request.SpanID,
 		ObservedEvidenceRefs: request.ObservedEvidenceRefs,
 		BusinessRefs:         request.BusinessRefs,
 		ArtifactRefs:         request.ArtifactRefs,

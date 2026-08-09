@@ -27,6 +27,9 @@ type Transaction interface {
 	FindOperation(operationID string) (sessionvo.Operation, bool)
 	ListOperations(interactionID string) []sessionvo.Operation
 	SaveOperation(operation sessionvo.Operation)
+	FindOperationCallFact(operationID string, attempt uint32) (sessionvo.OperationCallFact, bool)
+	ListOperationCallFacts(interactionID string) []sessionvo.OperationCallFact
+	SaveOperationCallFact(fact sessionvo.OperationCallFact)
 	PeekReceipt(receiptID string) (sessionvo.Receipt, bool)
 	FindReceipt(receiptID string) (sessionvo.Receipt, bool)
 	FindReceiptByOperationAttempt(operationID string, attempt uint32) (sessionvo.Receipt, bool)

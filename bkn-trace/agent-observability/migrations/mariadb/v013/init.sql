@@ -94,7 +94,6 @@ CREATE TABLE IF NOT EXISTS bkn_trace_operations (
     interaction_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     operation_key VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     tool_name VARCHAR(255) NOT NULL,
-    normalized_input_hash VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     parent_operation_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
     causation_event_ids LONGTEXT NULL,
     attempt_no INT UNSIGNED NOT NULL,
@@ -125,7 +124,6 @@ CREATE TABLE IF NOT EXISTS bkn_trace_receipts (
     attempt_no INT UNSIGNED NOT NULL,
     operation_key VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     tool_name VARCHAR(255) NOT NULL,
-    normalized_input_hash VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     receipt_status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     evidence_durability VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     required_receipt BOOLEAN NOT NULL,
@@ -139,7 +137,6 @@ CREATE TABLE IF NOT EXISTS bkn_trace_receipts (
     row_version BIGINT UNSIGNED NOT NULL DEFAULT 1,
     issued_at DATETIME(6) NOT NULL,
     terminal_at DATETIME(6) NULL,
-    payload_hash VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NULL,
     PRIMARY KEY (receipt_id),
     CONSTRAINT fk_bkn_trace_receipt_operation
         FOREIGN KEY (operation_id) REFERENCES bkn_trace_operations (operation_id),

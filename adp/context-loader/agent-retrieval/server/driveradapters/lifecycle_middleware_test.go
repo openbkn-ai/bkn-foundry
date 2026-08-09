@@ -180,11 +180,21 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
 			var body struct {
-				OperationKey string `json:"operation_key"`
+				OperationKey string         `json:"operation_key"`
+				Protocol     string         `json:"protocol"`
+				SourceModule string         `json:"source_module"`
+				Input        map[string]any `json:"input"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if !strings.HasPrefix(body.OperationKey, "http:") {
 				t.Errorf("REST operation key must be server-derived: %#v", body)
+			}
+			if body.Protocol != "sdk" || body.SourceModule != "context-loader" {
+				t.Errorf("REST ensure lost producer identity: %#v", body)
+			}
+			inline, _ := body.Input["inline"].(map[string]any)
+			if body.Input["mode"] != "inline" || inline["query"] != "value" || inline["kn_id"] != "kn-demo" {
+				t.Errorf("REST ensure lost real request input: %#v", body)
 			}
 			mu.Lock()
 			operationKeys = append(operationKeys, body.OperationKey)
@@ -200,14 +210,15 @@ func TestLifecycleMiddlewareFinalizesRESTAndReturnsDurableReceipt(t *testing.T) 
 			})
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/attempts/1:"):
 			var body struct {
-				ReceiptID    string                 `json:"receipt_id"`
-				PayloadHash  string                 `json:"payload_hash"`
-				RequestID    string                 `json:"request_id"`
-				TraceID      string                 `json:"trace_id"`
-				BusinessRefs []bkntrace.BusinessRef `json:"business_refs"`
+				ReceiptID    string                   `json:"receipt_id"`
+				Output       bkntrace.PayloadEnvelope `json:"output"`
+				Error        bkntrace.PayloadEnvelope `json:"error"`
+				RequestID    string                   `json:"request_id"`
+				TraceID      string                   `json:"trace_id"`
+				BusinessRefs []bkntrace.BusinessRef   `json:"business_refs"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if body.ReceiptID != "receipt-rest-1" || body.PayloadHash == "" ||
+			if body.ReceiptID != "receipt-rest-1" || (body.Output.Mode == "" && body.Error.Mode == "") ||
 				body.RequestID != "req_rest_lifecycle_0001" || len(body.TraceID) != 32 {
 				t.Errorf("invalid REST finish body: %#v", body)
 			}
@@ -334,6 +345,57 @@ func TestLifecycleMiddlewarePendingReplaySkipsOperatorSideEffect(t *testing.T) {
 		errorValue["code"] != "receipt_pending" ||
 		errorValue["required_action"] != "poll_receipt" {
 		t.Fatalf("unexpected pending replay response: status=%d body=%#v", response.Code, body)
+	}
+}
+
+func TestLifecycleMiddlewarePreservesBusinessResponseWhenTerminalTraceWriteFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/interactions/int-1"):
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1", ExecutionStatus: "active",
+				LeaseToken: "lease-1", LeaseEpoch: 1,
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Created: true, Execute: true,
+				Operation: bkntrace.Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "pending"},
+				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-1", OperationID: "op-1", ReceiptStatus: "pending"},
+			})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/attempts/1:"):
+			http.Error(w, "trace store unavailable", http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer core.Close()
+
+	router := gin.New()
+	router.Use(trustedLifecycleHTTPContext())
+	router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
+	router.POST("/kn/run_sql", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"rows": []any{map[string]any{"material_code": "101-000015"}}})
+	})
+	request := httptest.NewRequest(http.MethodPost, "/kn/run_sql", bytes.NewBufferString(`{
+		"resource_id":"resource-1",
+		"sql":"SELECT material_code FROM material WHERE material_code = '101-000015'",
+		"bkn_context":{"conversation_id":"conv-1","interaction_id":"int-1"}
+	}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("business response is invalid JSON: %v body=%s", err, response.Body.String())
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("business response changed after Trace failure: %#v", body)
 	}
 }
 

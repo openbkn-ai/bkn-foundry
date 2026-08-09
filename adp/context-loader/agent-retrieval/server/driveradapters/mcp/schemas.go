@@ -213,24 +213,23 @@ func interactionOutputSchema() map[string]any {
 
 func operationOutputSchema() map[string]any {
 	properties := map[string]any{
-		"operation_id":          stringSchema(),
-		"conversation_id":       stringSchema(),
-		"interaction_id":        stringSchema(),
-		"operation_key":         stringSchema(),
-		"tool_name":             stringSchema(),
-		"normalized_input_hash": stringSchema(),
-		"parent_operation_id":   stringSchema(),
-		"causation_event_ids":   stringArraySchema(),
-		"attempt":               integerSchema(),
-		"attempt_status":        enumSchema("ready", "pending", "completed", "failed"),
-		"retryable":             booleanSchema(),
-		"row_version":           integerSchema(),
-		"created_at":            dateTimeSchema(),
-		"updated_at":            dateTimeSchema(),
+		"operation_id":        stringSchema(),
+		"conversation_id":     stringSchema(),
+		"interaction_id":      stringSchema(),
+		"operation_key":       stringSchema(),
+		"tool_name":           stringSchema(),
+		"parent_operation_id": stringSchema(),
+		"causation_event_ids": stringArraySchema(),
+		"attempt":             integerSchema(),
+		"attempt_status":      enumSchema("ready", "pending", "completed", "failed"),
+		"retryable":           booleanSchema(),
+		"row_version":         integerSchema(),
+		"created_at":          dateTimeSchema(),
+		"updated_at":          dateTimeSchema(),
 	}
 	return closedSchema(properties, []string{
 		"operation_id", "conversation_id", "interaction_id", "operation_key", "tool_name",
-		"normalized_input_hash", "attempt", "attempt_status", "retryable", "row_version",
+		"attempt", "attempt_status", "retryable", "row_version",
 		"created_at", "updated_at",
 	})
 }
@@ -246,7 +245,6 @@ func receiptOutputSchema() map[string]any {
 		"attempt":                integerSchema(),
 		"operation_key":          stringSchema(),
 		"tool_name":              stringSchema(),
-		"normalized_input_hash":  stringSchema(),
 		"receipt_status":         enumSchema("pending", "completed", "failed"),
 		"evidence_durability":    enumSchema("pending", "durable", "failed"),
 		"required":               booleanSchema(),
@@ -262,14 +260,13 @@ func receiptOutputSchema() map[string]any {
 		"row_version":     integerSchema(),
 		"issued_at":       dateTimeSchema(),
 		"terminal_at":     dateTimeSchema(),
-		"payload_hash":    stringSchema(),
 	}
 	return closedSchema(properties, []string{
 		"receipt_id", "schema_version", "owner", "conversation_id", "interaction_id",
-		"operation_id", "attempt", "operation_key", "tool_name", "normalized_input_hash",
+		"operation_id", "attempt", "operation_key", "tool_name",
 		"receipt_status", "evidence_durability", "required", "request_id", "trace_id",
 		"causation_event_ids", "observed_evidence_refs", "business_refs", "artifact_refs",
-		"partial_reasons", "row_version", "issued_at", "payload_hash",
+		"partial_reasons", "row_version", "issued_at",
 	})
 }
 

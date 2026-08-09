@@ -25,20 +25,19 @@ const (
 )
 
 type Operation struct {
-	ID                  string        `json:"operation_id" binding:"required"`
-	ConversationID      string        `json:"conversation_id" binding:"required"`
-	InteractionID       string        `json:"interaction_id" binding:"required"`
-	OperationKey        string        `json:"operation_key" binding:"required"`
-	ToolName            string        `json:"tool_name" binding:"required"`
-	NormalizedInputHash string        `json:"normalized_input_hash" binding:"required"`
-	ParentOperationID   string        `json:"parent_operation_id,omitempty"`
-	CausationEventIDs   []string      `json:"causation_event_ids,omitempty"`
-	Attempt             uint32        `json:"attempt" binding:"required"`
-	AttemptStatus       AttemptStatus `json:"attempt_status" binding:"required"`
-	Retryable           bool          `json:"retryable" binding:"required"`
-	RowVersion          uint64        `json:"row_version" binding:"required"`
-	CreatedAt           time.Time     `json:"created_at" binding:"required"`
-	UpdatedAt           time.Time     `json:"updated_at" binding:"required"`
+	ID                string        `json:"operation_id" binding:"required"`
+	ConversationID    string        `json:"conversation_id" binding:"required"`
+	InteractionID     string        `json:"interaction_id" binding:"required"`
+	OperationKey      string        `json:"operation_key" binding:"required"`
+	ToolName          string        `json:"tool_name" binding:"required"`
+	ParentOperationID string        `json:"parent_operation_id,omitempty"`
+	CausationEventIDs []string      `json:"causation_event_ids,omitempty"`
+	Attempt           uint32        `json:"attempt" binding:"required"`
+	AttemptStatus     AttemptStatus `json:"attempt_status" binding:"required"`
+	Retryable         bool          `json:"retryable" binding:"required"`
+	RowVersion        uint64        `json:"row_version" binding:"required"`
+	CreatedAt         time.Time     `json:"created_at" binding:"required"`
+	UpdatedAt         time.Time     `json:"updated_at" binding:"required"`
 }
 
 type Receipt struct {
@@ -51,7 +50,6 @@ type Receipt struct {
 	Attempt              uint32             `json:"attempt" binding:"required"`
 	OperationKey         string             `json:"operation_key" binding:"required"`
 	ToolName             string             `json:"tool_name" binding:"required"`
-	NormalizedInputHash  string             `json:"normalized_input_hash" binding:"required"`
 	Status               ReceiptStatus      `json:"receipt_status" binding:"required"`
 	EvidenceDurability   EvidenceDurability `json:"evidence_durability" binding:"required"`
 	Required             bool               `json:"required" binding:"required"`
@@ -65,7 +63,6 @@ type Receipt struct {
 	RowVersion           uint64             `json:"row_version" binding:"required"`
 	IssuedAt             time.Time          `json:"issued_at" binding:"required"`
 	TerminalAt           *time.Time         `json:"terminal_at,omitempty"`
-	PayloadHash          string             `json:"payload_hash" binding:"required"`
 }
 
 type BusinessRef struct {

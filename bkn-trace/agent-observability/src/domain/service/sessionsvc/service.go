@@ -1,6 +1,7 @@
 package sessionsvc
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -111,17 +112,19 @@ type TerminateInteractionCommand struct {
 }
 
 type EnsureOperationCommand struct {
-	Owner               sessionvo.Owner
-	ConversationID      string
-	InteractionID       string
-	OperationKey        string
-	ToolName            string
-	NormalizedInputHash string
-	ParentOperationID   string
-	CausationEventIDs   []string
-	Required            bool
-	LeaseToken          string
-	LeaseEpoch          uint64
+	Owner             sessionvo.Owner
+	ConversationID    string
+	InteractionID     string
+	OperationKey      string
+	ToolName          string
+	Protocol          sessionvo.OperationProtocol
+	SourceModule      string
+	Input             sessionvo.PayloadEnvelope
+	ParentOperationID string
+	CausationEventIDs []string
+	Required          bool
+	LeaseToken        string
+	LeaseEpoch        uint64
 }
 
 type EnsureOperationResult struct {
@@ -143,11 +146,13 @@ type FinishAttemptCommand struct {
 	OperationID          string
 	Attempt              uint32
 	ReceiptID            string
-	PayloadHash          string
+	Output               sessionvo.PayloadEnvelope
+	Error                sessionvo.PayloadEnvelope
 	EvidenceDurability   sessionvo.EvidenceDurability
 	Retryable            bool
 	RequestID            string
 	TraceID              string
+	SpanID               string
 	ObservedEvidenceRefs []string
 	BusinessRefs         []sessionvo.BusinessRef
 	ArtifactRefs         []string
@@ -386,6 +391,54 @@ func (s *Service) GetOperation(ctx context.Context, owner sessionvo.Owner, opera
 	return result, err
 }
 
+func (s *Service) ListOperationCallFacts(
+	ctx context.Context,
+	owner sessionvo.Owner,
+	interactionID string,
+) ([]sessionvo.OperationCallFact, error) {
+	var result []sessionvo.OperationCallFact
+	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		interaction, found := tx.PeekInteraction(interactionID)
+		if !found {
+			return resourceNotDisclosed()
+		}
+		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
+			return err
+		}
+		result = tx.ListOperationCallFacts(interactionID)
+		if result == nil {
+			result = []sessionvo.OperationCallFact{}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func (s *Service) GetOperationCallFact(
+	ctx context.Context,
+	owner sessionvo.Owner,
+	operationID string,
+	attempt uint32,
+) (sessionvo.OperationCallFact, error) {
+	var result sessionvo.OperationCallFact
+	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		operation, found := tx.PeekOperation(operationID)
+		if !found {
+			return resourceNotDisclosed()
+		}
+		if _, err := ownedConversation(tx, owner, operation.ConversationID); err != nil {
+			return err
+		}
+		fact, found := tx.FindOperationCallFact(operationID, attempt)
+		if !found {
+			return resourceNotDisclosed()
+		}
+		result = fact
+		return nil
+	})
+	return result, err
+}
+
 func (s *Service) GetReceipt(ctx context.Context, owner sessionvo.Owner, receiptID string) (sessionvo.Receipt, error) {
 	var result sessionvo.Receipt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
@@ -574,10 +627,10 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			command.LeaseToken = interaction.LeaseToken
 			command.LeaseEpoch = interaction.LeaseEpoch
 			command.Manifest = deriveClosureManifest(tx, interaction.ID, command.Manifest)
-			if hasRequiredPendingReceipt(tx, command.Manifest) {
-				deadline := tx.Now().Add(s.assemblyTimeout)
-				command.Manifest.AssemblerDeadline = &deadline
-			}
+		}
+		if command.Manifest.AssemblerDeadline == nil && hasRequiredPendingReceipt(tx, command.Manifest) {
+			deadline := tx.Now().Add(s.assemblyTimeout)
+			command.Manifest.AssemblerDeadline = &deadline
 		}
 		payloadHash := hashValue(struct {
 			Status   sessionvo.InteractionStatus
@@ -716,17 +769,31 @@ func (s *Service) EnsureOperationWithDisposition(
 	ctx context.Context,
 	command EnsureOperationCommand,
 ) (EnsureOperationResult, error) {
-	if command.OperationKey == "" || command.NormalizedInputHash == "" || command.ToolName == "" {
+	if command.Protocol == "" {
+		command.Protocol = sessionvo.ProtocolInternal
+	}
+	if command.SourceModule == "" && command.Protocol == sessionvo.ProtocolInternal {
+		command.SourceModule = "agent-observability"
+	}
+	if command.OperationKey == "" || command.ToolName == "" ||
+		!command.Protocol.IsValid() || strings.TrimSpace(command.SourceModule) == "" {
 		return EnsureOperationResult{}, domainError(
 			CodeOperationRequired,
-			"operation key, tool name and normalized input hash are required",
+			"operation key, tool name, protocol, source module and input are required",
 		)
+	}
+	command.CausationEventIDs = canonicalStringSet(command.CausationEventIDs)
+	var input sessionvo.PayloadEnvelope
+	var err error
+	input, err = sessionvo.NormalizePayloadEnvelope(command.Input)
+	if err != nil {
+		return EnsureOperationResult{}, domainError(CodeOperationRequired, "operation input envelope is invalid")
 	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
 	created := false
 	execute := false
-	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+	err = s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operation = sessionvo.Operation{}
 		receipt = sessionvo.Receipt{}
 		created = false
@@ -775,12 +842,30 @@ func (s *Service) EnsureOperationWithDisposition(
 		}
 		renewInteractionLease(tx, &interaction)
 		if existing, found := tx.FindOperationByKey(interaction.ID, command.OperationKey); found {
-			if existing.NormalizedInputHash != command.NormalizedInputHash || existing.ToolName != command.ToolName {
+			if existing.ToolName != command.ToolName ||
+				existing.ParentOperationID != command.ParentOperationID ||
+				!slices.Equal(existing.CausationEventIDs, command.CausationEventIDs) {
 				return domainError(CodeIdempotencyConflict, "operation key was already used with different input")
 			}
 			existingReceipt, receiptFound := tx.FindReceiptByOperationAttempt(existing.ID, existing.Attempt)
 			if !receiptFound {
 				return errors.New("operation receipt invariant violated")
+			}
+			if existingReceipt.Required != command.Required {
+				return domainError(CodeIdempotencyConflict, "operation key was already used with different input")
+			}
+			factAttempt := existing.Attempt
+			if existing.AttemptStatus == sessionvo.AttemptReady {
+				if factAttempt <= 1 {
+					return errors.New("ready operation attempt invariant violated")
+				}
+				factAttempt--
+			}
+			existingFact, found := tx.FindOperationCallFact(existing.ID, factAttempt)
+			if !found || existingFact.Protocol != command.Protocol ||
+				existingFact.SourceModule != command.SourceModule ||
+				!payloadEnvelopeEqual(existingFact.Input, input) {
+				return domainError(CodeIdempotencyConflict, "operation key was already used with different input")
 			}
 			if existing.AttemptStatus == sessionvo.AttemptReady {
 				now := tx.Now()
@@ -788,6 +873,18 @@ func (s *Service) EnsureOperationWithDisposition(
 				existing.RowVersion++
 				existing.UpdatedAt = now
 				tx.SaveOperation(existing)
+				if input.Mode == sessionvo.PayloadReferenced {
+					existingReceipt.ArtifactRefs = appendUnique(existingReceipt.ArtifactRefs, input.Ref)
+					tx.SaveReceipt(existingReceipt)
+				}
+				tx.SaveOperationCallFact(sessionvo.OperationCallFact{
+					OperationID: existing.ID, Attempt: existing.Attempt,
+					ConversationID: existing.ConversationID, InteractionID: existing.InteractionID,
+					ReceiptID: existingReceipt.ID, ToolName: existing.ToolName,
+					Protocol: command.Protocol, SourceModule: command.SourceModule, Input: input,
+					ParentOperationID: existing.ParentOperationID,
+					StartedAt:         now, Status: sessionvo.AttemptPending,
+				})
 				if err := s.appendProjection(
 					tx, "operation", existing.ID, "operation.attempt.started", existing,
 				); err != nil {
@@ -802,23 +899,22 @@ func (s *Service) EnsureOperationWithDisposition(
 		operation = sessionvo.Operation{
 			ID: s.newID("op"), ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: command.OperationKey, ToolName: command.ToolName,
-			NormalizedInputHash: command.NormalizedInputHash,
-			ParentOperationID:   command.ParentOperationID,
-			CausationEventIDs:   append([]string(nil), command.CausationEventIDs...),
-			Attempt:             1, AttemptStatus: sessionvo.AttemptPending, RowVersion: 1,
+			ParentOperationID: command.ParentOperationID,
+			CausationEventIDs: append([]string(nil), command.CausationEventIDs...),
+			Attempt:           1, AttemptStatus: sessionvo.AttemptPending, RowVersion: 1,
 			CreatedAt: now, UpdatedAt: now,
 		}
 		receipt = sessionvo.Receipt{
 			ID: s.newID("rcpt"), SchemaVersion: "3.0.0", Owner: command.Owner,
 			ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationID: operation.ID, Attempt: 1, OperationKey: command.OperationKey,
-			ToolName: command.ToolName, NormalizedInputHash: command.NormalizedInputHash,
-			Status: sessionvo.ReceiptPending, EvidenceDurability: sessionvo.DurabilityPending,
+			ToolName: command.ToolName,
+			Status:   sessionvo.ReceiptPending, EvidenceDurability: sessionvo.DurabilityPending,
 			Required:             command.Required,
 			CausationEventIDs:    cloneStrings(command.CausationEventIDs),
 			ObservedEvidenceRefs: []string{},
 			BusinessRefs:         []sessionvo.BusinessRef{},
-			ArtifactRefs:         []string{},
+			ArtifactRefs:         payloadArtifactRefs(input),
 			PartialReasons:       []string{},
 			RowVersion:           1,
 			IssuedAt:             now,
@@ -827,6 +923,14 @@ func (s *Service) EnsureOperationWithDisposition(
 		execute = true
 		tx.SaveOperation(operation)
 		tx.SaveReceipt(receipt)
+		tx.SaveOperationCallFact(sessionvo.OperationCallFact{
+			OperationID: operation.ID, Attempt: operation.Attempt,
+			ConversationID: operation.ConversationID, InteractionID: operation.InteractionID,
+			ReceiptID: receipt.ID, ToolName: operation.ToolName,
+			Protocol: command.Protocol, SourceModule: command.SourceModule, Input: input,
+			ParentOperationID: operation.ParentOperationID,
+			StartedAt:         now, Status: sessionvo.AttemptPending,
+		})
 		if err := s.appendProjection(tx, "operation", operation.ID, "operation.started", operation); err != nil {
 			return err
 		}
@@ -896,8 +1000,8 @@ func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemp
 			ID: s.newID("rcpt"), SchemaVersion: "3.0.0", Owner: command.Owner,
 			ConversationID: current.ConversationID, InteractionID: current.InteractionID,
 			OperationID: current.ID, Attempt: current.Attempt, OperationKey: current.OperationKey,
-			ToolName: current.ToolName, NormalizedInputHash: current.NormalizedInputHash,
-			Status: sessionvo.ReceiptPending, EvidenceDurability: sessionvo.DurabilityPending,
+			ToolName: current.ToolName,
+			Status:   sessionvo.ReceiptPending, EvidenceDurability: sessionvo.DurabilityPending,
 			Required:             previousReceipt.Required,
 			CausationEventIDs:    cloneStrings(previousReceipt.CausationEventIDs),
 			ObservedEvidenceRefs: []string{},
@@ -945,8 +1049,20 @@ func (s *Service) FailOperationAttempt(ctx context.Context, command FinishAttemp
 }
 
 func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAttemptCommand, status sessionvo.ReceiptStatus) (sessionvo.Operation, sessionvo.Receipt, error) {
-	if command.PayloadHash == "" {
-		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(CodeOperationRequired, "receipt payload hash is required")
+	var terminalPayload sessionvo.PayloadEnvelope
+	if status == sessionvo.ReceiptCompleted && (command.Output.Mode == "" || command.Error.Mode != "") {
+		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(CodeOperationRequired, "completed attempt requires output only")
+	}
+	if status == sessionvo.ReceiptFailed && (command.Error.Mode == "" || command.Output.Mode != "") {
+		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(CodeOperationRequired, "failed attempt requires error only")
+	}
+	terminalPayload = command.Output
+	if status == sessionvo.ReceiptFailed {
+		terminalPayload = command.Error
+	}
+	terminalPayload, err := sessionvo.NormalizePayloadEnvelope(terminalPayload)
+	if err != nil {
+		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(CodeOperationRequired, "operation terminal payload envelope is invalid")
 	}
 	if command.RequestID == "" || !validTraceID(command.TraceID) {
 		return sessionvo.Operation{}, sessionvo.Receipt{}, domainError(
@@ -962,7 +1078,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 	}
 	var operation sessionvo.Operation
 	var receipt sessionvo.Receipt
-	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+	err = s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operationRef, found := tx.PeekOperation(command.OperationID)
 		if !found {
 			return resourceNotDisclosed()
@@ -1009,9 +1125,13 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		if current.AttemptStatus == sessionvo.AttemptReady {
 			return domainError(CodeReceiptPending, "operation attempt has not been claimed for execution")
 		}
+		callFact, found := tx.FindOperationCallFact(current.ID, command.Attempt)
+		if !found {
+			return errors.New("operation call fact invariant violated")
+		}
 		retryable := coreRetryableFailure(current, command, status)
 		if currentReceipt.Status != sessionvo.ReceiptPending {
-			if receiptTerminalMatches(currentReceipt, current, command, status, retryable) {
+			if receiptTerminalMatches(currentReceipt, current, callFact, terminalPayload, command, status, retryable) {
 				operation, receipt = current, currentReceipt
 				return nil
 			}
@@ -1032,19 +1152,14 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		now := tx.Now()
 		currentReceipt.Status = status
 		currentReceipt.EvidenceDurability = command.EvidenceDurability
-		currentReceipt.PayloadHash = command.PayloadHash
 		currentReceipt.RequestID = command.RequestID
 		currentReceipt.TraceID = command.TraceID
 		currentReceipt.ObservedEvidenceRefs = cloneStrings(command.ObservedEvidenceRefs)
 		currentReceipt.BusinessRefs = cloneBusinessRefs(command.BusinessRefs)
-		currentReceipt.ArtifactRefs = cloneStrings(command.ArtifactRefs)
-		currentReceipt.PartialReasons = cloneStrings(command.PartialReasons)
-		if command.EvidenceDurability == sessionvo.DurabilityFailed {
-			currentReceipt.PartialReasons = appendUnique(
-				currentReceipt.PartialReasons,
-				"evidence_durability_failed",
-			)
-		}
+		currentReceipt.ArtifactRefs = effectiveArtifactRefs(command.ArtifactRefs, callFact.Input, terminalPayload)
+		currentReceipt.PartialReasons = effectivePartialReasons(
+			command.PartialReasons, callFact.Input, terminalPayload, command.EvidenceDurability,
+		)
 		currentReceipt.TerminalAt = &now
 		currentReceipt.RowVersion++
 		current.AttemptStatus = sessionvo.AttemptCompleted
@@ -1054,6 +1169,20 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		}
 		current.RowVersion++
 		current.UpdatedAt = now
+		if status == sessionvo.ReceiptCompleted {
+			callFact.Output = &terminalPayload
+			callFact.Error = nil
+		} else {
+			callFact.Output = nil
+			callFact.Error = &terminalPayload
+		}
+		callFact.RequestID = command.RequestID
+		callFact.TraceID = command.TraceID
+		callFact.SpanID = command.SpanID
+		callFact.FinishedAt = &now
+		callFact.Status = current.AttemptStatus
+		callFact.Retryable = retryable
+		tx.SaveOperationCallFact(callFact)
 		tx.SaveOperation(current)
 		tx.SaveReceipt(currentReceipt)
 		if err := s.appendProjection(tx, "operation", current.ID, "operation.attempt."+string(status), current); err != nil {
@@ -1113,20 +1242,85 @@ func coreRetryableFailure(
 func receiptTerminalMatches(
 	receipt sessionvo.Receipt,
 	operation sessionvo.Operation,
+	callFact sessionvo.OperationCallFact,
+	terminalPayload sessionvo.PayloadEnvelope,
 	command FinishAttemptCommand,
 	status sessionvo.ReceiptStatus,
 	retryable bool,
 ) bool {
 	return receipt.Status == status &&
-		receipt.PayloadHash == command.PayloadHash &&
+		terminalPayloadMatches(callFact, terminalPayload, status) &&
 		receipt.EvidenceDurability == command.EvidenceDurability &&
 		receipt.RequestID == command.RequestID &&
 		receipt.TraceID == command.TraceID &&
+		callFact.SpanID == command.SpanID &&
 		slices.Equal(receipt.ObservedEvidenceRefs, command.ObservedEvidenceRefs) &&
 		businessRefsEqual(receipt.BusinessRefs, command.BusinessRefs) &&
-		slices.Equal(receipt.ArtifactRefs, command.ArtifactRefs) &&
-		slices.Equal(receipt.PartialReasons, command.PartialReasons) &&
+		slices.Equal(receipt.ArtifactRefs, effectiveArtifactRefs(command.ArtifactRefs, callFact.Input, terminalPayload)) &&
+		slices.Equal(receipt.PartialReasons, effectivePartialReasons(
+			command.PartialReasons, callFact.Input, terminalPayload, command.EvidenceDurability,
+		)) &&
 		(status != sessionvo.ReceiptFailed || operation.Retryable == retryable)
+}
+
+func effectiveArtifactRefs(
+	declared []string,
+	input sessionvo.PayloadEnvelope,
+	terminal sessionvo.PayloadEnvelope,
+) []string {
+	result := cloneStrings(declared)
+	if input.Mode == sessionvo.PayloadReferenced {
+		result = appendUnique(result, input.Ref)
+	}
+	if terminal.Mode == sessionvo.PayloadReferenced {
+		result = appendUnique(result, terminal.Ref)
+	}
+	return result
+}
+
+func effectivePartialReasons(
+	declared []string,
+	input sessionvo.PayloadEnvelope,
+	terminal sessionvo.PayloadEnvelope,
+	durability sessionvo.EvidenceDurability,
+) []string {
+	result := cloneStrings(declared)
+	if input.Mode == sessionvo.PayloadOmitted {
+		result = appendUnique(result, input.OmittedReason)
+	}
+	if terminal.Mode == sessionvo.PayloadOmitted {
+		result = appendUnique(result, terminal.OmittedReason)
+	}
+	if durability == sessionvo.DurabilityFailed {
+		result = appendUnique(result, "evidence_durability_failed")
+	}
+	return result
+}
+
+func terminalPayloadMatches(
+	fact sessionvo.OperationCallFact,
+	payload sessionvo.PayloadEnvelope,
+	status sessionvo.ReceiptStatus,
+) bool {
+	if status == sessionvo.ReceiptCompleted {
+		return fact.Output != nil && fact.Error == nil && payloadEnvelopeEqual(*fact.Output, payload)
+	}
+	return fact.Error != nil && fact.Output == nil && payloadEnvelopeEqual(*fact.Error, payload)
+}
+
+func payloadEnvelopeEqual(left, right sessionvo.PayloadEnvelope) bool {
+	if left.Mode == sessionvo.PayloadOmitted || right.Mode == sessionvo.PayloadOmitted {
+		return false
+	}
+	return left.Mode == right.Mode && left.MediaType == right.MediaType &&
+		left.ByteLength == right.ByteLength && bytes.Equal(left.Inline, right.Inline) &&
+		left.Ref == right.Ref && left.OmittedReason == right.OmittedReason
+}
+
+func canonicalStringSet(values []string) []string {
+	result := cloneStrings(values)
+	slices.Sort(result)
+	return slices.Compact(result)
 }
 
 func businessRefsEqual(left, right []sessionvo.BusinessRef) bool {
@@ -1501,6 +1695,13 @@ func appendUnique(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+func payloadArtifactRefs(payload sessionvo.PayloadEnvelope) []string {
+	if payload.Mode == sessionvo.PayloadReferenced {
+		return []string{payload.Ref}
+	}
+	return []string{}
 }
 
 func cloneStrings(values []string) []string {

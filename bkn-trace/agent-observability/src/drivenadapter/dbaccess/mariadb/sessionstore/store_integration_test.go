@@ -240,7 +240,7 @@ func TestEvidenceLedgerAndProjectionOutboxCommitAtomically(t *testing.T) {
 	operation, _, err := sessions.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "query", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:input", Required: true,
+		Input: json.RawMessage(`{"test_input":"input"}`), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -731,7 +731,7 @@ func TestAuthorityRebuildMatchesLiveOperationAndReceiptProjectionModels(t *testi
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: "query", ToolName: "ontology-query",
-			NormalizedInputHash: "sha256:model", Required: true,
+			Input: json.RawMessage(`{"test_input":"model"}`), Required: true,
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	)
@@ -840,7 +840,7 @@ func TestMariaDBAuthorityRebuildsIntoOpenSearchAlias(t *testing.T) {
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: "combined-query", ToolName: "ontology-query",
-			NormalizedInputHash: "sha256:combined", Required: true,
+			Input: json.RawMessage(`{"test_input":"combined"}`), Required: true,
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	)

@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"path"
@@ -67,9 +68,11 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		c.Request.ContentLength = int64(len(downstreamBody))
 
 		ctx, state, disposition, coreErr, err := guard.Begin(c.Request.Context(), bkntrace.GuardIntent{
-			Context:             businessContext,
-			ToolName:            toolName,
-			NormalizedInputHash: inputHash,
+			Context:      businessContext,
+			ToolName:     toolName,
+			Protocol:     "sdk",
+			SourceModule: "context-loader",
+			Input:        downstreamBody,
 		})
 		if err != nil {
 			writeLifecycleHTTPError(c, http.StatusServiceUnavailable, lifecycleUnavailableError(client))
@@ -109,8 +112,11 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					c.Writer = originalWriter
+					panicPayload, _ := json.Marshal(map[string]any{
+						"code": "handler_panic", "message": fmt.Sprint(recovered), "stage": "handler",
+					})
 					_, _, _ = guard.Finish(
-						ctx, state, hashLifecyclePayload(buffered.body.Bytes()), true, false,
+						ctx, state, panicPayload, true, false,
 					)
 					panic(recovered)
 				}
@@ -119,28 +125,29 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		}()
 		c.Writer = originalWriter
 
-		payloadHash := hashLifecyclePayload(buffered.body.Bytes())
+		payload := traceLifecyclePayload(buffered.body.Bytes(), buffered.status)
 		failed := buffered.status >= http.StatusBadRequest
 		finished, coreErr, err := guard.Finish(
-			ctx, state, payloadHash, failed, buffered.status >= http.StatusInternalServerError,
+			ctx, state, payload, failed, buffered.status >= http.StatusInternalServerError,
 		)
-		if err != nil {
-			writeLifecycleHTTPError(c, http.StatusServiceUnavailable, lifecycleUnavailableError(client))
-			return
-		}
-		if coreErr != nil {
-			if coreErr.Code == "receipt_pending" {
-				writeLifecycleHTTPResult(c, lifecycleHTTPStatus(coreErr.Code), map[string]any{
-					"error":   *coreErr,
-					"receipt": finished.Receipt,
-				})
-				return
-			}
-			writeLifecycleHTTPError(c, lifecycleHTTPStatus(coreErr.Code), *coreErr)
+		if err != nil || coreErr != nil {
+			writeBufferedLifecycleResponse(c, buffered, state.Result.Receipt)
 			return
 		}
 		writeBufferedLifecycleResponse(c, buffered, finished.Receipt)
 	}
+}
+
+func traceLifecyclePayload(raw []byte, status int) json.RawMessage {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) > 0 && json.Valid(trimmed) {
+		return append(json.RawMessage(nil), trimmed...)
+	}
+	encoded, _ := json.Marshal(map[string]any{
+		"status_code": status,
+		"body":        string(raw),
+	})
+	return encoded
 }
 
 func isLifecycleBusinessRequest(request *http.Request) bool {

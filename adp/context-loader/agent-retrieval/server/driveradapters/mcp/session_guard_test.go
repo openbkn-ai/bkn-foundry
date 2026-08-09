@@ -386,7 +386,8 @@ func TestSessionGuardExecutesPreparedRetryAttempt(t *testing.T) {
 	}
 }
 
-func TestSessionGuardFinishPendingPreservesStableReceipt(t *testing.T) {
+func TestSessionGuardFinishPendingPreservesBusinessResult(t *testing.T) {
+	businessResult := mcpsdk.NewToolResultStructured(map[string]any{"answer": "ok"}, `{"answer":"ok"}`)
 	guarded := guardBusinessToolCallWithCompletion(
 		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
 			return &operationResult{
@@ -407,7 +408,7 @@ func TestSessionGuardFinishPendingPreservesStableReceipt(t *testing.T) {
 		},
 		nil,
 		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-			return mcpsdk.NewToolResultStructured(map[string]any{"answer": "ok"}, `{"answer":"ok"}`), nil
+			return businessResult, nil
 		},
 	)
 
@@ -415,13 +416,9 @@ func TestSessionGuardFinishPendingPreservesStableReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finish pending escaped as protocol error: %v", err)
 	}
-	structured := errorEnvelopeFromResult(t, result)
-	errorValue := structured["error"].(map[string]any)
-	receipt := structured["receipt"].(map[string]any)
-	if errorValue["code"] != "receipt_pending" ||
-		errorValue["required_action"] != "poll_receipt" ||
-		receipt["receipt_id"] != "receipt-1" {
-		t.Fatalf("finish pending lost stable receipt: %#v", structured)
+	if result != businessResult || result.IsError ||
+		result.StructuredContent.(map[string]any)["answer"] != "ok" {
+		t.Fatalf("finish pending changed business result: %#v", result)
 	}
 }
 
@@ -493,6 +490,41 @@ func TestSessionGuardCompletesAttemptAndReturnsDurableReceipt(t *testing.T) {
 	receipt := structured["bkn_receipt"].(map[string]any)
 	if receipt["receipt_status"] != "completed" {
 		t.Fatalf("durable receipt missing from result: %#v", structured)
+	}
+}
+
+func TestSessionGuardPreservesBusinessResultWhenTerminalTraceWriteFails(t *testing.T) {
+	businessResult := mcpsdk.NewToolResultStructured(
+		map[string]any{"answer": "ok", "rows": []any{map[string]any{"material_code": "101-000015"}}},
+		`{"answer":"ok","rows":[{"material_code":"101-000015"}]}`,
+	)
+	guarded := guardBusinessToolCallWithCompletion(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created: true, Execute: true,
+				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
+				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
+			}, nil, nil
+		},
+		func(context.Context, *operationResult, *mcpsdk.CallToolResult) (*operationResult, *lifecycleError, error) {
+			return nil, nil, errors.New("trace store unavailable")
+		},
+		nil,
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return businessResult, nil
+		},
+	)
+
+	result, err := guarded(context.Background(), validBusinessToolRequest())
+	if err != nil {
+		t.Fatalf("guard returned protocol error: %v", err)
+	}
+	if result != businessResult {
+		t.Fatalf("Trace failure replaced the business result: got=%#v want=%#v", result, businessResult)
+	}
+	structured := result.StructuredContent.(map[string]any)
+	if structured["answer"] != "ok" || structured["bkn_receipt"] != nil {
+		t.Fatalf("Trace failure mutated the business result: %#v", structured)
 	}
 }
 

@@ -871,25 +871,31 @@ definitions:
         items:
           type: string
         type: array
+      input:
+        $ref: '#/definitions/sessionvo.PayloadEnvelope'
       lease_epoch:
         type: integer
       lease_token:
-        type: string
-      normalized_input_hash:
         type: string
       operation_key:
         type: string
       parent_operation_id:
         type: string
+      protocol:
+        $ref: '#/definitions/sessionvo.OperationProtocol'
       required:
         type: boolean
+      source_module:
+        type: string
       tool_name:
         type: string
     required:
+    - input
     - lease_epoch
     - lease_token
-    - normalized_input_hash
     - operation_key
+    - protocol
+    - source_module
     - tool_name
     type: object
   httphandler.evidenceEventRequest:
@@ -1004,29 +1010,32 @@ definitions:
         items:
           $ref: '#/definitions/sessionvo.BusinessRef'
         type: array
+      error:
+        $ref: '#/definitions/sessionvo.PayloadEnvelope'
       evidence_durability:
         $ref: '#/definitions/sessionvo.EvidenceDurability'
       observed_evidence_refs:
         items:
           type: string
         type: array
+      output:
+        $ref: '#/definitions/sessionvo.PayloadEnvelope'
       partial_reasons:
         items:
           type: string
         type: array
-      payload_hash:
-        type: string
       receipt_id:
         type: string
       request_id:
         type: string
       retryable:
         type: boolean
+      span_id:
+        type: string
       trace_id:
         type: string
     required:
     - evidence_durability
-    - payload_hash
     - receipt_id
     - request_id
     - trace_id
@@ -1124,6 +1133,15 @@ definitions:
     required:
     - idempotency_key
     - outcome
+    type: object
+  httphandler.operationCallFactsResponse:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/sessionvo.OperationCallFact'
+        type: array
+      total:
+        type: integer
     type: object
   httphandler.operationResult:
     properties:
@@ -1672,8 +1690,6 @@ definitions:
         type: string
       interaction_id:
         type: string
-      normalized_input_hash:
-        type: string
       operation_id:
         type: string
       operation_key:
@@ -1694,7 +1710,6 @@ definitions:
     - conversation_id
     - created_at
     - interaction_id
-    - normalized_input_hash
     - operation_id
     - operation_key
     - retryable
@@ -1740,6 +1755,57 @@ definitions:
     - OperationRoleModify
     - OperationRoleRecommend
     - OperationRoleExecute
+  sessionvo.OperationCallFact:
+    properties:
+      attempt:
+        type: integer
+      conversation_id:
+        type: string
+      error:
+        $ref: '#/definitions/sessionvo.PayloadEnvelope'
+      finished_at:
+        type: string
+      input:
+        $ref: '#/definitions/sessionvo.PayloadEnvelope'
+      interaction_id:
+        type: string
+      operation_id:
+        type: string
+      output:
+        $ref: '#/definitions/sessionvo.PayloadEnvelope'
+      parent_operation_id:
+        type: string
+      protocol:
+        $ref: '#/definitions/sessionvo.OperationProtocol'
+      receipt_id:
+        type: string
+      request_id:
+        type: string
+      retryable:
+        type: boolean
+      source_module:
+        type: string
+      span_id:
+        type: string
+      started_at:
+        type: string
+      status:
+        $ref: '#/definitions/sessionvo.AttemptStatus'
+      tool_name:
+        type: string
+      trace_id:
+        type: string
+    type: object
+  sessionvo.OperationProtocol:
+    enum:
+    - mcp
+    - sdk
+    - internal
+    type: string
+    x-enum-varnames:
+    - ProtocolMCP
+    - ProtocolSDK
+    - ProtocolInternal
   sessionvo.Owner:
     properties:
       application_principal_id:
@@ -1761,6 +1827,33 @@ definitions:
     - effective_subject_type
     - tenant_id
     type: object
+  sessionvo.PayloadEnvelope:
+    properties:
+      byte_length:
+        type: integer
+      inline:
+        items:
+          type: integer
+        type: array
+      media_type:
+        type: string
+      mode:
+        $ref: '#/definitions/sessionvo.PayloadMode'
+      omitted_reason:
+        type: string
+      ref:
+        type: string
+    type: object
+  sessionvo.PayloadMode:
+    enum:
+    - inline
+    - referenced
+    - omitted
+    type: string
+    x-enum-varnames:
+    - PayloadInline
+    - PayloadReferenced
+    - PayloadOmitted
   sessionvo.Receipt:
     properties:
       artifact_refs:
@@ -1785,8 +1878,6 @@ definitions:
         type: string
       issued_at:
         type: string
-      normalized_input_hash:
-        type: string
       observed_evidence_refs:
         items:
           type: string
@@ -1801,8 +1892,6 @@ definitions:
         items:
           type: string
         type: array
-      payload_hash:
-        type: string
       receipt_id:
         type: string
       receipt_status:
@@ -1830,13 +1919,11 @@ definitions:
     - evidence_durability
     - interaction_id
     - issued_at
-    - normalized_input_hash
     - observed_evidence_refs
     - operation_id
     - operation_key
     - owner
     - partial_reasons
-    - payload_hash
     - receipt_id
     - receipt_status
     - request_id
@@ -3212,6 +3299,40 @@ paths:
       summary: Hand off one managed Interaction
       tags:
       - lifecycle
+  /interactions/{interaction_id}/operations:
+    get:
+      parameters:
+      - description: Interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httphandler.operationCallFactsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: List raw Operation call facts for one Interaction
+      tags:
+      - lifecycle
   /operations/{operation_id}:
     get:
       parameters:
@@ -3294,6 +3415,49 @@ paths:
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
       summary: Start the next retry attempt for an Operation
+      tags:
+      - lifecycle
+  /operations/{operation_id}/attempts/{attempt}:
+    get:
+      parameters:
+      - description: Operation ID
+        in: path
+        name: operation_id
+        required: true
+        type: string
+      - description: Attempt number
+        in: path
+        name: attempt
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/sessionvo.OperationCallFact'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      summary: Get one authorized Operation attempt call fact
       tags:
       - lifecycle
   /operations/{operation_id}/attempts/{attempt}:complete:

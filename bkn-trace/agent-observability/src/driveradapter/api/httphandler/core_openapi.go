@@ -132,6 +132,17 @@ func documentEnsureOperation() {}
 //nolint:unused // Swag parses this annotation carrier during documentation generation.
 func documentGetInteraction() {}
 
+// @Summary List raw Operation call facts for one Interaction
+// @Tags lifecycle
+// @Produce json
+// @Param interaction_id path string true "Interaction ID"
+// @Success 200 {object} operationCallFactsResponse
+// @Failure 401,403,404,500 {object} lifecycleErrorEnvelope
+// @Router /interactions/{interaction_id}/operations [get]
+//
+//nolint:unused // Swag parses this annotation carrier during documentation generation.
+func documentListInteractionOperations() {}
+
 // @Summary Finish one Interaction through the Agent-facing facade
 // @Description Derives the current lease and closure manifest from authoritative Operations and Receipts. Ordinary Agents do not submit concurrency or closure internals.
 // @Tags lifecycle
@@ -208,6 +219,18 @@ func documentHandoffInteraction() {}
 //
 //nolint:unused // Swag parses this annotation carrier during documentation generation.
 func documentGetOperation() {}
+
+// @Summary Get one authorized Operation attempt call fact
+// @Tags lifecycle
+// @Produce json
+// @Param operation_id path string true "Operation ID"
+// @Param attempt path int true "Attempt number"
+// @Success 200 {object} sessionvo.OperationCallFact
+// @Failure 400,401,403,404,500 {object} lifecycleErrorEnvelope
+// @Router /operations/{operation_id}/attempts/{attempt} [get]
+//
+//nolint:unused // Swag parses this annotation carrier during documentation generation.
+func documentGetOperationAttemptFact() {}
 
 // @Summary Start the next retry attempt for an Operation
 // @Tags lifecycle

@@ -3,6 +3,9 @@ package sessionstore
 import (
 	v013 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v013"
 	v014 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v014"
+	v015 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v015"
 )
 
-func SchemaSQL() string { return v013.SchemaSQL() + "\n" + v014.SchemaSQL() }
+func SchemaSQL() string {
+	return v013.SchemaSQL() + "\n" + v014.SchemaSQL() + "\n" + v015.SchemaSQL()
+}

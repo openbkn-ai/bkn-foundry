@@ -32,6 +32,7 @@ const (
 	lifecycleClientTimeout      = 10 * time.Second
 	lifecycleMaxIdleConnections = 100
 	lifecycleIdleConnectionTTL  = 90 * time.Second
+	maxInlinePayloadBytes       = 1 << 20
 )
 
 var (
@@ -115,20 +116,19 @@ type Interaction struct {
 }
 
 type Operation struct {
-	OperationID         string    `json:"operation_id"`
-	ConversationID      string    `json:"conversation_id"`
-	InteractionID       string    `json:"interaction_id"`
-	OperationKey        string    `json:"operation_key"`
-	ToolName            string    `json:"tool_name"`
-	NormalizedInputHash string    `json:"normalized_input_hash"`
-	ParentOperationID   string    `json:"parent_operation_id,omitempty"`
-	CausationEventIDs   []string  `json:"causation_event_ids,omitempty"`
-	Attempt             uint32    `json:"attempt"`
-	AttemptStatus       string    `json:"attempt_status"`
-	Retryable           bool      `json:"retryable"`
-	RowVersion          uint64    `json:"row_version"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	OperationID       string    `json:"operation_id"`
+	ConversationID    string    `json:"conversation_id"`
+	InteractionID     string    `json:"interaction_id"`
+	OperationKey      string    `json:"operation_key"`
+	ToolName          string    `json:"tool_name"`
+	ParentOperationID string    `json:"parent_operation_id,omitempty"`
+	CausationEventIDs []string  `json:"causation_event_ids,omitempty"`
+	Attempt           uint32    `json:"attempt"`
+	AttemptStatus     string    `json:"attempt_status"`
+	Retryable         bool      `json:"retryable"`
+	RowVersion        uint64    `json:"row_version"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type BusinessRef struct {
@@ -150,7 +150,6 @@ type Receipt struct {
 	Attempt              uint32        `json:"attempt"`
 	OperationKey         string        `json:"operation_key"`
 	ToolName             string        `json:"tool_name"`
-	NormalizedInputHash  string        `json:"normalized_input_hash"`
 	ReceiptStatus        string        `json:"receipt_status"`
 	EvidenceDurability   string        `json:"evidence_durability"`
 	Required             bool          `json:"required"`
@@ -164,7 +163,6 @@ type Receipt struct {
 	RowVersion           uint64        `json:"row_version"`
 	IssuedAt             time.Time     `json:"issued_at"`
 	TerminalAt           *time.Time    `json:"terminal_at,omitempty"`
-	PayloadHash          string        `json:"payload_hash"`
 }
 
 type OperationResult struct {
@@ -174,23 +172,36 @@ type OperationResult struct {
 	Execute   bool      `json:"execute"`
 }
 
+type PayloadEnvelope struct {
+	Mode          string          `json:"mode"`
+	MediaType     string          `json:"media_type"`
+	ByteLength    int             `json:"byte_length"`
+	Inline        json.RawMessage `json:"inline,omitempty"`
+	Ref           string          `json:"ref,omitempty"`
+	OmittedReason string          `json:"omitted_reason,omitempty"`
+}
+
 type EnsureOperationInput struct {
-	ConversationID      string
-	InteractionID       string
-	OperationKey        string
-	ToolName            string
-	NormalizedInputHash string
-	ParentOperationID   string
-	CausationEventIDs   []string
+	ConversationID    string
+	InteractionID     string
+	OperationKey      string
+	ToolName          string
+	Protocol          string
+	SourceModule      string
+	Input             json.RawMessage
+	ParentOperationID string
+	CausationEventIDs []string
 }
 
 type FinishAttemptInput struct {
 	OperationID          string
 	Attempt              uint32
 	ReceiptID            string
-	PayloadHash          string
+	Output               json.RawMessage
+	Error                json.RawMessage
 	RequestID            string
 	TraceID              string
+	SpanID               string
 	EvidenceDurability   string
 	Retryable            bool
 	ObservedEvidenceRefs []string
@@ -270,7 +281,8 @@ func (c *LifecycleClient) EnsureOperation(
 	}
 	body := map[string]any{
 		"operation_key": input.OperationKey, "tool_name": input.ToolName,
-		"normalized_input_hash": input.NormalizedInputHash, "required": true,
+		"protocol": input.Protocol, "source_module": input.SourceModule,
+		"input": boundedJSONPayload(input.Input), "required": true,
 		"lease_token": interaction.LeaseToken, "lease_epoch": interaction.LeaseEpoch,
 	}
 	if input.ParentOperationID != "" {
@@ -381,19 +393,51 @@ func (c *LifecycleClient) finishAttempt(
 	evidenceDurability string,
 ) (OperationResult, *APIError, error) {
 	body := map[string]any{
-		"receipt_id": input.ReceiptID, "payload_hash": input.PayloadHash,
+		"receipt_id":          input.ReceiptID,
 		"evidence_durability": evidenceDurability, "retryable": input.Retryable,
 		"request_id": input.RequestID, "trace_id": input.TraceID,
+		"span_id":                input.SpanID,
 		"observed_evidence_refs": input.ObservedEvidenceRefs,
 		"business_refs":          input.BusinessRefs,
 		"artifact_refs":          input.ArtifactRefs,
 		"partial_reasons":        input.PartialReasons,
+	}
+	if action == "complete" {
+		body["output"] = boundedJSONPayload(input.Output)
+	} else {
+		body["error"] = boundedJSONPayload(input.Error)
 	}
 	var result OperationResult
 	path := "/operations/" + url.PathEscape(input.OperationID) + "/attempts/" +
 		strconv.FormatUint(uint64(input.Attempt), 10) + ":" + action
 	apiErr, err := c.do(ctx, http.MethodPost, path, body, &result)
 	return result, apiErr, err
+}
+
+func boundedJSONPayload(raw json.RawMessage) PayloadEnvelope {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return PayloadEnvelope{
+			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
+			OmittedReason: "serialization_failed",
+		}
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return PayloadEnvelope{
+			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
+			OmittedReason: "serialization_failed",
+		}
+	}
+	if len(canonical) > maxInlinePayloadBytes {
+		return PayloadEnvelope{
+			Mode: "omitted", MediaType: "application/json", ByteLength: len(canonical),
+			OmittedReason: "payload_too_large",
+		}
+	}
+	return PayloadEnvelope{
+		Mode: "inline", MediaType: "application/json", ByteLength: len(canonical), Inline: canonical,
+	}
 }
 
 func (c *LifecycleClient) Call(

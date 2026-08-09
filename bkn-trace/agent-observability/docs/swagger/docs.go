@@ -1969,6 +1969,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/interactions/{interaction_id}/operations": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "List raw Operation call facts for one Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.operationCallFactsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/operations/{operation_id}": {
             "get": {
                 "produces": [
@@ -2084,6 +2136,71 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/operations/{operation_id}/attempts/{attempt}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Get one authorized Operation attempt call fact",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attempt number",
+                        "name": "attempt",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.OperationCallFact"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
@@ -4347,10 +4464,12 @@ const docTemplate = `{
         "httphandler.ensureOperationRequest": {
             "type": "object",
             "required": [
+                "input",
                 "lease_epoch",
                 "lease_token",
-                "normalized_input_hash",
                 "operation_key",
+                "protocol",
+                "source_module",
                 "tool_name"
             ],
             "properties": {
@@ -4360,13 +4479,13 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "input": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
                 "lease_epoch": {
                     "type": "integer"
                 },
                 "lease_token": {
-                    "type": "string"
-                },
-                "normalized_input_hash": {
                     "type": "string"
                 },
                 "operation_key": {
@@ -4375,8 +4494,14 @@ const docTemplate = `{
                 "parent_operation_id": {
                     "type": "string"
                 },
+                "protocol": {
+                    "$ref": "#/definitions/sessionvo.OperationProtocol"
+                },
                 "required": {
                     "type": "boolean"
+                },
+                "source_module": {
+                    "type": "string"
                 },
                 "tool_name": {
                     "type": "string"
@@ -4534,7 +4659,6 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "evidence_durability",
-                "payload_hash",
                 "receipt_id",
                 "request_id",
                 "trace_id"
@@ -4552,6 +4676,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/sessionvo.BusinessRef"
                     }
                 },
+                "error": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
                 "evidence_durability": {
                     "$ref": "#/definitions/sessionvo.EvidenceDurability"
                 },
@@ -4561,14 +4688,14 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "output": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
                 "partial_reasons": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
-                },
-                "payload_hash": {
-                    "type": "string"
                 },
                 "receipt_id": {
                     "type": "string"
@@ -4578,6 +4705,9 @@ const docTemplate = `{
                 },
                 "retryable": {
                     "type": "boolean"
+                },
+                "span_id": {
+                    "type": "string"
                 },
                 "trace_id": {
                     "type": "string"
@@ -4711,6 +4841,20 @@ const docTemplate = `{
                 },
                 "reason": {
                     "type": "string"
+                }
+            }
+        },
+        "httphandler.operationCallFactsResponse": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.OperationCallFact"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
@@ -5468,7 +5612,6 @@ const docTemplate = `{
                 "conversation_id",
                 "created_at",
                 "interaction_id",
-                "normalized_input_hash",
                 "operation_id",
                 "operation_key",
                 "retryable",
@@ -5496,9 +5639,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "interaction_id": {
-                    "type": "string"
-                },
-                "normalized_input_hash": {
                     "type": "string"
                 },
                 "operation_id": {
@@ -5572,6 +5712,81 @@ const docTemplate = `{
                 "OperationRoleExecute"
             ]
         },
+        "sessionvo.OperationCallFact": {
+            "type": "object",
+            "properties": {
+                "attempt": {
+                    "type": "integer"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "error": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "input": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "output": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
+                "parent_operation_id": {
+                    "type": "string"
+                },
+                "protocol": {
+                    "$ref": "#/definitions/sessionvo.OperationProtocol"
+                },
+                "receipt_id": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "retryable": {
+                    "type": "boolean"
+                },
+                "source_module": {
+                    "type": "string"
+                },
+                "span_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/sessionvo.AttemptStatus"
+                },
+                "tool_name": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.OperationProtocol": {
+            "type": "string",
+            "enum": [
+                "mcp",
+                "sdk",
+                "internal"
+            ],
+            "x-enum-varnames": [
+                "ProtocolMCP",
+                "ProtocolSDK",
+                "ProtocolInternal"
+            ]
+        },
         "sessionvo.Owner": {
             "type": "object",
             "required": [
@@ -5602,6 +5817,45 @@ const docTemplate = `{
                 }
             }
         },
+        "sessionvo.PayloadEnvelope": {
+            "type": "object",
+            "properties": {
+                "byte_length": {
+                    "type": "integer"
+                },
+                "inline": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "media_type": {
+                    "type": "string"
+                },
+                "mode": {
+                    "$ref": "#/definitions/sessionvo.PayloadMode"
+                },
+                "omitted_reason": {
+                    "type": "string"
+                },
+                "ref": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.PayloadMode": {
+            "type": "string",
+            "enum": [
+                "inline",
+                "referenced",
+                "omitted"
+            ],
+            "x-enum-varnames": [
+                "PayloadInline",
+                "PayloadReferenced",
+                "PayloadOmitted"
+            ]
+        },
         "sessionvo.Receipt": {
             "type": "object",
             "required": [
@@ -5613,13 +5867,11 @@ const docTemplate = `{
                 "evidence_durability",
                 "interaction_id",
                 "issued_at",
-                "normalized_input_hash",
                 "observed_evidence_refs",
                 "operation_id",
                 "operation_key",
                 "owner",
                 "partial_reasons",
-                "payload_hash",
                 "receipt_id",
                 "receipt_status",
                 "request_id",
@@ -5663,9 +5915,6 @@ const docTemplate = `{
                 "issued_at": {
                     "type": "string"
                 },
-                "normalized_input_hash": {
-                    "type": "string"
-                },
                 "observed_evidence_refs": {
                     "type": "array",
                     "items": {
@@ -5686,9 +5935,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                },
-                "payload_hash": {
-                    "type": "string"
                 },
                 "receipt_id": {
                     "type": "string"

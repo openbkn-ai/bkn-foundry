@@ -97,6 +97,7 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 		"assemblysvc.BusinessRefView",
 		"assemblysvc.ProjectedResult",
 		"httphandler.evidenceEventRequest",
+		"httphandler.ensureOperationRequest",
 		"httphandler.finishAttemptRequest",
 		"httphandler.operationResult",
 		"sessionvo.BusinessRef",
@@ -107,6 +108,9 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 		"sessionvo.EvidenceRef",
 		"sessionvo.Interaction",
 		"sessionvo.Operation",
+		"sessionvo.OperationCallFact",
+		"sessionvo.OperationProtocol",
+		"sessionvo.PayloadEnvelope",
 		"sessionvo.OperationBusinessEdge",
 		"sessionvo.OperationBusinessRole",
 		"sessionvo.Receipt",
@@ -116,23 +120,63 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 			return document.Definitions[definition]
 		})
 	}
-	path := "/operations/{operation_id}/attempts/{attempt}:complete"
-	assertAllEqual(t, documents, "path "+path, func(document swaggerDocument) any {
-		return document.Paths[path].Post
-	})
+	const completePath = "/operations/{operation_id}/attempts/{attempt}:complete"
+	for path, method := range map[string]string{
+		completePath: "post",
+		"/operations/{operation_id}/attempts/{attempt}": "get",
+	} {
+		assertAllEqual(t, documents, "path "+path, func(document swaggerDocument) any {
+			if method == "get" {
+				return document.Paths[path].Get
+			}
+			return document.Paths[path].Post
+		})
+	}
 
 	finish := documents["swagger.json"].Definitions["httphandler.finishAttemptRequest"]
 	assertStringSet(t, finish.Required,
-		"receipt_id", "payload_hash", "evidence_durability", "request_id", "trace_id")
+		"receipt_id", "evidence_durability", "request_id", "trace_id")
+	for _, required := range []string{"output", "error"} {
+		property, exists := finish.Properties[required]
+		if !exists {
+			t.Fatalf("finish request is missing %q", required)
+		}
+		if property.Ref != "#/definitions/sessionvo.PayloadEnvelope" {
+			t.Fatalf("finish %s schema = %#v, want PayloadEnvelope", required, property)
+		}
+	}
+	if _, exists := finish.Properties["payload_hash"]; exists {
+		t.Fatal("finish request must not expose payload_hash")
+	}
 	if _, exists := finish.Properties["retryable"]; !exists {
 		t.Fatal("finish request must expose optional retryable")
+	}
+	ensure := documents["swagger.json"].Definitions["httphandler.ensureOperationRequest"]
+	assertStringSet(t, ensure.Required,
+		"input", "lease_epoch", "lease_token", "operation_key", "protocol", "source_module", "tool_name")
+	input, exists := ensure.Properties["input"]
+	if !exists {
+		t.Fatal("ensure request must expose real input")
+	}
+	if input.Ref != "#/definitions/sessionvo.PayloadEnvelope" {
+		t.Fatalf("ensure input schema = %#v, want PayloadEnvelope", input)
+	}
+	if _, exists := ensure.Properties["normalized_input_hash"]; exists {
+		t.Fatal("ensure request must not expose normalized_input_hash")
+	}
+	for _, definition := range []string{"sessionvo.Operation", "sessionvo.Receipt"} {
+		for _, forbidden := range []string{"normalized_input_hash", "payload_hash"} {
+			if _, exists := documents["swagger.json"].Definitions[definition].Properties[forbidden]; exists {
+				t.Fatalf("%s must not expose %s", definition, forbidden)
+			}
+		}
 	}
 	result := documents["swagger.json"].Definitions["httphandler.operationResult"]
 	assertStringSet(t, result.Required, "operation", "receipt", "created", "execute")
 	businessRef := documents["swagger.json"].Definitions["sessionvo.BusinessRef"]
 	assertStringSet(t, businessRef.Required, "ref_type", "ref_id", "business_domain_id", "version")
 
-	complete := documents["swagger.json"].Paths[path].Post
+	complete := documents["swagger.json"].Paths[completePath].Post
 	body := findParameter(t, complete.Parameters, "request", "body")
 	if !body.Required || body.Schema.Ref != "#/definitions/httphandler.finishAttemptRequest" {
 		t.Fatalf("finish body contract drifted: %#v", body)
@@ -172,6 +216,7 @@ func TestGeneratedSwaggerContainsEveryManagedLifecycleRoute(t *testing.T) {
 		"/conversations/{conversation_id}/interactions/{interaction_id}/operations:ensure",
 		"/interactions/{interaction_id}",
 		"/interactions/{interaction_id}/business-graph",
+		"/interactions/{interaction_id}/operations",
 		"/interactions/{interaction_id}/complete",
 		"/interactions/{interaction_id}/fail",
 		"/interactions/{interaction_id}/cancel",

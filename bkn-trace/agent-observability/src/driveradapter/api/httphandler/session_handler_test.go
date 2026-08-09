@@ -174,7 +174,7 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 
 	operationResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions/"+interaction.ID+"/operations:ensure",
-		`{"operation_key":"query-orders","tool_name":"ontology-query","normalized_input_hash":"sha256:input","required":true,"lease_token":"`+
+		`{"operation_key":"query-orders","tool_name":"ontology-query","protocol":"internal","source_module":"handler-test","input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"query":"orders"}},"required":true,"lease_token":"`+
 			interaction.LeaseToken+`","lease_epoch":1}`)
 	if operationResponse.Code != http.StatusCreated {
 		t.Fatalf("ensure operation: %d %s", operationResponse.Code, operationResponse.Body.String())
@@ -192,14 +192,14 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 
 	receiptResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/operations/"+operationResult.Operation.ID+"/attempts/1:complete",
-		`{"receipt_id":"`+operationResult.Receipt.ID+`","payload_hash":"sha256:result","evidence_durability":"durable","request_id":"req-1","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+		`{"receipt_id":"`+operationResult.Receipt.ID+`","output":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"result":"ok"}},"evidence_durability":"durable","request_id":"req-1","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
 	if receiptResponse.Code != http.StatusOK {
 		t.Fatalf("complete receipt: %d %s", receiptResponse.Code, receiptResponse.Body.String())
 	}
 
 	retryOperationResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions/"+interaction.ID+"/operations:ensure",
-		`{"operation_key":"retry-orders","tool_name":"ontology-query","normalized_input_hash":"sha256:retry-input","required":true,"lease_token":"`+
+		`{"operation_key":"retry-orders","tool_name":"ontology-query","protocol":"internal","source_module":"handler-test","input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"query":"retry-orders"}},"required":true,"lease_token":"`+
 			interaction.LeaseToken+`","lease_epoch":1}`)
 	var retryOperationResult struct {
 		Operation sessionvo.Operation `json:"operation"`
@@ -208,7 +208,7 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 	decodeLifecycleResponse(t, retryOperationResponse, &retryOperationResult)
 	failResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/operations/"+retryOperationResult.Operation.ID+"/attempts/1:fail",
-		`{"receipt_id":"`+retryOperationResult.Receipt.ID+`","payload_hash":"sha256:failure","evidence_durability":"failed","retryable":true,"request_id":"req-retry","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+		`{"receipt_id":"`+retryOperationResult.Receipt.ID+`","error":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"code":"QUERY_FAILED","message":"query failed","stage":"backend","retryable":true}},"evidence_durability":"failed","retryable":true,"request_id":"req-retry","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
 	if failResponse.Code != http.StatusOK {
 		t.Fatalf("fail retryable attempt: %d %s", failResponse.Code, failResponse.Body.String())
 	}
@@ -231,7 +231,7 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 	}
 	claimRetryResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions/"+interaction.ID+"/operations:ensure",
-		`{"operation_key":"retry-orders","tool_name":"ontology-query","normalized_input_hash":"sha256:retry-input","required":true,"lease_token":"`+
+		`{"operation_key":"retry-orders","tool_name":"ontology-query","protocol":"internal","source_module":"handler-test","input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"query":"retry-orders"}},"required":true,"lease_token":"`+
 			interaction.LeaseToken+`","lease_epoch":1}`)
 	var claimedRetry struct {
 		Operation sessionvo.Operation `json:"operation"`
@@ -246,7 +246,7 @@ func TestManagedLifecycleHTTPWorkflow(t *testing.T) {
 	}
 	retryCompleteResponse := performLifecycleRequest(t, mux, http.MethodPost,
 		"/api/agent-observability/v1/operations/"+claimedRetry.Operation.ID+"/attempts/2:complete",
-		`{"receipt_id":"`+claimedRetry.Receipt.ID+`","payload_hash":"sha256:retry-result","evidence_durability":"durable","request_id":"req-retry-complete","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+		`{"receipt_id":"`+claimedRetry.Receipt.ID+`","output":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"result":"retry-ok"}},"evidence_durability":"durable","request_id":"req-retry-complete","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
 	if retryCompleteResponse.Code != http.StatusOK {
 		t.Fatalf("complete retry attempt: %d %s", retryCompleteResponse.Code, retryCompleteResponse.Body.String())
 	}
@@ -390,7 +390,7 @@ func TestEnsureOperationHTTPReportsCreatedAndReplay(t *testing.T) {
 		`{"idempotency_key":"interaction-created-http","lease_seconds":300}`)
 	var interaction sessionvo.Interaction
 	decodeLifecycleResponse(t, interactionResponse, &interaction)
-	body := `{"operation_key":"logical-http","tool_name":"context-loader","normalized_input_hash":"sha256:http","required":true,"lease_token":"` +
+	body := `{"operation_key":"logical-http","tool_name":"context-loader","protocol":"internal","source_module":"handler-test","input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"query":"http"}},"required":true,"lease_token":"` +
 		interaction.LeaseToken + `","lease_epoch":1}`
 	path := "/api/agent-observability/v1/conversations/" + conversation.ID +
 		"/interactions/" + interaction.ID + "/operations:ensure"
@@ -416,6 +416,292 @@ func TestEnsureOperationHTTPReportsCreatedAndReplay(t *testing.T) {
 		firstResult.Receipt.ID != replayedResult.Receipt.ID {
 		t.Fatalf("unexpected created/replay contract: first=%#v replay=%#v", firstResult, replayedResult)
 	}
+}
+
+func TestEnsureOperationPersistsRealInputWithoutCallerHash(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"real-input","idempotency_key":"conversation-real-input"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+
+	interactionResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"interaction-real-input","lease_seconds":300}`)
+	var interaction sessionvo.Interaction
+	decodeLifecycleResponse(t, interactionResponse, &interaction)
+
+	response := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+
+			"/interactions/"+interaction.ID+"/operations:ensure",
+		`{"operation_key":"run-sql-real-input","tool_name":"run_sql","protocol":"mcp","source_module":"context-loader","input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"resource_id":"resource:orders","sql":"SELECT * FROM orders WHERE material_number = '101-000015'"}},"required":true,"lease_token":"`+
+			interaction.LeaseToken+`","lease_epoch":1}`)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("ensure operation with real input: %d %s", response.Code, response.Body.String())
+	}
+
+	readResponse := performLifecycleRequest(t, mux, http.MethodGet,
+		"/api/agent-observability/v1/interactions/"+interaction.ID+"/operations", "")
+	if readResponse.Code != http.StatusOK {
+		t.Fatalf("read interaction operation facts: %d %s", readResponse.Code, readResponse.Body.String())
+	}
+	var facts struct {
+		Entries []sessionvo.OperationCallFact `json:"entries"`
+		Total   int                           `json:"total"`
+	}
+	decodeLifecycleResponse(t, readResponse, &facts)
+	if facts.Total != 1 || len(facts.Entries) != 1 {
+		t.Fatalf("expected one operation call fact, got %#v", facts)
+	}
+	wantInput := `{"resource_id":"resource:orders","sql":"SELECT * FROM orders WHERE material_number = '101-000015'"}`
+	if string(facts.Entries[0].Input.Inline) != wantInput {
+		t.Fatalf("operation input changed during persistence: got %s want %s",
+			facts.Entries[0].Input.Inline, wantInput)
+	}
+	if facts.Entries[0].Protocol != sessionvo.ProtocolMCP ||
+		facts.Entries[0].SourceModule != "context-loader" {
+		t.Fatalf("operation producer identity was not preserved: %#v", facts.Entries[0])
+	}
+}
+
+func TestCompleteOperationPersistsRealOutputWithoutCallerHash(t *testing.T) {
+	t.Parallel()
+
+	mux, interaction, operation, receipt := startOperationCallFactHTTP(t, "complete-output")
+	response := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/operations/"+operation.ID+"/attempts/1:complete",
+		`{"receipt_id":"`+receipt.ID+`","output":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"columns":["material_number"],"rows":[{"material_number":"101-000015"}],"row_count":1}},"evidence_durability":"durable","request_id":"req-output","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9","span_id":"00f067aa0ba902b7"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("complete operation with real output: %d %s", response.Code, response.Body.String())
+	}
+
+	facts := readInteractionOperationFacts(t, mux, interaction.ID)
+	if len(facts) != 1 || facts[0].Output == nil || facts[0].Error != nil {
+		t.Fatalf("completed call fact must contain only output: %#v", facts)
+	}
+	want := `{"columns":["material_number"],"row_count":1,"rows":[{"material_number":"101-000015"}]}`
+	if string(facts[0].Output.Inline) != want || facts[0].Status != sessionvo.AttemptCompleted {
+		t.Fatalf("unexpected completed call fact: %#v", facts[0])
+	}
+	if facts[0].SpanID != "00f067aa0ba902b7" || facts[0].FinishedAt == nil {
+		t.Fatalf("completed call fact lost span or finish time: %#v", facts[0])
+	}
+}
+
+func TestFailOperationPersistsStructuredErrorWithoutCallerHash(t *testing.T) {
+	t.Parallel()
+
+	mux, interaction, operation, receipt := startOperationCallFactHTTP(t, "fail-error")
+	response := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/operations/"+operation.ID+"/attempts/1:fail",
+		`{"receipt_id":"`+receipt.ID+`","error":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"code":"QUERY_TIMEOUT","message":"run_sql timed out","stage":"backend","retryable":true}},"evidence_durability":"failed","retryable":true,"request_id":"req-error","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("fail operation with structured error: %d %s", response.Code, response.Body.String())
+	}
+
+	facts := readInteractionOperationFacts(t, mux, interaction.ID)
+	if len(facts) != 1 || facts[0].Error == nil || facts[0].Output != nil {
+		t.Fatalf("failed call fact must contain only error: %#v", facts)
+	}
+	want := `{"code":"QUERY_TIMEOUT","message":"run_sql timed out","retryable":true,"stage":"backend"}`
+	if string(facts[0].Error.Inline) != want || facts[0].Status != sessionvo.AttemptFailed || !facts[0].Retryable {
+		t.Fatalf("unexpected failed call fact: %#v", facts[0])
+	}
+}
+
+func TestEnsureOperationPersistsExplicitReferencedInputEnvelope(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"referenced-input","idempotency_key":"conversation-referenced-input"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+	interactionResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"interaction-referenced-input","lease_seconds":300}`)
+	var interaction sessionvo.Interaction
+	decodeLifecycleResponse(t, interactionResponse, &interaction)
+
+	response := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+
+			"/interactions/"+interaction.ID+"/operations:ensure",
+		`{"operation_key":"referenced-input","tool_name":"run_sql","protocol":"internal","source_module":"handler-test","input":{"mode":"referenced","media_type":"application/json","byte_length":1048577,"ref":"artifact:run_sql_input_1"},"required":true,"lease_token":"`+
+			interaction.LeaseToken+`","lease_epoch":1}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("ensure referenced input: %d %s", response.Code, response.Body.String())
+	}
+	var ensured struct {
+		Receipt sessionvo.Receipt `json:"receipt"`
+	}
+	decodeLifecycleResponse(t, response, &ensured)
+	if len(ensured.Receipt.ArtifactRefs) != 1 ||
+		ensured.Receipt.ArtifactRefs[0] != "artifact:run_sql_input_1" {
+		t.Fatalf("referenced input was not linked to receipt: %#v", ensured.Receipt.ArtifactRefs)
+	}
+	facts := readInteractionOperationFacts(t, mux, interaction.ID)
+	if len(facts) != 1 || facts[0].Input.Mode != sessionvo.PayloadReferenced ||
+		facts[0].Input.Ref != "artifact:run_sql_input_1" || facts[0].Input.Inline != nil ||
+		facts[0].Input.ByteLength != sessionvo.MaxInlinePayloadBytes+1 {
+		t.Fatalf("referenced input envelope was not preserved: %#v", facts)
+	}
+}
+
+func TestEnsureOperationAcceptsInlinePayloadAtFixedLimit(t *testing.T) {
+	t.Parallel()
+
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"inline-limit","idempotency_key":"conversation-inline-limit"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+	interactionResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"interaction-inline-limit","lease_seconds":300}`)
+	var interaction sessionvo.Interaction
+	decodeLifecycleResponse(t, interactionResponse, &interaction)
+	inline := `"` + strings.Repeat("a", sessionvo.MaxInlinePayloadBytes-2) + `"`
+	body := `{"operation_key":"inline-limit","tool_name":"run_sql","protocol":"internal","source_module":"handler-test","input":{"mode":"inline","media_type":"application/json","byte_length":1048576,"inline":` +
+		inline + `},"required":true,"lease_token":"` + interaction.LeaseToken + `","lease_epoch":1}`
+
+	response := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+
+			"/interactions/"+interaction.ID+"/operations:ensure", body)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("ensure inline payload at limit: %d %s", response.Code, response.Body.String())
+	}
+	facts := readInteractionOperationFacts(t, mux, interaction.ID)
+	if len(facts) != 1 || facts[0].Input.Mode != sessionvo.PayloadInline ||
+		facts[0].Input.ByteLength != sessionvo.MaxInlinePayloadBytes {
+		t.Fatalf("inline boundary fact mismatch: %#v", facts)
+	}
+}
+
+func TestCompleteOperationPersistsExplicitReferencedOutputEnvelope(t *testing.T) {
+	t.Parallel()
+
+	mux, interaction, operation, receipt := startOperationCallFactHTTP(t, "referenced-output")
+	response := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/operations/"+operation.ID+"/attempts/1:complete",
+		`{"receipt_id":"`+receipt.ID+`","output":{"mode":"referenced","media_type":"application/json","byte_length":1048577,"ref":"artifact:run_sql_output_1"},"evidence_durability":"durable","request_id":"req-referenced-output","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("complete referenced output: %d %s", response.Code, response.Body.String())
+	}
+	var completed struct {
+		Receipt sessionvo.Receipt `json:"receipt"`
+	}
+	decodeLifecycleResponse(t, response, &completed)
+	if len(completed.Receipt.ArtifactRefs) != 1 ||
+		completed.Receipt.ArtifactRefs[0] != "artifact:run_sql_output_1" {
+		t.Fatalf("referenced output was not linked to receipt: %#v", completed.Receipt.ArtifactRefs)
+	}
+	readResponse := performLifecycleRequest(t, mux, http.MethodGet,
+		"/api/agent-observability/v1/operations/"+operation.ID+"/attempts/1", "")
+	if readResponse.Code != http.StatusOK {
+		t.Fatalf("read one operation attempt fact: %d %s", readResponse.Code, readResponse.Body.String())
+	}
+	var readFact sessionvo.OperationCallFact
+	decodeLifecycleResponse(t, readResponse, &readFact)
+	if readFact.OperationID != operation.ID || readFact.Attempt != 1 ||
+		readFact.Output == nil || readFact.Output.Ref != "artifact:run_sql_output_1" {
+		t.Fatalf("single operation attempt fact mismatch: %#v", readFact)
+	}
+	facts := readInteractionOperationFacts(t, mux, interaction.ID)
+	if len(facts) != 1 || facts[0].Output == nil ||
+		facts[0].Output.Mode != sessionvo.PayloadReferenced ||
+		facts[0].Output.Ref != "artifact:run_sql_output_1" ||
+		facts[0].Output.Inline != nil ||
+		facts[0].Output.ByteLength != sessionvo.MaxInlinePayloadBytes+1 {
+		t.Fatalf("referenced output envelope was not preserved: %#v", facts)
+	}
+}
+
+func TestOperationCallFactTerminalPayloadIsImmutable(t *testing.T) {
+	t.Parallel()
+
+	mux, interaction, operation, receipt := startOperationCallFactHTTP(t, "immutable-output")
+	path := "/api/agent-observability/v1/operations/" + operation.ID + "/attempts/1:complete"
+	body := `{"receipt_id":"` + receipt.ID + `","output":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"row_count":1}},"evidence_durability":"durable","request_id":"req-immutable","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`
+	first := performLifecycleRequest(t, mux, http.MethodPost, path, body)
+	replay := performLifecycleRequest(t, mux, http.MethodPost, path, body)
+	changed := performLifecycleRequest(t, mux, http.MethodPost, path,
+		`{"receipt_id":"`+receipt.ID+`","output":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"row_count":2}},"evidence_durability":"durable","request_id":"req-immutable","trace_id":"4b3d59daeff5bfbb23d46c47a5051ec9"}`)
+	if first.Code != http.StatusOK || replay.Code != http.StatusOK {
+		t.Fatalf("identical terminal replay must succeed: first=%d replay=%d", first.Code, replay.Code)
+	}
+	if changed.Code != http.StatusConflict {
+		t.Fatalf("changed terminal payload must conflict: %d %s", changed.Code, changed.Body.String())
+	}
+	facts := readInteractionOperationFacts(t, mux, interaction.ID)
+	if len(facts) != 1 || facts[0].Output == nil || string(facts[0].Output.Inline) != `{"row_count":1}` {
+		t.Fatalf("conflicting replay changed durable call fact: %#v", facts)
+	}
+}
+
+func startOperationCallFactHTTP(
+	t *testing.T,
+	operationKey string,
+) (*http.ServeMux, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
+	t.Helper()
+	handler := httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{}))
+	mux := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(mux, "/api/agent-observability/v1", handler)
+
+	conversationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations:ensure-current",
+		`{"external_conversation_key":"`+operationKey+`","idempotency_key":"conversation-`+operationKey+`"}`)
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, conversationResponse, &conversation)
+	interactionResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+"/interactions",
+		`{"idempotency_key":"interaction-`+operationKey+`","lease_seconds":300}`)
+	var interaction sessionvo.Interaction
+	decodeLifecycleResponse(t, interactionResponse, &interaction)
+	operationResponse := performLifecycleRequest(t, mux, http.MethodPost,
+		"/api/agent-observability/v1/conversations/"+conversation.ID+
+			"/interactions/"+interaction.ID+"/operations:ensure",
+		`{"operation_key":"`+operationKey+`","tool_name":"run_sql","protocol":"internal","source_module":"handler-test","input":{"mode":"inline","media_type":"application/json","byte_length":0,"inline":{"resource_id":"resource:orders","sql":"SELECT * FROM orders"}},"required":true,"lease_token":"`+
+			interaction.LeaseToken+`","lease_epoch":1}`)
+	if operationResponse.Code != http.StatusCreated {
+		t.Fatalf("ensure operation: %d %s", operationResponse.Code, operationResponse.Body.String())
+	}
+	var result struct {
+		Operation sessionvo.Operation `json:"operation"`
+		Receipt   sessionvo.Receipt   `json:"receipt"`
+	}
+	decodeLifecycleResponse(t, operationResponse, &result)
+	return mux, interaction, result.Operation, result.Receipt
+}
+
+func readInteractionOperationFacts(
+	t *testing.T,
+	mux *http.ServeMux,
+	interactionID string,
+) []sessionvo.OperationCallFact {
+	t.Helper()
+	response := performLifecycleRequest(t, mux, http.MethodGet,
+		"/api/agent-observability/v1/interactions/"+interactionID+"/operations", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("read interaction operation facts: %d %s", response.Code, response.Body.String())
+	}
+	var result struct {
+		Entries []sessionvo.OperationCallFact `json:"entries"`
+	}
+	decodeLifecycleResponse(t, response, &result)
+	return result.Entries
 }
 
 func TestConversationListUsesOwnerTupleAsRealQueryScope(t *testing.T) {

@@ -9,6 +9,7 @@ package bkntrace
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -33,9 +34,11 @@ type BusinessContext struct {
 }
 
 type GuardIntent struct {
-	Context             BusinessContext
-	ToolName            string
-	NormalizedInputHash string
+	Context      BusinessContext
+	ToolName     string
+	Protocol     string
+	SourceModule string
+	Input        json.RawMessage
 }
 
 type GuardState struct {
@@ -68,13 +71,15 @@ func (g *Guard) Begin(
 		return ctx, GuardState{}, "", nil, err
 	}
 	result, apiErr, err := g.client.EnsureOperation(ctx, EnsureOperationInput{
-		ConversationID:      intent.Context.ConversationID,
-		InteractionID:       intent.Context.InteractionID,
-		OperationKey:        intent.Context.OperationKey,
-		ToolName:            intent.ToolName,
-		NormalizedInputHash: intent.NormalizedInputHash,
-		ParentOperationID:   intent.Context.ParentOperationID,
-		CausationEventIDs:   intent.Context.CausationEventIDs,
+		ConversationID:    intent.Context.ConversationID,
+		InteractionID:     intent.Context.InteractionID,
+		OperationKey:      intent.Context.OperationKey,
+		ToolName:          intent.ToolName,
+		Protocol:          intent.Protocol,
+		SourceModule:      intent.SourceModule,
+		Input:             intent.Input,
+		ParentOperationID: intent.Context.ParentOperationID,
+		CausationEventIDs: intent.Context.CausationEventIDs,
 	})
 	if err != nil || apiErr != nil {
 		return ctx, GuardState{}, "", apiErr, err
@@ -127,7 +132,7 @@ func EnsureTraceCorrelation(ctx context.Context) (context.Context, error) {
 func (g *Guard) Finish(
 	ctx context.Context,
 	state GuardState,
-	payloadHash string,
+	payload any,
 	failed bool,
 	retryable bool,
 ) (OperationResult, *APIError, error) {
@@ -140,14 +145,23 @@ func (g *Guard) Finish(
 	if traceContext.RequestID == "" || !spanContext.IsValid() {
 		return OperationResult{}, nil, ErrMissingFinishCorrelation
 	}
+	rawPayload, marshalErr := guardPayloadJSON(payload)
+	if marshalErr != nil {
+		return OperationResult{}, nil, marshalErr
+	}
 	input := FinishAttemptInput{
 		OperationID: state.Result.Operation.OperationID,
 		Attempt:     state.Result.Operation.Attempt,
 		ReceiptID:   state.Result.Receipt.ReceiptID,
-		PayloadHash: payloadHash,
 		RequestID:   traceContext.RequestID,
 		TraceID:     spanContext.TraceID().String(),
+		SpanID:      spanContext.SpanID().String(),
 		Retryable:   retryable,
+	}
+	if failed {
+		input.Error = rawPayload
+	} else {
+		input.Output = rawPayload
 	}
 	// Declared references are part of the caller's governed operation context,
 	// not a by-product of evidence delivery. Keep them in the receipt even while
@@ -231,6 +245,21 @@ func (g *Guard) Finish(
 	}, nil
 }
 
+func guardPayloadJSON(payload any) (json.RawMessage, error) {
+	switch value := payload.(type) {
+	case json.RawMessage:
+		if json.Valid(value) {
+			return append(json.RawMessage(nil), value...), nil
+		}
+	case []byte:
+		if json.Valid(value) {
+			return append(json.RawMessage(nil), value...), nil
+		}
+	}
+	raw, err := json.Marshal(payload)
+	return raw, err
+}
+
 func mergeBusinessRefs(preferred, observed []BusinessRef) []BusinessRef {
 	merged := make([]BusinessRef, 0, len(preferred)+len(observed))
 	seen := make(map[string]struct{}, len(preferred)+len(observed))
@@ -266,7 +295,6 @@ func validateRecoveredReceipt(
 		receipt.OperationID != input.OperationID ||
 		receipt.Attempt != input.Attempt ||
 		receipt.ReceiptStatus != expectedStatus ||
-		receipt.PayloadHash != input.PayloadHash ||
 		receipt.RequestID != input.RequestID ||
 		receipt.TraceID != input.TraceID {
 		return finishIdempotencyConflict()
