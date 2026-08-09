@@ -157,6 +157,40 @@ func Test_QueryExecutions_IndexNotExists_ReturnsEmpty(t *testing.T) {
 	})
 }
 
+func Test_QueryExecutions_ExcludesResultsFromSource(t *testing.T) {
+	Convey("QueryExecutions must not read per-instance results from OpenSearch", t, func() {
+		ctrl := gomock.NewController(t)
+		mockOSA := omock.NewMockOpenSearchAccess(ctrl)
+		mockOSA.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(true, nil)
+
+		var captured map[string]any
+		mockOSA.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, q any) ([]interfaces.Hit, error) {
+				captured, _ = q.(map[string]any)
+				return []interfaces.Hit{{Source: map[string]any{
+					"id":     "exec_123",
+					"status": "completed",
+				}}}, nil
+			})
+
+		svc := &actionLogsService{osAccess: mockOSA}
+		res, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{KNID: "kn_001"})
+
+		So(err, ShouldBeNil)
+		So(len(res.Entries), ShouldEqual, 1)
+
+		source, ok := captured["_source"].(map[string]any)
+		So(ok, ShouldBeTrue)
+		excludes, ok := source["excludes"].([]string)
+		So(ok, ShouldBeTrue)
+		So(excludes, ShouldContain, "results")
+		So(excludes, ShouldContain, "action_type_snapshot")
+		So(excludes, ShouldContain, "action_source")
+		// context-loader keeps dynamic_params in the slimmed list for the agent.
+		So(excludes, ShouldNotContain, "dynamic_params")
+	})
+}
+
 func Test_ActionLogQuery_Defaults(t *testing.T) {
 	Convey("Test ActionLogQuery defaults", t, func() {
 		Convey("should have default values", func() {

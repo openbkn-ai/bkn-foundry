@@ -171,7 +171,8 @@ func TestListActionExecutions_Success(t *testing.T) {
 						map[string]any{
 							"id":                   "exec-001",
 							"status":               "completed",
-							"action_type_snapshot": map[string]any{"parameters": []any{"x"}}, // 重货，list 精简后应剔除
+							"action_type_snapshot": map[string]any{"parameters": []any{"x"}},   // 重货，list 精简后应剔除
+							"results":              []any{map[string]any{"status": "success"}}, // 逐对象明细只在单查里给
 						},
 					},
 				}, nil
@@ -190,6 +191,9 @@ func TestListActionExecutions_Success(t *testing.T) {
 		convey.So(e0["id"], convey.ShouldEqual, "exec-001")
 		convey.So(e0["status"], convey.ShouldEqual, "completed")
 		convey.So(e0["action_type_snapshot"], convey.ShouldBeNil)
+		// 列表不带逐对象明细：键本身也不应存在，而不是留一个 null
+		_, hasResults := e0["results"]
+		convey.So(hasResults, convey.ShouldBeFalse)
 	})
 }
 
