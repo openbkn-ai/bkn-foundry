@@ -20,6 +20,7 @@ var (
 	ErrSQLRequired = errors.New("sql is required")
 	// ErrNoResourcePlaceholder SQL 未通过 {{.resource_id}} 占位符引用任何数据资源。
 	ErrNoResourcePlaceholder = errors.New("sql must reference at least one data resource via the {{.resource_id}} placeholder")
+	emitRunSQLFailure        = bkntrace.EmitRunSQLFailure
 )
 
 // RunSQLReq run_sql 入参（MCP 工具与内部 REST 端点共用）。
@@ -60,17 +61,30 @@ func NewKnRunSQLServiceWith(vega interfaces.DrivenVega) KnRunSQLService {
 // RunSQL 守卫 → 提取 resource_id → 按固定 Raw Query 契约调 Vega。
 func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfaces.VegaRawQueryResp, error) {
 	if req == nil || strings.TrimSpace(req.SQL) == "" {
+		sql := ""
+		if req != nil {
+			sql = req.SQL
+		}
+		emitRunSQLFailure(ctx, nil, sql, nil, bkntrace.RunSQLFailure{
+			Stage: "input_validation", Code: "RUN_SQL_SQL_REQUIRED", Summary: ErrSQLRequired.Error(),
+		})
 		return nil, ErrSQLRequired
 	}
 
 	// 只读守卫：拒绝写入 / DDL / 多语句。
 	if err := EnsureReadOnlySQL(req.SQL); err != nil {
+		emitRunSQLFailure(ctx, nil, req.SQL, ExtractResourceIDs(req.SQL), bkntrace.RunSQLFailure{
+			Stage: "sql_guard", Code: "RUN_SQL_READ_ONLY_REJECTED", Summary: err.Error(),
+		})
 		return nil, err
 	}
 
 	// 必须通过 {{.resource_id}} 占位符引用资源，否则 vega 无法定位数据源。
 	resourceIDs := ExtractResourceIDs(req.SQL)
 	if len(resourceIDs) == 0 {
+		emitRunSQLFailure(ctx, nil, req.SQL, nil, bkntrace.RunSQLFailure{
+			Stage: "input_validation", Code: "RUN_SQL_RESOURCE_PLACEHOLDER_REQUIRED", Summary: ErrNoResourcePlaceholder.Error(),
+		})
 		return nil, ErrNoResourcePlaceholder
 	}
 
@@ -85,6 +99,9 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 		},
 	})
 	if err != nil {
+		emitRunSQLFailure(ctx, nil, req.SQL, resourceIDs, bkntrace.RunSQLFailure{
+			Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: err.Error(),
+		})
 		return nil, err
 	}
 	bkntrace.EmitRunSQLEvents(ctx, nil, req.SQL, resourceIDs, resp)

@@ -179,6 +179,9 @@ var twoPointTwoPayloadFields = func() map[string]map[string]struct{} {
 	payloadFields["agent.interaction.started"]["question_artifact_ref"] = struct{}{}
 	payloadFields["data.query.observed"]["query_artifact_ref"] = struct{}{}
 	payloadFields["data.query.observed"]["result_artifact_ref"] = struct{}{}
+	for _, field := range []string{"status", "error_stage", "error_code", "safe_error_summary"} {
+		payloadFields["data.query.observed"][field] = struct{}{}
+	}
 	payloadFields["claim.created"]["result_artifact_ref"] = struct{}{}
 	payloadFields["action.recommended"]["reason_artifact_ref"] = struct{}{}
 	payloadFields["action.recommended"]["input_artifact_ref"] = struct{}{}

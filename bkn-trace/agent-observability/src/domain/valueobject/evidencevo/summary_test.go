@@ -534,6 +534,58 @@ func TestBuildExecutionSummariesKeepsInteractionQuestionOutOfOperation(t *testin
 	}
 }
 
+func TestBuildExecutionSummariesUsesRunSQLRowCount(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_run_sql", RequestID: "req_run_sql",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		Events: []EvidenceEvent{{
+			EventID: "event_run_sql", EventType: "data.query.observed",
+			ObservedAt: "2026-08-08T08:00:00Z", EmittedAt: "2026-08-08T08:00:01Z",
+			TraceID: "trace_run_sql", RequestID: "req_run_sql",
+			InteractionID: "int_run_sql", OperationID: "op_run_sql", OperationName: "context.run_sql",
+			Payload: map[string]any{"row_count": 10, "query_type": "sql"},
+		}},
+	}
+
+	requests, _ := BuildExecutionSummaries([]NormalizedTrace{trace}, nil)
+
+	if len(requests) != 1 || requests[0].ResultCount == nil || *requests[0].ResultCount != 10 {
+		t.Fatalf("run_sql result count must come from row_count: %+v", requests)
+	}
+	if requests[0].ToolName != "context.run_sql" || requests[0].OperationID != "op_run_sql" {
+		t.Fatalf("run_sql operation identity was lost: %+v", requests[0])
+	}
+}
+
+func TestBuildExecutionSummariesUsesStructuredRunSQLFailure(t *testing.T) {
+	trace := NormalizedTrace{
+		TraceID: "trace_run_sql_failed", RequestID: "req_run_sql_failed",
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		SchemaVersion: ArtifactContractVersion,
+		Events: []EvidenceEvent{{
+			EventID: "event_run_sql_failed", EventType: "data.query.observed",
+			SchemaVersion: ArtifactContractVersion,
+			ObservedAt:    "2026-08-08T08:00:00Z", EmittedAt: "2026-08-08T08:00:01Z",
+			TraceID: "trace_run_sql_failed", RequestID: "req_run_sql_failed",
+			InteractionID: "int_run_sql", OperationID: "op_run_sql", OperationName: "context.run_sql",
+			Payload: map[string]any{
+				"status": "error", "error_stage": "vega_query",
+				"error_code": "RUN_SQL_VEGA_QUERY_FAILED", "safe_error_summary": "unknown column available_qty",
+				"row_count": 0, "query_type": "sql",
+			},
+		}},
+	}
+
+	requests, executions := BuildExecutionSummaries([]NormalizedTrace{trace}, nil)
+
+	if len(requests) != 1 || requests[0].Status != "error" || requests[0].ErrorSummary != "unknown column available_qty" {
+		t.Fatalf("request summary lost structured run_sql failure: %+v", requests)
+	}
+	if len(executions) != 1 || executions[0].ErrorSummary != "unknown column available_qty" {
+		t.Fatalf("trace summary lost structured run_sql failure: %+v", executions)
+	}
+}
+
 func TestBuildExecutionSummariesUsesDurableReceiptAsOperationCompletenessAuthority(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_durable_receipt", RequestID: "req_durable_receipt",

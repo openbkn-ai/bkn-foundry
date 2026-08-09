@@ -434,6 +434,8 @@ func artifactLink(artifactType evidencevo.ArtifactType) (string, string) {
 		return "agent.interaction.started", "question_artifact_ref"
 	case evidencevo.ArtifactTypeResult:
 		return "claim.created", "result_artifact_ref"
+	case evidencevo.ArtifactTypeQuery:
+		return "data.query.observed", "query_artifact_ref"
 	case evidencevo.ArtifactTypeDataResult:
 		return "data.query.observed", "result_artifact_ref"
 	case evidencevo.ArtifactTypeLogicExecution:

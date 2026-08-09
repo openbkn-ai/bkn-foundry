@@ -292,6 +292,11 @@ func buildRequestSummary(
 	rootOperationKey := ""
 	rootToolName := ""
 	var rootResultCount *int
+	hasRootFact := false
+	fallbackOperationID := ""
+	fallbackOperationKey := ""
+	fallbackToolName := ""
+	var fallbackResultCount *int
 	traceSummaries := make([]TraceSummary, 0, len(traces))
 	for _, trace := range traces {
 		traceSummary := buildTraceSummary(trace, artifactsForTrace(trace.TraceID, artifacts))
@@ -340,6 +345,7 @@ func buildRequestSummary(
 				}
 			}
 			if event.EventType == "retrieval.completed" {
+				hasRootFact = true
 				mergeStableIdentity(&rootOperationID, event.OperationID)
 				mergeStableIdentity(&rootToolName, event.OperationName)
 				if operationKey, _ := summaryStringField(event.Payload, "operation_key"); operationKey != "" {
@@ -348,10 +354,25 @@ func buildRequestSummary(
 				if resultCount := summaryIntPointer(event.Payload, "candidate_count"); resultCount != nil {
 					rootResultCount = resultCount
 				}
+			} else if event.EventType == "data.query.observed" {
+				mergeStableIdentity(&fallbackOperationID, event.OperationID)
+				mergeStableIdentity(&fallbackToolName, event.OperationName)
+				if operationKey, _ := summaryStringField(event.Payload, "operation_key"); operationKey != "" {
+					mergeStableIdentity(&fallbackOperationKey, operationKey)
+				}
+				if resultCount := summaryIntPointer(event.Payload, "row_count"); resultCount != nil {
+					fallbackResultCount = resultCount
+				}
 			}
 			collectBusinessRefs(event.Payload, businessRefs)
 			advanceActionSummary(&summary.ActionSummary, event.EventType)
 		}
+	}
+	if !hasRootFact {
+		rootOperationID = fallbackOperationID
+		rootOperationKey = fallbackOperationKey
+		rootToolName = fallbackToolName
+		rootResultCount = fallbackResultCount
 	}
 	if rootOperationID != "" && rootOperationID != "-" {
 		summary.OperationID = rootOperationID

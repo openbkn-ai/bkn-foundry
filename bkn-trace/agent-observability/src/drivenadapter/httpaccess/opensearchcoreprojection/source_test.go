@@ -196,6 +196,52 @@ func TestRequestProjectionHydratesArtifactsByReceiptInteraction(t *testing.T) {
 	}
 }
 
+func TestSourceProjectsQueryArtifactAsDataQueryReference(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
+			"receipt_id":"rcpt-query","schema_version":"3.0.0",
+			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},
+			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-query",
+			"tool_name":"run_sql","receipt_status":"completed","evidence_durability":"durable",
+			"request_id":"req-query","trace_id":"11111111111111111111111111111111",
+			"issued_at":"2026-08-02T07:35:26Z","terminal_at":"2026-08-02T07:35:27Z"
+		}}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	source := opensearchcoreprojection.New(
+		opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core",
+		artifactProjectionSource{result: iprojectionsource.Result{Artifacts: []evidencevo.EvidenceArtifact{{
+			ArtifactID: "query-1", ArtifactType: evidencevo.ArtifactTypeQuery,
+			RequestID: "req-query", TraceID: "11111111111111111111111111111111",
+			InteractionID: "int-1", OperationID: "op-query", Content: "SELECT * FROM inventory",
+			ObservedAt: "2026-08-02T07:35:26Z", TenantID: "tenant-1", BusinessDomain: "domain-1",
+			AccountID: "user-1", AccountType: "user",
+		}}}},
+	)
+
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		RequestID: "req-query", Scope: evidencevo.QueryScope{
+			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+		},
+	})
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if len(result.Traces) != 1 {
+		t.Fatalf("expected one trace, got %#v", result.Traces)
+	}
+	for _, event := range result.Traces[0].Events {
+		if event.EventType == "data.query.observed" && event.OperationID == "op-query" &&
+			event.Payload["query_artifact_ref"] == "artifact:query-1" {
+			return
+		}
+	}
+	t.Fatalf("query artifact must be linked as data.query.observed.query_artifact_ref: %#v", result.Traces[0].Events)
+}
+
 func TestSourceUsesManagedKnowledgeNetworksAsBusinessCandidates(t *testing.T) {
 	t.Parallel()
 

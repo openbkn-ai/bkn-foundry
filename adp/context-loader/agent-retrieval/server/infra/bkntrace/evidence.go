@@ -291,7 +291,128 @@ func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string,
 	if !EvidenceEnabled() {
 		return ""
 	}
+	artifacts, ok := buildRunSQLArtifacts(ctx, sql, resourceIDs, resp)
+	if !ok {
+		return ""
+	}
+	for _, artifact := range artifacts {
+		if err := postArtifactWithRetry(evidenceArtifactURL(), evidenceTimeout(), traceBlockFromEventContext(artifact.context), artifact.body); err != nil {
+			if logger != nil {
+				logger.WithContext(ctx).Warnf("BKN Trace run_sql artifact ingestion unavailable: %v", err)
+			} else {
+				log.Printf("BKN Trace run_sql artifact ingestion unavailable: %v", err)
+			}
+			return ""
+		}
+	}
 	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLEvents(ctx, sql, resourceIDs, resp))
+}
+
+type RunSQLFailure struct {
+	Stage   string
+	Code    string
+	Summary string
+}
+
+func EmitRunSQLFailure(ctx context.Context, logger interfaces.Logger, sql string, resourceIDs []string, failure RunSQLFailure) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	artifacts, ok := buildRunSQLFailureArtifacts(ctx, sql, resourceIDs, failure)
+	if !ok {
+		return ""
+	}
+	for _, artifact := range artifacts {
+		if err := postArtifactWithRetry(evidenceArtifactURL(), evidenceTimeout(), traceBlockFromEventContext(artifact.context), artifact.body); err != nil {
+			if logger != nil {
+				logger.WithContext(ctx).Warnf("BKN Trace failed run_sql artifact ingestion unavailable: %v", err)
+			} else {
+				log.Printf("BKN Trace failed run_sql artifact ingestion unavailable: %v", err)
+			}
+			return ""
+		}
+	}
+	return submitAndReturnFirstEventID(ctx, logger, nil, BuildRunSQLFailureEvents(ctx, sql, resourceIDs, failure))
+}
+
+type runSQLArtifact struct {
+	context eventContext
+	body    map[string]any
+}
+
+func buildRunSQLArtifacts(ctx context.Context, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) ([]runSQLArtifact, bool) {
+	return buildRunSQLAttemptArtifacts(ctx, sql, resourceIDs, runSQLResultSummary(resp))
+}
+
+func buildRunSQLFailureArtifacts(ctx context.Context, sql string, resourceIDs []string, failure RunSQLFailure) ([]runSQLArtifact, bool) {
+	return buildRunSQLAttemptArtifacts(ctx, sql, resourceIDs, runSQLFailureResultSummary(failure))
+}
+
+func buildRunSQLAttemptArtifacts(ctx context.Context, sql string, resourceIDs []string, resultContent map[string]any) ([]runSQLArtifact, bool) {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok {
+		return nil, false
+	}
+	queryContent := map[string]any{
+		"sql":          sql,
+		"resource_ids": append([]string(nil), resourceIDs...),
+	}
+	queryContentHash, err := hashArtifactContent(queryContent)
+	if err != nil {
+		return nil, false
+	}
+	resultContentHash, err := hashArtifactContent(resultContent)
+	if err != nil {
+		return nil, false
+	}
+	businessRefs := make([]string, 0, len(resourceIDs)+len(declaredBusinessRefsFromContext(ctx)))
+	for _, ref := range declaredBusinessRefsFromContext(ctx) {
+		if refID := strings.TrimSpace(ref.RefID); refID != "" {
+			businessRefs = append(businessRefs, refID)
+		}
+	}
+	sourceRef := ""
+	for _, resourceID := range resourceIDs {
+		resourceID = strings.TrimSpace(resourceID)
+		if resourceID == "" {
+			continue
+		}
+		ref := "resource:" + resourceID
+		businessRefs = append(businessRefs, ref)
+		if sourceRef == "" {
+			sourceRef = ref
+		}
+	}
+	base := map[string]any{
+		"bkn.request.id": ec.requestID, "trace_id": ec.traceID,
+		"interaction_id": ec.interactionID, "operation_id": ec.operationID,
+		"source_ref": sourceRef, "business_refs": businessRefs,
+		"content_type": "application/json", "schema_version": "2.2.0",
+		"observed_at":   ec.observedAt,
+		"bkn.tenant.id": ec.tenantID, "business_domain": ec.businessDomain,
+		"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
+		"effective_subject_id": ec.accountID, "application_principal_id": ec.applicationID,
+		"initiator": "account:" + ec.accountID, "agent_or_app": agentOrApp(ec),
+	}
+	queryArtifact := copyMap(base)
+	queryArtifact["artifact_id"] = runSQLQueryArtifactID(ec, sql)
+	queryArtifact["artifact_type"] = "query"
+	queryArtifact["content_hash"] = queryContentHash
+	queryArtifact["content"] = queryContent
+	resultArtifact := copyMap(base)
+	resultArtifact["artifact_id"] = runSQLResultArtifactID(ec, resultContentHash)
+	resultArtifact["artifact_type"] = "data_result"
+	resultArtifact["content_hash"] = resultContentHash
+	resultArtifact["content"] = resultContent
+	return []runSQLArtifact{{context: ec, body: queryArtifact}, {context: ec, body: resultArtifact}}, true
+}
+
+func copyMap(source map[string]any) map[string]any {
+	result := make(map[string]any, len(source))
+	for key, value := range source {
+		result[key] = value
+	}
+	return result
 }
 
 func EmitSchemaDefinitionEvents(ctx context.Context, logger interfaces.Logger, kind, knID string, ids []string, matched int) string {
@@ -350,20 +471,8 @@ func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, re
 	if !ok {
 		return nil
 	}
-	declaredRefs := declaredBusinessRefsFromContext(ctx)
-	refs := make([]map[string]any, 0, len(resourceIDs)+len(declaredRefs))
+	refs := make([]map[string]any, 0, len(resourceIDs))
 	seen := map[string]struct{}{}
-	for _, ref := range declaredRefs {
-		key := ref.RefType + "\x00" + ref.RefID
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		refs = append(refs, map[string]any{
-			"ref_id": ref.RefID, "ref_type": ref.RefType, "source_system": "bkn",
-			"validity": "observed", "version_status": businessRefVersionStatus(ref.Version), "visibility": "visible",
-		})
-	}
 	for _, resourceID := range resourceIDs {
 		resourceID = strings.TrimSpace(resourceID)
 		if resourceID == "" {
@@ -383,6 +492,61 @@ func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, re
 			"visibility":     "visible",
 		})
 	}
+	resultSummary := runSQLResultSummary(resp)
+	resultContentHash, _ := hashArtifactContent(resultSummary)
+	event := buildEvent(ec, "data.query.observed", "context.run_sql", map[string]any{
+		"query_hash":          HashValue(strings.TrimSpace(sql)),
+		"query_type":          "sql",
+		"row_count":           resultSummary["row_count"],
+		"truncated":           resultSummary["truncated"],
+		"version_status":      "unversioned",
+		"resource_refs":       refs,
+		"field_refs":          []map[string]any{},
+		"query_artifact_ref":  "artifact:" + runSQLQueryArtifactID(ec, sql),
+		"result_artifact_ref": "artifact:" + runSQLResultArtifactID(ec, resultContentHash),
+	}, "", ec.causationEventID)
+	event["bkn.trace.schema.version"] = "2.2.0"
+	return []Event{event}
+}
+
+func BuildRunSQLFailureEvents(ctx context.Context, sql string, resourceIDs []string, failure RunSQLFailure) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok {
+		return nil
+	}
+	refs := runSQLResourceRefs(resourceIDs)
+	resultSummary := runSQLFailureResultSummary(failure)
+	resultContentHash, _ := hashArtifactContent(resultSummary)
+	event := buildEvent(ec, "data.query.observed", "context.run_sql", map[string]any{
+		"query_hash":          HashValue(strings.TrimSpace(sql)),
+		"query_type":          "sql",
+		"row_count":           0,
+		"truncated":           false,
+		"version_status":      "unversioned",
+		"resource_refs":       refs,
+		"field_refs":          []map[string]any{},
+		"query_artifact_ref":  "artifact:" + runSQLQueryArtifactID(ec, sql),
+		"result_artifact_ref": "artifact:" + runSQLResultArtifactID(ec, resultContentHash),
+		"status":              "error",
+		"error_stage":         failure.Stage,
+		"error_code":          failure.Code,
+		"safe_error_summary":  failure.Summary,
+	}, "", ec.causationEventID)
+	event["bkn.trace.schema.version"] = "2.2.0"
+	return []Event{event}
+}
+
+func runSQLQueryArtifactID(ec eventContext, sql string) string {
+	sum := sha256.Sum256([]byte(ec.traceID + "|" + ec.operationID + "|query|" + HashValue(strings.TrimSpace(sql))))
+	return "art_query_" + hex.EncodeToString(sum[:16])
+}
+
+func runSQLResultArtifactID(ec eventContext, contentHash string) string {
+	sum := sha256.Sum256([]byte(ec.traceID + "|" + ec.operationID + "|data_result|" + contentHash))
+	return "art_data_result_" + hex.EncodeToString(sum[:16])
+}
+
+func runSQLResultSummary(resp *interfaces.VegaRawQueryResp) map[string]any {
 	count := 0
 	truncated := false
 	if resp != nil {
@@ -392,14 +556,43 @@ func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, re
 			truncated = true
 		}
 	}
-	return buildRetrievalEvents(
-		ec,
-		"context.run_sql",
-		HashValue(strings.TrimSpace(sql)),
-		count,
-		truncated,
-		refs,
-	)
+	return map[string]any{"row_count": count, "truncated": truncated}
+}
+
+func runSQLFailureResultSummary(failure RunSQLFailure) map[string]any {
+	return map[string]any{
+		"status":        "error",
+		"row_count":     0,
+		"truncated":     false,
+		"error_stage":   failure.Stage,
+		"error_code":    failure.Code,
+		"error_summary": failure.Summary,
+	}
+}
+
+func runSQLResourceRefs(resourceIDs []string) []map[string]any {
+	refs := make([]map[string]any, 0, len(resourceIDs))
+	seen := map[string]struct{}{}
+	for _, resourceID := range resourceIDs {
+		resourceID = strings.TrimSpace(resourceID)
+		if resourceID == "" {
+			continue
+		}
+		key := "data_resource\x00resource:" + resourceID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		refs = append(refs, map[string]any{
+			"ref_id":         "resource:" + resourceID,
+			"ref_type":       "data_resource",
+			"source_system":  "vega",
+			"validity":       "observed",
+			"version_status": "unversioned",
+			"visibility":     "visible",
+		})
+	}
+	return refs
 }
 
 func BuildSchemaDefinitionEvents(ctx context.Context, kind, knID string, ids []string, matched int) []Event {
@@ -523,17 +716,6 @@ func withDeclaredBusinessRefs(ctx context.Context, refs []BusinessRef) context.C
 func declaredBusinessRefsFromContext(ctx context.Context) []BusinessRef {
 	refs, _ := ctx.Value(declaredBusinessRefsContextKey{}).([]BusinessRef)
 	return refs
-}
-
-func businessRefVersionStatus(version string) string {
-	switch strings.TrimSpace(version) {
-	case "", "unversioned":
-		return "unversioned"
-	case "not_auditable":
-		return "not_auditable"
-	default:
-		return "versioned"
-	}
 }
 
 func evidenceOutcomeFromContext(ctx context.Context) *evidenceOutcome {
@@ -752,8 +934,14 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs [
 
 func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []BusinessRef) []trace30BusinessRef {
 	payload, _ := event["payload"].(map[string]any)
-	items, _ := payload["source_refs"].([]map[string]any)
-	refs := make([]trace30BusinessRef, 0, len(items))
+	items := make([]map[string]any, 0)
+	for _, field := range []string{"source_refs", "resource_refs", "field_refs"} {
+		if values, ok := payload[field].([]map[string]any); ok {
+			items = append(items, values...)
+		}
+	}
+	refs := make([]trace30BusinessRef, 0, len(items)+len(declaredRefs))
+	seen := map[string]struct{}{}
 	declaredVersions := make(map[string]string, len(declaredRefs))
 	for _, ref := range declaredRefs {
 		declaredVersions[ref.RefType+"\x00"+ref.RefID] = ref.Version
@@ -771,9 +959,34 @@ func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []Busi
 		if version == "" {
 			version = "unversioned"
 		}
+		key := refType + "\x00" + refID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
 		refs = append(refs, trace30BusinessRef{
 			RefType: refType, RefID: refID, BusinessDomainID: businessDomain,
 			Version: version, DisplayHint: stringValue(item["display_hint"]),
+		})
+	}
+	for _, ref := range declaredRefs {
+		refType := trace30RefType(ref.RefType)
+		refID := strings.TrimSpace(ref.RefID)
+		if refType == "" || refID == "" || businessDomain == "" {
+			continue
+		}
+		key := refType + "\x00" + refID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		version := strings.TrimSpace(ref.Version)
+		if version == "" {
+			version = "unversioned"
+		}
+		refs = append(refs, trace30BusinessRef{
+			RefType: refType, RefID: refID, BusinessDomainID: businessDomain,
+			Version: version, DisplayHint: ref.DisplayHint,
 		})
 	}
 	return refs
