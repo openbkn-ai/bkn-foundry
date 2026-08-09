@@ -136,24 +136,67 @@ contains "vega uses the evidence ingest Secret" "${vega_sets}" "bknTrace.evidenc
 contains "vega reads the token key the receiver writes" "${vega_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
 not_contains "vega does not keep the pre-rename key" "${vega_sets}" "ingestTokenSecretKey=ingest-token"
 
-# Producers still unwired must be named at install time. The failure is
-# otherwise invisible: green pods, missing Evidence.
+# A full OpenBKN installation must wire every declared producer through the
+# real installer entrypoint. bkn-backend and ontology-query are durable
+# producers, so the shared trusted-delivery Secret and both outbox switches are
+# required in addition to the ingest route. The remaining two post directly.
+CORE_RELEASE_EXTRA_SETS=()
+_openbkn_release_extra_sets bkn-backend openbkn
+bkn_backend_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "bkn-backend posts evidence to the ingest route" "${bkn_backend_sets}" "bknTrace.evidence.ingestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+contains "bkn-backend uses the evidence ingest Secret" "${bkn_backend_sets}" "bknTrace.evidence.ingestTokenSecretName=bkn-trace-evidence-ingest"
+contains "bkn-backend reads the token key the receiver writes" "${bkn_backend_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
+contains "bkn-backend enables its durable outbox" "${bkn_backend_sets}" "bknTrace.producerOutbox.enabled=true"
+contains "bkn-backend starts its durable outbox worker" "${bkn_backend_sets}" "bknTrace.producerOutbox.workerEnabled=true"
+contains "bkn-backend enables delivered outbox cleanup" "${bkn_backend_sets}" "bknTrace.producerOutbox.cleanup.enabled=true"
+contains "bkn-backend uses the trusted delivery Secret" "${bkn_backend_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretName=bkn-trace-evidence-ingest"
+contains "bkn-backend reads the trusted delivery token key" "${bkn_backend_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
+
+CORE_RELEASE_EXTRA_SETS=()
+_openbkn_release_extra_sets ontology-query openbkn
+ontology_query_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "ontology-query posts evidence to the ingest route" "${ontology_query_sets}" "bknTrace.evidence.ingestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+contains "ontology-query uses the evidence ingest Secret" "${ontology_query_sets}" "bknTrace.evidence.ingestTokenSecretName=bkn-trace-evidence-ingest"
+contains "ontology-query reads the token key the receiver writes" "${ontology_query_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
+contains "ontology-query enables its durable outbox" "${ontology_query_sets}" "bknTrace.producerOutbox.enabled=true"
+contains "ontology-query starts its durable outbox worker" "${ontology_query_sets}" "bknTrace.producerOutbox.workerEnabled=true"
+contains "ontology-query enables delivered outbox cleanup" "${ontology_query_sets}" "bknTrace.producerOutbox.cleanup.enabled=true"
+contains "ontology-query uses the trusted delivery Secret" "${ontology_query_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretName=bkn-trace-evidence-ingest"
+contains "ontology-query reads the trusted delivery token key" "${ontology_query_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
+
+CORE_RELEASE_EXTRA_SETS=()
+_openbkn_release_extra_sets agent-operator-integration openbkn
+operator_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "operator integration posts evidence to the ingest route" "${operator_sets}" "observability.evidence.ingest_url=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+contains "operator integration uses the evidence ingest Secret" "${operator_sets}" "observability.evidence.ingest_token_secret_name=bkn-trace-evidence-ingest"
+contains "operator integration reads the token key the receiver writes" "${operator_sets}" "observability.evidence.ingest_token_secret_key=token"
+
+CORE_RELEASE_EXTRA_SETS=()
+_openbkn_release_extra_sets bkn-agent openbkn
+bkn_agent_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "bkn-agent posts evidence to the ingest route" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/events"
+contains "bkn-agent posts artifacts to the artifact route" "${bkn_agent_sets}" "observability.bknTraceArtifactIngestUrl=http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
+contains "bkn-agent uses the evidence ingest Secret" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestTokenSecretName=bkn-trace-evidence-ingest"
+contains "bkn-agent reads the token key the receiver writes" "${bkn_agent_sets}" "observability.bknTraceEvidenceIngestTokenSecretKey=token"
+
+# The full release manifest contains all declared producers. A new producer
+# must either be wired above or make this installer-level assertion fail.
 LAST_WARN=""
 log_warn() { LAST_WARN="$*"; }
-_openbkn_warn_unwired_evidence_producers agent-retrieval vega-backend bkn-backend ontology-query bkn-safe
-contains "names bkn-backend as unwired" "${LAST_WARN}" "bkn-backend"
-contains "names ontology-query as unwired" "${LAST_WARN}" "ontology-query"
-not_contains "does not name a wired producer" "${LAST_WARN}" "agent-retrieval"
-not_contains "does not name vega once wired" "${LAST_WARN}" "vega-backend"
-not_contains "does not name a release that emits no evidence" "${LAST_WARN}" "bkn-safe"
-
-LAST_WARN=""
-_openbkn_warn_unwired_evidence_producers agent-retrieval vega-backend
+_openbkn_warn_unwired_evidence_producers "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" bkn-safe
 if [[ -n "${LAST_WARN}" ]]; then
-    fail "no warning when every present producer is wired"
+    fail "no warning when every present producer is wired: ${LAST_WARN}"
 else
     ok
 fi
+
+# Keep the guard tied to the release entrypoint. If a declared producer is
+# omitted from its outer gate, its actual extra-set result is empty even though
+# the producer name itself is known to the installer.
+LAST_WARN=""
+_openbkn_release_extra_sets() { CORE_RELEASE_EXTRA_SETS=(); }
+_openbkn_warn_unwired_evidence_producers bkn-agent
+contains "names a declared producer without actual wiring" "${LAST_WARN}" "bkn-agent"
 
 CORE_SET_VALUES=()
 OFFLINE_MODE=true

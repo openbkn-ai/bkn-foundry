@@ -187,7 +187,7 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 该 NetworkPolicy 依赖 Kubernetes 1.23 或更高版本。离线执行 `helm template` 时应显式传入 `--kube-version 1.23.0` 或实际目标集群版本；连接集群的 `helm install/upgrade` 会按目标集群能力校验。
 
-Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器在 release 循环前创建或验证该 Secret，并将同一 token 注入 Agent Observability 与 Context Loader，因此不依赖两者的安装顺序；单独安装任一 Chart 时，应预先创建 Secret。若要禁用 Evidence 写入，必须同时清空 Context Loader 的 `observability.evidence.ingest_url`，不能只省略 token Secret。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
+Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器在 release 循环前创建或验证该 Secret，并将同一 token 注入 Agent Observability、Context Loader、Vega、BKN Backend、Ontology Query、BKN Agent 与行动执行服务；BKN Backend 和 Ontology Query 同时启用其持久 Evidence outbox worker 与既有清理任务（已投递记录保留 30 天，放弃记录保留 180 天）。单独安装任一 Chart 时，应预先创建并显式引用该 Secret。对无 outbox 的生产者，禁用 Evidence 写入须同时清空 ingest URL 与 token Secret；对启用了 producer outbox 的 BKN Backend 和 Ontology Query，须同时关闭 outbox 与 worker，不能只清空 URL。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
 
 ```bash
 printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \
