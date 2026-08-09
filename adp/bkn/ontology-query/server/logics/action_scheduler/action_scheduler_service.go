@@ -180,6 +180,16 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		}
 	}
 
+	// Resolve how many times the tool actually has to be invoked for this execution.
+	executionMode := resolveExecutionMode(&actionType)
+	invocationCount := len(req.Instances)
+	if executionMode == interfaces.ExecutionModeOnce {
+		invocationCount = 1
+		logger.Infof("Action type %s has no instance-dependent parameter, %d matched instances collapse into a single invocation",
+			actionType.ATID, len(req.Instances))
+	}
+	span.SetAttributes(attr.Key("execution_mode").String(executionMode))
+
 	// Generate execution ID
 	executionID := xid.New().String()
 	now := time.Now().UnixMilli()
@@ -202,7 +212,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		ObjectTypeID:         actionType.ObjectTypeID,
 		TriggerType:          triggerType,
 		Status:               interfaces.ExecutionStatusPending,
-		TotalCount:           len(req.Instances),
+		ExecutionMode:        executionMode,
+		TargetCount:          len(req.Instances),
+		TotalCount:           invocationCount,
 		SuccessCount:         0,
 		FailedCount:          0,
 		Results:              []interfaces.ObjectExecutionResult{}, // Empty initially to save space
@@ -272,13 +284,19 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		ctx = context.WithValue(ctx, interfaces.BUSINESS_DOMAIN_KEY, req.BusinessDomain)
 	}
 
-	logger.Infof("Starting async execution: %s, total objects: %d", execution.ID, len(req.Instances))
+	logger.Infof("Starting async execution: %s, mode: %s, target instances: %d",
+		execution.ID, execution.ExecutionMode, len(req.Instances))
 
 	// Update status to running
 	if err := s.logsService.UpdateExecution(ctx, execution.KNID, execution.ID, map[string]any{
 		"status": interfaces.ExecutionStatusRunning,
 	}); err != nil {
 		logger.Warnf("Failed to update execution status to running: %v", err)
+	}
+
+	if execution.ExecutionMode == interfaces.ExecutionModeOnce {
+		s.executeOnce(ctx, execution, actionType, req)
+		return
 	}
 
 	// Execute objects in batches
@@ -325,19 +343,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		}
 
 		// Execute based on action source type
-		var result any
-		var execErr error
-
-		switch actionType.ActionSource.Type {
-		case interfaces.ActionSourceTypeTool:
-			result, execErr = ExecuteTool(ctx, s.aoAccess, actionType, params)
-		case interfaces.ActionSourceTypeMCP:
-			// MCP 工具自带入参 schema，未在行动类声明的 dynamic_params 也要透传
-			params = buildMCPParameters(params, req.DynamicParams)
-			result, execErr = ExecuteMCP(ctx, s.aoAccess, actionType, params)
-		default:
-			execErr = fmt.Errorf("unsupported action source type: %s", actionType.ActionSource.Type)
-		}
+		params, result, execErr := s.invokeActionSource(ctx, actionType, params, req.DynamicParams)
 
 		endTime := time.Now().UnixMilli()
 		if execErr != nil {
@@ -399,6 +405,134 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 
 	logger.Infof("Completed async execution: %s, success: %d, failed: %d, cancelled: %d",
 		execution.ID, successCount, failedCount, cancelledCount)
+}
+
+// resolveExecutionMode decides whether the tool has to be invoked once per matched instance.
+//
+// A parameter sourced from an instance property makes every instance resolve a different
+// parameter set, so each instance needs its own invocation. Without any such parameter every
+// matched instance resolves a byte-identical parameter set — const values and the
+// execution-level dynamic_params are the only inputs — and invoking once per instance would
+// submit the very same request N times, i.e. repeat the same side effect N times.
+func resolveExecutionMode(actionType *interfaces.ActionType) string {
+	for _, param := range actionType.Parameters {
+		if param.ValueFrom == interfaces.LOGIC_PARAMS_VALUE_FROM_PROP {
+			return interfaces.ExecutionModePerInstance
+		}
+	}
+	return interfaces.ExecutionModeOnce
+}
+
+// invokeActionSource runs the configured action source once and returns the parameters that
+// were actually submitted, so the recorded result reflects the real request payload.
+func (s *actionSchedulerService) invokeActionSource(ctx context.Context, actionType *interfaces.ActionType,
+	params map[string]any, dynamicParams map[string]any) (map[string]any, any, error) {
+
+	switch actionType.ActionSource.Type {
+	case interfaces.ActionSourceTypeTool:
+		result, err := ExecuteTool(ctx, s.aoAccess, actionType, params)
+		return params, result, err
+	case interfaces.ActionSourceTypeMCP:
+		// MCP 工具自带入参 schema，未在行动类声明的 dynamic_params 也要透传
+		params = buildMCPParameters(params, dynamicParams)
+		result, err := ExecuteMCP(ctx, s.aoAccess, actionType, params)
+		return params, result, err
+	default:
+		return params, nil, fmt.Errorf("unsupported action source type: %s", actionType.ActionSource.Type)
+	}
+}
+
+// executeOnce handles ExecutionModeOnce: one invocation covering every matched instance.
+// The matched instances are recorded as the targets of that invocation, so the execution log
+// still shows what the action was aimed at.
+func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *interfaces.ActionExecution,
+	actionType *interfaces.ActionType, req *interfaces.ActionExecutionRequest) {
+
+	startTime := time.Now().UnixMilli()
+	result := interfaces.ObjectExecutionResult{
+		ObjectSystemInfo: interfaces.ObjectSystemInfo{
+			InstanceIdentity: map[string]any{},
+			Display:          fmt.Sprintf("%d 个目标实例合并为 1 次调用", len(req.Instances)),
+		},
+		Targets:   req.Instances,
+		StartTime: startTime,
+	}
+
+	successCount := 0
+	failedCount := 0
+
+	// The per-instance loop checks for cancellation before each invocation; the single
+	// invocation of this mode needs the same guard, otherwise a cancelled execution would
+	// still fire its tool call.
+	if s.isExecutionCancelled(ctx, execution.KNID, execution.ID) {
+		logger.Infof("Execution %s cancelled before its single invocation was issued", execution.ID)
+		result.Status = interfaces.ObjectStatusCancelled
+		result.ErrorMessage = "execution cancelled"
+		endTime := time.Now().UnixMilli()
+		result.EndTime = endTime
+		result.DurationMs = endTime - startTime
+		s.finishOnce(ctx, execution, result, interfaces.ExecutionStatusCancelled, 0, 0, endTime)
+		return
+	}
+
+	// No parameter reads an instance property in this mode, so an empty object payload
+	// resolves exactly the parameters any matched instance would have resolved.
+	params, err := s.buildExecutionParams(actionType, map[string]any{}, req.DynamicParams)
+	if err != nil {
+		result.Status = interfaces.ObjectStatusFailed
+		result.ErrorMessage = fmt.Sprintf("Failed to build parameters: %v", err)
+		failedCount = 1
+	} else {
+		sentParams, invokeResult, execErr := s.invokeActionSource(ctx, actionType, params, req.DynamicParams)
+		result.Parameters = sentParams
+		if execErr != nil {
+			result.Status = interfaces.ObjectStatusFailed
+			result.ErrorMessage = execErr.Error()
+			failedCount = 1
+		} else {
+			result.Status = interfaces.ObjectStatusSuccess
+			result.Result = invokeResult
+			successCount = 1
+		}
+	}
+
+	endTime := time.Now().UnixMilli()
+	result.EndTime = endTime
+	result.DurationMs = endTime - startTime
+
+	finalStatus := interfaces.ExecutionStatusCompleted
+	if failedCount > 0 {
+		finalStatus = interfaces.ExecutionStatusFailed
+	}
+	// A cancel that lands while the tool call is in flight must not be overwritten by the
+	// terminal status of a call the user already asked to stop. The invocation happened, so
+	// its result is still recorded — only the execution status stays cancelled.
+	if s.isExecutionCancelled(ctx, execution.KNID, execution.ID) {
+		logger.Infof("Execution %s was cancelled while its single invocation was in flight", execution.ID)
+		finalStatus = interfaces.ExecutionStatusCancelled
+	}
+
+	s.finishOnce(ctx, execution, result, finalStatus, successCount, failedCount, endTime)
+
+	logger.Infof("Completed aggregated execution: %s, targets: %d, invocations: 1, status: %s",
+		execution.ID, len(req.Instances), finalStatus)
+}
+
+// finishOnce writes the terminal record of an ExecutionModeOnce run.
+func (s *actionSchedulerService) finishOnce(ctx context.Context, execution *interfaces.ActionExecution,
+	result interfaces.ObjectExecutionResult, finalStatus string, successCount, failedCount int, endTime int64) {
+
+	updates := map[string]any{
+		"status":        finalStatus,
+		"success_count": successCount,
+		"failed_count":  failedCount,
+		"results":       []interfaces.ObjectExecutionResult{result},
+		"end_time":      endTime,
+		"duration_ms":   endTime - execution.StartTime,
+	}
+	if err := s.logsService.UpdateExecution(ctx, execution.KNID, execution.ID, updates); err != nil {
+		logger.Errorf("Failed to update execution record: %v", err)
+	}
 }
 
 func shouldCheckExecutionCancellation(index, total int) bool {
