@@ -528,6 +528,7 @@ _openbkn_trace_profile_sets() {
                 "bknTrace.evidence.ingestTokenSecretKey=token"
                 "bknTrace.producerOutbox.enabled=true"
                 "bknTrace.producerOutbox.workerEnabled=true"
+                "bknTrace.producerOutbox.cleanup.enabled=true"
                 "bknTrace.producerOutbox.queryGatewayTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
                 "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
             )

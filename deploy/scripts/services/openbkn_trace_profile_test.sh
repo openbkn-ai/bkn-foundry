@@ -148,6 +148,7 @@ contains "bkn-backend uses the evidence ingest Secret" "${bkn_backend_sets}" "bk
 contains "bkn-backend reads the token key the receiver writes" "${bkn_backend_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
 contains "bkn-backend enables its durable outbox" "${bkn_backend_sets}" "bknTrace.producerOutbox.enabled=true"
 contains "bkn-backend starts its durable outbox worker" "${bkn_backend_sets}" "bknTrace.producerOutbox.workerEnabled=true"
+contains "bkn-backend enables delivered outbox cleanup" "${bkn_backend_sets}" "bknTrace.producerOutbox.cleanup.enabled=true"
 contains "bkn-backend uses the trusted delivery Secret" "${bkn_backend_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretName=bkn-trace-evidence-ingest"
 contains "bkn-backend reads the trusted delivery token key" "${bkn_backend_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
 
@@ -159,6 +160,7 @@ contains "ontology-query uses the evidence ingest Secret" "${ontology_query_sets
 contains "ontology-query reads the token key the receiver writes" "${ontology_query_sets}" "bknTrace.evidence.ingestTokenSecretKey=token"
 contains "ontology-query enables its durable outbox" "${ontology_query_sets}" "bknTrace.producerOutbox.enabled=true"
 contains "ontology-query starts its durable outbox worker" "${ontology_query_sets}" "bknTrace.producerOutbox.workerEnabled=true"
+contains "ontology-query enables delivered outbox cleanup" "${ontology_query_sets}" "bknTrace.producerOutbox.cleanup.enabled=true"
 contains "ontology-query uses the trusted delivery Secret" "${ontology_query_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretName=bkn-trace-evidence-ingest"
 contains "ontology-query reads the trusted delivery token key" "${ontology_query_sets}" "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
 
@@ -181,12 +183,19 @@ contains "bkn-agent reads the token key the receiver writes" "${bkn_agent_sets}"
 # must either be wired above or make this installer-level assertion fail.
 LAST_WARN=""
 log_warn() { LAST_WARN="$*"; }
-_openbkn_warn_unwired_evidence_producers agent-retrieval vega-backend bkn-backend ontology-query agent-operator-integration bkn-agent bkn-safe
+_openbkn_warn_unwired_evidence_producers "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" bkn-safe
 if [[ -n "${LAST_WARN}" ]]; then
     fail "no warning when every present producer is wired: ${LAST_WARN}"
 else
     ok
 fi
+
+# Keep the guard meaningful: a declared producer without a release profile
+# must still be disclosed instead of letting the no-warning assertion pass.
+LAST_WARN=""
+_OPENBKN_TRACE_EVIDENCE_PRODUCERS+=(not-wired-producer)
+_openbkn_warn_unwired_evidence_producers agent-retrieval not-wired-producer
+contains "names an unwired producer" "${LAST_WARN}" "not-wired-producer"
 
 CORE_SET_VALUES=()
 OFFLINE_MODE=true
