@@ -305,6 +305,16 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		},
 		"from": offset,
 		"size": limit,
+		// The list only carries execution summaries. Per-instance results live in the same
+		// document and grow with the instance count; reading them here made a single page
+		// drag every historical task's full execution detail across the wire.
+		// action_type_snapshot and action_source are per-execution config copies that no list
+		// consumer reads (the studio list mapper ignores them, context-loader strips them).
+		// Excluded at the OpenSearch level so old documents carrying these fields are covered too.
+		// dynamic_params stays: context-loader keeps it in the slimmed list for the agent.
+		"_source": map[string]any{
+			"excludes": []string{"results", "action_type_snapshot", "action_source"},
+		},
 		"sort": []map[string]any{
 			{"start_time": map[string]any{"order": "desc"}},
 			{"id": map[string]any{"order": "asc"}},

@@ -127,12 +127,15 @@ func (s *knActionRecallServiceImpl) ListActionExecutions(ctx context.Context, re
 		s.logger.WithContext(ctx).Errorf("[KnActionRecall#ListActionExecutions] ListActionExecutions failed, err: %v", err)
 		return nil, err
 	}
-	// 列表每条同样剔除重货（action_type_snapshot 等），仅保留概览字段
+	// 列表每条同样剔除重货（action_type_snapshot 等），仅保留概览字段。
+	// results 不进列表：逐实例明细只在 get_action_execution 里给，列表拿的是任务摘要。
 	if entries, ok := resp["entries"].([]any); ok {
 		slimmed := make([]any, 0, len(entries))
 		for _, e := range entries {
 			if m, ok := e.(map[string]any); ok {
-				slimmed = append(slimmed, slimActionExecution(m))
+				summary := slimActionExecution(m)
+				delete(summary, "results")
+				slimmed = append(slimmed, summary)
 			} else {
 				slimmed = append(slimmed, e)
 			}
