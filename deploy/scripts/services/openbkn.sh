@@ -517,18 +517,42 @@ _openbkn_trace_profile_sets() {
                 "bknTrace.evidence.ingestTokenSecretKey=token"
             )
             ;;
+        bkn-backend|ontology-query)
+            # These producers enqueue evidence in their durable outbox. Its
+            # configuration requires a trusted-delivery token, so reuse the
+            # installer-managed ingest Secret rather than introduce another
+            # unrotated cluster credential.
+            CORE_RELEASE_EXTRA_SETS+=(
+                "bknTrace.evidence.ingestUrl=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
+                "bknTrace.evidence.ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
+                "bknTrace.evidence.ingestTokenSecretKey=token"
+                "bknTrace.producerOutbox.enabled=true"
+                "bknTrace.producerOutbox.workerEnabled=true"
+                "bknTrace.producerOutbox.queryGatewayTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
+                "bknTrace.producerOutbox.queryGatewayTokenSecretKey=token"
+            )
+            ;;
+        agent-operator-integration)
+            CORE_RELEASE_EXTRA_SETS+=(
+                "observability.evidence.ingest_url=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
+                "observability.evidence.ingest_token_secret_name=${OPENBKN_TRACE_INGEST_SECRET}"
+                "observability.evidence.ingest_token_secret_key=token"
+            )
+            ;;
+        bkn-agent)
+            CORE_RELEASE_EXTRA_SETS+=(
+                "observability.bknTraceEvidenceIngestUrl=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}"
+                "observability.bknTraceArtifactIngestUrl=${OPENBKN_TRACE_ARTIFACT_INGEST_URL}"
+                "observability.bknTraceEvidenceIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"
+                "observability.bknTraceEvidenceIngestTokenSecretKey=token"
+            )
+            ;;
     esac
 }
 
-# Releases that write Evidence and therefore need the ingest token. Their charts
-# all default ingestTokenSecretName to the empty string, and the template only
-# injects the token env when that name is set — so a producer nobody wires here
-# posts Evidence with no token at all, which agent-observability rejects
-# (allowUnauthenticated defaults to false).
-#
-# That failure is silent: the pod stays green and only the Evidence goes
-# missing. Naming the unwired ones at install time is the difference between a
-# known gap and a mystery weeks later.
+# Releases that write Evidence and therefore must receive the installer-managed
+# ingest Secret. Chart defaults stay empty for standalone deployments; the
+# complete product install is responsible for wiring every producer here.
 _OPENBKN_TRACE_EVIDENCE_PRODUCERS=(
     agent-retrieval
     vega-backend
@@ -693,7 +717,7 @@ _openbkn_warn_unwired_evidence_producers() {
     for release_name in "$@"; do
         _openbkn_release_list_contains "${release_name}" "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" || continue
         case "${release_name}" in
-            agent-retrieval|vega-backend) ;;
+            agent-retrieval|vega-backend|bkn-backend|ontology-query|bkn-agent|agent-operator-integration) ;;
             *) unwired+=("${release_name}") ;;
         esac
     done
@@ -893,7 +917,9 @@ _openbkn_release_extra_sets() {
             CORE_RELEASE_EXTRA_SETS+=("evidence.ingestAuth.createSecret=false")
         fi
     elif [[ "${release_name}" == "agent-retrieval" || "${release_name}" == "otelcol-contrib" ||
-            "${release_name}" == "vega-backend" ]]; then
+            "${release_name}" == "vega-backend" || "${release_name}" == "bkn-backend" ||
+            "${release_name}" == "ontology-query" || "${release_name}" == "agent-operator-integration" ||
+            "${release_name}" == "bkn-agent" ]]; then
         # This list gates _openbkn_trace_profile_sets: a release absent here
         # never reaches the case inside it, however complete that case looks.
         # Adding a producer means adding it in both places.
