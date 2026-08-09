@@ -1,6 +1,6 @@
-# Release lockfile for bkn-foundry 0.1.3-release — pins the chart version of every
+# Release lockfile for bkn-foundry 0.1.3 — pins the chart version of every
 # component that makes up the product. Consumed by:
-#     deploy.sh openbkn install --version=0.1.3-release
+#     deploy.sh openbkn install --version=0.1.3
 # All charts are published at 0.1.3 by the v0.1.3 tag build.
 apiVersion: deploy.openbkn.ai/v0.1.3
 kind: VersionSet
