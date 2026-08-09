@@ -461,6 +461,20 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 	successCount := 0
 	failedCount := 0
 
+	// The per-instance loop checks for cancellation before each invocation; the single
+	// invocation of this mode needs the same guard, otherwise a cancelled execution would
+	// still fire its tool call.
+	if s.isExecutionCancelled(ctx, execution.KNID, execution.ID) {
+		logger.Infof("Execution %s cancelled before its single invocation was issued", execution.ID)
+		result.Status = interfaces.ObjectStatusCancelled
+		result.ErrorMessage = "execution cancelled"
+		endTime := time.Now().UnixMilli()
+		result.EndTime = endTime
+		result.DurationMs = endTime - startTime
+		s.finishOnce(ctx, execution, result, interfaces.ExecutionStatusCancelled, 0, 0, endTime)
+		return
+	}
+
 	// No parameter reads an instance property in this mode, so an empty object payload
 	// resolves exactly the parameters any matched instance would have resolved.
 	params, err := s.buildExecutionParams(actionType, map[string]any{}, req.DynamicParams)
@@ -490,6 +504,23 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 	if failedCount > 0 {
 		finalStatus = interfaces.ExecutionStatusFailed
 	}
+	// A cancel that lands while the tool call is in flight must not be overwritten by the
+	// terminal status of a call the user already asked to stop. The invocation happened, so
+	// its result is still recorded — only the execution status stays cancelled.
+	if s.isExecutionCancelled(ctx, execution.KNID, execution.ID) {
+		logger.Infof("Execution %s was cancelled while its single invocation was in flight", execution.ID)
+		finalStatus = interfaces.ExecutionStatusCancelled
+	}
+
+	s.finishOnce(ctx, execution, result, finalStatus, successCount, failedCount, endTime)
+
+	logger.Infof("Completed aggregated execution: %s, targets: %d, invocations: 1, status: %s",
+		execution.ID, len(req.Instances), finalStatus)
+}
+
+// finishOnce writes the terminal record of an ExecutionModeOnce run.
+func (s *actionSchedulerService) finishOnce(ctx context.Context, execution *interfaces.ActionExecution,
+	result interfaces.ObjectExecutionResult, finalStatus string, successCount, failedCount int, endTime int64) {
 
 	updates := map[string]any{
 		"status":        finalStatus,
@@ -502,9 +533,6 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 	if err := s.logsService.UpdateExecution(ctx, execution.KNID, execution.ID, updates); err != nil {
 		logger.Errorf("Failed to update execution record: %v", err)
 	}
-
-	logger.Infof("Completed aggregated execution: %s, targets: %d, invocations: 1, status: %s",
-		execution.ID, len(req.Instances), finalStatus)
 }
 
 func shouldCheckExecutionCancellation(index, total int) bool {

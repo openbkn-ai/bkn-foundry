@@ -651,6 +651,9 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 				}
 				return nil
 			}).AnyTimes()
+		logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
+			Status: interfaces.ExecutionStatusRunning,
+		}, nil).AnyTimes()
 
 		// 核心断言：7 个目标实例只产生 1 次工具调用
 		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
@@ -672,6 +675,123 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 		// 目标实例不丢失
 		So(len(results[0].Targets), ShouldEqual, 7)
 		So(results[0].Parameters["text"], ShouldEqual, "订单编号,订单状态,下单时间\n...")
+	})
+}
+
+// aggregatedOnceFixture builds an ExecutionModeOnce execution whose parameters are all
+// instance-independent, so the scheduler collapses the matched instances into one invocation.
+func aggregatedOnceFixture(execID string) (*interfaces.ActionExecution, *interfaces.ActionType, *interfaces.ActionExecutionRequest) {
+	execution := &interfaces.ActionExecution{
+		ID:            execID,
+		KNID:          "kn_001",
+		Status:        interfaces.ExecutionStatusRunning,
+		ExecutionMode: interfaces.ExecutionModeOnce,
+		TargetCount:   3,
+		TotalCount:    1,
+		StartTime:     1700000000000,
+	}
+	actionType := &interfaces.ActionType{
+		ActionSource: interfaces.ActionSource{
+			Type:   interfaces.ActionSourceTypeTool,
+			BoxID:  "box_001",
+			ToolID: "tool_001",
+		},
+		Parameters: []interfaces.Parameter{
+			{Name: "text", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT},
+		},
+	}
+	req := &interfaces.ActionExecutionRequest{
+		Instances: []interfaces.ObjectSystemInfo{
+			{InstanceIdentity: map[string]any{"id": "1"}},
+			{InstanceIdentity: map[string]any{"id": "2"}},
+			{InstanceIdentity: map[string]any{"id": "3"}},
+		},
+		ObjDatas:      []map[string]any{{"id": "1"}, {"id": "2"}, {"id": "3"}},
+		DynamicParams: map[string]any{"text": "汇总消息"},
+	}
+	return execution, actionType, req
+}
+
+func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
+	Convey("聚合执行在调用发出前被取消：不得再发出工具调用", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		logsService := omock.NewMockActionLogsService(mockCtrl)
+		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService}
+
+		execution, actionType, req := aggregatedOnceFixture("exec_cancel_before")
+
+		var finalUpdate map[string]any
+		logsService.EXPECT().UpdateExecution(gomock.Any(), "kn_001", "exec_cancel_before", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, knID, execID string, updates map[string]any) error {
+				if _, ok := updates["results"]; ok {
+					finalUpdate = updates
+				}
+				return nil
+			}).AnyTimes()
+		logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
+			Status: interfaces.ExecutionStatusCancelled,
+		}, nil).AnyTimes()
+
+		// 已取消，工具一次也不能调
+		aoAccess.EXPECT().ExecuteTool(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		service.executeAsync(execution, actionType, req)
+
+		So(finalUpdate, ShouldNotBeNil)
+		So(finalUpdate["status"], ShouldEqual, interfaces.ExecutionStatusCancelled)
+		So(finalUpdate["success_count"], ShouldEqual, 0)
+		So(finalUpdate["failed_count"], ShouldEqual, 0)
+		results, ok := finalUpdate["results"].([]interfaces.ObjectExecutionResult)
+		So(ok, ShouldBeTrue)
+		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
+	})
+}
+
+func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
+	Convey("聚合执行在调用途中被取消：终态保持 cancelled，且已发出的调用结果照记", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
+		logsService := omock.NewMockActionLogsService(mockCtrl)
+		service := &actionSchedulerService{aoAccess: aoAccess, logsService: logsService}
+
+		execution, actionType, req := aggregatedOnceFixture("exec_cancel_during")
+
+		var finalUpdate map[string]any
+		logsService.EXPECT().UpdateExecution(gomock.Any(), "kn_001", "exec_cancel_during", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, knID, execID string, updates map[string]any) error {
+				if _, ok := updates["results"]; ok {
+					finalUpdate = updates
+				}
+				return nil
+			}).AnyTimes()
+
+		// 调用发出前仍是 running，调用返回后已被取消
+		gomock.InOrder(
+			logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
+				Status: interfaces.ExecutionStatusRunning,
+			}, nil),
+			logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
+				Status: interfaces.ExecutionStatusCancelled,
+			}, nil),
+		)
+
+		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).
+			Return(map[string]any{"message_id": "m_1"}, nil).Times(1)
+
+		service.executeAsync(execution, actionType, req)
+
+		So(finalUpdate, ShouldNotBeNil)
+		So(finalUpdate["status"], ShouldEqual, interfaces.ExecutionStatusCancelled)
+		// 副作用已经发生，结果必须留痕
+		results, ok := finalUpdate["results"].([]interfaces.ObjectExecutionResult)
+		So(ok, ShouldBeTrue)
+		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
+		So(finalUpdate["success_count"], ShouldEqual, 1)
 	})
 }
 
