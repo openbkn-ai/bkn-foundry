@@ -543,7 +543,66 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ActionExecutionResult'
-          description: 逐对象执行结果。
+          description: 逐对象执行结果。仅单次查询返回，列表不含此字段。
+
+    ActionExecutionSummary:
+      type: object
+      description: |
+        列表里的执行记录摘要。字段与 `ActionExecution` 相同，只是不含 `results`——
+        要逐对象明细请用 `get_action_execution` 按 `id` 单查。
+      properties:
+        id:
+          type: string
+          description: 执行 ID。
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        action_type_id:
+          type: string
+          description: 行动类 ID。
+        action_type_name:
+          type: string
+          description: 行动类名称。
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
+          description: 执行状态。
+        trigger_type:
+          type: string
+          enum:
+            - manual
+            - scheduled
+          description: 触发方式。
+        total_count:
+          type: integer
+          description: 目标对象总数。
+        success_count:
+          type: integer
+          description: 成功对象数。
+        failed_count:
+          type: integer
+          description: 失败对象数。
+        start_time:
+          type: integer
+          format: int64
+          description: 开始时间（Unix 毫秒）。
+        end_time:
+          type: integer
+          format: int64
+          description: 结束时间（Unix 毫秒）。
+        duration_ms:
+          type: integer
+          format: int64
+          description: 总耗时（毫秒）。
+        dynamic_params:
+          type: object
+          additionalProperties: true
+          description: 本次执行使用的动态参数。
 
     ActionExecutionResult:
       type: object
@@ -582,8 +641,11 @@ components:
         entries:
           type: array
           items:
-            $ref: '#/components/schemas/ActionExecution'
-          description: 执行记录列表，每条与单次查询同样做过裁剪。
+            $ref: '#/components/schemas/ActionExecutionSummary'
+          description: |
+            执行记录列表，每条与单次查询同样做过裁剪，且**不含 `results`**——
+            逐对象明细只在 `get_action_execution` 里给，避免列表被历史任务的
+            实例明细撑爆。
         total_count:
           type: integer
           description: 命中总数。
