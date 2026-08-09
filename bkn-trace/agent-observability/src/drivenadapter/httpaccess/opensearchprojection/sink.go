@@ -12,6 +12,30 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 )
 
+const receiptProjectionIndexMapping = `{
+  "mappings": {
+    "dynamic": true,
+    "properties": {
+      "receipt_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "conversation_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "interaction_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "request_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "trace_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "knowledge_network_ids": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "issued_at": {"type": "date"},
+      "terminal_at": {"type": "date"},
+      "owner": {
+        "properties": {
+          "tenant_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+          "business_domain_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+          "effective_subject_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+          "application_principal_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}}
+        }
+      }
+    }
+  }
+}`
+
 type Sink struct {
 	client *opensearch.Client
 	index  string
@@ -39,7 +63,7 @@ func (s *Sink) Project(ctx context.Context, item iprojectionoutbox.Item) error {
 }
 
 func (s *Sink) PrepareVersion(ctx context.Context, indexVersion string) error {
-	return s.client.EnsureIndex(ctx, indexVersion, []byte(`{"mappings":{"dynamic":true}}`))
+	return s.client.EnsureIndex(ctx, indexVersion, []byte(receiptProjectionIndexMapping))
 }
 
 func (s *Sink) ProjectVersion(ctx context.Context, indexVersion string, item iprojectionoutbox.Item) error {
