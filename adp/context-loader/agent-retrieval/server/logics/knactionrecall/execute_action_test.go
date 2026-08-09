@@ -125,7 +125,15 @@ func TestGetActionExecution_Success(t *testing.T) {
 			DoAndReturn(func(_ context.Context, r *interfaces.GetActionExecutionRequest) (map[string]any, error) {
 				convey.So(r.KnID, convey.ShouldEqual, "kn-001")
 				convey.So(r.ExecutionID, convey.ShouldEqual, "exec-001")
-				return map[string]any{"id": "exec-001", "status": "completed"}, nil
+				return map[string]any{
+					"id": "exec-001", "status": "completed",
+					"execution_mode": "once", "target_count": 30, "total_count": 1,
+					"results": []any{map[string]any{
+						"status":   "success",
+						"_display": "30 个目标实例合并为 1 次调用",
+						"targets":  []any{map[string]any{"id": "1"}, map[string]any{"id": "2"}},
+					}},
+				}, nil
 			})
 
 		resp, err := service.GetActionExecution(context.Background(), &interfaces.KnGetActionExecutionRequest{
@@ -133,6 +141,54 @@ func TestGetActionExecution_Success(t *testing.T) {
 		})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp["status"], convey.ShouldEqual, "completed")
+		// once 模式的执行必须把粒度与覆盖范围透给 Agent，否则 total_count=1 会被
+		// 误读成「只处理了 1 个对象」
+		convey.So(resp["execution_mode"], convey.ShouldEqual, "once")
+		convey.So(resp["target_count"], convey.ShouldEqual, 30)
+		r0 := resp["results"].([]any)[0].(map[string]any)
+		convey.So(len(r0["targets"].([]any)), convey.ShouldEqual, 2)
+	})
+}
+
+// TestGetActionExecution_TargetsCapped once 模式命中上万实例时,投影层必须截断 targets,
+// 否则一次查询就能把 MB 级实例明细灌进 Agent 上下文
+func TestGetActionExecution_TargetsCapped(t *testing.T) {
+	convey.Convey("TestGetActionExecution_TargetsCapped", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockOntologyQuery := mocks.NewMockDrivenOntologyQuery(ctrl)
+		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+
+		service := &knActionRecallServiceImpl{
+			logger:        mockLogger,
+			config:        &config.Config{},
+			ontologyQuery: mockOntologyQuery,
+		}
+
+		targets := make([]any, 0, 5000)
+		for i := 0; i < 5000; i++ {
+			targets = append(targets, map[string]any{"_instance_identity": map[string]any{"id": i}})
+		}
+		mockOntologyQuery.EXPECT().GetActionExecution(gomock.Any(), gomock.Any()).
+			Return(map[string]any{
+				"id": "exec-agg", "status": "completed",
+				"execution_mode": "once", "target_count": 5000, "total_count": 1,
+				"results": []any{map[string]any{"status": "success", "targets": targets}},
+			}, nil)
+
+		resp, err := service.GetActionExecution(context.Background(), &interfaces.KnGetActionExecutionRequest{
+			KnID: "kn-001", ExecutionID: "exec-agg",
+		})
+		convey.So(err, convey.ShouldBeNil)
+		r0 := resp["results"].([]any)[0].(map[string]any)
+		convey.So(len(r0["targets"].([]any)), convey.ShouldEqual, maxSlimTargets)
+		convey.So(r0["targets_total"], convey.ShouldEqual, 5000)
+		convey.So(r0["targets_truncated"], convey.ShouldBeTrue)
+		// 覆盖总数仍然拿得到
+		convey.So(resp["target_count"], convey.ShouldEqual, 5000)
 	})
 }
 
