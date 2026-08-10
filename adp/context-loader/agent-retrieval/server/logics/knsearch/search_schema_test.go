@@ -264,7 +264,9 @@ func TestSearchSchema_LimitsObjectTypesWhenRelationTypesExcluded(t *testing.T) {
 	})
 }
 
-func TestSearchSchema_RelationEndpointsTakePriorityAndDirectObjectsFillRemainingBudget(t *testing.T) {
+// 对象类的相关性顺序（由检索层决定）不再被关系端点重排。
+// 修复前该用例断言端点优先，导致与查询最匹配的对象类被挤到后面甚至挤出响应（issue #778）。
+func TestSearchSchema_ObjectRelevanceOrderIsPreserved(t *testing.T) {
 	maxConcepts := 10
 	service := &knSearchService{
 		Logger: infraLogger.DefaultLogger(),
@@ -293,9 +295,10 @@ func TestSearchSchema_RelationEndpointsTakePriorityAndDirectObjectsFillRemaining
 		}
 
 		if got := len(resp.ObjectTypes); got != 3 {
-			t.Fatalf("ObjectTypes len=%d, want 3 endpoint objects plus direct object fill", got)
+			t.Fatalf("ObjectTypes len=%d, want all 3 objects within budget", got)
 		}
-		wantIDs := []string{"ot_requirement", "ot_project", "ot_resource_project"}
+		// 预算充足时全部返回，顺序保持检索层给出的相关性顺序
+		wantIDs := []string{"ot_resource_project", "ot_project", "ot_requirement"}
 		for i, want := range wantIDs {
 			if got := resp.ObjectTypes[i].(map[string]any)["concept_id"]; got != want {
 				t.Fatalf("ObjectTypes[%d] concept_id=%v, want %s", i, got, want)
@@ -335,10 +338,12 @@ func TestSearchSchema_RelationEndpointsMayExceedMaxConceptsForCompleteness(t *te
 		if got := len(resp.RelationTypes); got != 1 {
 			t.Fatalf("RelationTypes len=%d, want 1", got)
 		}
-		if got := len(resp.ObjectTypes); got != 2 {
-			t.Fatalf("ObjectTypes len=%d, want both relation endpoint objects", got)
+		// 预算内先给相关性最高的对象类，再补齐关系端点以保证 schema 自洽——
+		// 端点补齐允许超出 max_concepts，这是既有契约。
+		if got := len(resp.ObjectTypes); got != 3 {
+			t.Fatalf("ObjectTypes len=%d, want top-relevance object plus both relation endpoints", got)
 		}
-		wantIDs := []string{"ot_requirement", "ot_project"}
+		wantIDs := []string{"ot_resource_project", "ot_requirement", "ot_project"}
 		for i, want := range wantIDs {
 			if got := resp.ObjectTypes[i].(map[string]any)["concept_id"]; got != want {
 				t.Fatalf("ObjectTypes[%d] concept_id=%v, want %s", i, got, want)
