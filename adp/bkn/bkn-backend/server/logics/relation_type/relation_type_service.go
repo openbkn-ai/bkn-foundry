@@ -244,6 +244,12 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询关系类列表")
 	defer span.End()
 
+	// 分支为空时兜底到主分支：关系类查询本身对空分支有兜底，但补全起点/终点对象类名称的查询没有，
+	// 空分支会硬匹配 f_branch = '' 查出 0 行，导致 SourceObjectType/TargetObjectType 变成空结构体。
+	if query.Branch == "" {
+		query.Branch = interfaces.MAIN_BRANCH
+	}
+
 	// 判断userid是否有查看业务知识网络的权限
 	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,

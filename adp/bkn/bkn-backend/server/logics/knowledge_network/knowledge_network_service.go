@@ -691,7 +691,8 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 			PaginationQueryParameters: interfaces.PaginationQueryParameters{
 				Limit: -1,
 			},
-			KNID: kn.KNID,
+			KNID:   kn.KNID,
+			Branch: kn.Branch,
 		})
 		if err != nil {
 			return nil, err
@@ -702,7 +703,8 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 			PaginationQueryParameters: interfaces.PaginationQueryParameters{
 				Limit: -1,
 			},
-			KNID: kn.KNID,
+			KNID:   kn.KNID,
+			Branch: kn.Branch,
 		})
 		if err != nil {
 			return nil, err
@@ -713,7 +715,8 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 			PaginationQueryParameters: interfaces.PaginationQueryParameters{
 				Limit: -1,
 			},
-			KNID: kn.KNID,
+			KNID:   kn.KNID,
+			Branch: kn.Branch,
 		})
 		if err != nil {
 			return nil, err

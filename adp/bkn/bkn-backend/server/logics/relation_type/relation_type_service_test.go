@@ -368,6 +368,50 @@ func Test_relationTypeService_ListRelationTypes(t *testing.T) {
 			So(len(rts), ShouldEqual, 1)
 		})
 
+		Convey("Empty branch falls back to main when filling object type names\n", func() {
+			query := interfaces.RelationTypesQueryParams{
+				KNID: "kn1",
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit:  10,
+					Offset: 0,
+				},
+			}
+			rtArr := []*interfaces.RelationType{
+				{
+					RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+						RTID:               "rt1",
+						RTName:             "rt1",
+						SourceObjectTypeID: "ot1",
+						TargetObjectTypeID: "ot2",
+					},
+				},
+			}
+
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, q interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
+					So(q.Branch, ShouldEqual, interfaces.MAIN_BRANCH)
+					return rtArr, nil
+				})
+			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, knID string, branch string, otIDs []string, _ bool) (map[string]*interfaces.ObjectType, error) {
+					So(branch, ShouldEqual, interfaces.MAIN_BRANCH)
+					return map[string]*interfaces.ObjectType{
+						"ot1": {ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "订单"}},
+						"ot2": {ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "用户"}},
+					}, nil
+				})
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+			rts, total, err := service.ListRelationTypes(ctx, query)
+			So(err, ShouldBeNil)
+			So(total, ShouldEqual, 1)
+			So(len(rts), ShouldEqual, 1)
+			So(rts[0].SourceObjectType.OTName, ShouldEqual, "订单")
+			So(rts[0].TargetObjectType.OTName, ShouldEqual, "用户")
+		})
+
 		Convey("Success with empty result\n", func() {
 			query := interfaces.RelationTypesQueryParams{
 				KNID:   "kn1",
