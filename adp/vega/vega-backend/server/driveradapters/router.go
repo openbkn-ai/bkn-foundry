@@ -31,6 +31,7 @@ import (
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/discover_schedule"
 	"vega-backend/logics/discover_task"
+	"vega-backend/logics/local_index"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/resource_data"
 	"vega-backend/logics/semantic_understanding_task"
@@ -46,15 +47,16 @@ type RestHandler interface {
 type restHandler struct {
 	appSetting *common.AppSetting
 	as         interfaces.AuthService
-	cs         interfaces.CatalogService
-	rs         interfaces.ResourceService
 	bts        interfaces.BuildTaskService
-	ds         interfaces.DatasetService
+	cs         interfaces.CatalogService
 	cts        interfaces.ConnectorTypeService
-	dts        interfaces.DiscoverTaskService
+	ds         interfaces.DatasetService
 	dss        interfaces.DiscoverScheduleService
+	dts        interfaces.DiscoverTaskService
 	hcss       interfaces.CatalogHealthCheckScheduleService
+	lim        interfaces.LocalIndexManager
 	rds        interfaces.ResourceDataService
+	rs         interfaces.ResourceService
 	suts       interfaces.SemanticUnderstandingTaskService
 
 	sw *worker.ScheduleWorker
@@ -64,15 +66,16 @@ type restHandler struct {
 func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) RestHandler {
 	as := auth.NewAuthService(appSetting)
 	cs := catalog.NewCatalogService(appSetting)
-	rs := resource.NewResourceService(appSetting)
-	bts := build_task.NewBuildTaskService(appSetting, rs)
 	cts := connector_type.NewConnectorTypeService(appSetting)
 	ds := dataset.NewDatasetService(appSetting)
 	dts := discover_task.NewDiscoverTaskService(appSetting)
 	dss := discover_schedule.NewDiscoverScheduleService(appSetting, dts)
 	hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
-	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
+	lim := local_index.NewLocalIndexManager(appSetting)
 	rds := resource_data.NewResourceDataService(appSetting)
+	rs := resource.NewResourceService(appSetting)
+	bts := build_task.NewBuildTaskService(appSetting, rs)
+	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 
 	return &restHandler{
 		appSetting: appSetting,
@@ -82,8 +85,9 @@ func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) Re
 		cts:        cts,
 		ds:         ds,
 		dss:        dss,
-		hcss:       hcss,
 		dts:        dts,
+		hcss:       hcss,
+		lim:        lim,
 		rds:        rds,
 		rs:         rs,
 		suts:       suts,
@@ -190,6 +194,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			connectorTypes.POST("/:type/enable", r.EnableConnectorType)
 			connectorTypes.POST("/:type/disable", r.DisableConnectorType)
 		}
+
+		apiV1.GET("/index-capabilities", r.GetIndexCapabilitiesByEx)
 
 		apiV1.GET("/auth-resources", r.ListAuthResources)
 	}

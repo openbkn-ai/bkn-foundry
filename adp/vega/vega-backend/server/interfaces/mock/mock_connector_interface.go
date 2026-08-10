@@ -1921,11 +1921,12 @@ func (mr *MockIndexConnectorMockRecorder) UpsertDocuments(ctx, name, updateReque
 }
 
 // ValidateAnalyzers mocks base method.
-func (m *MockIndexConnector) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error {
+func (m *MockIndexConnector) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ValidateAnalyzers", ctx, analyzers)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // ValidateAnalyzers indicates an expected call of ValidateAnalyzers.

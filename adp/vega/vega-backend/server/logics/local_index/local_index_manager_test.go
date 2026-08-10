@@ -24,7 +24,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
 		connector := vmock.NewMockIndexConnector(ctrl)
-		manager := &localIndexManager{c: connector}
+		manager := &localIndexManager{lic: connector}
 		schema := []*interfaces.Property{{Name: "id", Type: "integer"}}
 		resource := &interfaces.Resource{ID: "resource-1", SchemaDefinition: schema}
 		params := &interfaces.ResourceDataQueryParams{}
@@ -85,7 +85,7 @@ func TestLocalIndexManagerDeleteDocumentsByQueryBuildsActualFilter(t *testing.T)
 		t.Cleanup(ctrl.Finish)
 		ctx := context.Background()
 		connector := vmock.NewMockIndexConnector(ctrl)
-		manager := &localIndexManager{c: connector}
+		manager := &localIndexManager{lic: connector}
 		resource := &interfaces.Resource{
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: "integer"}},
 		}

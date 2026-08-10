@@ -6,23 +6,7 @@
 
 package interfaces
 
-import (
-	"context"
-	"fmt"
-	"strings"
-)
-
-// AnalyzerUnavailableError indicates that OpenSearch accepted the validation
-// request but could not resolve the configured analyzer.
-type AnalyzerUnavailableError struct {
-	Analyzer string
-	Fields   []string
-	Detail   string
-}
-
-func (e *AnalyzerUnavailableError) Error() string {
-	return fmt.Sprintf("analyzer %q for fields %q is unavailable: %s", e.Analyzer, strings.Join(e.Fields, ", "), e.Detail)
-}
+import "context"
 
 //go:generate mockgen -source ../interfaces/connector_interface.go -destination ../interfaces/mock/mock_connector_interface.go
 
@@ -127,7 +111,7 @@ type IndexConnector interface {
 	Update(ctx context.Context, name string, schemaDefinition []*Property) error
 	Delete(ctx context.Context, name string) error
 	CheckExist(ctx context.Context, name string) (bool, error)
-	ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error
+	ValidateAnalyzers(ctx context.Context, analyzers map[string]string) (bool, error)
 	CreateDocuments(ctx context.Context, name string, documents []map[string]any) ([]string, error)
 	GetDocument(ctx context.Context, name string, docID string) (map[string]any, error)
 	DeleteDocument(ctx context.Context, name string, docID string) error
