@@ -84,7 +84,7 @@ const serverInstructions = `ContextLoader 知识网络查询工具集使用指�
    - 指标压根没建模，才用 run_sql 现算
 
 数据层直查（资源未建成对象类、或只想绕本体直查数据时）：
-- list_resources 列出账户可见的数据资源（resource_id、name、type、catalog_id），可按 catalog_id / type 过滤。
+- list_resources 列出数据资源（resource_id、name、type、catalog_id）。想知道「某张知识网络有哪些表」就传 kn_id，一次全返该网络绑定的资源（还会把没绑数据源的对象类放进 unbound、绑了但取不回来的放进 missing）；不传 kn_id 才是账户级资源池分页，可按 catalog_id / type 过滤。别用「不带 kn_id 拉一页再自己求交集」的办法找本网络的表——资源池一大就必然漏。
 - describe_resource 取某 resource 的物理列（columns）与 connector_type。
 - 然后 run_sql：表名用占位符 {{.<resource_id>}}，列名用 describe_resource 返回的物理列名。
 即数据层链路：list_resources → describe_resource → run_sql（无需 search_schema/对象类）。与本体路（search_schema）互补，两者都喂给 run_sql。
