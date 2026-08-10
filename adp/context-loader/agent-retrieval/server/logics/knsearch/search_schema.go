@@ -135,7 +135,7 @@ func FilterSearchSchemaResp(resp *interfaces.KnSearchResp, metricTypes []any, sc
 	}
 	if scope.IncludeObjectTypes {
 		if scope.IncludeRelationTypes && len(relationTypes) > 0 {
-			objectTypes = mergeRelationEndpointObjectsWithDirectFill(objectTypes, relationTypes, maxConcepts)
+			objectTypes = limitObjectTypesKeepingRelationEndpoints(objectTypes, relationTypes, maxConcepts)
 		} else {
 			objectTypes = limitAnySlice(objectTypes, maxConcepts)
 		}
@@ -338,7 +338,15 @@ func limitAnySlice(items []any, limit int) []any {
 	return items[:limit]
 }
 
-func mergeRelationEndpointObjectsWithDirectFill(objectTypes, relationTypes []any, limit int) []any {
+// limitObjectTypesKeepingRelationEndpoints 按相关性截断对象类，同时补齐返回关系的端点。
+//
+// 两条约束的优先级：
+//  1. 相关性优先——检索层已按对象类自身与 query 的相关性排好序，先取前 limit 个。
+//     修复前这里会把关系端点整体提到最前，把相关性排序又打乱一次，导致与查询最匹配
+//     的对象类被挤出响应（issue #778）。
+//  2. 自洽兜底——返回的关系若指向未返回的对象，调用方拿到的是断头引用，因此缺失的
+//     端点一律补上，允许超出 limit。这是既有契约，本次修复保留。
+func limitObjectTypesKeepingRelationEndpoints(objectTypes, relationTypes []any, limit int) []any {
 	if len(objectTypes) == 0 {
 		return objectTypes
 	}
@@ -346,33 +354,48 @@ func mergeRelationEndpointObjectsWithDirectFill(objectTypes, relationTypes []any
 		return limitAnySlice(objectTypes, limit)
 	}
 
-	objectByID := make(map[string]any, len(objectTypes))
-	for _, obj := range objectTypes {
-		objMap, ok := obj.(map[string]any)
+	conceptIDOf := func(item any) string {
+		itemMap, ok := item.(map[string]any)
 		if !ok {
-			continue
+			return ""
 		}
-		conceptID, ok := objMap["concept_id"].(string)
-		if !ok || conceptID == "" {
-			continue
-		}
-		objectByID[conceptID] = obj
+		conceptID, _ := itemMap["concept_id"].(string)
+		return conceptID
 	}
 
-	seen := make(map[string]struct{}, len(objectTypes))
-	out := make([]any, 0, len(objectTypes))
-	appendObjectByID := func(conceptID string) {
+	// 必须拷贝：limitAnySlice 返回的是 objectTypes 的子切片，直接 append 会写坏原切片。
+	head := limitAnySlice(objectTypes, limit)
+	out := make([]any, len(head), len(objectTypes))
+	copy(out, head)
+
+	included := make(map[string]struct{}, len(out))
+	for _, obj := range out {
+		if conceptID := conceptIDOf(obj); conceptID != "" {
+			included[conceptID] = struct{}{}
+		}
+	}
+
+	objectByID := make(map[string]any, len(objectTypes))
+	for _, obj := range objectTypes {
+		if conceptID := conceptIDOf(obj); conceptID != "" {
+			if _, exists := objectByID[conceptID]; !exists {
+				objectByID[conceptID] = obj
+			}
+		}
+	}
+
+	appendEndpoint := func(conceptID string) {
 		if conceptID == "" {
 			return
 		}
-		if _, ok := seen[conceptID]; ok {
+		if _, ok := included[conceptID]; ok {
 			return
 		}
 		obj, ok := objectByID[conceptID]
 		if !ok {
 			return
 		}
-		seen[conceptID] = struct{}{}
+		included[conceptID] = struct{}{}
 		out = append(out, obj)
 	}
 
@@ -383,32 +406,8 @@ func mergeRelationEndpointObjectsWithDirectFill(objectTypes, relationTypes []any
 		}
 		sourceID, _ := relMap["source_object_type_id"].(string)
 		targetID, _ := relMap["target_object_type_id"].(string)
-		appendObjectByID(sourceID)
-		appendObjectByID(targetID)
-	}
-
-	remaining := limit - len(out)
-	if remaining <= 0 {
-		return out
-	}
-	for _, obj := range objectTypes {
-		objMap, ok := obj.(map[string]any)
-		if !ok {
-			continue
-		}
-		conceptID, ok := objMap["concept_id"].(string)
-		if !ok || conceptID == "" {
-			continue
-		}
-		if _, ok := seen[conceptID]; ok {
-			continue
-		}
-		seen[conceptID] = struct{}{}
-		out = append(out, obj)
-		remaining--
-		if remaining == 0 {
-			break
-		}
+		appendEndpoint(sourceID)
+		appendEndpoint(targetID)
 	}
 
 	return out

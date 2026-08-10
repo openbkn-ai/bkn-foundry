@@ -56,6 +56,7 @@ func (s *localSearchImpl) conceptRetrieval(
 		len(networkDetail.ObjectTypes), len(networkDetail.RelationTypes), len(networkDetail.ActionTypes))
 
 	// 2. 粗召回（可选，针对大规模知识网络）
+	coarseScored := false
 	if boolValue(config.EnableCoarseRecall) && len(networkDetail.RelationTypes) >= config.CoarseMinRelationCount {
 		s.logger.WithContext(ctx).Infof("[ConceptRetrieval] Enable coarse recall, relation_count=%d >= threshold=%d",
 			len(networkDetail.RelationTypes), config.CoarseMinRelationCount)
@@ -63,14 +64,23 @@ func (s *localSearchImpl) conceptRetrieval(
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] Coarse recall failed, continue with full schema: %v", err)
 			// 粗召回失败不影响后续流程，继续使用完整 Schema
+		} else {
+			coarseScored = true
 		}
 	}
 
-	// 3. 关系类型排序（基于语义相关性）并取 Top-K
+	// 3. 对象类相关性打分。粗召回只在超大网络（关系数 >= CoarseMinRelationCount）
+	// 触发，绝大多数真实网络走不到，对象侧就没有任何查询信号，只能被关系端点被动带出。
+	// 这里补上这条通道，让对象类的相关性能够独立参与后续排序。
+	if !coarseScored {
+		s.scoreObjectTypes(ctx, req.KnID, req.Query, networkDetail.ObjectTypes, config)
+	}
+
+	// 4. 关系类型排序（基于语义相关性）并取 Top-K
 	rankedRelations := s.rankRelationTypes(ctx, req.Query, networkDetail.ObjectTypes, networkDetail.RelationTypes, config.TopK, req.EnableRerank, req.RerankModel)
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Ranked relations: %d -> top_k=%d", len(networkDetail.RelationTypes), len(rankedRelations))
 
-	// 4. 对象类型选择：按关系过滤 + 粗召回兜底补齐（以及无关系类型场景的排序截断）
+	// 5. 对象类型选择：按自身相关性排序，关系端点作为 schema 自洽约束并入
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(networkDetail.ObjectTypes, rankedRelations, config.TopK)
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Selected objects: %d", len(selectedObjects))
 
@@ -256,6 +266,69 @@ func (s *localSearchImpl) completeReferencedObjectTypes(
 	return out, nil
 }
 
+// scoreObjectTypes 为对象类打上与 query 的相关性分数（写入 obj.Score）。
+//
+// 与 coarseRecall 的区别：只打分、不裁剪候选集，并且不受 CoarseMinRelationCount
+// 门槛约束。此前 obj.Score 全局唯一的赋值点在 coarseRecall 内部，而它要求关系类型
+// 数 >= CoarseMinRelationCount（默认 5000），正常规模的知识网络永不触发，导致对象类
+// 的相关性从来没有信号来源，只能被关系端点被动带出（issue #778）。
+//
+// 打分失败不影响主流程：拿不到分数时退回原有的关系端点选择，行为与修复前一致。
+func (s *localSearchImpl) scoreObjectTypes(
+	ctx context.Context,
+	knID string,
+	query string,
+	objectTypes []*interfaces.ObjectType,
+	config *interfaces.KnSearchConceptRetrievalConfig,
+) {
+	if strings.TrimSpace(query) == "" || len(objectTypes) == 0 {
+		return
+	}
+
+	limit := config.CoarseObjectLimit
+	if limit <= 0 {
+		limit = DefaultConceptRetrievalConfig().CoarseObjectLimit
+	}
+
+	resp, err := s.bknBackend.SearchObjectTypes(ctx, s.buildCoarseRecallQuery(knID, query, limit, config.ConceptGroups))
+	if err != nil {
+		s.logger.WithContext(ctx).Warnf("[ScoreObjectTypes] SearchObjectTypes failed, object relevance unavailable: %v", err)
+		return
+	}
+	if resp == nil || len(resp.Entries) == 0 {
+		return
+	}
+
+	scoreByID := make(map[string]float64, len(resp.Entries))
+	for _, entry := range resp.Entries {
+		if entry == nil || entry.ID == "" {
+			continue
+		}
+		scoreByID[entry.ID] = entry.Score
+	}
+
+	scored := 0
+	for _, obj := range objectTypes {
+		if obj == nil {
+			continue
+		}
+		if score, ok := scoreByID[obj.ID]; ok && score > 0 {
+			obj.Score = score
+			scored++
+		}
+	}
+	s.logger.WithContext(ctx).Debugf("[ScoreObjectTypes] scored %d/%d object types", scored, len(objectTypes))
+}
+
+// selectObjectTypesForConceptRetrieval 选出参与响应的对象类。
+//
+// 排序主序是对象类自身与 query 的相关性（obj.Score）。关系端点不再是对象类的唯一
+// 来源，只作为 schema 自洽约束并入——返回的关系若指向未返回的对象，调用方拿到的是
+// 断头引用。因此顺序是：相关性最高的 topK 先占位，再并入入选关系的端点，仍有余量
+// 才按相关性补齐。
+//
+// 修复前的行为是反过来的：关系端点铺满即返回，对象自身相关性完全不参与，导致与
+// 查询高度匹配但所属关系排名靠后（或没有关系）的对象类被整体丢弃（issue #778）。
 func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 	objectTypes []*interfaces.ObjectType,
 	relations []*interfaces.RelationType,
@@ -265,91 +338,80 @@ func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 		return objectTypes
 	}
 
-	maxObjectCountNoRelation := topK * objectTypeRelationMultiplier
-	if len(relations) == 0 {
-		return sortAndTruncateObjectTypesByScore(objectTypes, maxObjectCountNoRelation)
+	maxObjectCount := topK * objectTypeRelationMultiplier
+	if len(relations) > 0 {
+		maxObjectCount = maxInt(len(relations)*objectTypeRelationMultiplier, topK)
+	}
+	if maxObjectCount <= 0 {
+		maxObjectCount = len(objectTypes)
 	}
 
-	filtered := s.filterObjectTypesByRelations(objectTypes, relations)
-	maxObjectCount := maxInt(len(relations)*objectTypeRelationMultiplier, topK)
-	if len(filtered) >= maxObjectCount {
-		return filtered
+	ranked := sortObjectTypesByScore(objectTypes)
+	known := make(map[string]struct{}, len(ranked))
+	for _, obj := range ranked {
+		known[obj.ID] = struct{}{}
 	}
 
-	included := make(map[string]bool, len(filtered))
-	for _, obj := range filtered {
-		included[obj.ID] = true
+	selected := make(map[string]struct{}, maxObjectCount)
+	// 1. 相关性最高的 topK 先占位：这是查询意图的直接体现，优先级高于关系端点
+	for _, obj := range ranked {
+		if len(selected) >= topK {
+			break
+		}
+		selected[obj.ID] = struct{}{}
 	}
-
-	type scoredObject struct {
-		obj   *interfaces.ObjectType
-		score float64
-	}
-	var candidatesWithScore []scoredObject
-	var candidatesWithoutScore []*interfaces.ObjectType
-	for _, obj := range objectTypes {
-		if included[obj.ID] {
+	// 2. 并入入选关系的端点，保证返回的关系不指向缺失的对象
+	for _, rel := range relations {
+		if rel == nil {
 			continue
 		}
-		if obj.Score > 0 {
-			candidatesWithScore = append(candidatesWithScore, scoredObject{obj: obj, score: obj.Score})
-		} else {
-			candidatesWithoutScore = append(candidatesWithoutScore, obj)
+		for _, id := range []string{rel.SourceObjectTypeID, rel.TargetObjectTypeID} {
+			if id == "" || len(selected) >= maxObjectCount {
+				continue
+			}
+			if _, ok := known[id]; !ok {
+				continue
+			}
+			selected[id] = struct{}{}
 		}
 	}
-
-	sort.SliceStable(candidatesWithScore, func(i, j int) bool {
-		return candidatesWithScore[i].score > candidatesWithScore[j].score
-	})
-
-	out := make([]*interfaces.ObjectType, 0, maxObjectCount)
-	out = append(out, filtered...)
-
-	remaining := maxObjectCount - len(out)
-	for i := 0; i < len(candidatesWithScore) && remaining > 0; i++ {
-		out = append(out, candidatesWithScore[i].obj)
-		remaining--
-	}
-	for i := 0; i < len(candidatesWithoutScore) && remaining > 0; i++ {
-		out = append(out, candidatesWithoutScore[i])
-		remaining--
+	// 3. 仍有余量则继续按相关性补齐
+	for _, obj := range ranked {
+		if len(selected) >= maxObjectCount {
+			break
+		}
+		selected[obj.ID] = struct{}{}
 	}
 
+	out := make([]*interfaces.ObjectType, 0, len(selected))
+	for _, obj := range ranked {
+		if _, ok := selected[obj.ID]; ok {
+			out = append(out, obj)
+		}
+	}
 	return out
 }
 
-func sortAndTruncateObjectTypesByScore(objectTypes []*interfaces.ObjectType, limit int) []*interfaces.ObjectType {
-	if limit <= 0 || len(objectTypes) <= limit {
-		return objectTypes
-	}
-
-	type scoredObject struct {
-		obj   *interfaces.ObjectType
-		score float64
-	}
-
-	var withScore []scoredObject
-	var withoutScore []*interfaces.ObjectType
+// sortObjectTypesByScore 按相关性降序排列对象类；无分数的保持原有相对顺序并排在后面。
+func sortObjectTypesByScore(objectTypes []*interfaces.ObjectType) []*interfaces.ObjectType {
+	scored := make([]*interfaces.ObjectType, 0, len(objectTypes))
+	unscored := make([]*interfaces.ObjectType, 0, len(objectTypes))
 	for _, obj := range objectTypes {
+		if obj == nil {
+			continue
+		}
 		if obj.Score > 0 {
-			withScore = append(withScore, scoredObject{obj: obj, score: obj.Score})
+			scored = append(scored, obj)
 		} else {
-			withoutScore = append(withoutScore, obj)
+			unscored = append(unscored, obj)
 		}
 	}
 
-	sort.SliceStable(withScore, func(i, j int) bool {
-		return withScore[i].score > withScore[j].score
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
 	})
 
-	out := make([]*interfaces.ObjectType, 0, limit)
-	for i := 0; i < len(withScore) && len(out) < limit; i++ {
-		out = append(out, withScore[i].obj)
-	}
-	for i := 0; i < len(withoutScore) && len(out) < limit; i++ {
-		out = append(out, withoutScore[i])
-	}
-	return out
+	return append(scored, unscored...)
 }
 
 func maxInt(a, b int) int {
@@ -696,32 +758,6 @@ func (s *localSearchImpl) rankRelationTypesBySimpleMatch(
 	return result
 }
 
-// filterObjectTypesByRelations 根据关系类型过滤对象类型
-func (s *localSearchImpl) filterObjectTypesByRelations(
-	objectTypes []*interfaces.ObjectType,
-	relations []*interfaces.RelationType,
-) []*interfaces.ObjectType {
-	if len(relations) == 0 {
-		return objectTypes
-	}
-
-	// 收集关系涉及的对象类型 ID
-	relatedObjectIDs := make(map[string]bool)
-	for _, rel := range relations {
-		relatedObjectIDs[rel.SourceObjectTypeID] = true
-		relatedObjectIDs[rel.TargetObjectTypeID] = true
-	}
-
-	// 过滤对象类型
-	var filtered []*interfaces.ObjectType
-	for _, obj := range objectTypes {
-		if relatedObjectIDs[obj.ID] {
-			filtered = append(filtered, obj)
-		}
-	}
-
-	return filtered
-}
 
 // calculateRelevanceScore 计算 Query 与概念的相关性分数
 func (s *localSearchImpl) calculateRelevanceScore(query, name, comment string) float64 {
