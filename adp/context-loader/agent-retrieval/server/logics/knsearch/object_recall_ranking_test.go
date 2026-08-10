@@ -209,10 +209,41 @@ func TestOrphanObjectTypeIsRecalled(t *testing.T) {
 	}
 }
 
+// buildEndpointsLastNetwork 构造一个「关系端点全部排在定义序末尾」的网络。
+//
+// 这个形状是刻意的：只有当端点集不等于定义序的前若干个时，「端点优先」与「定义序」
+// 才是两种可区分的顺序，降级路径的顺序断言才有鉴别力。
+func buildEndpointsLastNetwork() *interfaces.KnowledgeNetworkDetail {
+	detail := &interfaces.KnowledgeNetworkDetail{ID: "kn_endpoints_last"}
+	for i := 0; i < 10; i++ {
+		detail.ObjectTypes = append(detail.ObjectTypes, &interfaces.ObjectType{
+			ID:      fmt.Sprintf("obj_%d", i),
+			Name:    fmt.Sprintf("对象_%d", i),
+			Comment: fmt.Sprintf("对象_%d 说明", i),
+		})
+	}
+	// 关系只挂在定义序靠后的 obj_6..obj_9 上
+	rels := [][3]string{
+		{"关系_A", "obj_6", "obj_7"},
+		{"关系_B", "obj_8", "obj_9"},
+		{"关系_C", "obj_7", "obj_8"},
+	}
+	for i, r := range rels {
+		detail.RelationTypes = append(detail.RelationTypes, &interfaces.RelationType{
+			ID:                 fmt.Sprintf("rel_%d", i),
+			Name:               r[0],
+			Comment:            r[0],
+			SourceObjectTypeID: r[1],
+			TargetObjectTypeID: r[2],
+		})
+	}
+	return detail
+}
+
 // 打分不可用（BKN 检索失败）时必须优雅降级：不报错、不返回空，
 // 且顺序退回修复前的「关系端点优先」，不能凭空改成定义序。
 func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
-	net := buildObjectRankingNetwork()
+	net := buildEndpointsLastNetwork()
 	backend := &mockBknBackend{
 		networkDetail:    net,
 		objectTypesError: fmt.Errorf("backend unavailable"),
@@ -226,7 +257,7 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	cfg := DefaultConceptRetrievalConfig()
 	cfg.TopK = 5
 
-	req := &interfaces.KnSearchLocalRequest{KnID: "kn_demo", Query: "员工 性别", EnableRerank: true}
+	req := &interfaces.KnSearchLocalRequest{KnID: "kn_endpoints_last", Query: "对象", EnableRerank: true}
 	res, err := svc.conceptRetrieval(context.Background(), req, cfg)
 	if err != nil {
 		t.Fatalf("expected graceful degradation, got error: %v", err)
@@ -240,11 +271,38 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 		endpoints[rel.SourceObjectTypeID] = struct{}{}
 		endpoints[rel.TargetObjectTypeID] = struct{}{}
 	}
-	seenNonEndpoint := false
+	if len(endpoints) == 0 {
+		t.Fatalf("fixture must yield relation endpoints, got none")
+	}
+
+	got := make([]string, 0, len(res.ObjectTypes))
 	for _, obj := range res.ObjectTypes {
-		_, isEndpoint := endpoints[obj.ConceptID]
+		got = append(got, obj.ConceptID)
+	}
+	t.Logf("degraded order -> %v (endpoints=%d)", got, len(endpoints))
+
+	// 断言的鉴别力前提：端点集不等于定义序的前 N 个，否则「端点优先」与「定义序」
+	// 无从区分，这条断言就是空的。
+	definitionOrderHead := map[string]struct{}{}
+	for i := 0; i < len(endpoints); i++ {
+		definitionOrderHead[fmt.Sprintf("obj_%d", i)] = struct{}{}
+	}
+	sameAsDefinitionOrder := true
+	for id := range endpoints {
+		if _, ok := definitionOrderHead[id]; !ok {
+			sameAsDefinitionOrder = false
+			break
+		}
+	}
+	if sameAsDefinitionOrder {
+		t.Fatalf("fixture cannot distinguish endpoint-first from definition order; endpoints=%v", endpoints)
+	}
+
+	seenNonEndpoint := false
+	for _, id := range got {
+		_, isEndpoint := endpoints[id]
 		if isEndpoint && seenNonEndpoint {
-			t.Errorf("degraded path must keep relation endpoints first, got %s after a non-endpoint", obj.ConceptID)
+			t.Errorf("degraded path must keep relation endpoints first, got %s after a non-endpoint: %v", id, got)
 			break
 		}
 		if !isEndpoint {
