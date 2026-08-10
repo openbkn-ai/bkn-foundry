@@ -273,6 +273,51 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 
+	t.Run("rejects dataset ref property", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+
+		body := `{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title_keyword","type":"string"},{"name":"title","type":"text","features":[{"name":"title.keyword","feature_type":"keyword","ref_property":"title_keyword"}]}]}`
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+	})
+
+	t.Run("rejects missing category", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+
+		body := `{"catalog_id":"catalog-1","name":"dataset-new","schema_definition":[{"name":"title","type":"string"}]}`
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+	})
+
+	t.Run("rejects category change", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+
+		body := `{"catalog_id":"catalog-1","name":"dataset-new","category":"table","schema_definition":[{"name":"title","type":"string"}]}`
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+	})
+
 	t.Run("allows duplicate renamed resource", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}

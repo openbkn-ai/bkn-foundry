@@ -310,6 +310,63 @@ func TestValidateTaskEmbeddingFeatures(t *testing.T) {
 	})
 }
 
+func TestValidateBuildTaskSchemaFeatures(t *testing.T) {
+	tests := []struct {
+		name     string
+		category string
+		schema   []*interfaces.Property
+		wantErr  string
+	}{
+		{
+			name:     "dataset rejects ref property",
+			category: interfaces.ResourceCategoryDataset,
+			schema: []*interfaces.Property{{
+				Name: "content", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "content"}},
+			}},
+			wantErr: "must not set ref_property",
+		},
+		{
+			name:     "rejects feature unsupported by property type",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{{
+				Name: "id", Type: interfaces.DataType_Integer,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}},
+			}},
+			wantErr: "does not support feature type",
+		},
+		{
+			name:     "rejects mismatched ref property type",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{
+				{Name: "embedding", Type: interfaces.DataType_Vector},
+				{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "embedding"}}},
+			},
+			wantErr: "incompatible with feature type",
+		},
+		{
+			name:     "accepts optional ref property on original resource",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{{
+				Name: "content", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateBuildTaskSchemaFeatures(tt.category, tt.schema)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 func buildTaskWithVector(field string) *interfaces.BuildTask {
 	return &interfaces.BuildTask{
 		IndexConfig: &interfaces.BuildTaskIndexConfig{

@@ -705,7 +705,11 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		resource.LogicType = logicType
 		resource.LogicDefinition = req.LogicDefinition
 	default:
-		applyMutableSchemaFields(resource.SchemaDefinition, req.SchemaDefinition)
+		resource.SchemaDefinition = applyMutableSchemaFields(
+			resource.SchemaDefinition,
+			req.SchemaDefinition,
+			resource.Category == interfaces.ResourceCategoryDataset,
+		)
 	}
 	if req.IndexConfig != nil {
 		resource.IndexConfig = req.IndexConfig
@@ -1033,6 +1037,9 @@ func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx cont
 }
 
 func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) (bool, error) {
+	if req.Category != "" && req.Category != resource.Category {
+		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
 	}
@@ -1049,7 +1056,12 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if req.SchemaDefinition == nil {
 		return indexConfigChanged, nil
 	}
-	schemaChanged, err := validateMutableSchemaUpdate(ctx, resource.SchemaDefinition, req.SchemaDefinition)
+	schemaChanged, err := validateMutableSchemaUpdate(
+		ctx,
+		resource.SchemaDefinition,
+		req.SchemaDefinition,
+		resource.Category == interfaces.ResourceCategoryDataset,
+	)
 	return schemaChanged || indexConfigChanged, err
 }
 
@@ -1128,9 +1140,12 @@ func unsupportedResourceUpdateError(ctx context.Context, details string) error {
 		WithErrorDetails(details)
 }
 
-func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property) (bool, error) {
-	if len(current) != len(requested) {
+func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) (bool, error) {
+	if !allowPropertyAdditions && len(current) != len(requested) {
 		return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
+	}
+	if len(requested) < len(current) {
+		return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot remove or rename fields")
 	}
 
 	currentByName := make(map[string]*interfaces.Property, len(current))
@@ -1141,20 +1156,24 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 		currentByName[prop.Name] = prop
 	}
 
-	featuresChanged := false
+	schemaChanged := false
 	seen := make(map[string]struct{}, len(requested))
 	for _, requestedProp := range requested {
 		if requestedProp == nil || requestedProp.Name == "" {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition contains an invalid field")
 		}
-		currentProp, ok := currentByName[requestedProp.Name]
-		if !ok {
-			return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot add, remove, or rename fields")
-		}
 		if _, dup := seen[requestedProp.Name]; dup {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition contains duplicate fields")
 		}
 		seen[requestedProp.Name] = struct{}{}
+		currentProp, ok := currentByName[requestedProp.Name]
+		if !ok {
+			if !allowPropertyAdditions {
+				return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot add, remove, or rename fields")
+			}
+			schemaChanged = true
+			continue
+		}
 
 		currentComparable := *currentProp
 		requestedComparable := *requestedProp
@@ -1168,15 +1187,20 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
 		}
 		if !reflect.DeepEqual(currentProp.Features, requestedProp.Features) {
-			featuresChanged = true
+			schemaChanged = true
 		}
 	}
-	return featuresChanged, nil
+	for name := range currentByName {
+		if _, ok := seen[name]; !ok {
+			return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot remove or rename fields")
+		}
+	}
+	return schemaChanged, nil
 }
 
-func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property) {
+func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) []*interfaces.Property {
 	if requested == nil {
-		return
+		return current
 	}
 	currentByName := make(map[string]*interfaces.Property, len(current))
 	for _, prop := range current {
@@ -1192,8 +1216,13 @@ func applyMutableSchemaFields(current []*interfaces.Property, requested []*inter
 			currentProp.DisplayName = requestedProp.DisplayName
 			currentProp.Description = requestedProp.Description
 			currentProp.Features = requestedProp.Features
+			continue
+		}
+		if allowPropertyAdditions {
+			current = append(current, requestedProp)
 		}
 	}
+	return current
 }
 
 // ListAuthResources lists resource auth resources with filters.

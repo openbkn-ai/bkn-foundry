@@ -23,6 +23,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/build_task"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 func getIndexName(resourceID, buildTaskID string) string {
@@ -173,6 +174,9 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 		schema = schemaDefinition
 	}
 
+	if err := validateBuildTaskSchemaFeatures(resource.Category, schema); err != nil {
+		return nil, err
+	}
 	if err := validateTaskFulltextFeatures(schema, buildTask); err != nil {
 		return nil, err
 	}
@@ -180,6 +184,40 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 		return nil, err
 	}
 	return appendTaskEmbeddingVectorFields(schema, buildTask), nil
+}
+
+func validateBuildTaskSchemaFeatures(resourceCategory string, schema []*interfaces.Property) error {
+	propsMap := make(map[string]*interfaces.Property, len(schema))
+	for _, prop := range schema {
+		if prop != nil {
+			propsMap[prop.Name] = prop
+		}
+	}
+
+	for _, prop := range schema {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if !resourcelogic.IsFeatureSupported(prop.Type, feature.FeatureType) {
+				return fmt.Errorf("resource schema field %q type %q does not support feature type %q", prop.Name, prop.Type, feature.FeatureType)
+			}
+			if feature.RefProperty == "" {
+				continue
+			}
+			if resourceCategory == interfaces.ResourceCategoryDataset {
+				return fmt.Errorf("dataset schema feature on field %q must not set ref_property", prop.Name)
+			}
+			refProp, exists := propsMap[feature.RefProperty]
+			if !exists {
+				return fmt.Errorf("resource schema feature on field %q references missing property %q", prop.Name, feature.RefProperty)
+			}
+			if !resourcelogic.IsFeatureRefPropertyTypeSupported(refProp.Type, feature.FeatureType) {
+				return fmt.Errorf("resource schema feature on field %q references property %q type %q incompatible with feature type %q", prop.Name, feature.RefProperty, refProp.Type, feature.FeatureType)
+			}
+		}
+	}
+	return nil
 }
 
 func appendTaskEmbeddingVectorFields(schema []*interfaces.Property, buildTask *interfaces.BuildTask) []*interfaces.Property {

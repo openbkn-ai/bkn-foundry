@@ -138,6 +138,21 @@ func TestBKNConceptDatasetRequest(t *testing.T) {
 	})
 }
 
+func TestBKNConceptDatasetSchemaHasNoFeatureRefProperties(t *testing.T) {
+	seen := make(map[string]struct{})
+	for _, prop := range interfaces.GetBKNConceptSchemaDefinition(768, true) {
+		if _, exists := seen[prop.Name]; exists {
+			t.Fatalf("duplicate dataset property %q", prop.Name)
+		}
+		seen[prop.Name] = struct{}{}
+		for _, feature := range prop.Features {
+			if feature.RefProperty != "" {
+				t.Fatalf("dataset feature %q on property %q must not set ref_property", feature.FeatureName, prop.Name)
+			}
+		}
+	}
+}
+
 // ── comparePropertyFeature ────────────────────────────────────────────────────
 
 func Test_comparePropertyFeature(t *testing.T) {

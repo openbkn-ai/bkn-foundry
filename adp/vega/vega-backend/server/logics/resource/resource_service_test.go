@@ -1193,6 +1193,25 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
 		}
 	})
+	t.Run("update rejects category change", func(t *testing.T) {
+		rs, _, mockPS, _, _, _, _ := newTestService(t)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		err := rs.Update(context.Background(), &interfaces.Resource{
+			ID:       "r1",
+			Category: interfaces.ResourceCategoryDataset,
+		}, &interfaces.ResourceRequest{
+			Category: interfaces.ResourceCategoryTable,
+		})
+
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			t.Fatalf("expected HTTPError, got %T", err)
+		}
+		if httpErr.HTTPCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+		}
+	})
 	t.Run("update rejects schema structure changes", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1220,6 +1239,44 @@ func TestResourceServiceUpdate(t *testing.T) {
 		}
 		if httpErr.HTTPCode != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+		}
+	})
+	t.Run("dataset update allows adding properties", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+				if got.LocalIndexName != "" {
+					t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
+				}
+				if len(got.SchemaDefinition) != 2 || got.SchemaDefinition[1].Name != "title" {
+					t.Fatalf("expected added dataset property, got %#v", got.SchemaDefinition)
+				}
+				return nil
+			})
+
+		err := rs.Update(context.Background(), &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryDataset,
+			Name:             "dataset",
+			LocalIndexName:   "vega-build-r1-task-1",
+			SourceIdentifier: "dataset-r1",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		}, &interfaces.ResourceRequest{
+			CatalogID:        "cat1",
+			Name:             "dataset",
+			SourceIdentifier: "dataset-r1",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_String},
+				{Name: "title", Type: interfaces.DataType_Text},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }
