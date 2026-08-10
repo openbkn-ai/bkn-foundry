@@ -62,7 +62,7 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	assert.Equal(t, true, (<-queries)["track_total_hits"])
 }
 
-func TestValidateAnalyzersChecksEachDistinctAnalyzerOnce(t *testing.T) {
+func TestValidateAnalyzerCallsOpenSearch(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/_analyze", r.URL.Path)
@@ -81,17 +81,13 @@ func TestValidateAnalyzersChecksEachDistinctAnalyzerOnce(t *testing.T) {
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
 
-	available, err := connector.ValidateAnalyzers(context.Background(), map[string]string{
-		"coupon_code": "standard",
-		"name":        "standard",
-		"status":      "ik_max_word",
-	})
+	available, err := connector.ValidateAnalyzer(context.Background(), "ik_max_word")
 	require.NoError(t, err)
 	assert.True(t, available)
-	assert.Equal(t, 2, requests)
+	assert.Equal(t, 1, requests)
 }
 
-func TestValidateAnalyzersReportsUnavailableForOpenSearchResponse(t *testing.T) {
+func TestValidateAnalyzerReportsUnavailableForOpenSearchResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/_analyze", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
@@ -109,14 +105,12 @@ func TestValidateAnalyzersReportsUnavailableForOpenSearchResponse(t *testing.T) 
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
 
-	available, err := connector.ValidateAnalyzers(context.Background(), map[string]string{
-		"status": "hanlp_index",
-	})
+	available, err := connector.ValidateAnalyzer(context.Background(), "hanlp_index")
 	require.NoError(t, err)
 	assert.False(t, available)
 }
 
-func TestValidateAnalyzersReturnsDependencyErrorForNonBadRequestResponse(t *testing.T) {
+func TestValidateAnalyzerReturnsDependencyErrorForNonBadRequestResponse(t *testing.T) {
 	for _, statusCode := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
 		t.Run(http.StatusText(statusCode), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +130,7 @@ func TestValidateAnalyzersReturnsDependencyErrorForNonBadRequestResponse(t *test
 			require.NoError(t, err)
 			connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
 
-			available, err := connector.ValidateAnalyzers(context.Background(), map[string]string{"status": "hanlp_index"})
+			available, err := connector.ValidateAnalyzer(context.Background(), "hanlp_index")
 			require.Error(t, err)
 			assert.False(t, available)
 		})

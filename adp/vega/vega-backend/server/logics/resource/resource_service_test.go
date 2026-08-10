@@ -421,7 +421,8 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 	t.Run("accepts defaults and field overrides in the capability snapshot", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		lim.EXPECT().GetIndexCapabilities(gomock.Any()).Return(&interfaces.IndexCapabilities{FulltextAnalyzers: []interfaces.AnalyzerCapability{{ID: "standard"}, {ID: "english"}}}, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
 		rs := &resourceService{lim: lim}
 
 		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
@@ -431,7 +432,8 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 	t.Run("rejects an unavailable analyzer with affected fields", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		lim.EXPECT().GetIndexCapabilities(gomock.Any()).Return(&interfaces.IndexCapabilities{FulltextAnalyzers: []interfaces.AnalyzerCapability{{ID: "standard"}}}, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(false, nil)
 		rs := &resourceService{lim: lim}
 
 		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
@@ -444,13 +446,30 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 	t.Run("returns capability unavailable when the startup probe failed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		lim.EXPECT().GetIndexCapabilities(gomock.Any()).Return(nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: errors.New("connection refused")})
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(false, &interfaces.IndexCapabilitiesUnavailableError{Cause: errors.New("connection refused")})
 		rs := &resourceService{lim: lim}
 
 		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_IndexCapability_InternalError_Unavailable)
 		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
+	})
+
+	t.Run("validates each configured fulltext feature without collection", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+		rs := &resourceService{lim: lim}
+		multiFeatureSchema := []*interfaces.Property{{
+			Name: "title",
+			Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}},
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "english"}},
+			},
+		}}
+
+		require.NoError(t, rs.validateIndexConfigAnalyzers(context.Background(), multiFeatureSchema, nil))
 	})
 }
 

@@ -185,31 +185,27 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	if indexManager == nil {
 		return nil
 	}
-	analyzers := map[string]string{}
 	if buildTask == nil || buildTask.IndexConfig == nil {
 		return nil
 	}
 	for field, feature := range buildTask.IndexConfig.Features {
-		if feature.Fulltext != nil && strings.TrimSpace(feature.Fulltext.Analyzer) != "" {
-			analyzers[field] = feature.Fulltext.Analyzer
+		if feature.Fulltext == nil || strings.TrimSpace(feature.Fulltext.Analyzer) == "" {
+			continue
 		}
-	}
-	if len(analyzers) == 0 {
-		return nil
-	}
-	available, err := indexManager.ValidateAnalyzers(ctx, analyzers)
-	if err != nil {
-		var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
-		if errors.As(err, &unavailableErr) {
-			return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+		available, err := indexManager.ValidateAnalyzer(ctx, feature.Fulltext.Analyzer)
+		if err != nil {
+			var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
+			if errors.As(err, &unavailableErr) {
+				return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+					WithErrorDetails(err.Error())
+			}
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed).
 				WithErrorDetails(err.Error())
 		}
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed).
-			WithErrorDetails(err.Error())
-	}
-	if !available {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
-			WithErrorDetails("one or more configured analyzers are unavailable")
+		if !available {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
+				WithErrorDetails(fmt.Sprintf("analyzer %q for field %q is unavailable", feature.Fulltext.Analyzer, field))
+		}
 	}
 	return nil
 }

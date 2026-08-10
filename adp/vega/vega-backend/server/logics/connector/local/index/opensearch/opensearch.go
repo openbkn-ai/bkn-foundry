@@ -12,7 +12,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -38,50 +37,36 @@ type OpenSearchConnector struct {
 	client  *opensearch.Client
 }
 
-// ValidateAnalyzers verifies that each field's configured analyzer is available
-// in the connected OpenSearch cluster before a build task is persisted.
-func (c *OpenSearchConnector) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) (bool, error) {
+// ValidateAnalyzer verifies that a configured analyzer is available in the connected OpenSearch cluster.
+func (c *OpenSearchConnector) ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error) {
 	if err := c.Connect(ctx); err != nil {
 		return false, err
 	}
-
-	analyzerFields := map[string][]string{}
-	for field, configuredAnalyzer := range analyzers {
-		analyzer := strings.TrimSpace(configuredAnalyzer)
-		if analyzer != "" {
-			analyzerFields[analyzer] = append(analyzerFields[analyzer], field)
-		}
+	analyzer = strings.TrimSpace(analyzer)
+	if analyzer == "" {
+		return true, nil
 	}
-	analyzerNames := make([]string, 0, len(analyzerFields))
-	for analyzer := range analyzerFields {
-		analyzerNames = append(analyzerNames, analyzer)
+	body, err := sonic.Marshal(map[string]any{"analyzer": analyzer, "text": "bkn"})
+	if err != nil {
+		return false, fmt.Errorf("marshal analyzer validation request: %w", err)
 	}
-	sort.Strings(analyzerNames)
-	for _, analyzer := range analyzerNames {
-		fields := analyzerFields[analyzer]
-		sort.Strings(fields)
-		body, err := sonic.Marshal(map[string]any{"analyzer": analyzer, "text": "bkn"})
-		if err != nil {
-			return false, fmt.Errorf("marshal analyzer validation request: %w", err)
-		}
-		resp, err := c.client.Indices.Analyze(
-			c.client.Indices.Analyze.WithContext(ctx),
-			c.client.Indices.Analyze.WithBody(bytes.NewReader(body)),
-		)
-		if err != nil {
-			return false, fmt.Errorf("validate analyzer %q for fields %q: %w", analyzer, strings.Join(fields, ", "), err)
-		}
-		if resp.StatusCode == http.StatusBadRequest {
-			_ = resp.Body.Close()
-			return false, nil
-		}
-		if resp.IsError() {
-			detail := resp.String()
-			_ = resp.Body.Close()
-			return false, fmt.Errorf("validate analyzer %q for fields %q: OpenSearch returned %s: %s", analyzer, strings.Join(fields, ", "), resp.Status(), detail)
-		}
+	resp, err := c.client.Indices.Analyze(
+		c.client.Indices.Analyze.WithContext(ctx),
+		c.client.Indices.Analyze.WithBody(bytes.NewReader(body)),
+	)
+	if err != nil {
+		return false, fmt.Errorf("validate analyzer %q: %w", analyzer, err)
+	}
+	if resp.StatusCode == http.StatusBadRequest {
 		_ = resp.Body.Close()
+		return false, nil
 	}
+	if resp.IsError() {
+		detail := resp.String()
+		_ = resp.Body.Close()
+		return false, fmt.Errorf("validate analyzer %q: OpenSearch returned %s: %s", analyzer, resp.Status(), detail)
+	}
+	_ = resp.Body.Close()
 	return true, nil
 }
 

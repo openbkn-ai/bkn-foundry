@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1129,42 +1128,10 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 	if rs.lim == nil {
 		return nil
 	}
-	analyzers := collectFulltextAnalyzers(schema, indexConfig)
-	if len(analyzers) == 0 {
-		return nil
-	}
-	capabilities, err := rs.lim.GetIndexCapabilities(ctx)
-	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
-			WithErrorDetails(err.Error())
-	}
-	available := make(map[string]struct{}, len(capabilities.FulltextAnalyzers))
-	for _, analyzer := range capabilities.FulltextAnalyzers {
-		available[analyzer.ID] = struct{}{}
-	}
-	names := make([]string, 0, len(analyzers))
-	for analyzer := range analyzers {
-		names = append(names, analyzer)
-	}
-	sort.Strings(names)
-	for _, analyzer := range names {
-		if _, ok := available[analyzer]; ok {
-			continue
-		}
-		fields := append([]string(nil), analyzers[analyzer]...)
-		sort.Strings(fields)
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_Analyzer).
-			WithErrorDetails(fmt.Sprintf("analyzer %q is unavailable for fields %q", analyzer, strings.Join(fields, ", ")))
-	}
-	return nil
-}
-
-func collectFulltextAnalyzers(schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) map[string][]string {
 	defaultAnalyzer := ""
 	if indexConfig != nil {
 		defaultAnalyzer = strings.TrimSpace(indexConfig.DefaultFulltextAnalyzer)
 	}
-	result := map[string][]string{}
 	for _, prop := range schema {
 		if prop == nil {
 			continue
@@ -1184,10 +1151,18 @@ func collectFulltextAnalyzers(schema []*interfaces.Property, indexConfig *interf
 			if feature.RefProperty != "" {
 				fieldName = feature.RefProperty
 			}
-			result[analyzer] = append(result[analyzer], fieldName)
+			available, err := rs.lim.ValidateAnalyzer(ctx, analyzer)
+			if err != nil {
+				return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+					WithErrorDetails(err.Error())
+			}
+			if !available {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_Analyzer).
+					WithErrorDetails(fmt.Sprintf("analyzer %q for field %q is unavailable", analyzer, fieldName))
+			}
 		}
 	}
-	return result
+	return nil
 }
 
 func fulltextAnalyzerConfigValue(config map[string]any) string {

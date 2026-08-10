@@ -216,17 +216,17 @@ func (mr *MockLocalIndexManagerMockRecorder) UpsertDocuments(ctx, indexName, upd
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertDocuments", reflect.TypeOf((*MockLocalIndexManager)(nil).UpsertDocuments), ctx, indexName, updateRequests)
 }
 
-// ValidateAnalyzers mocks base method.
-func (m *MockLocalIndexManager) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) (bool, error) {
+// ValidateAnalyzer mocks base method.
+func (m *MockLocalIndexManager) ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateAnalyzers", ctx, analyzers)
+	ret := m.ctrl.Call(m, "ValidateAnalyzer", ctx, analyzer)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ValidateAnalyzers indicates an expected call of ValidateAnalyzers.
-func (mr *MockLocalIndexManagerMockRecorder) ValidateAnalyzers(ctx, analyzers any) *gomock.Call {
+// ValidateAnalyzer indicates an expected call of ValidateAnalyzer.
+func (mr *MockLocalIndexManagerMockRecorder) ValidateAnalyzer(ctx, analyzer any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateAnalyzers", reflect.TypeOf((*MockLocalIndexManager)(nil).ValidateAnalyzers), ctx, analyzers)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateAnalyzer", reflect.TypeOf((*MockLocalIndexManager)(nil).ValidateAnalyzer), ctx, analyzer)
 }

@@ -10,7 +10,6 @@ package local_index
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -61,7 +60,7 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 			capabilities: interfaces.IndexCapabilities{CheckedAt: time.Now().UnixMilli()},
 		}
 		for _, analyzer := range analyzerCandidates {
-			available, err := manager.lic.ValidateAnalyzers(context.Background(), map[string]string{"_capability_probe": analyzer})
+			available, err := manager.lic.ValidateAnalyzer(context.Background(), analyzer)
 			if err != nil {
 				manager.capabilityErr = err
 				manager.capabilities.FulltextAnalyzers = nil
@@ -92,31 +91,20 @@ func (lim *localIndexManager) CheckExist(ctx context.Context, indexName string) 
 	return lim.lic.CheckExist(ctx, indexName)
 }
 
-func (lim *localIndexManager) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) (bool, error) {
+func (lim *localIndexManager) ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error) {
 	if _, err := lim.GetIndexCapabilities(ctx); err != nil {
 		return false, err
+	}
+	analyzer = strings.TrimSpace(analyzer)
+	if analyzer == "" {
+		return true, nil
 	}
 	available := map[string]struct{}{}
 	for _, item := range lim.capabilities.FulltextAnalyzers {
 		available[item.ID] = struct{}{}
 	}
-	byAnalyzer := map[string][]string{}
-	for field, value := range analyzers {
-		if analyzer := strings.TrimSpace(value); analyzer != "" {
-			byAnalyzer[analyzer] = append(byAnalyzer[analyzer], field)
-		}
-	}
-	names := make([]string, 0, len(byAnalyzer))
-	for analyzer := range byAnalyzer {
-		names = append(names, analyzer)
-	}
-	sort.Strings(names)
-	for _, analyzer := range names {
-		if _, ok := available[analyzer]; !ok {
-			return false, nil
-		}
-	}
-	return true, nil
+	_, ok := available[analyzer]
+	return ok, nil
 }
 
 func (lim *localIndexManager) GetIndexCapabilities(_ context.Context) (*interfaces.IndexCapabilities, error) {

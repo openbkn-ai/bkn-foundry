@@ -30,11 +30,11 @@ type analyzerValidatingIndexManager struct {
 	interfaces.LocalIndexManager
 	available bool
 	err       error
-	captured  map[string]string
+	captured  []string
 }
 
-func (m *analyzerValidatingIndexManager) ValidateAnalyzers(_ context.Context, analyzers map[string]string) (bool, error) {
-	m.captured = analyzers
+func (m *analyzerValidatingIndexManager) ValidateAnalyzer(_ context.Context, analyzer string) (bool, error) {
+	m.captured = append(m.captured, analyzer)
 	return m.available, m.err
 }
 
@@ -71,8 +71,8 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 
 	_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
 	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, "unavailable")
-	assert.Equal(t, map[string]string{"coupon_code": "standard", "status": "hanlp_index"}, validator.captured)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "analyzer")
+	assert.Len(t, validator.captured, 1)
 }
 
 func TestFillBuildTaskIndexSnapshotRejectsMissingEmbeddingModel(t *testing.T) {
@@ -986,7 +986,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "unavailable")
-		assert.Equal(t, map[string]string{"status": "hanlp_index"}, validator.captured)
+		assert.Equal(t, []string{"hanlp_index"}, validator.captured)
 		select {
 		case queued := <-service.DebugTaskQueue():
 			t.Fatalf("expected no queued task, got %s", queued.Type())
