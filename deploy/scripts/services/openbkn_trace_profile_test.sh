@@ -190,12 +190,13 @@ else
     ok
 fi
 
-# Keep the guard meaningful: a declared producer without a release profile
-# must still be disclosed instead of letting the no-warning assertion pass.
+# Keep the guard tied to the release entrypoint. If a declared producer is
+# omitted from its outer gate, its actual extra-set result is empty even though
+# the producer name itself is known to the installer.
 LAST_WARN=""
-_OPENBKN_TRACE_EVIDENCE_PRODUCERS+=(not-wired-producer)
-_openbkn_warn_unwired_evidence_producers agent-retrieval not-wired-producer
-contains "names an unwired producer" "${LAST_WARN}" "not-wired-producer"
+_openbkn_release_extra_sets() { CORE_RELEASE_EXTRA_SETS=(); }
+_openbkn_warn_unwired_evidence_producers bkn-agent
+contains "names a declared producer without actual wiring" "${LAST_WARN}" "bkn-agent"
 
 CORE_SET_VALUES=()
 OFFLINE_MODE=true

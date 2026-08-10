@@ -714,13 +714,24 @@ _openbkn_adopt_unowned_resources() {
 
 _openbkn_warn_unwired_evidence_producers() {
     local -a unwired=()
-    local release_name
+    local release_name set_value
+    local has_ingest_url has_ingest_secret
     for release_name in "$@"; do
         _openbkn_release_list_contains "${release_name}" "${_OPENBKN_TRACE_EVIDENCE_PRODUCERS[@]}" || continue
-        case "${release_name}" in
-            agent-retrieval|vega-backend|bkn-backend|ontology-query|bkn-agent|agent-operator-integration) ;;
-            *) unwired+=("${release_name}") ;;
-        esac
+        _openbkn_release_extra_sets "${release_name}"
+        has_ingest_url=false
+        has_ingest_secret=false
+        for set_value in "${CORE_RELEASE_EXTRA_SETS[@]:-}"; do
+            [[ "${set_value}" == *"=${OPENBKN_TRACE_EVIDENCE_INGEST_URL}" ]] && has_ingest_url=true
+            case "${set_value}" in
+                *"ingestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}"|\
+                *"ingest_token_secret_name=${OPENBKN_TRACE_INGEST_SECRET}"|\
+                *"EvidenceIngestTokenSecretName=${OPENBKN_TRACE_INGEST_SECRET}")
+                    has_ingest_secret=true
+                    ;;
+            esac
+        done
+        [[ "${has_ingest_url}" == true && "${has_ingest_secret}" == true ]] || unwired+=("${release_name}")
     done
     if [[ ${#unwired[@]} -gt 0 ]]; then
         log_warn "BKN Trace: no Evidence ingest token wired for ${unwired[*]} — their Evidence writes will be rejected until their charts are wired here"
