@@ -209,7 +209,8 @@ func TestOrphanObjectTypeIsRecalled(t *testing.T) {
 	}
 }
 
-// 打分不可用（BKN 检索失败）时必须优雅降级，不能报错或返回空。
+// 打分不可用（BKN 检索失败）时必须优雅降级：不报错、不返回空，
+// 且顺序退回修复前的「关系端点优先」，不能凭空改成定义序。
 func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	net := buildObjectRankingNetwork()
 	backend := &mockBknBackend{
@@ -231,6 +232,87 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 		t.Fatalf("expected graceful degradation, got error: %v", err)
 	}
 	if len(res.ObjectTypes) == 0 {
-		t.Errorf("expected object types on degraded path, got none")
+		t.Fatalf("expected object types on degraded path, got none")
+	}
+
+	endpoints := map[string]struct{}{}
+	for _, rel := range res.RelationTypes {
+		endpoints[rel.SourceObjectTypeID] = struct{}{}
+		endpoints[rel.TargetObjectTypeID] = struct{}{}
+	}
+	seenNonEndpoint := false
+	for _, obj := range res.ObjectTypes {
+		_, isEndpoint := endpoints[obj.ConceptID]
+		if isEndpoint && seenNonEndpoint {
+			t.Errorf("degraded path must keep relation endpoints first, got %s after a non-endpoint", obj.ConceptID)
+			break
+		}
+		if !isEndpoint {
+			seenNonEndpoint = true
+		}
+	}
+}
+
+// 入选关系的端点必须全部出现在对象类里，哪怕超出 maxObjectCount 预算——
+// 否则返回的关系会指向缺失的对象，调用方拿到断头引用。
+func TestRelationEndpointsAreNeverDropped(t *testing.T) {
+	// 5 条互不共享端点的关系 → 10 个不同端点，刻意超过 maxObjectCount 预算
+	detail := &interfaces.KnowledgeNetworkDetail{ID: "kn_disjoint"}
+	for i := 0; i < 12; i++ {
+		detail.ObjectTypes = append(detail.ObjectTypes, &interfaces.ObjectType{
+			ID:      fmt.Sprintf("obj_%d", i),
+			Name:    fmt.Sprintf("对象_%d", i),
+			Comment: fmt.Sprintf("对象_%d 说明", i),
+		})
+	}
+	for i := 0; i < 5; i++ {
+		detail.RelationTypes = append(detail.RelationTypes, &interfaces.RelationType{
+			ID:                 fmt.Sprintf("rel_%d", i),
+			Name:               fmt.Sprintf("关系_%d", i),
+			SourceObjectTypeID: fmt.Sprintf("obj_%d", i*2),
+			TargetObjectTypeID: fmt.Sprintf("obj_%d", i*2+1),
+		})
+	}
+	// 让两个与关系无关的对象类拿到最高分，占满 topK 名额
+	scoredEntries := make([]*interfaces.ObjectType, 0, len(detail.ObjectTypes))
+	for _, o := range detail.ObjectTypes {
+		cp := *o
+		cp.Score = 1.0
+		if cp.ID == "obj_10" || cp.ID == "obj_11" {
+			cp.Score = 99.0
+		}
+		scoredEntries = append(scoredEntries, &cp)
+	}
+
+	svc := &localSearchImpl{
+		logger: &mockLogger{},
+		bknBackend: &mockBknBackend{
+			networkDetail:     detail,
+			objectTypesResp:   &interfaces.ObjectTypeConcepts{Entries: scoredEntries},
+			relationTypesResp: &interfaces.RelationTypeConcepts{Entries: detail.RelationTypes},
+		},
+		rerankClient: &objectRankingRerank{},
+	}
+
+	cfg := DefaultConceptRetrievalConfig()
+	cfg.TopK = 5
+
+	req := &interfaces.KnSearchLocalRequest{KnID: "kn_disjoint", Query: "对象", EnableRerank: true}
+	res, err := svc.conceptRetrieval(context.Background(), req, cfg)
+	if err != nil {
+		t.Fatalf("conceptRetrieval failed: %v", err)
+	}
+
+	present := map[string]struct{}{}
+	for _, obj := range res.ObjectTypes {
+		present[obj.ConceptID] = struct{}{}
+	}
+	for _, rel := range res.RelationTypes {
+		for _, id := range []string{rel.SourceObjectTypeID, rel.TargetObjectTypeID} {
+			if _, ok := present[id]; !ok {
+				t.Errorf("relation %s references object %s missing from the response (objects=%d)",
+					rel.ConceptID, id, len(res.ObjectTypes))
+			}
+		}
 	}
 }
