@@ -7,10 +7,12 @@ package knresources
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sort"
 	"sync"
 	"testing"
 
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -266,6 +268,68 @@ func TestListResources_ByKnID_ClassifiesUnresolvedBindings(t *testing.T) {
 		if id == "v1" {
 			t.Fatal("stale data_view binding must not be fetched from vega")
 		}
+	}
+}
+
+// vega 整体不可用时，绝不能返回「成功 + 空列表」——那正是本 issue 要消灭的
+// 哑故障：agent 分不出「后端挂了」和「这张网没有表」。
+func TestListResources_ByKnID_AllFetchesFailDownstreamReturnsError(t *testing.T) {
+	fake := &fakeVega{errByID: map[string]error{
+		"r1": infraErr.DefaultHTTPError(context.Background(), http.StatusInternalServerError, "vega down"),
+		"r2": infraErr.DefaultHTTPError(context.Background(), http.StatusInternalServerError, "vega down"),
+	}}
+	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
+		ObjectTypes: []*interfaces.ObjectType{
+			ot("order", "resource", "r1"),
+			ot("shipment", "resource", "r2"),
+		},
+	}}
+	svc := NewKnResourcesServiceWith(fake, bkn)
+
+	if _, err := svc.ListResources(context.Background(), &ListResourcesReq{KnID: "kn1"}); err == nil {
+		t.Fatal("expected a downstream outage to surface as an error, not an empty list")
+	}
+}
+
+// 反过来：一张网只绑一张表、这张表刚好被删，是确凿的建模事实，
+// 该留在 missing 里，不该伪装成服务故障。
+func TestListResources_ByKnID_AllFetchesNotFoundStaysClassified(t *testing.T) {
+	fake := &fakeVega{errByID: map[string]error{
+		"gone": infraErr.DefaultHTTPError(context.Background(), http.StatusNotFound, "resource not found"),
+	}}
+	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
+		ObjectTypes: []*interfaces.ObjectType{ot("order", "resource", "gone")},
+	}}
+	svc := NewKnResourcesServiceWith(fake, bkn)
+
+	resp, err := svc.ListResources(context.Background(), &ListResourcesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("a deleted resource is a modelling fact, not an outage: %v", err)
+	}
+	if len(resp.Missing) != 1 || resp.Missing[0].ObjectTypeID != "order" || resp.TotalCount != 0 {
+		t.Fatalf("expected the binding classified as missing, got %+v", resp)
+	}
+}
+
+func TestListResources_ByKnID_PartialFailureStillReturnsTheRest(t *testing.T) {
+	fake := &fakeVega{
+		byID:    map[string]*interfaces.VegaResource{"r1": {ID: "r1", Name: "orders", Category: "table"}},
+		errByID: map[string]error{"r2": infraErr.DefaultHTTPError(context.Background(), http.StatusInternalServerError, "vega down")},
+	}
+	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
+		ObjectTypes: []*interfaces.ObjectType{
+			ot("order", "resource", "r1"),
+			ot("shipment", "resource", "r2"),
+		},
+	}}
+	svc := NewKnResourcesServiceWith(fake, bkn)
+
+	resp, err := svc.ListResources(context.Background(), &ListResourcesReq{KnID: "kn1"})
+	if err != nil {
+		t.Fatalf("one failing binding must not fail the whole call: %v", err)
+	}
+	if resp.TotalCount != 1 || len(resp.Entries) != 1 || len(resp.Missing) != 1 {
+		t.Fatalf("expected 1 entry + 1 missing, got %+v", resp)
 	}
 }
 
