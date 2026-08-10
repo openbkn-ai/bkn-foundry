@@ -10,10 +10,12 @@ package knresources
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -230,9 +232,13 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 	}
 	wg.Wait()
 
+	var firstFetchErr error
 	for i, t := range targets {
 		r := results[i]
 		if r.err != nil || r.resource == nil {
+			if firstFetchErr == nil && r.err != nil {
+				firstFetchErr = r.err
+			}
 			out.Missing = append(out.Missing, UnresolvedBinding{
 				ObjectTypeID: t.objectTypeID,
 				ResourceID:   t.resourceID,
@@ -255,8 +261,35 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 			CatalogID:  r.resource.CatalogID,
 		})
 	}
+	// 有绑定、一条都没取回来、且失败不是「这个资源没了/没权限」这种单资源成因，
+	// 那基本只剩下游整体不可用（vega 挂了、ctx 超时）。这时候返回「成功 + 空列表」，
+	// 调用方就得把「后端挂了」当成「这张网没有表」——正是本 issue 要消灭的那种
+	// 哑故障。透传第一个错误，让下游的状态码和原因浮上去。
+	//
+	// 反过来，404/403 仍然留在 missing 里：一张网只绑了一张表、这张表刚好被删，
+	// 那是确凿的建模事实，不该伪装成服务故障。
+	if len(targets) > 0 && len(out.Missing) == len(targets) && isDownstreamOutage(firstFetchErr) {
+		return nil, firstFetchErr
+	}
 	out.TotalCount = int64(len(out.Entries))
 	return out, nil
+}
+
+// isDownstreamOutage 判断取资源的失败是否属于「下游整体不可用」，而不是这一条
+// 资源自己的问题。404/403 是单资源事实（已删 / 无权），其余（5xx、超时、连不上、
+// 非 HTTPError 的裸错误）都按不可用处理——宁可报错，也不要把故障伪装成空列表。
+func isDownstreamOutage(err error) bool {
+	if err == nil {
+		return false
+	}
+	var httpErr *infraErr.HTTPError
+	if errors.As(err, &httpErr) {
+		switch httpErr.HTTPCode {
+		case http.StatusNotFound, http.StatusForbidden:
+			return false
+		}
+	}
+	return true
 }
 
 // unresolvedReason 把下游错误压成一行放进 missing.reason；无错时说明资源为空。
