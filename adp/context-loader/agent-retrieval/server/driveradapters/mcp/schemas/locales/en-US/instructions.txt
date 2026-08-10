@@ -21,7 +21,7 @@ Metrics, object type first. Never re-derive a modelled metric in run_sql — its
    - only when nothing is modelled as a metric: run_sql
 
 Direct data-layer path:
-- Use list_resources to list visible data resources with resource_id, name, type, and catalog_id.
+- Use list_resources to list data resources with resource_id, name, type, and catalog_id. To answer "which tables does this knowledge network have", pass kn_id: it returns every resource bound to that network at once, and reports object types with no binding under unbound and unreachable bindings under missing. Without kn_id it pages the account-wide resource pool and can be filtered by catalog_id / type. Never fetch one page without kn_id and intersect it yourself — a large pool guarantees misses.
 - Use describe_resource to inspect a resource's physical columns and connector type.
 - Then use run_sql with table placeholders and physical column names.
 

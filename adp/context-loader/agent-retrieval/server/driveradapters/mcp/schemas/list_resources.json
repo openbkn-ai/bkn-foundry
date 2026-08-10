@@ -8,21 +8,25 @@
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
+      "kn_id": {
+        "type": "string",
+        "description": "可选。只列该知识网络已绑定的数据资源（对象类的 data_source）。传了它就一次全返，catalog_id / offset / limit 一律忽略；要「这张网有哪些表」就传它，别用分页去捞。"
+      },
       "catalog_id": {
         "type": "string",
-        "description": "可选。限定某数据目录（catalog）下的资源。"
+        "description": "可选。限定某数据目录（catalog）下的资源。传了 kn_id 时忽略。"
       },
       "type": {
         "type": "string",
-        "description": "可选。按资源类别过滤（table / file / fileset / api / metric / topic / index / logicview / dataset）。"
+        "description": "可选。按资源类别过滤（table / file / fileset / api / metric / topic / index / logicview / dataset）。与 kn_id 同时传时，对该网络绑定的资源生效。"
       },
       "offset": {
         "type": "integer",
-        "description": "可选。分页偏移，默认 0。"
+        "description": "可选。分页偏移，默认 0。传了 kn_id 时忽略。"
       },
       "limit": {
         "type": "integer",
-        "description": "可选。分页大小，默认 20。"
+        "description": "可选。分页大小，默认 20。传了 kn_id 时忽略。"
       }
     }
   },
@@ -44,7 +48,44 @@
           "additionalProperties": true
         }
       },
-      "total_count": { "type": "integer", "description": "符合过滤条件的资源总数" }
+      "total_count": { "type": "integer", "description": "符合过滤条件的资源总数；传 kn_id 时即 entries 条数（已按资源去重）" },
+      "unbound": {
+        "type": "array",
+        "description": "仅 kn_id 查询：这些对象类还没绑数据源，需要先去建模绑定",
+        "items": {
+          "type": "object",
+          "properties": {
+            "object_type_id": { "type": "string", "description": "对象类 ID" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "stale_binding": {
+        "type": "array",
+        "description": "仅 kn_id 查询：这些对象类绑的是已废弃的数据源形态（如 data_view），需要重绑到 resource",
+        "items": {
+          "type": "object",
+          "properties": {
+            "object_type_id": { "type": "string", "description": "对象类 ID" },
+            "resource_id": { "type": "string", "description": "绑定里记录的 ID" },
+            "source_type": { "type": "string", "description": "绑定声明的 data_source.type" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "missing": {
+        "type": "array",
+        "description": "仅 kn_id 查询：绑定的资源取不回来——资源已删，或当前账户无权查看",
+        "items": {
+          "type": "object",
+          "properties": {
+            "object_type_id": { "type": "string", "description": "对象类 ID" },
+            "resource_id": { "type": "string", "description": "绑定的资源 ID" },
+            "reason": { "type": "string", "description": "取不回来的原因" }
+          },
+          "additionalProperties": true
+        }
+      }
     }
   }
 }

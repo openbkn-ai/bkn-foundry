@@ -85,7 +85,7 @@
   "list_resources": {
     "title": "Data Resources",
     "group_title": "Data Resources",
-    "description": "List visible data-layer resources independent of ontology object types. Use this when resources are not modeled as object types or when querying raw data directly."
+    "description": "List visible data-layer resources independent of ontology object types. Pass kn_id to get every resource bound to one knowledge network in a single response; without kn_id this pages the account-wide resource pool. Use it when resources are not modeled as object types or when querying raw data directly."
   },
   "describe_resource": {
     "title": "Resource Detail",
