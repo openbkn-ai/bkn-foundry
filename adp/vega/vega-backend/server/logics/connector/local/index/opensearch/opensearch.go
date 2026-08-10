@@ -57,17 +57,23 @@ func (c *OpenSearchConnector) ValidateAnalyzer(ctx context.Context, analyzer str
 	if err != nil {
 		return false, fmt.Errorf("validate analyzer %q: %w", analyzer, err)
 	}
-	if resp.StatusCode == http.StatusBadRequest {
-		_ = resp.Body.Close()
-		return false, nil
-	}
 	if resp.IsError() {
 		detail := resp.String()
 		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusBadRequest && isAnalyzerNotFound(detail) {
+			return false, nil
+		}
 		return false, fmt.Errorf("validate analyzer %q: OpenSearch returned %s: %s", analyzer, resp.Status(), detail)
 	}
 	_ = resp.Body.Close()
 	return true, nil
+}
+
+func isAnalyzerNotFound(detail string) bool {
+	message := strings.ToLower(detail)
+	return strings.Contains(message, "failed to find global analyzer") ||
+		strings.Contains(message, "analyzer not found") ||
+		strings.Contains(message, "unknown analyzer")
 }
 
 // NewOpenSearchConnector 创建 OpenSearch connector 构建器

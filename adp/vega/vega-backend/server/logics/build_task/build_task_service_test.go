@@ -92,6 +92,24 @@ func TestFillBuildTaskIndexSnapshotRejectsMissingEmbeddingModel(t *testing.T) {
 	requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel)
 }
 
+func TestFillBuildTaskIndexSnapshotRejectsDuplicateFeatureType(t *testing.T) {
+	service := &buildTaskService{}
+	buildTask := &interfaces.BuildTask{}
+
+	err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{
+		SchemaDefinition: []*interfaces.Property{{
+			Name: "title",
+			Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+			},
+		}},
+	}, buildTask)
+
+	httpErr := requireHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+}
+
 func TestValidateBuildTaskAnalyzersReturnsInternalErrorForTransportFailure(t *testing.T) {
 	validator := &analyzerValidatingIndexManager{err: errors.New("connect OpenSearch: connection refused")}
 	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{

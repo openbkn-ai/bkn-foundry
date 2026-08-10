@@ -137,6 +137,29 @@ func TestValidateAnalyzerReturnsDependencyErrorForNonBadRequestResponse(t *testi
 	}
 }
 
+func TestValidateAnalyzerReturnsDependencyErrorForUnrelatedBadRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/_analyze", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, err := w.Write([]byte(`{"error":"invalid analyze request"}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+
+	available, err := connector.ValidateAnalyzer(context.Background(), "hanlp_index")
+	require.Error(t, err)
+	assert.False(t, available)
+}
+
 func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

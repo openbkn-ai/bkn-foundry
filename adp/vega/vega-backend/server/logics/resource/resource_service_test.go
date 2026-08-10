@@ -79,6 +79,19 @@ func expectResourceServiceTransaction(t *testing.T, rs *resourceService, commit 
 	})
 }
 
+func TestValidateSingleFeatureTypePerPropertyRejectsKeywordDuplicates(t *testing.T) {
+	err := validateSingleFeatureTypePerProperty(context.Background(), []*interfaces.Property{{
+		Name: "code",
+		Features: []interfaces.PropertyFeature{
+			{FeatureType: interfaces.PropertyFeatureType_Keyword},
+			{FeatureType: interfaces.PropertyFeatureType_Keyword},
+		},
+	}})
+
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "code" has more than one "keyword" feature`)
+}
+
 func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
 	schema := []*interfaces.Property{{Name: "id"}, {Name: "updated_at"}}
 

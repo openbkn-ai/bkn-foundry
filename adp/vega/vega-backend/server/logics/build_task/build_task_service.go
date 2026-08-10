@@ -284,6 +284,22 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 }
 
 func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, resource *interfaces.Resource, buildTask *interfaces.BuildTask) error {
+	for _, property := range resource.SchemaDefinition {
+		if property == nil {
+			continue
+		}
+		seenFeatureTypes := make(map[string]struct{}, len(property.Features))
+		for _, feature := range property.Features {
+			if feature.FeatureType == "" {
+				continue
+			}
+			if _, exists := seenFeatureTypes[feature.FeatureType]; exists {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
+			}
+			seenFeatureTypes[feature.FeatureType] = struct{}{}
+		}
+	}
 	defaultEmbeddingModel := ""
 	defaultFulltextAnalyzer := ""
 	buildTask.IndexConfig = &interfaces.BuildTaskIndexConfig{

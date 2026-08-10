@@ -236,6 +236,9 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
 	}
+	if err := validateSingleFeatureTypePerProperty(ctx, req.SchemaDefinition); err != nil {
+		return nil, err
+	}
 	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
 		return nil, err
 	}
@@ -721,6 +724,9 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
 		return err
 	}
+	if err := validateSingleFeatureTypePerProperty(ctx, resource.SchemaDefinition); err != nil {
+		return err
+	}
 	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 		return err
 	}
@@ -1072,6 +1078,26 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 		resource.Category == interfaces.ResourceCategoryDataset,
 	)
 	return schemaChanged || indexConfigChanged, err
+}
+
+func validateSingleFeatureTypePerProperty(ctx context.Context, schema []*interfaces.Property) error {
+	for _, property := range schema {
+		if property == nil {
+			continue
+		}
+		seen := make(map[string]struct{}, len(property.Features))
+		for _, feature := range property.Features {
+			if feature.FeatureType == "" {
+				continue
+			}
+			if _, exists := seen[feature.FeatureType]; exists {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
+			}
+			seen[feature.FeatureType] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
