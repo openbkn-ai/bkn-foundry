@@ -141,7 +141,7 @@
     "group": "resource",
     "group_title": "数据资源",
     "order": 410,
-    "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id），可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。"
+    "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id）。要「某张知识网络有哪些表」就传 kn_id，一次全返该网络绑定的资源；不传 kn_id 时是账户级资源池分页，可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。"
   },
   "describe_resource": {
     "name": "describe_resource",
