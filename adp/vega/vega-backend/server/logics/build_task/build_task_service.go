@@ -197,14 +197,19 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	if len(analyzers) == 0 {
 		return nil
 	}
-	if err := indexManager.ValidateAnalyzers(ctx, analyzers); err != nil {
-		var unavailableErr *interfaces.AnalyzerUnavailableError
+	available, err := indexManager.ValidateAnalyzers(ctx, analyzers)
+	if err != nil {
+		var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
 		if errors.As(err, &unavailableErr) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
-				WithErrorDetails(unavailableErr.Error())
+			return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+				WithErrorDetails(err.Error())
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed).
 			WithErrorDetails(err.Error())
+	}
+	if !available {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
+			WithErrorDetails("one or more configured analyzers are unavailable")
 	}
 	return nil
 }

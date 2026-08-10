@@ -412,6 +412,57 @@ func TestResourceServiceList(t *testing.T) {
 	})
 }
 
+func TestValidateIndexConfigAnalyzers(t *testing.T) {
+	schema := []*interfaces.Property{
+		{Name: "title", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}}},
+		{Name: "summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "english"}}}},
+	}
+
+	t.Run("accepts defaults and field overrides in the capability snapshot", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().GetIndexCapabilities(gomock.Any()).Return(&interfaces.IndexCapabilities{FulltextAnalyzers: []interfaces.AnalyzerCapability{{ID: "standard"}, {ID: "english"}}}, nil)
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects an unavailable analyzer with affected fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().GetIndexCapabilities(gomock.Any()).Return(&interfaces.IndexCapabilities{FulltextAnalyzers: []interfaces.AnalyzerCapability{{ID: "standard"}}}, nil)
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_Analyzer)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "english")
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "summary")
+	})
+
+	t.Run("returns capability unavailable when the startup probe failed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().GetIndexCapabilities(gomock.Any()).Return(nil, &interfaces.IndexCapabilitiesUnavailableError{Cause: errors.New("connection refused")})
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_IndexCapability_InternalError_Unavailable)
+		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
+	})
+}
+
+func requireResourceHTTPError(t *testing.T, err error, wantCode string) *rest.HTTPError {
+	t.Helper()
+	require.Error(t, err)
+	httpErr, ok := err.(*rest.HTTPError)
+	require.Truef(t, ok, "expected HTTPError, got %T", err)
+	assert.Equal(t, wantCode, httpErr.BaseError.ErrorCode)
+	return httpErr
+}
+
 func TestResourceServiceCreate(t *testing.T) {
 	t.Run("rolls back resource and extensions when extension replacement fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)

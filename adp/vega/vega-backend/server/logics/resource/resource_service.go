@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -237,6 +238,9 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		return nil, err
 	}
 	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
+		return nil, err
+	}
+	if err := rs.validateIndexConfigAnalyzers(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
 		return nil, err
 	}
 	if req.Extensions != nil {
@@ -721,6 +725,9 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 		return err
 	}
+	if err := rs.validateIndexConfigAnalyzers(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
+		return err
+	}
 	if req.Extensions != nil {
 		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
 			return err
@@ -1116,6 +1123,79 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 		}
 	}
 	return nil
+}
+
+func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+	if rs.lim == nil {
+		return nil
+	}
+	analyzers := collectFulltextAnalyzers(schema, indexConfig)
+	if len(analyzers) == 0 {
+		return nil
+	}
+	capabilities, err := rs.lim.GetIndexCapabilities(ctx)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+			WithErrorDetails(err.Error())
+	}
+	available := make(map[string]struct{}, len(capabilities.FulltextAnalyzers))
+	for _, analyzer := range capabilities.FulltextAnalyzers {
+		available[analyzer.ID] = struct{}{}
+	}
+	names := make([]string, 0, len(analyzers))
+	for analyzer := range analyzers {
+		names = append(names, analyzer)
+	}
+	sort.Strings(names)
+	for _, analyzer := range names {
+		if _, ok := available[analyzer]; ok {
+			continue
+		}
+		fields := append([]string(nil), analyzers[analyzer]...)
+		sort.Strings(fields)
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_Analyzer).
+			WithErrorDetails(fmt.Sprintf("analyzer %q is unavailable for fields %q", analyzer, strings.Join(fields, ", ")))
+	}
+	return nil
+}
+
+func collectFulltextAnalyzers(schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) map[string][]string {
+	defaultAnalyzer := ""
+	if indexConfig != nil {
+		defaultAnalyzer = strings.TrimSpace(indexConfig.DefaultFulltextAnalyzer)
+	}
+	result := map[string][]string{}
+	for _, prop := range schema {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Fulltext {
+				continue
+			}
+			analyzer := strings.TrimSpace(fulltextAnalyzerConfigValue(feature.Config))
+			if analyzer == "" {
+				analyzer = defaultAnalyzer
+			}
+			if analyzer == "" {
+				continue
+			}
+			fieldName := prop.Name
+			if feature.RefProperty != "" {
+				fieldName = feature.RefProperty
+			}
+			result[analyzer] = append(result[analyzer], fieldName)
+		}
+	}
+	return result
+}
+
+func fulltextAnalyzerConfigValue(config map[string]any) string {
+	if config == nil {
+		return ""
+	}
+	value, _ := config["analyzer"].(string)
+	return value
 }
 
 func validateIndexConfigBuildKeyFields(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {

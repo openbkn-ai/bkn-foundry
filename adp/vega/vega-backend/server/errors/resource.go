@@ -14,6 +14,7 @@ const (
 	VegaBackend_Resource_InvalidParameter_Type      = "VegaBackend.Resource.InvalidParameter.Type"
 	VegaBackend_Resource_InvalidParameter_Name      = "VegaBackend.Resource.InvalidParameter.Name"
 	VegaBackend_Resource_InvalidParameter_CatalogID = "VegaBackend.Resource.InvalidParameter.CatalogID"
+	VegaBackend_Resource_InvalidParameter_Analyzer  = "VegaBackend.Resource.InvalidParameter.Analyzer"
 	VegaBackend_Resource_LengthExceeded_Name        = "VegaBackend.Resource.LengthExceeded.Name"
 	VegaBackend_Resource_LengthExceeded_Description = "VegaBackend.Resource.LengthExceeded.Description"
 	VegaBackend_Resource_CategoryNotCreatable       = "VegaBackend.Resource.CategoryNotCreatable"
@@ -52,6 +53,7 @@ var ResourceErrCodeList = []string{
 	VegaBackend_Resource_InvalidParameter_Type,
 	VegaBackend_Resource_InvalidParameter_Name,
 	VegaBackend_Resource_InvalidParameter_CatalogID,
+	VegaBackend_Resource_InvalidParameter_Analyzer,
 	VegaBackend_Resource_LengthExceeded_Name,
 	VegaBackend_Resource_LengthExceeded_Description,
 	VegaBackend_Resource_CategoryNotCreatable,

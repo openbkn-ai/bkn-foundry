@@ -23,6 +23,11 @@ Description = "目录ID为必填项"
 Solution = "请提供有效的目录ID"
 ErrorLink = "暂无"
 
+[VegaBackend.Resource.InvalidParameter.Analyzer]
+Description = "配置的全文分词器不可用"
+Solution = "请选择当前索引能力快照支持的分词器"
+ErrorLink = "暂无"
+
 [VegaBackend.Resource.LengthExceeded.Name]
 Description = "数据资源名称长度超限"
 Solution = "请缩短名称"
