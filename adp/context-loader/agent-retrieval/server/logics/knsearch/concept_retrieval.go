@@ -325,7 +325,10 @@ func (s *localSearchImpl) scoreObjectTypes(
 // 排序主序是对象类自身与 query 的相关性（obj.Score）。关系端点不再是对象类的唯一
 // 来源，只作为 schema 自洽约束并入——返回的关系若指向未返回的对象，调用方拿到的是
 // 断头引用。因此顺序是：相关性最高的 topK 先占位，再并入入选关系的端点，仍有余量
-// 才按相关性补齐。
+// 才按相关性补齐。端点并入**不受 maxObjectCount 约束**，自洽性优先于预算。
+//
+// 若没有任何对象类拿到分数（打分后端不可用等），退回修复前的端点优先顺序：此时
+// 相关性无从谈起，按定义序占满名额只会凭空改变行为。
 //
 // 修复前的行为是反过来的：关系端点铺满即返回，对象自身相关性完全不参与，导致与
 // 查询高度匹配但所属关系排名靠后（或没有关系）的对象类被整体丢弃（issue #778）。
@@ -348,32 +351,45 @@ func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 
 	ranked := sortObjectTypesByScore(objectTypes)
 	known := make(map[string]struct{}, len(ranked))
+	scoreAvailable := false
 	for _, obj := range ranked {
 		known[obj.ID] = struct{}{}
+		if obj.Score > 0 {
+			scoreAvailable = true
+		}
 	}
 
-	selected := make(map[string]struct{}, maxObjectCount)
-	// 1. 相关性最高的 topK 先占位：这是查询意图的直接体现，优先级高于关系端点
-	for _, obj := range ranked {
-		if len(selected) >= topK {
-			break
-		}
-		selected[obj.ID] = struct{}{}
-	}
-	// 2. 并入入选关系的端点，保证返回的关系不指向缺失的对象
+	endpoints := make(map[string]struct{}, len(relations)*2)
 	for _, rel := range relations {
 		if rel == nil {
 			continue
 		}
 		for _, id := range []string{rel.SourceObjectTypeID, rel.TargetObjectTypeID} {
-			if id == "" || len(selected) >= maxObjectCount {
+			if id == "" {
 				continue
 			}
 			if _, ok := known[id]; !ok {
 				continue
 			}
-			selected[id] = struct{}{}
+			endpoints[id] = struct{}{}
 		}
+	}
+
+	selected := make(map[string]struct{}, maxObjectCount+len(endpoints))
+	// 1. 相关性最高的 topK 先占位：这是查询意图的直接体现，优先级高于关系端点。
+	// 无分数可用时跳过，把名额留给端点，保持与修复前一致的顺序。
+	if scoreAvailable {
+		for _, obj := range ranked {
+			if len(selected) >= topK {
+				break
+			}
+			selected[obj.ID] = struct{}{}
+		}
+	}
+	// 2. 并入入选关系的端点，保证返回的关系不指向缺失的对象。这里不设上限：
+	// 端点被截断就等于放任断头引用，而出参层只能从本函数的结果里补，救不回来。
+	for id := range endpoints {
+		selected[id] = struct{}{}
 	}
 	// 3. 仍有余量则继续按相关性补齐
 	for _, obj := range ranked {
@@ -384,11 +400,23 @@ func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 	}
 
 	out := make([]*interfaces.ObjectType, 0, len(selected))
-	for _, obj := range ranked {
-		if _, ok := selected[obj.ID]; ok {
+	appendSelected := func(match func(id string) bool) {
+		for _, obj := range ranked {
+			if _, ok := selected[obj.ID]; !ok {
+				continue
+			}
+			if !match(obj.ID) {
+				continue
+			}
 			out = append(out, obj)
+			delete(selected, obj.ID)
 		}
 	}
+	if !scoreAvailable {
+		// 与修复前一致：端点优先，其余按定义序补齐
+		appendSelected(func(id string) bool { _, ok := endpoints[id]; return ok })
+	}
+	appendSelected(func(string) bool { return true })
 	return out
 }
 
