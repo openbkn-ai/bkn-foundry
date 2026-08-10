@@ -1037,7 +1037,10 @@ func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx cont
 }
 
 func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) (bool, error) {
-	if req.Category != "" && req.Category != resource.Category {
+	if req.Category == "" {
+		return false, unsupportedResourceUpdateError(ctx, "category is required")
+	}
+	if req.Category != resource.Category {
 		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
