@@ -16,16 +16,26 @@ type CatalogDeletionScheduleImpact struct {
 	Total   int64 `json:"total"`
 }
 
+const (
+	CatalogDeletionBlockerProtectedResources                = "protected_resources"
+	CatalogDeletionBlockerBuildTasksRunningOrStopping       = "build_tasks_running_or_stopping"
+	CatalogDeletionBlockerDiscoverTasksRunning              = "discover_tasks_running"
+	CatalogDeletionBlockerSemanticUnderstandingTasksRunning = "semantic_understanding_tasks_running"
+)
+
 // CatalogDeletionImpact describes the current deletion impact for one catalog.
 // CanDelete mirrors the guards enforced by DELETE /catalogs/{id}.
 type CatalogDeletionImpact struct {
-	BuildTasks                 CatalogDeletionTaskImpact     `json:"build_tasks"`
-	CanDelete                  bool                          `json:"can_delete"`
-	CatalogID                  string                        `json:"catalog_id"`
-	DiscoverSchedules          CatalogDeletionScheduleImpact `json:"discover_schedules"`
-	DiscoverTasks              CatalogDeletionTaskImpact     `json:"discover_tasks"`
-	Resources                  int                           `json:"resources"`
-	SemanticUnderstandingTasks CatalogDeletionTaskImpact     `json:"semantic_understanding_tasks"`
+	Blockers                    []string                      `json:"blockers"`
+	BuildTasks                  CatalogDeletionTaskImpact     `json:"build_tasks"`
+	CanDelete                   bool                          `json:"can_delete"`
+	CatalogHealthCheckSchedules CatalogDeletionScheduleImpact `json:"catalog_health_check_schedules"`
+	CatalogID                   string                        `json:"catalog_id"`
+	DiscoverSchedules           CatalogDeletionScheduleImpact `json:"discover_schedules"`
+	DiscoverTasks               CatalogDeletionTaskImpact     `json:"discover_tasks"`
+	ProtectedResources          int                           `json:"protected_resources"`
+	Resources                   int                           `json:"resources"`
+	SemanticUnderstandingTasks  CatalogDeletionTaskImpact     `json:"semantic_understanding_tasks"`
 }
 
 const (

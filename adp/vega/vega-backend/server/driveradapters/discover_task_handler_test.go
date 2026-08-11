@@ -36,7 +36,7 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, dts
 	}
@@ -131,7 +131,7 @@ func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, dts
 	}
@@ -179,7 +179,7 @@ func Test_DiscoverTaskRestHandler_DeleteDiscoverTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, dts
 	}

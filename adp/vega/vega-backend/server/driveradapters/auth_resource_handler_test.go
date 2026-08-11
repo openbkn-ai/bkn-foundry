@@ -35,7 +35,7 @@ func Test_AuthResourceRestHandler_ListAuthResourcesRoute(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		as := vmock.NewMockAuthService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
@@ -64,7 +64,7 @@ func Test_AuthResourceRestHandler_ListConnectorTypeResources(t *testing.T) {
 
 		as := vmock.NewMockAuthService(mockCtrl)
 		cts := vmock.NewMockConnectorTypeService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
@@ -102,7 +102,7 @@ func Test_AuthResourceRestHandler_ListCatalogResources(t *testing.T) {
 
 		as := vmock.NewMockAuthService(mockCtrl)
 		cs := vmock.NewMockCatalogService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, cs, nil, nil, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, as, cs, nil, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
@@ -139,7 +139,7 @@ func Test_AuthResourceRestHandler_ListResourceResources(t *testing.T) {
 
 		as := vmock.NewMockAuthService(mockCtrl)
 		rs := vmock.NewMockResourceService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, rs, nil, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, rs, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
@@ -175,7 +175,7 @@ func Test_AuthResourceRestHandler_RejectUnsupportedSort(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		as := vmock.NewMockAuthService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().

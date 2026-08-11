@@ -30,8 +30,9 @@ paths:
         创建 DiscoverSchedule。`name` 与 `catalog_id` 必填且 catalog 必须存在；不存在返回 404
         `VegaBackend.Catalog.NotFound`。
 
-        - body 中 `enabled=true` 时，创建后立即注册到 cron 引擎；`false` 时仅入库不调度。
-        - `cron_expr` 必填，标准 5 字段格式；非法返回 400 `VegaBackend.DiscoverSchedule.InvalidCronExpr`。
+        - body 中 `enabled=true` 时，worker 会在 `next_run` 到期后触发；`false` 时不会触发。
+        - `cron_expr` 必填，标准 5 字段格式，相邻两次触发至少间隔 1 小时；非法或过于频繁时返回
+          400 `VegaBackend.DiscoverSchedule.InvalidCronExpr`。
         - `strategies` 可空（表示全部）；非空时元素必须是 `insert` / `delete` / `update` 的子集。
         - `start_time` / `end_time` 均 ≥ 0；`end_time>0` 时要求 `start_time ≤ end_time`；非法返回
           400 `VegaBackend.DiscoverSchedule.InvalidTimeRange`。
@@ -168,7 +169,7 @@ paths:
         `id` 字段在 body 中携带时被忽略，path 为权威来源。其它系统维护字段
         （`last_run` / `next_run` / 时间戳 / 操作者）携带时静默忽略。
 
-        若 schedule 当前 `enabled=true`，更新后调度器会重新注册以应用新 cron。
+        更新会重新计算数据库中的 `next_run`，worker 无需维护进程内调度状态。
       requestBody:
         required: true
         content:
@@ -193,7 +194,7 @@ paths:
     delete:
       summary: 删除调度
       description: |
-        删除 DiscoverSchedule，从 cron 引擎注销并从 DB 删除。
+        删除 DiscoverSchedule。数据库是调度状态的唯一事实源，删除后 worker 不再获取该计划。
 
         **不删除已有 DiscoverTask 历史**——该 schedule 历史触发的 DiscoverTask 保留
         `schedule_id` 字段作为孤儿引用，便于审计追溯。正在执行的 DiscoverTask 不受影响。
@@ -217,7 +218,7 @@ paths:
     post:
       summary: 启用调度
       description: |
-        启用 DiscoverSchedule 并注册到 cron 引擎。**幂等**：对已 enable 的 schedule
+        启用 DiscoverSchedule 并重新计算 `next_run`。**幂等**：对已 enable 的 schedule
         再 enable 返回 204，不报错。
       responses:
         "204":
@@ -239,7 +240,7 @@ paths:
     post:
       summary: 停用调度
       description: |
-        停用 DiscoverSchedule 并从 cron 引擎注销。**幂等**：对已 disable 的 schedule
+        停用 DiscoverSchedule；worker 仅扫描 enabled 计划。**幂等**：对已 disable 的 schedule
         再 disable 返回 204，不报错。
 
         **不影响已经入队 / 正在执行的 DiscoverTask**；这些任务执行时已经持有所需上下文。
@@ -365,7 +366,7 @@ components:
         end_time:
           description: |
             调度结束时间，毫秒时间戳；0 表示无结束时间。
-            调度器到点触发时，若当前时间大于 `end_time` 则**自动 disable** 该 schedule 并从 cron 引擎注销。
+            worker 扫描到期计划时，若当前时间大于 `end_time` 则**自动 disable** 该 schedule。
           type: integer
           format: int64
           minimum: 0
@@ -421,7 +422,7 @@ components:
           description: 关联 catalog；创建必填，PUT 时必须与当前一致
           type: string
         cron_expr:
-          description: 标准 5 字段 cron 表达式（必填）
+          description: 标准 5 字段 cron 表达式（必填），相邻两次触发至少间隔 1 小时
           type: string
         start_time:
           description: 调度生效起始时间，毫秒时间戳；0 表示无起始限制。须 ≥ 0

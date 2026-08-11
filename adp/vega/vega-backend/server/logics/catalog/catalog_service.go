@@ -870,13 +870,23 @@ func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*in
 	if _, err := cs.authorizeDelete(ctx, id); err != nil {
 		return nil, err
 	}
-	return cs.getDeletionImpact(ctx, id)
+	impact, err := cs.getDeletionImpact(ctx, id)
+	if err != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to inspect catalog dependencies")
+	}
+	return impact, nil
 }
 
 // getDeletionImpact uses access ports so the catalog service does not depend on
 // discover services, which already depend on catalog service.
 func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*interfaces.CatalogDeletionImpact, error) {
 	page := interfaces.PaginationQueryParams{Limit: 1}
+	catalog, err := cs.ca.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	resources, err := cs.ra.GetByCatalogID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -973,19 +983,53 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	if err != nil {
 		return nil, err
 	}
-	resourceBlocked, err := cs.ra.CheckExistByCategories(ctx, id, []string{interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicView})
-	if err != nil {
-		return nil, err
+
+	healthCheckSchedules := interfaces.CatalogDeletionScheduleImpact{}
+	if catalog != nil && catalog.Type == interfaces.CatalogTypePhysical {
+		schedule, err := cs.hcss.GetByCatalogID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if schedule != nil {
+			healthCheckSchedules.Total = 1
+			if schedule.Mode != interfaces.CatalogHealthCheckScheduleModeDisabled {
+				healthCheckSchedules.Enabled = 1
+			}
+		}
+	}
+
+	protectedResources := 0
+	for _, resource := range resources {
+		if resource.Category == interfaces.ResourceCategoryDataset || resource.Category == interfaces.ResourceCategoryLogicView {
+			protectedResources++
+		}
+	}
+
+	blockers := make([]string, 0, 4)
+	if protectedResources > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerProtectedResources)
+	}
+	if buildExecuting > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerBuildTasksRunningOrStopping)
+	}
+	if runningDiscover > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerDiscoverTasksRunning)
+	}
+	if semanticRunning > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerSemanticUnderstandingTasksRunning)
 	}
 
 	return &interfaces.CatalogDeletionImpact{
-		BuildTasks:                 interfaces.CatalogDeletionTaskImpact{Active: buildActive, Total: buildTotal},
-		CanDelete:                  !resourceBlocked && buildExecuting == 0 && runningDiscover == 0 && semanticRunning == 0,
-		CatalogID:                  id,
-		DiscoverSchedules:          interfaces.CatalogDeletionScheduleImpact{Enabled: enabledSchedules, Total: scheduleTotal},
-		DiscoverTasks:              interfaces.CatalogDeletionTaskImpact{Active: pendingDiscover + runningDiscover, Total: discoverTotal},
-		Resources:                  len(resources),
-		SemanticUnderstandingTasks: interfaces.CatalogDeletionTaskImpact{Active: semanticActive, Total: semanticTotal},
+		Blockers:                    blockers,
+		BuildTasks:                  interfaces.CatalogDeletionTaskImpact{Active: buildActive, Total: buildTotal},
+		CanDelete:                   len(blockers) == 0,
+		CatalogHealthCheckSchedules: healthCheckSchedules,
+		CatalogID:                   id,
+		DiscoverSchedules:           interfaces.CatalogDeletionScheduleImpact{Enabled: enabledSchedules, Total: scheduleTotal},
+		DiscoverTasks:               interfaces.CatalogDeletionTaskImpact{Active: pendingDiscover + runningDiscover, Total: discoverTotal},
+		ProtectedResources:          protectedResources,
+		Resources:                   len(resources),
+		SemanticUnderstandingTasks:  interfaces.CatalogDeletionTaskImpact{Active: semanticActive, Total: semanticTotal},
 	}, nil
 }
 

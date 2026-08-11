@@ -36,7 +36,6 @@ import (
 	"vega-backend/logics/resource_data"
 	"vega-backend/logics/semantic_understanding_task"
 	"vega-backend/version"
-	"vega-backend/worker"
 )
 
 // RestHandler interface
@@ -58,12 +57,10 @@ type restHandler struct {
 	rds        interfaces.ResourceDataService
 	rs         interfaces.ResourceService
 	suts       interfaces.SemanticUnderstandingTaskService
-
-	sw *worker.ScheduleWorker
 }
 
 // NewRestHandler creates a new RestHandler.
-func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) RestHandler {
+func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	as := auth.NewAuthService(appSetting)
 	cs := catalog.NewCatalogService(appSetting)
 	cts := connector_type.NewConnectorTypeService(appSetting)
@@ -91,7 +88,6 @@ func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) Re
 		rds:        rds,
 		rs:         rs,
 		suts:       suts,
-		sw:         sw,
 	}
 }
 

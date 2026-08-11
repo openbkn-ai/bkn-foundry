@@ -31,8 +31,8 @@ type DiscoverScheduleAccess interface {
 	Delete(ctx context.Context, id string) error
 	// DeleteByCatalogID deletes discover schedules belonging to a Catalog.
 	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
-	// GetEnabledSchedules retrieves all enabled discover schedules.
-	GetEnabledSchedules(ctx context.Context) ([]*DiscoverSchedule, error)
-	// UpdateLastRun updates the last run time.
-	UpdateLastRun(ctx context.Context, id string, lastRun int64) error
+	// ListDue retrieves enabled discover schedules whose next run is due.
+	ListDue(ctx context.Context, now int64) ([]*DiscoverSchedule, error)
+	// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
+	UpdateRunMetadata(ctx context.Context, id string, scheduleUpdateTime, lastRun, nextRun int64) error
 }

@@ -34,7 +34,7 @@ func setupResourceHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockCatalogServ
 
 	cs := vmock.NewMockCatalogService(mockCtrl)
 	rs := vmock.NewMockResourceService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, rs, nil, nil, nil, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, rs, nil, nil, nil, nil, nil, nil)
 	handler.RegisterPublic(engine)
 	return engine, cs, rs
 }
@@ -53,7 +53,7 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		rs := vmock.NewMockResourceService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, rs
 	}

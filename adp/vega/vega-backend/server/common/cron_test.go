@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-package catalog_health_check_schedule
+package common
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseCronExpr(t *testing.T) {
+func TestParseHourlyCronExpr(t *testing.T) {
 	tests := []struct {
 		name     string
 		cronExpr string
@@ -29,7 +29,7 @@ func TestParseCronExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			schedule, err := ParseCronExpr(tt.cronExpr)
+			schedule, err := ParseHourlyCronExpr(tt.cronExpr)
 			if tt.wantErr == "" {
 				require.NoError(t, err)
 				require.NotNil(t, schedule)

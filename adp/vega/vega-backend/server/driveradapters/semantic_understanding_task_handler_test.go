@@ -36,7 +36,7 @@ func setupSemanticUnderstandingTaskHandlerTest(t *testing.T) (*gin.Engine, *vmoc
 	t.Cleanup(mockCtrl.Finish)
 
 	suts := vmock.NewMockSemanticUnderstandingTaskService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler.suts = suts
 	handler.RegisterPublic(engine)
 	return engine, suts
@@ -53,7 +53,7 @@ func setupSemanticUnderstandingTaskExternalHandlerTest(t *testing.T) (*gin.Engin
 
 	as := vmock.NewMockAuthService(mockCtrl)
 	suts := vmock.NewMockSemanticUnderstandingTaskService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler.suts = suts
 	handler.RegisterPublic(engine)
 	return engine, as, suts

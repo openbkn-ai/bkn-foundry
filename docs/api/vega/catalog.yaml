@@ -303,9 +303,10 @@ paths:
         构建任务处于 `stopping` 时也会拒绝删除。
 
         传入 `dry_run=true` 时仅执行权限、存在性和影响分析，不写入任何数据；返回该 catalog
-        的资源、构建任务、探查计划/任务和语义理解任务计数。`can_delete` 严格反映当前
-        DELETE 的阻断规则，调用方仍须以不带 `dry_run` 的请求结果为准，因为预检与实际删除
-        之间可能有并发变更。
+        的资源、构建任务、探查计划、健康检查计划、探查任务和语义理解任务计数；
+        `protected_resources` 返回不能随 Catalog 级联删除的 dataset/logicview 数量，`blockers`
+        返回稳定的机器可读阻断原因。`can_delete` 严格反映当前 DELETE 的阻断规则，调用方仍须
+        以不带 `dry_run` 的请求结果为准，因为预检与实际删除之间可能有并发变更。
       parameters:
         - name: dry_run
           in: query
@@ -323,10 +324,16 @@ paths:
                 $ref: "#/components/schemas/CatalogDeletionImpact"
         "204":
           description: 删除成功
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
@@ -622,6 +629,12 @@ components:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Conflict:
+      description: 当前依赖状态不允许删除
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotAcceptable:
       description: Content-Type 不是 application/json
       content:
@@ -640,8 +653,11 @@ components:
       required:
         - catalog_id
         - can_delete
+        - blockers
         - resources
+        - protected_resources
         - build_tasks
+        - catalog_health_check_schedules
         - discover_schedules
         - discover_tasks
         - semantic_understanding_tasks
@@ -651,10 +667,28 @@ components:
         can_delete:
           type: boolean
           description: 无受保护资源且三类任务均未正在执行时为 true。
+        blockers:
+          type: array
+          description: 当前阻止真实删除的机器可读原因；可删除时为空数组。
+          items:
+            type: string
+            enum:
+              - protected_resources
+              - build_tasks_running_or_stopping
+              - discover_tasks_running
+              - semantic_understanding_tasks_running
         resources:
           type: integer
+          description: 将随 Catalog 删除的全部资源数（包含受保护资源）。
+        protected_resources:
+          type: integer
+          description: 不允许随 Catalog 级联删除的 dataset/logicview 资源数。
         build_tasks:
           $ref: "#/components/schemas/CatalogDeletionTaskImpact"
+        catalog_health_check_schedules:
+          allOf:
+            - $ref: "#/components/schemas/CatalogDeletionScheduleImpact"
+          description: 物理 Catalog 的健康检查计划影响；inherit/enabled 均计入 enabled。
         discover_schedules:
           $ref: "#/components/schemas/CatalogDeletionScheduleImpact"
         discover_tasks:

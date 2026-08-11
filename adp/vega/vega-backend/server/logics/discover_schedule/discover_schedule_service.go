@@ -41,8 +41,10 @@ type discoverScheduleService struct {
 	ums        interfaces.UserMgmtService
 }
 
-func (dss *discoverScheduleService) UpdateLastRun(ctx context.Context, id string, lastRun int64) error {
-	return dss.dsa.UpdateLastRun(ctx, id, lastRun)
+func (dss *discoverScheduleService) UpdateRunMetadata(
+	ctx context.Context, id string, scheduleUpdateTime, lastRun, nextRun int64,
+) error {
+	return dss.dsa.UpdateRunMetadata(ctx, id, scheduleUpdateTime, lastRun, nextRun)
 }
 
 // NewDiscoverScheduleService creates a new DiscoverScheduleService.
@@ -266,13 +268,6 @@ func (dss *discoverScheduleService) Disable(ctx context.Context, id string) erro
 	return nil
 }
 
-// GetEnabledSchedules retrieves all enabled discover schedules.
-func (dss *discoverScheduleService) GetEnabledSchedules(ctx context.Context) ([]*interfaces.DiscoverSchedule, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.GetEnabledSchedules")
-	defer span.End()
-	return dss.dsa.GetEnabledSchedules(ctx)
-}
-
 // ExecuteSchedule 是一个执行计划发现任务的方法
 // 它接收一个上下文和一个计划发现任务作为参数，返回一个错误
 func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
@@ -315,12 +310,6 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		return err
 	}
 
-	// Update last run time
-	now := time.Now().UnixMilli()
-	if err := dss.UpdateLastRun(ctx, schedule.ID, now); err != nil {
-		otellog.LogError(ctx, "Failed to update last run time", err)
-		return err
-	}
 	logger.Infof("Executed discover schedule: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
 	return nil
 }

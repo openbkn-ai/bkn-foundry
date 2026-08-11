@@ -36,6 +36,14 @@ func TestCalculateNextRun(t *testing.T) {
 
 		require.Error(t, err)
 	})
+
+	t.Run("returns error for cron more frequent than hourly", func(t *testing.T) {
+		base := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+
+		_, err := calculateNextRun("*/30 * * * *", base)
+
+		require.ErrorContains(t, err, "minimum interval is 1 hour")
+	})
 }
 
 func TestDiscoverScheduleAccessGetByID(t *testing.T) {
@@ -232,38 +240,47 @@ func TestDiscoverScheduleAccessDeleteByCatalogID(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestDiscoverScheduleAccessGetEnabledSchedules(t *testing.T) {
-	t.Run("returns enabled schedules", func(t *testing.T) {
-		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
-		defer cleanup()
+func TestDiscoverScheduleAccessListDue(t *testing.T) {
+	access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+	defer cleanup()
 
-		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_enabled = ? AND (f_end_time = ? OR f_end_time > ?)").
-			WithArgs(true, 0, sqlmock.AnyArg()).
-			WillReturnRows(discoverScheduleRows().AddRow("schedule-1", "Nightly", "catalog-1", "0 0 * * *", int64(0), int64(0), true, "full_sync", int64(10), int64(20), "u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2)))
+	mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_enabled = ? AND f_next_run <= ? ORDER BY f_next_run ASC").
+		WithArgs(true, int64(100)).
+		WillReturnRows(discoverScheduleRows().
+			AddRow("schedule-1", "Nightly", "catalog-1", "0 * * * *", int64(0), int64(0), true, "full_sync", int64(10), int64(20), "u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2)))
 
-		got, err := access.GetEnabledSchedules(context.Background())
+	got, err := access.ListDue(context.Background(), 100)
 
-		require.NoError(t, err)
-		require.Len(t, got, 1)
-		assert.True(t, got[0].Enabled)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "schedule-1", got[0].ID)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestDiscoverScheduleAccessUpdateLastRun(t *testing.T) {
-	t.Run("gets schedule and updates next run", func(t *testing.T) {
+func TestDiscoverScheduleAccessUpdateRunMetadata(t *testing.T) {
+	t.Run("updates metadata when schedule update time matches", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery("SELECT f_id, f_name, f_catalog_id, f_cron_expr, f_start_time, f_end_time, f_enabled, f_strategy, f_last_run, f_next_run, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_discover_schedule WHERE f_id = ?").
-			WithArgs("schedule-1").
-			WillReturnRows(discoverScheduleRows().AddRow("schedule-1", "Nightly", "catalog-1", "0 13 * * *", int64(0), int64(0), true, "full_sync", int64(0), int64(0), "u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2)))
-		lastRun := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC).UnixMilli()
-		mock.ExpectExec("UPDATE t_discover_schedule SET f_last_run = ?, f_next_run = ? WHERE f_id = ?").
-			WithArgs(lastRun, sqlmock.AnyArg(), "schedule-1").
+		mock.ExpectExec("UPDATE t_discover_schedule SET f_last_run = ?, f_next_run = ? WHERE f_id = ? AND f_update_time = ?").
+			WithArgs(int64(100), int64(200), "schedule-1", int64(50)).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateLastRun(context.Background(), "schedule-1", lastRun))
+		require.NoError(t, access.UpdateRunMetadata(context.Background(), "schedule-1", 50, 100, 200))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns not found when schedule changed or was deleted", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectExec("UPDATE t_discover_schedule SET f_last_run = ?, f_next_run = ? WHERE f_id = ? AND f_update_time = ?").
+			WithArgs(int64(100), int64(200), "schedule-1", int64(50)).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		err := access.UpdateRunMetadata(context.Background(), "schedule-1", 50, 100, 200)
+
+		require.ErrorIs(t, err, sql.ErrNoRows)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

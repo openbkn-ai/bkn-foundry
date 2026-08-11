@@ -34,7 +34,7 @@ func setupBuildTaskHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockBuildTaskS
 
 	bts := vmock.NewMockBuildTaskService(mockCtrl)
 	rs := vmock.NewMockResourceService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, bts, nil, nil, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, bts, nil, nil, nil, nil, nil)
 	handler.RegisterPublic(engine)
 	return engine, bts, rs
 }
@@ -204,7 +204,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		bts := vmock.NewMockBuildTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, bts
 	}
@@ -293,7 +293,7 @@ func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		bts := vmock.NewMockBuildTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		bts.EXPECT().Delete(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)

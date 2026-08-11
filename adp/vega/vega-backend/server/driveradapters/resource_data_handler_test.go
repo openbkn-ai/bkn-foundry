@@ -38,7 +38,7 @@ func setupResourceDataHandlerTest(
 	rs := vmock.NewMockResourceService(mockCtrl)
 	ds := vmock.NewMockDatasetService(mockCtrl)
 	rds := vmock.NewMockResourceDataService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, rds, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, rds)
 	handler.RegisterPublic(engine)
 	return engine, rs, ds, rds
 }
@@ -445,7 +445,7 @@ func Test_ResourceDataRestHandler_S2SInternalAccessMarker(t *testing.T) {
 		captureS2S(rs, &gotS2S)
 		ds.EXPECT().DeleteDocuments(gomock.Any(), "res-1", "doc-1").Return(nil)
 
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, nil)
 		engine.DELETE("/ex/resources/:id/data/:doc_ids", func(c *gin.Context) {
 			handler.deleteResourceData(c, hydra.Visitor{ID: "user-1"}, false)
 		})

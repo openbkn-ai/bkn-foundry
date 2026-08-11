@@ -188,16 +188,16 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})
 
-	t.Run("delegates enable disable delete and last run", func(t *testing.T) {
+	t.Run("delegates enable disable delete and run metadata", func(t *testing.T) {
 		service, dsa, _, _ := newTestDiscoverScheduleService(t)
 		dsa.EXPECT().Enable(gomock.Any(), "schedule-1").Return(nil)
 		dsa.EXPECT().Disable(gomock.Any(), "schedule-1").Return(nil)
-		dsa.EXPECT().UpdateLastRun(gomock.Any(), "schedule-1", int64(123)).Return(nil)
+		dsa.EXPECT().UpdateRunMetadata(gomock.Any(), "schedule-1", int64(100), int64(123), int64(456)).Return(nil)
 		dsa.EXPECT().Delete(gomock.Any(), "schedule-1").Return(nil)
 
 		require.NoError(t, service.Enable(context.Background(), "schedule-1"))
 		require.NoError(t, service.Disable(context.Background(), "schedule-1"))
-		require.NoError(t, service.UpdateLastRun(context.Background(), "schedule-1", 123))
+		require.NoError(t, service.UpdateRunMetadata(context.Background(), "schedule-1", 100, 123, 456))
 		require.NoError(t, service.Delete(context.Background(), "schedule-1"))
 	})
 }
@@ -294,8 +294,8 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		require.NoError(t, service.ExecuteSchedule(context.Background(), schedule))
 	})
 
-	t.Run("creates scheduled task and updates last run", func(t *testing.T) {
-		service, dsa, dts, _ := newTestDiscoverScheduleService(t)
+	t.Run("creates scheduled task", func(t *testing.T) {
+		service, _, dts, _ := newTestDiscoverScheduleService(t)
 		schedule := &interfaces.DiscoverSchedule{
 			ID:        "schedule-1",
 			CatalogID: "catalog-1",
@@ -314,10 +314,6 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 				Strategy:    "full_sync",
 			}).
 			Return("task-1", nil)
-		dsa.EXPECT().
-			UpdateLastRun(gomock.Any(), "schedule-1", gomock.Any()).
-			Return(nil)
-
 		require.NoError(t, service.ExecuteSchedule(context.Background(), schedule))
 	})
 

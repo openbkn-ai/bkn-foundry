@@ -31,7 +31,7 @@ func setupRawQueryHandlerTest(t *testing.T) *gin.Engine {
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler.RegisterPublic(engine)
 	return engine
 }
