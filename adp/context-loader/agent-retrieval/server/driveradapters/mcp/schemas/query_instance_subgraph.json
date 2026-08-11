@@ -44,7 +44,7 @@
                       "field": { "type": "string", "description": "字段名（对象类属性）" },
                       "operation": {
                         "type": "string",
-                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= range out_range like not_like regex，数值/日期时间类同上但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤",
+                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，range/out_range 在 vega 资源路径只接受数值/日期时间字段，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤",
                         "enum": ["and", "or", "==", "!=", ">", ">=", "<", "<=", "in", "not_in", "like", "not_like", "range", "out_range", "regex", "exist", "not_exist", "match"]
                       },
                       "sub_conditions": {
