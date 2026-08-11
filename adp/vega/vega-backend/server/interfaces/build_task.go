@@ -195,7 +195,7 @@ type BuildTasksQueryParams struct {
 	PaginationQueryParams
 	ResourceID string
 	CatalogID  string
-	Statuses   []string // 多值状态过滤(IN);空为不过滤。active=true 等价 [running,pending]
+	Statuses   []string // 多值状态过滤(IN);空为不过滤
 	Mode       string
 	OrderBy    string // created_at|updated_at；缺省 created_at
 	Order      string // asc|desc；缺省 desc

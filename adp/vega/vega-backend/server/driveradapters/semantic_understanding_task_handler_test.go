@@ -205,7 +205,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 				}, int64(1), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, semanticUnderstandingTaskURL+"?scope=resource&catalog_id=catalog-1&resource_id=res-1&status=pending,running&apply_mode=fill_empty&applied=true&offset=5&limit=10&sort=create_time&direction=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, semanticUnderstandingTaskURL+"?scope=resource&catalog_id=catalog-1&resource_id=res-1&status=pending&status=running&apply_mode=fill_empty&applied=true&offset=5&limit=10&sort=create_time&direction=asc", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
@@ -216,20 +216,23 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 		assert.NotContains(t, w.Body.String(), `"input"`)
 	})
 
-	t.Run("success by external api with active shortcut", func(t *testing.T) {
+	t.Run("success by external api with repeated statuses", func(t *testing.T) {
 		engine, as, suts := setupSemanticUnderstandingTaskExternalHandlerTest(t)
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).
 			Return(hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User}, nil)
 		suts.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
 				assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeCatalog, params.Scope)
-				assert.Equal(t, []string(interfaces.SemanticUnderstandingTaskActiveStatuses), params.Statuses)
+				assert.Equal(t, []string{
+					interfaces.SemanticUnderstandingTaskStatusPending,
+					interfaces.SemanticUnderstandingTaskStatusRunning,
+				}, params.Statuses)
 				assert.Equal(t, "create_time", params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, semanticUnderstandingTaskExternalURL+"?scope=catalog&active=true", nil)
+		req := httptest.NewRequest(http.MethodGet, semanticUnderstandingTaskExternalURL+"?scope=catalog&status=pending&status=running", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

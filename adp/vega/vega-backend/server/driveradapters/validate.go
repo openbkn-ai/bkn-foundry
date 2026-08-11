@@ -151,6 +151,26 @@ func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, dir
 	}, nil
 }
 
+// parseTaskStatuses 校验并规范化 query 中重复传递的 status 参数。
+// 多个状态使用 status=pending&status=running，重复值按首次出现顺序去重。
+func parseTaskStatuses(ctx context.Context, values []string, isValid func(string) bool, errorCode string) ([]string, error) {
+	statuses := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		status := strings.TrimSpace(value)
+		if status == "" || !isValid(status) {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
+				WithErrorDetails(fmt.Sprintf("invalid status: %s", status))
+		}
+		if _, exists := seen[status]; exists {
+			continue
+		}
+		seen[status] = struct{}{}
+		statuses = append(statuses, status)
+	}
+	return statuses, nil
+}
+
 // ConnectorConfig 合法性校验
 func validateConnectorConfig(ctx context.Context, cfg interfaces.ConnectorConfig) error {
 	// Check for duplicate elements in databases

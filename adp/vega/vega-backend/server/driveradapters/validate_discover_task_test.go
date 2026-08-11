@@ -7,71 +7,24 @@
 package driveradapters
 
 import (
-	"context"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 
 	"vega-backend/interfaces"
 )
 
-func Test_ValidateDiscoverTaskQueryParams(t *testing.T) {
-	ctx := context.Background()
+func TestIsValidDiscoverTaskStatus(t *testing.T) {
+	assert.True(t, isValidDiscoverTaskStatus(interfaces.DiscoverTaskStatusPending))
+	assert.True(t, isValidDiscoverTaskStatus(interfaces.DiscoverTaskStatusRunning))
+	assert.True(t, isValidDiscoverTaskStatus(interfaces.DiscoverTaskStatusCompleted))
+	assert.True(t, isValidDiscoverTaskStatus(interfaces.DiscoverTaskStatusFailed))
+	assert.True(t, isValidDiscoverTaskStatus(interfaces.DiscoverTaskStatusCancelled))
+	assert.False(t, isValidDiscoverTaskStatus("unknown"))
+}
 
-	tests := []struct {
-		name    string
-		params  interfaces.DiscoverTaskQueryParams
-		wantErr bool
-	}{
-		{
-			name: "valid empty params",
-		},
-		{
-			name: "valid status, strategy and trigger type",
-			params: interfaces.DiscoverTaskQueryParams{
-				Status:      interfaces.DiscoverTaskStatusCompleted,
-				Strategy:    interfaces.DiscoverStrategyFullSync,
-				TriggerType: interfaces.DiscoverTaskTriggerScheduled,
-			},
-		},
-		{
-			name: "cancelled status is valid",
-			params: interfaces.DiscoverTaskQueryParams{
-				Status: interfaces.DiscoverTaskStatusCancelled,
-			},
-		},
-		{
-			name: "invalid status",
-			params: interfaces.DiscoverTaskQueryParams{
-				Status: "unknown",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid strategy",
-			params: interfaces.DiscoverTaskQueryParams{
-				Strategy: "unknown",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid trigger type",
-			params: interfaces.DiscoverTaskQueryParams{
-				TriggerType: "unknown",
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateDiscoverTaskQueryParams(ctx, tt.params)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
+func TestIsValidDiscoverTaskTriggerType(t *testing.T) {
+	assert.True(t, isValidDiscoverTaskTriggerType(interfaces.DiscoverTaskTriggerManual))
+	assert.True(t, isValidDiscoverTaskTriggerType(interfaces.DiscoverTaskTriggerScheduled))
+	assert.False(t, isValidDiscoverTaskTriggerType("unknown"))
 }

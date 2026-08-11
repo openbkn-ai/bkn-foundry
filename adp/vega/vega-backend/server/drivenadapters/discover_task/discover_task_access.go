@@ -297,9 +297,9 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 		builder = builder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
 		countBuilder = countBuilder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
 	}
-	if params.Status != "" {
-		builder = builder.Where(sq.Eq{"f_status": params.Status})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Status})
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
 	}
 	if params.Strategy != "" {
 		builder = builder.Where(sq.Eq{"f_strategy": params.Strategy})

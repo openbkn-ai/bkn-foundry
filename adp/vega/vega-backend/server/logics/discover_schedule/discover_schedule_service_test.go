@@ -286,7 +286,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		dts.EXPECT().
 			List(gomock.Any(), interfaces.DiscoverTaskQueryParams{
 				CatalogID:   "catalog-1",
-				Status:      interfaces.DiscoverTaskStatusRunning,
+				Statuses:    []string{interfaces.DiscoverTaskStatusRunning},
 				TriggerType: interfaces.DiscoverTaskTriggerScheduled,
 			}).
 			Return(nil, int64(1), nil)

@@ -289,7 +289,7 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	// 检查是否有正在执行的相同任务
 	_, tasks, err := dss.dts.List(ctx, interfaces.DiscoverTaskQueryParams{
 		CatalogID:   schedule.CatalogID,
-		Status:      interfaces.DiscoverTaskStatusRunning,
+		Statuses:    []string{interfaces.DiscoverTaskStatusRunning},
 		TriggerType: interfaces.DiscoverTaskTriggerScheduled,
 	})
 	if err != nil {

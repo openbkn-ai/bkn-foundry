@@ -1162,15 +1162,15 @@ func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 		}).Times(2)
 	dta.EXPECT().List(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
-			switch params.Status {
-			case "":
+			switch {
+			case len(params.Statuses) == 0:
 				return nil, 4, nil
-			case interfaces.DiscoverTaskStatusPending:
+			case slices.Equal(params.Statuses, []string{interfaces.DiscoverTaskStatusPending}):
 				return nil, 1, nil
-			case interfaces.DiscoverTaskStatusRunning:
+			case slices.Equal(params.Statuses, []string{interfaces.DiscoverTaskStatusRunning}):
 				return nil, 2, nil
 			default:
-				t.Fatalf("unexpected status: %s", params.Status)
+				t.Fatalf("unexpected statuses: %v", params.Statuses)
 				return nil, 0, nil
 			}
 		}).Times(3)

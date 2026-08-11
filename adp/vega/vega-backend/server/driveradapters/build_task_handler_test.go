@@ -108,6 +108,88 @@ func Test_BuildTaskRestHandler_GetBuildTask(t *testing.T) {
 	})
 }
 
+// newBuildTaskListContext 造一个仅带 query 的 GET 测试上下文。
+func newBuildTaskListContext(query string) *gin.Context {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/build-tasks?"+query, nil)
+	return c
+}
+
+func TestParseBuildTaskListParams(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		query   string
+		assert  func(t *testing.T, got interfaces.BuildTasksQueryParams)
+		wantErr bool
+	}{
+		{
+			name:  "defaults when no query",
+			query: "",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, 0, got.Offset)
+				assert.Equal(t, 20, got.Limit)
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
+				assert.Equal(t, interfaces.DESC_DIRECTION, got.Order)
+				assert.Empty(t, got.Statuses)
+			},
+		},
+		{
+			name:  "removed active parameter does not override status",
+			query: "active=true&status=completed",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, []string{interfaces.BuildTaskStatusCompleted}, got.Statuses)
+			},
+		},
+		{
+			name:  "multi-value status",
+			query: "status=running&status=pending&status=running",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, []string{"running", "pending"}, got.Statuses)
+			},
+		},
+		{
+			name:  "order by and order honored",
+			query: "order_by=created_at&order=asc",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
+				assert.Equal(t, interfaces.ASC_DIRECTION, got.Order)
+			},
+		},
+		{name: "invalid order by returns error", query: "order_by=bogus", wantErr: true},
+		{name: "invalid order returns error", query: "order=sideways", wantErr: true},
+		{name: "invalid status returns error", query: "status=running&status=nope", wantErr: true},
+		{name: "comma-separated status returns error", query: "status=running,pending", wantErr: true},
+		{name: "invalid mode returns error", query: "mode=nope", wantErr: true},
+		{name: "negative offset returns error", query: "offset=-1", wantErr: true},
+		{
+			name:  "limit no-limit allowed",
+			query: "limit=-1",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, -1, got.Limit)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseBuildTaskListParams(ctx, newBuildTaskListContext(tt.query))
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tt.assert != nil {
+				tt.assert(t, got)
+			}
+		})
+	}
+}
+
 func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()

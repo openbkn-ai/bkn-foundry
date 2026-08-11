@@ -937,7 +937,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	_, pendingDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
 		PaginationQueryParams: page,
 		CatalogID:             id,
-		Status:                interfaces.DiscoverTaskStatusPending,
+		Statuses:              []string{interfaces.DiscoverTaskStatusPending},
 	})
 	if err != nil {
 		return nil, err
@@ -945,7 +945,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	_, runningDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
 		PaginationQueryParams: page,
 		CatalogID:             id,
-		Status:                interfaces.DiscoverTaskStatusRunning,
+		Statuses:              []string{interfaces.DiscoverTaskStatusRunning},
 	})
 	if err != nil {
 		return nil, err
