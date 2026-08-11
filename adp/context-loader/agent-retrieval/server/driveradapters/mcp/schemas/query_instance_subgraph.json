@@ -58,7 +58,7 @@
                         "description": "值来源，仅支持 const"
                       },
                       "value": {
-                        "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range/out_range 用 [min, max]（左闭右开）；regex 用正则字符串；exist/not_exist 不传 value",
+                        "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range / out_range 用 [min, max]（两元素同类型）；边界闭合性随对象类绑定的后端而异——数据视图 / 对象索引路径左闭右开（range 取 [min, max)，out_range 排除 [min, max)），vega 资源路径两端都闭（range 取 [min, max]，out_range 排除 [min, max]）。边界值不能含糊时，改用 >= 与 < 写成两个条件；regex 用正则字符串；exist/not_exist 不传 value",
                         "oneOf": [
                           { "type": "string" },
                           { "type": "number" },
