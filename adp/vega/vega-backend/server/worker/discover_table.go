@@ -94,9 +94,15 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableCon
 
 		// 填充 Resource 元数据 ：schema_definition 字段
 		resource.Schema = table.Schema
-		resource.SchemaDefinition = []*interfaces.Property{}
+		existingProperties := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+		for _, property := range resource.SchemaDefinition {
+			if property != nil {
+				existingProperties[property.Name] = property
+			}
+		}
+		resource.SchemaDefinition = make([]*interfaces.Property, 0, len(table.Columns))
 		for _, column := range table.Columns {
-			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
+			property := &interfaces.Property{
 				Name:        column.Name,
 				DisplayName: column.Name,
 				Type:        tableConnector.MapType(column.Type),
@@ -105,7 +111,15 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableCon
 				OriginalName:        column.Name,
 				OriginalType:        column.Type,
 				OriginalDescription: column.Description,
-			})
+			}
+			if existing, ok := existingProperties[column.Name]; ok {
+				// display_name、description 与 features 均可由用户或语义理解维护，
+				// 探查仅刷新源端物理元数据，不能覆盖这些业务元数据。
+				property.DisplayName = existing.DisplayName
+				property.Description = existing.Description
+				property.Features = existing.Features
+			}
+			resource.SchemaDefinition = append(resource.SchemaDefinition, property)
 		}
 		// 填充 Resource 元数据 ：source_metadata 字段
 		sourceMetadata := make(map[string]any)

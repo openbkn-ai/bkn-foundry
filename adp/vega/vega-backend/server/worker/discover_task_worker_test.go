@@ -200,6 +200,74 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 	})
 }
 
+func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	dh := &DiscoverTaskWorker{rs: rs}
+	resource := &interfaces.Resource{
+		ID:               "r1",
+		SourceIdentifier: "public.departments",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name:                "department_id",
+				DisplayName:         "部门ID",
+				Description:         "部门的唯一标识",
+				Type:                "integer",
+				OriginalDescription: "旧源端注释",
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "fulltext",
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				}},
+			},
+			{Name: "obsolete_column", DisplayName: "已删除字段", Type: interfaces.DataType_String},
+		},
+	}
+	connector := vmock.NewMockTableConnector(ctrl)
+	connector.EXPECT().
+		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}).
+		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+			table.Columns = []interfaces.TableColumnMeta{
+				{Name: "department_id", Type: "varchar", Description: "源端最新部门编号注释"},
+				{Name: "department_name", Type: "varchar", Description: "部门名称"},
+			}
+			return nil
+		})
+	connector.EXPECT().MapType("varchar").Return(interfaces.DataType_String).Times(2)
+	rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
+		DoAndReturn(func(_ context.Context, updated *interfaces.Resource) error {
+			require.Len(t, updated.SchemaDefinition, 2)
+
+			existing := updated.SchemaDefinition[0]
+			assert.Equal(t, "department_id", existing.Name)
+			assert.Equal(t, "部门ID", existing.DisplayName)
+			assert.Equal(t, "部门的唯一标识", existing.Description)
+			assert.Equal(t, interfaces.DataType_String, existing.Type)
+			assert.Equal(t, "varchar", existing.OriginalType)
+			assert.Equal(t, "源端最新部门编号注释", existing.OriginalDescription)
+			assert.Equal(t, []interfaces.PropertyFeature{{
+				FeatureName: "fulltext",
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}}, existing.Features)
+
+			added := updated.SchemaDefinition[1]
+			assert.Equal(t, "department_name", added.Name)
+			assert.Equal(t, "department_name", added.DisplayName)
+			assert.Equal(t, "部门名称", added.Description)
+			assert.Equal(t, "部门名称", added.OriginalDescription)
+			assert.NotContains(t, []string{existing.Name, added.Name}, "obsolete_column")
+			return nil
+		})
+
+	err := dh.enrichTableMetadata(context.Background(), connector, []tableDiscoverItem{{
+		resource: resource,
+		tableMeta: &interfaces.TableMeta{
+			Name: "departments", Schema: "public",
+		},
+	}}, &interfaces.DiscoverResult{})
+
+	require.NoError(t, err)
+}
+
 func TestSourceSnapshotHashIgnoresDerivedAndUserEditableFields(t *testing.T) {
 	t.Run("ignores derived and user editable fields", func(t *testing.T) {
 		resource := &interfaces.Resource{
