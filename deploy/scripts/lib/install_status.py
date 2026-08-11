@@ -27,17 +27,113 @@ import subprocess
 import sys
 from datetime import datetime
 
-try:
-    import yaml
-except ImportError as e:
-    print(
-        "PyYAML is required for install-status. Install one of:\n"
-        "  sudo apt-get install -y python3-yaml                       # Debian/Ubuntu\n"
-        "  sudo dnf install -y python3-pyyaml                         # Fedora/RHEL/openEuler\n"
-        "  pip3 install --user --break-system-packages pyyaml         # any host with pip3",
-        file=sys.stderr,
-    )
-    raise e
+# --- minimal YAML loader (no PyYAML dependency) ----------------------------
+# install_status.py reads three kinds of YAML:
+#   1. VersionSet manifests (bkn-foundry*.yaml) - flat key/value with a
+#      nested `releases:` dict, 2 levels deep.
+#   2. config.yaml - nested dicts up to 4 levels, scalar values only.
+#   3. helm get manifest output - multi-document K8s manifests; we only need
+#      top-level `kind` and `metadata.name`.
+# All three are machine-generated, use 2-space indentation, and never use
+# anchors, aliases, flow style, or multi-line strings. This parser covers
+# exactly that subset - it is NOT a general YAML parser.
+
+
+def _yaml_scalar(raw):
+    """Coerce a raw YAML scalar string to str/int/float/bool/None."""
+    raw = raw.strip()
+    if not raw:
+        return ""
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+        return raw[1:-1]
+    low = raw.lower()
+    if low in ("true", "yes", "on"):
+        return True
+    if low in ("false", "no", "off"):
+        return False
+    if low in ("null", "~"):
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    return raw
+
+
+def _yaml_parse_block(lines, idx, indent):
+    """Parse an indented block -> (dict, next_idx)."""
+    result = {}
+    while idx < len(lines):
+        line = lines[idx]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            idx += 1
+            continue
+        cur = len(line) - len(line.lstrip())
+        if cur < indent:
+            break
+        if cur > indent:
+            # Deeper-than-expected line (e.g. list items under a key we treat
+            # as a scalar); skip it so it doesn't desynchronise the parser.
+            idx += 1
+            continue
+        if ":" not in stripped:
+            idx += 1
+            continue
+        key, _, rest = stripped.partition(":")
+        key = key.strip()
+        rest = rest.strip()
+        if rest:
+            result[key] = _yaml_scalar(rest)
+            idx += 1
+        else:
+            # Look ahead for a nested block (first non-blank, non-comment line).
+            child_indent = None
+            j = idx + 1
+            while j < len(lines):
+                nxt = lines[j].strip()
+                if not nxt or nxt.startswith("#"):
+                    j += 1
+                    continue
+                child_indent = len(lines[j]) - len(lines[j].lstrip())
+                break
+            if child_indent is not None and child_indent > cur:
+                child, idx = _yaml_parse_block(lines, j, child_indent)
+                result[key] = child
+            else:
+                result[key] = None
+                idx += 1
+    return result, idx
+
+
+def _yaml_load(text):
+    """Load a single YAML document -> dict (or {} if empty)."""
+    doc, _ = _yaml_parse_block(text.split("\n"), 0, 0)
+    return doc
+
+
+def _yaml_load_all(text):
+    """Load multi-document YAML (``---`` separated) -> list of dicts."""
+    docs = []
+    chunk = []
+    for line in text.split("\n"):
+        if line.strip() == "---":
+            if chunk:
+                doc, _ = _yaml_parse_block(chunk, 0, 0)
+                if doc:
+                    docs.append(doc)
+            chunk = []
+        else:
+            chunk.append(line)
+    if chunk:
+        doc, _ = _yaml_parse_block(chunk, 0, 0)
+        if doc:
+            docs.append(doc)
+    return docs
 
 
 # --- depServices whitelist -------------------------------------------------
@@ -74,7 +170,7 @@ def run(cmd):
 def load_manifest_releases(manifest_path):
     """Return ordered list of (release_name, expected_version) from the VersionSet."""
     with open(manifest_path) as f:
-        doc = yaml.safe_load(f) or {}
+        doc = _yaml_load(f.read()) or {}
     releases = doc.get("releases", {}) or {}
     out = []
     for name, spec in releases.items():
@@ -126,7 +222,7 @@ def release_workloads(namespace, release):
         return []
     wls = []
     try:
-        for doc in yaml.safe_load_all(out):
+        for doc in _yaml_load_all(out):
             if not doc:
                 continue
             kind = doc.get("kind")
@@ -134,7 +230,7 @@ def release_workloads(namespace, release):
                 name = (doc.get("metadata", {}) or {}).get("name")
                 if name:
                     wls.append((kind, name))
-    except yaml.YAMLError:
+    except Exception:
         return []
     return wls
 
@@ -303,7 +399,7 @@ def collect_dep_services(config_path):
     """Whitelisted, credential-free view of depServices from config.yaml."""
     try:
         with open(config_path) as f:
-            cfg = yaml.safe_load(f) or {}
+            cfg = _yaml_load(f.read()) or {}
     except (IOError, OSError):
         return {}, []
     dep = cfg.get("depServices", {}) or {}
@@ -478,7 +574,7 @@ def read_auth(config_path):
     if config_path:
         try:
             with open(config_path) as f:
-                cfg = yaml.safe_load(f) or {}
+                cfg = _yaml_load(f.read()) or {}
             a = cfg.get("auth")
             if isinstance(a, dict) and "enabled" in a:
                 enabled = bool(a.get("enabled"))
