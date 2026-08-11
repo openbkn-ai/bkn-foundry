@@ -333,18 +333,14 @@ func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(
 	return nil
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalog health check schedules")
+func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalog health check schedule")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("catalog_ids").StringSlice(catalogIDs))
-
-	if len(catalogIDs) == 0 {
-		return nil
-	}
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
 	query, args, err := sq.Delete(tableName).
-		Where(sq.Eq{"f_catalog_id": catalogIDs}).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build delete SQL failed")

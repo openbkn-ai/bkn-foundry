@@ -1116,15 +1116,71 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 }
 
-func TestCatalogServiceDeleteByIDs(t *testing.T) {
-	t.Run("delete by ids empty", func(t *testing.T) {
-		cs := &catalogService{}
-		err := cs.DeleteByIDs(context.Background(), []string{})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-	t.Run("delete by ids cascades build tasks and indexes", func(t *testing.T) {
+func TestCatalogServiceGetDeletionImpact(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	ra := mock_interfaces.NewMockResourceAccess(ctrl)
+	bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	dsa := mock_interfaces.NewMockDiscoverScheduleAccess(ctrl)
+	dta := mock_interfaces.NewMockDiscoverTaskAccess(ctrl)
+	suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+	cs := &catalogService{ra: ra, bta: bta, dsa: dsa, dta: dta, suta: suta}
+
+	ra.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return([]*interfaces.Resource{{ID: "resource-1"}}, nil)
+	bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			if len(params.Statuses) == 0 {
+				return nil, 3, nil
+			}
+			assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}, params.Statuses)
+			return nil, 1, nil
+		}).Times(2)
+	dsa.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverScheduleQueryParams) ([]*interfaces.DiscoverSchedule, int64, error) {
+			if params.Enabled == nil {
+				return nil, 2, nil
+			}
+			return nil, 1, nil
+		}).Times(2)
+	dta.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+			switch params.Status {
+			case "":
+				return nil, 4, nil
+			case interfaces.DiscoverTaskStatusPending:
+				return nil, 1, nil
+			case interfaces.DiscoverTaskStatusRunning:
+				return nil, 2, nil
+			default:
+				t.Fatalf("unexpected status: %s", params.Status)
+				return nil, 0, nil
+			}
+		}).Times(3)
+	suta.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+			if len(params.Statuses) == 0 {
+				return nil, 5, nil
+			}
+			assert.Equal(t, interfaces.SemanticUnderstandingTaskActiveStatuses, params.Statuses)
+			return nil, 2, nil
+		}).Times(2)
+	ra.EXPECT().CheckExistByCategories(gomock.Any(), "catalog-1", []string{
+		interfaces.ResourceCategoryDataset,
+		interfaces.ResourceCategoryLogicView,
+	}).Return(false, nil)
+
+	impact, err := cs.GetDeletionImpact(context.Background(), "catalog-1")
+	require.NoError(t, err)
+	assert.False(t, impact.CanDelete)
+	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{Active: 1, Total: 3}, impact.BuildTasks)
+	assert.Equal(t, interfaces.CatalogDeletionScheduleImpact{Enabled: 1, Total: 2}, impact.DiscoverSchedules)
+	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{Active: 3, Total: 4}, impact.DiscoverTasks)
+	assert.Equal(t, interfaces.CatalogDeletionTaskImpact{Active: 2, Total: 5}, impact.SemanticUnderstandingTasks)
+}
+
+func TestCatalogServiceDeleteByID(t *testing.T) {
+	t.Run("deletes catalog and cascades build tasks and indexes", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -1147,13 +1203,13 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
-		mockCA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
-		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
-		mockRA.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Any(), []string{"c1"}).Return(nil)
+		mockCA.EXPECT().DeleteByID(gomock.Any(), gomock.Any(), "c1").Return(nil)
+		mockHCSS.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
+		mockRA.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
 
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS, ra: mockRA, bta: mockBTA, lim: mockLIM, hcss: mockHCSS}
-		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err != nil {
+		if err := cs.DeleteByID(context.Background(), "c1"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		require.NoError(t, sqlMock.ExpectationsWereMet())
@@ -1177,13 +1233,13 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
-		mockHCSS.EXPECT().DeleteByCatalogIDs(gomock.Any(), gomock.Not(nil), []string{"c1"}).
+		mockHCSS.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Not(nil), "c1").
 			Return(errors.New(sensitiveError))
 
 		cs := &catalogService{
 			db: db, ca: mockCA, ps: mockPS, bta: mockBTA, lim: mockLIM, hcss: mockHCSS,
 		}
-		err = cs.DeleteByIDs(context.Background(), []string{"c1"})
+		err = cs.DeleteByID(context.Background(), "c1")
 
 		var httpErr *rest.HTTPError
 		require.ErrorAs(t, err, &httpErr)
@@ -1193,7 +1249,7 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
-	t.Run("delete by ids refuses when task running", func(t *testing.T) {
+	t.Run("refuses deletion when task running", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -1206,10 +1262,10 @@ func TestCatalogServiceDeleteByIDs(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}}, int64(1), nil)
-		// 不应调用 ca.DeleteByIDs / bta.Delete / ds.Delete
+		// 不应调用 ca.DeleteByID / bta.Delete / ds.Delete
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, bta: mockBTA, lim: mockLIM}
-		if err := cs.DeleteByIDs(context.Background(), []string{"c1"}); err == nil {
+		if err := cs.DeleteByID(context.Background(), "c1"); err == nil {
 			t.Fatalf("expected error when a build task is running")
 		}
 	})

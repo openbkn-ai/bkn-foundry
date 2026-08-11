@@ -1193,17 +1193,16 @@ func (ra *resourceAccess) CheckExistByCategories(ctx context.Context, catalogID 
 	return total > 0, nil
 }
 
-func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete resources by catalog IDs")
+func (ra *resourceAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete resources by catalog ID")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("catalog_ids").StringSlice(catalogIDs))
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	if len(catalogIDs) == 0 {
-		return nil
-	}
-
-	idSql, idArgs, err := sq.Select("f_id").From(RESOURCE_TABLE_NAME).Where(sq.Eq{"f_catalog_id": catalogIDs}).ToSql()
+	idSql, idArgs, err := sq.Select("f_id").
+		From(RESOURCE_TABLE_NAME).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
+		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
@@ -1239,7 +1238,7 @@ func (ra *resourceAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, ca
 	}
 
 	sqlStr, vals, _ := sq.Delete(RESOURCE_TABLE_NAME).
-		Where(sq.Eq{"f_catalog_id": catalogIDs}).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
 
 	if tx != nil {

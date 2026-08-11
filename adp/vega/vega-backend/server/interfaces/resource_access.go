@@ -50,6 +50,6 @@ type ResourceAccess interface {
 	// CheckExistByCategories checks if Resources exists by catalog ID and categories.
 	CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error)
 
-	// DeleteByCatalogIDs deletes Resources by catalog IDs.
-	DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error
+	// DeleteByCatalogID deletes Resources by catalog ID.
+	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
 }

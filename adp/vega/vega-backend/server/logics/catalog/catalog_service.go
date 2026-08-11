@@ -65,8 +65,11 @@ type catalogService struct {
 	ps   interfaces.PermissionService
 	ums  interfaces.UserMgmtService
 	bta  interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
+	dsa  interfaces.DiscoverScheduleAccess
+	dta  interfaces.DiscoverTaskAccess
 	hcss interfaces.CatalogHealthCheckScheduleService
 	lim  interfaces.LocalIndexManager
+	suta interfaces.SemanticUnderstandingTaskAccess
 }
 
 // NewCatalogService creates a new CatalogService.
@@ -94,10 +97,13 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 			bta:  logics.BTA,
 			ca:   logics.CA,
 			cf:   cf,
+			dsa:  logics.DSA,
+			dta:  logics.DTA,
 			hcss: hcss,
 			lim:  lim,
 			ps:   ps,
 			ra:   logics.RA,
+			suta: logics.SUTA,
 			ums:  ums,
 		}
 	})
@@ -841,15 +847,80 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 	return nil
 }
 
-// DeleteByIDs deletes Catalogs by IDs.
-func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete catalogs")
-	defer span.End()
-
-	if len(ids) == 0 {
-		span.SetStatus(codes.Ok, "")
-		return nil
+// GetDeletionImpact returns the dependency counts used by catalog deletion.
+// It deliberately uses access ports so the catalog service does not depend on
+// discover services, which already depend on catalog service.
+func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*interfaces.CatalogDeletionImpact, error) {
+	page := interfaces.PaginationQueryParams{Limit: 1}
+	resources, err := cs.ra.GetByCatalogID(ctx, id)
+	if err != nil {
+		return nil, err
 	}
+	_, buildTotal, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{PaginationQueryParams: page, CatalogID: id})
+	if err != nil {
+		return nil, err
+	}
+	_, buildActive, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Statuses:              []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, scheduleTotal, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{PaginationQueryParams: page, CatalogID: id})
+	if err != nil {
+		return nil, err
+	}
+	enabled := true
+	_, enabledSchedules, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{PaginationQueryParams: page, CatalogID: id, Enabled: &enabled})
+	if err != nil {
+		return nil, err
+	}
+	_, discoverTotal, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{PaginationQueryParams: page, CatalogID: id})
+	if err != nil {
+		return nil, err
+	}
+	_, pendingDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{PaginationQueryParams: page, CatalogID: id, Status: interfaces.DiscoverTaskStatusPending})
+	if err != nil {
+		return nil, err
+	}
+	_, runningDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{PaginationQueryParams: page, CatalogID: id, Status: interfaces.DiscoverTaskStatusRunning})
+	if err != nil {
+		return nil, err
+	}
+	_, semanticTotal, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{PaginationQueryParams: page, CatalogID: id})
+	if err != nil {
+		return nil, err
+	}
+	_, semanticActive, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Statuses:              interfaces.SemanticUnderstandingTaskActiveStatuses,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resourceBlocked, err := cs.ra.CheckExistByCategories(ctx, id, []string{interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicView})
+	if err != nil {
+		return nil, err
+	}
+
+	return &interfaces.CatalogDeletionImpact{
+		BuildTasks:                 interfaces.CatalogDeletionTaskImpact{Active: buildActive, Total: buildTotal},
+		CanDelete:                  !resourceBlocked && buildActive == 0 && pendingDiscover+runningDiscover == 0,
+		CatalogID:                  id,
+		DiscoverSchedules:          interfaces.CatalogDeletionScheduleImpact{Enabled: enabledSchedules, Total: scheduleTotal},
+		DiscoverTasks:              interfaces.CatalogDeletionTaskImpact{Active: pendingDiscover + runningDiscover, Total: discoverTotal},
+		Resources:                  len(resources),
+		SemanticUnderstandingTasks: interfaces.CatalogDeletionTaskImpact{Active: semanticActive, Total: semanticTotal},
+	}, nil
+}
+
+// DeleteByID deletes a Catalog by ID.
+func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete catalog")
+	defer span.End()
 
 	// 判断userid是否有删除权限；内部目录按 internal_catalog 类型校验
 	internalSet, err := cs.internalCatalogIDSet(ctx)
@@ -857,7 +928,7 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return err
 	}
-	matchResoucesMap, err := cs.filterCatalogResources(ctx, ids, internalSet,
+	matchResoucesMap, err := cs.filterCatalogResources(ctx, []string{id}, internalSet,
 		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Filter resources error")
@@ -865,25 +936,18 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	}
 
 	// 检查是否有删除权限
-	if len(matchResoucesMap) != len(ids) {
-		// 请求的资源id可以重复，未去重，资源过滤出来的资源id是去重过的，所以单纯判断数量不准确
-		for _, id := range ids {
-			if _, exist := matchResoucesMap[id]; !exist {
-				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-					WithErrorDetails("Access denied: insufficient permissions for catalog's delete operation.")
-			}
-		}
+	if _, exists := matchResoucesMap[id]; !exists {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("Access denied: insufficient permissions for catalog's delete operation.")
 	}
 
 	// 删 catalog 前先级联清掉其下所有资源的构建任务 + OpenSearch 索引，
 	// 否则资源行被删后任务行与索引全成孤儿。运行中任务会拒绝整个删除（HasRunningExecution），
 	// 用户需先停止再删。放在删 catalog/resource 行之前，cascade 失败则什么都不删。
-	for _, id := range ids {
-		if err := logics.CascadeDeleteBuildTasks(ctx, cs.bta, cs.lim,
-			interfaces.BuildTasksQueryParams{CatalogID: id}); err != nil {
-			span.SetStatus(codes.Error, "Cascade delete build tasks failed")
-			return err
-		}
+	if err := logics.CascadeDeleteBuildTasks(ctx, cs.bta, cs.lim,
+		interfaces.BuildTasksQueryParams{CatalogID: id}); err != nil {
+		span.SetStatus(codes.Error, "Cascade delete build tasks failed")
+		return err
 	}
 
 	tx, err := cs.db.BeginTx(ctx, nil)
@@ -896,12 +960,12 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	err = cs.hcss.DeleteByCatalogIDs(ctx, tx, ids)
+	err = cs.hcss.DeleteByCatalogID(ctx, tx, id)
 	if err == nil {
-		err = cs.ra.DeleteByCatalogIDs(ctx, tx, ids)
+		err = cs.ra.DeleteByCatalogID(ctx, tx, id)
 	}
 	if err == nil {
-		err = cs.ca.DeleteByIDs(ctx, tx, ids)
+		err = cs.ca.DeleteByID(ctx, tx, id)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -915,16 +979,12 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	}
 
 	//  清除资源策略，按内部/普通目录分组删除对应类型的策略
-	normalIDs, internalIDs := partitionCatalogIDs(ids, internalSet)
-	if len(normalIDs) > 0 {
-		if err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, normalIDs); err != nil {
-			return err
-		}
+	resourceType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
+	if _, internal := internalSet[id]; internal {
+		resourceType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
 	}
-	if len(internalIDs) > 0 {
-		if err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, internalIDs); err != nil {
-			return err
-		}
+	if err = cs.ps.DeleteResources(ctx, resourceType, []string{id}); err != nil {
+		return err
 	}
 
 	span.SetStatus(codes.Ok, "")

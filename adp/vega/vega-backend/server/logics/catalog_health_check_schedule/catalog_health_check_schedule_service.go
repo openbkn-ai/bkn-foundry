@@ -260,13 +260,13 @@ func (chcss *catalogHealthCheckScheduleService) nextRun(mode, cronExpr string, n
 	return schedule.Next(now).UnixMilli(), nil
 }
 
-func (chcss *catalogHealthCheckScheduleService) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogHealthCheckScheduleService.DeleteByCatalogIDs")
+func (chcss *catalogHealthCheckScheduleService) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogHealthCheckScheduleService.DeleteByCatalogID")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("catalog_ids").StringSlice(catalogIDs))
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	if err := chcss.sa.DeleteByCatalogIDs(ctx, tx, catalogIDs); err != nil {
+	if err := chcss.sa.DeleteByCatalogID(ctx, tx, catalogID); err != nil {
 		span.SetStatus(codes.Error, "Delete health check schedules failed")
 		otellog.LogError(ctx, "Delete catalog health check schedules failed", err)
 		return err

@@ -296,9 +296,28 @@ paths:
     delete:
       summary: 删除 catalog
       description: |
-        路径参数支持单条或批量（逗号分隔）。删除会同步移除该 catalog 下的资源、调度等关联记录，
+        一次只允许删除一个 catalog；路径参数包含逗号时返回 400。删除会同步移除该 catalog 下的资源、构建任务/索引与健康检查计划，
         并删除 `t_entity_extension` 中 `f_entity_id` 等于被删 catalog / resource `f_id` 的行（应用层同事务）。
+
+        传入 `dry_run=true` 时仅执行权限、存在性和影响分析，不写入任何数据；返回该 catalog
+        的资源、构建任务、探查计划/任务和语义理解任务计数。`can_delete` 严格反映当前
+        DELETE 的阻断规则，调用方仍须以不带 `dry_run` 的请求结果为准，因为预检与实际删除
+        之间可能有并发变更。
+      parameters:
+        - name: dry_run
+          in: query
+          required: false
+          description: 为 true 时模拟删除并返回影响报告；默认 false，执行真实删除。
+          schema:
+            type: boolean
+            default: false
       responses:
+        "200":
+          description: dry_run 影响报告
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogDeletionImpact"
         "204":
           description: 删除成功
         "401":
@@ -613,6 +632,55 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
+    CatalogDeletionImpact:
+      type: object
+      required:
+        - catalog_id
+        - can_delete
+        - resources
+        - build_tasks
+        - discover_schedules
+        - discover_tasks
+        - semantic_understanding_tasks
+      properties:
+        catalog_id:
+          type: string
+        can_delete:
+          type: boolean
+        resources:
+          type: integer
+        build_tasks:
+          $ref: "#/components/schemas/CatalogDeletionTaskImpact"
+        discover_schedules:
+          $ref: "#/components/schemas/CatalogDeletionScheduleImpact"
+        discover_tasks:
+          $ref: "#/components/schemas/CatalogDeletionTaskImpact"
+        semantic_understanding_tasks:
+          $ref: "#/components/schemas/CatalogDeletionTaskImpact"
+    CatalogDeletionTaskImpact:
+      type: object
+      required:
+        - active
+        - total
+      properties:
+        active:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+    CatalogDeletionScheduleImpact:
+      type: object
+      required:
+        - enabled
+        - total
+      properties:
+        enabled:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
     EntityExtensions:
       description: |
         扁平 KV 的 JSON object 形态（`string`→`string`）。用于 **`Catalog` / `CatalogRequest` / `CatalogRef`**

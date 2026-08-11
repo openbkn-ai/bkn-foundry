@@ -6,6 +6,28 @@
 
 package interfaces
 
+type CatalogDeletionTaskImpact struct {
+	Active int64 `json:"active"`
+	Total  int64 `json:"total"`
+}
+
+type CatalogDeletionScheduleImpact struct {
+	Enabled int64 `json:"enabled"`
+	Total   int64 `json:"total"`
+}
+
+// CatalogDeletionImpact describes the current deletion impact for one catalog.
+// CanDelete mirrors the guards enforced by DELETE /catalogs/{id}.
+type CatalogDeletionImpact struct {
+	BuildTasks                 CatalogDeletionTaskImpact     `json:"build_tasks"`
+	CanDelete                  bool                          `json:"can_delete"`
+	CatalogID                  string                        `json:"catalog_id"`
+	DiscoverSchedules          CatalogDeletionScheduleImpact `json:"discover_schedules"`
+	DiscoverTasks              CatalogDeletionTaskImpact     `json:"discover_tasks"`
+	Resources                  int                           `json:"resources"`
+	SemanticUnderstandingTasks CatalogDeletionTaskImpact     `json:"semantic_understanding_tasks"`
+}
+
 const (
 	CatalogTypePhysical string = "physical"
 	CatalogTypeLogical  string = "logical"

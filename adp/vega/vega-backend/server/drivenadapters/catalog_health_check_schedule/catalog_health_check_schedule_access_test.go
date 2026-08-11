@@ -249,22 +249,14 @@ func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
 	})
 }
 
-func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
-	t.Run("deletes schedules", func(t *testing.T) {
+func TestCatalogHealthCheckScheduleAccessDeleteByCatalogID(t *testing.T) {
+	t.Run("deletes schedule", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id IN (?,?)")).
-			WithArgs("catalog-1", "catalog-2").WillReturnResult(sqlmock.NewResult(0, 2))
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id = ?")).
+			WithArgs("catalog-1").WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1", "catalog-2"}))
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("skips empty catalog IDs", func(t *testing.T) {
-		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
-		defer cleanup()
-
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, nil))
+		require.NoError(t, access.DeleteByCatalogID(context.Background(), nil, "catalog-1"))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -272,10 +264,10 @@ func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 		deleteErr := sql.ErrConnDone
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id IN (?)")).
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").WillReturnError(deleteErr)
 
-		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
+		err := access.DeleteByCatalogID(context.Background(), nil, "catalog-1")
 
 		require.ErrorIs(t, err, deleteErr)
 		require.NoError(t, mock.ExpectationsWereMet())

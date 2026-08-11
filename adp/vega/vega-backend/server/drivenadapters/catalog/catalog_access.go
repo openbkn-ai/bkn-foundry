@@ -867,26 +867,22 @@ func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interf
 	return nil
 }
 
-// DeleteByIDs deletes Catalogs by IDs.
-func (ca *catalogAccess) DeleteByIDs(ctx context.Context, tx *sql.Tx, ids []string) error {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalogs")
+// DeleteByID deletes a Catalog by ID.
+func (ca *catalogAccess) DeleteByID(ctx context.Context, tx *sql.Tx, id string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalog")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("catalog_ids").StringSlice(ids))
-
-	if len(ids) == 0 {
-		return nil
-	}
+	span.SetAttributes(attr.Key("catalog_id").String(id))
 
 	extensionErr := entityextension.NewStore(ca.appSetting).
-		DeleteByEntityIDs(ctx, tx, entityextension.KindCatalog, ids)
+		DeleteByEntityIDs(ctx, tx, entityextension.KindCatalog, []string{id})
 	if extensionErr != nil {
 		span.SetStatus(codes.Error, "Delete entity extensions failed")
 		return extensionErr
 	}
 
 	sqlStr, vals, _ := sq.Delete(CATALOG_TABLE_NAME).
-		Where(sq.Eq{"f_id": ids}).
+		Where(sq.Eq{"f_id": id}).
 		ToSql()
 
 	var err error

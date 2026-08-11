@@ -114,7 +114,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.POST("", r.verifyJsonContentType(), r.CreateCatalogByEx)
 			catalogs.PUT("/:id", r.verifyJsonContentType(), r.UpdateCatalogByEx)
 			catalogs.GET("/:id", r.GetCatalogsByEx)
-			catalogs.DELETE("/:id", r.DeleteCatalogsByEx)
+			catalogs.DELETE("/:id", r.DeleteCatalogByEx)
 			catalogs.POST("/:id/enable", r.EnableCatalogByEx)
 			catalogs.POST("/:id/disable", r.DisableCatalogByEx)
 
@@ -210,7 +210,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.POST("", r.verifyJsonContentType(), r.CreateCatalogByIn)
 			catalogs.PUT("/:id", r.verifyJsonContentType(), r.UpdateCatalogByIn)
 			catalogs.GET("/:id", r.GetCatalogsByIn)
-			catalogs.DELETE("/:id", r.DeleteCatalogsByIn)
+			catalogs.DELETE("/:id", r.DeleteCatalogByIn)
 			catalogs.POST("/:id/enable", r.EnableCatalogByIn)
 			catalogs.POST("/:id/disable", r.DisableCatalogByIn)
 

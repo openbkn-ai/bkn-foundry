@@ -33,8 +33,8 @@ type CatalogAccess interface {
 	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.
 	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog) error
-	// DeleteByIDs deletes Catalogs by IDs.
-	DeleteByIDs(ctx context.Context, tx *sql.Tx, ids []string) error
+	// DeleteByID deletes a Catalog by ID.
+	DeleteByID(ctx context.Context, tx *sql.Tx, id string) error
 	// UpdateHealthCheckStatus updates Catalog health check status.
 	UpdateHealthCheckStatus(ctx context.Context, id string, status CatalogHealthCheckStatus) error
 	// UpdateEnabled updates Catalog enabled status and health check status.

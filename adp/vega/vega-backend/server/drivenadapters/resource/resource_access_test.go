@@ -555,24 +555,16 @@ func TestResourceAccessCheckExistByCategories(t *testing.T) {
 	})
 }
 
-func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
-	t.Run("skips empty catalog ids", func(t *testing.T) {
-		access, mock, cleanup := newResourceAccessMock(t)
-		defer cleanup()
-
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, nil))
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
+func TestResourceAccessDeleteByCatalogID(t *testing.T) {
 	t.Run("returns query error", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id IN (?)")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").
 			WillReturnError(errors.New("db down"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
+		err := access.DeleteByCatalogID(context.Background(), nil, "catalog-1")
 
 		require.Error(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -582,31 +574,31 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id IN (?)")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id", "extra"}).AddRow("resource-1", "unexpected"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
+		err := access.DeleteByCatalogID(context.Background(), nil, "catalog-1")
 
 		require.Error(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("deletes extensions and resources by catalog ids", func(t *testing.T) {
+	t.Run("deletes extensions and resources by catalog ID", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		store := &fakeResourceExtensionStore{}
 		restore := replaceResourceExtensionStore(store)
 		defer restore()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id IN (?)")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("resource-1").AddRow("resource-2"))
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_catalog_id IN (?)")).
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_resource WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").
 			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
+		err := access.DeleteByCatalogID(context.Background(), nil, "catalog-1")
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"resource-1", "resource-2"}, store.deletedIDs)
@@ -619,11 +611,11 @@ func TestResourceAccessDeleteByCatalogIDs(t *testing.T) {
 		restore := replaceResourceExtensionStore(&fakeResourceExtensionStore{err: errors.New("store down")})
 		defer restore()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id IN (?)")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_resource WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").
 			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("resource-1"))
 
-		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
+		err := access.DeleteByCatalogID(context.Background(), nil, "catalog-1")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "store down")
