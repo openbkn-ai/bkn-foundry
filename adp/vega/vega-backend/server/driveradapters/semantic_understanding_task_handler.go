@@ -320,8 +320,9 @@ func isValidSemanticUnderstandingTaskStatus(status string) bool {
 	switch status {
 	case interfaces.SemanticUnderstandingTaskStatusPending,
 		interfaces.SemanticUnderstandingTaskStatusRunning,
-		interfaces.SemanticUnderstandingTaskStatusSucceeded,
-		interfaces.SemanticUnderstandingTaskStatusFailed:
+		interfaces.SemanticUnderstandingTaskStatusCompleted,
+		interfaces.SemanticUnderstandingTaskStatusFailed,
+		interfaces.SemanticUnderstandingTaskStatusCancelled:
 		return true
 	}
 	return false

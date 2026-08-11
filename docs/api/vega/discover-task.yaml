@@ -10,7 +10,7 @@ info:
     - 手动触发：`POST /catalogs/{id}/discover`（动作端点，本规范末尾覆盖）
     - 定时触发：worker 内部由 `DiscoverSchedule`（见 [discover-schedule.yaml](discover-schedule.yaml)）按 cron 触发
 
-    状态机（`pending → running → completed/failed`）由 worker 单向推进；
+    状态机（`pending → running → completed/failed/cancelled`）由 worker 单向推进；
     用户不能 cancel / retry / restart。对外仅暴露 list / get / delete 三类只读 + 清理操作。
 
     端点设计遵循 [vega-backend/CLAUDE.md] 的"端点设计规则"：批量删除走 path
@@ -48,6 +48,7 @@ paths:
               - running
               - completed
               - failed
+              - cancelled
         - name: strategy
           description: 按探查策略过滤
           in: query
@@ -141,7 +142,7 @@ paths:
 
         1. 任一 id 处于 `pending` / `running` → 409 `VegaBackend.DiscoverTask.HasRunningExecution`，
            `error_details` 携带 `{ running_ids: [...] }`。状态拦截**不可绕过**——避免删除
-           掉 worker 正在写入的 task 留下孤儿数据。需等待任务进入终态（completed/failed）。
+           掉 worker 正在写入的 task 留下孤儿数据。需等待任务进入终态（completed/failed/cancelled）。
         2. 任一 id 不存在（且未启用 `ignore_missing`）→ 404 `VegaBackend.DiscoverTask.NotFound`，
            `error_details` 携带 `{ missing_ids: [...] }`。
         3. 全部通过 → 逐条删除，返回 204。
@@ -351,6 +352,7 @@ components:
             - running
             - completed
             - failed
+            - cancelled
         progress:
           description: 进度，0-100
           type: integer
@@ -403,7 +405,7 @@ components:
           enum: [manual, scheduled]
         status:
           type: string
-          enum: [pending, running, completed, failed]
+          enum: [pending, running, completed, failed, cancelled]
         progress: { type: integer }
         start_time: { type: integer, format: int64 }
         finish_time: { type: integer, format: int64 }

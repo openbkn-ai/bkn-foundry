@@ -633,38 +633,6 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Check if catalog discover tasks exists.
-	exists, err = r.dts.CheckExistByStatuses(ctx, id, []string{interfaces.DiscoverTaskStatusPending, interfaces.DiscoverTaskStatusRunning})
-	if err != nil {
-		httpErr := err.(*rest.HTTPError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if exists {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("catalog %s contains tasks in the pending or running statuses and cannot be deleted.", id))
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	// Check if catalog resources exists.
-	exists, err = r.rs.CheckExistByCategories(ctx, id, []string{interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicView})
-	if err != nil {
-		httpErr := err.(*rest.HTTPError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if exists {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("catalog %s contains data from dataset or logicview class resources and cannot be deleted.", id))
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
 	if err := r.cs.DeleteByID(ctx, id); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

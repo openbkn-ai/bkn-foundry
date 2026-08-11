@@ -83,7 +83,8 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
 	// stopping 出队说明原 worker 已不在，兜底落停。
 	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
-		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
+		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping ||
+		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
 			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
@@ -305,6 +306,11 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 		taskStatus, err := bbw.bts.InternalGetStatus(ctx, buildTaskInfo.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get task status: %w", err)
+		}
+
+		if taskStatus == interfaces.BuildTaskStatusCancelled {
+			logger.Infof("Task %s is cancelled, exiting...", buildTaskInfo.ID)
+			return nil
 		}
 
 		// Handle stopping status

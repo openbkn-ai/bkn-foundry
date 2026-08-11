@@ -226,6 +226,9 @@ func (sw *ScheduleWorker) executeSchedule(scheduleID string) {
 	}
 	if schedule == nil {
 		otellog.LogError(sw.ctx, fmt.Sprintf("Schedule %s not found", scheduleID), nil)
+		if err := sw.unschedule(scheduleID); err != nil {
+			otellog.LogError(sw.ctx, fmt.Sprintf("Failed to unschedule missing schedule %s", scheduleID), err)
+		}
 		return
 	}
 

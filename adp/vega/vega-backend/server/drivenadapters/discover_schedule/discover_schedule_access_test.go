@@ -220,6 +220,18 @@ func TestDiscoverScheduleAccessDelete(t *testing.T) {
 	})
 }
 
+func TestDiscoverScheduleAccessDeleteByCatalogID(t *testing.T) {
+	access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectExec("DELETE FROM t_discover_schedule WHERE f_catalog_id = ?").
+		WithArgs("catalog-1").
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	require.NoError(t, access.DeleteByCatalogID(context.Background(), nil, "catalog-1"))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDiscoverScheduleAccessGetEnabledSchedules(t *testing.T) {
 	t.Run("returns enabled schedules", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)

@@ -141,8 +141,8 @@ func TestDiscoverTaskAccessUpdateStatus(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec("UPDATE t_discover_task SET f_message = ?, f_start_time = ?, f_status = ? WHERE f_id = ?").
-			WithArgs("started", int64(123), interfaces.DiscoverTaskStatusRunning, "task-1").
+		mock.ExpectExec("UPDATE t_discover_task SET f_message = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status <> ?").
+			WithArgs("started", int64(123), interfaces.DiscoverTaskStatusRunning, "task-1", interfaces.DiscoverTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		require.NoError(t, access.UpdateStatus(context.Background(), "task-1", interfaces.DiscoverTaskStatusRunning, "started", 123))
@@ -153,8 +153,8 @@ func TestDiscoverTaskAccessUpdateStatus(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec("UPDATE t_discover_task SET f_message = ?, f_status = ? WHERE f_id = ?").
-			WithArgs("failed", interfaces.DiscoverTaskStatusFailed, "task-1").
+		mock.ExpectExec("UPDATE t_discover_task SET f_message = ?, f_status = ? WHERE f_id = ? AND f_status <> ?").
+			WithArgs("failed", interfaces.DiscoverTaskStatusFailed, "task-1", interfaces.DiscoverTaskStatusCancelled).
 			WillReturnError(sql.ErrConnDone)
 
 		err := access.UpdateStatus(context.Background(), "task-1", interfaces.DiscoverTaskStatusFailed, "failed", 0)
@@ -169,8 +169,8 @@ func TestDiscoverTaskAccessUpdateProgress(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec("UPDATE t_discover_task SET f_progress = ?, f_update_time = ? WHERE f_id = ?").
-			WithArgs(30, sqlmock.AnyArg(), "task-1").
+		mock.ExpectExec("UPDATE t_discover_task SET f_progress = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?").
+			WithArgs(30, sqlmock.AnyArg(), "task-1", interfaces.DiscoverTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		require.NoError(t, access.UpdateProgress(context.Background(), "task-1", 30))
@@ -183,8 +183,8 @@ func TestDiscoverTaskAccessUpdateResult(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec("UPDATE t_discover_task SET f_status = ?, f_result = ?, f_progress = ?, f_finish_time = ? WHERE f_id = ?").
-			WithArgs(interfaces.DiscoverTaskStatusCompleted, `{"catalog_id":"catalog-1","new_count":1,"stale_count":0,"unchanged_count":0,"updated_count":0,"restored_count":0,"failed_count":0,"message":"done"}`, 100, int64(999), "task-1").
+		mock.ExpectExec("UPDATE t_discover_task SET f_status = ?, f_result = ?, f_progress = ?, f_finish_time = ? WHERE f_id = ? AND f_status <> ?").
+			WithArgs(interfaces.DiscoverTaskStatusCompleted, `{"catalog_id":"catalog-1","new_count":1,"stale_count":0,"unchanged_count":0,"updated_count":0,"restored_count":0,"failed_count":0,"message":"done"}`, 100, int64(999), "task-1", interfaces.DiscoverTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		require.NoError(t, access.UpdateResult(context.Background(), "task-1", &interfaces.DiscoverResult{
@@ -256,6 +256,19 @@ func TestDiscoverTaskAccessDelete(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestDiscoverTaskAccessMarkCancelledByCatalogID(t *testing.T) {
+	access, mock, cleanup := newDiscoverTaskAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectExec("UPDATE t_discover_task SET f_status = ?, f_message = ?, f_finish_time = ? WHERE f_catalog_id = ? AND f_status = ?").
+		WithArgs(interfaces.DiscoverTaskStatusCancelled, "catalog deleted", int64(100), "catalog-1",
+			interfaces.DiscoverTaskStatusPending).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	require.NoError(t, access.MarkCancelledByCatalogID(context.Background(), nil, "catalog-1", "catalog deleted", 100))
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func sampleDiscoverTask() *interfaces.DiscoverTask {

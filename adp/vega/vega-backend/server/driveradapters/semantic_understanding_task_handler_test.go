@@ -240,6 +240,10 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 	})
 }
 
+func TestIsValidSemanticUnderstandingTaskStatusCancelled(t *testing.T) {
+	assert.True(t, isValidSemanticUnderstandingTaskStatus(interfaces.SemanticUnderstandingTaskStatusCancelled))
+}
+
 func Test_SemanticUnderstandingTaskRestHandler_GetTask(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
@@ -251,7 +255,7 @@ func Test_SemanticUnderstandingTaskRestHandler_GetTask(t *testing.T) {
 			Scope:      interfaces.SemanticUnderstandingTaskScopeResource,
 			CatalogID:  "catalog-1",
 			ResourceID: "res-1",
-			Status:     interfaces.SemanticUnderstandingTaskStatusSucceeded,
+			Status:     interfaces.SemanticUnderstandingTaskStatusCompleted,
 			Confidence: 0.82,
 			Input:      `{"private":"snapshot"}`,
 			ResultJSON: `{"private":"result"}`,

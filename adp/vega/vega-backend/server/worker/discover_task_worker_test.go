@@ -10,6 +10,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/bytedance/sonic"
+	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -17,6 +19,20 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
+
+func TestDiscoverTaskWorkerSkipsCancelledTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", Status: interfaces.DiscoverTaskStatusCancelled,
+	}, nil)
+	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
+	require.NoError(t, err)
+
+	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+}
 
 func TestReconcileTableResources(t *testing.T) {
 	t.Run("marks new table resource", func(t *testing.T) {

@@ -296,8 +296,11 @@ paths:
     delete:
       summary: 删除 catalog
       description: |
-        一次只允许删除一个 catalog；路径参数包含逗号时返回 400。删除会同步移除该 catalog 下的资源、构建任务/索引与健康检查计划，
-        并删除 `t_entity_extension` 中 `f_entity_id` 等于被删 catalog / resource `f_id` 的行（应用层同事务）。
+        一次只允许删除一个 catalog；路径参数包含逗号时返回 400。删除会同步移除该 catalog 下的资源、
+        构建索引、探查计划与健康检查计划，并删除 `t_entity_extension` 中 `f_entity_id` 等于被删
+        catalog / resource `f_id` 的行。三类任务记录均保留：尚未开始的构建、探查和语义理解任务
+        标记为 `cancelled`；已有终态任务保持原状态。存在 `running` 任务时拒绝删除，
+        构建任务处于 `stopping` 时也会拒绝删除。
 
         传入 `dry_run=true` 时仅执行权限、存在性和影响分析，不写入任何数据；返回该 catalog
         的资源、构建任务、探查计划/任务和语义理解任务计数。`can_delete` 严格反映当前
@@ -647,6 +650,7 @@ components:
           type: string
         can_delete:
           type: boolean
+          description: 无受保护资源且三类任务均未正在执行时为 true。
         resources:
           type: integer
         build_tasks:
@@ -666,9 +670,11 @@ components:
         active:
           type: integer
           format: int64
+          description: 非终态任务数；其中正在执行的任务会阻止删除，尚未开始的任务会被标记为 cancelled。
         total:
           type: integer
           format: int64
+          description: 删除后仍会保留的任务记录总数。
     CatalogDeletionScheduleImpact:
       type: object
       required:

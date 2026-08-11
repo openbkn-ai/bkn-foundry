@@ -485,6 +485,32 @@ func (dsa *discoverScheduleAccess) Delete(ctx context.Context, id string) error 
 	return nil
 }
 
+// DeleteByCatalogID deletes discover schedules belonging to a Catalog.
+func (dsa *discoverScheduleAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete discover schedules by catalog ID")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+	sqlStr, vals, err := sq.Delete(DISCOVER_SCHEDULE_TABLE_NAME).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = dsa.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Delete failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // GetEnabledSchedules retrieves all enabled discover schedules.
 func (dsa *discoverScheduleAccess) GetEnabledSchedules(ctx context.Context) ([]*interfaces.DiscoverSchedule, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query enabled discover_schedules")

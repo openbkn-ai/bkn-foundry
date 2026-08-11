@@ -30,13 +30,13 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 
@@ -63,13 +63,13 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 		sh := &streamingBuildWorker{bts: bts}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(false, nil)
 
 		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
@@ -84,13 +84,13 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 		sh := &streamingBuildWorker{bts: bts, rs: rs, cs: cs}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{

@@ -47,7 +47,7 @@ var (
 const resourceAuthResourcePermissionBatchSize = 10000
 
 var activeResourceBuildTaskStatuses = []string{
-	interfaces.BuildTaskStatusInit,
+	interfaces.BuildTaskStatusPending,
 	interfaces.BuildTaskStatusRunning,
 	interfaces.BuildTaskStatusStopping,
 }

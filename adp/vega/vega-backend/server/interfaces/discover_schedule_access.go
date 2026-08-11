@@ -6,7 +6,10 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // DiscoverScheduleAccess defines data access interface for scheduled discover schedules.
 //
@@ -26,6 +29,8 @@ type DiscoverScheduleAccess interface {
 	Disable(ctx context.Context, id string) error
 	// Delete deletes a discover schedule by ID.
 	Delete(ctx context.Context, id string) error
+	// DeleteByCatalogID deletes discover schedules belonging to a Catalog.
+	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
 	// GetEnabledSchedules retrieves all enabled discover schedules.
 	GetEnabledSchedules(ctx context.Context) ([]*DiscoverSchedule, error)
 	// UpdateLastRun updates the last run time.

@@ -58,9 +58,9 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 	params.OrderBy = orderBy
 	params.Order = order
 
-	// 过滤:active=true 快捷 = running+init,优先于 status;否则解析 status 多值(逗号分隔)
+	// 过滤:active=true 快捷 = running+pending,优先于 status;否则解析 status 多值(逗号分隔)
 	if active, _ := strconv.ParseBool(c.Query("active")); active {
-		params.Statuses = []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusInit}
+		params.Statuses = []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending}
 	} else if raw := c.Query("status"); raw != "" {
 		statuses, err := parseBuildTaskStatuses(ctx, raw)
 		if err != nil {
@@ -108,12 +108,13 @@ func isValidBuildTaskOrderBy(o string) bool {
 
 func isValidBuildTaskStatus(s string) bool {
 	switch s {
-	case interfaces.BuildTaskStatusInit,
+	case interfaces.BuildTaskStatusPending,
 		interfaces.BuildTaskStatusRunning,
 		interfaces.BuildTaskStatusStopping,
 		interfaces.BuildTaskStatusStopped,
 		interfaces.BuildTaskStatusCompleted,
-		interfaces.BuildTaskStatusFailed:
+		interfaces.BuildTaskStatusFailed,
+		interfaces.BuildTaskStatusCancelled:
 		return true
 	}
 	return false

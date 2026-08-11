@@ -481,15 +481,15 @@ func (suts *semanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context
 	return suts.suta.SetAgentTaskID(ctx, id, agentTaskID)
 }
 
-func (suts *semanticUnderstandingTaskService) MarkSucceeded(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkSucceeded")
+func (suts *semanticUnderstandingTaskService) MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkCompleted")
 	defer span.End()
 
 	if confidence < 0 || confidence > 1 {
 		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("confidence must be between 0 and 1")
 	}
-	return suts.suta.MarkSucceeded(ctx, id, resultJSON, confidence, confidenceDetailJSON)
+	return suts.suta.MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON)
 }
 
 func (suts *semanticUnderstandingTaskService) MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error) {

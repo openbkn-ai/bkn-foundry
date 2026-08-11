@@ -30,7 +30,7 @@ ErrorLink = "No solution"
 
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "Invalid build task state transition"
-Solution = "Check current task status; start requires status in {init, stopped}; stop requires status == running"
+Solution = "Check current task status; start requires status in {stopped, failed}; stop requires status in {pending, running}"
 ErrorLink = "No solution"
 
 [VegaBackend.BuildTask.HasRunningExecution]

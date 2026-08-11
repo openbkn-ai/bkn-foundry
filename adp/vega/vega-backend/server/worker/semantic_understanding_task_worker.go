@@ -69,11 +69,12 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 	}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
-	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusFailed {
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusFailed ||
+		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCancelled {
 		logger.Infof("Semantic understanding task already finished: id=%s, status=%s", taskInfo.ID, taskInfo.Status)
 		return nil
 	}
-	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusSucceeded {
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted {
 		if taskInfo.AppliedTime != 0 {
 			logger.Infof("Semantic understanding task already applied: id=%s", taskInfo.ID)
 			return nil
@@ -132,11 +133,11 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 		}
 	}
 
-	succeeded, err := sutw.suts.MarkSucceeded(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
+	completed, err := sutw.suts.MarkCompleted(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	if err != nil {
 		return err
 	}
-	if !succeeded {
+	if !completed {
 		return nil
 	}
 	taskInfo.ResultJSON = resultJSON

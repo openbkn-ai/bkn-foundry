@@ -274,6 +274,19 @@ func TestSemanticUnderstandingTaskAccessDeleteByIDs(t *testing.T) {
 	})
 }
 
+func TestSemanticUnderstandingTaskAccessMarkCancelledByCatalogID(t *testing.T) {
+	db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_failure_detail = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_status = ?")).
+		WithArgs(interfaces.SemanticUnderstandingTaskStatusCancelled, "catalog deleted", int64(100), "catalog-1",
+			interfaces.SemanticUnderstandingTaskStatusPending).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	require.NoError(t, access.MarkCancelledByCatalogID(context.Background(), nil, "catalog-1", "catalog deleted", 100))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func newSemanticUnderstandingTaskAccessMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *semanticUnderstandingTaskAccess) {
 	t.Helper()
 	db, mock, err := sqlmock.New()

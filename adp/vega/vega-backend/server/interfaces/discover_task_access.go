@@ -7,7 +7,10 @@
 // Package interfaces defines entities, DTOs, and service interfaces.
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // DiscoverTaskAccess defines discover task data access interface.
 //
@@ -31,4 +34,6 @@ type DiscoverTaskAccess interface {
 
 	// Delete deletes a DiscoverTask by ID. Returns sql.ErrNoRows if no row was affected.
 	Delete(ctx context.Context, id string) error
+	// MarkCancelledByCatalogID marks pending tasks as cancelled when their Catalog is deleted.
+	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64) error
 }

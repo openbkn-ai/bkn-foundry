@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -67,6 +68,20 @@ func (m *MockDiscoverScheduleAccess) Delete(ctx context.Context, id string) erro
 func (mr *MockDiscoverScheduleAccessMockRecorder) Delete(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).Delete), ctx, id)
+}
+
+// DeleteByCatalogID mocks base method.
+func (m *MockDiscoverScheduleAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteByCatalogID", ctx, tx, catalogID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteByCatalogID indicates an expected call of DeleteByCatalogID.
+func (mr *MockDiscoverScheduleAccessMockRecorder) DeleteByCatalogID(ctx, tx, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogID", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).DeleteByCatalogID), ctx, tx, catalogID)
 }
 
 // Disable mocks base method.

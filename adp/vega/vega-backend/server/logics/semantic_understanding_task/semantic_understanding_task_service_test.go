@@ -488,12 +488,12 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	assert.True(t, running)
 
 	taskAccess.EXPECT().
-		MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`).
+		MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`).
 		Return(true, nil)
 
-	succeeded, err := service.MarkSucceeded(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
+	completed, err := service.MarkCompleted(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
 	require.NoError(t, err)
-	assert.True(t, succeeded)
+	assert.True(t, completed)
 }
 
 func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
@@ -626,7 +626,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "missing", "task-2"}).
 			Return([]*interfaces.SemanticUnderstandingTask{
-				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusSucceeded},
+				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 				{ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusFailed},
 			}, nil)
 		taskAccess.EXPECT().
@@ -648,7 +648,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 			GetByIDs(gomock.Any(), []string{"task-1", "task-2"}).
 			Return([]*interfaces.SemanticUnderstandingTask{
 				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusPending},
-				{ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusSucceeded},
+				{ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
 		err := service.Delete(context.Background(), []string{"task-1", "task-2"}, false)
@@ -666,7 +666,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "missing"}).
 			Return([]*interfaces.SemanticUnderstandingTask{
-				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusSucceeded},
+				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
 		err := service.Delete(context.Background(), []string{"task-1", "missing"}, false)

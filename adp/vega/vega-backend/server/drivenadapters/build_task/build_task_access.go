@@ -354,6 +354,10 @@ func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx,
 		Where(sq.Eq{"f_id": id})
 	if len(allowedStatuses) > 0 {
 		builder = builder.Where(sq.Eq{"f_status": allowedStatuses})
+	} else {
+		// Catalog deletion makes cancelled an irreversible terminal state. Worker
+		// callbacks that were already in flight must not revive the task.
+		builder = builder.Where(sq.NotEq{"f_status": interfaces.BuildTaskStatusCancelled})
 	}
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {

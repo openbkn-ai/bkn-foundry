@@ -396,6 +396,7 @@ func (dta *discoverTaskAccess) UpdateStatus(ctx context.Context, id, status, mes
 	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
 		SetMap(data).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -421,6 +422,7 @@ func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, pr
 		Set("f_progress", progress).
 		Set("f_update_time", time.Now().UnixMilli()).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -450,6 +452,7 @@ func (dta *discoverTaskAccess) UpdateResult(ctx context.Context, id string, resu
 		Set("f_progress", 100).
 		Set("f_finish_time", stime).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -525,6 +528,38 @@ func (dta *discoverTaskAccess) Delete(ctx context.Context, id string) error {
 		return sql.ErrNoRows
 	}
 
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// MarkCancelledByCatalogID marks pending tasks as cancelled when their Catalog is deleted.
+func (dta *discoverTaskAccess) MarkCancelledByCatalogID(
+	ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64,
+) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover tasks cancelled by catalog ID")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
+		Set("f_status", interfaces.DiscoverTaskStatusCancelled).
+		Set("f_message", message).
+		Set("f_finish_time", finishTime).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
+		Where(sq.Eq{"f_status": interfaces.DiscoverTaskStatusPending}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = dta.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return err
+	}
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

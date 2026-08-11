@@ -5,7 +5,7 @@ ErrorLink = "No solution"
 
 [VegaBackend.DiscoverTask.InvalidStatus]
 Description = "Invalid discover task status"
-Solution = "Status must be one of: pending, running, completed, failed"
+Solution = "Status must be one of: pending, running, completed, failed, cancelled"
 ErrorLink = "No solution"
 
 [VegaBackend.DiscoverTask.HasRunningExecution]

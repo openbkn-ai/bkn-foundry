@@ -35,6 +35,12 @@ func Test_ValidateDiscoverTaskQueryParams(t *testing.T) {
 			},
 		},
 		{
+			name: "cancelled status is valid",
+			params: interfaces.DiscoverTaskQueryParams{
+				Status: interfaces.DiscoverTaskStatusCancelled,
+			},
+		},
+		{
 			name: "invalid status",
 			params: interfaces.DiscoverTaskQueryParams{
 				Status: "unknown",

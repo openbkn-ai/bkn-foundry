@@ -47,6 +47,7 @@ const (
 	defaultConnectionTestTimeout           = 30 * time.Second
 	connectorInitializationFailedResult    = "Connector initialization failed."
 	connectionTestFailedResult             = "Connection test failed."
+	catalogDeletedTaskMessage              = "catalog deleted"
 )
 
 var (
@@ -847,49 +848,112 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 	return nil
 }
 
+func (cs *catalogService) authorizeDelete(ctx context.Context, id string) (map[string]struct{}, error) {
+	internalSet, err := cs.internalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	matched, err := cs.filterCatalogResources(ctx, []string{id}, internalSet,
+		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
+	if err != nil {
+		return nil, err
+	}
+	if _, exists := matched[id]; !exists {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("Access denied: insufficient permissions for catalog's delete operation.")
+	}
+	return internalSet, nil
+}
+
 // GetDeletionImpact returns the dependency counts used by catalog deletion.
-// It deliberately uses access ports so the catalog service does not depend on
-// discover services, which already depend on catalog service.
 func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*interfaces.CatalogDeletionImpact, error) {
+	if _, err := cs.authorizeDelete(ctx, id); err != nil {
+		return nil, err
+	}
+	return cs.getDeletionImpact(ctx, id)
+}
+
+// getDeletionImpact uses access ports so the catalog service does not depend on
+// discover services, which already depend on catalog service.
+func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*interfaces.CatalogDeletionImpact, error) {
 	page := interfaces.PaginationQueryParams{Limit: 1}
 	resources, err := cs.ra.GetByCatalogID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	_, buildTotal, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{PaginationQueryParams: page, CatalogID: id})
+	_, buildTotal, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+	})
 	if err != nil {
 		return nil, err
 	}
 	_, buildActive, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: page,
 		CatalogID:             id,
-		Statuses:              []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping},
+		Statuses: []string{
+			interfaces.BuildTaskStatusPending,
+			interfaces.BuildTaskStatusRunning,
+			interfaces.BuildTaskStatusStopping,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	_, scheduleTotal, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{PaginationQueryParams: page, CatalogID: id})
+	_, buildExecuting, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Statuses: []string{
+			interfaces.BuildTaskStatusRunning,
+			interfaces.BuildTaskStatusStopping,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, scheduleTotal, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+	})
 	if err != nil {
 		return nil, err
 	}
 	enabled := true
-	_, enabledSchedules, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{PaginationQueryParams: page, CatalogID: id, Enabled: &enabled})
+	_, enabledSchedules, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Enabled:               &enabled,
+	})
 	if err != nil {
 		return nil, err
 	}
-	_, discoverTotal, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{PaginationQueryParams: page, CatalogID: id})
+	_, discoverTotal, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+	})
 	if err != nil {
 		return nil, err
 	}
-	_, pendingDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{PaginationQueryParams: page, CatalogID: id, Status: interfaces.DiscoverTaskStatusPending})
+	_, pendingDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Status:                interfaces.DiscoverTaskStatusPending,
+	})
 	if err != nil {
 		return nil, err
 	}
-	_, runningDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{PaginationQueryParams: page, CatalogID: id, Status: interfaces.DiscoverTaskStatusRunning})
+	_, runningDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Status:                interfaces.DiscoverTaskStatusRunning,
+	})
 	if err != nil {
 		return nil, err
 	}
-	_, semanticTotal, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{PaginationQueryParams: page, CatalogID: id})
+	_, semanticTotal, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -901,6 +965,14 @@ func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*in
 	if err != nil {
 		return nil, err
 	}
+	_, semanticRunning, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusRunning},
+	})
+	if err != nil {
+		return nil, err
+	}
 	resourceBlocked, err := cs.ra.CheckExistByCategories(ctx, id, []string{interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicView})
 	if err != nil {
 		return nil, err
@@ -908,7 +980,7 @@ func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*in
 
 	return &interfaces.CatalogDeletionImpact{
 		BuildTasks:                 interfaces.CatalogDeletionTaskImpact{Active: buildActive, Total: buildTotal},
-		CanDelete:                  !resourceBlocked && buildActive == 0 && pendingDiscover+runningDiscover == 0,
+		CanDelete:                  !resourceBlocked && buildExecuting == 0 && runningDiscover == 0 && semanticRunning == 0,
 		CatalogID:                  id,
 		DiscoverSchedules:          interfaces.CatalogDeletionScheduleImpact{Enabled: enabledSchedules, Total: scheduleTotal},
 		DiscoverTasks:              interfaces.CatalogDeletionTaskImpact{Active: pendingDiscover + runningDiscover, Total: discoverTotal},
@@ -922,32 +994,38 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete catalog")
 	defer span.End()
 
-	// 判断userid是否有删除权限；内部目录按 internal_catalog 类型校验
-	internalSet, err := cs.internalCatalogIDSet(ctx)
+	internalSet, err := cs.authorizeDelete(ctx, id)
 	if err != nil {
-		span.SetStatus(codes.Error, "List internal catalog IDs failed")
-		return err
-	}
-	matchResoucesMap, err := cs.filterCatalogResources(ctx, []string{id}, internalSet,
-		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
+		span.SetStatus(codes.Error, "Authorize catalog deletion failed")
 		return err
 	}
 
-	// 检查是否有删除权限
-	if _, exists := matchResoucesMap[id]; !exists {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("Access denied: insufficient permissions for catalog's delete operation.")
+	impact, err := cs.getDeletionImpact(ctx, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalog deletion impact failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to inspect catalog dependencies")
+	}
+	if !impact.CanDelete {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails(impact)
 	}
 
-	// 删 catalog 前先级联清掉其下所有资源的构建任务 + OpenSearch 索引，
-	// 否则资源行被删后任务行与索引全成孤儿。运行中任务会拒绝整个删除（HasRunningExecution），
-	// 用户需先停止再删。放在删 catalog/resource 行之前，cascade 失败则什么都不删。
-	if err := logics.CascadeDeleteBuildTasks(ctx, cs.bta, cs.lim,
-		interfaces.BuildTasksQueryParams{CatalogID: id}); err != nil {
-		span.SetStatus(codes.Error, "Cascade delete build tasks failed")
-		return err
+	// Task rows are audit records and must be retained. Indexes are external
+	// artifacts and are removed best-effort before the database transaction.
+	buildTasks, _, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{CatalogID: id})
+	if err != nil {
+		span.SetStatus(codes.Error, "List build tasks failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to inspect catalog build tasks")
+	}
+	for _, task := range buildTasks {
+		indexName := interfaces.BuildIndexName(task.ResourceID, task.ID)
+		if err := cs.lim.DeleteIndex(ctx, indexName); err != nil {
+			logger.Errorf("delete catalog: drop index %s failed: %v", indexName, err)
+		}
 	}
 
 	tx, err := cs.db.BeginTx(ctx, nil)
@@ -960,7 +1038,33 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	err = cs.hcss.DeleteByCatalogID(ctx, tx, id)
+	now := time.Now().UnixMilli()
+	cancelled := interfaces.BuildTaskStatusCancelled
+	errorMessage := catalogDeletedTaskMessage
+	for _, task := range buildTasks {
+		if task.Status != interfaces.BuildTaskStatusPending {
+			continue
+		}
+		_, err = cs.bta.UpdateStatus(ctx, tx, task.ID, interfaces.BuildTaskUpdate{
+			Status:   &cancelled,
+			ErrorMsg: &errorMessage,
+		}, interfaces.BuildTaskStatusPending)
+		if err != nil {
+			break
+		}
+	}
+	if err == nil {
+		err = cs.dta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
+	}
+	if err == nil {
+		err = cs.suta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
+	}
+	if err == nil {
+		err = cs.dsa.DeleteByCatalogID(ctx, tx, id)
+	}
+	if err == nil {
+		err = cs.hcss.DeleteByCatalogID(ctx, tx, id)
+	}
 	if err == nil {
 		err = cs.ra.DeleteByCatalogID(ctx, tx, id)
 	}

@@ -30,7 +30,7 @@ ErrorLink = "暂无"
 
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "构建任务状态转移非法"
-Solution = "检查当前状态；start 要求 status 为 init 或 stopped；stop 要求 status 为 running"
+Solution = "检查当前状态；start 要求 status 为 stopped 或 failed；stop 要求 status 为 pending 或 running"
 ErrorLink = "暂无"
 
 [VegaBackend.BuildTask.HasRunningExecution]

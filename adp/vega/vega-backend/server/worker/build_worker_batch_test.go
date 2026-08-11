@@ -45,13 +45,13 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
@@ -80,13 +80,13 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ResourceID:  "r1",
 			Mode:        interfaces.BuildTaskModeBatch,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
-			Status:      interfaces.BuildTaskStatusInit,
+			Status:      interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(false, nil)
 
 		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
@@ -112,13 +112,13 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ResourceID:  "r1",
 			Mode:        interfaces.BuildTaskModeBatch,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
-			Status:      interfaces.BuildTaskStatusInit,
+			Status:      interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))

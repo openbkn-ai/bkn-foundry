@@ -127,6 +127,19 @@ func TestScheduleWorkerStartReloadAndUpdate(t *testing.T) {
 }
 
 func TestScheduleWorkerExecuteSchedule(t *testing.T) {
+	t.Run("missing schedule is unscheduled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		svc := vmock.NewMockDiscoverScheduleService(ctrl)
+		svc.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(nil, nil)
+		sw := newTestScheduleWorker(svc)
+		sw.scheduleEntries["schedule-1"] = cron.EntryID(1)
+
+		sw.executeSchedule("schedule-1")
+
+		assert.NotContains(t, sw.scheduleEntries, "schedule-1")
+	})
+
 	t.Run("disabled schedule is unscheduled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)

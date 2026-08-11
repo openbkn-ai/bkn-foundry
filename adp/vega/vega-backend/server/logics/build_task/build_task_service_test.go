@@ -749,7 +749,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(&interfaces.BuildTask{
 				ID:        "task-1",
 				CatalogID: "catalog-1",
-				Status:    interfaces.BuildTaskStatusInit,
+				Status:    interfaces.BuildTaskStatusStopped,
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
@@ -775,41 +775,19 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		err := service.Start(context.Background(), "task-1", false)
 		assertCatalogDisabledError(t, err)
 	})
-	t.Run("allows reset for completed task", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
+	for _, status := range []string{interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusCompleted} {
+		t.Run("rejects "+status+" status", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+			service := &buildTaskService{bta: mockBTA}
 
-		task := &interfaces.BuildTask{
-			ID:         "task-1",
-			ResourceID: "resource-1",
-			CatalogID:  "catalog-1",
-			Mode:       interfaces.BuildTaskModeBatch,
-			Status:     interfaces.BuildTaskStatusCompleted,
-			CreateTime: 100,
-		}
-		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
-				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
-					return []*interfaces.BuildTask{task}, int64(1), nil
-				}
-				return nil, int64(0), nil
-			}).Times(2)
-		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID:        "resource-1",
-			CatalogID: "catalog-1",
-		}, nil)
-		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusInit)).Return(true, nil)
+			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+				Return(&interfaces.BuildTask{ID: "task-1", Status: status}, nil)
 
-		require.NoError(t, service.Start(context.Background(), "task-1", true))
-	})
+			err := service.Start(context.Background(), "task-1", false)
+			requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
+		})
+	}
 	t.Run("rejects another active task for resource", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -919,43 +897,6 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		err := service.Start(context.Background(), "task-1", false)
 		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
 	})
-	t.Run("allows init task itself as active", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		neutralizeEnqueue(t, ctrl)
-		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), cs: mockCS, rs: mockRS, bta: mockBTA}
-
-		task := &interfaces.BuildTask{
-			ID:          "task-1",
-			ResourceID:  "resource-1",
-			CatalogID:   "catalog-1",
-			Mode:        interfaces.BuildTaskModeBatch,
-			ExecuteType: interfaces.BuildTaskExecuteTypeFull,
-			Status:      interfaces.BuildTaskStatusInit,
-		}
-		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
-				if len(params.Statuses) == 1 && params.Statuses[0] == interfaces.BuildTaskStatusCompleted {
-					return nil, int64(0), nil
-				}
-				return []*interfaces.BuildTask{task}, int64(1), nil
-			}).Times(2)
-		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID:        "resource-1",
-			CatalogID: "catalog-1",
-		}, nil)
-
-		require.NoError(t, service.Start(context.Background(), "task-1", false))
-		queued := <-service.DebugTaskQueue()
-		var message interfaces.BatchBuildTaskMessage
-		require.NoError(t, sonic.Unmarshal(queued.Payload(), &message))
-		assert.False(t, message.Reset)
-	})
 	t.Run("rejects unavailable analyzer before updating status or enqueueing", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
@@ -1044,35 +985,34 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})
-	t.Run("force finalizes stuck stopping", func(t *testing.T) {
+	t.Run("pending to stopped", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopping}, nil)
+			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusPending}, nil)
 		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)).Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})
-	t.Run("rejects stopped status", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA}
+	for _, status := range []string{interfaces.BuildTaskStatusStopping, interfaces.BuildTaskStatusStopped} {
+		t.Run("rejects "+status+" status", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+			service := &buildTaskService{debugTaskQueue: make(chan *asynq.Task, 10), bta: mockBTA}
 
-		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusStopped}, nil)
+			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
+				Return(&interfaces.BuildTask{ID: "task-1", Status: status}, nil)
 
-		err := service.Stop(context.Background(), "task-1")
-		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
-	})
+			err := service.Stop(context.Background(), "task-1")
+			requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
+		})
+	}
 }
 
-// running → stopping：正常停止路径。
-// stopping → stopped：worker 已不在时 stopping 永远不会被推进，
-// 二次 stop 必须能强制落停，否则任务卡死无法删除。
-// stopped 任务不可再 stop。
+// running → stopping，pending → stopped。stopping/stopped 任务不可再 stop。
 func TestComputeIndexHealth(t *testing.T) {
 	cases := []struct {
 		name          string

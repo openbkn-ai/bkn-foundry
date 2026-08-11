@@ -101,7 +101,8 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
 	// stopping 出队说明原 worker 已不在，兜底落停。
 	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
-		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
+		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping ||
+		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
 			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
@@ -283,11 +284,16 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			continue
 		}
 
-		// Handle stopping status
-		if taskStatus == interfaces.BuildTaskStatusStopping {
+		// A streaming connector is shared by the catalog. Before a stopped or
+		// cancelled task exits, stop it only when no running task still uses it.
+		if taskStatus == interfaces.BuildTaskStatusStopping ||
+			taskStatus == interfaces.BuildTaskStatusCancelled {
 			needStop, err := sbw.checkConnectorNeedToStop(ctx, catalog.ID)
 			if err != nil {
 				logger.Errorf("Failed to check connector need to stop: %v", err)
+				if taskStatus == interfaces.BuildTaskStatusCancelled {
+					return nil
+				}
 				time.Sleep(retryInterval)
 				continue
 			}
@@ -297,6 +303,10 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 					fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID)),
 					map[string]string{interfaces.CONTENT_TYPE_NAME: interfaces.CONTENT_TYPE_JSON},
 					map[string]interface{}{})
+			}
+			if taskStatus == interfaces.BuildTaskStatusCancelled {
+				logger.Infof("Task %s is cancelled, exiting...", buildTaskInfo.ID)
+				return nil
 			}
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
 			update := interfaces.NewBuildTaskUpdate().

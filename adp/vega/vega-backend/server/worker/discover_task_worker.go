@@ -59,6 +59,12 @@ func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task)
 		logger.Errorf("Failed to get task info for task %s: %v", taskID, err)
 		return err
 	}
+	if taskInfo.Status == interfaces.DiscoverTaskStatusCancelled ||
+		taskInfo.Status == interfaces.DiscoverTaskStatusCompleted ||
+		taskInfo.Status == interfaces.DiscoverTaskStatusFailed {
+		logger.Infof("Discover task already finished: id=%s, status=%s", taskInfo.ID, taskInfo.Status)
+		return nil
+	}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
 	actions := interfaces.ActionsFromDiscoverStrategy(taskInfo.Strategy)

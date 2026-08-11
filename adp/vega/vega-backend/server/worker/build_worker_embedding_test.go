@@ -29,6 +29,7 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 			interfaces.BuildTaskStatusFailed,
 			interfaces.BuildTaskStatusStopped,
 			interfaces.BuildTaskStatusCompleted,
+			interfaces.BuildTaskStatusCancelled,
 		} {
 			t.Run(status, func(t *testing.T) {
 				ctrl := gomock.NewController(t)

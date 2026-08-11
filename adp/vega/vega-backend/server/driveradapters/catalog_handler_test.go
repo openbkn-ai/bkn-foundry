@@ -14,11 +14,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -357,17 +359,9 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("deletes catalogs without active tasks or resources", func(t *testing.T) {
-		engine, cs, dts, rs := setupCatalogHandlerWithResourceTest(t)
+	t.Run("deletes catalog through catalog service", func(t *testing.T) {
+		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
 		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		dts.EXPECT().CheckExistByStatuses(gomock.Any(), "catalog-1", []string{
-			interfaces.DiscoverTaskStatusPending,
-			interfaces.DiscoverTaskStatusRunning,
-		}).Return(false, nil)
-		rs.EXPECT().CheckExistByCategories(gomock.Any(), "catalog-1", []string{
-			interfaces.ResourceCategoryDataset,
-			interfaces.ResourceCategoryLogicView,
-		}).Return(false, nil)
 		cs.EXPECT().DeleteByID(gomock.Any(), "catalog-1").Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/catalog-1", nil)
@@ -434,21 +428,21 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.NotFound")
 	})
 
-	t.Run("rejects catalog with active discover tasks", func(t *testing.T) {
-		engine, cs, dts, _ := setupCatalogHandlerWithResourceTest(t)
+	t.Run("returns catalog service deletion guard", func(t *testing.T) {
+		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
 		cs.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		dts.EXPECT().CheckExistByStatuses(gomock.Any(), "catalog-1", []string{
-			interfaces.DiscoverTaskStatusPending,
-			interfaces.DiscoverTaskStatusRunning,
-		}).Return(true, nil)
+		cs.EXPECT().DeleteByID(gomock.Any(), "catalog-1").Return(
+			rest.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
+				WithErrorDetails("catalog has active dependencies"),
+		)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/catalog-1", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "pending or running")
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "catalog has active dependencies")
 	})
 }
 

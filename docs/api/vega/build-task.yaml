@@ -8,9 +8,10 @@ info:
     BuildTask 是顶级独立资源，每条 task 关联 1 个 Resource，对其执行 streaming /
     batch 两种模式之一的构建。状态机：
 
-      init → running → stopping → stopped
+      pending → running → stopping → stopped
                     ↘ completed
                     ↘ failed
+                    ↘ cancelled
 
     外部仅可触发 `start` / `stop` 两个动作；其它状态由 worker 内部转移，外部只读。
     `start` / `stop` 返回 HTTP 202 且 body 为空，仅表示"指令被接受"，**不**表示
@@ -46,12 +47,13 @@ paths:
           schema:
             type: string
             enum:
-              - init
+              - pending
               - running
               - stopping
               - stopped
               - completed
               - failed
+              - cancelled
         - name: mode
           description: 按任务模式过滤
           in: query
@@ -94,7 +96,7 @@ paths:
               - desc
             default: desc
         - name: active
-          description: "`true` 时筛选 `running` 与 `init`，优先于 `status`"
+          description: "`true` 时筛选 `running` 与 `pending`，优先于 `status`"
           in: query
           schema:
             type: boolean
@@ -120,7 +122,7 @@ paths:
         - `streaming` 模式要求 Resource 在 `source_metadata.primary_keys` 中声明主键。
         - `batch` 模式要求 `build_key_fields` 非空。
         - 所有字段都需要在 Resource 的 schema 中存在；否则 400。
-        - 创建后 status = `init`。
+        - 创建后 status = `pending`。
       requestBody:
         required: true
         content:
@@ -222,8 +224,9 @@ paths:
     post:
       summary: 启动构建任务
       description: |
-        合法状态转移：`status ∈ {init, stopped, completed, failed}` → `running`。
-        `failed` 允许重启。batch 任务默认按 `synced_mark` 续跑；incremental 任务始终
+        合法状态转移：`status ∈ {stopped, failed}` → `pending` → `running`。
+        `failed` 允许重试；`pending` 已在队列中、`completed` 已结束，二者均不允许 start。
+        batch 任务默认按 `synced_mark` 续跑；incremental 任务始终
         保持增量续跑，`reset` 对它无效。full 任务仅在 `reset=true` 时清除进度并从头重建，
         不修改原始 `execute_type`；
         worker 实际开始执行时会清空 `error_msg`。
@@ -232,7 +235,7 @@ paths:
         status 已切换为 `running`。worker 实际执行时才会写为 `running`，
         客户端如需确认应轮询 GET。响应 body 为空。
 
-        **非幂等**：对已 running / stopping 的 task 再次 start 返回 409
+        **非幂等**：对非 stopped / failed 状态的 task 调用 start 返回 409
         `VegaBackend.BuildTask.InvalidStateTransition`。
       requestBody:
         required: false
@@ -265,14 +268,14 @@ paths:
       summary: 停止构建任务
       description: |
         合法状态转移：
+        - `pending` → `stopped`：任务尚在队列中，直接标记停止，worker 出队后会跳过。
         - `running` → `stopping`：正常停止，worker 在批间检查点退出后写 `stopped`。
-        - `stopping` → `stopped`：强制完结。worker 已不在（重试耗尽 / 服务重启）时
-          `stopping` 不会被自动推进，再次调 stop 直接落停，使任务可删除。
 
-        **响应 status 滞后**：HTTP 202 表示"停止指令已被记录"。`stopping → stopped`
-        由 worker 异步推进，客户端可轮询 GET 拿最新 status。响应 body 为空。
+        **响应 status 滞后**：HTTP 202 表示"停止指令已被记录"。running 任务的
+        `stopping → stopped` 由 worker 异步推进，客户端可轮询 GET 拿最新 status。响应 body 为空。
 
-        **非幂等**：对非 running / stopping 状态的 task 调 stop 返回 409
+        **非幂等**：对非 pending / running 状态的 task 调 stop 返回 409；
+        `stopping` 中再次 stop 也返回 409
         `VegaBackend.BuildTask.InvalidStateTransition`。
       responses:
         "202":
@@ -379,12 +382,13 @@ components:
           description: 状态
           type: string
           enum:
-            - init
+            - pending
             - running
             - stopping
             - stopped
             - completed
             - failed
+            - cancelled
         mode:
           description: 任务模式
           type: string
@@ -413,7 +417,7 @@ components:
           description: 同步标记（增量构建用）
           type: string
         error_msg:
-          description: 错误信息（仅在 failed 状态下有意义）
+          description: 错误或取消原因（仅在 failed/cancelled 状态下有意义）
           type: string
         creator:
           $ref: "#/components/schemas/AccountInfo"

@@ -41,7 +41,8 @@ func isValidDiscoverTaskStatus(s string) bool {
 	case interfaces.DiscoverTaskStatusPending,
 		interfaces.DiscoverTaskStatusRunning,
 		interfaces.DiscoverTaskStatusCompleted,
-		interfaces.DiscoverTaskStatusFailed:
+		interfaces.DiscoverTaskStatusFailed,
+		interfaces.DiscoverTaskStatusCancelled:
 		return true
 	}
 	return false

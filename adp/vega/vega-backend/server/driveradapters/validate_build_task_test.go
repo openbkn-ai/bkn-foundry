@@ -44,8 +44,13 @@ func Test_parseBuildTaskStatuses(t *testing.T) {
 		},
 		{
 			name: "multi valid with spaces",
-			raw:  "running, init",
-			want: []string{"running", "init"},
+			raw:  "running, pending",
+			want: []string{"running", "pending"},
+		},
+		{
+			name: "cancelled is valid",
+			raw:  "cancelled",
+			want: []string{"cancelled"},
 		},
 		{
 			name:    "one invalid value returns error",
@@ -115,17 +120,17 @@ func Test_parseBuildTaskListParams(t *testing.T) {
 			},
 		},
 		{
-			name:  "active true overrides status with running and init",
+			name:  "active true overrides status with running and pending",
 			query: "active=true&status=completed",
 			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
-				assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusInit}, got.Statuses)
+				assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending}, got.Statuses)
 			},
 		},
 		{
 			name:  "multi-value status",
-			query: "status=running,init",
+			query: "status=running,pending",
 			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
-				assert.Equal(t, []string{"running", "init"}, got.Statuses)
+				assert.Equal(t, []string{"running", "pending"}, got.Statuses)
 			},
 		},
 		{

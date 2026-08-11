@@ -117,7 +117,7 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 }
 
 func claimBuildTaskExecution(ctx context.Context, bts interfaces.BuildTaskService, taskID string) (bool, error) {
-	allowedStatuses := []string{interfaces.BuildTaskStatusInit}
+	allowedStatuses := []string{interfaces.BuildTaskStatusPending}
 	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
 		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
 	}
@@ -145,7 +145,8 @@ func isAsynqFinalRetry(ctx context.Context) bool {
 func isBuildTaskTerminal(status string) bool {
 	return status == interfaces.BuildTaskStatusFailed ||
 		status == interfaces.BuildTaskStatusStopped ||
-		status == interfaces.BuildTaskStatusCompleted
+		status == interfaces.BuildTaskStatusCompleted ||
+		status == interfaces.BuildTaskStatusCancelled
 }
 
 // createManagedLocalIndex creates a build-task local index through LocalIndexManager.

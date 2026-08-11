@@ -192,6 +192,21 @@ func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkApplied(ctx, id,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkApplied), ctx, id, applied, applyDetailJSON)
 }
 
+// MarkCompleted mocks base method.
+func (m *MockSemanticUnderstandingTaskService) MarkCompleted(ctx context.Context, id, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkCompleted", ctx, id, resultJSON, confidence, confidenceDetailJSON)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkCompleted indicates an expected call of MarkCompleted.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCompleted", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkCompleted), ctx, id, resultJSON, confidence, confidenceDetailJSON)
+}
+
 // MarkFailed mocks base method.
 func (m *MockSemanticUnderstandingTaskService) MarkFailed(ctx context.Context, id, failureDetail string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -220,21 +235,6 @@ func (m *MockSemanticUnderstandingTaskService) MarkRunning(ctx context.Context, 
 func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkRunning(ctx, id, agentTaskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkRunning), ctx, id, agentTaskID)
-}
-
-// MarkSucceeded mocks base method.
-func (m *MockSemanticUnderstandingTaskService) MarkSucceeded(ctx context.Context, id, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkSucceeded", ctx, id, resultJSON, confidence, confidenceDetailJSON)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// MarkSucceeded indicates an expected call of MarkSucceeded.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkSucceeded(ctx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkSucceeded", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkSucceeded), ctx, id, resultJSON, confidence, confidenceDetailJSON)
 }
 
 // SetAgentTaskID mocks base method.

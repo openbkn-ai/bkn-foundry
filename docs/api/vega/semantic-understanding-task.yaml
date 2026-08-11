@@ -197,7 +197,7 @@ components:
         agent_id: { type: string }
         input: { type: string }
         input_hash: { type: string }
-        status: { type: string, enum: [pending, running, succeeded, failed] }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
         apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
         result_json: { type: string }
         confidence_threshold: { type: number, format: double }
@@ -230,7 +230,7 @@ components:
         resource_name: { type: string }
         agent_task_id: { type: string }
         agent_id: { type: string }
-        status: { type: string, enum: [pending, running, succeeded, failed] }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
         apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
         confidence_threshold: { type: number, format: double }
         confidence: { type: number, format: double }

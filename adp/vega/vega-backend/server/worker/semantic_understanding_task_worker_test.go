@@ -51,7 +51,21 @@ func (m accountIDContextMatcher) String() string {
 }
 
 func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
-	t.Run("runs agent and marks succeeded", func(t *testing.T) {
+	t.Run("skips cancelled task", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{suts: taskService}
+		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(
+			&interfaces.SemanticUnderstandingTask{
+				ID: "semantic-task-1", Status: interfaces.SemanticUnderstandingTaskStatusCancelled,
+			}, nil,
+		)
+
+		require.NoError(t, worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1")))
+	})
+
+	t.Run("runs agent and marks completed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -118,7 +132,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 				return nil
 			})
 		taskService.EXPECT().
-			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
+			MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, _ string, _ float64, detailJSON string) (bool, error) {
 				var detail map[string]sonic.NoCopyRawMessage
 				require.NoError(t, sonic.Unmarshal([]byte(detailJSON), &detail))
@@ -177,7 +191,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("resumes applying succeeded task", func(t *testing.T) {
+	t.Run("resumes applying completed task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -186,7 +200,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		semanticTask := &interfaces.SemanticUnderstandingTask{
 			ID:                  "semantic-task-1",
 			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
-			Status:              interfaces.SemanticUnderstandingTaskStatusSucceeded,
+			Status:              interfaces.SemanticUnderstandingTaskStatusCompleted,
 			ApplyMode:           interfaces.SemanticUnderstandingApplyModeDryRun,
 			ConfidenceThreshold: 0.75,
 			Confidence:          0.9,
@@ -298,7 +312,7 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 				Result: []byte(`{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`),
 			}, nil)
 		taskService.EXPECT().
-			MarkSucceeded(gomock.Any(), "semantic-task-1", `{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`, 0.8, gomock.Any()).
+			MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`, 0.8, gomock.Any()).
 			Return(true, nil)
 		taskService.EXPECT().
 			MarkApplied(gomock.Any(), "semantic-task-1", false, gomock.Any()).
