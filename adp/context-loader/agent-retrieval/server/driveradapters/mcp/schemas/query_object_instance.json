@@ -25,7 +25,7 @@
       },
       "condition": {
         "type": "object",
-        "description": "过滤条件。operation 必填。比较算子（==/!=/>/>=/</<=/in/not_in/like/not_like/exist/not_exist/match）配 field + value + value_from；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。value 与 value_from 必须同时出现，value_from 仅支持 const。算子白名单以对象类的 condition_operations 为准。无过滤条件时可整体省略 condition。 knn 另需 limit_key=k + limit_value=<近邻数>；该算子只在属性的 condition_operations 含 knn 时可用（即绑定资源上这个字段真建了向量索引）。",
+        "description": "过滤条件。operation 必填。比较算子配 field + value + value_from（value 与 value_from 必须同时出现，value_from 仅支持 const）；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。无过滤条件时可整体省略 condition。\n算子分两类，判断依据不同：\n① 比较算子按属性 type 自行判断，不会出现在 condition_operations 里。字符串类（string/keyword/text）：== != in not_in > >= < <= range out_range like not_like regex；数值/日期时间类：== != in not_in > >= < <= range out_range（不支持 like/regex）；exist / not_exist 任意类型可用，且不带 value。\n② 索引算子以属性的 condition_operations 为准：含 match 才能全文匹配，含 knn 才能向量检索——它们取决于绑定资源上这个字段建没建全文/向量索引，从 type 推不出来。属性上没有 condition_operations 这个键，只说明该字段没建索引，不代表它不能过滤。condition_operations 里的 multi_match 只是「建了全文索引」的标记，本工具不支持该算子，用 match。\nvalue 形状：单值算子用单值；in / not_in 用数组；range / out_range 用 [min, max]（左闭右开）；regex 用正则字符串；exist / not_exist 不传 value。knn 另需 limit_key=k + limit_value=<近邻数>。",
         "required": [
           "operation"
         ],
@@ -36,7 +36,7 @@
           },
           "operation": {
             "type": "string",
-            "description": "条件操作符，具体支持以对象类的 condition_operations 为准。match 走全文索引（词法命中）；knn 走向量索引（语义/跨语言命中，字面不重合也能召回），两者是独立算子，要同时用就放进 or 的 sub_conditions。",
+            "description": "条件操作符。比较算子按属性 type 选（见 condition 说明）；索引算子 match / knn 以该属性的 condition_operations 为准。match 走全文索引（词法命中）；knn 走向量索引（语义/跨语言命中，字面不重合也能召回），两者是独立算子，要同时用就放进 or 的 sub_conditions。",
             "enum": [
               "and",
               "or",
@@ -50,6 +50,9 @@
               "not_in",
               "like",
               "not_like",
+              "range",
+              "out_range",
+              "regex",
               "exist",
               "not_exist",
               "match",
@@ -71,7 +74,7 @@
             "description": "值来源，仅支持 const；必须与 value 同时使用"
           },
           "value": {
-            "description": "字段值；与 value_from=const 同时使用。比较算子用单值，范围用 [min, max]，集合算子（in/not_in）用数组",
+            "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range/out_range 用 [min, max]（左闭右开，两元素同类型）；regex 用正则字符串；exist/not_exist 不传 value",
             "oneOf": [
               {
                 "type": "string"
@@ -117,7 +120,7 @@
       },
       "filters": {
         "type": "array",
-        "description": "扁平过滤简写：多个条件按 and 组合，等价于手写 condition 的 and 嵌套。覆盖最常见的「字段 op 值 [AND ...]」场景。与 condition 互斥（同传时 condition 优先）；需要 or 或多层嵌套时改用 condition。算子白名单以对象类的 condition_operations 为准。",
+        "description": "扁平过滤简写：多个条件按 and 组合，等价于手写 condition 的 and 嵌套。覆盖最常见的「字段 op 值 [AND ...]」场景。与 condition 互斥（同传时 condition 优先）；需要 or 或多层嵌套时改用 condition。算子选择规则同 condition：比较算子按属性 type 判断，match 以属性的 condition_operations 为准。不带值的 exist/not_exist 与要配 limit_key/limit_value 的 knn 走不通这条简写，用 condition 写。",
         "items": {
           "type": "object",
           "required": [
@@ -132,7 +135,7 @@
             },
             "op": {
               "type": "string",
-              "description": "比较算子；白名单以对象类 condition_operations 为准",
+              "description": "比较算子：按属性 type 判断（字符串类才有 like/not_like/regex）；match 需该属性的 condition_operations 含 match",
               "enum": [
                 "==",
                 "!=",
@@ -144,13 +147,14 @@
                 "not_in",
                 "like",
                 "not_like",
-                "exist",
-                "not_exist",
+                "range",
+                "out_range",
+                "regex",
                 "match"
               ]
             },
             "value": {
-              "description": "字段值；集合算子（in/not_in）用数组",
+              "description": "字段值；in/not_in 用数组；range/out_range 用 [min, max]（左闭右开）",
               "oneOf": [
                 {
                   "type": "string"

@@ -61,7 +61,7 @@
       "schema_brief": {
         "type": "boolean",
         "default": true,
-        "description": "是否返回精简 Schema（MCP 默认 true）。精简版保留写查询所需的 data_source.id 与属性 name/type，省去属性 comment、主键、标签，体积约省 70%。注意 condition_operations 在两种模式下语义不同：精简版只列**索引带来的**算子（match / multi_match / knn，取决于该字段建没建全文/向量索引，从属性类型推不出来），没有这类能力的字段整个字段不出现；比较算子（==、in、like、range 等）按属性 type 自行判断。需要完整算子清单、属性备注、主键或标签时显式传 false。"
+        "description": "是否返回精简 Schema（MCP 默认 true）。精简版保留写查询所需的 data_source.id 与属性 name/type，省去属性 comment、主键、标签，体积约省 70%；需要属性备注、主键或标签时显式传 false。注意：condition_operations 不受本开关影响——MCP 面两种模式下都只列**索引带来的**算子（match / multi_match / knn，取决于该字段建没建全文/向量索引，从属性类型推不出来），没有这类能力的字段不带这个键。比较算子（==、!=、in、like、range 等）按属性 type 自行判断，服务端不下发，详见 query_object_instance 的 condition 说明。"
       },
       "enable_rerank": {
         "type": "boolean",
