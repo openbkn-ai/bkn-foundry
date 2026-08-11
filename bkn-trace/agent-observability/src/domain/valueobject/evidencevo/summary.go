@@ -358,7 +358,8 @@ func buildRequestSummary(
 					mergeStableIdentity(&summary.OperationKey, operationKey)
 				}
 			}
-			if event.EventType == "retrieval.completed" {
+			switch event.EventType {
+			case "retrieval.completed":
 				hasRootFact = true
 				mergeStableIdentity(&rootOperationID, event.OperationID)
 				mergeStableIdentity(&rootToolName, event.OperationName)
@@ -368,7 +369,7 @@ func buildRequestSummary(
 				if resultCount := summaryIntPointer(event.Payload, "candidate_count"); resultCount != nil {
 					rootResultCount = resultCount
 				}
-			} else if event.EventType == "data.query.observed" {
+			case "data.query.observed":
 				mergeStableIdentity(&fallbackOperationID, event.OperationID)
 				mergeStableIdentity(&fallbackToolName, event.OperationName)
 				if operationKey, _ := summaryStringField(event.Payload, "operation_key"); operationKey != "" {

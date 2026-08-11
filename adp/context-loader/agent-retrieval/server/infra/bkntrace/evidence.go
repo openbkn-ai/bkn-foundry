@@ -804,7 +804,7 @@ func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []Busi
 			items = append(items, values...)
 		}
 	}
-	refs := make([]trace30BusinessRef, 0, len(items)+len(declaredRefs))
+	refs := make([]trace30BusinessRef, 0)
 	seen := map[string]struct{}{}
 	declaredVersions := make(map[string]string, len(declaredRefs))
 	for _, ref := range declaredRefs {

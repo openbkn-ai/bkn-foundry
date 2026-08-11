@@ -240,7 +240,7 @@ func TestEvidenceLedgerAndProjectionOutboxCommitAtomically(t *testing.T) {
 	operation, _, err := sessions.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "query", ToolName: "ontology-query",
-		Input: json.RawMessage(`{"test_input":"input"}`), Required: true,
+		Input: mustInlinePayload(t, json.RawMessage(`{"test_input":"input"}`)), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -731,7 +731,7 @@ func TestAuthorityRebuildMatchesLiveOperationAndReceiptProjectionModels(t *testi
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: "query", ToolName: "ontology-query",
-			Input: json.RawMessage(`{"test_input":"model"}`), Required: true,
+			Input: mustInlinePayload(t, json.RawMessage(`{"test_input":"model"}`)), Required: true,
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	)
@@ -840,7 +840,7 @@ func TestMariaDBAuthorityRebuildsIntoOpenSearchAlias(t *testing.T) {
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: "combined-query", ToolName: "ontology-query",
-			Input: json.RawMessage(`{"test_input":"combined"}`), Required: true,
+			Input: mustInlinePayload(t, json.RawMessage(`{"test_input":"combined"}`)), Required: true,
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	)
@@ -1031,4 +1031,13 @@ func (t *integrationRebuildTarget) SwitchAlias(
 	t.alias = alias
 	t.version = version
 	return nil
+}
+
+func mustInlinePayload(t testing.TB, raw json.RawMessage) sessionvo.PayloadEnvelope {
+	t.Helper()
+	payload, err := sessionvo.InlineJSONPayload(raw)
+	if err != nil {
+		t.Fatalf("build inline payload: %v", err)
+	}
+	return payload
 }
