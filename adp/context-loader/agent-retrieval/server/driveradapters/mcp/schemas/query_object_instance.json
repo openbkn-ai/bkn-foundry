@@ -25,7 +25,7 @@
       },
       "condition": {
         "type": "object",
-        "description": "过滤条件。operation 必填。比较算子配 field + value + value_from（value 与 value_from 必须同时出现，value_from 仅支持 const）；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。无过滤条件时可整体省略 condition。\n算子分两类，判断依据不同：\n① 比较算子按属性 type 自行判断，不会出现在 condition_operations 里。字符串类（string/keyword/text）：== != in not_in > >= < <= like not_like regex；数值/日期时间类：== != in not_in > >= < <= range out_range（不支持 like/regex）；exist / not_exist 任意类型可用，且不带 value。range / out_range 在 vega 资源路径只接受数值/日期时间字段，字符串字段仅数据视图 / 对象索引路径可用。\n② 索引算子以属性的 condition_operations 为准：含 match 才能全文匹配，含 knn 才能向量检索——它们取决于绑定资源上这个字段建没建全文/向量索引，从 type 推不出来。属性上没有 condition_operations 这个键，只说明该字段没建索引，不代表它不能过滤。condition_operations 里的 multi_match 只是「建了全文索引」的标记，本工具不支持该算子，用 match。\nvalue 形状：单值算子用单值；in / not_in 用数组；range / out_range 用 [min, max]；两端闭合性随对象类绑定的后端而异（数据视图/对象索引路径左闭右开，vega 资源路径两端都闭），边界值不能含糊时改用 >= 与 < 写成两个条件；regex 用正则字符串；exist / not_exist 不传 value。knn 另需 limit_key=k + limit_value=<近邻数>。",
+        "description": "过滤条件。operation 必填。比较算子配 field + value + value_from（value 与 value_from 必须同时出现，value_from 仅支持 const）；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。无过滤条件时可整体省略 condition。\n算子分两类，判断依据不同：\n① 比较算子按属性 type 自行判断，不会出现在 condition_operations 里。字符串类（string/keyword/text）：== != in not_in > >= < <= like not_like regex；数值/日期时间类：== != in not_in > >= < <= range out_range（不支持 like/regex）；exist / not_exist 任意类型可用，且不带 value。\n② 索引算子以属性的 condition_operations 为准：含 match 才能全文匹配，含 knn 才能向量检索——它们取决于绑定资源上这个字段建没建全文/向量索引，从 type 推不出来。属性上没有 condition_operations 这个键，只说明该字段没建索引，不代表它不能过滤。condition_operations 里的 multi_match 只是「建了全文索引」的标记，本工具不支持该算子，用 match。\nvalue 形状：单值算子用单值；in / not_in 用数组；range 用 [min, max]，两端都闭；out_range 同样用 [min, max]，排除这个闭区间；regex 用正则字符串；exist / not_exist 不传 value。knn 另需 limit_key=k + limit_value=<近邻数>。",
         "required": [
           "operation"
         ],
@@ -74,7 +74,7 @@
             "description": "值来源，仅支持 const；必须与 value 同时使用"
           },
           "value": {
-            "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range / out_range 用 [min, max]（两元素同类型）；边界闭合性随对象类绑定的后端而异——数据视图 / 对象索引路径左闭右开（range 取 [min, max)，out_range 排除 [min, max)），vega 资源路径两端都闭（range 取 [min, max]，out_range 排除 [min, max]）。边界值不能含糊时，改用 >= 与 < 写成两个条件；regex 用正则字符串；exist/not_exist 不传 value",
+            "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range 用 [min, max]（两元素同类型，两端都闭）；out_range 同样用 [min, max]，排除这个闭区间；regex 用正则字符串；exist/not_exist 不传 value",
             "oneOf": [
               {
                 "type": "string"
@@ -154,7 +154,7 @@
               ]
             },
             "value": {
-              "description": "字段值；in/not_in 用数组；range/out_range 用 [min, max]（两端闭合性随绑定后端而异，见 condition 说明）",
+              "description": "字段值；in/not_in 用数组；range/out_range 用 [min, max]（两端都闭）",
               "oneOf": [
                 {
                   "type": "string"
