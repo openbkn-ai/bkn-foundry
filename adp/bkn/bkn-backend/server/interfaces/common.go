@@ -70,8 +70,7 @@ const (
 	Mode_Export = "export"
 
 	// 数据来源类型
-	DATA_SOURCE_TYPE_DATA_VIEW = "data_view"
-	DATA_SOURCE_TYPE_RESOURCE  = "resource"
+	DATA_SOURCE_TYPE_RESOURCE = "resource"
 
 	// 对象id的校验
 	RegexPattern_Builtin_ID    = "^[a-z0-9_][a-z0-9_-]{0,39}$"
@@ -596,13 +595,6 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 			DisplayName:  "data_properties.mapped_field",
 			OriginalName: "data_properties.mapped_field",
 			Description:  "BKN对象类概念的数据属性映射字段",
-		},
-		{
-			Name:         "data_properties.index_config",
-			Type:         data_type.DATATYPE_JSON,
-			DisplayName:  "data_properties.index_config",
-			OriginalName: "data_properties.index_config",
-			Description:  "BKN对象类概念的数据属性索引配置",
 		},
 		{
 			Name:         "logic_properties.name",

@@ -797,6 +797,19 @@ func Test_ValidateDataProperty(t *testing.T) {
 			err := ValidateDataProperty(ctx, prop, true)
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("Failed with object property index_config\n", func() {
+			prop := &interfaces.DataProperty{
+				Name:        "prop1",
+				Type:        "string",
+				DisplayName: "prop1",
+				IndexConfig: &interfaces.IndexConfig{
+					KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
+				},
+			}
+			err := ValidateDataProperty(ctx, prop, true)
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 

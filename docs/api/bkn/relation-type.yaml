@@ -1,4 +1,4 @@
----
+﻿---
 openapi: 3.0.2
 info:
   title: RelationType
@@ -8,18 +8,18 @@ paths:
     get:
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           schema:
             type: string
           in: path
           required: true
         - name: name_pattern
-          description: 根据络名称模糊查询，默认为空
+          description: 鏍规嵁缁滃悕绉版ā绯婃煡璇紝榛樿涓虹┖
           schema:
             type: string
           in: query
         - name: sort
-          description: 排序类型，默认是update_time
+          description: 鎺掑簭绫诲瀷锛岄粯璁ゆ槸update_time
           schema:
             enum:
               - update_time
@@ -28,8 +28,8 @@ paths:
           in: query
         - name: direction
           description: |-
-            排序结果方向，可选asc、desc。
-            默认desc
+            鎺掑簭缁撴灉鏂瑰悜锛屽彲閫塧sc銆乨esc銆?
+            榛樿desc
           schema:
             enum:
               - asc
@@ -37,44 +37,44 @@ paths:
             type: string
           in: query
         - name: offset
-          description: "开始响应的项目的偏移量\t\n范围需大于等于0，默认值0"
+          description: "寮€濮嬪搷搴旂殑椤圭洰鐨勫亸绉婚噺\t\n鑼冨洿闇€澶т簬绛変簬0锛岄粯璁ゅ€?"
           schema:
             format: int64
             type: integer
           in: query
         - name: limit
           description: |-
-            每页最多可返回的项目数；
-            分页可选1-1000，-1表示不分页；
-            默认值10
+            姣忛〉鏈€澶氬彲杩斿洖鐨勯」鐩暟锛?
+            鍒嗛〉鍙€?-1000锛?1琛ㄧず涓嶅垎椤碉紱
+            榛樿鍊?0
           schema:
             format: int64
             type: integer
           in: query
         - name: tag
-          description: 根据标签精准查询，默认为空.
+          description: 鏍规嵁鏍囩绮惧噯鏌ヨ锛岄粯璁や负绌?
           schema:
             type: string
           in: query
         - name: source_object_type_id
-          description: 起点对象类ID
+          description: 璧风偣瀵硅薄绫籌D
           schema:
             type: string
           in: query
         - name: target_object_type_id
-          description: 终点对象类ID
+          description: 缁堢偣瀵硅薄绫籌D
           schema:
             type: string
           in: query
         - name: bound_object_type_id
-          description: 绑定的对象类ID，查询起点等于此对象类或者终点等于此对象类的关系类。支持传入多个值
+          description: 缁戝畾鐨勫璞＄被ID锛屾煡璇㈣捣鐐圭瓑浜庢瀵硅薄绫绘垨鑰呯粓鐐圭瓑浜庢瀵硅薄绫荤殑鍏崇郴绫汇€傛敮鎸佷紶鍏ュ涓€?
           schema:
             type: array
             items:
               type: string
           in: query
         - name: branch
-          description: 分支，默认 main
+          description: 鍒嗘敮锛岄粯璁?main
           schema:
             type: string
             default: main
@@ -86,7 +86,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListRelationTypes"
           description: ok
-      summary: 获取关系类列表
+      summary: 鑾峰彇鍏崇郴绫诲垪琛?
     post:
       requestBody:
         content:
@@ -94,13 +94,13 @@ paths:
             schema:
               $ref: "#/components/schemas/override"
             examples:
-              创建关系类:
+              鍒涘缓鍏崇郴绫?
                 value:
                   - id: service_2_pod
-                    name: 包含
+                    name: 鍖呭惈
                     tags:
-                      - 拓扑架构
-                    comment: 服务到pod的关系，服务包含于pod
+                      - 鎷撴墤鏋舵瀯
+                    comment: 鏈嶅姟鍒皃od鐨勫叧绯伙紝鏈嶅姟鍖呭惈浜巔od
                     icon: ""
                     color: ""
                     branch: main
@@ -114,10 +114,10 @@ paths:
                           name: service_name
                     module_type: relation_type
                   - id: pod_2_node
-                    name: 属于
+                    name: 灞炰簬
                     tags:
-                      - 拓扑架构
-                    comment: pod到node的关系，pod包含于节点
+                      - 鎷撴墤鏋舵瀯
+                    comment: pod鍒皀ode鐨勫叧绯伙紝pod鍖呭惈浜庤妭鐐?
                     icon: ""
                     color: ""
                     branch: main
@@ -130,7 +130,7 @@ paths:
                         target_property:
                           name: node_name
                     module_type: relation_type
-              检索关系类-第一次请求:
+              妫€绱㈠叧绯荤被-绗竴娆¤姹?
                 value:
                   need_total: true
                   limit: 1
@@ -147,7 +147,7 @@ paths:
                         value:
                           - pod
                           - 10
-              检索关系类-非第一次:
+              妫€绱㈠叧绯荤被-闈炵涓€娆?
                 value:
                   cursor: cursor-relation-types-1
                   need_total: true
@@ -168,13 +168,13 @@ paths:
         required: true
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           schema:
             type: string
           in: path
           required: true
         - name: x-http-method-override
-          description: 重载请求头
+          description: 閲嶈浇璇锋眰澶?
           schema:
             enum:
               - POST
@@ -183,22 +183,22 @@ paths:
           in: header
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: 鍒嗘敮锛岄粯璁?main
           schema:
             type: string
             default: main
           in: query
         - name: import_mode
           description: |
-            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
-            `ignore` 跳过同名概念。默认 `normal`。
+            瀵煎叆妯″紡銆俙normal` 閬囧埌鍚屽悕姒傚康鎶ラ敊锛沗overwrite` 瑕嗙洊鍚屽悕姒傚康锛?
+            `ignore` 璺宠繃鍚屽悕姒傚康銆傞粯璁?`normal`銆?
           schema:
             type: string
             enum: [normal, overwrite, ignore]
             default: normal
           in: query
         - name: strict_mode
-          description: 是否校验依赖对象存在性，默认 true。为空时回退读取已废弃的 validate_dependency
+          description: 鏄惁鏍￠獙渚濊禆瀵硅薄瀛樺湪鎬э紝榛樿 true銆備负绌烘椂鍥為€€璇诲彇宸插簾寮冪殑 validate_dependency
           schema:
             type: boolean
             default: true
@@ -210,14 +210,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/RelationTypeSearchResponse"
               examples:
-                检索关系类-第一次请求:
+                妫€绱㈠叧绯荤被-绗竴娆¤姹?
                   value:
                     entries:
                       - id: pod_2_node_TEST
-                        name: 属于2
+                        name: 灞炰簬2
                         tags:
-                          - 拓扑架构
-                        comment: pod到node的关系，pod包含于节点
+                          - 鎷撴墤鏋舵瀯
+                        comment: pod鍒皀ode鐨勫叧绯伙紝pod鍖呭惈浜庤妭鐐?
                         icon: ""
                         color: ""
                         branch: main
@@ -249,14 +249,14 @@ paths:
                         module_type: relation_type
                     total_count: 2
                     next_cursor: cursor-relation-types-1
-                检索关系类--非第一次请求:
+                妫€绱㈠叧绯荤被--闈炵涓€娆¤姹?
                   value:
                     entries:
                       - id: service_2_pod_test
-                        name: 包含2
+                        name: 鍖呭惈2
                         tags:
-                          - 拓扑架构
-                        comment: 服务到pod的关系，服务包含于pod
+                          - 鎷撴墤鏋舵瀯
+                        comment: 鏈嶅姟鍒皃od鐨勫叧绯伙紝鏈嶅姟鍖呭惈浜巔od
                         icon: ""
                         color: ""
                         branch: main
@@ -287,7 +287,7 @@ paths:
                         IfNameModify: false
                         module_type: relation_type
                     next_cursor: cursor-relation-types-2
-          description: "重载GET, 检索关系类"
+          description: "閲嶈浇GET, 妫€绱㈠叧绯荤被"
         "201":
           content:
             application/json:
@@ -296,10 +296,10 @@ paths:
                 items:
                   $ref: "#/components/schemas/ID"
           description: ok
-      summary: 创建或检索关系类
+      summary: 鍒涘缓鎴栨绱㈠叧绯荤被
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: 涓氬姟鐭ヨ瘑缃戠粶ID
         schema:
           type: string
         in: path
@@ -314,24 +314,24 @@ paths:
         required: true
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           schema:
             type: string
           in: path
           required: true
         - name: rt_id
-          description: 关系类ID
+          description: 鍏崇郴绫籌D
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: 鍒嗘敮锛屼笉濉垯浣跨敤 main 鍒嗘敮
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true。为 true 时校验关联对象类、数据视图等依赖是否存在；为 false 时不做该校验
+          description: 鏄惁涓ユ牸鏍￠獙渚濊禆锛岄粯璁や负 true銆備负 true 鏃舵牎楠屽叧鑱斿璞＄被銆佹暟鎹鍥剧瓑渚濊禆鏄惁瀛樺湪锛涗负 false 鏃朵笉鍋氳鏍￠獙
           schema:
             type: boolean
             default: true
@@ -339,16 +339,16 @@ paths:
       responses:
         "204":
           description: ok
-      summary: 修改关系类
+      summary: 淇敼鍏崇郴绫?
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: 涓氬姟鐭ヨ瘑缃戠粶ID
         schema:
           type: string
         in: path
         required: true
       - name: rt_id
-        description: 关系类ID
+        description: 鍏崇郴绫籌D
         schema:
           type: string
         in: path
@@ -357,7 +357,7 @@ paths:
     get:
       parameters:
         - name: rt_ids
-          description: 关系类ID
+          description: 鍏崇郴绫籌D
           schema:
             type: array
             items:
@@ -365,13 +365,13 @@ paths:
           in: path
           required: true
         - name: kn_id
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: 鍒嗘敮锛岄粯璁?main
           schema:
             type: string
             default: main
@@ -383,17 +383,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RelationTypeDetails"
           description: ok
-      summary: 获取关系类详情
+      summary: 鑾峰彇鍏崇郴绫昏鎯?
     delete:
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           schema:
             type: string
           in: path
           required: true
         - name: rt_ids
-          description: 关系类ID
+          description: 鍏崇郴绫籌D
           schema:
             type: array
             items:
@@ -401,7 +401,7 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: 鍒嗘敮锛岄粯璁?main
           schema:
             type: string
             default: main
@@ -409,16 +409,16 @@ paths:
       responses:
         "204":
           description: ok
-      summary: 删除关系类
+      summary: 鍒犻櫎鍏崇郴绫?
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: 涓氬姟鐭ヨ瘑缃戠粶ID
         schema:
           type: string
         in: path
         required: true
       - name: rt_ids
-        description: 关系类ID
+        description: 鍏崇郴绫籌D
         schema:
           type: array
           items:
@@ -426,8 +426,8 @@ paths:
         in: path
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-type-paths:
-    summary: 从起点探索概念路径
-    description: 从起点探索概念路径
+    summary: 浠庤捣鐐规帰绱㈡蹇佃矾寰?
+    description: 浠庤捣鐐规帰绱㈡蹇佃矾寰?
     post:
       requestBody:
         content:
@@ -435,7 +435,7 @@ paths:
             schema:
               $ref: "#/components/schemas/RelationPathReqeustBody"
             examples:
-              获取路径:
+              鑾峰彇璺緞:
                 value:
                   source_object_type_id: comment
                   direction: backward
@@ -446,7 +446,7 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: 鍒嗘敮锛岄粯璁?main
           schema:
             type: string
             default: main
@@ -466,7 +466,7 @@ paths:
                           data_source:
                             type: resource
                             id: "1995407615886381058"
-                            name: 评论表
+                            name: 璇勮琛?
                           data_properties:
                             - name: c_browserused
                               display_name: c_browserused
@@ -476,16 +476,6 @@ paths:
                                 name: c_browserused
                                 type: text
                                 display_name: c_browserused
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - ==
                                 - "!="
@@ -508,16 +498,6 @@ paths:
                                 name: c_content
                                 type: text
                                 display_name: c_content
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - "!="
                                 - in
@@ -548,16 +528,6 @@ paths:
                                 name: c_locationip
                                 type: text
                                 display_name: c_locationip
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - match
                                 - ==
@@ -620,7 +590,7 @@ paths:
                             name: comment_replyof_comment
                             source_object_type_id: comment
                             target_object_type_id: comment
-                            type: data_view
+                            type: resource
                             mapping_rules:
                               backing_data_source:
                                 type: resource
@@ -645,7 +615,7 @@ paths:
                           data_source:
                             type: resource
                             id: "1995407615886381058"
-                            name: 评论表
+                            name: 璇勮琛?
                           data_properties:
                             - name: c_browserused
                               display_name: c_browserused
@@ -655,16 +625,6 @@ paths:
                                 name: c_browserused
                                 type: text
                                 display_name: c_browserused
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - ==
                                 - "!="
@@ -687,16 +647,6 @@ paths:
                                 name: c_content
                                 type: text
                                 display_name: c_content
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - "!="
                                 - in
@@ -727,16 +677,6 @@ paths:
                                 name: c_locationip
                                 type: text
                                 display_name: c_locationip
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - match
                                 - ==
@@ -847,7 +787,7 @@ paths:
                             name: person_likes_comment
                             source_object_type_id: person
                             target_object_type_id: comment
-                            type: data_view
+                            type: resource
                             mapping_rules:
                               source_mapping_rules:
                                 - target_property:
@@ -867,41 +807,41 @@ paths:
                           direction: backward
                       length: 1
           description: ok
-      summary: 从起点探索概念路径
-      description: 从起点探索概念路径
+      summary: 浠庤捣鐐规帰绱㈡蹇佃矾寰?
+      description: 浠庤捣鐐规帰绱㈡蹇佃矾寰?
     parameters:
       - name: kn_id
         in: path
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types/validation:
     post:
-      summary: 校验关系类
+      summary: 鏍￠獙鍏崇郴绫?
       description: |
-        仅校验关系类依赖存在性，不写库。校验起点/终点对象类、间接数据视图等依赖是否存在。
+        浠呮牎楠屽叧绯荤被渚濊禆瀛樺湪鎬э紝涓嶅啓搴撱€傛牎楠岃捣鐐?缁堢偣瀵硅薄绫汇€侀棿鎺ユ暟鎹鍥剧瓑渚濊禆鏄惁瀛樺湪銆?
 
-        **响应**：HTTP 200 时 `valid`/`detail` 同其它 validate 接口；参数与鉴权错误为非 2xx。
+        **鍝嶅簲**锛欻TTP 200 鏃?`valid`/`detail` 鍚屽叾瀹?validate 鎺ュ彛锛涘弬鏁颁笌閴存潈閿欒涓洪潪 2xx銆?
 
-        **内部接口**：`POST /api/bkn-backend/in/v1/.../relation-types/validation`；Header 解析访问者，无 OAuth。
+        **鍐呴儴鎺ュ彛**锛歚POST /api/bkn-backend/in/v1/.../relation-types/validation`锛汬eader 瑙ｆ瀽璁块棶鑰咃紝鏃?OAuth銆?
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: 鍒嗘敮锛屼笉濉垯浣跨敤 main 鍒嗘敮
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true
+          description: 鏄惁涓ユ牸鏍￠獙渚濊禆锛岄粯璁や负 true
           schema:
             type: boolean
             default: true
           in: query
         - name: import_mode
-          description: 与创建关系类接口一致；用于关系类 ID 已存在等冲突的校验语义（名称维度与创建侧一致时由创建逻辑约束）。
+          description: 涓庡垱寤哄叧绯荤被鎺ュ彛涓€鑷达紱鐢ㄤ簬鍏崇郴绫?ID 宸插瓨鍦ㄧ瓑鍐茬獊鐨勬牎楠岃涔夛紙鍚嶇О缁村害涓庡垱寤轰晶涓€鑷存椂鐢卞垱寤洪€昏緫绾︽潫锛夈€?
           schema:
             type: string
             enum: [normal, ignore, overwrite]
@@ -916,12 +856,12 @@ paths:
               properties:
                 entries:
                   type: array
-                  description: 待校验的关系类列表，结构与创建接口一致
+                  description: 寰呮牎楠岀殑鍏崇郴绫诲垪琛紝缁撴瀯涓庡垱寤烘帴鍙ｄ竴鑷?
                   items:
                     type: object
       responses:
         "200":
-          description: 已返回校验结果（通过与否均可能为 200）
+          description: 宸茶繑鍥炴牎楠岀粨鏋滐紙閫氳繃涓庡惁鍧囧彲鑳戒负 200锛?
           content:
             application/json:
               schema:
@@ -933,32 +873,32 @@ paths:
                     type: boolean
                   detail:
                     type: string
-                    description: 当 valid 为 false 时的说明（error.Error()）
+                    description: 褰?valid 涓?false 鏃剁殑璇存槑锛坋rror.Error()锛?
         "400":
-          description: 请求参数错误等；业务校验未通过见 200 + valid:false
+          description: 璇锋眰鍙傛暟閿欒绛夛紱涓氬姟鏍￠獙鏈€氳繃瑙?200 + valid:false
 components:
   schemas:
     BasicInfo:
-      description: 资源的基本信息，包含id和名称
+      description: 璧勬簮鐨勫熀鏈俊鎭紝鍖呭惈id鍜屽悕绉?
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 资源ID
+          description: 璧勬簮ID
           type: string
         name:
-          description: 资源名称
+          description: 璧勬簮鍚嶇О
           type: string
     ConceptCondition:
-      description: 概念查询数据条件。可用于过滤的字段有类名、属性名和描述
+      description: 姒傚康鏌ヨ鏁版嵁鏉′欢銆傚彲鐢ㄤ簬杩囨护鐨勫瓧娈垫湁绫诲悕銆佸睘鎬у悕鍜屾弿杩?
       required:
         - operation
       type: object
       properties:
         field:
-          description: 字段名称
+          description: 瀛楁鍚嶇О
           enum:
             - type_id
             - type_name
@@ -968,11 +908,11 @@ components:
           type: string
         operation:
           description: |-
-            操作符。
+            鎿嶄綔绗︺€?
 
-            knn: 未对原文进行向量化的向量过滤，接收的值是数组，第一个值，过滤内容，第二个值为 int,是邻居搜索时返回的邻居个数。
+            knn: 鏈鍘熸枃杩涜鍚戦噺鍖栫殑鍚戦噺杩囨护锛屾帴鏀剁殑鍊兼槸鏁扮粍锛岀涓€涓€硷紝杩囨护鍐呭锛岀浜屼釜鍊间负 int,鏄偦灞呮悳绱㈡椂杩斿洖鐨勯偦灞呬釜鏁般€?
 
-            knn_vector: 对原文进行向量化后的向量过滤，接收的值是数组，第一个值，向量，第二个值为 int,是邻居搜索时返回的邻居个数。
+            knn_vector: 瀵瑰師鏂囪繘琛屽悜閲忓寲鍚庣殑鍚戦噺杩囨护锛屾帴鏀剁殑鍊兼槸鏁扮粍锛岀涓€涓€硷紝鍚戦噺锛岀浜屼釜鍊间负 int,鏄偦灞呮悳绱㈡椂杩斿洖鐨勯偦灞呬釜鏁般€?
           enum:
             - and
             - or
@@ -989,39 +929,39 @@ components:
             - knn_vector
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: 瀛愯繃婊ゆ潯浠?
           type: array
           items:
             $ref: "#/components/schemas/ConceptCondition"
         value:
-          description: 字段值
+          description: 瀛楁鍊?
         value_from:
-          description: 字段值来源，当前仅支持 "const"
+          description: 瀛楁鍊兼潵婧愶紝褰撳墠浠呮敮鎸?"const"
           enum:
             - const
           type: string
     ConceptGroup:
-      description: 概念分组
+      description: 姒傚康鍒嗙粍
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 概念分组ID
+          description: 姒傚康鍒嗙粍ID
           type: string
         name:
-          description: 概念分组名称
+          description: 姒傚康鍒嗙粍鍚嶇О
           type: string
     DataSource:
-      description: 数据来源
+      description: 鏁版嵁鏉ユ簮
       required:
         - type
         - id
       type: object
       properties:
         type:
-          description: 间接关系 backing 数据来源类型。当前仅支持 vega resource；legacy `data_view` 已废弃。
+          description: 闂存帴鍏崇郴 backing 鏁版嵁鏉ユ簮绫诲瀷銆傚綋鍓嶄粎鏀寔 vega resource锛沴egacy `legacy view` 宸插簾寮冦€?
           enum:
             - resource
           type: string
@@ -1029,43 +969,22 @@ components:
           description: vega resource ID
           type: string
         name:
-          description: 数据视图名称。查看详情时返回。
+          description: 鏁版嵁瑙嗗浘鍚嶇О銆傛煡鐪嬭鎯呮椂杩斿洖銆?
           type: string
-    DataViewMappingRule:
-      description: 关系类型为 data_view 时的匹配规则
-      required:
-        - backing_data_source
-        - source_mapping_rules
-        - target_mapping_rules
-      type: object
-      properties:
-        backing_data_source:
-          $ref: "#/components/schemas/DataSource"
-          description: 间接关系 backing 数据来源（vega resource）
-        source_mapping_rules:
-          description: 起点对象类与数据集的匹配规则
-          type: array
-          items:
-            $ref: "#/components/schemas/Mapping"
-        target_mapping_rules:
-          description: 终点对象类与数据集匹配规则
-          type: array
-          items:
-            $ref: "#/components/schemas/Mapping"
     FilteredCrossJoinMappingRule:
       description: |
-        关系类型为 `filtered_cross_join`（分侧过滤全连接，FCJ）时的匹配规则。
-        不绑定数据视图，无数组形式的键映射；`source_condition` 与 `target_condition` 分别约束起点侧、终点侧对象实例是否参与该关系
-        （结构与对象实例查询的 Condition 相同）。
-        两侧条件均可省略：可只填一侧、或两侧皆不传/`{}`（表示该侧或两侧无额外过滤，与引擎中「无条件即全量」语义一致）。
+        鍏崇郴绫诲瀷涓?`filtered_cross_join`锛堝垎渚ц繃婊ゅ叏杩炴帴锛孎CJ锛夋椂鐨勫尮閰嶈鍒欍€?
+        涓嶇粦瀹氭暟鎹鍥撅紝鏃犳暟缁勫舰寮忕殑閿槧灏勶紱`source_condition` 涓?`target_condition` 鍒嗗埆绾︽潫璧风偣渚с€佺粓鐐逛晶瀵硅薄瀹炰緥鏄惁鍙備笌璇ュ叧绯?
+        锛堢粨鏋勪笌瀵硅薄瀹炰緥鏌ヨ鐨?Condition 鐩稿悓锛夈€?
+        涓や晶鏉′欢鍧囧彲鐪佺暐锛氬彲鍙～涓€渚с€佹垨涓や晶鐨嗕笉浼?`{}`锛堣〃绀鸿渚ф垨涓や晶鏃犻澶栬繃婊わ紝涓庡紩鎿庝腑銆屾棤鏉′欢鍗冲叏閲忋€嶈涔変竴鑷达級銆?
       type: object
       properties:
         source_condition:
           $ref: "#/components/schemas/Condition"
-          description: 起点对象类实例需满足的条件；可省略或为空表示该侧无额外约束
+          description: 璧风偣瀵硅薄绫诲疄渚嬮渶婊¤冻鐨勬潯浠讹紱鍙渷鐣ユ垨涓虹┖琛ㄧず璇ヤ晶鏃犻澶栫害鏉?
         target_condition:
           $ref: "#/components/schemas/Condition"
-          description: 终点对象类实例需满足的条件；可省略或为空表示该侧无额外约束
+          description: 缁堢偣瀵硅薄绫诲疄渚嬮渶婊¤冻鐨勬潯浠讹紱鍙渷鐣ユ垨涓虹┖琛ㄧず璇ヤ晶鏃犻澶栫害鏉?
     ID:
       description: id
       required:
@@ -1076,22 +995,22 @@ components:
           description: id
           type: string
     ListRelationTypes:
-      description: 关系类列表
+      description: 鍏崇郴绫诲垪琛?
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: 鏉＄洰鍒楄〃
           type: array
           items:
             $ref: "#/components/schemas/RelationType"
         total_count:
-          description: 总条数
+          description: 鎬绘潯鏁?
           type: integer
     Mapping:
-      description: 关联规则
+      description: 鍏宠仈瑙勫垯
       required:
         - target_property
         - source_property
@@ -1099,21 +1018,21 @@ components:
       properties:
         target_property:
           $ref: "#/components/schemas/SimpleProperty"
-          description: 起点属性
+          description: 璧风偣灞炴€?
         source_property:
           $ref: "#/components/schemas/SimpleProperty"
-          description: 终点属性
+          description: 缁堢偣灞炴€?
     SimpleProperty:
-      description: 属性简单信息
+      description: 灞炴€х畝鍗曚俊鎭?
       required:
         - name
       type: object
       properties:
         name:
-          description: 属性名称
+          description: 灞炴€у悕绉?
           type: string
         display_name:
-          description: 属性显示名。当查看详情时会返回此字段
+          description: 灞炴€ф樉绀哄悕銆傚綋鏌ョ湅璇︽儏鏃朵細杩斿洖姝ゅ瓧娈?
           type: string
     SimpleObjectType:
       description: ""
@@ -1125,22 +1044,22 @@ components:
       type: object
       properties:
         id:
-          description: 对象类id
+          description: 瀵硅薄绫籭d
           type: string
         name:
-          description: 对象类名称
+          description: 瀵硅薄绫诲悕绉?
           type: string
         icon:
-          description: 对象类图标
+          description: 瀵硅薄绫诲浘鏍?
           type: string
         color:
-          description: 对象类颜色
+          description: 瀵硅薄绫婚鑹?
           type: string
         branch:
-          description: 所属分支
+          description: 鎵€灞炲垎鏀?
           type: string
     Path:
-      description: 路径
+      description: 璺緞
       required:
         - nodes
         - edges
@@ -1148,20 +1067,20 @@ components:
       type: object
       properties:
         nodes:
-          description: 路径中的节点列表(有序)
+          description: 璺緞涓殑鑺傜偣鍒楄〃(鏈夊簭)
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeDetail"
         edges:
-          description: 路径中的边列表(有序)
+          description: 璺緞涓殑杈瑰垪琛?鏈夊簭)
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         length:
-          description: 路径长度(边数量)
+          description: 璺緞闀垮害(杈规暟閲?
           type: integer
     ObjectTypeDetail:
-      description: 节点（对象类）信息
+      description: 鑺傜偣锛堝璞＄被锛変俊鎭?
       required:
         - id
         - name
@@ -1184,76 +1103,76 @@ components:
       type: object
       properties:
         id:
-          description: 对象类ID
+          description: 瀵硅薄绫籌D
           type: string
         name:
-          description: 对象类名称
+          description: 瀵硅薄绫诲悕绉?
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: 鏍囩銆?锛堝彲浠ヤ负绌猴級
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: 澶囨敞锛堝彲浠ヤ负绌猴級
           type: string
         icon:
-          description: 图标
+          description: 鍥炬爣
           type: string
         color:
-          description: 颜色
+          description: 棰滆壊
           type: string
         branch:
-          description: 分支ID
+          description: 鍒嗘敮ID
           type: string
         kn_id:
-          description: 业务知识网络id
+          description: 涓氬姟鐭ヨ瘑缃戠粶id
           type: string
         concept_groups:
-          description: 概念分组id
+          description: 姒傚康鍒嗙粍id
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源
+          description: 鏁版嵁鏉ユ簮
         data_properties:
-          description: 数据属性
+          description: 鏁版嵁灞炴€?
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 逻辑属性
+          description: 閫昏緫灞炴€?
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 主键
+          description: 涓婚敭
           type: array
           items:
             type: string
         display_key:
-          description: 对象实例的显示属性
+          description: 瀵硅薄瀹炰緥鐨勬樉绀哄睘鎬?
           type: string
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: 鍒涘缓鏃堕棿
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
           type: integer
         module_type:
-          description: 模块类型
+          description: 妯″潡绫诲瀷
           enum:
             - object_type
           type: string
     DataProperty:
-      description: 数据属性
+      description: 鏁版嵁灞炴€?
       required:
         - name
         - display_name
@@ -1266,71 +1185,71 @@ components:
       type: object
       properties:
         name:
-          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: 灞炴€у悕绉般€傚彧鑳藉寘鍚皬鍐欒嫳鏂囧瓧姣嶃€佹暟瀛椼€佷笅鍒掔嚎锛坃锛夈€佽繛瀛楃锛?锛夛紝涓斾笉鑳戒互涓嬪垝绾垮拰杩炲瓧绗﹀紑澶?
           type: string
         display_name:
-          description: 属性显示名
+          description: 灞炴€ф樉绀哄悕
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: 灞炴€ф暟鎹被鍨嬨€傞櫎浜嗚鍥剧殑瀛楁绫诲瀷涔嬪锛岃繕鏈?metric銆乷bjective銆乪vent銆乼race銆乴og銆乷perator
           type: string
         comment:
-          description: 属性描述
+          description: 灞炴€ф弿杩?
           type: string
         mapped_field:
           $ref: "#/components/schemas/ViewField"
-          description: 属性映射到数据来源中的字段名
+          description: 灞炴€ф槧灏勫埌鏁版嵁鏉ユ簮涓殑瀛楁鍚?
         index:
-          description: 是否开启索引，默认是true
+          description: 鏄惁寮€鍚储寮曪紝榛樿鏄痶rue
           type: boolean
         fulltext_config:
           $ref: "#/components/schemas/FulltextConfig"
-          description: 全文索引的配置
+          description: 鍏ㄦ枃绱㈠紩鐨勯厤缃?
         vector_config:
           $ref: "#/components/schemas/VectorConfig"
-          description: 向量索引的配置
+          description: 鍚戦噺绱㈠紩鐨勯厤缃?
     FulltextConfig:
-      description: 全文索引的配置
+      description: 鍏ㄦ枃绱㈠紩鐨勯厤缃?
       required:
         - analyzer
         - field_keyword
       type: object
       properties:
         analyzer:
-          description: 分词器
+          description: 鍒嗚瘝鍣?
           enum:
             - standard
             - ik_max_word
           type: string
         field_keyword:
-          description: 是否保留原始字符串，保留原始字符串可用于精确匹配。默认是false
+          description: 鏄惁淇濈暀鍘熷瀛楃涓诧紝淇濈暀鍘熷瀛楃涓插彲鐢ㄤ簬绮剧‘鍖归厤銆傞粯璁ゆ槸false
           type: boolean
     ViewField:
-      description: 视图字段信息
+      description: 瑙嗗浘瀛楁淇℃伅
       required:
         - name
       type: object
       properties:
         name:
-          description: 字段名称
+          description: 瀛楁鍚嶇О
           type: string
         display_name:
-          description: 字段显示名.查看时有此字段
+          description: 瀛楁鏄剧ず鍚?鏌ョ湅鏃舵湁姝ゅ瓧娈?
           type: string
         type:
-          description: 视图字段类型，查看时有此字段
+          description: 瑙嗗浘瀛楁绫诲瀷锛屾煡鐪嬫椂鏈夋瀛楁
           type: string
     VectorConfig:
-      description: 向量索引的配置
+      description: 鍚戦噺绱㈠紩鐨勯厤缃?
       required:
         - dimension
       type: object
       properties:
         dimension:
-          description: 向量维度
+          description: 鍚戦噺缁村害
           type: integer
     LogicProperty:
-      description: 逻辑属性
+      description: 閫昏緫灞炴€?
       required:
         - name
         - data_source
@@ -1338,65 +1257,65 @@ components:
       type: object
       properties:
         name:
-          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: 灞炴€у悕绉般€傚彧鑳藉寘鍚皬鍐欒嫳鏂囧瓧姣嶃€佹暟瀛椼€佷笅鍒掔嚎锛坃锛夈€佽繛瀛楃锛?锛夛紝涓斾笉鑳戒互涓嬪垝绾垮拰杩炲瓧绗﹀紑澶?
           type: string
         display_name:
-          description: 属性显示名
+          description: 灞炴€ф樉绀哄悕
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: 灞炴€ф暟鎹被鍨嬨€傞櫎浜嗚鍥剧殑瀛楁绫诲瀷涔嬪锛岃繕鏈?metric銆乷bjective銆乪vent銆乼race銆乴og銆乷perator
           type: string
         comment:
-          description: 属性描述
+          description: 灞炴€ф弿杩?
           type: string
         index:
-          description: 是否开启索引，默认是true
+          description: 鏄惁寮€鍚储寮曪紝榛樿鏄痶rue
           type: boolean
         data_source:
           $ref: "#/components/schemas/LogicSource"
-          description: 逻辑来源
+          description: 閫昏緫鏉ユ簮
         parameters:
-          description: 逻辑所需的参数
+          description: 閫昏緫鎵€闇€鐨勫弬鏁?
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
     LogicSource:
-      description: 数据来源
+      description: 鏁版嵁鏉ユ簮
       required:
         - type
         - id
       type: object
       properties:
         type:
-          description: 数据来源类型
+          description: 鏁版嵁鏉ユ簮绫诲瀷
           enum:
             - metric
             - operator
           type: string
         id:
-          description: 数据来源ID
+          description: 鏁版嵁鏉ユ簮ID
           type: string
         name:
-          description: 名称。查看详情时返回。
+          description: 鍚嶇О銆傛煡鐪嬭鎯呮椂杩斿洖銆?
           type: string
     Parameter:
-      description: 逻辑参数
+      description: 閫昏緫鍙傛暟
       required:
         - name
         - value_from
       type: object
       properties:
         name:
-          description: 参数名称
+          description: 鍙傛暟鍚嶇О
           type: string
         value_from:
-          description: 值来源
+          description: 鍊兼潵婧?
           enum:
             - property
             - input
           type: string
         value:
-          description: 参数值。value_from=property时，填入的是对象类的数据属性名称；value_from=input时，不设置此字段
+          description: 鍙傛暟鍊笺€倂alue_from=property鏃讹紝濉叆鐨勬槸瀵硅薄绫荤殑鏁版嵁灞炴€у悕绉帮紱value_from=input鏃讹紝涓嶈缃瀛楁
           type: string
     override:
       oneOf:
@@ -1408,37 +1327,37 @@ components:
           x-http-method-override:POST: "#/components/schemas/ReqRelationTypes"
           x-http-method-override:GET: "#/components/schemas/override--get"
         propertyName: x-http-method-override
-      description: post 重载批量创建、关系类检索接口
+      description: post 閲嶈浇鎵归噺鍒涘缓銆佸叧绯荤被妫€绱㈡帴鍙?
       type: object
     override--get:
       oneOf:
         - $ref: "#/components/schemas/FirstQueryWithCursor"
         - $ref: "#/components/schemas/PageTurnQueryWithCursor"
-      description: 关系类检索请求体
+      description: 鍏崇郴绫绘绱㈣姹備綋
       type: object
     Sort:
-      description: 排序字段。默认按 _score 倒序排序
+      description: 鎺掑簭瀛楁銆傞粯璁ゆ寜 _score 鍊掑簭鎺掑簭
       required:
         - field
         - direction
       type: object
       properties:
         field:
-          description: 排序字段
+          description: 鎺掑簭瀛楁
           type: string
         direction:
-          description: 排序方向
+          description: 鎺掑簭鏂瑰悜
           enum:
             - desc
             - asc
           type: string
     DirectMappingRules:
-      description: 直接关联
+      description: 鐩存帴鍏宠仈
       type: array
       items:
         $ref: "#/components/schemas/Mapping"
     ReqRelationType:
-      description: 关系类创建信息
+      description: 鍏崇郴绫诲垱寤轰俊鎭?
       required:
         - name
         - branch
@@ -1446,49 +1365,47 @@ components:
       type: object
       properties:
         id:
-          description: ID.新建后不可修改，只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: ID.鏂板缓鍚庝笉鍙慨鏀癸紝鍙兘鍖呭惈灏忓啓鑻辨枃瀛楁瘝銆佹暟瀛椼€佷笅鍒掔嚎锛坃锛夈€佽繛瀛楃锛?锛夛紝涓斾笉鑳戒互涓嬪垝绾垮拰杩炲瓧绗﹀紑澶?
           type: string
         name:
-          description: 名称
+          description: 鍚嶇О
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: 鏍囩銆傜敤浜庝笟鍔℃爣璇?
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: 澶囨敞
           type: string
         icon:
-          description: 图标
+          description: 鍥炬爣
           type: string
         color:
-          description: 颜色
+          description: 棰滆壊
           type: string
         branch:
-          description: 分支ID
+          description: 鍒嗘敮ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: 璧风偣璞＄被ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: 缁堢偣瀵硅薄绫籌D
           type: string
         type:
-          description: 关系类型
+          description: 鍏崇郴绫诲瀷
           enum:
             - direct
-            - data_view
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
-            - $ref: "#/components/schemas/DataViewMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 映射规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join`（FCJ）时为 FilteredCrossJoinMappingRule（分侧条件，无键映射）。
+          description: 鏄犲皠瑙勫垯銆俙direct` 鏃朵负 Mapping 鏁扮粍锛沗legacy view` 鏃朵负 LegacyViewMappingRule锛沗filtered_cross_join`锛團CJ锛夋椂涓?FilteredCrossJoinMappingRule锛堝垎渚ф潯浠讹紝鏃犻敭鏄犲皠锛夈€?
     UpdateRelationType:
-      description: 关系类更新信息
+      description: 鍏崇郴绫绘洿鏂颁俊鎭?
       required:
         - name
         - branch
@@ -1498,46 +1415,44 @@ components:
       type: object
       properties:
         name:
-          description: 名称
+          description: 鍚嶇О
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: 鏍囩銆傜敤浜庝笟鍔℃爣璇?
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: 澶囨敞
           type: string
         icon:
-          description: 图标
+          description: 鍥炬爣
           type: string
         color:
-          description: 颜色
+          description: 棰滆壊
           type: string
         branch:
-          description: 分支ID
+          description: 鍒嗘敮ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: 璧风偣璞＄被ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: 缁堢偣瀵硅薄绫籌D
           type: string
         type:
-          description: 关系类型
+          description: 鍏崇郴绫诲瀷
           enum:
             - direct
-            - data_view
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
-            - $ref: "#/components/schemas/DataViewMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
+          description: 鍏宠仈鐨勫尮閰嶈鍒欍€俙direct` 鏃朵负 Mapping 鏁扮粍锛沗legacy view` 鏃朵负 LegacyViewMappingRule锛沗filtered_cross_join` 鏃朵负 FilteredCrossJoinMappingRule銆?
     RelationTypeDetail:
-      description: 关系类
+      description: 鍏崇郴绫?
       required:
         - type
         - comment
@@ -1558,73 +1473,71 @@ components:
       type: object
       properties:
         id:
-          description: 关系类ID
+          description: 鍏崇郴绫籌D
           type: string
         name:
-          description: 关系类名称
+          description: 鍏崇郴绫诲悕绉?
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: 鏍囩銆?锛堝彲浠ヤ负绌猴級
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: 澶囨敞锛堝彲浠ヤ负绌猴級
           type: string
         icon:
-          description: 图标
+          description: 鍥炬爣
           type: string
         color:
-          description: 颜色
+          description: 棰滆壊
           type: string
         branch:
-          description: 分支ID
+          description: 鍒嗘敮ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: 璧风偣璞＄被ID
           type: string
         source_object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 起点象类名称，当查看详情时，此字段才会返回。
+          description: 璧风偣璞＄被鍚嶇О锛屽綋鏌ョ湅璇︽儏鏃讹紝姝ゅ瓧娈垫墠浼氳繑鍥炪€?
         target_object_type_id:
-          description: 终点对象类ID
+          description: 缁堢偣瀵硅薄绫籌D
           type: string
         target_object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 终点对象类名称，当查看详情时，此字段才会返回
+          description: 缁堢偣瀵硅薄绫诲悕绉帮紝褰撴煡鐪嬭鎯呮椂锛屾瀛楁鎵嶄細杩斿洖
         type:
-          description: 关系类型
+          description: 鍏崇郴绫诲瀷
           enum:
             - direct
-            - data_view
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
-            - $ref: "#/components/schemas/DataViewMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
+          description: 鍏宠仈鐨勫尮閰嶈鍒欍€俙direct` 鏃朵负 Mapping 鏁扮粍锛沗legacy view` 鏃朵负 LegacyViewMappingRule锛沗filtered_cross_join` 鏃朵负 FilteredCrossJoinMappingRule銆?
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: 鍒涘缓鏃堕棿
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
           type: integer
         module_type:
-          description: 概念所属模块类型
+          description: 姒傚康鎵€灞炴ā鍧楃被鍨?
           type: string
     RelationType:
-      description: 关系类
+      description: 鍏崇郴绫?
       required:
         - type
         - comment
@@ -1645,64 +1558,62 @@ components:
       type: object
       properties:
         id:
-          description: 关系类ID
+          description: 鍏崇郴绫籌D
           type: string
         name:
-          description: 关系类名称
+          description: 鍏崇郴绫诲悕绉?
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: 鏍囩銆?锛堝彲浠ヤ负绌猴級
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: 澶囨敞锛堝彲浠ヤ负绌猴級
           type: string
         icon:
-          description: 图标
+          description: 鍥炬爣
           type: string
         color:
-          description: 颜色
+          description: 棰滆壊
           type: string
         branch:
-          description: 分支ID
+          description: 鍒嗘敮ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: 涓氬姟鐭ヨ瘑缃戠粶ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: 璧风偣璞＄被ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: 缁堢偣瀵硅薄绫籌D
           type: string
         type:
-          description: 关系类型
+          description: 鍏崇郴绫诲瀷
           enum:
             - direct
-            - data_view
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
-            - $ref: "#/components/schemas/DataViewMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
+          description: 鍏宠仈鐨勫尮閰嶈鍒欍€俙direct` 鏃朵负 Mapping 鏁扮粍锛沗legacy view` 鏃朵负 LegacyViewMappingRule锛沗filtered_cross_join` 鏃朵负 FilteredCrossJoinMappingRule銆?
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: 鍒涘缓鏃堕棿
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
           type: integer
         source_object_type:
-          description: 起点对象类的概要信息
+          description: 璧风偣瀵硅薄绫荤殑姒傝淇℃伅
           type: object
           properties:
             id:
@@ -1716,7 +1627,7 @@ components:
             color:
               type: string
         target_object_type:
-          description: 终点对象类的概要信息
+          description: 缁堢偣瀵硅薄绫荤殑姒傝淇℃伅
           type: object
           properties:
             id:
@@ -1730,48 +1641,48 @@ components:
             color:
               type: string
         module_type:
-          description: 概念所属模块类型
+          description: 姒傚康鎵€灞炴ā鍧楃被鍨?
           type: string
     RelationTypeSearchResponse:
-      description: 关系类检索返回结果
+      description: 鍏崇郴绫绘绱㈣繑鍥炵粨鏋?
       required:
         - type
         - entries
       type: object
       properties:
         entries:
-          description: 对象实例数据
+          description: 瀵硅薄瀹炰緥鏁版嵁
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         total_count:
-          description: 总条数
+          description: 鎬绘潯鏁?
           type: integer
         next_cursor:
-          description: 不透明续页游标；下一页将其作为 cursor 传回。
+          description: 涓嶉€忔槑缁〉娓告爣锛涗笅涓€椤靛皢鍏朵綔涓?cursor 浼犲洖銆?
           type: string
     RelationTypePath:
-      description: 概念路径
+      description: 姒傚康璺緞
       required:
         - object_types
         - length
       type: object
       properties:
         object_types:
-          description: 概念路径中各节点的对象类数组
+          description: 姒傚康璺緞涓悇鑺傜偣鐨勫璞＄被鏁扮粍
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeWithKeyField"
         relation_types:
-          description: 概念路径
+          description: 姒傚康璺緞
           type: array
           items:
             $ref: "#/components/schemas/TypeEdge"
         length:
-          description: 路径长度
+          description: 璺緞闀垮害
           type: integer
     ObjectTypeWithKeyField:
-      description: 对象类的关键信息
+      description: 瀵硅薄绫荤殑鍏抽敭淇℃伅
       required:
         - id
         - name
@@ -1782,34 +1693,34 @@ components:
       type: object
       properties:
         id:
-          description: 对象类id
+          description: 瀵硅薄绫籭d
           type: string
         name:
-          description: 对象类名称
+          description: 瀵硅薄绫诲悕绉?
           type: string
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源信息
+          description: 鏁版嵁鏉ユ簮淇℃伅
         data_properties:
-          description: 数据属性
+          description: 鏁版嵁灞炴€?
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 逻辑属性
+          description: 閫昏緫灞炴€?
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 主键信息
+          description: 涓婚敭淇℃伅
           type: array
           items:
             type: string
         display_key:
-          description: 对象类的显示属性名
+          description: 瀵硅薄绫荤殑鏄剧ず灞炴€у悕
           type: string
     RelationTypeWithKeyField:
-      description: 关系类关键信息
+      description: 鍏崇郴绫诲叧閿俊鎭?
       required:
         - id
         - name
@@ -1820,31 +1731,29 @@ components:
       type: object
       properties:
         id:
-          description: 关系类id
+          description: 鍏崇郴绫籭d
           type: string
         name:
-          description: 关系类名称
+          description: 鍏崇郴绫诲悕绉?
           type: string
         source_object_type_id:
-          description: 起点对象类id
+          description: 璧风偣瀵硅薄绫籭d
           type: string
         target_object_type_id:
-          description: 终点对象类id
+          description: 缁堢偣瀵硅薄绫籭d
           type: string
         type:
-          description: 关联类型。`direct` 直接键映射；`data_view` 经数据视图关联；`filtered_cross_join` 分侧过滤全连接（FCJ），无数组形式键映射
+          description: 鍏宠仈绫诲瀷銆俙direct` 鐩存帴閿槧灏勶紱`legacy view` 缁忔暟鎹鍥惧叧鑱旓紱`filtered_cross_join` 鍒嗕晶杩囨护鍏ㄨ繛鎺ワ紙FCJ锛夛紝鏃犳暟缁勫舰寮忛敭鏄犲皠
           enum:
             - direct
-            - data_view
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
-            - $ref: "#/components/schemas/DataViewMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
     TypeEdge:
-      description: 路径的边
+      description: 璺緞鐨勮竟
       required:
         - relation_type_id
         - relation_type
@@ -1854,48 +1763,48 @@ components:
       type: object
       properties:
         relation_type_id:
-          description: 关系类id
+          description: 鍏崇郴绫籭d
           type: string
         relation_type:
           $ref: "#/components/schemas/RelationTypeWithKeyField"
-          description: 关系类信息
+          description: 鍏崇郴绫讳俊鎭?
         source_object_type_id:
-          description: 边的起点对象类id
+          description: 杈圭殑璧风偣瀵硅薄绫籭d
           type: string
         target_object_type_id:
-          description: 边的终点对象类id
+          description: 杈圭殑缁堢偣瀵硅薄绫籭d
           type: string
         direction:
-          description: 当前边相对于关系类的方向。正向(forward)、反向(backward)、双向(bidirectional)
+          description: 褰撳墠杈圭浉瀵逛簬鍏崇郴绫荤殑鏂瑰悜銆傛鍚?forward)銆佸弽鍚?backward)銆佸弻鍚?bidirectional)
           enum:
             - forward
             - reverse
             - bidirectional
           type: string
     RelationTypeDetails:
-      description: 关系类详情
+      description: 鍏崇郴绫昏鎯?
       required:
         - entries
       type: object
       properties:
         entries:
-          description: 关系类详情
+          description: 鍏崇郴绫昏鎯?
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
     ReqRelationTypes:
-      description: 批量创建请求体
+      description: 鎵归噺鍒涘缓璇锋眰浣?
       required:
         - entries
       type: object
       properties:
         entries:
-          description: 关系类详情
+          description: 鍏崇郴绫昏鎯?
           type: array
           items:
             $ref: "#/components/schemas/ReqRelationType"
     RelationTypePaths:
-      description: 概念路径
+      description: 姒傚康璺緞
       required:
         - entries
       type: object
@@ -1906,33 +1815,33 @@ components:
           items:
             $ref: "#/components/schemas/RelationTypePath"
     FirstQueryWithCursor:
-      description: 关系类检索第一次请求
+      description: 鍏崇郴绫绘绱㈢涓€娆¤姹?
       required:
         - condition
         - limit
       type: object
       properties:
         concept_groups:
-          description: 概念分组id数组
+          description: 姒傚康鍒嗙粍id鏁扮粍
           type: array
           items:
             type: string
         condition:
           $ref: "#/components/schemas/Condition"
-          description: 关系类检索条件
+          description: 鍏崇郴绫绘绱㈡潯浠?
         sort:
-          description: 排序字段，默认使用 _score 排序，排序方向为 desc
+          description: 鎺掑簭瀛楁锛岄粯璁や娇鐢?_score 鎺掑簭锛屾帓搴忔柟鍚戜负 desc
           type: array
           items:
             $ref: "#/components/schemas/Sort"
         limit:
-          description: 返回的数量，默认值 10。范围 1-10000
+          description: 杩斿洖鐨勬暟閲忥紝榛樿鍊?10銆傝寖鍥?1-10000
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: 鏄惁闇€瑕佹€绘暟锛岄粯璁alse
           type: boolean
     PageTurnQueryWithCursor:
-      description: 分页查询的后续分页查询请求
+      description: 鍒嗛〉鏌ヨ鐨勫悗缁垎椤垫煡璇㈣姹?
       required:
         - limit
         - cursor
@@ -1940,29 +1849,29 @@ components:
       type: object
       properties:
         concept_groups:
-          description: 概念分组id数组
+          description: 姒傚康鍒嗙粍id鏁扮粍
           type: array
           items:
             type: string
         condition:
           $ref: "#/components/schemas/Condition"
-          description: 过滤条件
+          description: 杩囨护鏉′欢
         sort:
-          description: 排序字段，默认使用 _score 排序，排序方向为 desc
+          description: 鎺掑簭瀛楁锛岄粯璁や娇鐢?_score 鎺掑簭锛屾帓搴忔柟鍚戜负 desc
           type: array
           items:
             $ref: "#/components/schemas/Sort"
         limit:
-          description: 返回的数量，默认值 10。范围 1-10000
+          description: 杩斿洖鐨勬暟閲忥紝榛樿鍊?10銆傝寖鍥?1-10000
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: 鏄惁闇€瑕佹€绘暟锛岄粯璁alse
           type: boolean
         cursor:
-          description: 上次响应返回的 next_cursor。
+          description: 涓婃鍝嶅簲杩斿洖鐨?next_cursor銆?
           type: string
     RelationPathReqeustBody:
-      description: 路径查询的请求体
+      description: 璺緞鏌ヨ鐨勮姹備綋
       required:
         - source_object_type_id
         - path_length
@@ -1970,42 +1879,42 @@ components:
       type: object
       properties:
         concept_groups:
-          description: 概念分组id数组
+          description: 姒傚康鍒嗙粍id鏁扮粍
           type: array
           items:
             type: string
         source_object_type_id:
-          description: 起点对象类ID
+          description: 璧风偣瀵硅薄绫籌D
           type: string
         path_length:
-          description: "路径长度,不超过3."
+          description: "璺緞闀垮害,涓嶈秴杩?."
           type: integer
         direction:
-          description: 方向：正向(forward)、反向(backward)、双向(bidirectional)
+          description: 鏂瑰悜锛氭鍚?forward)銆佸弽鍚?backward)銆佸弻鍚?bidirectional)
           enum:
             - forward
             - reverse
             - bidirectional
           type: string
     condition_or:
-      description: or 的过滤条件
+      description: or 鐨勮繃婊ゆ潯浠?
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: 杩囨护鎿嶄綔绗?
           enum:
             - or
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: 瀛愯繃婊ゆ潯浠?
           type: array
           items:
             $ref: "#/components/schemas/Condition"
     condition_eq:
-      description: 等于过滤条件
+      description: 绛変簬杩囨护鏉′欢
       required:
         - field
         - operation
@@ -2013,21 +1922,21 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，等于支持的字段类型：数值、字符串
+          description: 杩囨护瀛楁锛岀瓑浜庢敮鎸佺殑瀛楁绫诲瀷锛氭暟鍊笺€佸瓧绗︿覆
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - ==
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
     condition_not_eq:
-      description: 不等于的过滤条件
+      description: 涓嶇瓑浜庣殑杩囨护鏉′欢
       required:
         - field
         - operation
@@ -2035,21 +1944,21 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不等于支持的字段类型：数值、字符串
+          description: 杩囨护瀛楁锛屼笉绛変簬鏀寔鐨勫瓧娈电被鍨嬶細鏁板€笺€佸瓧绗︿覆
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - "!="
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
     condition_in:
-      description: 包含过滤条件
+      description: 鍖呭惈杩囨护鏉′欢
       required:
         - field
         - operation
@@ -2057,23 +1966,23 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，包含支持所有类型
+          description: 杩囨护瀛楁锛屽寘鍚敮鎸佹墍鏈夌被鍨?
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - in
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: array
           items: {}
     condition_like:
-      description: like过滤
+      description: like杩囨护
       required:
         - field
         - operation
@@ -2081,22 +1990,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，相似支持的字段类型：字符串
+          description: 杩囨护瀛楁锛岀浉浼兼敮鎸佺殑瀛楁绫诲瀷锛氬瓧绗︿覆
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - like
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: string
     condition_not_like:
-      description: not_like过滤
+      description: not_like杩囨护
       required:
         - field
         - operation
@@ -2104,22 +2013,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不相似支持的字段类型：字符串
+          description: 杩囨护瀛楁锛屼笉鐩镐技鏀寔鐨勫瓧娈电被鍨嬶細瀛楃涓?
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - not_like
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: string
     condition_regex:
-      description: regex过滤
+      description: regex杩囨护
       required:
         - field
         - operation
@@ -2127,22 +2036,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，正则支持的字段类型：字符串
+          description: 杩囨护瀛楁锛屾鍒欐敮鎸佺殑瀛楁绫诲瀷锛氬瓧绗︿覆
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - regex
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: string
     condition_multi_match:
-      description: 多字段全文匹配
+      description: 澶氬瓧娈靛叏鏂囧尮閰?
       required:
         - operation
         - value
@@ -2150,22 +2059,22 @@ components:
       properties:
         fields:
           description:
-            "过滤字段数组，多字段全文匹配支持的字段类型：字符串。为空时，用opensearch中 index.default_field\
-            \ 配置的字段进行查询。当需要对所有字段进行匹配时，此参数传 [\"*\"]。支持的字段有： name, comment, detail,\
+            "杩囨护瀛楁鏁扮粍锛屽瀛楁鍏ㄦ枃鍖归厤鏀寔鐨勫瓧娈电被鍨嬶細瀛楃涓层€備负绌烘椂锛岀敤opensearch涓?index.default_field\
+            \ 閰嶇疆鐨勫瓧娈佃繘琛屾煡璇€傚綋闇€瑕佸鎵€鏈夊瓧娈佃繘琛屽尮閰嶆椂锛屾鍙傛暟浼?[\"*\"]銆傛敮鎸佺殑瀛楁鏈夛細 name, comment, detail,\
             \ *"
           type: array
           items:
             type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - multi_match
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: string
         match_type:
-          description: 全文匹配类型，默认是 best_fields
+          description: 鍏ㄦ枃鍖归厤绫诲瀷锛岄粯璁ゆ槸 best_fields
           enum:
             - best_fields
             - most_fields
@@ -2175,7 +2084,7 @@ components:
             - bool_prefix
           type: string
     condition_not_in:
-      description: not_in过滤条件
+      description: not_in杩囨护鏉′欢
       required:
         - field
         - operation
@@ -2183,23 +2092,23 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不包含支持所有类型
+          description: 杩囨护瀛楁锛屼笉鍖呭惈鏀寔鎵€鏈夌被鍨?
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - not_in
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: array
           items: {}
     condition_match_phrase:
-      description: "match_phrase 过滤，支持单个字段和*, * 表示全部字段"
+      description: "match_phrase 杩囨护锛屾敮鎸佸崟涓瓧娈靛拰*, * 琛ㄧず鍏ㄩ儴瀛楁"
       required:
         - field
         - operation
@@ -2207,22 +2116,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，短语匹配支持的字段类型：字符串
+          description: 杩囨护瀛楁锛岀煭璇尮閰嶆敮鎸佺殑瀛楁绫诲瀷锛氬瓧绗︿覆
           enum:
             - name
             - comment
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - match_phrase
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: string
     condition_match:
-      description: "match 过滤，支持单个字段和*, * 表示全部字段"
+      description: "match 杩囨护锛屾敮鎸佸崟涓瓧娈靛拰*, * 琛ㄧず鍏ㄩ儴瀛楁"
       required:
         - field
         - operation
@@ -2230,22 +2139,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，全文匹配支持的字段类型：字符串
+          description: 杩囨护瀛楁锛屽叏鏂囧尮閰嶆敮鎸佺殑瀛楁绫诲瀷锛氬瓧绗︿覆
           enum:
             - name
             - comment
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - match
           type: string
         value:
-          description: 过滤值
+          description: 杩囨护鍊?
           type: string
     condition_knn:
-      description: 'knn 过滤，支持单个字段和*, * 表示"_vector"'
+      description: 'knn 杩囨护锛屾敮鎸佸崟涓瓧娈靛拰*, * 琛ㄧず"_vector"'
       required:
         - field
         - operation
@@ -2253,22 +2162,22 @@ components:
       type: object
       properties:
         field:
-          description: "过滤字段，,概念索引是内部生成，不对外暴露，所以knn过滤时，field 传 * 即可"
+          description: "杩囨护瀛楁锛?姒傚康绱㈠紩鏄唴閮ㄧ敓鎴愶紝涓嶅澶栨毚闇诧紝鎵€浠nn杩囨护鏃讹紝field 浼?* 鍗冲彲"
           enum:
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: 鎿嶄綔绗?
           enum:
             - knn
           type: string
         value:
-          description: 过滤值。当limit_key为k时，limit_value为整型；当limit_key为max_distance和min_score时，limit_value为浮点型
+          description: 杩囨护鍊笺€傚綋limit_key涓簁鏃讹紝limit_value涓烘暣鍨嬶紱褰搇imit_key涓簃ax_distance鍜宮in_score鏃讹紝limit_value涓烘诞鐐瑰瀷
           type: number
         limit_key:
           description:
-            "执行径向搜索时使用的过滤和评分行为, k:返回最相似的limit_value个结果；max_distance:返回距\
-            离小于等于limit_value的结果；min_score：返回相似度分数大于等于limit_value的结果。默认值为k"
+            "鎵ц寰勫悜鎼滅储鏃朵娇鐢ㄧ殑杩囨护鍜岃瘎鍒嗚涓? k:杩斿洖鏈€鐩镐技鐨刲imit_value涓粨鏋滐紱max_distance:杩斿洖璺漒
+            绂诲皬浜庣瓑浜巐imit_value鐨勭粨鏋滐紱min_score锛氳繑鍥炵浉浼煎害鍒嗘暟澶т簬绛変簬limit_value鐨勭粨鏋溿€傞粯璁ゅ€间负k"
           enum:
             - k
             - max_distance
@@ -2276,28 +2185,28 @@ components:
           type: string
           default: k
         limit_value:
-          description: "执行径向搜索使用的值。默认值为100"
+          description: "鎵ц寰勫悜鎼滅储浣跨敤鐨勫€笺€傞粯璁ゅ€间负100"
           type: number
           default: 100
         sub_conditions:
-          description: knn下的子查询
+          description: knn涓嬬殑瀛愭煡璇?
           type: array
           items:
             $ref: "#/components/schemas/Condition"
     condition_and:
-      description: and的过滤条件
+      description: and鐨勮繃婊ゆ潯浠?
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: 杩囨护鎿嶄綔绗?
           enum:
             - and
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: 瀛愯繃婊ゆ潯浠?
           type: array
           items:
             $ref: "#/components/schemas/Condition"

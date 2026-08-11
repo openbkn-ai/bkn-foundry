@@ -9,7 +9,6 @@ package object_type
 import (
 	"context"
 	"database/sql"
-	"net/http"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -889,116 +888,6 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			})
 		})
 
-		Convey("Rejected when data_view-backed object type requests sample data\n", func() {
-			objectType := &interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID:   "ot1",
-					OTName: "物料",
-					DataSource: &interfaces.ResourceInfo{
-						ID:   "view1",
-						Type: interfaces.DATA_SOURCE_TYPE_DATA_VIEW,
-					},
-					DataProperties: []*interfaces.DataProperty{
-						{
-							Name:        "material_code",
-							DisplayName: "物料编码",
-							MappedField: &interfaces.Field{Name: "source_code"},
-						},
-						{
-							Name:        "material_name",
-							DisplayName: "物料名称",
-						},
-					},
-				},
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			smock.ExpectCommit()
-
-			result, err := service.GetObjectTypeSampleData(ctx, "kn1", interfaces.MAIN_BRANCH, "ot1", interfaces.ObjectTypeSampleDataQueryParams{
-				Limit:     20,
-				NeedTotal: true,
-			})
-
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
-			So(result, ShouldBeNil)
-		})
-
-		Convey("Rejected when data_view search_after pagination requested\n", func() {
-			objectType := &interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID:   "ot1",
-					OTName: "物料",
-					DataSource: &interfaces.ResourceInfo{
-						ID:   "view1",
-						Type: interfaces.DATA_SOURCE_TYPE_DATA_VIEW,
-					},
-					DataProperties: []*interfaces.DataProperty{
-						{Name: "material_code", MappedField: &interfaces.Field{Name: "source_code"}},
-					},
-				},
-			}
-			cursor := []any{"cursor-1"}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			smock.ExpectCommit()
-
-			result, err := service.GetObjectTypeSampleData(ctx, "kn1", interfaces.MAIN_BRANCH, "ot1", interfaces.ObjectTypeSampleDataQueryParams{
-				Limit:       20,
-				SearchAfter: cursor,
-			})
-
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
-			So(result, ShouldBeNil)
-		})
-
-		Convey("Failed when data_view sample data uses offset\n", func() {
-			objectType := &interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID:   "ot1",
-					OTName: "物料",
-					DataSource: &interfaces.ResourceInfo{
-						ID:   "view1",
-						Type: interfaces.DATA_SOURCE_TYPE_DATA_VIEW,
-					},
-					DataProperties: []*interfaces.DataProperty{{Name: "material_code"}},
-				},
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{objectType}, nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-			smock.ExpectCommit()
-
-			result, err := service.GetObjectTypeSampleData(ctx, "kn1", interfaces.MAIN_BRANCH, "ot1", interfaces.ObjectTypeSampleDataQueryParams{
-				Limit:  20,
-				Offset: 10,
-			})
-
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
-			So(result, ShouldBeNil)
-		})
 	})
 }
 
