@@ -254,7 +254,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 			assert.Equal(t, "department_name", added.DisplayName)
 			assert.Equal(t, "部门名称", added.Description)
 			assert.Equal(t, "部门名称", added.OriginalDescription)
-			assert.NotContains(t, []string{existing.Name, added.Name}, "obsolete_column")
+			assert.Equal(t, []string{"department_id", "department_name"}, []string{existing.Name, added.Name})
 			return nil
 		})
 
