@@ -37,6 +37,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	memorysessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/extension/enterpriseroute"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/coremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/server/httpserver"
@@ -83,7 +84,6 @@ func NewApp() (*App, error) {
 	)
 	traceDetailClient := opensearchtraceaccess.New(openSearchClient, openSearchConfig.TraceIndex)
 	traceQueryService := tracesvc.New(traceDetailClient)
-	traceHandler := httphandler.NewTraceHandler(traceQueryService)
 	var evidenceStore ievidencestore.EvidenceStorePort = evidencestore.New()
 	if strings.EqualFold(evidenceConfig.Store, "opensearch") {
 		evidenceStore = opensearchevidencestore.New(openSearchClient, openSearchConfig.EvidenceIndex)
@@ -159,13 +159,20 @@ func NewApp() (*App, error) {
 		},
 		Metrics: metrics,
 	})
+	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
+		traceQueryService, evidenceService, sessionService,
+	)
 	sessionHandler := httphandler.NewSessionHandlerWithAssembly(
 		sessionService,
 		assemblysvc.NewQueryServiceWithBusinessResolver(sessionStore, ledgerStore, resolver),
 	)
 	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
 
-	app := newApp(httpServerConfig, traceHandler, evidenceHandler, logHandler, sessionHandler, ledgerHandler, metrics)
+	enterpriseReader := httphandler.NewEnterpriseInteractionFactsReader(evidenceService, sessionService)
+	app := newApp(
+		httpServerConfig, traceHandler, evidenceHandler, logHandler,
+		sessionHandler, ledgerHandler, metrics, enterpriseReader,
+	)
 	app.closeDatabase = closeDatabase
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
@@ -378,6 +385,7 @@ func newApp(
 	sessionHandler *httphandler.SessionHandler,
 	ledgerHandler *httphandler.LedgerHandler,
 	metrics http.Handler,
+	enterpriseReaders ...enterpriseroute.Reader,
 ) *App {
 	mux := http.NewServeMux()
 	if metrics != nil {
@@ -391,33 +399,44 @@ func newApp(
 		return evidenceHandler.RequireTrustedQueryIdentity(h)
 	}
 
-	mux.HandleFunc(APIBasePath+"/traces/_search", readAuth(traceHandler.SearchTraces))
-	mux.HandleFunc(APIBasePath+"/traces/by-conversation", readAuth(traceHandler.SearchTracesByConversationID))
-	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", readAuth(evidenceHandler.GetBusinessGraphByRequestID))
-	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", readAuth(evidenceHandler.GetSnapshotPreviewByRequestID))
-	mux.HandleFunc(APIBasePath+"/traces/by-request", readAuth(evidenceHandler.GetEvidenceChainByRequestID))
-	mux.HandleFunc(APIBasePath+"/traces/", readAuth(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/trace-graph") && !evidenceHandler.AuthorizeTechnicalTraceQuery(w, r) {
-			return
-		}
+	// These pre-0.1.4 raw query contracts are intentionally unavailable. Keep
+	// exact tombstones ahead of the typed /traces/{trace_id} dispatch so callers
+	// receive 404 instead of treating a removed route name as a Trace ID.
+	mux.HandleFunc(APIBasePath+"/traces/_search", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-conversation", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-request", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces", readAuth(evidenceHandler.ListTraceExecutions))
+	typedTraceDetail := readAuth(func(w http.ResponseWriter, r *http.Request) {
 		if traceHandler.GetTraceSubresource(w, r) {
 			return
 		}
-		evidenceHandler.GetTraceSubresource(w, r)
-	}))
-	mux.HandleFunc(APIBasePath+"/evidence-nodes/", readAuth(evidenceHandler.GetEvidenceNode))
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc(APIBasePath+"/traces/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(strings.TrimSuffix(r.URL.Path, "/"), "/trace-graph") {
+			http.NotFound(w, r)
+			return
+		}
+		typedTraceDetail(w, r)
+	})
 	mux.HandleFunc(APIBasePath+"/evidence/events", ledgerHandler.Ingest)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
-	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
-	httphandler.RegisterBusinessProvenanceRoutes(mux, APIBasePath, evidenceHandler, readAuth)
-	mux.HandleFunc(APIBasePath+"/trace-executions", readAuth(evidenceHandler.ListTraceExecutions))
 	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs", readAuth(logHandler.ListLogs))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-facets", readAuth(logHandler.GetLogFacets))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
+	var enterpriseReader enterpriseroute.Reader
+	if len(enterpriseReaders) > 0 {
+		enterpriseReader = enterpriseReaders[0]
+	}
+	enterpriseroute.Mount(mux, enterpriseReader, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(readAuth(next.ServeHTTP))
+	})
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))

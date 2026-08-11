@@ -125,7 +125,7 @@ func TestQueryAuthorizesManagedKnowledgeNetworkInteraction(t *testing.T) {
 	}
 }
 
-func TestQueryRejectsManagedInteractionWhenOperationEdgeReferencesUnmanagedNetwork(t *testing.T) {
+func TestQueryReturnsCompleteManagedInteractionWithoutPerEdgeAuthorization(t *testing.T) {
 	t.Parallel()
 
 	sessions, ledger, owner, interaction := queryFixture(t)
@@ -153,12 +153,15 @@ func TestQueryRejectsManagedInteractionWhenOperationEdgeReferencesUnmanagedNetwo
 	}
 	requester := owner
 	requester.EffectiveSubjectID = profile.EffectiveSubjectID
-	_, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
+	view, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
 		context.Background(), requester, interaction.ID,
 		evidencevo.QueryScope{AccessProfile: &profile, View: evidencevo.AccessViewBusiness},
 	)
-	if err != assemblysvc.ErrNotFound {
-		t.Fatalf("operation edge network must be included in all-of authorization, got %v", err)
+	if err != nil {
+		t.Fatalf("managed Trace must be returned without per-edge authorization: %v", err)
+	}
+	if view.Interaction.ID != interaction.ID {
+		t.Fatalf("unexpected interaction: %#v", view.Interaction)
 	}
 }
 
@@ -171,10 +174,6 @@ func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T
 			TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
 			Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"other-network"},
 			AccountActive: true, TenantActive: true,
-		},
-		"platform admin cannot read business body": {
-			TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "admin-1",
-			Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
 		},
 	}
 	for name, profile := range tests {
@@ -191,6 +190,19 @@ func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T
 				t.Fatalf("out-of-scope interaction must use non-disclosure response, got %v", err)
 			}
 		})
+	}
+
+	admin := evidencevo.AccessProfile{
+		TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "admin-1",
+		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
+	}
+	requester := owner
+	requester.EffectiveSubjectID = admin.EffectiveSubjectID
+	if _, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
+		context.Background(), requester, interaction.ID,
+		evidencevo.QueryScope{AccessProfile: &admin, View: evidencevo.AccessViewBusiness},
+	); err != nil {
+		t.Fatalf("admin must read the complete business Trace, got %v", err)
 	}
 }
 

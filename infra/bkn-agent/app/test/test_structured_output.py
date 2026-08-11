@@ -59,6 +59,28 @@ def test_native_path_reports_trace_path():
     assert path == "native"
 
 
+def test_conversation_result_is_reused_without_another_model_call():
+    """Agent 已按合同给出 JSON 时，不应再发起一次结构化模型请求。"""
+
+    class _MustNotRun:
+        def with_structured_output(self, schema):
+            raise AssertionError("structured model should not be called")
+
+        async def ainvoke(self, messages):
+            raise AssertionError("fallback model should not be called")
+
+    messages = [
+        HumanMessage(content="请分析"),
+        AIMessage(content='```json\n{"greeting": "direct"}\n```'),
+    ]
+    out, path = asyncio.run(
+        structured_extract_with_path(_MustNotRun(), messages, SCHEMA)
+    )
+
+    assert out == {"greeting": "direct"}
+    assert path == "conversation"
+
+
 class _CaptureMessages:
     """记录两条路径实际发给模型的消息，用于断言系统提示词到场。"""
 

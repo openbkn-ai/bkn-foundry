@@ -55,6 +55,9 @@ func TestBuildExecutionSummariesJoinsMultipleTracesAndArtifactsByRequest(t *test
 		if trace.RequestID != request.RequestID || trace.TraceID == "" {
 			t.Fatalf("trace must reverse-link request: %+v", trace)
 		}
+		if trace.QuestionPreview != request.QuestionPreview || trace.ResultPreview != request.ResultPreview {
+			t.Fatalf("technical Trace summary must carry its original request input and result: %+v", trace)
+		}
 	}
 }
 

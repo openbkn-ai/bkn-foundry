@@ -77,11 +77,13 @@ spec:
             {{- end }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST
               value: {{ ternary "true" "false" .Values.evidence.ingestAuth.allowUnauthenticated | quote }}
-            - name: BKN_TRACE_ALLOW_RAW_TRACE_QUERY
-              value: {{ ternary "true" "false" .Values.evidence.rawTraceQuery.enabled | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
               value: {{ ternary "true" "false" .Values.evidence.queryAuth.allowUnauthenticated | quote }}
             - name: BKN_SAFE_BASE_URL
+              value: {{ required "bknSafe.baseURL is required" .Values.bknSafe.baseURL | quote }}
+            # The EE entitlement gate verifies the deployment licence through
+            # the same in-cluster BKN Safe endpoint as Trace access scope.
+            - name: BKN_SAFE_URL
               value: {{ required "bknSafe.baseURL is required" .Values.bknSafe.baseURL | quote }}
             - name: BKN_SAFE_ACCESS_TIMEOUT
               value: {{ .Values.bknSafe.accessTimeout | quote }}
@@ -98,6 +100,12 @@ spec:
               value: {{ .Values.businessResolver.vegaBaseURL | quote }}
             - name: BKN_TRACE_RESOLVER_TIMEOUT
               value: {{ .Values.businessResolver.timeout | quote }}
+            {{- end }}
+            {{- if .Values.enterpriseBusinessProvenance.enabled }}
+            - name: BKN_TRACE_PROVENANCE_AGENT_URL
+              value: {{ required "enterpriseBusinessProvenance.agentURL is required when enabled" .Values.enterpriseBusinessProvenance.agentURL | quote }}
+            - name: BKN_TRACE_PROVENANCE_AGENT_ID
+              value: {{ required "enterpriseBusinessProvenance.agentID is required when enabled" .Values.enterpriseBusinessProvenance.agentID | quote }}
             {{- end }}
             - name: OPENSEARCH_AUTH_ENABLED
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}

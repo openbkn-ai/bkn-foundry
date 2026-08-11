@@ -51,6 +51,7 @@ func TestSchemaEnforcesOneOperationCallFactPerAttempt(t *testing.T) {
 		"attempt_no INT UNSIGNED NOT NULL",
 		"PRIMARY KEY (operation_id, attempt_no)",
 		"INDEX idx_bkn_trace_operation_call_fact_interaction (interaction_id, started_at, operation_id, attempt_no)",
+		"INDEX idx_bkn_trace_operation_call_fact_trace (trace_id, started_at, operation_id, attempt_no)",
 	}
 	for _, fragment := range required {
 		if !strings.Contains(tableDefinition, fragment) {

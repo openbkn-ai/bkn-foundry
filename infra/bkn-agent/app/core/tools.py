@@ -15,6 +15,23 @@ from app.errors import bad_request
 logger = logging.getLogger("bkn-agent.tools")
 
 
+def _context_loader_allowed_tools(tool_refs: list[dict]) -> set[str] | None:
+    """合并 Context Loader 引用的白名单。
+
+    旧 agent 未声明 allowed_tools 时保持全量装载；全部引用都显式声明时取并集。
+    这样新增只读 agent 能精确收窄，而不会改变现有 agent 的运行语义。
+    """
+    allow_list: set[str] = set()
+    for ref in tool_refs:
+        if ref.get("type") != "context_loader":
+            continue
+        allowed = ref.get("allowed_tools")
+        if allowed is None:
+            return None
+        allow_list.update(str(name) for name in allowed)
+    return allow_list
+
+
 async def _trace_mcp_call(request, handler):
     """At the transport boundary, bind the MCP call to the current tool operation."""
     headers = {**(request.headers or {}), **observability.outbound_headers()}
@@ -199,7 +216,7 @@ async def load_tools(
         # 的地方，比静默开一个关不掉的交互好。
         session = context_loader.current_session()
         if session is not None:
-            tools.extend(session.tools())
+            tools.extend(session.tools(_context_loader_allowed_tools(tool_refs)))
     conns = _mcp_connections(tool_refs, account_id, account_type)
     if conns:
         client = MultiServerMCPClient(conns, tool_interceptors=[_trace_mcp_call])

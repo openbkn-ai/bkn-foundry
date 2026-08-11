@@ -17,6 +17,8 @@ import (
 
 const transactionRetries = 4
 
+const listInteractionsOrderBy = " ORDER BY ordinal_no ASC, interaction_id ASC"
+
 type Store struct {
 	db *sql.DB
 }
@@ -308,6 +310,30 @@ func (t *transaction) FindInteractionByStartKey(
 	))
 }
 
+func (t *transaction) ListInteractions(conversationID string) []sessionvo.Interaction {
+	if t.err != nil {
+		return nil
+	}
+	rows, err := t.tx.QueryContext(t.ctx, interactionSelect+`
+		WHERE conversation_id=?`+listInteractionsOrderBy, conversationID)
+	if err != nil {
+		t.err = err
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]sessionvo.Interaction, 0)
+	for rows.Next() {
+		value, scanErr := scanInteractionRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return nil
+		}
+		result = append(result, value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
 func (t *transaction) FindInteraction(interactionID string) (sessionvo.Interaction, bool) {
 	if t.err != nil {
 		return sessionvo.Interaction{}, false
@@ -485,6 +511,29 @@ func (t *transaction) ListOperationCallFacts(interactionID string) []sessionvo.O
 	}
 	rows, err := t.tx.QueryContext(t.ctx, operationCallFactSelect+`
 		WHERE interaction_id=? ORDER BY started_at, operation_id, attempt_no`, interactionID)
+	if err != nil {
+		t.err = err
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]sessionvo.OperationCallFact, 0)
+	for rows.Next() {
+		value, found := t.scanOperationCallFact(rows)
+		if !found {
+			return nil
+		}
+		result = append(result, value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
+func (t *transaction) ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact {
+	if t.err != nil {
+		return nil
+	}
+	rows, err := t.tx.QueryContext(t.ctx, operationCallFactSelect+`
+		WHERE trace_id=? ORDER BY started_at, operation_id, attempt_no`, traceID)
 	if err != nil {
 		t.err = err
 		return nil

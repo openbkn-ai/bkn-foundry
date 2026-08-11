@@ -30,10 +30,25 @@ func RegisterBusinessProvenanceRoutes(
 	mux.HandleFunc(basePath+"/business-provenance/conversations", wrap(handler.ListBusinessProvenanceConversations))
 	mux.HandleFunc(basePath+"/business-provenance/interactions", wrap(handler.ListBusinessProvenanceInteractions))
 	mux.HandleFunc(basePath+"/business-provenance/interactions/", wrap(handler.GetInteractionSummary))
+	mux.HandleFunc(basePath+"/business-provenance/traces/", wrap(handler.GetTraceSubresource))
+	mux.HandleFunc(basePath+"/business-provenance/evidence-nodes/", wrap(handler.GetEvidenceNode))
 	mux.HandleFunc(basePath+"/business-provenance/requests", wrap(handler.ListRequests))
 	mux.HandleFunc(basePath+"/business-provenance/requests/", wrap(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(strings.TrimSuffix(r.URL.Path, "/"), "/traces") {
+		path := strings.TrimSuffix(r.URL.Path, "/")
+		if strings.HasSuffix(path, "/traces") {
 			handler.ListRequestTraces(w, r)
+			return
+		}
+		if strings.HasSuffix(path, "/evidence-chain") {
+			handler.GetEvidenceChainByRequestID(w, r)
+			return
+		}
+		if strings.HasSuffix(path, "/business-graph") {
+			handler.GetBusinessGraphByRequestID(w, r)
+			return
+		}
+		if strings.HasSuffix(path, "/snapshot-preview") {
+			handler.GetSnapshotPreviewByRequestID(w, r)
 			return
 		}
 		handler.GetRequestSummary(w, r)
@@ -51,6 +66,9 @@ func RegisterBusinessProvenanceRoutes(
 // @Param to query string false "Started at or before this RFC3339 timestamp"
 // @Param status query string false "Execution status"
 // @Param agent_or_app query string false "Agent or application"
+// @Param service query string false "Exact producing service"
+// @Param tool query string false "Exact root tool"
+// @Param error_keyword query string false "Case-insensitive error text"
 // @Param business_domain query string false "Business domain"
 // @Param knowledge_network query string false "Knowledge network"
 // @Param evidence_completeness query string false "Evidence completeness"
@@ -293,7 +311,7 @@ func (h *EvidenceHandler) ListRequestTraces(w http.ResponseWriter, r *http.Reque
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /trace-executions [get]
+// @Router /traces [get]
 func (h *EvidenceHandler) ListTraceExecutions(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
@@ -304,6 +322,7 @@ func (h *EvidenceHandler) ListTraceExecutions(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
+	options.Scope.View = evidencevo.AccessViewTechnical
 	page, err := h.evidenceService.ListTraceExecutions(r.Context(), options)
 	if err != nil {
 		writeSummaryQueryError(w, err)
@@ -327,6 +346,9 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 		InteractionID:        strings.TrimSpace(r.URL.Query().Get("interaction_id")),
 		Status:               strings.TrimSpace(r.URL.Query().Get("status")),
 		AgentOrApp:           strings.TrimSpace(r.URL.Query().Get("agent_or_app")),
+		Service:              strings.TrimSpace(r.URL.Query().Get("service")),
+		Tool:                 strings.TrimSpace(r.URL.Query().Get("tool")),
+		ErrorKeyword:         strings.TrimSpace(r.URL.Query().Get("error_keyword")),
 		BusinessDomain:       strings.TrimSpace(r.URL.Query().Get("business_domain")),
 		KnowledgeNetwork:     strings.TrimSpace(r.URL.Query().Get("knowledge_network")),
 		EvidenceCompleteness: strings.TrimSpace(r.URL.Query().Get("evidence_completeness")),
@@ -382,16 +404,25 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 }
 
 func requestIDFromSummaryPath(path string, traces bool) string {
+	suffix := ""
+	if traces {
+		suffix = "traces"
+	}
+	return requestIDFromBusinessProvenancePath(path, suffix)
+}
+
+func requestIDFromBusinessProvenancePath(path, suffix string) string {
 	const prefix = "/api/agent-observability/v1/business-provenance/requests/"
 	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}
 	value := strings.TrimPrefix(path, prefix)
-	if traces {
-		if !strings.HasSuffix(value, "/traces") {
+	if suffix != "" {
+		expectedSuffix := "/" + suffix
+		if !strings.HasSuffix(value, expectedSuffix) {
 			return ""
 		}
-		value = strings.TrimSuffix(value, "/traces")
+		value = strings.TrimSuffix(value, expectedSuffix)
 	} else if strings.Contains(value, "/") {
 		return ""
 	}

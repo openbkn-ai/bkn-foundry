@@ -129,3 +129,9 @@ type OperationCallFact struct {
 	Status            AttemptStatus     `json:"status"`
 	Retryable         bool              `json:"retryable"`
 }
+
+type OperationExecution struct {
+	Fact              OperationCallFact `json:"fact"`
+	Receipt           Receipt           `json:"receipt"`
+	InteractionStatus InteractionStatus `json:"interaction_status"`
+}

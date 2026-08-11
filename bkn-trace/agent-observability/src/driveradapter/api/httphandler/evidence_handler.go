@@ -282,7 +282,7 @@ func artifactIDFromPath(path string) string {
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /traces/{trace_id}/evidence-chain [get]
+// @Router /business-provenance/traces/{trace_id}/evidence-chain [get]
 func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -307,72 +307,6 @@ func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *ht
 	}
 
 	response, found, err := h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID, options)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
-			Code:    "QUERY_FAILED",
-			Message: "failed to query evidence chain",
-		})
-		return
-	}
-	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
-			Code:    "NOT_FOUND",
-			Message: "evidence chain not found",
-		})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, response)
-}
-
-// SearchEvidenceByTrace godoc
-// @Summary Query evidence chain by trace ID or BKN request ID
-// @Description Backward-compatible endpoint for SDK/Studio callers. Returns the normalized evidence-chain response for trace_id or request_id.
-// @Tags evidence
-// @Produce json
-// @Param trace_id query string false "Trace ID"
-// @Param request_id query string false "BKN request ID"
-// @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
-// @Success 200 {object} evidencevo.EvidenceChainResponse
-// @Failure 400 {object} rdto.ErrorResponse
-// @Failure 404 {object} rdto.ErrorResponse
-// @Failure 405 {object} rdto.ErrorResponse
-// @Failure 500 {object} rdto.ErrorResponse
-// @Router /evidence/by-trace [get]
-func (h *EvidenceHandler) SearchEvidenceByTrace(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
-			Code:    "METHOD_NOT_ALLOWED",
-			Message: "only GET is supported",
-		})
-		return
-	}
-
-	traceID := strings.TrimSpace(r.URL.Query().Get("trace_id"))
-	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
-	if (traceID == "") == (requestID == "") {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-			Code:    "INVALID_ARGUMENT",
-			Message: "exactly one of trace_id or request_id is required",
-		})
-		return
-	}
-
-	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
-	if !ok {
-		return
-	}
-
-	var (
-		response evidencevo.EvidenceChainResponse
-		found    bool
-		err      error
-	)
-	if traceID != "" {
-		response, found, err = h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID, options)
-	} else {
-		response, found, err = h.evidenceService.GetEvidenceChainByRequestID(r.Context(), requestID, options)
-	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
@@ -422,7 +356,7 @@ func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Req
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /traces/{trace_id}/business-graph [get]
+// @Router /business-provenance/traces/{trace_id}/business-graph [get]
 func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -470,14 +404,14 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 // @Description Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a request.
 // @Tags evidence
 // @Produce json
-// @Param request_id query string true "BKN request ID"
+// @Param request_id path string true "BKN request ID"
 // @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
 // @Success 200 {object} evidencevo.EvidenceChainResponse
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /traces/by-request [get]
+// @Router /business-provenance/requests/{request_id}/evidence-chain [get]
 func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -487,7 +421,7 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 		return
 	}
 
-	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "evidence-chain")
 	if requestID == "" {
 		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
@@ -532,7 +466,7 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /traces/{trace_id}/snapshot-preview [get]
+// @Router /business-provenance/traces/{trace_id}/snapshot-preview [get]
 func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -580,14 +514,14 @@ func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *
 // @Description Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.
 // @Tags evidence
 // @Produce json
-// @Param request_id query string true "BKN request ID"
+// @Param request_id path string true "BKN request ID"
 // @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
 // @Success 200 {object} evidencevo.SnapshotPreviewResponse
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /traces/by-request/snapshot-preview [get]
+// @Router /business-provenance/requests/{request_id}/snapshot-preview [get]
 func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -597,7 +531,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r
 		return
 	}
 
-	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "snapshot-preview")
 	if requestID == "" {
 		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
@@ -635,14 +569,14 @@ func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r
 // @Description Returns claim and business semantic nodes/edges derived from business.refs.resolved events.
 // @Tags evidence
 // @Produce json
-// @Param request_id query string true "BKN request ID"
+// @Param request_id path string true "BKN request ID"
 // @Param limit query int false "Maximum evidence trace batches to read, 1..1000"
 // @Success 200 {object} evidencevo.BusinessGraphResponse
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /traces/by-request/business-graph [get]
+// @Router /business-provenance/requests/{request_id}/business-graph [get]
 func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -652,7 +586,7 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 		return
 	}
 
-	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "business-graph")
 	if requestID == "" {
 		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
@@ -688,7 +622,7 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 // GetEvidenceNode godoc
 // @Summary Get evidence node details
 // @Description Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.
-// @Tags evidence
+// @Tags business-provenance
 // @Produce json
 // @Param node_id path string true "Evidence node ID, for example claim:claim_001"
 // @Param trace_id query string false "Trace ID scope"
@@ -699,7 +633,7 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /evidence-nodes/{node_id} [get]
+// @Router /business-provenance/evidence-nodes/{node_id} [get]
 func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -762,21 +696,11 @@ func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request
 }
 
 func traceIDFromEvidenceChainPath(path string) string {
-	const prefix = "/api/agent-observability/v1/traces/"
-	const suffix = "/evidence-chain"
-	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
-		return ""
-	}
-	traceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
-	traceID = strings.Trim(traceID, "/")
-	if strings.Contains(traceID, "/") {
-		return ""
-	}
-	return strings.TrimSpace(traceID)
+	return traceIDBeforeSubresource(path, "/evidence-chain")
 }
 
 func evidenceNodeIDFromPath(path string) string {
-	const prefix = "/api/agent-observability/v1/evidence-nodes/"
+	const prefix = "/api/agent-observability/v1/business-provenance/evidence-nodes/"
 	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}
@@ -1100,31 +1024,23 @@ func (h *EvidenceHandler) AuthorizeTechnicalTraceQuery(w http.ResponseWriter, r 
 }
 
 func traceIDFromBusinessGraphPath(path string) string {
-	const prefix = "/api/agent-observability/v1/traces/"
-	const suffix = "/business-graph"
-	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
-		return ""
-	}
-	traceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
-	traceID = strings.Trim(traceID, "/")
-	if strings.Contains(traceID, "/") {
-		return ""
-	}
-	return strings.TrimSpace(traceID)
+	return traceIDBeforeSubresource(path, "/business-graph")
 }
 
 func traceIDFromSnapshotPreviewPath(path string) string {
-	const prefix = "/api/agent-observability/v1/traces/"
-	const suffix = "/snapshot-preview"
-	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+	return traceIDBeforeSubresource(path, "/snapshot-preview")
+}
+
+func traceIDBeforeSubresource(path string, suffix string) string {
+	if !strings.HasSuffix(path, suffix) {
 		return ""
 	}
-	traceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
-	traceID = strings.Trim(traceID, "/")
-	if strings.Contains(traceID, "/") {
+	parent := strings.Trim(strings.TrimSuffix(path, suffix), "/")
+	separator := strings.LastIndex(parent, "/")
+	if separator < 0 || separator == len(parent)-1 {
 		return ""
 	}
-	return strings.TrimSpace(traceID)
+	return strings.TrimSpace(parent[separator+1:])
 }
 
 func (h *EvidenceHandler) authorizeEvidenceIngest(w http.ResponseWriter, r *http.Request) bool {

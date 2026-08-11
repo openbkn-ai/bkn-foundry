@@ -789,9 +789,15 @@ definitions:
         type: string
       interaction_id:
         type: string
+      question_preview:
+        type: string
       request_id:
         type: string
+      result_preview:
+        type: string
       root_operation:
+        type: string
+      root_service:
         type: string
       span_count:
         type: integer
@@ -1236,6 +1242,79 @@ definitions:
         type: string
       replayed:
         type: boolean
+    type: object
+  oteltracevo.TraceGraphData:
+    properties:
+      edges:
+        items:
+          $ref: '#/definitions/oteltracevo.TraceGraphEdge'
+        type: array
+      nodes:
+        items:
+          $ref: '#/definitions/oteltracevo.TraceGraphNode'
+        type: array
+    type: object
+  oteltracevo.TraceGraphEdge:
+    properties:
+      child_span_id:
+        type: string
+      edge_type:
+        type: string
+      id:
+        type: string
+      parent_span_id:
+        type: string
+    type: object
+  oteltracevo.TraceGraphNode:
+    properties:
+      duration_nano:
+        type: integer
+      end_nano:
+        type: integer
+      error_message:
+        type: string
+      kind:
+        type: string
+      name:
+        type: string
+      parent_span_id:
+        type: string
+      service_name:
+        type: string
+      span_id:
+        type: string
+      start_nano:
+        type: integer
+      status:
+        type: string
+    type: object
+  oteltracevo.TraceGraphPage:
+    properties:
+      edge_count:
+        type: integer
+      node_count:
+        type: integer
+      truncated:
+        type: boolean
+    type: object
+  oteltracevo.TraceGraphResponse:
+    properties:
+      data:
+        $ref: '#/definitions/oteltracevo.TraceGraphData'
+      duration_nano:
+        type: integer
+      page:
+        $ref: '#/definitions/oteltracevo.TraceGraphPage'
+      partial:
+        type: boolean
+      partial_reason:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      trace_id:
+        type: string
     type: object
   rdto.AccessProfileResponse:
     properties:
@@ -1990,6 +2069,36 @@ definitions:
     - SupportClaim
     - SupportArtifactFragment
     - SupportOperationOutput
+  tracesvc.TechnicalOperation:
+    properties:
+      fact:
+        $ref: '#/definitions/sessionvo.OperationCallFact'
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      receipt:
+        $ref: '#/definitions/sessionvo.Receipt'
+      state:
+        type: string
+    type: object
+  tracesvc.TechnicalTraceDetail:
+    properties:
+      graph:
+        $ref: '#/definitions/oteltracevo.TraceGraphResponse'
+      operations:
+        items:
+          $ref: '#/definitions/tracesvc.TechnicalOperation'
+        type: array
+      partial:
+        type: boolean
+      partial_reasons:
+        items:
+          type: string
+        type: array
+      summary:
+        $ref: '#/definitions/evidencevo.TraceSummary'
+    type: object
 info:
   contact: {}
   description: APIs for querying agent traces from OpenSearch.
@@ -2052,6 +2161,18 @@ paths:
         in: query
         name: agent_or_app
         type: string
+      - description: Exact producing service
+        in: query
+        name: service
+        type: string
+      - description: Exact root tool
+        in: query
+        name: tool
+        type: string
+      - description: Case-insensitive error text
+        in: query
+        name: error_keyword
+        type: string
       - description: Business domain
         in: query
         name: business_domain
@@ -2088,6 +2209,54 @@ paths:
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: List observable business conversations
+      tags:
+      - business-provenance
+  /business-provenance/evidence-nodes/{node_id}:
+    get:
+      description: Returns one visible claim, evidence ref, or business ref node scoped
+        by trace_id or request_id.
+      parameters:
+      - description: Evidence node ID, for example claim:claim_001
+        in: path
+        name: node_id
+        required: true
+        type: string
+      - description: Trace ID scope
+        in: query
+        name: trace_id
+        type: string
+      - description: BKN request ID scope
+        in: query
+        name: request_id
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceNodeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence node details
       tags:
       - business-provenance
   /business-provenance/interactions:
@@ -2308,6 +2477,126 @@ paths:
       summary: Get one observable business request
       tags:
       - requests
+  /business-provenance/requests/{request_id}/business-graph:
+    get:
+      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
+        events.
+      parameters:
+      - description: BKN request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get business semantic graph by BKN request ID
+      tags:
+      - evidence
+  /business-provenance/requests/{request_id}/evidence-chain:
+    get:
+      description: Returns normalized claim, evidence refs, business refs, pagination,
+        partial reasons, and visibility summary for a request.
+      parameters:
+      - description: BKN request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence chain by BKN request ID
+      tags:
+      - evidence
+  /business-provenance/requests/{request_id}/snapshot-preview:
+    get:
+      description: Returns a metadata-only governed snapshot manifest preview without
+        creating or exposing object storage locations.
+      parameters:
+      - description: BKN request ID
+        in: path
+        name: request_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence snapshot preview by BKN request ID
+      tags:
+      - evidence
   /business-provenance/requests/{request_id}/traces:
     get:
       description: Supports one business request to multiple distributed traces and
@@ -2356,6 +2645,126 @@ paths:
       summary: List technical traces belonging to a business request
       tags:
       - requests
+  /business-provenance/traces/{trace_id}/business-graph:
+    get:
+      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
+        events.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get business semantic graph by trace ID
+      tags:
+      - evidence
+  /business-provenance/traces/{trace_id}/evidence-chain:
+    get:
+      description: Returns normalized claim, evidence refs, business refs, pagination,
+        partial reasons, and visibility summary for a trace.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence chain by trace ID
+      tags:
+      - evidence
+  /business-provenance/traces/{trace_id}/snapshot-preview:
+    get:
+      description: Returns a metadata-only governed snapshot manifest preview without
+        creating or exposing object storage locations.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Maximum evidence trace batches to read, 1..1000
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Get evidence snapshot preview by trace ID
+      tags:
+      - evidence
   /conversations:
     get:
       parameters:
@@ -2741,54 +3150,6 @@ paths:
       summary: Resume an active managed Conversation by Core ID
       tags:
       - lifecycle
-  /evidence-nodes/{node_id}:
-    get:
-      description: Returns one visible claim, evidence ref, or business ref node scoped
-        by trace_id or request_id.
-      parameters:
-      - description: Evidence node ID, for example claim:claim_001
-        in: path
-        name: node_id
-        required: true
-        type: string
-      - description: Trace ID scope
-        in: query
-        name: trace_id
-        type: string
-      - description: BKN request ID scope
-        in: query
-        name: request_id
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceNodeResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get evidence node details
-      tags:
-      - evidence
   /evidence/artifacts:
     post:
       consumes:
@@ -2870,49 +3231,6 @@ paths:
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: Get an authorized evidence artifact by ID
-      tags:
-      - evidence
-  /evidence/by-trace:
-    get:
-      description: Backward-compatible endpoint for SDK/Studio callers. Returns the
-        normalized evidence-chain response for trace_id or request_id.
-      parameters:
-      - description: Trace ID
-        in: query
-        name: trace_id
-        type: string
-      - description: BKN request ID
-        in: query
-        name: request_id
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Query evidence chain by trace ID or BKN request ID
       tags:
       - evidence
   /evidence/events:
@@ -3671,7 +3989,7 @@ paths:
       summary: Get one request projection from durable Receipts
       tags:
       - lifecycle
-  /trace-executions:
+  /traces:
     get:
       description: Returns stable trace summaries with reverse request links, generated
         from authorized trace evidence.
@@ -3742,165 +4060,11 @@ paths:
       summary: List technical trace executions
       tags:
       - traces
-  /traces/_search:
-    post:
-      consumes:
-      - application/json
-      description: Proxy raw OpenSearch DSL to the configured trace index and return
-        the original OpenSearch response body.
-      parameters:
-      - description: OpenSearch DSL JSON body
-        in: body
-        name: request
-        required: true
-        schema:
-          type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Raw OpenSearch search response
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "504":
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Search traces with raw OpenSearch DSL
-      tags:
-      - traces
-  /traces/{trace_id}/business-graph:
+  /traces/{trace_id}:
     get:
-      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
-        events.
-      parameters:
-      - description: Trace ID
-        in: path
-        name: trace_id
-        required: true
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get business semantic graph by trace ID
-      tags:
-      - evidence
-  /traces/{trace_id}/evidence-chain:
-    get:
-      description: Returns normalized claim, evidence refs, business refs, pagination,
-        partial reasons, and visibility summary for a trace.
-      parameters:
-      - description: Trace ID
-        in: path
-        name: trace_id
-        required: true
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get evidence chain by trace ID
-      tags:
-      - evidence
-  /traces/{trace_id}/snapshot-preview:
-    get:
-      description: Returns a metadata-only governed snapshot manifest preview without
-        creating or exposing object storage locations.
-      parameters:
-      - description: Trace ID
-        in: path
-        name: trace_id
-        required: true
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get evidence snapshot preview by trace ID
-      tags:
-      - evidence
-  /traces/{trace_id}/trace-graph:
-    get:
-      description: Returns normalized trace tree nodes, parent-child edges, status,
-        duration, and partial reasons for a trace.
+      description: Returns the authorized trace summary, Span graph, and ordered raw
+        Operation call facts. Operation facts remain visible without Span data; Span
+        nodes remain visible without Operation facts.
       parameters:
       - description: Trace ID
         in: path
@@ -3913,18 +4077,13 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad Request
+            $ref: '#/definitions/tracesvc.TechnicalTraceDetail'
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
         "404":
           description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
         "500":
@@ -3935,165 +4094,7 @@ paths:
           description: Gateway Timeout
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get trace graph by trace ID
+      summary: Get one typed technical trace
       tags:
       - traces
-  /traces/by-conversation:
-    get:
-      consumes:
-      - application/json
-      description: Build a term filter automatically using attributes.gen_ai.conversation.id.keyword
-        and return the original OpenSearch response body.
-      parameters:
-      - description: Conversation ID
-        in: query
-        name: conversation_id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Raw OpenSearch search response
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "504":
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Search traces by conversation ID
-      tags:
-      - traces
-  /traces/by-request:
-    get:
-      description: Returns normalized claim, evidence refs, business refs, pagination,
-        partial reasons, and visibility summary for a request.
-      parameters:
-      - description: BKN request ID
-        in: query
-        name: request_id
-        required: true
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.EvidenceChainResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get evidence chain by BKN request ID
-      tags:
-      - evidence
-  /traces/by-request/business-graph:
-    get:
-      description: Returns claim and business semantic nodes/edges derived from business.refs.resolved
-        events.
-      parameters:
-      - description: BKN request ID
-        in: query
-        name: request_id
-        required: true
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.BusinessGraphResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get business semantic graph by BKN request ID
-      tags:
-      - evidence
-  /traces/by-request/snapshot-preview:
-    get:
-      description: Returns a metadata-only governed snapshot manifest preview without
-        creating or exposing object storage locations.
-      parameters:
-      - description: BKN request ID
-        in: query
-        name: request_id
-        required: true
-        type: string
-      - description: Maximum evidence trace batches to read, 1..1000
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/evidencevo.SnapshotPreviewResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "405":
-          description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/rdto.ErrorResponse'
-      summary: Get evidence snapshot preview by BKN request ID
-      tags:
-      - evidence
 swagger: "2.0"

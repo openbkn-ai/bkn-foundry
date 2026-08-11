@@ -55,8 +55,6 @@ evidence:
     # externally managed Secrets outside Helm ownership by default.
     createSecret: false
     allowUnauthenticated: false
-  rawTraceQuery:
-    enabled: false
   queryAuth:
     hydraAdminURL: http://bkn-safe-hydra-admin:4445
     # 0.1.3 is deployed as a single tenant. This trusted server-side value is
@@ -75,6 +73,13 @@ businessResolver:
   bknBaseURL: "http://bkn-backend-svc:13014"
   vegaBaseURL: "http://vega-backend-svc:13014"
   timeout: 3s
+
+# The Community binary ignores this block. The EE image uses it solely to
+# select the deployment-approved, read-only business-provenance Agent.
+enterpriseBusinessProvenance:
+  enabled: false
+  agentURL: ""
+  agentID: ""
 
 observability:
   # Configure the same Secret on every replica so signed pagination cursors

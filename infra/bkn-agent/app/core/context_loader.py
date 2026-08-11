@@ -113,8 +113,11 @@ class ContextLoaderSession:
             "interaction_id": self.interaction_id,
         }
 
-    def tools(self) -> list[Any]:
-        return self._tools
+    def tools(self, allowed_tools: set[str] | None = None) -> list[Any]:
+        """返回会话工具；白名单仅收窄，不改变生命周期与上下文注入。"""
+        if allowed_tools is None:
+            return self._tools
+        return [tool for tool in self._tools if getattr(tool, "name", None) in allowed_tools]
 
 
 def _strip_bkn_context(tool: Any) -> None:

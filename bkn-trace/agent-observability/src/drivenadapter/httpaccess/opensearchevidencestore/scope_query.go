@@ -16,6 +16,9 @@ func scopeCandidateMust(scope evidencevo.QueryScope) []map[string]any {
 	}
 
 	profile := *scope.AccessProfile
+	if evidencevo.HasTenantWideTraceAccess(profile) {
+		return must
+	}
 	should := make([]map[string]any, 0, 4)
 	if profile.EffectiveSubjectID != "" {
 		should = append(should, map[string]any{"bool": exactTermQuery("effective_subject_id", profile.EffectiveSubjectID)})

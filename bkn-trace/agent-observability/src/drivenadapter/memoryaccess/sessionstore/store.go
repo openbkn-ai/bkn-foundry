@@ -159,6 +159,22 @@ func (tx memoryTransaction) PeekInteraction(interactionID string) (sessionvo.Int
 	return tx.FindInteraction(interactionID)
 }
 
+func (tx memoryTransaction) ListInteractions(conversationID string) []sessionvo.Interaction {
+	result := make([]sessionvo.Interaction, 0)
+	for _, interaction := range tx.s.interactions {
+		if interaction.ConversationID == conversationID {
+			result = append(result, interaction)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Ordinal == result[j].Ordinal {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].Ordinal < result[j].Ordinal
+	})
+	return result
+}
+
 func (tx memoryTransaction) NextInteractionOrdinal(conversationID string) uint64 {
 	var max uint64
 	for _, interaction := range tx.s.interactions {
@@ -211,6 +227,29 @@ func (tx memoryTransaction) ListOperationCallFacts(interactionID string) []sessi
 		return result[i].StartedAt.Before(result[j].StartedAt)
 	})
 	return result
+}
+
+func (tx memoryTransaction) ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact {
+	result := make([]sessionvo.OperationCallFact, 0)
+	for _, fact := range tx.s.operationCalls {
+		if fact.TraceID == traceID {
+			result = append(result, fact)
+		}
+	}
+	sortOperationCallFacts(result)
+	return result
+}
+
+func sortOperationCallFacts(result []sessionvo.OperationCallFact) {
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].StartedAt.Equal(result[j].StartedAt) {
+			if result[i].OperationID == result[j].OperationID {
+				return result[i].Attempt < result[j].Attempt
+			}
+			return result[i].OperationID < result[j].OperationID
+		}
+		return result[i].StartedAt.Before(result[j].StartedAt)
+	})
 }
 
 func (tx memoryTransaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {

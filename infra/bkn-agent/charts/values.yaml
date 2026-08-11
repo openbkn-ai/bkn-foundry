@@ -54,6 +54,8 @@ observability:
   bknTraceEvidenceIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
   bknTraceArtifactIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
   bknTraceEvidenceTimeoutS: "3"
+  # 接入受保护的 agent-observability evidence/artifact 写入端点时必须配置为
+  # 该服务使用的既有 Secret 名称；留空只适用于未部署 Trace 的环境。
   bknTraceEvidenceIngestTokenSecretName: ""
   bknTraceEvidenceIngestTokenSecretKey: "ingest-token"
 

@@ -62,6 +62,9 @@ type TraceSummary struct {
 	ApplicationPrincipalID string `json:"application_principal_id,omitempty"`
 	EffectiveSubjectID     string `json:"effective_subject_id,omitempty"`
 	BusinessDomain         string `json:"business_domain,omitempty"`
+	QuestionPreview        string `json:"question_preview,omitempty"`
+	ResultPreview          string `json:"result_preview,omitempty"`
+	RootService            string `json:"root_service,omitempty"`
 	RootOperation          string `json:"root_operation,omitempty"`
 	Status                 string `json:"status"`
 	SpanCount              int    `json:"span_count"`
@@ -71,17 +74,24 @@ type TraceSummary struct {
 }
 
 type SummaryQueryOptions struct {
-	Limit                int
-	Page                 int
-	Cursor               string
-	TraceID              string
-	ConversationID       string
-	InteractionID        string
-	Scope                QueryScope
-	From                 time.Time
-	To                   time.Time
-	Status               string
-	AgentOrApp           string
+	Limit          int
+	Page           int
+	Cursor         string
+	TraceID        string
+	ConversationID string
+	InteractionID  string
+	Scope          QueryScope
+	From           time.Time
+	To             time.Time
+	Status         string
+	AgentOrApp     string
+	// ExcludeAgentOrApp is an internal product-view boundary. Public Trace
+	// query handlers never populate it; an assembled EE view may use it to
+	// keep its own analysis Agent conversations in technical Trace only.
+	ExcludeAgentOrApp    string
+	Service              string
+	Tool                 string
+	ErrorKeyword         string
 	BusinessDomain       string
 	KnowledgeNetwork     string
 	EvidenceCompleteness string
@@ -197,6 +207,10 @@ type InteractionSummary struct {
 	DurationMS             int64            `json:"duration_ms,omitempty"`
 	Requests               []RequestSummary `json:"requests"`
 	Traces                 []TraceSummary   `json:"traces"`
+	// InteractionQuestion and InteractionResult are available only to an
+	// already-authorized in-process reader. Public summaries retain previews.
+	InteractionQuestion string `json:"-"`
+	InteractionResult   string `json:"-"`
 }
 
 func BuildExecutionSummaries(traces []NormalizedTrace, artifacts []EvidenceArtifact) ([]RequestSummary, []TraceSummary) {
@@ -524,6 +538,18 @@ func buildRequestSummary(
 	if summary.ToolName == "-" {
 		summary.ToolName = ""
 	}
+	questionPreview := summary.QuestionPreview
+	if summary.InteractionQuestion != "" {
+		questionPreview = summary.InteractionQuestion
+	}
+	resultPreview := summary.ResultPreview
+	if summary.InteractionResult != "" {
+		resultPreview = summary.InteractionResult
+	}
+	for index := range traceSummaries {
+		traceSummaries[index].QuestionPreview = questionPreview
+		traceSummaries[index].ResultPreview = resultPreview
+	}
 	return summary, traceSummaries
 }
 
@@ -597,18 +623,21 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 		BusinessDomain:         trace.BusinessDomain, Status: "unknown", SpanCountStatus: "unavailable",
 	}
 	var started, completed time.Time
+	hasExplicitAgentIdentity := false
 	for _, event := range trace.Events {
 		mergeStableIdentity(&summary.InteractionID, event.InteractionID)
 		if event.EventType == "agent.interaction.started" {
 			if agentID, _ := summaryStringField(event.Payload, "agent_id"); agentID != "" {
-				firstNonEmpty(&summary.AgentOrApp, agentID)
+				summary.AgentOrApp = agentID
+				hasExplicitAgentIdentity = true
 			} else if appRef, _ := summaryStringField(event.Payload, "app_ref"); appRef != "" {
-				firstNonEmpty(&summary.AgentOrApp, appRef)
+				summary.AgentOrApp = appRef
+				hasExplicitAgentIdentity = true
 			}
-			firstNonEmpty(&summary.RootOperation, event.OperationName)
+			setTraceRoot(&summary, event)
 		}
 		if event.EventType == "retrieval.completed" {
-			firstNonEmpty(&summary.RootOperation, event.OperationName)
+			setTraceRoot(&summary, event)
 		}
 		if strings.HasPrefix(event.EventID, "artifact-link:") {
 			continue
@@ -625,8 +654,15 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 			summary.Status = "running"
 		}
 	}
+	if summary.RootService == "" {
+		for _, event := range trace.Events {
+			firstNonEmpty(&summary.RootService, event.Producer)
+		}
+	}
 	for _, artifact := range artifacts {
-		firstNonEmpty(&summary.AgentOrApp, artifact.AgentOrApp)
+		if !hasExplicitAgentIdentity && artifact.ArtifactType == ArtifactTypeQuestion && artifact.AgentOrApp != "" {
+			summary.AgentOrApp = artifact.AgentOrApp
+		}
 		if artifact.ArtifactType == ArtifactTypeResult || artifact.ArtifactType == ArtifactTypeActionResult {
 			if summary.Status != "error" {
 				summary.Status = "completed"
@@ -649,6 +685,14 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 		summary.InteractionID = ""
 	}
 	return summary
+}
+
+func setTraceRoot(summary *TraceSummary, event EvidenceEvent) {
+	if summary.RootOperation != "" || strings.TrimSpace(event.OperationName) == "" {
+		return
+	}
+	summary.RootOperation = strings.TrimSpace(event.OperationName)
+	summary.RootService = strings.TrimSpace(event.Producer)
 }
 
 func mergeStableIdentity(target *string, value string) {

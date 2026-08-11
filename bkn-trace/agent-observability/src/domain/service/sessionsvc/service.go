@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
@@ -437,6 +438,139 @@ func (s *Service) GetOperationCallFact(
 		return nil
 	})
 	return result, err
+}
+
+func (s *Service) ListOperationExecutionsByTraceID(
+	ctx context.Context,
+	owner sessionvo.Owner,
+	traceID string,
+) ([]sessionvo.OperationExecution, error) {
+	if err := validateOwner(owner); err != nil {
+		return nil, err
+	}
+	return s.listOperationExecutionsByTraceID(ctx, traceID, func(candidate sessionvo.Owner) bool {
+		return candidate.Equal(owner)
+	})
+}
+
+func (s *Service) ListOperationExecutionsByTraceIDScoped(
+	ctx context.Context,
+	scope evidencevo.QueryScope,
+	traceID string,
+) ([]sessionvo.OperationExecution, error) {
+	if strings.TrimSpace(scope.AccountID) == "" ||
+		strings.TrimSpace(scope.AccountType) == "" ||
+		(strings.TrimSpace(scope.TenantID) == "" && strings.TrimSpace(scope.BusinessDomain) == "") {
+		return nil, errors.New("trusted trace query scope is incomplete")
+	}
+	return s.listOperationExecutionsByTraceID(ctx, traceID, func(owner sessionvo.Owner) bool {
+		if scope.AccessProfile != nil {
+			return evidencevo.CanReadRecord(*scope.AccessProfile, evidencevo.RecordScope{
+				TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+				EffectiveSubjectID:     owner.EffectiveSubjectID,
+				ApplicationPrincipalID: owner.ApplicationPrincipalID,
+			}, evidencevo.AccessViewTechnical)
+		}
+		if scope.TenantID != "" && owner.TenantID != scope.TenantID ||
+			scope.BusinessDomain != "" && owner.BusinessDomainID != scope.BusinessDomain {
+			return false
+		}
+		if scope.AccountType == "app" || scope.AccountType == "service" {
+			return owner.ApplicationPrincipalID == scope.AccountID
+		}
+		return owner.EffectiveSubjectID == scope.AccountID
+	})
+}
+
+// ListOperationExecutionsByInteractionIDScoped returns the ordered call facts
+// for one interaction after applying the same technical record scope as the
+// Community Trace detail API.
+func (s *Service) ListOperationExecutionsByInteractionIDScoped(
+	ctx context.Context,
+	scope evidencevo.QueryScope,
+	interactionID string,
+) ([]sessionvo.OperationExecution, error) {
+	if strings.TrimSpace(scope.AccountID) == "" ||
+		strings.TrimSpace(scope.AccountType) == "" ||
+		(strings.TrimSpace(scope.TenantID) == "" && strings.TrimSpace(scope.BusinessDomain) == "") {
+		return nil, errors.New("trusted trace query scope is incomplete")
+	}
+	interactionID = strings.TrimSpace(interactionID)
+	if interactionID == "" {
+		return []sessionvo.OperationExecution{}, nil
+	}
+	result := []sessionvo.OperationExecution{}
+	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		interaction, found := tx.PeekInteraction(interactionID)
+		if !found {
+			return nil
+		}
+		conversation, found := tx.PeekConversation(interaction.ConversationID)
+		if !found || !canReadTechnicalOwner(scope, conversation.Owner) {
+			return nil
+		}
+		for _, fact := range tx.ListOperationCallFacts(interactionID) {
+			receipt, found := tx.PeekReceipt(fact.ReceiptID)
+			if !found || receipt.OperationID != fact.OperationID || receipt.Attempt != fact.Attempt {
+				continue
+			}
+			result = append(result, sessionvo.OperationExecution{
+				Fact: fact, Receipt: receipt, InteractionStatus: interaction.ExecutionStatus,
+			})
+		}
+		return nil
+	})
+	return result, err
+}
+
+func (s *Service) listOperationExecutionsByTraceID(
+	ctx context.Context,
+	traceID string,
+	canRead func(sessionvo.Owner) bool,
+) ([]sessionvo.OperationExecution, error) {
+	traceID = strings.TrimSpace(traceID)
+	if traceID == "" {
+		return []sessionvo.OperationExecution{}, nil
+	}
+	result := []sessionvo.OperationExecution{}
+	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		for _, fact := range tx.ListOperationCallFactsByTraceID(traceID) {
+			conversation, found := tx.PeekConversation(fact.ConversationID)
+			if !found || !canRead(conversation.Owner) {
+				continue
+			}
+			interaction, found := tx.PeekInteraction(fact.InteractionID)
+			if !found || interaction.ConversationID != conversation.ID {
+				continue
+			}
+			receipt, found := tx.PeekReceipt(fact.ReceiptID)
+			if !found || receipt.OperationID != fact.OperationID || receipt.Attempt != fact.Attempt {
+				continue
+			}
+			result = append(result, sessionvo.OperationExecution{
+				Fact: fact, Receipt: receipt, InteractionStatus: interaction.ExecutionStatus,
+			})
+		}
+		return nil
+	})
+	return result, err
+}
+
+func canReadTechnicalOwner(scope evidencevo.QueryScope, owner sessionvo.Owner) bool {
+	if scope.AccessProfile != nil {
+		return evidencevo.CanReadRecord(*scope.AccessProfile, evidencevo.RecordScope{
+			TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+			EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
+		}, evidencevo.AccessViewTechnical)
+	}
+	if scope.TenantID != "" && owner.TenantID != scope.TenantID ||
+		scope.BusinessDomain != "" && owner.BusinessDomainID != scope.BusinessDomain {
+		return false
+	}
+	if scope.AccountType == "app" || scope.AccountType == "service" {
+		return owner.ApplicationPrincipalID == scope.AccountID
+	}
+	return owner.EffectiveSubjectID == scope.AccountID
 }
 
 func (s *Service) GetReceipt(ctx context.Context, owner sessionvo.Owner, receiptID string) (sessionvo.Receipt, error) {

@@ -347,7 +347,7 @@ func TestSourceProjectsAuthorizedInteractionForManagedBuilder(t *testing.T) {
 	}
 }
 
-func TestSourceDoesNotDiscloseInteractionWithUnmanagedKnowledgeNetwork(t *testing.T) {
+func TestSourceReturnsCompleteInteractionWhenOneManagedNetworkMatches(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -379,8 +379,8 @@ func TestSourceDoesNotDiscloseInteractionWithUnmanagedKnowledgeNetwork(t *testin
 	if err != nil {
 		t.Fatalf("load projection: %v", err)
 	}
-	if len(result.Traces) != 0 || len(result.Artifacts) != 0 {
-		t.Fatalf("partially managed interaction must not be disclosed: %#v", result)
+	if len(result.Traces) != 2 {
+		t.Fatalf("one managed network match must authorize the complete interaction: %#v", result)
 	}
 }
 

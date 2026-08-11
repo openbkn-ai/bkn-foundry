@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
@@ -2413,5 +2414,111 @@ func TestOperationLimitDoesNotKeepAFullInteractionAlive(t *testing.T) {
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); err != nil {
 		t.Fatalf("replaying an existing operation on a full interaction must still work: %v", err)
+	}
+}
+
+func TestListOperationExecutionsByTraceIDReturnsAuthorizedAttemptsInTimeOrder(t *testing.T) {
+	t.Parallel()
+
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{})
+	owner := testOwner()
+	otherOwner := owner
+	otherOwner.EffectiveSubjectID = "user-2"
+	otherOwner.ApplicationPrincipalID = "app-2"
+	started := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
+
+	seedTraceExecution := func(
+		conversationID, interactionID, operationID, receiptID string,
+		traceID string, factStarted time.Time, recordOwner sessionvo.Owner,
+	) {
+		t.Helper()
+		if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+			tx.SaveConversation(sessionvo.Conversation{
+				ID: conversationID, Owner: recordOwner, ExternalConversationKey: conversationID,
+				Generation: 1, Status: sessionvo.ConversationActive, RowVersion: 1,
+				CreatedAt: factStarted, UpdatedAt: factStarted,
+			})
+			tx.SaveInteraction(sessionvo.Interaction{
+				ID: interactionID, ConversationID: conversationID, Ordinal: 1,
+				ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+				RowVersion: 1, CreatedAt: factStarted, UpdatedAt: factStarted,
+			})
+			tx.SaveOperation(sessionvo.Operation{
+				ID: operationID, ConversationID: conversationID, InteractionID: interactionID,
+				OperationKey: operationID, ToolName: "run_sql", Attempt: 1,
+				AttemptStatus: sessionvo.AttemptCompleted, RowVersion: 1,
+				CreatedAt: factStarted, UpdatedAt: factStarted,
+			})
+			tx.SaveReceipt(sessionvo.Receipt{
+				ID: receiptID, SchemaVersion: "3.0.0", Owner: recordOwner,
+				ConversationID: conversationID, InteractionID: interactionID,
+				OperationID: operationID, Attempt: 1, OperationKey: operationID,
+				ToolName: "run_sql", Status: sessionvo.ReceiptCompleted,
+				EvidenceDurability: sessionvo.DurabilityDurable, Required: true,
+				TraceID: traceID, RowVersion: 1, IssuedAt: factStarted,
+			})
+			tx.SaveOperationCallFact(sessionvo.OperationCallFact{
+				OperationID: operationID, Attempt: 1, ConversationID: conversationID,
+				InteractionID: interactionID, ReceiptID: receiptID, ToolName: "run_sql",
+				Protocol: sessionvo.ProtocolMCP, SourceModule: "context-loader",
+				Input: sessionvo.PayloadEnvelope{
+					Mode: sessionvo.PayloadInline, MediaType: "application/json",
+					ByteLength: 2, Inline: json.RawMessage(`{}`),
+				},
+				TraceID: traceID, StartedAt: factStarted, Status: sessionvo.AttemptCompleted,
+			})
+			return nil
+		}); err != nil {
+			t.Fatalf("seed trace execution: %v", err)
+		}
+	}
+
+	seedTraceExecution("conv-late", "int-late", "op-late", "rcpt-late", validTraceIDOne, started.Add(time.Second), owner)
+	seedTraceExecution("conv-early", "int-early", "op-early", "rcpt-early", validTraceIDOne, started, owner)
+	seedTraceExecution("conv-other", "int-other", "op-other", "rcpt-other", validTraceIDOne, started.Add(-time.Second), otherOwner)
+	seedTraceExecution("conv-trace-2", "int-trace-2", "op-trace-2", "rcpt-trace-2", validTraceIDTwo, started, owner)
+
+	executions, err := service.ListOperationExecutionsByTraceID(context.Background(), owner, validTraceIDOne)
+	if err != nil {
+		t.Fatalf("list operation executions: %v", err)
+	}
+	if len(executions) != 2 || executions[0].Fact.OperationID != "op-early" || executions[1].Fact.OperationID != "op-late" {
+		t.Fatalf("expected two authorized attempts in time order, got %+v", executions)
+	}
+	if executions[0].InteractionStatus != sessionvo.InteractionCompleted || executions[0].Receipt.ID != "rcpt-early" {
+		t.Fatalf("expected joined interaction and receipt state, got %+v", executions[0])
+	}
+
+	profile := evidencevo.AccessProfile{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
+		AccountActive: true, TenantActive: true,
+	}
+	scoped, err := service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+	}, validTraceIDOne)
+	if err != nil || len(scoped) != 2 {
+		t.Fatalf("owner technical scope must return only owned attempts: executions=%+v err=%v", scoped, err)
+	}
+	profile.Roles = []string{"admin"}
+	scoped, err = service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+	}, validTraceIDOne)
+	if err != nil || len(scoped) != 3 {
+		t.Fatalf("tenant admin technical scope must include the other owner: executions=%+v err=%v", scoped, err)
+	}
+
+	interactionScoped, err := service.ListOperationExecutionsByInteractionIDScoped(context.Background(), evidencevo.QueryScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+	}, "int-early")
+	if err != nil || len(interactionScoped) != 1 || interactionScoped[0].Fact.OperationID != "op-early" {
+		t.Fatalf("scoped interaction must return its one authorized attempt: executions=%+v err=%v", interactionScoped, err)
 	}
 }

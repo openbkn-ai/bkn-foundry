@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_operation_call_facts (
     retryable BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (operation_id, attempt_no),
     INDEX idx_bkn_trace_operation_call_fact_interaction (interaction_id, started_at, operation_id, attempt_no),
+    INDEX idx_bkn_trace_operation_call_fact_trace (trace_id, started_at, operation_id, attempt_no),
     CONSTRAINT fk_bkn_trace_operation_call_fact_operation
         FOREIGN KEY (operation_id) REFERENCES bkn_trace_operations (operation_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

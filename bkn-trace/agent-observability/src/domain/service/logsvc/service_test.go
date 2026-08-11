@@ -232,7 +232,7 @@ func TestListRejectsGlobalSearchForNormalUserButAllowsOwnedTraceDrilldown(t *tes
 	}
 }
 
-func TestListEnforcesManagedNetworkAllOf(t *testing.T) {
+func TestListReturnsCompleteRecordsMatchingAnyManagedNetwork(t *testing.T) {
 	service := New([]Source{fakeSource{id: "otel", records: []observabilityvo.LogRecord{
 		managedBusinessLog("log-a", []string{"kn-a"}),
 		managedBusinessLog("log-ab", []string{"kn-a", "kn-b"}),
@@ -244,8 +244,8 @@ func TestListEnforcesManagedNetworkAllOf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("builder search failed: %v", err)
 	}
-	if len(result.Records) != 1 || result.Records[0].LogID != "log-a" {
-		t.Fatalf("all-of scope was not enforced: %+v", result.Records)
+	if len(result.Records) != 2 {
+		t.Fatalf("records sharing a managed network must remain complete: %+v", result.Records)
 	}
 }
 

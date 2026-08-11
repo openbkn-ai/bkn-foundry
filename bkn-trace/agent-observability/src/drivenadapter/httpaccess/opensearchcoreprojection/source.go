@@ -452,6 +452,9 @@ func receiptScopeCandidates(scope evidencevo.QueryScope) []map[string]any {
 		return receiptLegacyOwnerCandidate(scope)
 	}
 	profile := *scope.AccessProfile
+	if evidencevo.HasTenantWideTraceAccess(profile) {
+		return nil
+	}
 	if scope.View != "" && scope.View != evidencevo.AccessViewBusiness {
 		if evidencevo.NeedsCrossAccountCandidates(scope) {
 			return nil

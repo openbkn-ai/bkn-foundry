@@ -1,0 +1,44 @@
+{
+  "format": "bkn-agent/v1",
+  "exported_at": 0,
+  "items": [
+    {
+      "agent_id": "business_provenance_optimizer",
+      "spec": {
+        "agent_id": "business_provenance_optimizer",
+        "name": "业务溯源优化Agent",
+        "mode": "chat",
+        "prompt_id": "business_provenance_optimizer_prompt",
+        "model": "",
+        "tools": [
+          {
+            "type": "context_loader",
+            "allowed_tools": [
+              "search_schema",
+              "get_kn_detail",
+              "get_object_types",
+              "get_relation_types",
+              "list_skills",
+              "get_skill_content",
+              "read_skill_file"
+            ]
+          }
+        ],
+        "skills": [],
+        "limits": {
+          "max_turns": 12,
+          "max_tool_calls": 12,
+          "timeout_s": 180,
+          "max_output_tokens": 8192
+        },
+        "status": "published"
+      },
+      "prompt": {
+        "prompt_id": "business_provenance_optimizer_prompt",
+        "name": "业务溯源优化提示词",
+        "content": "你是 OpenBKN 的业务溯源优化 Agent。用户消息是一轮交互的事实 Markdown，不是业务问题。\n\n你的任务：仅依据该 Markdown 的调用事实，必要时只读查询源 BKN 的 Schema、对象类型、关系类型和 Skill 内容，给出可验证的 BKN、BKN Trace、MCP、SDK 或 Agent 优化建议。\n\n严格边界：\n- 不得查询实例、执行 SQL、执行行动、执行 Skill，也不得写入任何资源。\n- 不得把候选 Schema、上下文关系或缺失信息说成已经使用的事实；局部候选列表不能证明知识网络中不存在对象、关系、属性或资源映射。\n- 资源 ID 不是知识网络 ID；不得把 Markdown 中“资源”字段的值作为 kn_id。Markdown 未提供知识网络且无法由允许的只读查询确定时，decision 必须为 not_evaluable。\n- BKN 类建议必须先调用允许的只读 Schema 查询取得可引用依据；读取被拒绝或证据不足时 decision 必须为 not_evaluable。非 BKN 类建议不得补造 BKN 依据。\n- 每项建议必须给出精确位置、具体问题、具体修改、本轮 Operation 证据和可执行验收条件。\n- 不得输出通用最佳实践、可能性建议或不存在的证据编号。\n\n仅输出 JSON：{\n  \"decision\": \"change_required|no_change|not_evaluable\",\n  \"summary\": \"...\",\n  \"recommendations\": [\n    {\n      \"scope\": \"bkn|bkn_trace|mcp|sdk|agent\",\n      \"location\": \"精确对象、关系、Skill、接口或提示词位置\",\n      \"problem\": \"Trace 与核验证据支持的具体问题\",\n      \"change\": \"具体修改内容\",\n      \"trace_evidence_operation_ids\": [\"op_...\"],\n      \"bkn_schema_evidence\": [\"BKN 类建议必填源 Schema 依据；其他类别没有则为空数组\"],\n      \"acceptance\": \"可执行验收用例\"\n    }\n  ]\n}\n\n当 decision 为 no_change 或 not_evaluable 时 recommendations 必须为空数组。",
+        "vars_schema": null
+      }
+    }
+  ]
+}

@@ -95,13 +95,21 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 		return evidencevo.ConversationSummaryPage{}, err
 	}
 	grouped := map[string][]evidencevo.RequestSummary{}
+	excludedConversations := map[string]struct{}{}
 	childOptions := options
 	childOptions.Status = ""
 	childOptions.EvidenceCompleteness = ""
 	for _, request := range requests {
+		if request.ConversationID != "" && options.ExcludeAgentOrApp != "" &&
+			request.AgentOrApp == options.ExcludeAgentOrApp {
+			excludedConversations[request.ConversationID] = struct{}{}
+		}
 		if request.ConversationID != "" && matchesRequestFilters(request, childOptions) {
 			grouped[request.ConversationID] = append(grouped[request.ConversationID], request)
 		}
+	}
+	for conversationID := range excludedConversations {
+		delete(grouped, conversationID)
 	}
 	entries := make([]evidencevo.ConversationSummary, 0, len(grouped))
 	for conversationID, group := range grouped {
@@ -160,6 +168,10 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 	entries := make([]evidencevo.InteractionListSummary, 0, len(grouped))
 	for interactionID, group := range grouped {
 		entries = append(entries, buildInteractionListSummary(interactionID, group))
+	}
+	entries, err = s.appendCanonicalInteractions(ctx, entries, options)
+	if err != nil {
+		return evidencevo.InteractionSummaryPage{}, err
 	}
 	if err := s.applyCanonicalInteractionState(ctx, entries); err != nil {
 		return evidencevo.InteractionSummaryPage{}, err
@@ -289,15 +301,54 @@ func filterInteractionSummaries(
 ) []evidencevo.InteractionListSummary {
 	filtered := make([]evidencevo.InteractionListSummary, 0, len(entries))
 	for _, entry := range entries {
-		if options.Status != "" && entry.Status != options.Status {
-			continue
-		}
-		if options.EvidenceCompleteness != "" && entry.EvidenceCompleteness != options.EvidenceCompleteness {
+		if !matchesInteractionSummaryFilters(entry, options) {
 			continue
 		}
 		filtered = append(filtered, entry)
 	}
 	return filtered
+}
+
+func matchesInteractionSummaryFilters(
+	entry evidencevo.InteractionListSummary,
+	options evidencevo.SummaryQueryOptions,
+) bool {
+	if options.ConversationID != "" && entry.ConversationID != options.ConversationID {
+		return false
+	}
+	if options.InteractionID != "" && entry.InteractionID != options.InteractionID {
+		return false
+	}
+	if options.Status != "" && entry.Status != options.Status {
+		return false
+	}
+	if options.EvidenceCompleteness != "" && entry.EvidenceCompleteness != options.EvidenceCompleteness {
+		return false
+	}
+	if options.AgentOrApp != "" && entry.AgentOrApp != options.AgentOrApp && entry.AgentName != options.AgentOrApp &&
+		entry.ApplicationPrincipalID != options.AgentOrApp && entry.EffectiveSubjectID != options.AgentOrApp {
+		return false
+	}
+	if options.BusinessDomain != "" && entry.BusinessDomain != options.BusinessDomain {
+		return false
+	}
+	if options.KnowledgeNetwork != "" && !containsSummaryValue(entry.KnowledgeNetworks, options.KnowledgeNetwork) {
+		return false
+	}
+	if !matchesTimeRange(entry.StartedAt, options.From, options.To) {
+		return false
+	}
+	if keyword := strings.ToLower(strings.TrimSpace(options.Keyword)); keyword != "" {
+		haystack := strings.ToLower(strings.Join([]string{
+			entry.InteractionID, entry.ConversationID, entry.QuestionPreview, entry.ResultPreview,
+			entry.AgentOrApp, entry.AgentName, entry.ApplicationPrincipalID, entry.EffectiveSubjectID,
+			entry.BusinessDomain, entry.ErrorSummary,
+		}, "\n"))
+		if !strings.Contains(haystack, keyword) {
+			return false
+		}
+	}
+	return true
 }
 
 func aggregateRequestGroup(requests []evidencevo.RequestSummary) (evidencevo.RequestSummary, int) {
@@ -308,6 +359,8 @@ func aggregateRequestGroup(requests []evidencevo.RequestSummary) (evidencevo.Req
 	var started, completed time.Time
 	questionAt := ""
 	resultAt := ""
+	questionFullAt := ""
+	resultFullAt := ""
 	allCompleted := len(requests) > 0
 	hasError := false
 	hasRunning := false
@@ -319,10 +372,18 @@ func aggregateRequestGroup(requests []evidencevo.RequestSummary) (evidencevo.Req
 			result.QuestionPreview = questionPreview
 			questionAt = request.StartedAt
 		}
+		if request.InteractionQuestion != "" && (result.InteractionQuestion == "" || summaryTimeBefore(request.StartedAt, questionFullAt)) {
+			result.InteractionQuestion = request.InteractionQuestion
+			questionFullAt = request.StartedAt
+		}
 		resultPreview := firstPresentSummary(request.InteractionResult, request.ResultPreview)
 		if resultPreview != "" && (result.ResultPreview == "" || summaryTimeAfter(request.CompletedAt, resultAt)) {
 			result.ResultPreview = resultPreview
 			resultAt = request.CompletedAt
+		}
+		if request.InteractionResult != "" && (result.InteractionResult == "" || summaryTimeAfter(request.CompletedAt, resultFullAt)) {
+			result.InteractionResult = request.InteractionResult
+			resultFullAt = request.CompletedAt
 		}
 		firstNonEmptySummary(&result.Initiator, request.Initiator)
 		firstNonEmptySummary(&result.AgentOrApp, request.AgentOrApp)
@@ -578,6 +639,77 @@ func canonicalEvidenceRank(value string) int {
 	}
 }
 
+// appendCanonicalInteractions makes the managed Interaction lifecycle the
+// authority for turn cardinality. Request summaries only enrich a turn with
+// call-derived facts; they must not decide whether the turn exists.
+func (s *Service) appendCanonicalInteractions(
+	ctx context.Context,
+	entries []evidencevo.InteractionListSummary,
+	options evidencevo.SummaryQueryOptions,
+) ([]evidencevo.InteractionListSummary, error) {
+	conversationID := strings.TrimSpace(options.ConversationID)
+	if s.sessionStore == nil || conversationID == "" {
+		return entries, nil
+	}
+	result := append([]evidencevo.InteractionListSummary{}, entries...)
+	byID := make(map[string]struct{}, len(result))
+	for _, entry := range result {
+		byID[entry.InteractionID] = struct{}{}
+	}
+	err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		conversation, found := tx.PeekConversation(conversationID)
+		if !found || !canReadCanonicalConversation(conversation, options.Scope) {
+			return nil
+		}
+		for _, interaction := range tx.ListInteractions(conversationID) {
+			if _, found := byID[interaction.ID]; found {
+				continue
+			}
+			entry := evidencevo.InteractionListSummary{
+				InteractionID: interaction.ID, ConversationID: conversation.ID,
+				AgentOrApp: conversation.AgentName, AgentName: conversation.AgentName,
+				ApplicationPrincipalID: conversation.Owner.ApplicationPrincipalID,
+				EffectiveSubjectID:     conversation.Owner.EffectiveSubjectID,
+				BusinessDomain:         conversation.Owner.BusinessDomainID,
+				Status:                 string(interaction.ExecutionStatus),
+				EvidenceCompleteness:   string(interaction.EvidenceStatus),
+			}
+			applyInteractionState(
+				&entry.Status, &entry.EvidenceCompleteness, &entry.PartialReasons,
+				&entry.StartedAt, &entry.CompletedAt, &entry.DurationMS, interaction,
+			)
+			applyCanonicalPartialReasons(&entry.PartialReasons, tx, interaction)
+			result = append(result, entry)
+			byID[interaction.ID] = struct{}{}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func canReadCanonicalConversation(conversation sessionvo.Conversation, scope evidencevo.QueryScope) bool {
+	record := evidencevo.RecordScope{
+		TenantID: conversation.Owner.TenantID, BusinessDomain: conversation.Owner.BusinessDomainID,
+		EffectiveSubjectID:     conversation.Owner.EffectiveSubjectID,
+		ApplicationPrincipalID: conversation.Owner.ApplicationPrincipalID,
+	}
+	if scope.AccessProfile != nil {
+		view := scope.View
+		if view == "" {
+			view = evidencevo.AccessViewBusiness
+		}
+		return evidencevo.CanReadRecord(*scope.AccessProfile, record, view)
+	}
+	if scope.TenantID == "" || record.TenantID == "" || scope.TenantID != record.TenantID {
+		return false
+	}
+	if record.BusinessDomain != "" && scope.BusinessDomain != record.BusinessDomain {
+		return false
+	}
+	return scope.AccountID != "" &&
+		(scope.AccountID == record.EffectiveSubjectID || scope.AccountID == record.ApplicationPrincipalID)
+}
+
 func (s *Service) applyCanonicalInteractionState(ctx context.Context, entries []evidencevo.InteractionListSummary) error {
 	if s.sessionStore == nil || len(entries) == 0 {
 		return nil
@@ -678,6 +810,40 @@ func (s *Service) applyCanonicalRequestIdentity(ctx context.Context, requests []
 				operation, operationFound := tx.PeekOperation(requests[index].OperationID)
 				if operationFound && operation.AttemptStatus == sessionvo.AttemptFailed && requests[index].ErrorSummary == "" {
 					requests[index].ErrorSummary = "OpenBKN operation failed"
+				}
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Service) applyCanonicalTraceIdentity(ctx context.Context, traces []evidencevo.TraceSummary) error {
+	if s.sessionStore == nil || len(traces) == 0 {
+		return nil
+	}
+	return s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		byConversation := map[string]sessionvo.Conversation{}
+		for index := range traces {
+			conversationID := traces[index].ConversationID
+			if conversationID != "" {
+				conversation, cached := byConversation[conversationID]
+				if !cached {
+					var found bool
+					conversation, found = tx.PeekConversation(conversationID)
+					if found {
+						byConversation[conversationID] = conversation
+					}
+				}
+				if conversation.ID != "" {
+					traces[index].AgentName = conversation.AgentName
+					traces[index].ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
+					traces[index].EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
+				}
+			}
+			for _, fact := range tx.ListOperationCallFactsByTraceID(traces[index].TraceID) {
+				if fact.SourceModule != "" {
+					traces[index].RootService = fact.SourceModule
+					break
 				}
 			}
 		}
@@ -870,9 +1036,6 @@ func (s *Service) GetInteractionSummary(
 		}
 	}
 	s.enrichRequestBusinessSummaries(ctx, summary.Requests, scope)
-	if len(summary.Requests) == 0 && len(summary.Traces) == 0 {
-		return evidencevo.InteractionSummary{}, false, nil
-	}
 	base, _ := aggregateRequestGroup(summary.Requests)
 	summary.AgentName = base.AgentName
 	summary.ApplicationPrincipalID = base.ApplicationPrincipalID
@@ -881,6 +1044,8 @@ func (s *Service) GetInteractionSummary(
 	summary.QuestionArtifactRef = base.InteractionQuestionArtifactRef
 	summary.ResultPreview = base.ResultPreview
 	summary.ResultArtifactRef = base.InteractionResultArtifactRef
+	summary.InteractionQuestion = base.InteractionQuestion
+	summary.InteractionResult = base.InteractionResult
 	summary.EvidenceCompleteness = base.EvidenceCompleteness
 	summary.PartialReasons = append([]string{}, base.PartialReasons...)
 	summary.ErrorSummary = base.ErrorSummary
@@ -901,11 +1066,24 @@ func (s *Service) GetInteractionSummary(
 	if !started.IsZero() && !completed.IsZero() && !completed.Before(started) {
 		summary.DurationMS = completed.Sub(started).Milliseconds()
 	}
+	canonicalFound := false
 	if s.sessionStore != nil {
 		err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 			interaction, found := tx.PeekInteraction(interactionID)
 			if !found {
 				return nil
+			}
+			conversation, conversationFound := tx.PeekConversation(interaction.ConversationID)
+			hasAuthorizedEvidence := len(summary.Requests) > 0 || len(summary.Traces) > 0
+			if !hasAuthorizedEvidence && (!conversationFound || !canReadCanonicalConversation(conversation, scope)) {
+				return nil
+			}
+			canonicalFound = true
+			if conversationFound && (hasAuthorizedEvidence || canReadCanonicalConversation(conversation, scope)) {
+				summary.ConversationID = interaction.ConversationID
+				summary.AgentName = conversation.AgentName
+				summary.ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
+				summary.EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
 			}
 			applyInteractionState(
 				&summary.Status,
@@ -922,6 +1100,9 @@ func (s *Service) GetInteractionSummary(
 		if err != nil {
 			return evidencevo.InteractionSummary{}, false, err
 		}
+	}
+	if len(summary.Requests) == 0 && len(summary.Traces) == 0 && !canonicalFound {
+		return evidencevo.InteractionSummary{}, false, nil
 	}
 	if metadata.Truncated {
 		for index := range summary.Requests {
@@ -1114,6 +1295,9 @@ func (s *Service) loadTraceExecutionSummaries(ctx context.Context, traceID strin
 	if err := s.applyCanonicalRequestIdentity(ctx, requestSummaries); err != nil {
 		return nil, nil, summaryLoadMetadata{}, err
 	}
+	if err := s.applyCanonicalTraceIdentity(ctx, traceSummaries); err != nil {
+		return nil, nil, summaryLoadMetadata{}, err
+	}
 	return requestSummaries, traceSummaries, metadata, nil
 }
 
@@ -1155,6 +1339,9 @@ func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo
 	}
 	requests, traceSummaries := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
 	if err := s.applyCanonicalRequestIdentity(ctx, requests); err != nil {
+		return nil, nil, summaryLoadMetadata{}, err
+	}
+	if err := s.applyCanonicalTraceIdentity(ctx, traceSummaries); err != nil {
 		return nil, nil, summaryLoadMetadata{}, err
 	}
 	s.enrichTraceStats(ctx, traceSummaries)
@@ -1199,6 +1386,9 @@ func (s *Service) loadRequestExecutionSummaries(ctx context.Context, requestID s
 	if err := s.applyCanonicalRequestIdentity(ctx, requests); err != nil {
 		return nil, nil, summaryLoadMetadata{}, err
 	}
+	if err := s.applyCanonicalTraceIdentity(ctx, traceSummaries); err != nil {
+		return nil, nil, summaryLoadMetadata{}, err
+	}
 	s.enrichTraceStats(ctx, traceSummaries)
 	return requests, traceSummaries, metadata, nil
 }
@@ -1220,6 +1410,9 @@ func (s *Service) loadProjectedExecutionSummaries(
 	}
 	requests, traces := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
 	if err := s.applyCanonicalRequestIdentity(ctx, requests); err != nil {
+		return nil, nil, summaryLoadMetadata{}, err
+	}
+	if err := s.applyCanonicalTraceIdentity(ctx, traces); err != nil {
 		return nil, nil, summaryLoadMetadata{}, err
 	}
 	s.enrichTraceStats(ctx, traces)
@@ -1322,6 +1515,16 @@ func matchesTraceFilters(summary evidencevo.TraceSummary, options evidencevo.Sum
 	if options.AgentOrApp != "" && summary.AgentOrApp != options.AgentOrApp {
 		return false
 	}
+	if options.Service != "" && summary.RootService != options.Service {
+		return false
+	}
+	if options.Tool != "" && summary.RootOperation != options.Tool {
+		return false
+	}
+	if keyword := strings.ToLower(strings.TrimSpace(options.ErrorKeyword)); keyword != "" &&
+		!strings.Contains(strings.ToLower(summary.ErrorSummary), keyword) {
+		return false
+	}
 	if options.BusinessDomain != "" && summary.BusinessDomain != options.BusinessDomain {
 		return false
 	}
@@ -1331,7 +1534,7 @@ func matchesTraceFilters(summary evidencevo.TraceSummary, options evidencevo.Sum
 	if keyword := strings.ToLower(strings.TrimSpace(options.Keyword)); keyword != "" {
 		haystack := strings.ToLower(strings.Join([]string{
 			summary.TraceID, summary.RequestID, summary.ConversationID, summary.InteractionID,
-			summary.AgentOrApp, summary.BusinessDomain,
+			summary.AgentOrApp, summary.BusinessDomain, summary.RootService,
 			summary.RootOperation, summary.ErrorSummary,
 		}, "\n"))
 		return strings.Contains(haystack, keyword)

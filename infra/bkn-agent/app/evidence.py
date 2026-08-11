@@ -17,6 +17,7 @@ from app.config import config
 logger = logging.getLogger("bkn-agent.evidence")
 
 CONTRACT_VERSION = "2.2.0"
+LEDGER_CONTRACT_VERSION = "3.0.0"
 _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[0-9A-Za-z_.:-]{1,128}$")
 _background: set[asyncio.Task] = set()
@@ -76,6 +77,23 @@ def hash_value(value: Any) -> str:
 def artifact_content_hash(value: Any) -> str:
     raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _canonical_json(value: Any) -> str:
+    raw = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return (
+        raw.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
+def canonical_payload_hash(value: Any) -> str:
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def tool_message_context_hash(value: Any) -> str:
@@ -631,6 +649,15 @@ def build_batch(
         "business_domain": ctx.business_domain,
         "bkn.account.id": account_id,
         "bkn.account.type": account_type,
+        "bkn.application.principal.id": (
+            ctx.application_principal_id or account_id
+        ),
+        "bkn.effective.subject.type": (
+            ctx.effective_subject_type
+            or ("service" if account_type in {"app", "service"} else "user")
+        ),
+        "bkn.effective.subject.id": ctx.effective_subject_id or account_id,
+        "bkn.delegation.id": ctx.delegation_id,
     }
     if conversation_id:
         trace["bkn.conversation.id"] = conversation_id
@@ -639,6 +666,131 @@ def build_batch(
         "trace": trace,
         "events": events,
     }
+
+
+def _ledger_ref_type(value: Any) -> str | None:
+    aliases = {"object": "object_type", "relation": "relation_type", "action": "action_type"}
+    value = aliases.get(value, value)
+    allowed = {
+        "knowledge_network", "object_type", "object_instance", "property",
+        "relation_type", "data_resource", "metric", "logic", "function",
+        "action_type", "action_instance",
+    }
+    return value if value in allowed else None
+
+
+def _ledger_business_refs(event: dict[str, Any], business_domain: str) -> list[dict[str, Any]]:
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    candidates: list[Any] = []
+    for field in ("source_refs", "resource_refs", "field_refs", "business_refs"):
+        value = payload.get(field)
+        if isinstance(value, list):
+            candidates.extend(value)
+    refs: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        ref_id = str(candidate.get("ref_id") or "").strip()
+        ref_type = _ledger_ref_type(candidate.get("ref_type"))
+        if not ref_id or not ref_type or not business_domain:
+            continue
+        key = (ref_type, ref_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        ref = {
+            "ref_type": ref_type,
+            "ref_id": ref_id,
+            "business_domain_id": business_domain,
+            "version": str(
+                candidate.get("version")
+                or candidate.get("version_status")
+                or "unversioned"
+            ).strip(),
+        }
+        display_hint = str(candidate.get("display_hint") or "").strip()
+        if display_hint:
+            ref["display_hint"] = display_hint
+        refs.append(ref)
+    return refs
+
+
+def _ledger_artifact_refs(event: dict[str, Any]) -> list[str]:
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    refs: list[str] = []
+    for key, value in payload.items():
+        if key.endswith("artifact_ref") and isinstance(value, str) and value.strip():
+            refs.append(value.strip())
+        elif key.endswith("artifact_refs") and isinstance(value, list):
+            refs.extend(str(item).strip() for item in value if str(item).strip())
+    return list(dict.fromkeys(refs))
+
+
+def build_ledger_events(batch: dict[str, Any]) -> list[dict[str, Any]]:
+    trace = batch.get("trace") if isinstance(batch, dict) else None
+    events = batch.get("events") if isinstance(batch, dict) else None
+    if not isinstance(trace, dict) or not isinstance(events, list):
+        return []
+    business_domain = str(trace.get("business_domain") or "").strip()
+    conversation_id = str(trace.get("bkn.conversation.id") or "").strip()
+    result: list[dict[str, Any]] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_id = str(event.get("event_id") or "").strip()
+        event_type = str(event.get("event_type") or "").strip()
+        interaction_id = str(event.get("interaction_id") or "").strip()
+        if not event_id or not event_type or not conversation_id or not interaction_id:
+            continue
+        operation_id = str(event.get("operation_id") or "").strip()
+        attempt = max(int(event.get("attempt") or 1), 1)
+        observed_at = str(event.get("observed_at") or "").strip()
+        emitted_at = str(event.get("emitted_at") or observed_at).strip()
+        stream_key = operation_id or f"interaction:{interaction_id}"
+        refs = _ledger_business_refs(event, business_domain)
+        ledger = {
+            "bkn.trace.schema.version": LEDGER_CONTRACT_VERSION,
+            "event_id": event_id,
+            "event_type": event_type,
+            "payload_hash": canonical_payload_hash(event),
+            "conversation_id": conversation_id,
+            "interaction_id": interaction_id,
+            "attempt": attempt,
+            "request_id": str(trace.get("bkn.request.id") or "").strip(),
+            "trace_id": str(trace.get("trace_id") or "").strip(),
+            "span_id": str(event.get("span_id") or "").strip(),
+            "producer_id": observability.MODULE_NAME,
+            "producer_stream_id": f"{observability.MODULE_NAME}:{stream_key}:{event_type}",
+            "producer_epoch": 1,
+            "producer_sequence": attempt,
+            "started_at": observed_at,
+            "observed_at": observed_at,
+            "emitted_at": emitted_at,
+            "envelope": event,
+        }
+        if operation_id:
+            ledger["operation_id"] = operation_id
+        causation_event_id = str(event.get("causation_event_id") or "").strip()
+        if causation_event_id:
+            ledger["causation_event_ids"] = [causation_event_id]
+        artifact_refs = _ledger_artifact_refs(event)
+        if artifact_refs:
+            ledger["artifact_refs"] = artifact_refs
+        if refs:
+            ledger["business_refs"] = refs
+            if operation_id:
+                ledger["operation_business_edges"] = [
+                    {
+                        "operation_id": operation_id,
+                        "business_ref": ref,
+                        "role": "read",
+                        "observed_at": observed_at,
+                    }
+                    for ref in refs
+                ]
+        result.append(ledger)
+    return result
 
 
 async def submit_events(
@@ -695,21 +847,27 @@ async def _send_after(
 
 
 async def _send_once(batch: dict[str, Any]) -> None:
+    ledger_events = build_ledger_events(batch)
+    if not ledger_events:
+        raise EvidenceSubmissionError("Trace 3.0 event conversion produced no events")
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=config.BKN_TRACE_EVIDENCE_TIMEOUT_S)
     ) as session:
-        async with session.post(
-            config.BKN_TRACE_EVIDENCE_INGEST_URL, json=batch, headers=_ingest_headers()
-        ) as resp:
-            if not 200 <= resp.status < 300:
-                try:
-                    response = await resp.json(content_type=None)
-                except (aiohttp.ContentTypeError, json.JSONDecodeError, ValueError):
-                    response = {}
-                raise EvidenceSubmissionError(
-                    f"HTTP {resp.status}",
-                    safe_summary=_safe_ingest_failure_summary(resp.status, response),
-                )
+        for ledger_event in ledger_events:
+            async with session.post(
+                config.BKN_TRACE_EVIDENCE_INGEST_URL,
+                json=ledger_event,
+                headers=_ingest_headers(batch.get("trace")),
+            ) as resp:
+                if not 200 <= resp.status < 300:
+                    try:
+                        response = await resp.json(content_type=None)
+                    except (aiohttp.ContentTypeError, json.JSONDecodeError, ValueError):
+                        response = {}
+                    raise EvidenceSubmissionError(
+                        f"HTTP {resp.status}",
+                        safe_summary=_safe_ingest_failure_summary(resp.status, response),
+                    )
 
 
 async def _send_artifact_once(artifact: dict[str, Any]) -> None:
@@ -719,7 +877,7 @@ async def _send_artifact_once(artifact: dict[str, Any]) -> None:
         async with session.post(
             config.BKN_TRACE_ARTIFACT_INGEST_URL,
             json=artifact,
-            headers=_ingest_headers(),
+            headers=_ingest_headers(observability.current_context()),
         ) as resp:
             if not 200 <= resp.status < 300:
                 try:
@@ -755,11 +913,40 @@ def _safe_ingest_failure_summary(status: int, response: Any) -> str:
     return " ".join(parts)
 
 
-def _ingest_headers() -> dict[str, str]:
+def _ingest_headers(identity: Any = None) -> dict[str, str]:
     token = str(getattr(config, "BKN_TRACE_EVIDENCE_INGEST_TOKEN", "") or "").strip()
-    if not token:
-        return {}
-    return {"X-BKN-Trace-Ingest-Token": token}
+    headers = {"X-BKN-Trace-Ingest-Token": token} if token else {}
+    if isinstance(identity, observability.TraceContext):
+        values = {
+            "tenant": identity.tenant_id,
+            "business_domain": identity.business_domain,
+            "application": identity.application_principal_id or identity.account_id,
+            "subject_type": identity.effective_subject_type
+            or ("service" if identity.account_type in {"app", "service"} else "user"),
+            "subject": identity.effective_subject_id or identity.account_id,
+            "delegation": identity.delegation_id,
+        }
+    elif isinstance(identity, dict):
+        values = {
+            "tenant": identity.get("bkn.tenant.id"),
+            "business_domain": identity.get("business_domain"),
+            "application": identity.get("bkn.application.principal.id"),
+            "subject_type": identity.get("bkn.effective.subject.type"),
+            "subject": identity.get("bkn.effective.subject.id") or identity.get("bkn.account.id"),
+            "delegation": identity.get("bkn.delegation.id"),
+        }
+    else:
+        return headers
+    mapping = {
+        "X-BKN-Tenant-ID": values["tenant"],
+        "X-Business-Domain-ID": values["business_domain"],
+        "X-BKN-Application-Principal-ID": values["application"],
+        "X-BKN-Effective-Subject-Type": values["subject_type"],
+        "X-BKN-Effective-Subject-ID": values["subject"],
+        "X-BKN-Delegation-ID": values["delegation"],
+    }
+    headers.update({key: str(value).strip() for key, value in mapping.items() if value})
+    return headers
 
 
 async def _send_batch(batch: dict[str, Any]) -> bool:

@@ -82,6 +82,31 @@ func TestListConversationsUsesCanonicalSessionStatus(t *testing.T) {
 	}
 }
 
+func TestListConversationsExcludesWholeConversationByStableAgentID(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequestWithAgent(
+		t, evidenceStore, "req_internal", "trace_internal", "conversation_internal", "interaction_internal",
+		"2026-08-10T08:00:00Z", "内部分析", "内部建议", "acct_demo", "business_provenance_optimizer", true,
+	)
+	seedBusinessProvenanceRequestWithAgent(
+		t, evidenceStore, "req_business", "trace_business", "conversation_business", "interaction_business",
+		"2026-08-10T08:01:00Z", "业务问题", "业务结果", "acct_demo", "business_agent", true,
+	)
+
+	page, err := New(evidenceStore, WithProjectionSource(evidenceStore)).ListConversations(
+		context.Background(), evidencevo.SummaryQueryOptions{
+			Scope: summaryScope("acct_demo"), Limit: 20,
+			ExcludeAgentOrApp: "business_provenance_optimizer",
+		},
+	)
+	if err != nil {
+		t.Fatalf("list conversations: %v", err)
+	}
+	if page.Total != 1 || len(page.Entries) != 1 || page.Entries[0].ConversationID != "conversation_business" {
+		t.Fatalf("business conversation page = %+v, want only conversation_business", page)
+	}
+}
+
 func TestListConversationsSumsCompletedInteractionDurations(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequest(
@@ -538,6 +563,46 @@ func TestListTraceSummariesUsesAuthoritativeSpanStats(t *testing.T) {
 	}
 }
 
+func TestTraceSummaryTechnicalFiltersAreIndependent(t *testing.T) {
+	t.Parallel()
+
+	summary := evidencevo.TraceSummary{
+		TraceID: "trace-filter", AgentOrApp: "cursor-agent", RootService: "context-loader",
+		RootOperation: "run_sql", ErrorSummary: "database timeout while executing query",
+	}
+	if !matchesTraceFilters(summary, evidencevo.SummaryQueryOptions{
+		Service: "context-loader", Tool: "run_sql", ErrorKeyword: "timeout",
+	}) {
+		t.Fatal("matching service, tool and error keyword must keep the trace")
+	}
+	for _, options := range []evidencevo.SummaryQueryOptions{
+		{Service: "bkn-sdk"},
+		{Tool: "search_schema"},
+		{ErrorKeyword: "permission denied"},
+	} {
+		if matchesTraceFilters(summary, options) {
+			t.Fatalf("independent technical filter must reject a mismatch: %+v", options)
+		}
+	}
+}
+
+func TestTraceSummaryRootServiceComesFromTraceProducer(t *testing.T) {
+	t.Parallel()
+
+	trace := evidencevo.NormalizedTrace{
+		TraceID: "trace-service", RequestID: "req-service",
+		Events: []evidencevo.EvidenceEvent{{
+			EventID: "event-service", EventType: "agent.interaction.started",
+			ObservedAt: "2026-08-10T09:00:00Z", Producer: "context-loader",
+			OperationName: "run_sql", Payload: map[string]any{"agent_id": "cursor-agent"},
+		}},
+	}
+	_, traces := evidencevo.BuildExecutionSummaries([]evidencevo.NormalizedTrace{trace}, nil)
+	if len(traces) != 1 || traces[0].RootService != "context-loader" {
+		t.Fatalf("root service must preserve the trace producer: %+v", traces)
+	}
+}
+
 func (s *capturingProjectionSource) LoadExecutionProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
 	s.queries = append(s.queries, query)
 	if s.resultFor != nil {
@@ -708,6 +773,22 @@ func TestGetInteractionSummaryAggregatesMultipleRequestsAndTraces(t *testing.T) 
 	}
 }
 
+func TestGetInteractionSummaryRetainsCompleteTextForAuthorizedInProcessReader(t *testing.T) {
+	store := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, store, "req_complete_text", "trace_complete_text", "conversation_complete_text", "interaction_complete_text",
+		"2026-08-10T10:00:00Z", "完整的用户问题", "完整的业务结果", "acct_demo",
+	)
+	service := NewWithProjectionSource(store, store)
+	summary, found, err := service.GetInteractionSummary(context.Background(), "interaction_complete_text", summaryScope("acct_demo"))
+	if err != nil || !found {
+		t.Fatalf("GetInteractionSummary() found=%v err=%v", found, err)
+	}
+	if summary.InteractionQuestion != "完整的用户问题" || summary.InteractionResult != "完整的业务结果" {
+		t.Fatalf("complete interaction text = question %q result %q", summary.InteractionQuestion, summary.InteractionResult)
+	}
+}
+
 func TestBusinessProvenanceListsUseTrueConversationInteractionAndRequestCardinality(t *testing.T) {
 	store := evidencestore.New()
 	seedBusinessProvenanceRequest(t, store, "req_plan", "trace_plan", "conversation_supply", "interaction_june", "2026-07-27T08:00:00Z", "查询六月预测", "六月共 63 条", "acct_demo")
@@ -743,6 +824,136 @@ func TestBusinessProvenanceListsUseTrueConversationInteractionAndRequestCardinal
 	}
 	if requests.Total != 3 || len(requests.Entries) != 3 {
 		t.Fatalf("expected three authorized requests, got %+v", requests)
+	}
+}
+
+func TestListInteractionsIncludesCanonicalInteractionWithoutRequests(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_first", "trace_first", "conversation_three_turns", "interaction_first",
+		"2026-08-10T08:00:00Z", "第一轮问题", "第一轮结果", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	owner := sessionvo.Owner{
+		TenantID: "tenant_demo", BusinessDomainID: "bd_demo",
+		ApplicationPrincipalID: "cursor-agent",
+		EffectiveSubjectType:   sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+	}
+	secondTerminalAt := time.Date(2026, 8, 10, 8, 5, 2, 0, time.UTC)
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_three_turns", AgentName: "Cursor Agent", Owner: owner,
+			Status:    sessionvo.ConversationActive,
+			CreatedAt: time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: secondTerminalAt,
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_first", ConversationID: "conversation_three_turns", Ordinal: 1,
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+			CreatedAt: time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 10, 8, 0, 1, 0, time.UTC),
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_second", ConversationID: "conversation_three_turns", Ordinal: 2,
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceNotApplicable,
+			CreatedAt: time.Date(2026, 8, 10, 8, 5, 0, 0, time.UTC),
+			UpdatedAt: secondTerminalAt, TerminalAt: &secondTerminalAt,
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed canonical session: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), ConversationID: "conversation_three_turns", Limit: 20,
+	})
+
+	if err != nil {
+		t.Fatalf("list interactions: %v", err)
+	}
+	if page.Total != 2 || len(page.Entries) != 2 {
+		t.Fatalf("canonical interactions must not disappear when they have no requests: %+v", page)
+	}
+	second := page.Entries[0]
+	if second.InteractionID != "interaction_second" || second.ConversationID != "conversation_three_turns" ||
+		second.RequestCount != 0 || second.Status != "completed" || second.EvidenceCompleteness != "not_applicable" {
+		t.Fatalf("unexpected canonical-only interaction: %+v", second)
+	}
+}
+
+func TestGetInteractionSummaryReturnsAuthorizedCanonicalInteractionWithoutRequests(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	sessions := sessionstore.New()
+	owner := sessionvo.Owner{
+		TenantID: "tenant_demo", BusinessDomainID: "bd_demo",
+		ApplicationPrincipalID: "cursor-agent",
+		EffectiveSubjectType:   sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+	}
+	terminalAt := time.Date(2026, 8, 10, 8, 5, 2, 0, time.UTC)
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_three_turns", AgentName: "Cursor Agent", Owner: owner,
+			Status:    sessionvo.ConversationActive,
+			CreatedAt: time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC), UpdatedAt: terminalAt,
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_without_calls", ConversationID: "conversation_three_turns", Ordinal: 2,
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceNotApplicable,
+			CreatedAt: time.Date(2026, 8, 10, 8, 5, 0, 0, time.UTC),
+			UpdatedAt: terminalAt, TerminalAt: &terminalAt,
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed canonical session: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	summary, found, err := service.GetInteractionSummary(
+		context.Background(), "interaction_without_calls", summaryScope("acct_demo"),
+	)
+
+	if err != nil || !found {
+		t.Fatalf("canonical interaction must be readable: found=%v err=%v", found, err)
+	}
+	if summary.ConversationID != "conversation_three_turns" || summary.AgentName != "Cursor Agent" ||
+		summary.Status != "completed" || summary.EvidenceCompleteness != "not_applicable" ||
+		len(summary.Requests) != 0 || len(summary.Traces) != 0 {
+		t.Fatalf("unexpected canonical-only interaction summary: %+v", summary)
+	}
+}
+
+func TestCanonicalInteractionWithoutRequestsDoesNotBypassRecordScope(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_private", Owner: sessionvo.Owner{
+				TenantID: "tenant_demo", BusinessDomainID: "bd_demo",
+				ApplicationPrincipalID: "private-agent",
+				EffectiveSubjectType:   sessionvo.SubjectUser, EffectiveSubjectID: "other_account",
+			},
+			Status: sessionvo.ConversationActive, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		})
+		tx.SaveInteraction(sessionvo.Interaction{
+			ID: "interaction_private", ConversationID: "conversation_private", Ordinal: 1,
+			ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceNotApplicable,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed private interaction: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), ConversationID: "conversation_private", Limit: 20,
+	})
+	if err != nil || page.Total != 0 {
+		t.Fatalf("unauthorized canonical interaction leaked through list: page=%+v err=%v", page, err)
+	}
+	if _, found, err := service.GetInteractionSummary(context.Background(), "interaction_private", summaryScope("acct_demo")); err != nil || found {
+		t.Fatalf("unauthorized canonical interaction leaked through detail: found=%v err=%v", found, err)
 	}
 }
 
@@ -1198,6 +1409,71 @@ func TestExactTraceExecutionLookupDoesNotCallListProjectionAndReturnsRequest(t *
 	}
 }
 
+func TestListTraceExecutionsUsesCanonicalConversationAgentName(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_trace_agent_name", "trace_agent_name", "conversation_trace_agent_name", "interaction_trace_agent_name",
+		"2026-08-10T09:00:00Z", "查询库存", "库存 1756", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_trace_agent_name", AgentName: "供应链分析助手",
+			Owner: sessionvo.Owner{
+				TenantID: "tenant_demo", BusinessDomainID: "bd_demo",
+				ApplicationPrincipalID: "266c6a42-6131-4d62-8f39-853e7093701c",
+				EffectiveSubjectType:   sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+			},
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), TraceID: "trace_agent_name", Limit: 20,
+	})
+
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list trace executions: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].AgentName != "供应链分析助手" {
+		t.Fatalf("trace must use canonical conversation agent name: %+v", page.Entries[0])
+	}
+}
+
+func TestListTraceExecutionsUsesOperationSourceModuleForRootService(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_trace_source_module", "trace_source_module", "conversation_trace_source_module", "interaction_trace_source_module",
+		"2026-08-10T09:00:00Z", "查询库存", "库存 1756", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveOperationCallFact(sessionvo.OperationCallFact{
+			OperationID: "op_trace_source_module", Attempt: 1, TraceID: "trace_source_module",
+			ToolName: "run_sql", SourceModule: "context-loader",
+			StartedAt: time.Date(2026, 8, 10, 9, 0, 0, 0, time.UTC),
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed operation fact: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), TraceID: "trace_source_module", Limit: 20,
+	})
+
+	if err != nil || len(page.Entries) != 1 {
+		t.Fatalf("list trace executions: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].RootService != "context-loader" {
+		t.Fatalf("trace root service must use the operation source module: %+v", page.Entries[0])
+	}
+}
+
 func TestExactRequestAndTracePropagateArtifactQueryTruncation(t *testing.T) {
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_artifact_cap", "trace_artifact_cap", "2026-07-26T09:00:00Z", "问题", "结果", "agent-a", "bd_demo", "acct_demo")
@@ -1310,10 +1586,28 @@ func seedBusinessProvenanceRequest(
 	store *evidencestore.Store,
 	requestID, traceID, conversationID, interactionID, at, question, result, account string,
 ) {
+	seedBusinessProvenanceRequestWithAgent(
+		t, store, requestID, traceID, conversationID, interactionID, at, question, result, account,
+		"supply-chain-agent", false,
+	)
+}
+
+func seedBusinessProvenanceRequestWithAgent(
+	t *testing.T,
+	store *evidencestore.Store,
+	requestID, traceID, conversationID, interactionID, at, question, result, account, agent string,
+	useAgentID bool,
+) {
 	t.Helper()
+	identity := map[string]any{"app_ref": agent, "question_artifact_ref": "artifact:question_" + requestID}
+	if useAgentID {
+		delete(identity, "app_ref")
+		identity["agent_id"] = agent
+	}
 	trace := evidencevo.NormalizedTrace{
 		TraceID: traceID, RequestID: requestID, ConversationID: conversationID,
 		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: account, AccountType: "app",
+		ApplicationPrincipalID: "openbkn-studio", EffectiveSubjectID: account,
 		SchemaVersion: evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{
 			{
@@ -1321,7 +1615,7 @@ func seedBusinessProvenanceRequest(
 				SchemaVersion: evidencevo.ArtifactContractVersion,
 				ObservedAt:    at, EmittedAt: at, Producer: "third-party-agent", TraceID: traceID,
 				SpanID: "span_" + traceID, RequestID: requestID, InteractionID: interactionID, OperationName: "agent.run",
-				Payload: map[string]any{"app_ref": "supply-chain-agent", "question_artifact_ref": "artifact:question_" + requestID},
+				Payload: identity,
 			},
 			{
 				EventID: "result_event_" + traceID, EventType: "claim.created",
@@ -1351,7 +1645,7 @@ func seedBusinessProvenanceRequest(
 			ArtifactID: item.id, ArtifactType: item.artifactType,
 			RequestID: requestID, TraceID: traceID, InteractionID: interactionID,
 			ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion, ObservedAt: at,
-			Content: map[string]any{"text": item.text}, AgentOrApp: "supply-chain-agent",
+			Content: map[string]any{"text": item.text}, AgentOrApp: agent,
 			TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: account, AccountType: "app",
 		})
 		if len(validationErrors) != 0 {

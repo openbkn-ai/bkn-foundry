@@ -125,6 +125,14 @@ class ContextLoaderToolRef(_ToolRefBase):
     """
 
     type: Literal["context_loader"]
+    # 未声明时保留既有「装载 Context Loader 全部业务工具」行为。需要只读诊断的
+    # agent 则必须显式列出允许的 MCP 工具名，避免在 prompt 约束之外仍拿到 run_sql
+    # 或执行类工具。
+    allowed_tools: Optional[list[str]] = Field(
+        default=None,
+        max_length=100,
+        description="可装载的 Context Loader MCP 工具名白名单；未声明表示不限制。",
+    )
 
 
 ToolRef = Annotated[

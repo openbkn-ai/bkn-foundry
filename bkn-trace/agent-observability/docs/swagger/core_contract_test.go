@@ -238,12 +238,23 @@ func TestGeneratedSwaggerUsesBasePathRelativeTraceRoutes(t *testing.T) {
 	t.Parallel()
 	document := parseSwagger(t, []byte(generated.SwaggerInfo.ReadDoc()))
 	for _, path := range []string{
-		"/traces/_search",
-		"/traces/by-conversation",
-		"/traces/{trace_id}/trace-graph",
+		"/traces",
+		"/traces/{trace_id}",
+		"/business-provenance/requests/{request_id}/evidence-chain",
+		"/business-provenance/requests/{request_id}/business-graph",
+		"/business-provenance/requests/{request_id}/snapshot-preview",
 	} {
 		if _, exists := document.Paths[path]; !exists {
 			t.Errorf("generated Swagger is missing relative trace route %s", path)
+		}
+	}
+	for _, path := range []string{
+		"/traces/_search", "/traces/by-conversation", "/traces/by-request",
+		"/traces/by-request/business-graph", "/traces/by-request/snapshot-preview",
+		"/traces/{trace_id}/trace-graph", "/evidence/by-trace", "/trace-executions", "/evidence-nodes/{node_id}",
+	} {
+		if _, exists := document.Paths[path]; exists {
+			t.Errorf("generated Swagger still exposes removed raw trace route %s", path)
 		}
 	}
 	for path := range document.Paths {

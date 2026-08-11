@@ -95,6 +95,24 @@ def test_session_injects_bkn_context_and_hides_it(monkeypatch):
     ]
 
 
+def test_session_tools_can_be_limited_to_an_explicit_read_only_allow_list(monkeypatch):
+    schema = _FakeTool("search_schema")
+    detail = _FakeTool("get_kn_detail")
+    unsafe = _FakeTool("run_sql")
+    _install(monkeypatch, [_start_tool(), _FakeTool("bkn_finish_interaction"), schema, detail, unsafe])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        session = asyncio.run(context_loader.open_session())
+    finally:
+        auth._caller_token.reset(token)
+
+    assert session is not None
+    assert [tool.name for tool in session.tools({"search_schema", "get_kn_detail"})] == [
+        "search_schema", "get_kn_detail"
+    ]
+    assert [tool.name for tool in session.tools({"search_schema"})] == ["search_schema"]
+
+
 def test_start_interaction_failure_skips_tools(monkeypatch):
     class _Boom(_FakeTool):
         async def coroutine(self, **kwargs):

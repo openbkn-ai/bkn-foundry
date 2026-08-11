@@ -13,7 +13,7 @@ from typing import Any
 
 from jsonschema import validate as _jsonschema_validate
 from jsonschema.exceptions import SchemaError, ValidationError
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 
 from app.core.llm import normalize_response_format
 
@@ -65,6 +65,20 @@ async def structured_extract_with_path(
     system_prompt 为 agent 本轮生效的系统提示词（含技能段），抽取调用必须带上，
     否则模型在无约束状态下填 schema，见 _with_system_prompt。
     """
+    # 对话 Agent 通常已经按系统提示词在最后一条消息中给出目标 JSON。
+    # 先复用并校验这份结果，避免为了相同内容再调用一次模型；仅当它不符合
+    # schema 时，才进入原生结构化与提示词降级路径。
+    for message in reversed(messages):
+        if not isinstance(message, AIMessage) or not isinstance(message.content, str):
+            continue
+        try:
+            obj = _extract_json(message.content)
+            _jsonschema_validate(obj, schema)
+            logger.warning("[Structured] path=conversation system_prompt=%s", bool(system_prompt))
+            return obj, "conversation"
+        except (json.JSONDecodeError, ValidationError, ValueError, TypeError):
+            break
+
     messages = _with_system_prompt(messages, system_prompt)
     # 1. 原生
     try:
