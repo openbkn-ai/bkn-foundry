@@ -8,11 +8,23 @@ API_DIR      := docs/api
 GEN_DIR      := $(API_DIR)/_generated
 HTML_DIR     := $(GEN_DIR)/html
 TPL_DIR      := $(API_DIR)/_templates
-# 模块目录 = docs/api 下除 _shared / _generated 外的子目录。
-# 用 $(API_DIR)/*/. 强制只匹配目录（GNU make 的 */ 通配会把 README.md 也算进来），
-# $(dir ...) 取目录路径，再 notdir 取目录名。
+# 发布的模块及其展示顺序。手写列表而非目录通配：通配按目录名排序，出来的是
+# "bkn-agent 排在 bkn 前面" 这种字典序巧合，且无法把某个模块暂时撤下发布面。
+# 顺序即站点首页的卡片分组顺序，改这里就改了线上顺序。
+MODULES      := bkn context-loader ontology-query vega execution-factory mf-model-manager \
+                agent-observability bkn-agent
+# 暂不发布的模块目录（YAML 保留在仓库，只是不进站点、不参与 lint）：
+#   bkn-safe      仅一份自助读取接口，不作为通用集成合同对外
+#   observability 只有 observability.json，没有可发布的 YAML，渲染出来是空分组
+MODULES_UNPUBLISHED := bkn-safe observability
+# 对账：docs/api 下的模块目录必须要么在 MODULES 里、要么在 MODULES_UNPUBLISHED 里，
+# 新增模块目录却忘了登记时直接报错，避免"加了文档但站点上没有"的静默漏发。
 MODULE_DIRS  := $(dir $(wildcard $(API_DIR)/*/.))
-MODULES      := $(filter-out _shared _generated _templates tools,$(foreach d,$(MODULE_DIRS),$(notdir $(patsubst %/,%,$(d)))))
+MODULE_ALL   := $(filter-out _shared _generated _templates tools,$(foreach d,$(MODULE_DIRS),$(notdir $(patsubst %/,%,$(d)))))
+MODULE_ORPHAN := $(filter-out $(MODULES) $(MODULES_UNPUBLISHED),$(MODULE_ALL))
+ifneq ($(MODULE_ORPHAN),)
+$(error docs/api 下存在未登记的模块目录：$(MODULE_ORPHAN)。请加入 Makefile 的 MODULES 或 MODULES_UNPUBLISHED)
+endif
 
 # 契约巡检:实际返回 vs 文档。默认打开发 VM 的内部面(免 token)。
 CONTRACT_SSH        ?= parallels@10.211.55.4

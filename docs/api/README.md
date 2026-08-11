@@ -18,19 +18,29 @@
 
 ## 🗂️ 模块一览
 
+下表顺序即站点首页的卡片分组顺序，由 [`Makefile`](../../Makefile) 的 `MODULES` 决定，改那一行即改线上顺序。
+
 | 模块 | 目录 | 覆盖情况 |
 |---|---|---|
 | 🟦 bkn-backend | [`bkn/`](bkn/) | 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出。**全量** |
+| 🟫 context-loader | [`context-loader/`](context-loader/) | Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP。**外部面全量**（内部 `/in/v1` 面不收录） |
 | 🟩 ontology-query | [`ontology-query/`](ontology-query/) | 本体查询 / 语义检索 / 行动执行与日志。**全量** |
 | 🟨 vega-backend | [`vega/`](vega/) | 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询。**全量** |
-| 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent 运行时：agent CRUD / 对话 / 任务 / 提示词 / 导入导出。**全量** |
-| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。由 Go 注解生成，**禁止手改 YAML**。**全量** |
-| 🟫 context-loader | [`context-loader/`](context-loader/) | Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP。**外部面全量**（内部 `/in/v1` 面不收录） |
 | 🟩 execution-factory | [`execution-factory/`](execution-factory/) | 执行工厂：函数 / 沙箱观测 / 导入导出 / 算子 / MCP / 工具箱 / Skill。**公开面全量**（89 个端点）。只收 Ingress 暴露的 `/v1`，内部面 `internal-v1` 刻意不收（不校验令牌），能力面 `/api/capabilities-lab/v1` 暂未收 |
 | 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
-| 🟦 bkn-safe | [`bkn-safe/`](bkn-safe/) | BKN Trace 依赖的自助知识网络授权范围读取。**部分** |
+| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。由 Go 注解生成，**禁止手改 YAML**。**全量** |
+| 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent 运行时：agent CRUD / 对话 / 任务 / 提示词 / 导入导出。**全量** |
 
-> `bkn-safe` 仅收录已由外部运行时依赖的自助读取接口，不将管理面 API 误作为通用集成合同。
+### 暂不发布的模块
+
+目录仍在仓库里，但不进站点、不参与 lint。登记在 Makefile 的 `MODULES_UNPUBLISHED`：
+
+| 目录 | 原因 |
+| --- | --- |
+| [`bkn-safe/`](bkn-safe/) | 只有一份自助知识网络授权范围读取接口，不作为通用集成合同对外，管理面 API 更不宜误当集成合同 |
+| [`observability/`](observability/) | 只有 `observability.json`，没有可发布的 YAML，渲染出来是空分组 |
+
+> 新增模块目录必须登记到 `MODULES` 或 `MODULES_UNPUBLISHED`，否则 `make api-docs-*` 直接报错——防止"加了文档但站点上没有"的静默漏发。
 
 ### ⚠️ `/api/ontology-manager/v1` 是历史别名，不要再用
 
