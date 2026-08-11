@@ -468,6 +468,18 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
 	})
 
+	t.Run("returns an internal error for other analyzer validation failures", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(false, errors.New("unexpected validation failure"))
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "unexpected validation failure")
+	})
+
 	t.Run("validates each configured fulltext feature without collection", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)

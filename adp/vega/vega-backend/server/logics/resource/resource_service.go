@@ -10,6 +10,7 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -1179,7 +1180,12 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 			}
 			available, err := rs.lim.ValidateAnalyzer(ctx, analyzer)
 			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+				var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
+				if errors.As(err, &unavailableErr) {
+					return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+						WithErrorDetails(err.Error())
+				}
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 					WithErrorDetails(err.Error())
 			}
 			if !available {
