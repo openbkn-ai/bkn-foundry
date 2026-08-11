@@ -19,6 +19,7 @@ Read this first, then load the rules under [`rules/`](rules/). Before working in
 ## Hard rules for Agents
 
 - **Review before external writes**: Unless the requester explicitly directs otherwise, after making and verifying code changes, present the working-tree diff for review first. Do **not** commit, push, create or update a PR, or post Issue/PR comments before the requester approves.
+- **Review feedback requires fresh write approval**: When addressing Issue or PR review feedback, limit work to local edits, verification, and a diff until the requester explicitly authorizes a commit or push. Earlier authorization does not carry over to later review revisions.
 - **Language**: Communicate with users in Chinese by default. Use another language only when the requester explicitly asks for it or the artifact itself requires it.
 - **Clarify material ambiguity**: Before editing, ask for direction when an ambiguity would materially change scope, behavior, risk, or the intended solution; otherwise proceed with a stated, reasonable assumption.
 - **Bug regression coverage**: For bug fixes, add or update a focused regression test that demonstrates the reported failure whenever it is practical.
