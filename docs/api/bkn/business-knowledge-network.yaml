@@ -1209,7 +1209,7 @@ components:
             - $ref: "#/components/schemas/m"
               type: array
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "关联的匹配规则。direct 为键映射；legacy view 参考 LegacyViewMappingRule；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule（分侧条件）。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
+          description: "关联的匹配规则。direct 为键映射；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule（分侧条件）。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
     UpdateRelationType:
       description: 关系类更新信息
       required:
@@ -1261,7 +1261,7 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Object"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "关联的匹配规则。direct 为键映射；legacy view 参考 LegacyViewMappingRule；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
+          description: "关联的匹配规则。direct 为键映射；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
     ReqActionType:
       description: 行动类创建信息
       required:
@@ -1689,7 +1689,7 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Object"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "关联的匹配规则。direct 为键映射；legacy view 参考 LegacyViewMappingRule；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
+          description: "关联的匹配规则。direct 为键映射；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:

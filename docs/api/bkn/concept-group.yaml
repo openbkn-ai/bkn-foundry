@@ -3,7 +3,7 @@ openapi: 3.0.2
 info:
   title: ConceptGroup
   version: 0.1.0
-  description: 姒傚康鍒嗙粍绠＄悊鎺ュ彛
+  description: 概念分组管理接口
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{group_id}:
     get:
@@ -15,18 +15,18 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 鍒嗘敮锛屼笉濉槸鍒欎娇鐢?main 鍒嗘敮
+          description: 分支，不填是则使用 main 分支
           schema:
             type: string
           in: query
         - name: include_statistics
-          description: 鏄惁璁＄畻骞惰繑鍥?statistics 姒傚康缁熻锛岄粯璁?false
+          description: 是否计算并返回 statistics 概念统计，默认 false
           schema:
             type: boolean
             default: false
           in: query
         - name: mode
-          description: 杩斿洖瑙嗗浘妯″紡锛屼负绌烘椂杩斿洖榛樿瑙嗗浘
+          description: 返回视图模式，为空时返回默认视图
           schema:
             type: string
           in: query
@@ -37,7 +37,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ConceptGroupDetail"
           description: ok
-      summary: 鑾峰彇姒傚康鍒嗙粍璇︽儏
+      summary: 获取概念分组详情
     put:
       requestBody:
         content:
@@ -53,12 +53,12 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 鍒嗘敮锛屼笉濉垯浣跨敤 main 鍒嗘敮
+          description: 分支，不填则使用 main 分支
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 鏄惁涓ユ牸鏍￠獙渚濊禆锛岄粯璁や负 true銆備负 true 鏃舵牎楠屾蹇靛垎缁勫唴澹版槑鐨勫璞＄被寮曠敤绛変緷璧栨槸鍚﹀瓨鍦紱涓?false 鏃朵笉鍋氳鏍￠獙
+          description: 是否严格校验依赖，默认为 true。为 true 时校验概念分组内声明的对象类引用等依赖是否存在；为 false 时不做该校验
           schema:
             type: boolean
             default: true
@@ -66,7 +66,7 @@ paths:
       responses:
         "204":
           description: ok
-      summary: 淇敼姒傚康鍒嗙粍
+      summary: 修改概念分组
     delete:
       parameters:
         - name: kn_id
@@ -76,7 +76,7 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 鍒嗘敮锛岄粯璁?main
+          description: 分支，默认 main
           schema:
             type: string
             default: main
@@ -84,7 +84,7 @@ paths:
       responses:
         "204":
           description: ok
-      summary: 鍒犻櫎姒傚康鍒嗙粍锛屽崟涓垹闄?
+      summary: 删除概念分组，单个删除
     parameters:
       - name: kn_id
         in: path
@@ -96,18 +96,18 @@ paths:
     get:
       parameters:
         - name: kn_id
-          description: 涓氬姟鐭ヨ瘑缃戠粶ID
+          description: 业务知识网络ID
           schema:
             type: string
           in: path
           required: true
         - name: name_pattern
-          description: 鏍规嵁缁滃悕绉版ā绯婃煡璇紝榛樿涓虹┖
+          description: 根据络名称模糊查询，默认为空
           schema:
             type: string
           in: query
         - name: sort
-          description: 鎺掑簭绫诲瀷锛岄粯璁ゆ槸update_time
+          description: 排序类型，默认是update_time
           schema:
             enum:
               - update_time
@@ -116,8 +116,8 @@ paths:
           in: query
         - name: direction
           description: |-
-            鎺掑簭缁撴灉鏂瑰悜锛屽彲閫塧sc銆乨esc銆?
-            榛樿desc
+            排序结果方向，可选asc、desc。
+            默认desc
           schema:
             enum:
               - asc
@@ -125,27 +125,27 @@ paths:
             type: string
           in: query
         - name: offset
-          description: "寮€濮嬪搷搴旂殑椤圭洰鐨勫亸绉婚噺\t\n鑼冨洿闇€澶т簬绛変簬0锛岄粯璁ゅ€?"
+          description: "开始响应的项目的偏移量\t\n范围需大于等于0，默认值0"
           schema:
             format: int64
             type: integer
           in: query
         - name: limit
           description: |-
-            姣忛〉鏈€澶氬彲杩斿洖鐨勯」鐩暟锛?
-            鍒嗛〉鍙€?-1000锛?1琛ㄧず涓嶅垎椤碉紱
-            榛樿鍊?0
+            每页最多可返回的项目数；
+            分页可选1-1000，-1表示不分页；
+            默认值10
           schema:
             format: int64
             type: integer
           in: query
         - name: tag
-          description: 鏍规嵁鏍囩绮惧噯鏌ヨ锛岄粯璁や负绌?
+          description: 根据标签精准查询，默认为空.
           schema:
             type: string
           in: query
         - name: branch
-          description: 鍒嗘敮锛岄粯璁?main
+          description: 分支，默认 main
           schema:
             type: string
             default: main
@@ -157,16 +157,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListConceptGroups"
           description: ok
-      summary: 鑾峰彇姒傚康鍒嗙粍鍒楄〃
+      summary: 获取概念分组列表
     post:
       parameters:
         - name: branch
-          description: 鍒嗘敮锛屼笉濉槸鍒欎娇鐢?main 鍒嗘敮
+          description: 分支，不填是则使用 main 分支
           schema:
             type: string
           in: query
         - name: import_mode
-          description: 瀵煎叆妯″紡锛屽彲閫塶ormal銆乮gnore銆乷verwrite锛岄粯璁や负normal
+          description: 导入模式，可选normal、ignore、overwrite，默认为normal
           schema:
             enum:
               - normal
@@ -175,14 +175,14 @@ paths:
             type: string
           in: query
         - name: strict_mode
-          description: 鏄惁涓ユ牸鏍￠獙渚濊禆锛岄粯璁や负true銆備负true鏃讹紝闇€鏍￠獙瀵硅薄绫荤殑瑙嗗浘銆佸叧绯荤被鐨勮鍥剧瓑渚濊禆鏄惁瀛樺湪锛涗负false鏃讹紝渚濊禆涓嶅瓨鍦ㄤ笉鎶ラ敊
+          description: 是否严格校验依赖，默认为true。为true时，需校验对象类的视图、关系类的视图等依赖是否存在；为false时，依赖不存在不报错
           schema:
             type: boolean
             default: true
           in: query
         - name: validate_dependency
           deprecated: true
-          description: "[Deprecated] Use strict_mode instead. Kept only for compatibility when strict_mode is omitted."
+          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
           schema:
             type: boolean
             default: true
@@ -199,12 +199,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ID"
-          description: 鏂板/瀵煎叆鎴愬姛
-      summary: 鍒涘缓姒傚康鍒嗙粍
-      description: 鍒涘缓姒傚康鍒嗙粍
+          description: 新增/导入成功
+      summary: 创建概念分组
+      description: 创建概念分组
     parameters:
       - name: kn_id
-        description: 涓氬姟鐭ヨ瘑缃戠粶ID
+        description: 业务知识网络ID
         schema:
           type: string
         in: path
@@ -225,20 +225,20 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 鍒嗘敮锛屼笉濉垯浣跨敤 main 鍒嗘敮
+          description: 分支，不填则使用 main 分支
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 鏄惁涓ユ牸鏍￠獙渚濊禆锛岄粯璁や负true銆備负true鏃讹紝闇€鏍￠獙瀵硅薄绫籌D鏄惁瀛樺湪锛涗负false鏃讹紝瀵硅薄绫讳笉瀛樺湪涓嶆姤閿?
+          description: 是否严格校验依赖，默认为true。为true时，需校验对象类ID是否存在；为false时，对象类不存在不报错
           schema:
             type: boolean
             default: true
           in: query
       responses:
         "201":
-          description: 娣诲姞鎴愬姛
-      summary: 娣诲姞瀵硅薄绫?
+          description: 添加成功
+      summary: 添加对象类
     parameters:
       - name: kn_id
         in: path
@@ -259,15 +259,15 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 鍒嗘敮锛岄粯璁?main
+          description: 分支，默认 main
           schema:
             type: string
             default: main
           in: query
       responses:
         "204":
-          description: 绉婚櫎鎴愬姛
-      summary: 绉婚櫎瀵硅薄绫?
+          description: 移除成功
+      summary: 移除对象类
     parameters:
       - name: kn_id
         in: path
@@ -280,34 +280,34 @@ paths:
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/validation:
     post:
-      summary: 鏍￠獙姒傚康鍒嗙粍
+      summary: 校验概念分组
       description: |
-        浠呮牎楠屾蹇靛垎缁勪緷璧栧瓨鍦ㄦ€э紝涓嶅啓搴撱€傛牎楠屽垎缁勫唴宓屽瀵硅薄绫汇€佸叧绯荤被銆佽鍔ㄧ被鍙婂叾渚濊禆銆?
-        鍚屾壒姒傚康 ID 浠庢湰娆¤姹傜殑 concept_groups 鏍戯紙鍚祵濂楁《锛夋敹闆嗭紝strict 涓嬪彲涓庤惤搴撹矾寰勪竴鑷村湴瑙ｆ瀽灏氭湭钀藉簱鐨勪簰鐩稿紩鐢ㄣ€?
+        仅校验概念分组依赖存在性，不写库。校验分组内嵌套对象类、关系类、行动类及其依赖。
+        同批概念 ID 从本次请求的 concept_groups 树（含嵌套桶）收集，strict 下可与落库路径一致地解析尚未落库的互相引用。
 
-        **鍝嶅簲**锛欻TTP 200 鏃?`valid`/`detail` 璇箟鍚岀煡璇嗙綉缁滄牎楠屾帴鍙ｏ紱鍙傛暟涓庨壌鏉冮敊璇负闈?2xx銆?
+        **响应**：HTTP 200 时 `valid`/`detail` 语义同知识网络校验接口；参数与鉴权错误为非 2xx。
 
-        **鍐呴儴鎺ュ彛**锛氬悓璺緞璇箟锛宍POST /api/bkn-backend/in/v1/.../concept-groups/validation`锛汬eader 瑙ｆ瀽璁块棶鑰咃紝鏃?OAuth銆?
+        **内部接口**：同路径语义，`POST /api/bkn-backend/in/v1/.../concept-groups/validation`；Header 解析访问者，无 OAuth。
       parameters:
         - name: kn_id
-          description: 涓氬姟鐭ヨ瘑缃戠粶ID
+          description: 业务知识网络ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 鍒嗘敮锛屼笉濉垯浣跨敤 main 鍒嗘敮
+          description: 分支，不填则使用 main 分支
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 鏄惁涓ユ牸鏍￠獙渚濊禆锛岄粯璁や负 true
+          description: 是否严格校验依赖，默认为 true
           schema:
             type: boolean
             default: true
           in: query
         - name: import_mode
-          description: 涓庡垱寤烘蹇靛垎缁勬帴鍙ｄ竴鑷达紱鐢ㄤ簬姒傚康鍒嗙粍 ID/鍚嶇О涓庤惤搴撳啿绐佺殑鏍￠獙璇箟锛坣ormal / ignore / overwrite锛夈€?
+          description: 与创建概念分组接口一致；用于概念分组 ID/名称与落库冲突的校验语义（normal / ignore / overwrite）。
           schema:
             type: string
             enum: [normal, ignore, overwrite]
@@ -322,12 +322,12 @@ paths:
               properties:
                 entries:
                   type: array
-                  description: 寰呮牎楠岀殑姒傚康鍒嗙粍鍒楄〃锛岀粨鏋勪笌鍒涘缓鎺ュ彛涓€鑷?
+                  description: 待校验的概念分组列表，结构与创建接口一致
                   items:
                     type: object
       responses:
         "200":
-          description: 宸茶繑鍥炴牎楠岀粨鏋滐紙閫氳繃涓庡惁鍧囧彲鑳戒负 200锛?
+          description: 已返回校验结果（通过与否均可能为 200）
           content:
             application/json:
               schema:
@@ -339,40 +339,40 @@ paths:
                     type: boolean
                   detail:
                     type: string
-                    description: 褰?valid 涓?false 鏃剁殑璇存槑锛坋rror.Error()锛?
+                    description: 当 valid 为 false 时的说明（error.Error()）
         "400":
-          description: 璇锋眰鍙傛暟閿欒绛夛紱涓氬姟鏍￠獙鏈€氳繃瑙?200 + valid:false
+          description: 请求参数错误等；业务校验未通过见 200 + valid:false
 components:
   schemas:
     ReqConceptGroup:
-      description: 姒傚康鍒嗙粍淇℃伅
+      description: 概念分组信息
       required:
         - name
         - branch
       type: object
       properties:
         id:
-          description: ID.鏂板缓鍚庝笉鍙慨鏀癸紝鍙兘鍖呭惈灏忓啓鑻辨枃瀛楁瘝銆佹暟瀛椼€佷笅鍒掔嚎锛坃锛夈€佽繛瀛楃锛?锛夛紝涓斾笉鑳戒互涓嬪垝绾垮拰杩炲瓧绗﹀紑澶?
+          description: ID.新建后不可修改，只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
           type: string
         name:
-          description: 鍚嶇О
+          description: 名称
           type: string
         tags:
-          description: 鏍囩銆傜敤浜庝笟鍔℃爣璇?
+          description: 标签。用于业务标识
           type: array
           items:
             type: string
         comment:
-          description: 澶囨敞
+          description: 备注
           type: string
         icon:
-          description: 鍥炬爣
+          description: 图标
           type: string
         color:
-          description: 棰滆壊
+          description: 颜色
           type: string
         branch:
-          description: 鍒嗘敮ID
+          description: 分支ID
           type: string
     ID:
       description: id
@@ -384,22 +384,22 @@ components:
           description: id
           type: string
     ListConceptGroups:
-      description: 姒傚康鍒嗙粍鍒楄〃
+      description: 概念分组列表
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 鏉＄洰鍒楄〃
+          description: 条目列表
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         total_count:
-          description: 鎬绘潯鏁?
+          description: 总条数
           type: integer
     ConceptGroup:
-      description: 鍒楄〃椤电殑姒傚康鍒嗙粍
+      description: 列表页的概念分组
       required:
         - branch
         - color
@@ -418,53 +418,53 @@ components:
           description: ID
           type: string
         name:
-          description: 鍚嶇О
+          description: 名称
           type: string
         tags:
-          description: 鏍囩锛屽彲涓虹┖
+          description: 标签，可为空
           type: array
           items:
             type: string
         comment:
-          description: 澶囨敞锛屽彲涓虹┖
+          description: 备注，可为空
           type: string
         icon:
-          description: 鍥炬爣
+          description: 图标
           type: string
         color:
-          description: 棰滆壊
+          description: 颜色
           type: string
         branch:
-          description: 鍒嗘敮ID
+          description: 分支ID
           type: string
         statistics:
           $ref: "#/components/schemas/Statistics"
-          description: 姒傚康缁熻淇℃伅
+          description: 概念统计信息
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 鍒涘缓鏃堕棿
+          description: 创建时间
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
+          description: 最近一次更新时间
           type: integer
         kn_id:
-          description: 鎵€灞炵煡璇嗙綉缁?ID
+          description: 所属知识网络 ID
           type: string
         object_type_ids:
-          description: 璇ユ蹇电粍鍖呭惈鐨勫璞＄被 ID 鍒楄〃
+          description: 该概念组包含的对象类 ID 列表
           type: array
           items:
             type: string
         module_type:
-          description: 姒傚康鎵€灞炴ā鍧楃被鍨?
+          description: 概念所属模块类型
           type: string
     Statistics:
-      description: 姒傚康缁熻淇℃伅
+      description: 概念统计信息
       required:
         - action_types_total
         - object_types_total
@@ -472,50 +472,50 @@ components:
       type: object
       properties:
         object_types_total:
-          description: 瀵硅薄绫绘暟閲?
+          description: 对象类数量
           type: integer
         relation_types_total:
-          description: 鍏崇郴绫绘暟閲?
+          description: 关系类数量
           type: integer
         action_types_total:
-          description: 琛屽姩绫绘暟閲?
+          description: 行动类数量
           type: integer
         concept_groups_total:
-          description: 姒傚康缁勬暟閲?
+          description: 概念组数量
           type: integer
         risk_types_total:
-          description: 椋庨櫓绫绘暟閲?
+          description: 风险类数量
           type: integer
         metrics_total:
-          description: 鎸囨爣鏁伴噺
+          description: 指标数量
           type: integer
     DataSource:
-      description: 璧勬簮鏉ユ簮
+      description: 资源来源
       required:
         - type
         - id
       type: object
       properties:
         type:
-          description: 鏁版嵁鏉ユ簮绫诲瀷
+          description: 数据来源类型
           enum:
             - resource
           type: string
         id:
-          description: 鏁版嵁鏉ユ簮ID
+          description: 数据来源ID
           type: string
         name:
-          description: 鍚嶇О銆傛煡鐪嬭鎯呮椂杩斿洖銆?
+          description: 名称。查看详情时返回。
           type: string
     ExpectedImpactOperation:
-      description: 涓?`action_intent` / `action_type` 涓€鑷淬€?
+      description: 与 `action_intent` / `action_type` 一致。
       type: string
       enum:
         - add
         - modify
         - delete
     ImpactContractItem:
-      description: 琛屽姩褰卞搷濂戠害鍗曟潯锛堜笌 `action-type.yaml`銆乣f_impact_contracts` 涓€鑷达級銆?
+      description: 行动影响契约单条（与 `action-type.yaml`、`f_impact_contracts` 一致）。
       type: object
       properties:
         object_type_id:
@@ -529,7 +529,7 @@ components:
           items:
             type: string
     ActionTypeDetail:
-      description: 琛屽姩绫?
+      description: 行动类
       required:
         - action_source
         - action_type
@@ -553,58 +553,58 @@ components:
       type: object
       properties:
         id:
-          description: 琛屽姩绫籌D
+          description: 行动类ID
           type: string
         name:
-          description: 琛屽姩绫诲悕绉?
+          description: 行动类名称
           type: string
         tags:
-          description: 鏍囩銆?锛堝彲浠ヤ负绌猴級
+          description: 标签。 （可以为空）
           type: array
           items:
             type: string
         comment:
-          description: 澶囨敞锛堝彲浠ヤ负绌猴級
+          description: 备注（可以为空）
           type: string
         icon:
-          description: 鍥炬爣
+          description: 图标
           type: string
         color:
-          description: 棰滆壊
+          description: 颜色
           type: string
         branch:
-          description: 鍒嗘敮ID
+          description: 分支ID
           type: string
         kn_id:
-          description: 涓氬姟鐭ヨ瘑缃戠粶ID
+          description: 业务知识网络ID
           type: string
         action_type:
           deprecated: true
-          description: "[Deprecated] Use action_intent instead."
+          description: "**[已废弃]** 等价于 `action_intent`（add/modify/delete）。"
           enum:
             - add
             - modify
             - delete
           type: string
         action_intent:
-          description: 涓?`ActionType.action_type` 鍥炲～涓€鑷寸殑棣栭€夊瓧娈点€?
+          description: 与 `ActionType.action_type` 回填一致的首选字段。
           enum:
             - add
             - modify
             - delete
           type: string
         object_type_id:
-          description: 琛屽姩绫绘墍缁戝畾鐨勫璞＄被ID
+          description: 行动类所绑定的对象类ID
           type: string
         object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 琛屽姩绫绘墍缁戝畾鐨勫璞＄被鍚嶇О.
+          description: 行动类所绑定的对象类名称.
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 琛屽姩鏉′欢
+          description: 行动条件
         affect:
           deprecated: true
-          description: "[Deprecated] Use impact_contracts instead."
+          description: "**[已废弃]** 单行影响；等价信息见 `impact_contracts`。"
           allOf:
             - $ref: "#/components/schemas/AffectDetail"
         impact_contracts:
@@ -613,34 +613,34 @@ components:
             $ref: "#/components/schemas/ImpactContractItem"
         action_source:
           $ref: "#/components/schemas/ToolSource"
-          description: 缁戝畾鐨勮鍔ㄧ殑璧勬簮
+          description: 绑定的行动的资源
         parameters:
-          description: 琛屽姩璧勬簮鍙傛暟
+          description: 行动资源参数
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 琛屽姩鐩戝惉鍙傛暟閰嶇疆
+          description: 行动监听参数配置
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 鍒涘缓鏃堕棿
+          description: 创建时间
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
+          description: 最近一次更新时间
           type: integer
         module_type:
-          description: 妯″潡绫诲瀷
+          description: 模块类型
           enum:
             - action_type
           type: string
     ToolSource:
-      description: 鏁版嵁鏉ユ簮
+      description: 数据来源
       required:
         - type
         - tool_id
@@ -648,34 +648,34 @@ components:
       type: object
       properties:
         type:
-          description: 璧勬簮绫诲瀷
+          description: 资源类型
           enum:
             - tool
           type: string
         box_id:
-          description: 宸ュ叿绠盜D
+          description: 工具箱ID
           type: string
         tool_id:
-          description: 宸ュ叿ID
+          description: 工具ID
           type: string
     AffectDetail:
       deprecated: true
       description: |
-        **[宸插簾寮僝** 璇锋秷璐?`impact_contracts`銆?
+        **[已废弃]** 请消费 `impact_contracts`。
       required:
         - comment
         - object_type_id
       type: object
       properties:
         comment:
-          description: 褰卞搷鎻忚堪
+          description: 影响描述
           type: string
         object_type_id:
-          description: 褰卞搷鐨勫璞＄被ID
+          description: 影响的对象类ID
           type: string
         object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 瀵硅薄绫讳俊鎭?
+          description: 对象类信息
     SimpleObjectType:
       description: ""
       required:
@@ -686,29 +686,29 @@ components:
       type: object
       properties:
         id:
-          description: 瀵硅薄绫籭d
+          description: 对象类id
           type: string
         name:
-          description: 瀵硅薄绫诲悕绉?
+          description: 对象类名称
           type: string
         icon:
-          description: 瀵硅薄绫诲浘鏍?
+          description: 对象类图标
           type: string
         color:
-          description: 瀵硅薄绫婚鑹?
+          description: 对象类颜色
           type: string
     ActionCondition:
-      description: 琛屽姩鏉′欢
+      description: 行动条件
       type: object
       properties:
         object_type_id:
-          description: 瀵硅薄绫籌D銆傚綋鏃跺涓璞＄被鐨勮繃婊ゆ椂锛岄渶瑕佹妸瀵硅薄绫籌D甯︿笂锛屽惁鍒欏彧瑕佸睘鎬у悕灞炰簬瀵硅薄绫诲氨浼氳繘琛岃繃婊ゃ€?
+          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
           type: string
         field:
-          description: 瀛楁鍚嶇О锛屼篃鍗冲璞＄被鐨勫睘鎬у悕绉?
+          description: 字段名称，也即对象类的属性名称
           type: string
         operation:
-          description: 鎿嶄綔绗?
+          description: 操作符
           enum:
             - and
             - or
@@ -726,64 +726,64 @@ components:
             - not_exist
           type: string
         sub_conditions:
-          description: 瀛愯繃婊ゆ潯浠?
+          description: 子过滤条件
           type: array
           items:
             $ref: "#/components/schemas/ActionCondition"
         value:
-          description: 瀛楁鍊?
+          description: 字段值
         value_from:
-          description: 瀛楁鍊兼潵婧愶紝褰撳墠浠呮敮鎸?"const"
+          description: 字段值来源，当前仅支持 "const"
           enum:
             - const
           type: string
     Parameter:
-      description: 宸ュ叿鍙傛暟
+      description: 工具参数
       required:
         - name
         - value_from
       type: object
       properties:
         name:
-          description: 鍙傛暟鍚嶇О
+          description: 参数名称
           type: string
         type:
-          description: 鍙傛暟绫诲瀷
+          description: 参数类型
           type: string
         source:
-          description: 鍙傛暟鏉ユ簮
+          description: 参数来源
           type: string
         value_from:
-          description: 鍊兼潵婧?
+          description: 值来源
           enum:
             - property
             - input
             - const
           type: string
         value:
-          description: 鍙傛暟鍊笺€倂alue_from=property鏃讹紝濉叆鐨勬槸瀵硅薄绫荤殑鏁版嵁灞炴€у悕绉帮紱value_from=input鏃讹紝涓嶈缃瀛楁
+          description: 参数值。value_from=property时，填入的是对象类的数据属性名称；value_from=input时，不设置此字段
           type: string
     Schedule:
-      description: 鎵ц棰戠巼閰嶇疆椤?
+      description: 执行频率配置项
       required:
         - expression
         - type
       type: object
       properties:
         type:
-          description: 鎵ц绫诲瀷銆傛灇涓撅紝鏀寔閰嶇疆鍥哄畾棰戠巼(FIX_RATE)鍜岄厤缃甤rontab琛ㄨ揪寮忥紙CRON锛?
+          description: 执行类型。枚举，支持配置固定频率(FIX_RATE)和配置crontab表达式（CRON）
           enum:
             - FIX_RATE
             - CRON
           type: string
         expression:
           description: |-
-            鎵ц琛ㄨ揪寮忋€?
+            执行表达式。
 
-            1.鍥哄畾棰戠巼鎸囦互鍥哄畾鍛ㄦ湡鎵ц鎸佷箙鍖栵紝frequency=< time_durations >锛岀敤涓€涓暟瀛楋紝鍚庨潰璺熸椂闂村崟浣嶆潵瀹氫箟銆傛椂闂村崟浣嶅彲浠ユ槸濡備笅涔嬩竴锛歮 - 鍒嗛挓锛?h - 灏忔椂锛?d - 澶?
+            1.固定频率指以固定周期执行持久化，frequency=< time_durations >，用一个数字，后面跟时间单位来定义。时间单位可以是如下之一：m - 分钟； h - 小时； d - 天
           type: string
     ObjectTypeDetail:
-      description: 鑺傜偣锛堝璞＄被锛変俊鎭?
+      description: 节点（对象类）信息
       required:
         - branch
         - color
@@ -805,107 +805,107 @@ components:
       type: object
       properties:
         id:
-          description: 瀵硅薄绫籌D
+          description: 对象类ID
           type: string
         name:
-          description: 瀵硅薄绫诲悕绉?
+          description: 对象类名称
           type: string
         tags:
-          description: 鏍囩銆?锛堝彲浠ヤ负绌猴級
+          description: 标签。 （可以为空）
           type: array
           items:
             type: string
         comment:
-          description: 澶囨敞锛堝彲浠ヤ负绌猴級
+          description: 备注（可以为空）
           type: string
         icon:
-          description: 鍥炬爣
+          description: 图标
           type: string
         color:
-          description: 棰滆壊
+          description: 颜色
           type: string
         branch:
-          description: 鍒嗘敮ID
+          description: 分支ID
           type: string
         kn_id:
-          description: 涓氬姟鐭ヨ瘑缃戠粶id
+          description: 业务知识网络id
           type: string
         concept_groups:
-          description: 姒傚康鍒嗙粍id
+          description: 概念分组id
           type: array
           items:
             $ref: "#/components/schemas/SimpleConceptGroup"
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 鏁版嵁鏉ユ簮
+          description: 数据来源
         data_properties:
-          description: 鏁版嵁灞炴€?
+          description: 数据属性
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 閫昏緫灞炴€?
+          description: 逻辑属性
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 涓婚敭
+          description: 主键
           type: array
           items:
             type: string
         display_key:
-          description: 瀵硅薄瀹炰緥鐨勬樉绀哄睘鎬?
+          description: 对象实例的显示属性
           type: string
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 鍒涘缓鏃堕棿
+          description: 创建时间
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
+          description: 最近一次更新时间
           type: integer
         module_type:
-          description: 妯″潡绫诲瀷
+          description: 模块类型
           enum:
             - object_type
           type: string
         incremental_key:
-          description: 澧為噺鍚屾鎵€渚濇嵁鐨勫睘鎬у悕
+          description: 增量同步所依据的属性名
           type: string
         status:
-          description: 瀵硅薄绫荤殑绱㈠紩鐘舵€侊紙鐢?Vega 渚х储寮曚俊鎭眹鎬伙級
+          description: 对象类的索引状态（由 Vega 侧索引信息汇总）
           type: object
           properties:
             incremental_key:
-              description: 澧為噺鍚屾鎵€渚濇嵁鐨勫睘鎬у悕
+              description: 增量同步所依据的属性名
               type: string
             incremental_value:
-              description: 鏈€杩戜竴娆″閲忓悓姝ュ埌鐨勪綅鐐瑰€?
+              description: 最近一次增量同步到的位点值
               type: string
             index:
-              description: 鍏宠仈鐨勭储寮曞悕
+              description: 关联的索引名
               type: string
             index_available:
-              description: 绱㈠紩鏄惁鍙敤
+              description: 索引是否可用
               type: boolean
             doc_count:
-              description: 绱㈠紩鍐呮枃妗ｆ暟
+              description: 索引内文档数
               type: integer
               format: int64
             storage_size:
-              description: 绱㈠紩鍗犵敤鐨勫瓨鍌ㄥ瓧鑺傛暟
+              description: 索引占用的存储字节数
               type: integer
               format: int64
             update_time:
-              description: 绱㈠紩鐘舵€佹洿鏂版椂闂?
+              description: 索引状态更新时间
               type: integer
               format: int64
     DataProperty:
-      description: 鏁版嵁灞炴€?
+      description: 数据属性
       required:
         - name
         - display_name
@@ -913,39 +913,42 @@ components:
       type: object
       properties:
         name:
-          description: 灞炴€у悕绉般€傚彧鑳藉寘鍚皬鍐欒嫳鏂囧瓧姣嶃€佹暟瀛椼€佷笅鍒掔嚎锛坃锛夈€佽繛瀛楃锛?锛夛紝涓斾笉鑳戒互涓嬪垝绾垮拰杩炲瓧绗﹀紑澶?
+          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
           type: string
         display_name:
-          description: 灞炴€ф樉绀哄悕
+          description: 属性显示名
           type: string
         type:
-          description: 灞炴€ф暟鎹被鍨嬨€傞櫎浜嗚鍥剧殑瀛楁绫诲瀷涔嬪锛岃繕鏈?metric銆乷bjective銆乪vent銆乼race銆乴og銆乷perator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
           type: string
         comment:
-          description: 灞炴€ф弿杩?
+          description: 属性描述
           type: string
         mapped_field:
           $ref: "#/components/schemas/ViewField"
-          description: 灞炴€ф槧灏勫埌鏁版嵁鏉ユ簮涓殑瀛楁鍚?
+          description: 属性映射到数据来源中的字段名
+        index_config:
+          $ref: "#/components/schemas/IndexConfig"
+          description: 索引配置
         condition_operations:
-          description: "Supported filter operations for this property type."
+          description: "字符串类型的属性能支持的过滤条件。字符串类型有string, text。"
           type: array
           items:
             type: string
     IndexConfig:
       title: Root Type for IndexConfig
-      description: 绱㈠紩閰嶇疆
+      description: 索引配置
       type: object
       properties:
         keyword_config:
           $ref: "#/components/schemas/KeywordConfig"
-          description: 鍏抽敭瀛楁绱㈤厤缃?
+          description: 关键字检索配置
         fulltext_config:
           $ref: "#/components/schemas/FulltextConfig"
-          description: 鍏ㄦ枃妫€绱㈤厤缃?
+          description: 全文检索配置
         vector_config:
           $ref: "#/components/schemas/VectorConfig"
-          description: 鍚戦噺妫€绱㈤厤缃?
+          description: 向量检索配置
       example:
         keyword_config:
           enabled: true
@@ -957,71 +960,71 @@ components:
           enabled: true
           model_id: some text
     FulltextConfig:
-      description: 鍏ㄦ枃绱㈠紩鐨勯厤缃?
+      description: 全文索引的配置
       required:
         - analyzer
         - enabled
       type: object
       properties:
         analyzer:
-          description: 鍒嗚瘝鍣?
+          description: 分词器
           enum:
             - standard
             - ik_max_word
           type: string
         enabled:
-          description: 鏄惁鍚敤
+          description: 是否启用
           type: boolean
       example:
         analyzer: standard
         enabled: true
     KeywordConfig:
       title: Root Type for KeywordConfig
-      description: 鍏抽敭瀛楁绱㈤厤缃?
+      description: 关键字检索配置
       type: object
       properties:
         enabled:
-          description: 鏄惁鍚敤
+          description: 是否启用
           type: boolean
         ignore_above_len:
           format: int32
-          description: 蹇界暐鏁版嵁鐨勯暱搴︿笂闄?
+          description: 忽略数据的长度上限
           type: integer
       example:
         enabled: true
         ignore_above_len: 52
     VectorConfig:
-      description: 鍚戦噺绱㈠紩鐨勯厤缃?
+      description: 向量索引的配置
       required:
         - enabled
       type: object
       properties:
         enabled:
-          description: 鏄惁鍚敤
+          description: 是否启用
           type: boolean
         model_id:
-          description: 鍚戦噺妯″瀷ID
+          description: 向量模型ID
           type: string
       example:
         enabled: true
         model_id: some text
     ViewField:
-      description: 瑙嗗浘瀛楁淇℃伅
+      description: 视图字段信息
       required:
         - name
       type: object
       properties:
         name:
-          description: 瀛楁鍚嶇О
+          description: 字段名称
           type: string
         display_name:
-          description: 瀛楁鏄剧ず鍚?鏌ョ湅鏃舵湁姝ゅ瓧娈?
+          description: 字段显示名.查看时有此字段
           type: string
         type:
-          description: 瑙嗗浘瀛楁绫诲瀷锛屾煡鐪嬫椂鏈夋瀛楁
+          description: 视图字段类型，查看时有此字段
           type: string
     LogicProperty:
-      description: 閫昏緫灞炴€?
+      description: 逻辑属性
       required:
         - name
         - data_source
@@ -1029,49 +1032,49 @@ components:
       type: object
       properties:
         name:
-          description: 灞炴€у悕绉般€傚彧鑳藉寘鍚皬鍐欒嫳鏂囧瓧姣嶃€佹暟瀛椼€佷笅鍒掔嚎锛坃锛夈€佽繛瀛楃锛?锛夛紝涓斾笉鑳戒互涓嬪垝绾垮拰杩炲瓧绗﹀紑澶?
+          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
           type: string
         display_name:
-          description: 灞炴€ф樉绀哄悕
+          description: 属性显示名
           type: string
         type:
-          description: 灞炴€ф暟鎹被鍨嬨€傞櫎浜嗚鍥剧殑瀛楁绫诲瀷涔嬪锛岃繕鏈?metric銆乷bjective銆乪vent銆乼race銆乴og銆乷perator
+          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
           type: string
         comment:
-          description: 灞炴€ф弿杩?
+          description: 属性描述
           type: string
         index:
-          description: 鏄惁寮€鍚储寮曪紝榛樿鏄痶rue
+          description: 是否开启索引，默认是true
           type: boolean
         data_source:
           $ref: "#/components/schemas/LogicSource"
-          description: 閫昏緫鏉ユ簮
+          description: 逻辑来源
         parameters:
-          description: 閫昏緫鎵€闇€鐨勫弬鏁?
+          description: 逻辑所需的参数
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
     LogicSource:
-      description: 鏁版嵁鏉ユ簮
+      description: 数据来源
       required:
         - type
         - id
       type: object
       properties:
         type:
-          description: 鏁版嵁鏉ユ簮绫诲瀷
+          description: 数据来源类型
           enum:
             - metric
             - operator
           type: string
         id:
-          description: 鏁版嵁鏉ユ簮ID
+          description: 数据来源ID
           type: string
         name:
-          description: 鍚嶇О銆傛煡鐪嬭鎯呮椂杩斿洖銆?
+          description: 名称。查看详情时返回。
           type: string
     RelationTypeDetail:
-      description: 鍏崇郴绫?
+      description: 关系类
       required:
         - branch
         - color
@@ -1092,45 +1095,45 @@ components:
       type: object
       properties:
         id:
-          description: 鍏崇郴绫籌D
+          description: 关系类ID
           type: string
         name:
-          description: 鍏崇郴绫诲悕绉?
+          description: 关系类名称
           type: string
         tags:
-          description: 鏍囩銆?锛堝彲浠ヤ负绌猴級
+          description: 标签。 （可以为空）
           type: array
           items:
             type: string
         comment:
-          description: 澶囨敞锛堝彲浠ヤ负绌猴級
+          description: 备注（可以为空）
           type: string
         icon:
-          description: 鍥炬爣
+          description: 图标
           type: string
         color:
-          description: 棰滆壊
+          description: 颜色
           type: string
         branch:
-          description: 鍒嗘敮ID
+          description: 分支ID
           type: string
         kn_id:
-          description: 涓氬姟鐭ヨ瘑缃戠粶ID
+          description: 业务知识网络ID
           type: string
         source_object_type_id:
-          description: 璧风偣璞＄被ID
+          description: 起点象类ID
           type: string
         source_object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 璧风偣璞＄被鍚嶇О锛屽綋鏌ョ湅璇︽儏鏃讹紝姝ゅ瓧娈垫墠浼氳繑鍥炪€?
+          description: 起点象类名称，当查看详情时，此字段才会返回。
         target_object_type_id:
-          description: 缁堢偣瀵硅薄绫籌D
+          description: 终点对象类ID
           type: string
         target_object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 缁堢偣瀵硅薄绫诲悕绉帮紝褰撴煡鐪嬭鎯呮椂锛屾瀛楁鎵嶄細杩斿洖
+          description: 终点对象类名称，当查看详情时，此字段才会返回
         type:
-          description: 鍏崇郴绫诲瀷
+          description: 关系类型
           enum:
             - direct
             - filtered_cross_join
@@ -1139,39 +1142,39 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 鍏宠仈鐨勫尮閰嶈鍒欍€俙direct` 鏃朵负 Mapping 鏁扮粍锛沗legacy view` 鏃朵负 LegacyViewMappingRule锛沗filtered_cross_join`锛團CJ锛夋椂涓?FilteredCrossJoinMappingRule銆?
+          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`filtered_cross_join`（FCJ）时为 FilteredCrossJoinMappingRule。
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 鍒涘缓鏃堕棿
+          description: 创建时间
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
+          description: 最近一次更新时间
           type: integer
     DirectMappingRules:
-      description: 鐩存帴鍏宠仈
+      description: 直接关联
       type: array
       items:
         $ref: "#/components/schemas/Mapping"
     FilteredCrossJoinMappingRule:
       description: |
-        鍏崇郴绫诲瀷涓?`filtered_cross_join`锛堝垎渚ц繃婊ゅ叏杩炴帴锛孎CJ锛夋椂鐨勫尮閰嶈鍒欍€傛棤鏁版嵁瑙嗗浘涓庨敭鏄犲皠锛?
-        `source_condition` / `target_condition` 涓哄彲閫夌殑瀹炰緥杩囨护鏉′欢锛堢粨鏋勪笌瀵硅薄瀹炰緥鏌ヨ Condition 涓€鑷达紝鍙傝 relation-type / ontology-query 绛?API 涓殑 Condition锛夈€?
-        涓や晶鍧囧彲鐪佺暐锛屾垨 `mapping_rules` 涓?`{}`锛堣〃绀轰袱渚ф棤棰濆杩囨护锛夈€?
+        关系类型为 `filtered_cross_join`（分侧过滤全连接，FCJ）时的匹配规则。无数据视图与键映射；
+        `source_condition` / `target_condition` 为可选的实例过滤条件（结构与对象实例查询 Condition 一致，参见 relation-type / ontology-query 等 API 中的 Condition）。
+        两侧均可省略，或 `mapping_rules` 为 `{}`（表示两侧无额外过滤）。
       type: object
       properties:
         source_condition:
-          description: 璧风偣渚у疄渚嬭繃婊ゆ潯浠讹紱鍙渷鐣ヨ〃绀鸿渚ф棤绾︽潫
+          description: 起点侧实例过滤条件；可省略表示该侧无约束
           type: object
         target_condition:
-          description: 缁堢偣渚у疄渚嬭繃婊ゆ潯浠讹紱鍙渷鐣ヨ〃绀鸿渚ф棤绾︽潫
+          description: 终点侧实例过滤条件；可省略表示该侧无约束
           type: object
     Mapping:
-      description: 鍏宠仈瑙勫垯
+      description: 关联规则
       required:
         - target_property
         - source_property
@@ -1179,81 +1182,81 @@ components:
       properties:
         target_property:
           $ref: "#/components/schemas/SimpleProperty"
-          description: 璧风偣灞炴€?
+          description: 起点属性
         source_property:
           $ref: "#/components/schemas/SimpleProperty"
-          description: 缁堢偣灞炴€?
+          description: 终点属性
     SimpleProperty:
-      description: 灞炴€х畝鍗曚俊鎭?
+      description: 属性简单信息
       required:
         - name
         - display_name
       type: object
       properties:
         name:
-          description: 灞炴€у悕绉?
+          description: 属性名称
           type: string
         display_name:
-          description: 灞炴€ф樉绀哄悕銆傚綋鏌ョ湅璇︽儏鏃朵細杩斿洖姝ゅ瓧娈?
+          description: 属性显示名。当查看详情时会返回此字段
           type: string
     AddObjectTypeToGroup:
-      description: 娣诲姞瀵硅薄绫诲埌姒傚康鍒嗙粍
+      description: 添加对象类到概念分组
       required:
         - entries
       type: object
       properties:
         entries:
-          description: 娣诲姞瀵硅薄绫?
+          description: 添加对象类
           type: array
           items:
             $ref: "#/components/schemas/AddObjectType"
     AddObjectType:
-      description: 娣诲姞瀵硅薄绫?
+      description: 添加对象类
       required:
         - id
       type: object
       properties:
         id:
-          description: 瀵硅薄绫籭d
+          description: 对象类id
           type: string
     UpdateConceptGroup:
-      description: 鏇存柊姒傚康鍒嗙粍
+      description: 更新概念分组
       required:
         - name
       type: object
       properties:
         name:
-          description: 鍚嶇О
+          description: 名称
           type: string
         tags:
-          description: 鏍囩銆傜敤浜庝笟鍔℃爣璇?
+          description: 标签。用于业务标识
           type: array
           items:
             type: string
         comment:
-          description: 澶囨敞
+          description: 备注
           type: string
         icon:
-          description: 鍥炬爣
+          description: 图标
           type: string
         color:
-          description: 棰滆壊
+          description: 颜色
           type: string
     SimpleConceptGroup:
-      description: 姒傚康鍒嗙粍绠€鍗曚俊鎭?
+      description: 概念分组简单信息
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 姒傚康鍒嗙粍id
+          description: 概念分组id
           type: string
         name:
-          description: 姒傚康鍒嗙粍鍚嶇О
+          description: 概念分组名称
           type: string
     ConceptGroupDetail:
-      description: 姒傚康鍒嗙粍璇︽儏
+      description: 概念分组详情
       required:
         - branch
         - color
@@ -1274,40 +1277,40 @@ components:
           description: ID
           type: string
         name:
-          description: 鍚嶇О
+          description: 名称
           type: string
         tags:
-          description: 鏍囩锛屽彲涓虹┖
+          description: 标签，可为空
           type: array
           items:
             type: string
         comment:
-          description: 澶囨敞锛屽彲涓虹┖
+          description: 备注，可为空
           type: string
         icon:
-          description: 鍥炬爣
+          description: 图标
           type: string
         color:
-          description: 棰滆壊
+          description: 颜色
           type: string
         kn_id:
-          description: 涓氬姟鐭ヨ瘑缃戠粶ID
+          description: 业务知识网络ID
           type: string
         branch:
-          description: 鍒嗘敮ID
+          description: 分支ID
           type: string
         object_types:
-          description: 瀵硅薄绫?
+          description: 对象类
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeDetail"
         relation_types:
-          description: 鍏崇郴绫?
+          description: 关系类
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         action_types:
-          description: 琛屽姩绫?
+          description: 行动类
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
@@ -1315,14 +1318,14 @@ components:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 鍒涘缓鏃堕棿
+          description: 创建时间
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 鏈€杩戜竴娆℃洿鏂版椂闂?
+          description: 最近一次更新时间
           type: integer
         module_type:
-          description: 姒傚康鎵€灞炴ā鍧楃被鍨?
+          description: 概念所属模块类型
           type: string
