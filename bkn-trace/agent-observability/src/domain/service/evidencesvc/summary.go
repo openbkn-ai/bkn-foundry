@@ -108,23 +108,15 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 			grouped[request.ConversationID] = append(grouped[request.ConversationID], request)
 		}
 	}
+	for conversationID := range excludedConversations {
+		delete(grouped, conversationID)
+	}
 	entries := make([]evidencevo.ConversationSummary, 0, len(grouped))
 	for conversationID, group := range grouped {
 		entries = append(entries, buildConversationSummary(conversationID, group))
 	}
 	if err := s.applyCanonicalConversationState(ctx, entries, grouped); err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
-	}
-	if options.ExcludeAgentOrApp != "" {
-		filtered := entries[:0]
-		for _, entry := range entries {
-			_, excludedByRequest := excludedConversations[entry.ConversationID]
-			if excludedByRequest || matchesConversationAgentIdentity(entry, options.ExcludeAgentOrApp) {
-				continue
-			}
-			filtered = append(filtered, entry)
-		}
-		entries = filtered
 	}
 	entries = filterConversationSummaries(entries, options)
 	sort.Slice(entries, func(i, j int) bool {
@@ -1498,13 +1490,6 @@ func matchesRequestFilters(summary evidencevo.RequestSummary, options evidencevo
 }
 
 func matchesAgentIdentity(summary evidencevo.RequestSummary, expected string) bool {
-	return summary.AgentOrApp == expected ||
-		summary.AgentName == expected ||
-		summary.ApplicationPrincipalID == expected ||
-		summary.EffectiveSubjectID == expected
-}
-
-func matchesConversationAgentIdentity(summary evidencevo.ConversationSummary, expected string) bool {
 	return summary.AgentOrApp == expected ||
 		summary.AgentName == expected ||
 		summary.ApplicationPrincipalID == expected ||

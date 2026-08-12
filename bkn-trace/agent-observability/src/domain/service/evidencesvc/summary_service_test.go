@@ -121,6 +121,31 @@ func TestListConversationsExcludesWholeConversationByAgentDisplayName(t *testing
 	}
 }
 
+func TestListConversationsExcludesWholeConversationByStableAgentID(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequestWithAgent(
+		t, evidenceStore, "req_internal", "trace_internal", "conversation_internal", "interaction_internal",
+		"2026-08-10T08:00:00Z", "内部分析", "内部建议", "acct_demo", "business_provenance_optimizer", "agent_id",
+	)
+	seedBusinessProvenanceRequestWithAgent(
+		t, evidenceStore, "req_business", "trace_business", "conversation_business", "interaction_business",
+		"2026-08-10T08:01:00Z", "业务问题", "业务结果", "acct_demo", "business_agent", "agent_id",
+	)
+
+	page, err := New(evidenceStore, WithProjectionSource(evidenceStore)).ListConversations(
+		context.Background(), evidencevo.SummaryQueryOptions{
+			Scope: summaryScope("acct_demo"), Limit: 20,
+			ExcludeAgentOrApp: "business_provenance_optimizer",
+		},
+	)
+	if err != nil {
+		t.Fatalf("list conversations: %v", err)
+	}
+	if page.Total != 1 || len(page.Entries) != 1 || page.Entries[0].ConversationID != "conversation_business" {
+		t.Fatalf("business conversation page = %+v, want only conversation_business", page)
+	}
+}
+
 func TestListConversationsSumsCompletedInteractionDurations(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequest(
