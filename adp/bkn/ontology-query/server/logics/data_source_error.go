@@ -19,7 +19,7 @@ import (
 // MissingObjectTypeDataSourceError returns a client-facing 400 when an object type has no data source binding.
 func MissingObjectTypeDataSourceError(ctx context.Context, otID string) *rest.HTTPError {
 	return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-		WithErrorDetails(fmt.Sprintf("???[%s]??????", otID))
+		WithErrorDetails(fmt.Sprintf("对象类[%s]未绑定数据源", otID))
 }
 
 // UnsupportedObjectTypeDataSourceError returns a client-facing 400 for invalid object-type bindings.
