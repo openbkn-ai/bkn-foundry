@@ -43,10 +43,13 @@ type restPublicHandler struct {
 	KnSkillsHandler                knskills.KnSkillsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
+	// ServicePort 用于推导沙箱回访本服务的地址（见 PTC 工具包端点）。
+	ServicePort int
 }
 
 // NewRestPublicHandler 创建restHandler实例
-func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterface {
+// servicePort 用于推导沙箱回访地址；沙箱在集群内，走不了浏览器侧的网关地址。
+func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.HTTPRouterInterface {
 	return &restPublicHandler{
 		Hydra:                          drivenadapters.NewHydra(),
 		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
@@ -62,6 +65,7 @@ func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterfa
 		KnSkillsHandler:                knskills.NewKnSkillsHandler(),
 		Logger:                         logger,
 		LifecycleClient:                bkntrace.NewLifecycleClientFromEnv(),
+		ServicePort:                    servicePort,
 	}
 }
 
@@ -104,9 +108,25 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 		engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
 	}
 
+	// PTC 工具包：把工具面渲染成「给模型看的函数签名清单 + 沙箱内的 Python
+	// 实现」。客户端只给模型一个 run_code，模型写脚本调这些函数。
+	// 由服务端渲染而不是客户端从 tools/list 自己拼：只有这里知道哪些工具真正
+	// 注册了，也只有这里的 schema 不含运行时才追加的 bkn_context。
+	engine.GET("/ptc/toolkit", r.handlePTCToolkit)
+
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
 	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），其余走标准 MCP Streamable HTTP。
 	engine.Any("/mcp/*path", r.handleMCP)
+}
+
+// handlePTCToolkit 返回 PTC 工具包。内容随工具面变化，客户端按 version 缓存。
+func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
+	toolkit, err := mcp.BuildPTCToolkit(publicEndpointURL(c.Request, "/mcp"), r.ServicePort)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, toolkit)
 }
 
 // handleMCP 在 MCP catch-all 路由内分流：GET …/mcp/info 返回自描述文档，其余交给 MCP Server。
@@ -125,6 +145,23 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 
 // mcpEndpointURL 依据请求推导本服务对外的 MCP 端点（去掉末尾的 /info）。
 func mcpEndpointURL(req *http.Request) string {
+	scheme := requestScheme(req)
+	base := strings.TrimSuffix(req.URL.Path, "/info")
+	return scheme + "://" + req.Host + base
+}
+
+// publicEndpointURL 按本组路由前缀拼出同一服务下另一个端点的对外地址。
+// 供路径不同的端点复用（如 /ptc/toolkit 需要报出 /mcp 的地址），
+// 不能用 mcpEndpointURL 那套「从当前路径去尾」的推法。
+func publicEndpointURL(req *http.Request, suffix string) string {
+	base := req.URL.Path
+	if i := strings.Index(base, "/v1/"); i >= 0 {
+		base = base[:i+len("/v1")]
+	}
+	return requestScheme(req) + "://" + req.Host + base + suffix
+}
+
+func requestScheme(req *http.Request) string {
 	scheme := "http"
 	if req.TLS != nil {
 		scheme = "https"
@@ -132,6 +169,5 @@ func mcpEndpointURL(req *http.Request) string {
 	if p := req.Header.Get("X-Forwarded-Proto"); p != "" {
 		scheme = p
 	}
-	base := strings.TrimSuffix(req.URL.Path, "/info")
-	return scheme + "://" + req.Host + base
+	return scheme
 }

@@ -110,7 +110,7 @@ func (a *App) Run() error {
 	s := &Server{
 		config:             a.config,
 		httpHealthHandler:  driveradapters.NewHTTPHealthHandler(),
-		restPublicHandler:  driveradapters.NewRestPublicHandler(a.config.Logger),
+		restPublicHandler:  driveradapters.NewRestPublicHandler(a.config.Logger, a.config.Project.Port),
 		restPrivateHandler: driveradapters.NewRestPrivateHandler(a.config.Logger),
 	}
 	s.config.Logger.Info("start agent-retrieval server")
