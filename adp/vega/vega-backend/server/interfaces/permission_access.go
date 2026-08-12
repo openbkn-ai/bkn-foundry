@@ -36,6 +36,12 @@ const (
 	OPERATION_TYPE_AUTHORIZE   = "authorize"
 	OPERATION_TYPE_TASK_MANAGE = "task_manage"
 
+	// OPERATION_TYPE_RESOURCE_MANAGE 是数据目录上的「管理目录下的数据表」操作（#801）。
+	// 建/改/删数据表判它，而不是判数据表自己的 create/modify/delete —— 后者无法回答
+	// 「这张表属于哪个目录」，持有 resource:* create 的人可以往任意目录里建表。
+	// 它挂在目录而非数据表上，也是因为数据表被创建之前并不存在，没有自己的对象可判。
+	OPERATION_TYPE_RESOURCE_MANAGE = "resource_manage"
+
 	// 更新资源名称的topic
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
 )

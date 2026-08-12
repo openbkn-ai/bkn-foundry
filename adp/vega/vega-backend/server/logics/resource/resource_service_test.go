@@ -1418,3 +1418,83 @@ func newS2STestService(t *testing.T, internalCatalogIDs []string) (
 	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(internalCatalogIDs, nil).AnyTimes()
 	return rs, ra, ps, ums
 }
+
+// 建表与改表的判定取「旧口径 OR 目录的 resource_manage」（#801）。这里覆盖旧口径
+// 拒绝、改由目录口径放行的路径——常规路径（旧口径直接放行）由上面的用例覆盖，
+// 那时短路生效，只会发生一次判权。
+func TestResourceServiceWriteFallsBackToCatalogResourceManage(t *testing.T) {
+	t.Run("create passes on catalog resource_manage when the legacy verb refuses", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRA := vmock.NewMockResourceAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		rs := &resourceService{ra: mockRA, ps: mockPS, cs: mockCS}
+		expectResourceServiceTransaction(t, rs, true)
+
+		mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+			ID:   interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(errors.New("forbidden"))
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			ID:   "cat-1",
+		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat-1").Return(true, nil)
+		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID: "cat-1",
+			Name:      "res",
+			Category:  interfaces.ResourceCategoryTable,
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("create still refuses when neither verb allows", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		rs := &resourceService{ps: mockPS, cs: mockCS}
+
+		mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
+		legacy := errors.New("forbidden")
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(),
+			[]string{interfaces.OPERATION_TYPE_CREATE}).Return(legacy)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(),
+			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(errors.New("forbidden too"))
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID: "cat-1",
+			Name:      "res",
+			Category:  interfaces.ResourceCategoryTable,
+		})
+		// 返回旧口径的错误，保持既有报错语义。
+		assert.ErrorIs(t, err, legacy)
+	})
+
+	t.Run("internal catalog resources judge the internal catalog type", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		rs := &resourceService{ps: mockPS, cs: mockCS}
+
+		mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"cat-internal"}, nil)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+			ID:   interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(errors.New("forbidden"))
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+			ID:   "cat-internal",
+		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(errors.New("forbidden too"))
+
+		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+			CatalogID: "cat-internal",
+			Name:      "res",
+			Category:  interfaces.ResourceCategoryTable,
+		})
+		assert.Error(t, err)
+	})
+}

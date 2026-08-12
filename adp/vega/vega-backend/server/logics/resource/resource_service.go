@@ -184,13 +184,25 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	_, parentInternal := internalCatalogs[req.CatalogID]
 	authType := resourceAuthResourceType(parentInternal)
 
-	// 判断userid是否有创建数据资源的权限（策略决策）
-	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	// 建表判两条口径之一（#801）：旧的是 resource:* 的 create，它与目标目录无关，
+	// 持有者可以往任意目录建表；新的是该目录的 resource_manage。先判旧的短路，
+	// 因此常规请求仍只有一次判权。两者取或意味着这是放宽——升级后原本能建表的人照旧，
+	// 不需要影子期。旧口径随 #513 种子收敛一并去掉。
+	if err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: authType,
 		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_CREATE})
-	if err != nil {
-		return nil, err
+	}, []string{interfaces.OPERATION_TYPE_CREATE}); err != nil {
+		catalogAuthType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
+		if parentInternal {
+			catalogAuthType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+		}
+		if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: catalogAuthType,
+			ID:   req.CatalogID,
+		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err2 != nil {
+			// 返回旧口径的错误，保持既有报错语义不变。
+			return nil, err
+		}
 	}
 
 	// Get account info from context
@@ -678,12 +690,21 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
 	authType := resourceAuthResourceType(parentInternal)
-	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	// 改表同样判两条口径之一（#801），先判旧的短路。
+	if err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: authType,
 		ID:   resource.ID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		catalogAuthType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
+		if parentInternal {
+			catalogAuthType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+		}
+		if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: catalogAuthType,
+			ID:   resource.CatalogID,
+		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err2 != nil {
+			return err
+		}
 	}
 
 	buildRelevantChanged, err := rs.validateResourceUpdateScope(ctx, resource, req)
