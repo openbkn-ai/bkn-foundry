@@ -150,7 +150,8 @@ def load_tools() -> list[dict]:
             continue
         raw = json.loads(schema_file.read_text(encoding="utf-8"))
         schema = raw["input_schema"]
-        tools.append({"name": name, "meta": info, "schema": schema})
+        tools.append({"name": name, "meta": info, "schema": schema,
+                      "output": raw.get("output_schema", {})})
     tools.sort(
         key=lambda t: (
             GROUP_ORDER.index(t["meta"]["group"])
@@ -160,6 +161,16 @@ def load_tools() -> list[dict]:
         )
     )
     return tools
+
+
+def return_keys(tool: dict) -> str:
+    """返回值顶层键。
+
+    键名在各工具间并不统一（列表类有的叫 entries、有的叫 datas），模型无从推断，
+    不写出来就只能猜——首次调用因 KeyError 失败正是这么来的。
+    """
+    props = tool.get("output", {}).get("properties") or {}
+    return "{" + ", ".join(props) + "}" if props else "dict"
 
 
 def signature(tool: dict) -> str:
@@ -213,6 +224,11 @@ def render_digest(tools: list[dict]) -> str:
         "只有 stdout 会返回给你——中间结果不进上下文，因此请在脚本内完成过滤与聚合，",
         "只 print 你真正需要的内容。调用失败抛 `ToolError`。",
         "",
+        "签名末尾的 `-> {…}` 是返回值顶层键。**其中部分键可能不出现**"
+        "（如 `total_count` 在带过滤的查询里就没有），一律用 `.get()` 取，不要下标。",
+        "过滤字段必须是该对象类真实的数据属性名——先用 `get_object_types` 查"
+        "`data_properties`，不要按语义猜。",
+        "",
         "## 可用函数",
         "",
     ]
@@ -225,8 +241,9 @@ def render_digest(tools: list[dict]) -> str:
                 lines += ["```", ""]
             lines += [f"### {group}", "", "```python"]
             current = group
-        lines.append(f"{signature(tool)}")
-        lines.append(f"    # {tool['meta'].get('title', '')}")
+        sig = signature(tool)[: -len(" -> dict")]
+        lines.append(f"{sig} -> {return_keys(tool)}")
+        lines.append(f"    # {meta.get('title', '')}")
     lines += ["```", ""]
     lines += [
         "## 调用顺序",
