@@ -1,4 +1,4 @@
-﻿---
+---
 openapi: 3.0.2
 info:
   title: ConceptGroup
@@ -182,7 +182,7 @@ paths:
           in: query
         - name: validate_dependency
           deprecated: true
-          description: "[宸插簾寮僝 璇蜂娇鐢?strict_mode銆傚吋瀹逛繚鐣欙紝strict_mode 涓虹┖鏃朵細璇诲彇姝ゅ弬鏁?
+          description: "[Deprecated] Use strict_mode instead. Kept only for compatibility when strict_mode is omitted."
           schema:
             type: boolean
             default: true
@@ -580,7 +580,7 @@ components:
           type: string
         action_type:
           deprecated: true
-          description: "**[宸插簾寮僝** 绛変环浜?`action_intent`锛坅dd/modify/delete锛夈€?
+          description: "[Deprecated] Use action_intent instead."
           enum:
             - add
             - modify
@@ -604,7 +604,7 @@ components:
           description: 琛屽姩鏉′欢
         affect:
           deprecated: true
-          description: "**[宸插簾寮僝** 鍗曡褰卞搷锛涚瓑浠蜂俊鎭 `impact_contracts`銆?
+          description: "[Deprecated] Use impact_contracts instead."
           allOf:
             - $ref: "#/components/schemas/AffectDetail"
         impact_contracts:
@@ -928,7 +928,7 @@ components:
           $ref: "#/components/schemas/ViewField"
           description: 灞炴€ф槧灏勫埌鏁版嵁鏉ユ簮涓殑瀛楁鍚?
         condition_operations:
-          description: "瀛楃涓茬被鍨嬬殑灞炴€ц兘鏀寔鐨勮繃婊ゆ潯浠躲€傚瓧绗︿覆绫诲瀷鏈塻tring, text銆?
+          description: "Supported filter operations for this property type."
           type: array
           items:
             type: string

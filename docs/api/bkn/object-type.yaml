@@ -1,4 +1,4 @@
-﻿---
+---
 openapi: 3.0.2
 info:
   title: ObjectType
@@ -88,7 +88,7 @@ paths:
             schema:
               $ref: "#/components/schemas/override"
             examples:
-              妫€绱㈠璞＄被-绗竴娆¤姹?
+              妫€绱㈠璞＄被-绗竴娆¤姹?:
                 value:
                   need_total: true
                   limit: 1
@@ -105,7 +105,7 @@ paths:
                         value:
                           - pod
                           - 10
-              鍒涘缓瀵硅薄绫?
+              鍒涘缓瀵硅薄绫?:
                 value:
                   - id: pod_has_metric
                     name: pod_has_metric
@@ -581,7 +581,7 @@ paths:
                     display_key: node_name
                     IfNameModify: false
                     module_type: object_type
-              妫€绱㈠璞＄被-闈炵涓€娆?
+              妫€绱㈠璞＄被-闈炵涓€娆?:
                 value:
                   cursor: cursor-object-types-1
                   need_total: true
@@ -652,7 +652,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ObjectTypeSearchResponse"
               examples:
-                妫€绱㈠璞＄被-绗竴娆¤姹?
+                妫€绱㈠璞＄被-绗竴娆¤姹?:
                   value:
                     entries:
                       - id: pod_has_metric_test
@@ -964,7 +964,7 @@ paths:
                         module_type: object_type
                     total_count: 2
                     next_cursor: cursor-object-types-1
-                妫€绱㈠璞＄被-闈炵涓€娆?
+                妫€绱㈠璞＄被-闈炵涓€娆?:
                   value:
                     entries:
                       - id: pod_has_metric_test2

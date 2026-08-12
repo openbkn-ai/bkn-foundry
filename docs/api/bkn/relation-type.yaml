@@ -1,4 +1,4 @@
-﻿---
+---
 openapi: 3.0.2
 info:
   title: RelationType
@@ -94,7 +94,7 @@ paths:
             schema:
               $ref: "#/components/schemas/override"
             examples:
-              鍒涘缓鍏崇郴绫?
+              鍒涘缓鍏崇郴绫?:
                 value:
                   - id: service_2_pod
                     name: 鍖呭惈
@@ -130,7 +130,7 @@ paths:
                         target_property:
                           name: node_name
                     module_type: relation_type
-              妫€绱㈠叧绯荤被-绗竴娆¤姹?
+              妫€绱㈠叧绯荤被-绗竴娆¤姹?:
                 value:
                   need_total: true
                   limit: 1
@@ -147,7 +147,7 @@ paths:
                         value:
                           - pod
                           - 10
-              妫€绱㈠叧绯荤被-闈炵涓€娆?
+              妫€绱㈠叧绯荤被-闈炵涓€娆?:
                 value:
                   cursor: cursor-relation-types-1
                   need_total: true
@@ -210,7 +210,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/RelationTypeSearchResponse"
               examples:
-                妫€绱㈠叧绯荤被-绗竴娆¤姹?
+                妫€绱㈠叧绯荤被-绗竴娆¤姹?:
                   value:
                     entries:
                       - id: pod_2_node_TEST
@@ -249,7 +249,7 @@ paths:
                         module_type: relation_type
                     total_count: 2
                     next_cursor: cursor-relation-types-1
-                妫€绱㈠叧绯荤被--闈炵涓€娆¤姹?
+                妫€绱㈠叧绯荤被--闈炵涓€娆¤姹?:
                   value:
                     entries:
                       - id: service_2_pod_test
