@@ -113,7 +113,7 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 	// 错过的历史周期不会在恢复后逐次补跑。
 	nextRun := cronSchedule.Next(now)
 	if err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
-		schedule.UpdateTime, now.UnixMilli(), nextRun.UnixMilli(),
+		schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(),
 	); err != nil {
 		logger.Errorf("Advance discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
 		return

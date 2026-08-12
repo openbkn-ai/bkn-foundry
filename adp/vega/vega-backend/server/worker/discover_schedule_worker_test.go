@@ -26,9 +26,9 @@ func TestDiscoverScheduleWorkerRunDue(t *testing.T) {
 		first := dueDiscoverSchedule("schedule-1")
 		second := dueDiscoverSchedule("schedule-2")
 		dsa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.DiscoverSchedule{first, second}, nil)
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), first.ID, first.UpdateTime, gomock.Any(), gomock.Any()).Return(nil)
+		dss.EXPECT().UpdateRunMetadata(gomock.Any(), first.ID, first.UpdateTime, first.NextRun, gomock.Any(), gomock.Any()).Return(nil)
 		dss.EXPECT().ExecuteSchedule(gomock.Any(), first).Return(nil)
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, gomock.Any(), gomock.Any()).Return(nil)
+		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any()).Return(nil)
 		dss.EXPECT().ExecuteSchedule(gomock.Any(), second).Return(nil)
 
 		newTestDiscoverScheduleWorker(dsa, dss).runDue()
@@ -49,10 +49,10 @@ func TestDiscoverScheduleWorkerRunDue(t *testing.T) {
 		first := dueDiscoverSchedule("schedule-1")
 		second := dueDiscoverSchedule("schedule-2")
 		dsa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.DiscoverSchedule{first, second}, nil)
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), first.ID, first.UpdateTime, gomock.Any(), gomock.Any()).Do(func(context.Context, string, int64, int64, int64) {
+		dss.EXPECT().UpdateRunMetadata(gomock.Any(), first.ID, first.UpdateTime, first.NextRun, gomock.Any(), gomock.Any()).Do(func(context.Context, string, int64, int64, int64, int64) {
 			panic("update panic")
 		})
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, gomock.Any(), gomock.Any()).Return(nil)
+		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any()).Return(nil)
 		dss.EXPECT().ExecuteSchedule(gomock.Any(), second).Return(nil)
 
 		newTestDiscoverScheduleWorker(dsa, dss).runDue()
@@ -65,8 +65,8 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		dss := vmock.NewMockDiscoverScheduleService(ctrl)
 		schedule := dueDiscoverSchedule("schedule-1")
 		gomock.InOrder(
-			dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, _ string, _ int64, lastRun, nextRun int64) error {
+			dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, _, _ int64, lastRun, nextRun int64) error {
 					require.WithinDuration(t, time.Now(), time.UnixMilli(lastRun), time.Second)
 					require.Greater(t, nextRun, lastRun)
 					return nil
@@ -82,7 +82,7 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dss := vmock.NewMockDiscoverScheduleService(ctrl)
 		schedule := dueDiscoverSchedule("schedule-1")
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, gomock.Any(), gomock.Any()).Return(errors.New("db down"))
+		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).Return(errors.New("db down"))
 
 		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
 	})

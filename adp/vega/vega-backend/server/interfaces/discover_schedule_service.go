@@ -27,7 +27,7 @@ type DiscoverScheduleService interface {
 	// Disable disables a discover schedule.
 	Disable(ctx context.Context, id string) error
 	// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
-	UpdateRunMetadata(ctx context.Context, id string, scheduleUpdateTime, lastRun, nextRun int64) error
+	UpdateRunMetadata(ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64) error
 	// ExecuteSchedule executes a discover schedule.
 	ExecuteSchedule(ctx context.Context, schedule *DiscoverSchedule) error
 }

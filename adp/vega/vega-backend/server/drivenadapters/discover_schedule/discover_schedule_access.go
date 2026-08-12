@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	libdb "github.com/openbkn-ai/bkn-comm-go/db"
@@ -104,29 +103,19 @@ func NewDiscoverScheduleAccess(appSetting *common.AppSetting) interfaces.Discove
 	return dsAccess
 }
 
-func (dsa *discoverScheduleAccess) Enable(ctx context.Context, id string) error {
+func (dsa *discoverScheduleAccess) Enable(ctx context.Context, id string, nextRun int64) error {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "Enable discover_schedule")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("schedule_id").String(id))
+	span.SetAttributes(
+		attr.Key("schedule_id").String(id),
+		attr.Key("next_run").Int64(nextRun),
+	)
 
-	// Get schedule to calculate next run time
-	schedule, err := dsa.GetByID(ctx, id)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to get discover schedule", err)
-		return err
-	}
-
-	// Calculate next run time from now
-	nextRun, err := calculateNextRun(schedule.CronExpr, time.Now())
-	if err != nil {
-		otellog.LogError(ctx, "Failed to calculate next run time", err)
-		return fmt.Errorf("invalid cron expression: %w", err)
-	}
 	// Build update SQL
 	sqlStr, vals, err := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
 		Set("f_enabled", 1).
-		Set("f_next_run", nextRun.UnixMilli()).
+		Set("f_next_run", nextRun).
 		Where(sq.Eq{"f_id": id}).
 		ToSql()
 	if err != nil {
@@ -144,7 +133,7 @@ func (dsa *discoverScheduleAccess) Enable(ctx context.Context, id string) error 
 	}
 
 	span.SetStatus(codes.Ok, "")
-	logger.Infof("Enabled discover schedule: id=%s, next_run=%d", id, nextRun.UnixMilli())
+	logger.Infof("Enabled discover schedule: id=%s, next_run=%d", id, nextRun)
 	return nil
 }
 
@@ -192,14 +181,6 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 	span.SetAttributes(
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
-
-	// Calculate next run time
-	nextRun, err := calculateNextRun(schedule.CronExpr, time.Now())
-	if err != nil {
-		otellog.LogError(ctx, "Failed to calculate next run time", err)
-		return fmt.Errorf("invalid cron expression: %w", err)
-	}
-	schedule.NextRun = nextRun.UnixMilli()
 
 	sqlStr, vals, err := sq.Insert(DISCOVER_SCHEDULE_TABLE_NAME).
 		Columns(
@@ -389,14 +370,6 @@ func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfa
 
 	span.SetAttributes(attr.Key("schedule_id").String(schedule.ID))
 
-	// Recalculate next run time if cron expression changed
-	nextRun, err := calculateNextRun(schedule.CronExpr, time.Now())
-	if err != nil {
-		otellog.LogError(ctx, "Failed to calculate next run time", err)
-		return fmt.Errorf("invalid cron expression: %w", err)
-	}
-	schedule.NextRun = nextRun.UnixMilli()
-
 	// Build update SQL - only update non-zero value fields
 	updateBuilder := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
 		Set("f_name", schedule.Name).
@@ -555,7 +528,7 @@ func (dsa *discoverScheduleAccess) ListDue(ctx context.Context, now int64) ([]*i
 
 // UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
 func (dsa *discoverScheduleAccess) UpdateRunMetadata(
-	ctx context.Context, id string, scheduleUpdateTime, lastRun, nextRun int64,
+	ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64,
 ) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update run metadata for discover_schedule")
 	defer span.End()
@@ -563,6 +536,7 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(
 	span.SetAttributes(
 		attr.Key("schedule_id").String(id),
 		attr.Key("schedule_update_time").Int64(scheduleUpdateTime),
+		attr.Key("schedule_next_run").Int64(scheduleNextRun),
 		attr.Key("last_run").Int64(lastRun),
 		attr.Key("next_run").Int64(nextRun),
 	)
@@ -572,6 +546,8 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(
 		Set("f_next_run", nextRun).
 		Where(sq.Eq{"f_id": id}).
 		Where(sq.Eq{"f_update_time": scheduleUpdateTime}).
+		Where(sq.Eq{"f_next_run": scheduleNextRun}).
+		Where(sq.Eq{"f_enabled": true}).
 		ToSql()
 	if err != nil {
 		otellog.LogError(ctx, "Failed to build update run metadata discover_schedule sql", err)
@@ -596,26 +572,4 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(
 
 	span.SetStatus(codes.Ok, "")
 	return nil
-}
-
-// calculateNextRun calculates the next run time based on cron expression.
-// calculateNextRun 计算给定的cron表达式从指定时间开始的下一次运行时间
-// 参数:
-//
-//	cronExpr: cron表达式字符串，用于定义定时任务的执行规则
-//	from: 起始时间，从此时间点开始计算下一次执行时间
-//
-// 返回值:
-//
-//	time.Time: 计算得到的下一次运行时间
-//	error: 如果cron表达式无效，则返回错误信息
-func calculateNextRun(cronExpr string, from time.Time) (time.Time, error) {
-	// Parse cron expression
-	schedule, err := common.ParseHourlyCronExpr(cronExpr)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid cron expression: %w", err)
-	}
-	// Get next run time
-	nextRun := schedule.Next(from)
-	return nextRun, nil
 }
