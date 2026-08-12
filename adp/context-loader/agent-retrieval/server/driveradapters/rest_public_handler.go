@@ -108,18 +108,14 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 		engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
 	}
 
-	// PTC 工具包：把工具面渲染成「给模型看的函数签名清单 + 沙箱内的 Python
-	// 实现」。客户端只给模型一个 run_code，模型写脚本调这些函数。
-	// 由服务端渲染而不是客户端从 tools/list 自己拼：只有这里知道哪些工具真正
-	// 注册了，也只有这里的 schema 不含运行时才追加的 bkn_context。
-	engine.GET("/ptc/toolkit", r.handlePTCToolkit)
-
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
-	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），其余走标准 MCP Streamable HTTP。
+	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），
+	// GET /mcp/toolkit 返回同一工具面的代码模式形态，其余走标准 MCP Streamable HTTP。
 	engine.Any("/mcp/*path", r.handleMCP)
 }
 
-// handlePTCToolkit 返回 PTC 工具包。内容随工具面变化，客户端按 version 缓存。
+// handlePTCToolkit 返回 PTC 工具包（GET …/mcp/toolkit）。
+// 内容随工具面变化，客户端按 version 缓存。
 func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
 	toolkit, err := mcp.BuildPTCToolkit(publicEndpointURL(c.Request, "/mcp"), r.ServicePort)
 	if err != nil {
@@ -131,6 +127,13 @@ func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
 
 // handleMCP 在 MCP catch-all 路由内分流：GET …/mcp/info 返回自描述文档，其余交给 MCP Server。
 func (r *restPublicHandler) handleMCP(c *gin.Context) {
+	// /toolkit 与 /info 是同一份工具面的两种投影：/info 给要接 MCP 的客户端，
+	// /toolkit 给把工具面收进沙箱的代码模式客户端。放在同一前缀下，是因为两者
+	// 的内容都随工具面变化，分开会让人以为它们可能不一致。
+	if c.Request.Method == http.MethodGet && c.Param("path") == "/toolkit" {
+		r.handlePTCToolkit(c)
+		return
+	}
 	if c.Request.Method == http.MethodGet && c.Param("path") == "/info" {
 		info, err := mcp.BuildMCPInfo(mcpEndpointURL(c.Request))
 		if err != nil {

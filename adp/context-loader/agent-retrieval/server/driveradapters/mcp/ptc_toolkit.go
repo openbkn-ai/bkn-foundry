@@ -270,19 +270,40 @@ func renderPTCDigest(tools []MCPToolInfo) string {
 		b.WriteString("```\n")
 	}
 	b.WriteString(`
-## 调用顺序
+## 一段脚本解决整个问题
 
-` + "`kn_id`、`ot_id`" + ` 不能凭空写，必须先查：
+每发起一次 run_code 就是一次往返。先跑一次看结构、再跑一次取数、再跑一次聚合，
+与逐个调用工具没有区别——探查与求解要用变量串在同一段脚本里：
 
-` + "```text" + `
-list_knowledge_networks  → kn_id
-get_kn_detail(kn_id)     → object_types 概览
-get_object_types(...)    → 属性定义与可用算子
+` + "```python" + `
+kn = "<当前知识网络 id>"
+
+# 1) 先拿结构，结果直接喂给下一步，不要单独跑一轮回来看
+detail = get_kn_detail(kn_id=kn)
+ot = next(o for o in detail.get("object_types", []) if "进球" in o.get("name", ""))
+fields = [p.get("name") for p in
+          get_object_types(kn_id=kn, ids=[ot["id"]])["object_types"][0].get("data_properties", [])]
+
+# 2) 用刚拿到的真实字段名过滤，不要按语义猜
+team_field = next(f for f in fields if "team" in f)
+rows = query_object_instance(kn_id=kn, ot_id=ot["id"], limit=1000)
+
+# 3) 聚合也在这里做完，只 print 结论
+import collections
+top = collections.Counter(r.get(team_field) for r in rows.get("datas", [])).most_common(3)
+print(top)
 ` + "```" + `
+
+沙箱是完整的 Python 3.11：pandas、numpy、scipy、requests、httpx、sqlite3 与全部
+标准库都在，分组、连接、统计交给它们，不要为此多跑一轮。
+
+不确定的地方用代码兜住而不是回到对话：取值一律 ` + "`.get()`" + `，可能失败的分支用
+try/except 包住并 print 出关键中间信息，让一次执行既拿到答案、又带回排查线索。
 
 ## 参数写不准时
 
-每个函数的完整 schema 在 docstring 里，脚本内自查，不要猜：
+完整 schema 在每个函数的 docstring 里，**在同一段脚本里** ` + "`help(fn)`" + ` 自查后接着往下写，
+不要为了看文档单独跑一轮：
 
 ` + "```python" + `
 help(query_object_instance)
@@ -293,7 +314,7 @@ help(query_object_instance)
 
 ## 错误处理
 
-调用失败抛 ` + "`ToolError`" + `，message 为服务端原文。可在脚本内捕获并修正参数重试，
+调用失败抛 ` + "`ToolError`" + `，message 为服务端原文。在脚本内捕获、修正参数、当场重试，
 不必回到对话轮次。
 `)
 	return b.String()
