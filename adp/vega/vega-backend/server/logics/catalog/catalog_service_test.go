@@ -1219,6 +1219,27 @@ func TestCatalogServiceGetDeletionImpactDependencyFailure(t *testing.T) {
 	assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to inspect catalog dependencies")
 }
 
+func TestCatalogServiceGetDeletionImpactReturnsNotFoundWhenCatalogDisappears(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+	ps := mock_interfaces.NewMockPermissionService(ctrl)
+
+	ca.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		[]string{"catalog-1"}, gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{"catalog-1": {ResourceID: "catalog-1"}}, nil)
+	ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(nil, nil)
+
+	cs := &catalogService{ca: ca, ps: ps}
+	impact, err := cs.GetDeletionImpact(context.Background(), "catalog-1")
+
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Nil(t, impact)
+	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_NotFound, httpErr.BaseError.ErrorCode)
+}
+
 func expectCatalogDeletionImpact(
 	ctrl *gomock.Controller,
 	ca *mock_interfaces.MockCatalogAccess,
@@ -1270,6 +1291,26 @@ func expectCatalogDeletionImpact(
 }
 
 func TestCatalogServiceDeleteByID(t *testing.T) {
+	t.Run("returns not found when catalog disappears after authorization", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+
+		ca.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
+		ca.EXPECT().GetByID(gomock.Any(), "c1").Return(nil, nil)
+
+		cs := &catalogService{ca: ca, ps: ps}
+		err := cs.DeleteByID(context.Background(), "c1")
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_NotFound, httpErr.BaseError.ErrorCode)
+	})
+
 	t.Run("commits database deletion and tolerates permission cleanup failures", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := mock_interfaces.NewMockCatalogAccess(ctrl)

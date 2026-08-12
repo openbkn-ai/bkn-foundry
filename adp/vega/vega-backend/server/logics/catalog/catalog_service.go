@@ -868,6 +868,10 @@ func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*in
 	}
 	impact, err := cs.getDeletionImpact(ctx, id)
 	if err != nil {
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return nil, httpErr
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 			WithErrorDetails("failed to inspect catalog dependencies")
@@ -882,6 +886,10 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	catalog, err := cs.ca.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if catalog == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound).
+			WithErrorDetails(fmt.Sprintf("id %s not found", id))
 	}
 	resources, err := cs.ra.GetByCatalogID(ctx, id)
 	if err != nil {
@@ -1019,6 +1027,10 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	impact, err := cs.getDeletionImpact(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog deletion impact failed")
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return httpErr
+		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 			WithErrorDetails("failed to inspect catalog dependencies")
