@@ -1424,8 +1424,6 @@ func TestCatalogServiceGetByID(t *testing.T) {
 
 // ===== DeleteByIDs empty =====
 
-// 删 catalog 应级联清掉其下资源的构建任务 + OpenSearch 索引，不留孤儿。
-// 删 catalog 时其下有运行中任务 → 级联拒绝，catalog/资源都不删。
 // ===== Internal catalog（系统内部目录） =====
 
 func newS2SCatalogService(t *testing.T) (

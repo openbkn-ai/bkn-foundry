@@ -297,8 +297,8 @@ paths:
       summary: 删除 catalog
       description: |
         一次只允许删除一个 catalog；路径参数包含逗号时返回 400。删除会同步移除该 catalog 下的资源、
-        构建索引、探查计划与健康检查计划，并删除 `t_entity_extension` 中 `f_entity_id` 等于被删
-        catalog / resource `f_id` 的行。三类任务记录均保留：尚未开始的构建、探查和语义理解任务
+        探查计划与健康检查计划，并删除 `t_entity_extension` 中 `f_entity_id` 等于被删 catalog / resource
+        `f_id` 的行。构建索引不在此流程中清理。三类任务记录均保留：尚未开始的构建、探查和语义理解任务
         标记为 `cancelled`；已有终态任务保持原状态。存在 `running` 任务时拒绝删除，
         构建任务处于 `stopping` 时也会拒绝删除。
 

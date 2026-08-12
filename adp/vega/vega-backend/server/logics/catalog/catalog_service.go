@@ -64,7 +64,7 @@ type catalogService struct {
 	ra   interfaces.ResourceAccess
 	ps   interfaces.PermissionService
 	ums  interfaces.UserMgmtService
-	bta  interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
+	bta  interfaces.BuildTaskAccess
 	dsa  interfaces.DiscoverScheduleAccess
 	dta  interfaces.DiscoverTaskAccess
 	hcss interfaces.CatalogHealthCheckScheduleService
