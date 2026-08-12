@@ -35,6 +35,10 @@ get_logic_properties_values(kn_id: str, ot_id: str, query: str, _instance_identi
     # 逻辑属性计算
 run_sql(sql: str, response_format: str = 'json', query_timeout: int = None) -> {columns, entries, total_count, warnings}
     # SQL 查询
+    #   表名必须写成 {{.<resource_id>}} 占位符，id 取自 search_schema 的
+    #   data_source.id 或 list_resources 的 resource_id；不可原样写
+    #   'resource_id' 字面量。列名用物理列名。仅单条 SELECT，无 CTE/UNION。
+    #   run_sql(sql="SELECT team_name, COUNT(*) c FROM {{.d8sl8edr563s73afv2kg}} GROUP BY team_name")
 query_metric(kn_id: str, metric_id: str, response_format: str = 'json', time: dict = None, condition: dict = None, analysis_dimensions: list = None, order_by: list = None, having: dict = None, limit: int = None, fill_null: bool = None) -> {kn_id, metric_id, datas, overall_ms}
     # 指标查询
 ```
