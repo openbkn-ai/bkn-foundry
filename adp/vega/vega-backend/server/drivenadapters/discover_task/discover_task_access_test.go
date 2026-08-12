@@ -169,11 +169,11 @@ func TestDiscoverTaskAccessUpdateProgress(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec("UPDATE t_discover_task SET f_progress = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?").
-			WithArgs(30, int64(123), "task-1", interfaces.DiscoverTaskStatusCancelled).
+		mock.ExpectExec("UPDATE t_discover_task SET f_progress = ? WHERE f_id = ? AND f_status <> ?").
+			WithArgs(30, "task-1", interfaces.DiscoverTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateProgress(context.Background(), "task-1", 30, 123))
+		require.NoError(t, access.UpdateProgress(context.Background(), "task-1", 30))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

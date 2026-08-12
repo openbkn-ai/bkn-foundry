@@ -447,13 +447,12 @@ func (dta *discoverTaskAccess) MarkCancelled(ctx context.Context, id, message st
 }
 
 // UpdateProgress updates a DiscoverTask's progress.
-func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int, updateTime int64) error {
+func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update discover_task progress")
 	defer span.End()
 
 	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
 		Set("f_progress", progress).
-		Set("f_update_time", updateTime).
 		Where(sq.Eq{"f_id": id}).
 		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()

@@ -146,17 +146,17 @@ func (mr *MockDiscoverTaskAccessMockRecorder) MarkCancelledByCatalogID(ctx, tx, 
 }
 
 // UpdateProgress mocks base method.
-func (m *MockDiscoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int, updateTime int64) error {
+func (m *MockDiscoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateProgress", ctx, id, progress, updateTime)
+	ret := m.ctrl.Call(m, "UpdateProgress", ctx, id, progress)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateProgress indicates an expected call of UpdateProgress.
-func (mr *MockDiscoverTaskAccessMockRecorder) UpdateProgress(ctx, id, progress, updateTime any) *gomock.Call {
+func (mr *MockDiscoverTaskAccessMockRecorder) UpdateProgress(ctx, id, progress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProgress", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).UpdateProgress), ctx, id, progress, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProgress", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).UpdateProgress), ctx, id, progress)
 }
 
 // UpdateResult mocks base method.
