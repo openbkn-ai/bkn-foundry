@@ -1,8 +1,8 @@
 <!-- 由 gen_sandbox_tools.py 生成，请勿手工编辑 -->
 
-工作目录已预置 `_tools.py`，直接 import 即可调用 BKN 能力。
+下列 BKN 能力已在作用域内，直接调用即可，无需 import。
 只有 stdout 会返回给你——中间结果不进上下文，因此请在脚本内完成过滤与聚合，
-只 print 你真正需要的内容。
+只 print 你真正需要的内容。调用失败抛 `ToolError`。
 
 ## 可用函数
 

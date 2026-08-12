@@ -1,102 +1,91 @@
 """BKN 能力的沙箱侧 stub —— 由 gen_sandbox_tools.py 生成，请勿手工编辑。
 
-每个函数对应一个 MCP 工具。MCP 会话在模块级复用：一次执行内的多次调用共用
-同一个 session，initialize 握手只发生一次。
+每个函数对应一个 MCP 工具。只用标准库：MCP streamable HTTP 就是 JSON-RPC over
+POST，urllib 足够，沙箱镜像无需预装任何依赖，也就没有 SDK 版本漂移的问题。
+
+凭据与会话上下文经 _configure(event) 注入，由 agent 侧在发起执行时下发。
 """
 
-from __future__ import annotations
-
-import asyncio
-import atexit
-import contextlib
 import json
-import os
+import urllib.request
 
-from mcp import ClientSession
-from mcp.client.streamable_http import (
-    create_mcp_http_client,
-    streamable_http_client,
-)
+_CFG = {}
+_SESSION = {}
 
-_MCP_URL = os.environ["BKN_MCP_URL"]
-_TOKEN = os.environ["BKN_MCP_TOKEN"]
-
-_loop: asyncio.AbstractEventLoop | None = None
-_stack: contextlib.AsyncExitStack | None = None
-_session: ClientSession | None = None
+# 显式不走代理：MCP 端点是集群内地址，任何继承来的代理配置都只会让请求发不出去。
+# 且 urllib 一旦认定要走代理就改发 absolute-form 请求行（POST http://host/path），
+# nginx 对此直接 400 —— 在装了系统代理的开发机上跑本地校验时必踩。
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 class ToolError(RuntimeError):
     """工具调用失败。message 为服务端原文，供模型据此修正参数后重试。"""
 
 
-def _get_loop() -> asyncio.AbstractEventLoop:
-    global _loop
-    if _loop is None:
-        _loop = asyncio.new_event_loop()
-        atexit.register(_shutdown)
-    return _loop
+def _configure(event):
+    """由执行入口调用，注入 MCP 端点、凭据与生命周期上下文。"""
+    _CFG.update(event)
+    _SESSION.clear()
 
 
-async def _get_session() -> ClientSession:
-    global _stack, _session
-    if _session is None:
-        _stack = contextlib.AsyncExitStack()
-        http_client = await _stack.enter_async_context(
-            create_mcp_http_client(
-                headers={"Authorization": f"Bearer {_TOKEN}"}
-            )
-        )
-        read, write = await _stack.enter_async_context(
-            streamable_http_client(_MCP_URL, http_client=http_client)
-        )
-        _session = await _stack.enter_async_context(ClientSession(read, write))
-        await _session.initialize()
-    return _session
-
-
-def _shutdown() -> None:
-    global _stack, _session
-    if _stack is not None and _loop is not None:
-        with contextlib.suppress(Exception):
-            _loop.run_until_complete(_stack.aclose())
-    _stack = _session = None
-
-
-async def _call_async(tool: str, args: dict):
-    session = await _get_session()
-    return await session.call_tool(tool, args)
-
-
-def _business_context() -> dict | None:
-    """会话生命周期上下文。
-
-    服务端要求业务类工具调用携带 bkn_context（conversation_id + interaction_id），
-    否则返回 conversation_required / interaction_required。该上下文由 agent 侧在
-    发起本次执行时透传进沙箱环境，模型无需感知，也不出现在函数签名里。
-    """
-    conversation = os.environ.get("BKN_CONVERSATION_ID", "").strip()
-    interaction = os.environ.get("BKN_INTERACTION_ID", "").strip()
-    if not conversation or not interaction:
-        return None
-    return {"conversation_id": conversation, "interaction_id": interaction}
-
-
-def _call(tool: str, args: dict):
-    """调用 MCP 工具。None 值不下发，交由服务端使用 schema 默认值。"""
-    payload = {k: v for k, v in args.items() if v is not None}
-    context = _business_context()
-    if context is not None:
-        payload["bkn_context"] = context
-    result = _get_loop().run_until_complete(_call_async(tool, payload))
-
-    text = "".join(
-        block.text
-        for block in result.content
-        if getattr(block, "type", "") == "text"
+def _rpc(method, params=None, notify=False):
+    body = {"jsonrpc": "2.0", "method": method}
+    if params is not None:
+        body["params"] = params
+    if not notify:
+        body["id"] = _SESSION.get("seq", 0) + 1
+        _SESSION["seq"] = body["id"]
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "Authorization": "Bearer " + _CFG["token"],
+    }
+    if _SESSION.get("id"):
+        headers["Mcp-Session-Id"] = _SESSION["id"]
+    # 端点必须带尾斜杠：缺斜杠时服务端 307 跳转，而 urllib 不对 POST 跟随重定向。
+    request = urllib.request.Request(
+        _CFG["mcp"], data=json.dumps(body).encode(),
+        headers=headers, method="POST",
     )
-    if result.is_error:
-        raise ToolError(f"{tool}: {text}")
+    timeout = _CFG.get("timeout", 120)
+    response = _OPENER.open(request, timeout=timeout)
+    if not _SESSION.get("id"):
+        _SESSION["id"] = response.headers.get("Mcp-Session-Id")
+    raw = response.read().decode()
+    if not raw.strip():
+        return None
+    for line in raw.splitlines():
+        if line.startswith("data: "):
+            return json.loads(line[6:])
+    return json.loads(raw)
+
+
+def _ensure_session():
+    """MCP 会话在模块级复用，一次执行内 initialize 只发生一次。"""
+    if _SESSION.get("ready"):
+        return
+    _rpc("initialize", {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "bkn-sandbox", "version": "1"},
+    })
+    _rpc("notifications/initialized", {}, notify=True)
+    _SESSION["ready"] = True
+
+
+def _call(tool, args):
+    """调用 MCP 工具。None 值不下发，交由服务端使用 schema 默认值。"""
+    _ensure_session()
+    payload = {k: v for k, v in args.items() if v is not None}
+    # 业务类工具受会话守卫约束，缺 bkn_context 会被拒（conversation_required）。
+    # 该上下文由 agent 透传，模型无需感知，故不出现在函数签名里。
+    if _CFG.get("bkn"):
+        payload["bkn_context"] = _CFG["bkn"]
+
+    result = _rpc("tools/call", {"name": tool, "arguments": payload})["result"]
+    text = "".join(c["text"] for c in result["content"] if c["type"] == "text")
+    if result.get("isError") or result.get("is_error"):
+        raise ToolError(tool + ": " + text)
     try:
         return json.loads(text)
     except json.JSONDecodeError:
