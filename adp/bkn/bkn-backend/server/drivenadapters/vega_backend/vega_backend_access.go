@@ -234,7 +234,7 @@ func (vba *vegaBackendAccess) CreateResource(ctx context.Context, req *interface
 	if respCode != http.StatusCreated && respCode != http.StatusOK {
 		err := fmt.Errorf("CreateResource returned HTTP %d", respCode)
 		common.LogSafeError(ctx, "CreateResource failed", err)
-		logger.Debugf("CreateResource response: %s", common.SafeTextSummary("response", string(respData)))
+		logger.Errorf("CreateResource failed: response_code=%d, response=%s", respCode, string(respData))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 201 or 200")
 		return err
 	}
