@@ -105,7 +105,10 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 
 	cronSchedule, err := common.ParseHourlyCronExpr(schedule.CronExpr)
 	if err != nil {
-		logger.Errorf("Parse discover schedule cron expression failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
+		logger.Errorf("Parse discover schedule cron expression failed; disabling schedule: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
+		if disableErr := dsw.dss.Disable(ctx, schedule.ID); disableErr != nil {
+			logger.Errorf("Disable discover schedule with invalid cron expression failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, disableErr)
+		}
 		return
 	}
 

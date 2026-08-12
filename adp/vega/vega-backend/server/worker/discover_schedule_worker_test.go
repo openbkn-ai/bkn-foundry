@@ -97,6 +97,16 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
 	})
 
+	t.Run("disables legacy schedule with sub-hour cron expression", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dss := vmock.NewMockDiscoverScheduleService(ctrl)
+		schedule := dueDiscoverSchedule("schedule-1")
+		schedule.CronExpr = "*/30 * * * *"
+		dss.EXPECT().Disable(gomock.Any(), schedule.ID).Return(nil)
+
+		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
+	})
+
 	t.Run("skips disabled, not due, and not started schedules", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dsw := newTestDiscoverScheduleWorker(

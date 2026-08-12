@@ -172,7 +172,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	}
 
 	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 pending（界面"排队中"）。
-	// 入队失败仅记日志，任务保持 pending，可由 /start 重新触发
+	// 入队失败仅记日志，任务保持 pending，由 Build Task reconciler 自动重新入队。
 	if err := bts.enqueueTask(ctx, buildTask, false); err != nil {
 		otellog.LogError(ctx, "Enqueue build task failed", err)
 	}
