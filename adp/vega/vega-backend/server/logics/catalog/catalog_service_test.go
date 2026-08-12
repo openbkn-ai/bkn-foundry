@@ -1237,6 +1237,8 @@ func expectCatalogDeletionImpact(
 	resources := []*interfaces.Resource(nil)
 	if resourceBlocked {
 		resources = []*interfaces.Resource{{ID: "protected", Category: interfaces.ResourceCategoryLogicView}}
+	} else if includeBuildCascade {
+		resources = []*interfaces.Resource{{ID: "r1"}, {ID: "r2"}}
 	}
 	ra.EXPECT().GetByCatalogID(gomock.Any(), "c1").Return(resources, nil)
 	if catalogType == interfaces.CatalogTypePhysical {
@@ -1309,6 +1311,7 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		ra.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		ca.EXPECT().DeleteByID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		sqlMock.ExpectCommit()
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1", "r2"}).Return(nil)
 		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
 
 		cs := &catalogService{db: db, ca: ca, ps: ps, ra: ra, bta: bta, lim: lim, dsa: dsa, dta: dta, suta: suta, hcss: hcss}

@@ -31,6 +31,7 @@ type CatalogDeletionImpact struct {
 	CatalogHealthCheckSchedules int64                     `json:"catalog_health_check_schedules"`
 	Resources                   int                       `json:"resources"`
 	ProtectedResources          int                       `json:"protected_resources"`
+	ResourceIDs                 []string                  `json:"-"`
 }
 
 const (

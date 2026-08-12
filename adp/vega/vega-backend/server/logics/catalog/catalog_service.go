@@ -963,7 +963,9 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	}
 
 	protectedResources := 0
+	resourceIDs := make([]string, 0, len(resources))
 	for _, resource := range resources {
+		resourceIDs = append(resourceIDs, resource.ID)
 		if resource.Category == interfaces.ResourceCategoryDataset || resource.Category == interfaces.ResourceCategoryLogicView {
 			protectedResources++
 		}
@@ -1003,6 +1005,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 		CatalogHealthCheckSchedules: healthCheckScheduleTotal,
 		Resources:                   len(resources),
 		ProtectedResources:          protectedResources,
+		ResourceIDs:                 resourceIDs,
 	}, nil
 }
 
@@ -1099,12 +1102,19 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 			WithErrorDetails("failed to delete catalog")
 	}
 
-	//  清除资源策略，按内部/普通目录分组删除对应类型的策略
-	resourceType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
+	// 数据库提交后清理权限策略。Catalog 类型决定其下 Resource 的权限类型。
+	catalogPermissionType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
+	resourcePermissionType := interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 	if _, internal := internalSet[id]; internal {
-		resourceType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+		catalogPermissionType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+		resourcePermissionType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
 	}
-	if err = cs.ps.DeleteResources(ctx, resourceType, []string{id}); err != nil {
+	if len(impact.ResourceIDs) > 0 {
+		if err = cs.ps.DeleteResources(ctx, resourcePermissionType, impact.ResourceIDs); err != nil {
+			return err
+		}
+	}
+	if err = cs.ps.DeleteResources(ctx, catalogPermissionType, []string{id}); err != nil {
 		return err
 	}
 
