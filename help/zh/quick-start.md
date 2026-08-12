@@ -310,7 +310,7 @@ Trace 返回按时间排列的 Span 树，展示：
 CSV 仍需要一个数据库作为落地存储：先把 CSV 装进库，再注册 Catalog 建网。
 
 ```bash
-# 1. 用标准 mysql 客户端把 CSV 装进目标库（示例见 examples/02-csv-to-kn）
+# 1. 用标准 mysql 客户端把 CSV 装进目标库
 mysql -h db.example.com -u root -p supply_chain < load_csv.sql
 
 # 2. 注册 Catalog 并发现表（同上一场景）
@@ -328,8 +328,7 @@ openbkn bkn search <kn_id> "库存为零"
 ```
 
 > `openbkn bkn create-from-csv <catalog_id> --files ...` 仍在 CLI 中，但它依赖已下线的
-> dataflow 导入通道，当前部署上不可用；请按上面的三步走。完整可运行版本见
-> `examples/02-csv-to-kn`。
+> dataflow 导入通道，当前部署上不可用；请按上面的三步走。
 
 ---
 

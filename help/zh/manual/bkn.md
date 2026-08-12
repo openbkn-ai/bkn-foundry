@@ -192,7 +192,7 @@ Catalog 的注册与表发现见[数据接入](datasource.md)。`--build` 会为
 构建任务；索引配置归属于资源，细节见 [VEGA 引擎](vega.md)。
 
 `create-from-csv` 仍在 CLI 中，但其 CSV 入库依赖已下线的 dataflow 通道，当前部署上不可用——
-请先用 `mysql` 客户端把文件装进库，再走 `create-from-catalog`（参见 `examples/02-csv-to-kn`）。
+请先用 `mysql` 客户端把文件装进库，再走 `create-from-catalog`。
 
 ---
 
