@@ -34,7 +34,6 @@ import (
 	"vega-backend/logics/catalog_health_check_schedule"
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/extensions"
-	"vega-backend/logics/local_index"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/user_mgmt"
 )
@@ -69,7 +68,6 @@ type catalogService struct {
 	dsa  interfaces.DiscoverScheduleAccess
 	dta  interfaces.DiscoverTaskAccess
 	hcss interfaces.CatalogHealthCheckScheduleService
-	lim  interfaces.LocalIndexManager
 	suta interfaces.SemanticUnderstandingTaskAccess
 }
 
@@ -87,7 +85,6 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 
 		cf := factory.GetFactory(appSetting)
 		hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
-		lim := local_index.NewLocalIndexManager(appSetting)
 		ps := permission.NewPermissionService(appSetting)
 		ums := user_mgmt.NewUserMgmtService(appSetting)
 		cService = &catalogService{
@@ -101,7 +98,6 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 			dsa:  logics.DSA,
 			dta:  logics.DTA,
 			hcss: hcss,
-			lim:  lim,
 			ps:   ps,
 			ra:   logics.RA,
 			suta: logics.SUTA,
@@ -1032,8 +1028,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 			WithErrorDetails(impact)
 	}
 
-	// Task rows are audit records and must be retained. Indexes are external
-	// artifacts and are removed best-effort before the database transaction.
+	// Task rows are audit records and must be retained.
 	buildTasks, _, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{CatalogID: id})
 	if err != nil {
 		span.SetStatus(codes.Error, "List build tasks failed")
@@ -1041,13 +1036,6 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 			WithErrorDetails("failed to inspect catalog build tasks")
 	}
-	for _, task := range buildTasks {
-		indexName := interfaces.BuildIndexName(task.ResourceID, task.ID)
-		if err := cs.lim.DeleteIndex(ctx, indexName); err != nil {
-			logger.Errorf("delete catalog: drop index %s failed: %v", indexName, err)
-		}
-	}
-
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
@@ -1102,7 +1090,8 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 			WithErrorDetails("failed to delete catalog")
 	}
 
-	// 数据库提交后清理权限策略。Catalog 类型决定其下 Resource 的权限类型。
+	// The database is the source of truth. Permission cleanup is best-effort
+	// after commit and must not turn a completed deletion into an API error.
 	catalogPermissionType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
 	resourcePermissionType := interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 	if _, internal := internalSet[id]; internal {
@@ -1110,12 +1099,12 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 		resourcePermissionType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
 	}
 	if len(impact.ResourceIDs) > 0 {
-		if err = cs.ps.DeleteResources(ctx, resourcePermissionType, impact.ResourceIDs); err != nil {
-			return err
+		if cleanupErr := cs.ps.DeleteResources(ctx, resourcePermissionType, impact.ResourceIDs); cleanupErr != nil {
+			logger.Errorf("delete catalog %s: delete resource permissions failed: %v", id, cleanupErr)
 		}
 	}
-	if err = cs.ps.DeleteResources(ctx, catalogPermissionType, []string{id}); err != nil {
-		return err
+	if cleanupErr := cs.ps.DeleteResources(ctx, catalogPermissionType, []string{id}); cleanupErr != nil {
+		logger.Errorf("delete catalog %s: delete catalog permission failed: %v", id, cleanupErr)
 	}
 
 	span.SetStatus(codes.Ok, "")

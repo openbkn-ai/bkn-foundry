@@ -1270,14 +1270,13 @@ func expectCatalogDeletionImpact(
 }
 
 func TestCatalogServiceDeleteByID(t *testing.T) {
-	t.Run("retains tasks, cancels queued tasks, and deletes schedules", func(t *testing.T) {
+	t.Run("commits database deletion and tolerates permission cleanup failures", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
 		ps := mock_interfaces.NewMockPermissionService(ctrl)
 		ra := mock_interfaces.NewMockResourceAccess(ctrl)
 		hcss := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		dsa := mock_interfaces.NewMockDiscoverScheduleAccess(ctrl)
 		dta := mock_interfaces.NewMockDiscoverTaskAccess(ctrl)
 		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
@@ -1295,8 +1294,6 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
 		expectCatalogDeletionImpact(ctrl, ca, ra, bta, dsa, dta, suta, hcss,
 			interfaces.CatalogTypePhysical, buildTasks, false, true)
-		lim.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "completed")).Return(nil)
-		lim.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r2", "pending")).Return(nil)
 		sqlMock.ExpectBegin()
 		bta.EXPECT().UpdateStatus(gomock.Any(), gomock.Any(), "pending", gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ int64, _ ...string) (bool, error) {
@@ -1311,11 +1308,45 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		ra.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		ca.EXPECT().DeleteByID(gomock.Any(), gomock.Any(), "c1").Return(nil)
 		sqlMock.ExpectCommit()
-		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1", "r2"}).Return(nil)
-		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(nil)
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1", "r2"}).Return(errors.New("permission unavailable"))
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c1"}).Return(errors.New("permission unavailable"))
 
-		cs := &catalogService{db: db, ca: ca, ps: ps, ra: ra, bta: bta, lim: lim, dsa: dsa, dta: dta, suta: suta, hcss: hcss}
+		cs := &catalogService{db: db, ca: ca, ps: ps, ra: ra, bta: bta, dsa: dsa, dta: dta, suta: suta, hcss: hcss}
 		require.NoError(t, cs.DeleteByID(context.Background(), "c1"))
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("does not clean external state when database deletion rolls back", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ra := mock_interfaces.NewMockResourceAccess(ctrl)
+		hcss := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		dsa := mock_interfaces.NewMockDiscoverScheduleAccess(ctrl)
+		dta := mock_interfaces.NewMockDiscoverTaskAccess(ctrl)
+		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		buildTasks := []*interfaces.BuildTask{
+			{ID: "completed", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted},
+		}
+		ca.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"c1"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{"c1": {ResourceID: "c1"}}, nil)
+		expectCatalogDeletionImpact(ctrl, ca, ra, bta, dsa, dta, suta, hcss,
+			interfaces.CatalogTypePhysical, buildTasks, false, true)
+		sqlMock.ExpectBegin()
+		dta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).
+			Return(errors.New("database unavailable"))
+		sqlMock.ExpectRollback()
+
+		cs := &catalogService{db: db, ca: ca, ps: ps, ra: ra, bta: bta, dsa: dsa, dta: dta, suta: suta, hcss: hcss}
+		err = cs.DeleteByID(context.Background(), "c1")
+		require.Error(t, err)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
