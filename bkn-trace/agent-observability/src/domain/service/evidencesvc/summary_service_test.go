@@ -82,21 +82,35 @@ func TestListConversationsUsesCanonicalSessionStatus(t *testing.T) {
 	}
 }
 
-func TestListConversationsExcludesWholeConversationByStableAgentID(t *testing.T) {
+func TestListConversationsExcludesWholeConversationByAgentDisplayName(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequestWithAgent(
 		t, evidenceStore, "req_internal", "trace_internal", "conversation_internal", "interaction_internal",
-		"2026-08-10T08:00:00Z", "内部分析", "内部建议", "acct_demo", "business_provenance_optimizer", true,
+		"2026-08-10T08:00:00Z", "内部分析", "内部建议", "acct_demo", "openbkn-studio", "app_ref",
 	)
 	seedBusinessProvenanceRequestWithAgent(
 		t, evidenceStore, "req_business", "trace_business", "conversation_business", "interaction_business",
-		"2026-08-10T08:01:00Z", "业务问题", "业务结果", "acct_demo", "business_agent", true,
+		"2026-08-10T08:01:00Z", "业务问题", "业务结果", "acct_demo", "business_agent", "agent_id",
 	)
 
-	page, err := New(evidenceStore, WithProjectionSource(evidenceStore)).ListConversations(
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_internal", AgentName: "业务溯源优化Agent",
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed optimizer conversation: %v", err)
+	}
+
+	page, err := New(
+		evidenceStore,
+		WithProjectionSource(evidenceStore),
+		WithSessionStore(sessions),
+	).ListConversations(
 		context.Background(), evidencevo.SummaryQueryOptions{
 			Scope: summaryScope("acct_demo"), Limit: 20,
-			ExcludeAgentOrApp: "business_provenance_optimizer",
+			ExcludeAgentOrApp: "业务溯源优化Agent",
 		},
 	)
 	if err != nil {
@@ -1588,7 +1602,7 @@ func seedBusinessProvenanceRequest(
 ) {
 	seedBusinessProvenanceRequestWithAgent(
 		t, store, requestID, traceID, conversationID, interactionID, at, question, result, account,
-		"supply-chain-agent", false,
+		"supply-chain-agent", "app_ref",
 	)
 }
 
@@ -1596,14 +1610,10 @@ func seedBusinessProvenanceRequestWithAgent(
 	t *testing.T,
 	store *evidencestore.Store,
 	requestID, traceID, conversationID, interactionID, at, question, result, account, agent string,
-	useAgentID bool,
+	identityKey string,
 ) {
 	t.Helper()
-	identity := map[string]any{"app_ref": agent, "question_artifact_ref": "artifact:question_" + requestID}
-	if useAgentID {
-		delete(identity, "app_ref")
-		identity["agent_id"] = agent
-	}
+	identity := map[string]any{identityKey: agent, "question_artifact_ref": "artifact:question_" + requestID}
 	trace := evidencevo.NormalizedTrace{
 		TraceID: traceID, RequestID: requestID, ConversationID: conversationID,
 		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: account, AccountType: "app",

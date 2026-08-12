@@ -101,15 +101,12 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	childOptions.EvidenceCompleteness = ""
 	for _, request := range requests {
 		if request.ConversationID != "" && options.ExcludeAgentOrApp != "" &&
-			request.AgentOrApp == options.ExcludeAgentOrApp {
+			matchesAgentIdentity(request, options.ExcludeAgentOrApp) {
 			excludedConversations[request.ConversationID] = struct{}{}
 		}
 		if request.ConversationID != "" && matchesRequestFilters(request, childOptions) {
 			grouped[request.ConversationID] = append(grouped[request.ConversationID], request)
 		}
-	}
-	for conversationID := range excludedConversations {
-		delete(grouped, conversationID)
 	}
 	entries := make([]evidencevo.ConversationSummary, 0, len(grouped))
 	for conversationID, group := range grouped {
@@ -117,6 +114,17 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	}
 	if err := s.applyCanonicalConversationState(ctx, entries, grouped); err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
+	}
+	if options.ExcludeAgentOrApp != "" {
+		filtered := entries[:0]
+		for _, entry := range entries {
+			_, excludedByRequest := excludedConversations[entry.ConversationID]
+			if excludedByRequest || matchesConversationAgentIdentity(entry, options.ExcludeAgentOrApp) {
+				continue
+			}
+			filtered = append(filtered, entry)
+		}
+		entries = filtered
 	}
 	entries = filterConversationSummaries(entries, options)
 	sort.Slice(entries, func(i, j int) bool {
@@ -1460,11 +1468,7 @@ func matchesRequestFilters(summary evidencevo.RequestSummary, options evidencevo
 	if options.Status != "" && summary.Status != options.Status {
 		return false
 	}
-	if options.AgentOrApp != "" &&
-		summary.AgentOrApp != options.AgentOrApp &&
-		summary.AgentName != options.AgentOrApp &&
-		summary.ApplicationPrincipalID != options.AgentOrApp &&
-		summary.EffectiveSubjectID != options.AgentOrApp {
+	if options.AgentOrApp != "" && !matchesAgentIdentity(summary, options.AgentOrApp) {
 		return false
 	}
 	if options.BusinessDomain != "" && summary.BusinessDomain != options.BusinessDomain {
@@ -1491,6 +1495,20 @@ func matchesRequestFilters(summary evidencevo.RequestSummary, options evidencevo
 		}
 	}
 	return true
+}
+
+func matchesAgentIdentity(summary evidencevo.RequestSummary, expected string) bool {
+	return summary.AgentOrApp == expected ||
+		summary.AgentName == expected ||
+		summary.ApplicationPrincipalID == expected ||
+		summary.EffectiveSubjectID == expected
+}
+
+func matchesConversationAgentIdentity(summary evidencevo.ConversationSummary, expected string) bool {
+	return summary.AgentOrApp == expected ||
+		summary.AgentName == expected ||
+		summary.ApplicationPrincipalID == expected ||
+		summary.EffectiveSubjectID == expected
 }
 
 func containsSummaryValue(values []string, expected string) bool {
