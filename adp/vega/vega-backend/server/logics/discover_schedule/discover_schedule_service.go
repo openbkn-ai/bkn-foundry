@@ -321,6 +321,18 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		return fmt.Errorf("DiscoverTaskService not set")
 	}
 
+	catalogInfo, err := dss.cs.InternalGetByID(ctx, schedule.CatalogID, false)
+	if err != nil {
+		otellog.LogError(ctx, "Failed to get catalog before executing discover schedule", err)
+		return err
+	}
+	if catalogInfo == nil || !catalogInfo.Enabled {
+		logger.Infof("Skip discover schedule for missing or disabled catalog: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
+		return nil
+	}
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
+
 	// 检查是否有正在执行的相同任务
 	_, tasks, err := dss.dts.List(ctx, interfaces.DiscoverTaskQueryParams{
 		CatalogID:   schedule.CatalogID,
@@ -335,8 +347,6 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		logger.Warnf("There is already a running discover task for catalog %s, skipping execution", schedule.CatalogID)
 		return nil
 	}
-
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
 
 	// Create discover task：这里会创建一个task然后发送到redis mq里面去
 	_, err = dss.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{

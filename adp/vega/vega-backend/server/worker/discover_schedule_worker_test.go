@@ -60,10 +60,42 @@ func TestDiscoverScheduleWorkerRunDue(t *testing.T) {
 }
 
 func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
+	t.Run("initializes legacy schedule without executing it", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dss := vmock.NewMockDiscoverScheduleService(ctrl)
+		schedule := dueDiscoverSchedule("schedule-1")
+		schedule.NextRun = 0
+		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, int64(0), schedule.LastRun, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, _, _, _ int64, nextRun int64) error {
+				require.Greater(t, nextRun, time.Now().UnixMilli())
+				return nil
+			},
+		)
+
+		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
+	})
+
+	t.Run("advances legacy schedule to future start time without executing it", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dss := vmock.NewMockDiscoverScheduleService(ctrl)
+		schedule := dueDiscoverSchedule("schedule-1")
+		schedule.NextRun = time.Now().Add(-time.Hour).UnixMilli()
+		schedule.StartTime = time.Now().Add(2 * time.Hour).UnixMilli()
+		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, schedule.LastRun, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, _, _, _ int64, nextRun int64) error {
+				require.GreaterOrEqual(t, nextRun, schedule.StartTime)
+				return nil
+			},
+		)
+
+		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
+	})
+
 	t.Run("advances schedule before creating task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dss := vmock.NewMockDiscoverScheduleService(ctrl)
 		schedule := dueDiscoverSchedule("schedule-1")
+		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
 		gomock.InOrder(
 			dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, _, _ int64, lastRun, nextRun int64) error {
@@ -82,6 +114,7 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dss := vmock.NewMockDiscoverScheduleService(ctrl)
 		schedule := dueDiscoverSchedule("schedule-1")
+		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
 		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).Return(errors.New("db down"))
 
 		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
@@ -91,6 +124,7 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dss := vmock.NewMockDiscoverScheduleService(ctrl)
 		schedule := dueDiscoverSchedule("schedule-1")
+		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
 		schedule.EndTime = time.Now().Add(-time.Second).UnixMilli()
 		dss.EXPECT().Disable(gomock.Any(), schedule.ID).Return(nil)
 
@@ -101,13 +135,14 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dss := vmock.NewMockDiscoverScheduleService(ctrl)
 		schedule := dueDiscoverSchedule("schedule-1")
+		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
 		schedule.CronExpr = "*/30 * * * *"
 		dss.EXPECT().Disable(gomock.Any(), schedule.ID).Return(nil)
 
 		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
 	})
 
-	t.Run("skips disabled, not due, and not started schedules", func(t *testing.T) {
+	t.Run("skips disabled and not due schedules", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		dsw := newTestDiscoverScheduleWorker(
 			nil,
@@ -118,12 +153,9 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		disabled.Enabled = false
 		notDue := dueDiscoverSchedule("not-due")
 		notDue.NextRun = time.Now().Add(time.Hour).UnixMilli()
-		notStarted := dueDiscoverSchedule("not-started")
-		notStarted.StartTime = time.Now().Add(time.Hour).UnixMilli()
 
 		dsw.runSchedule(context.Background(), disabled)
 		dsw.runSchedule(context.Background(), notDue)
-		dsw.runSchedule(context.Background(), notStarted)
 	})
 
 }
@@ -133,7 +165,7 @@ func dueDiscoverSchedule(id string) *interfaces.DiscoverSchedule {
 		ID:       id,
 		Enabled:  true,
 		CronExpr: "0 * * * *",
-		NextRun:  0,
+		NextRun:  time.Now().Add(-time.Minute).UnixMilli(),
 	}
 }
 

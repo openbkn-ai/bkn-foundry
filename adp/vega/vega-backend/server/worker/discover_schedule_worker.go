@@ -93,9 +93,6 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 		return
 	}
 
-	if schedule.StartTime > 0 && now.UnixMilli() < schedule.StartTime {
-		return
-	}
 	if schedule.EndTime > 0 && now.UnixMilli() > schedule.EndTime {
 		if err := dsw.dss.Disable(ctx, schedule.ID); err != nil {
 			logger.Errorf("Disable expired discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
@@ -108,6 +105,22 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 		logger.Errorf("Parse discover schedule cron expression failed; disabling schedule: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
 		if disableErr := dsw.dss.Disable(ctx, schedule.ID); disableErr != nil {
 			logger.Errorf("Disable discover schedule with invalid cron expression failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, disableErr)
+		}
+		return
+	}
+
+	// 升级前的内存 cron 不维护 next_run。首次扫描只初始化下一次运行时间，
+	// 避免所有存量计划在升级后的第一个 tick 集中执行。
+	if schedule.NextRun == 0 || schedule.StartTime > now.UnixMilli() {
+		from := now
+		if schedule.StartTime > now.UnixMilli() {
+			from = time.UnixMilli(schedule.StartTime).In(now.Location()).Add(-time.Nanosecond)
+		}
+		nextRun := cronSchedule.Next(from)
+		if err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
+			schedule.UpdateTime, schedule.NextRun, schedule.LastRun, nextRun.UnixMilli(),
+		); err != nil {
+			logger.Errorf("Initialize discover schedule next run failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
 		}
 		return
 	}

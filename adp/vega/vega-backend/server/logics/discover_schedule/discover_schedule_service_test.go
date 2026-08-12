@@ -325,8 +325,9 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 	})
 
 	t.Run("skips when scheduled task is already running", func(t *testing.T) {
-		service, _, dts, _ := newTestDiscoverScheduleService(t)
+		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
 		schedule := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1"}
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		dts.EXPECT().
 			List(gomock.Any(), interfaces.DiscoverTaskQueryParams{
 				CatalogID:   "catalog-1",
@@ -339,7 +340,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 	})
 
 	t.Run("creates scheduled task", func(t *testing.T) {
-		service, _, dts, _ := newTestDiscoverScheduleService(t)
+		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
 		schedule := &interfaces.DiscoverSchedule{
 			ID:        "schedule-1",
 			CatalogID: "catalog-1",
@@ -347,6 +348,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 			Creator:   interfaces.AccountInfo{ID: "u1"},
 		}
 
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		dts.EXPECT().
 			List(gomock.Any(), gomock.Any()).
 			Return(nil, int64(0), nil)
@@ -362,7 +364,8 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 	})
 
 	t.Run("returns list error", func(t *testing.T) {
-		service, _, dts, _ := newTestDiscoverScheduleService(t)
+		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "", false).Return(&interfaces.Catalog{Enabled: true}, nil)
 		dts.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), errors.New("list failed"))
 
 		err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{ID: "schedule-1"})
@@ -370,4 +373,22 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "list failed")
 	})
+
+	t.Run("skips task creation for disabled catalog", func(t *testing.T) {
+		service, cs, _ := newTestDiscoverScheduleExecutionService(t)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+
+		require.NoError(t, service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{
+			ID: "schedule-1", CatalogID: "catalog-1",
+		}))
+	})
+}
+
+func newTestDiscoverScheduleExecutionService(t *testing.T) (*discoverScheduleService, *vmock.MockCatalogService, *vmock.MockDiscoverTaskService) {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	cs := vmock.NewMockCatalogService(ctrl)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	return &discoverScheduleService{cs: cs, dts: dts}, cs, dts
 }
