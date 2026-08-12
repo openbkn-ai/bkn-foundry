@@ -775,10 +775,16 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
 	// running 仍由 worker 实际执行时落账。
 	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusPending)
-	if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli()); err != nil {
+	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
+	}
+	if !updated {
+		span.SetStatus(codes.Error, "Build task status changed while starting")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("build task status changed while starting; retry with the latest task state")
 	}
 
 	if err := bts.enqueueTask(ctx, buildTask, reset); err != nil {
@@ -858,10 +864,16 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 		targetStatus = interfaces.BuildTaskStatusStopped
 	}
 	update := interfaces.NewBuildTaskUpdate().WithStatus(targetStatus)
-	if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli()); err != nil {
+	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
+	}
+	if !updated {
+		span.SetStatus(codes.Error, "Build task status changed while stopping")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("build task status changed while stopping; retry with the latest task state")
 	}
 
 	span.SetStatus(codes.Ok, "")
