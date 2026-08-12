@@ -192,6 +192,21 @@ func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkApplied(ctx, id,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkApplied), ctx, id, applied, applyDetailJSON)
 }
 
+// MarkCancelled mocks base method.
+func (m *MockSemanticUnderstandingTaskService) MarkCancelled(ctx context.Context, id, failureDetail string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkCancelled", ctx, id, failureDetail)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkCancelled indicates an expected call of MarkCancelled.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkCancelled(ctx, id, failureDetail any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkCancelled), ctx, id, failureDetail)
+}
+
 // MarkCompleted mocks base method.
 func (m *MockSemanticUnderstandingTaskService) MarkCompleted(ctx context.Context, id, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
 	m.ctrl.T.Helper()

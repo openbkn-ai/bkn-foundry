@@ -26,6 +26,7 @@ type SemanticUnderstandingTaskService interface {
 	SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)
 	MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
 	MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
+	MarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error)
 	MarkApplied(ctx context.Context, id string, applied bool, applyDetailJSON string) (bool, error)
 
 	DebugTaskQueue() <-chan *asynq.Task

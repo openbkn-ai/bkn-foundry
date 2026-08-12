@@ -8,10 +8,12 @@ package worker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -31,6 +33,43 @@ func TestDiscoverTaskWorkerSkipsCancelledTask(t *testing.T) {
 	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
 	require.NoError(t, err)
 
+	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+}
+
+func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+		Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted", gomock.Any()).Return(true, nil)
+
+	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
+	require.NoError(t, err)
+	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+}
+
+func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+	dts.EXPECT().InternalUpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusFailed,
+		"catalog is disabled", gomock.Any()).Return(nil)
+
+	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
+	require.NoError(t, err)
 	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
 }
 

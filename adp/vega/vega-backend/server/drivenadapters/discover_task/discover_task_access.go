@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bytedance/sonic"
@@ -413,14 +412,48 @@ func (dta *discoverTaskAccess) UpdateStatus(ctx context.Context, id, status, mes
 	return nil
 }
 
+func (dta *discoverTaskAccess) MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover task cancelled")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
+		Set("f_status", interfaces.DiscoverTaskStatusCancelled).
+		Set("f_message", message).
+		Set("f_finish_time", finishTime).
+		Where(sq.Eq{"f_id": id}).
+		Where(sq.Eq{"f_status": []string{
+			interfaces.DiscoverTaskStatusPending,
+			interfaces.DiscoverTaskStatusRunning,
+		}}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+
+	result, err := dta.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "RowsAffected failed")
+		return false, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return affected > 0, nil
+}
+
 // UpdateProgress updates a DiscoverTask's progress.
-func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int) error {
+func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int, updateTime int64) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update discover_task progress")
 	defer span.End()
 
 	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
 		Set("f_progress", progress).
-		Set("f_update_time", time.Now().UnixMilli()).
+		Set("f_update_time", updateTime).
 		Where(sq.Eq{"f_id": id}).
 		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()

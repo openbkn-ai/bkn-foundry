@@ -170,10 +170,10 @@ func TestDiscoverTaskAccessUpdateProgress(t *testing.T) {
 		defer cleanup()
 
 		mock.ExpectExec("UPDATE t_discover_task SET f_progress = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?").
-			WithArgs(30, sqlmock.AnyArg(), "task-1", interfaces.DiscoverTaskStatusCancelled).
+			WithArgs(30, int64(123), "task-1", interfaces.DiscoverTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateProgress(context.Background(), "task-1", 30))
+		require.NoError(t, access.UpdateProgress(context.Background(), "task-1", 30, 123))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -268,6 +268,22 @@ func TestDiscoverTaskAccessMarkCancelledByCatalogID(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	require.NoError(t, access.MarkCancelledByCatalogID(context.Background(), nil, "catalog-1", "catalog deleted", 100))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDiscoverTaskAccessMarkCancelled(t *testing.T) {
+	access, mock, cleanup := newDiscoverTaskAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectExec("UPDATE t_discover_task SET f_status = ?, f_message = ?, f_finish_time = ? WHERE f_id = ? AND f_status IN (?,?)").
+		WithArgs(interfaces.DiscoverTaskStatusCancelled, "catalog deleted", int64(100), "task-1",
+			interfaces.DiscoverTaskStatusPending, interfaces.DiscoverTaskStatusRunning).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	updated, err := access.MarkCancelled(context.Background(), "task-1", "catalog deleted", 100)
+
+	require.NoError(t, err)
+	assert.True(t, updated)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

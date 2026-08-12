@@ -27,7 +27,7 @@ type BuildTaskAccess interface {
 	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTaskSummary, int64, error)
 	// UpdateStatus updates a build task's status and progress fields. When allowedStatuses is not empty,
 	// the update is applied only if the current status matches one of them.
-	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
+	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, updateTime int64, allowedStatuses ...string) (bool, error)
 	// GetStatus retrieves the status of a build task by ID.
 	GetStatus(ctx context.Context, id string) (string, error)
 	// Delete deletes a build task by ID.

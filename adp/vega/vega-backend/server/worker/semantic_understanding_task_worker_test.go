@@ -8,10 +8,12 @@ package worker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -96,6 +98,9 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 				{Name: "id", Type: interfaces.DataType_String},
 			},
 		}
+		resourceService.EXPECT().
+			InternalGetByID(gomock.Any(), "resource-1").
+			Return(resourceInfo, nil)
 
 		taskService.EXPECT().
 			InternalGetByID(gomock.Any(), "semantic-task-1").
@@ -191,15 +196,56 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("cancels active task when resource was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{suts: taskService, rs: resourceService}
+		taskInfo := &interfaces.SemanticUnderstandingTask{
+			ID: "semantic-task-1", Scope: interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID: "resource-1", Status: interfaces.SemanticUnderstandingTaskStatusPending,
+		}
+		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(nil, nil)
+		taskService.EXPECT().MarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
+			Return(true, nil)
+
+		require.NoError(t, worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1")))
+	})
+
+	t.Run("cancels active catalog task when catalog was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		catalogService := vmock.NewMockCatalogService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{suts: taskService, cs: catalogService}
+		taskInfo := &interfaces.SemanticUnderstandingTask{
+			ID: "semantic-task-1", Scope: interfaces.SemanticUnderstandingTaskScopeCatalog,
+			CatalogID: "catalog-1", Status: interfaces.SemanticUnderstandingTaskStatusRunning,
+		}
+		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
+		catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
+			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+		taskService.EXPECT().MarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
+			Return(true, nil)
+
+		require.NoError(t, worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1")))
+	})
+
 	t.Run("resumes applying completed task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
 		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
-		worker := &SemanticUnderstandingTaskWorker{suts: taskService}
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{suts: taskService, rs: resourceService}
 		semanticTask := &interfaces.SemanticUnderstandingTask{
 			ID:                  "semantic-task-1",
 			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID:          "resource-1",
 			Status:              interfaces.SemanticUnderstandingTaskStatusCompleted,
 			ApplyMode:           interfaces.SemanticUnderstandingApplyModeDryRun,
 			ConfidenceThreshold: 0.75,
@@ -210,6 +256,8 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		taskService.EXPECT().
 			InternalGetByID(gomock.Any(), "semantic-task-1").
 			Return(semanticTask, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").
+			Return(&interfaces.Resource{ID: "resource-1"}, nil)
 		taskService.EXPECT().
 			MarkApplied(ctxWithAccountID(t, "account-1"), "semantic-task-1", false, gomock.Any()).
 			Return(true, nil)
@@ -217,6 +265,23 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		err := worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1"))
 
 		require.NoError(t, err)
+	})
+
+	t.Run("stops retrying completed task when resource was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+
+		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+		resourceService := vmock.NewMockResourceService(ctrl)
+		worker := &SemanticUnderstandingTaskWorker{suts: taskService, rs: resourceService}
+		taskInfo := &interfaces.SemanticUnderstandingTask{
+			ID: "semantic-task-1", Scope: interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID: "resource-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted,
+		}
+		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(nil, nil)
+
+		require.NoError(t, worker.HandleTask(context.Background(), semanticUnderstandingWorkerTask(t, "semantic-task-1")))
 	})
 
 	t.Run("returns run error without marking failed", func(t *testing.T) {
@@ -287,9 +352,11 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 
 		taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
 		agentService := vmock.NewMockBknAgentService(ctrl)
+		resourceService := vmock.NewMockResourceService(ctrl)
 		worker := &SemanticUnderstandingTaskWorker{
 			suts: taskService,
 			bas:  agentService,
+			rs:   resourceService,
 		}
 		semanticTask := &interfaces.SemanticUnderstandingTask{
 			ID:                  "semantic-task-1",
@@ -304,6 +371,8 @@ func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 		taskService.EXPECT().
 			InternalGetByID(gomock.Any(), "semantic-task-1").
 			Return(semanticTask, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").
+			Return(&interfaces.Resource{ID: "resource-1"}, nil)
 		agentService.EXPECT().
 			WaitResult(gomock.Any(), "agent-task-1").
 			Return(&interfaces.BknAgentTask{

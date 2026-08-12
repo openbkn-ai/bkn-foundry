@@ -1065,7 +1065,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 		_, err = cs.bta.UpdateStatus(ctx, tx, task.ID, interfaces.BuildTaskUpdate{
 			Status:   &cancelled,
 			ErrorMsg: &errorMessage,
-		}, interfaces.BuildTaskStatusPending)
+		}, now, interfaces.BuildTaskStatusPending)
 		if err != nil {
 			break
 		}

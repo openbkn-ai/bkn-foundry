@@ -156,11 +156,11 @@ func TestBuildTaskAccessUpdateStatus(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?")).
-			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusCancelled).
+			WithArgs(interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
-		updated, err := access.UpdateStatus(context.Background(), nil, "task-1", update)
+		updated, err := access.UpdateStatus(context.Background(), nil, "task-1", update, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
@@ -172,11 +172,11 @@ func TestBuildTaskAccessUpdateStatus(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?")).
-			WithArgs(interfaces.BuildTaskStatusFailed, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusCancelled).
+			WithArgs(interfaces.BuildTaskStatusFailed, int64(123), "task-1", interfaces.BuildTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		updated, err := access.UpdateStatus(context.Background(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusFailed))
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusFailed), 123)
 
 		require.NoError(t, err)
 		assert.False(t, updated)
@@ -190,13 +190,14 @@ func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs("", interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusPending).
+			WithArgs("", interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
+			123,
 			interfaces.BuildTaskStatusPending,
 		)
 
@@ -210,11 +211,12 @@ func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusPending).
+			WithArgs(interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning),
+			123,
 			interfaces.BuildTaskStatusPending,
 		)
 

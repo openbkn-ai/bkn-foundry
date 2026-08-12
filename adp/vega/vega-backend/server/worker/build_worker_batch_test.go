@@ -7,11 +7,13 @@ package worker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -93,6 +95,55 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		require.NoError(t, bbw.HandleTask(context.Background(), task))
 	})
 
+	t.Run("cancels task when resource was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		bbw := &batchBuildWorker{bts: bts, rs: rs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
+		}, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning).WithErrorMsg(""),
+			interfaces.BuildTaskStatusPending).Return(true, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
+			interfaces.BuildTaskStatusRunning).Return(true, nil)
+
+		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, bbw.HandleTask(context.Background(), task))
+	})
+
+	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		bbw := &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
+
+		taskInfo := &interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
+			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+		}
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(taskInfo, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning).WithErrorMsg(""),
+			interfaces.BuildTaskStatusPending).Return(true, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).
+			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("catalog deleted"),
+			interfaces.BuildTaskStatusRunning).Return(true, nil)
+
+		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, bbw.HandleTask(context.Background(), task))
+	})
+
 	t.Run("does not switch local index when build fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bts := vmock.NewMockBuildTaskService(ctrl)
@@ -166,7 +217,8 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		lim.EXPECT().CreateIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1"), gomock.Any()).
 			Return(errors.New("opensearch unavailable"))
 
-		err := bbw.executeBuild(context.Background(), resource, buildTask, interfaces.BuildTaskExecuteTypeIncremental)
+		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, buildTask,
+			interfaces.BuildTaskExecuteTypeIncremental)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "create local index failed: opensearch unavailable")
 		assert.False(t, enqueueCalled)

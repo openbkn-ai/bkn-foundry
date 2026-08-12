@@ -180,7 +180,7 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	}
 
 	if err := suts.enqueueTask(ctx, task.ID); err != nil {
-		if _, markErr := suts.suta.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to enqueue task: %v", err)); markErr != nil {
+		if _, markErr := suts.suta.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to enqueue task: %v", err), time.Now().UnixMilli()); markErr != nil {
 			logger.Errorf("Failed to mark semantic understanding task failed after enqueue failure: id=%s, error=%v", task.ID, markErr)
 		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_CreateResourcesFailed).
@@ -466,11 +466,11 @@ func (suts *semanticUnderstandingTaskService) MarkRunning(ctx context.Context, i
 		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("agent_task_id is required")
 	}
-	return suts.suta.MarkRunning(ctx, id, agentTaskID)
+	return suts.suta.MarkRunning(ctx, id, agentTaskID, time.Now().UnixMilli())
 }
 
 func (suts *semanticUnderstandingTaskService) ClaimRunning(ctx context.Context, id string) (bool, error) {
-	return suts.suta.ClaimRunning(ctx, id)
+	return suts.suta.ClaimRunning(ctx, id, time.Now().UnixMilli())
 }
 
 func (suts *semanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {
@@ -478,7 +478,7 @@ func (suts *semanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context
 		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("agent_task_id is required")
 	}
-	return suts.suta.SetAgentTaskID(ctx, id, agentTaskID)
+	return suts.suta.SetAgentTaskID(ctx, id, agentTaskID, time.Now().UnixMilli())
 }
 
 func (suts *semanticUnderstandingTaskService) MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
@@ -489,14 +489,21 @@ func (suts *semanticUnderstandingTaskService) MarkCompleted(ctx context.Context,
 		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("confidence must be between 0 and 1")
 	}
-	return suts.suta.MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON)
+	return suts.suta.MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON, time.Now().UnixMilli())
 }
 
 func (suts *semanticUnderstandingTaskService) MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkFailed")
 	defer span.End()
 
-	return suts.suta.MarkFailed(ctx, id, failureDetail)
+	return suts.suta.MarkFailed(ctx, id, failureDetail, time.Now().UnixMilli())
+}
+
+func (suts *semanticUnderstandingTaskService) MarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkCancelled")
+	defer span.End()
+
+	return suts.suta.MarkCancelled(ctx, id, failureDetail, time.Now().UnixMilli())
 }
 
 func (suts *semanticUnderstandingTaskService) MarkApplied(ctx context.Context, id string, applied bool, applyDetailJSON string) (bool, error) {

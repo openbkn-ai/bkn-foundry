@@ -9,11 +9,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,14 +68,64 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 			})
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusFailed).
-				WithErrorMsg("resource not found")).
+				WithStatus(interfaces.BuildTaskStatusCancelled).
+				WithErrorMsg("resource deleted"),
+			interfaces.BuildTaskStatusRunning).
 			Return(true, nil)
 
 		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
 		require.NoError(t, ew.HandleTask(context.Background(), task))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
+	})
+
+	t.Run("marks task failed when catalog is disabled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ew := &embeddingWorker{bts: bts, rs: rs, cs: cs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
+		}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", false).
+			Return(&interfaces.Catalog{ID: "c1", Enabled: false}, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusFailed).
+				WithErrorMsg("catalog is disabled")).
+			Return(true, nil)
+
+		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, ew.HandleTask(context.Background(), task))
+	})
+
+	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		ew := &embeddingWorker{bts: bts, rs: rs, cs: cs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
+		}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", false).
+			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusCancelled).
+				WithErrorMsg("catalog deleted"),
+			interfaces.BuildTaskStatusRunning).
+			Return(true, nil)
+
+		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, ew.HandleTask(context.Background(), task))
 	})
 }
 

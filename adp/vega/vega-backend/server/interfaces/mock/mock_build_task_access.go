@@ -163,9 +163,9 @@ func (mr *MockBuildTaskAccessMockRecorder) List(ctx, params any) *gomock.Call {
 }
 
 // UpdateStatus mocks base method.
-func (m *MockBuildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
+func (m *MockBuildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, updateTime int64, allowedStatuses ...string) (bool, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, tx, id, update}
+	varargs := []any{ctx, tx, id, update, updateTime}
 	for _, a := range allowedStatuses {
 		varargs = append(varargs, a)
 	}
@@ -176,8 +176,8 @@ func (m *MockBuildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx, id s
 }
 
 // UpdateStatus indicates an expected call of UpdateStatus.
-func (mr *MockBuildTaskAccessMockRecorder) UpdateStatus(ctx, tx, id, update any, allowedStatuses ...any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) UpdateStatus(ctx, tx, id, update, updateTime any, allowedStatuses ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, tx, id, update}, allowedStatuses...)
+	varargs := append([]any{ctx, tx, id, update, updateTime}, allowedStatuses...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockBuildTaskAccess)(nil).UpdateStatus), varargs...)
 }

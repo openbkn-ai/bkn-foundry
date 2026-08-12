@@ -1296,8 +1296,8 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		lim.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "completed")).Return(nil)
 		lim.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r2", "pending")).Return(nil)
 		sqlMock.ExpectBegin()
-		bta.EXPECT().UpdateStatus(gomock.Any(), gomock.Any(), "pending", gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
+		bta.EXPECT().UpdateStatus(gomock.Any(), gomock.Any(), "pending", gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ int64, _ ...string) (bool, error) {
 				require.Equal(t, interfaces.BuildTaskStatusCancelled, *update.Status)
 				require.Equal(t, catalogDeletedTaskMessage, *update.ErrorMsg)
 				return true, nil

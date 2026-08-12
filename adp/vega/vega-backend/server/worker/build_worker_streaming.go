@@ -131,11 +131,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 	if resource == nil {
 		logger.Errorf("Resource not found for task %s, resourceID: %s", taskID, resourceID)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("resource not found")
-		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
-		if err != nil {
+		if err := cancelBuildTaskForDeletedParent(ctx, sbw.bts, taskID, "resource deleted"); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 		// Resource not found, return nil to  stop the task
@@ -145,19 +141,13 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	// Get catalog for MySQL connection
 	catalog, err := sbw.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
-		return fmt.Errorf("get catalog failed: %w", err)
-	}
-	if catalog == nil {
-		logger.Errorf("Catalog not found for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("catalog not found")
-		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
-		if err != nil {
-			return fmt.Errorf("update build task status failed: %w", err)
+		if isNotFoundError(err) {
+			if updateErr := cancelBuildTaskForDeletedParent(ctx, sbw.bts, buildTaskInfo.ID, "catalog deleted"); updateErr != nil {
+				return fmt.Errorf("update build task status failed: %w", updateErr)
+			}
+			return nil
 		}
-		// Catalog not found, return nil to stop the task
-		return nil
+		return fmt.Errorf("get catalog failed: %w", err)
 	}
 	if !catalog.Enabled {
 		logger.Errorf("Catalog is disabled for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)

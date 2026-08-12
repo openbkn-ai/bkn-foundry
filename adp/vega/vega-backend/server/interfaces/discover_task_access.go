@@ -24,8 +24,10 @@ type DiscoverTaskAccess interface {
 	List(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, int64, error)
 	// UpdateStatus updates a DiscoverTask's status and message.
 	UpdateStatus(ctx context.Context, id, status, message string, stime int64) error
+	// MarkCancelled 仅取消 pending 或 running 状态的 DiscoverTask。
+	MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error)
 	// UpdateProgress updates a DiscoverTask's progress.
-	UpdateProgress(ctx context.Context, id string, progress int) error
+	UpdateProgress(ctx context.Context, id string, progress int, updateTime int64) error
 	// UpdateResult updates a DiscoverTask's result and sets status to completed.
 	UpdateResult(ctx context.Context, id string, result *DiscoverResult, stime int64) error
 

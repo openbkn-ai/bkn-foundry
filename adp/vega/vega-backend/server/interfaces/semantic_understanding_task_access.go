@@ -21,11 +21,12 @@ type SemanticUnderstandingTaskAccess interface {
 	Delete(ctx context.Context, id string) error
 	DeleteByIDs(ctx context.Context, ids []string) (int64, error)
 
-	MarkRunning(ctx context.Context, id string, agentTaskID string) (bool, error)
-	ClaimRunning(ctx context.Context, id string) (bool, error)
-	SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)
-	MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
-	MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
+	MarkRunning(ctx context.Context, id string, agentTaskID string, updateTime int64) (bool, error)
+	ClaimRunning(ctx context.Context, id string, updateTime int64) (bool, error)
+	SetAgentTaskID(ctx context.Context, id string, agentTaskID string, updateTime int64) (bool, error)
+	MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string, updateTime int64) (bool, error)
+	MarkFailed(ctx context.Context, id string, failureDetail string, updateTime int64) (bool, error)
+	MarkCancelled(ctx context.Context, id string, failureDetail string, updateTime int64) (bool, error)
 	MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error)
 	MarkAppliedWithTx(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error)
 	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, updateTime int64) error

@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bytedance/sonic"
@@ -320,12 +319,12 @@ func (bta *buildTaskAccess) GetByCatalogID(ctx context.Context, catalogID string
 
 // UpdateStatus updates a build task's status and progress fields.
 func (bta *buildTaskAccess) UpdateStatus(ctx context.Context, tx *sql.Tx,
-	id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
+	id string, update interfaces.BuildTaskUpdate, updateTime int64, allowedStatuses ...string) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update build task status")
 	defer span.End()
 
 	updateColumns := map[string]interface{}{
-		"f_update_time": time.Now().UnixMilli(),
+		"f_update_time": updateTime,
 	}
 	if update.Status != nil {
 		updateColumns["f_status"] = *update.Status

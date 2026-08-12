@@ -981,7 +981,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
 		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopping)).Return(true, nil)
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopping), gomock.Any()).Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})
@@ -993,7 +993,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusPending}, nil)
 		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)).Return(true, nil)
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped), gomock.Any()).Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})

@@ -149,6 +149,16 @@ func isBuildTaskTerminal(status string) bool {
 		status == interfaces.BuildTaskStatusCancelled
 }
 
+func cancelBuildTaskForDeletedParent(ctx context.Context, bts interfaces.BuildTaskService, taskID, detail string) error {
+	_, err := bts.InternalUpdateStatus(ctx, nil, taskID,
+		interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusCancelled).
+			WithErrorMsg(detail),
+		interfaces.BuildTaskStatusRunning,
+	)
+	return err
+}
+
 // createManagedLocalIndex creates a build-task local index through LocalIndexManager.
 func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, indexName string, buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
 	schema, err := buildLocalIndexSchema(buildTask, resource)
@@ -423,7 +433,7 @@ func sendEmbeddingMessage(ctx context.Context, writer *kafka.Writer, kafkaAccess
 		// Use docID + timestamp as key to avoid conflicts even if document is modified multiple times
 		err = kafkaAccess.WriteMessages(ctx, writer, []kafka.Message{
 			{
-				Key:   []byte(fmt.Sprintf("%s-%d", docID, time.Now().UnixNano())),
+				Key:   fmt.Appendf(nil, "%s-%d", docID, time.Now().UnixNano()),
 				Value: messageBytes,
 			},
 		}...)

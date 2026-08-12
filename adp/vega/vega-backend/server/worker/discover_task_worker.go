@@ -59,6 +59,10 @@ func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task)
 		logger.Errorf("Failed to get task info for task %s: %v", taskID, err)
 		return err
 	}
+	if taskInfo == nil {
+		logger.Infof("Discover task not found: id=%s", taskID)
+		return nil
+	}
 	if taskInfo.Status == interfaces.DiscoverTaskStatusCancelled ||
 		taskInfo.Status == interfaces.DiscoverTaskStatusCompleted ||
 		taskInfo.Status == interfaces.DiscoverTaskStatusFailed {
@@ -70,10 +74,29 @@ func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task)
 	actions := interfaces.ActionsFromDiscoverStrategy(taskInfo.Strategy)
 	taskInfo.DiscoverActions = &actions
 
-	catalog, err := dtw.cs.GetByID(ctx, taskInfo.CatalogID, true)
+	catalog, err := dtw.cs.InternalGetByID(ctx, taskInfo.CatalogID, true)
 	if err != nil {
+		if isNotFoundError(err) {
+			now := time.Now().UnixMilli()
+			if _, updateErr := dtw.dts.InternalMarkCancelled(ctx, taskID, "catalog deleted", now); updateErr != nil {
+				return fmt.Errorf("cancel discover task after catalog deletion: %w", updateErr)
+			}
+			logger.Infof("Discover task cancelled because catalog was deleted: id=%s, catalog_id=%s",
+				taskID, taskInfo.CatalogID)
+			return nil
+		}
 		logger.Errorf("Failed to get catalog for task %s: %v", taskID, err)
 		return err
+	}
+	if !catalog.Enabled {
+		now := time.Now().UnixMilli()
+		if updateErr := dtw.dts.InternalUpdateStatus(ctx, taskID,
+			interfaces.DiscoverTaskStatusFailed, "catalog is disabled", now); updateErr != nil {
+			return fmt.Errorf("fail discover task for disabled catalog: %w", updateErr)
+		}
+		logger.Infof("Discover task failed because catalog is disabled: id=%s, catalog_id=%s",
+			taskID, taskInfo.CatalogID)
+		return nil
 	}
 
 	// Update task status to running and set start time

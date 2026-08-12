@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	libdb "github.com/openbkn-ai/bkn-comm-go/db"
@@ -475,41 +474,48 @@ func (suta *semanticUnderstandingTaskAccess) MarkCancelledByCatalogID(
 	return nil
 }
 
-func (suta *semanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id string, agentTaskID string) (bool, error) {
+func (suta *semanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id string, agentTaskID string, updateTime int64) (bool, error) {
 	return suta.update(ctx, id, map[string]any{
 		"f_status":         interfaces.SemanticUnderstandingTaskStatusRunning,
 		"f_agent_task_id":  agentTaskID,
 		"f_failure_detail": "",
-	}, interfaces.SemanticUnderstandingTaskStatusPending)
+	}, updateTime, interfaces.SemanticUnderstandingTaskStatusPending)
 }
 
-func (suta *semanticUnderstandingTaskAccess) ClaimRunning(ctx context.Context, id string) (bool, error) {
+func (suta *semanticUnderstandingTaskAccess) ClaimRunning(ctx context.Context, id string, updateTime int64) (bool, error) {
 	return suta.update(ctx, id, map[string]any{
 		"f_status": interfaces.SemanticUnderstandingTaskStatusRunning,
-	}, interfaces.SemanticUnderstandingTaskStatusPending)
+	}, updateTime, interfaces.SemanticUnderstandingTaskStatusPending)
 }
 
-func (suta *semanticUnderstandingTaskAccess) SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {
+func (suta *semanticUnderstandingTaskAccess) SetAgentTaskID(ctx context.Context, id string, agentTaskID string, updateTime int64) (bool, error) {
 	return suta.update(ctx, id, map[string]any{
 		"f_agent_task_id": agentTaskID,
-	}, interfaces.SemanticUnderstandingTaskStatusRunning)
+	}, updateTime, interfaces.SemanticUnderstandingTaskStatusRunning)
 }
 
-func (suta *semanticUnderstandingTaskAccess) MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
+func (suta *semanticUnderstandingTaskAccess) MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string, updateTime int64) (bool, error) {
 	return suta.update(ctx, id, map[string]any{
 		"f_status":                 interfaces.SemanticUnderstandingTaskStatusCompleted,
 		"f_result_json":            resultJSON,
 		"f_confidence":             confidence,
 		"f_confidence_detail_json": confidenceDetailJSON,
 		"f_failure_detail":         "",
-	}, interfaces.SemanticUnderstandingTaskStatusRunning)
+	}, updateTime, interfaces.SemanticUnderstandingTaskStatusRunning)
 }
 
-func (suta *semanticUnderstandingTaskAccess) MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error) {
+func (suta *semanticUnderstandingTaskAccess) MarkFailed(ctx context.Context, id string, failureDetail string, updateTime int64) (bool, error) {
 	return suta.update(ctx, id, map[string]any{
 		"f_status":         interfaces.SemanticUnderstandingTaskStatusFailed,
 		"f_failure_detail": failureDetail,
-	}, interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning)
+	}, updateTime, interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning)
+}
+
+func (suta *semanticUnderstandingTaskAccess) MarkCancelled(ctx context.Context, id string, failureDetail string, updateTime int64) (bool, error) {
+	return suta.update(ctx, id, map[string]any{
+		"f_status":         interfaces.SemanticUnderstandingTaskStatusCancelled,
+		"f_failure_detail": failureDetail,
+	}, updateTime, interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning)
 }
 
 func (suta *semanticUnderstandingTaskAccess) MarkApplied(ctx context.Context, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error) {
@@ -528,18 +534,18 @@ func (suta *semanticUnderstandingTaskAccess) markApplied(ctx context.Context, tx
 	if applyDetailJSON != "" {
 		updateColumns["f_apply_detail_json"] = applyDetailJSON
 	}
-	return suta.updateWithTx(ctx, tx, id, updateColumns, interfaces.SemanticUnderstandingTaskStatusCompleted)
+	return suta.updateWithTx(ctx, tx, id, updateColumns, appliedTime, interfaces.SemanticUnderstandingTaskStatusCompleted)
 }
 
-func (suta *semanticUnderstandingTaskAccess) update(ctx context.Context, id string, updateColumns map[string]any, allowedStatuses ...string) (bool, error) {
-	return suta.updateWithTx(ctx, nil, id, updateColumns, allowedStatuses...)
+func (suta *semanticUnderstandingTaskAccess) update(ctx context.Context, id string, updateColumns map[string]any, updateTime int64, allowedStatuses ...string) (bool, error) {
+	return suta.updateWithTx(ctx, nil, id, updateColumns, updateTime, allowedStatuses...)
 }
 
-func (suta *semanticUnderstandingTaskAccess) updateWithTx(ctx context.Context, tx *sql.Tx, id string, updateColumns map[string]any, allowedStatuses ...string) (bool, error) {
+func (suta *semanticUnderstandingTaskAccess) updateWithTx(ctx context.Context, tx *sql.Tx, id string, updateColumns map[string]any, updateTime int64, allowedStatuses ...string) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark semantic understanding task")
 	defer span.End()
 
-	updateColumns["f_update_time"] = time.Now().UnixMilli()
+	updateColumns["f_update_time"] = updateTime
 
 	builder := sq.Update(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME).
 		SetMap(updateColumns).

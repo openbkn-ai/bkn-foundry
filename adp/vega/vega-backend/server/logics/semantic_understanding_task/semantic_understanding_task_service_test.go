@@ -198,8 +198,8 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 			Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.SemanticUnderstandingTask{})).
 			Return(nil)
 		taskAccess.EXPECT().
-			MarkFailed(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, failureDetail string) (bool, error) {
+			MarkFailed(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, failureDetail string, _ int64) (bool, error) {
 				assert.Contains(t, failureDetail, "failed to enqueue task")
 				return true, nil
 			})
@@ -480,7 +480,7 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	service := &semanticUnderstandingTaskService{suta: taskAccess}
 
 	taskAccess.EXPECT().
-		MarkRunning(gomock.Any(), "semantic-task-1", "agent-task-1").
+		MarkRunning(gomock.Any(), "semantic-task-1", "agent-task-1", gomock.Any()).
 		Return(true, nil)
 
 	running, err := service.MarkRunning(context.Background(), "semantic-task-1", "agent-task-1")
@@ -488,7 +488,7 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	assert.True(t, running)
 
 	taskAccess.EXPECT().
-		MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`).
+		MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`, gomock.Any()).
 		Return(true, nil)
 
 	completed, err := service.MarkCompleted(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
