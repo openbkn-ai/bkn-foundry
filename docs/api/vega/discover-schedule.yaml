@@ -11,7 +11,8 @@ info:
     - 用户通过本规范增删改查 DiscoverSchedule，通过 enable/disable 控制其是否生效
     - 一次性发现走 `POST /catalogs/{id}/discover`（[discover-task.yaml](discover-task.yaml) 末尾），不通过本规范
 
-    每个 DiscoverSchedule 归属一个 Catalog（多对一）。`catalog_id` 在创建后**不可修改**。
+    每个 DiscoverSchedule 归属一个 Physical Catalog（多对一）。Logical Catalog 不支持发现调度，
+    `catalog_id` 在创建后**不可修改**。
 
     端点设计遵循 [vega-backend/CLAUDE.md] 的"端点设计规则"——状态切换走动作端点
     `enable` / `disable`，与 ConnectorType 风格对齐；不暴露 `enabled` 字段为可写。
@@ -27,8 +28,8 @@ paths:
     post:
       summary: 创建发现调度
       description: |
-        创建 DiscoverSchedule。`name` 与 `catalog_id` 必填且 catalog 必须存在；不存在返回 404
-        `VegaBackend.Catalog.NotFound`。
+        创建 DiscoverSchedule。`name` 与 `catalog_id` 必填，catalog 必须存在且类型为 physical；不存在返回
+        404 `VegaBackend.Catalog.NotFound`，logical catalog 返回 400。
 
         - body 中 `enabled=true` 时，worker 会在 `next_run` 到期后触发；`false` 时不会触发。
         - `cron_expr` 必填，标准 5 字段格式，相邻两次触发至少间隔 1 小时；非法或过于频繁时返回

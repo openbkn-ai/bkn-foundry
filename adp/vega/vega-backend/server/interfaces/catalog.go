@@ -7,13 +7,8 @@
 package interfaces
 
 type CatalogDeletionTaskImpact struct {
-	Active int64 `json:"active"`
-	Total  int64 `json:"total"`
-}
-
-type CatalogDeletionScheduleImpact struct {
-	Enabled int64 `json:"enabled"`
-	Total   int64 `json:"total"`
+	WillCancel int64 `json:"will_cancel"`
+	Blocking   int64 `json:"blocking"`
 }
 
 const (
@@ -26,16 +21,16 @@ const (
 // CatalogDeletionImpact describes the current deletion impact for one catalog.
 // CanDelete mirrors the guards enforced by DELETE /catalogs/{id}.
 type CatalogDeletionImpact struct {
-	Blockers                    []string                      `json:"blockers"`
-	BuildTasks                  CatalogDeletionTaskImpact     `json:"build_tasks"`
-	CanDelete                   bool                          `json:"can_delete"`
-	CatalogHealthCheckSchedules CatalogDeletionScheduleImpact `json:"catalog_health_check_schedules"`
-	CatalogID                   string                        `json:"catalog_id"`
-	DiscoverSchedules           CatalogDeletionScheduleImpact `json:"discover_schedules"`
-	DiscoverTasks               CatalogDeletionTaskImpact     `json:"discover_tasks"`
-	ProtectedResources          int                           `json:"protected_resources"`
-	Resources                   int                           `json:"resources"`
-	SemanticUnderstandingTasks  CatalogDeletionTaskImpact     `json:"semantic_understanding_tasks"`
+	CatalogID                   string                    `json:"catalog_id"`
+	CanDelete                   bool                      `json:"can_delete"`
+	Blockers                    []string                  `json:"blockers"`
+	BuildTasks                  CatalogDeletionTaskImpact `json:"build_tasks"`
+	DiscoverTasks               CatalogDeletionTaskImpact `json:"discover_tasks"`
+	SemanticUnderstandingTasks  CatalogDeletionTaskImpact `json:"semantic_understanding_tasks"`
+	DiscoverSchedules           int64                     `json:"discover_schedules"`
+	CatalogHealthCheckSchedules int64                     `json:"catalog_health_check_schedules"`
+	Resources                   int                       `json:"resources"`
+	ProtectedResources          int                       `json:"protected_resources"`
 }
 
 const (

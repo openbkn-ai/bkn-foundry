@@ -81,6 +81,13 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if catalog.Type != interfaces.CatalogTypePhysical {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
+			WithErrorDetails("discover schedules are only supported for physical catalogs")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	scheduleID, err := r.dss.Create(ctx, &req)
 	if err != nil {

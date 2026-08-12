@@ -650,6 +650,9 @@ components:
   schemas:
     CatalogDeletionImpact:
       type: object
+      description: |
+        Physical Catalog 检查全部级联对象；Logical Catalog 仅检查 Resource 和 Semantic Understanding Task，
+        其 Build/Discover Task 与两类 Schedule 影响固定为 0。
       required:
         - catalog_id
         - can_delete
@@ -686,11 +689,13 @@ components:
         build_tasks:
           $ref: "#/components/schemas/CatalogDeletionTaskImpact"
         catalog_health_check_schedules:
-          allOf:
-            - $ref: "#/components/schemas/CatalogDeletionScheduleImpact"
-          description: 物理 Catalog 的健康检查计划影响；inherit/enabled 均计入 enabled。
+          type: integer
+          format: int64
+          description: 将随 Catalog 级联删除的健康检查计划数量。
         discover_schedules:
-          $ref: "#/components/schemas/CatalogDeletionScheduleImpact"
+          type: integer
+          format: int64
+          description: 将随 Catalog 级联删除的发现计划数量。
         discover_tasks:
           $ref: "#/components/schemas/CatalogDeletionTaskImpact"
         semantic_understanding_tasks:
@@ -698,29 +703,17 @@ components:
     CatalogDeletionTaskImpact:
       type: object
       required:
-        - active
-        - total
+        - will_cancel
+        - blocking
       properties:
-        active:
+        will_cancel:
           type: integer
           format: int64
-          description: 非终态任务数；其中正在执行的任务会阻止删除，尚未开始的任务会被标记为 cancelled。
-        total:
+          description: 当前为 pending、真实删除时将被标记为 cancelled 的任务数。
+        blocking:
           type: integer
           format: int64
-          description: 删除后仍会保留的任务记录总数。
-    CatalogDeletionScheduleImpact:
-      type: object
-      required:
-        - enabled
-        - total
-      properties:
-        enabled:
-          type: integer
-          format: int64
-        total:
-          type: integer
-          format: int64
+          description: 当前阻止删除的执行中任务数；Build Task 包含 running/stopping，其他任务包含 running。
     EntityExtensions:
       description: |
         扁平 KV 的 JSON object 形态（`string`→`string`）。用于 **`Catalog` / `CatalogRequest` / `CatalogRef`**

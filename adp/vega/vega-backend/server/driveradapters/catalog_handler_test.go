@@ -387,13 +387,13 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 		cs.EXPECT().GetDeletionImpact(gomock.Any(), "catalog-1").Return(&interfaces.CatalogDeletionImpact{
 			Blockers:                    []string{interfaces.CatalogDeletionBlockerProtectedResources},
 			CanDelete:                   false,
-			CatalogHealthCheckSchedules: interfaces.CatalogDeletionScheduleImpact{Enabled: 1, Total: 1},
+			CatalogHealthCheckSchedules: 1,
 			CatalogID:                   "catalog-1",
-			BuildTasks:                  interfaces.CatalogDeletionTaskImpact{Active: 1, Total: 3},
-			DiscoverSchedules:           interfaces.CatalogDeletionScheduleImpact{Enabled: 1, Total: 2},
-			DiscoverTasks:               interfaces.CatalogDeletionTaskImpact{Active: 3, Total: 4},
+			BuildTasks:                  interfaces.CatalogDeletionTaskImpact{WillCancel: 1, Blocking: 2},
+			DiscoverSchedules:           2,
+			DiscoverTasks:               interfaces.CatalogDeletionTaskImpact{WillCancel: 1, Blocking: 2},
 			ProtectedResources:          1,
-			SemanticUnderstandingTasks:  interfaces.CatalogDeletionTaskImpact{Active: 2, Total: 5},
+			SemanticUnderstandingTasks:  interfaces.CatalogDeletionTaskImpact{WillCancel: 1, Blocking: 1},
 		}, nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/catalog-1?dry_run=true", nil)
@@ -404,11 +404,11 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"can_delete":false`)
 		assert.Contains(t, w.Body.String(), `"blockers":["protected_resources"]`)
 		assert.Contains(t, w.Body.String(), `"protected_resources":1`)
-		assert.Contains(t, w.Body.String(), `"build_tasks":{"active":1,"total":3}`)
-		assert.Contains(t, w.Body.String(), `"catalog_health_check_schedules":{"enabled":1,"total":1}`)
-		assert.Contains(t, w.Body.String(), `"discover_schedules":{"enabled":1,"total":2}`)
-		assert.Contains(t, w.Body.String(), `"discover_tasks":{"active":3,"total":4}`)
-		assert.Contains(t, w.Body.String(), `"semantic_understanding_tasks":{"active":2,"total":5}`)
+		assert.Contains(t, w.Body.String(), `"build_tasks":{"will_cancel":1,"blocking":2}`)
+		assert.Contains(t, w.Body.String(), `"catalog_health_check_schedules":1`)
+		assert.Contains(t, w.Body.String(), `"discover_schedules":2`)
+		assert.Contains(t, w.Body.String(), `"discover_tasks":{"will_cancel":1,"blocking":2}`)
+		assert.Contains(t, w.Body.String(), `"semantic_understanding_tasks":{"will_cancel":1,"blocking":1}`)
 	})
 
 	t.Run("rejects comma-separated catalog ids", func(t *testing.T) {

@@ -891,86 +891,64 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	if err != nil {
 		return nil, err
 	}
-	_, buildTotal, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-	})
-	if err != nil {
-		return nil, err
+	var pendingBuild, buildExecuting, scheduleTotal, pendingDiscover, runningDiscover int64
+	healthCheckScheduleTotal := int64(0)
+	if catalog.Type == interfaces.CatalogTypePhysical {
+		_, pendingBuild, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses:              []string{interfaces.BuildTaskStatusPending},
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, buildExecuting, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses: []string{
+				interfaces.BuildTaskStatusRunning,
+				interfaces.BuildTaskStatusStopping,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, scheduleTotal, err = cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, pendingDiscover, err = cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses:              []string{interfaces.DiscoverTaskStatusPending},
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, runningDiscover, err = cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses:              []string{interfaces.DiscoverTaskStatusRunning},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		healthCheckSchedule, getErr := cs.hcss.GetByCatalogID(ctx, id)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if healthCheckSchedule != nil {
+			healthCheckScheduleTotal = 1
+		}
 	}
-	_, buildActive, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+	_, pendingSemantic, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
 		PaginationQueryParams: page,
 		CatalogID:             id,
-		Statuses: []string{
-			interfaces.BuildTaskStatusPending,
-			interfaces.BuildTaskStatusRunning,
-			interfaces.BuildTaskStatusStopping,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, buildExecuting, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-		Statuses: []string{
-			interfaces.BuildTaskStatusRunning,
-			interfaces.BuildTaskStatusStopping,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, scheduleTotal, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-	})
-	if err != nil {
-		return nil, err
-	}
-	enabled := true
-	_, enabledSchedules, err := cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-		Enabled:               &enabled,
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, discoverTotal, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, pendingDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-		Statuses:              []string{interfaces.DiscoverTaskStatusPending},
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, runningDiscover, err := cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-		Statuses:              []string{interfaces.DiscoverTaskStatusRunning},
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, semanticTotal, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, semanticActive, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
-		PaginationQueryParams: page,
-		CatalogID:             id,
-		Statuses:              interfaces.SemanticUnderstandingTaskActiveStatuses,
+		Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusPending},
 	})
 	if err != nil {
 		return nil, err
@@ -982,20 +960,6 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	healthCheckSchedules := interfaces.CatalogDeletionScheduleImpact{}
-	if catalog != nil && catalog.Type == interfaces.CatalogTypePhysical {
-		schedule, err := cs.hcss.GetByCatalogID(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if schedule != nil {
-			healthCheckSchedules.Total = 1
-			if schedule.Mode != interfaces.CatalogHealthCheckScheduleModeDisabled {
-				healthCheckSchedules.Enabled = 1
-			}
-		}
 	}
 
 	protectedResources := 0
@@ -1020,16 +984,25 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	}
 
 	return &interfaces.CatalogDeletionImpact{
-		Blockers:                    blockers,
-		BuildTasks:                  interfaces.CatalogDeletionTaskImpact{Active: buildActive, Total: buildTotal},
-		CanDelete:                   len(blockers) == 0,
-		CatalogHealthCheckSchedules: healthCheckSchedules,
-		CatalogID:                   id,
-		DiscoverSchedules:           interfaces.CatalogDeletionScheduleImpact{Enabled: enabledSchedules, Total: scheduleTotal},
-		DiscoverTasks:               interfaces.CatalogDeletionTaskImpact{Active: pendingDiscover + runningDiscover, Total: discoverTotal},
-		ProtectedResources:          protectedResources,
+		CatalogID: id,
+		CanDelete: len(blockers) == 0,
+		Blockers:  blockers,
+		BuildTasks: interfaces.CatalogDeletionTaskImpact{
+			WillCancel: pendingBuild,
+			Blocking:   buildExecuting,
+		},
+		DiscoverTasks: interfaces.CatalogDeletionTaskImpact{
+			WillCancel: pendingDiscover,
+			Blocking:   runningDiscover,
+		},
+		SemanticUnderstandingTasks: interfaces.CatalogDeletionTaskImpact{
+			WillCancel: pendingSemantic,
+			Blocking:   semanticRunning,
+		},
+		DiscoverSchedules:           scheduleTotal,
+		CatalogHealthCheckSchedules: healthCheckScheduleTotal,
 		Resources:                   len(resources),
-		SemanticUnderstandingTasks:  interfaces.CatalogDeletionTaskImpact{Active: semanticActive, Total: semanticTotal},
+		ProtectedResources:          protectedResources,
 	}, nil
 }
 

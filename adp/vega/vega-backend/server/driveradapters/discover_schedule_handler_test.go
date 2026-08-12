@@ -50,7 +50,7 @@ func Test_DiscoverScheduleRestHandler_CreateDiscoverSchedule(t *testing.T) {
 
 	t.Run("creates disabled discover schedule", func(t *testing.T) {
 		engine, cs, dss := setupDiscoverScheduleHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1"}, nil)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
 		dss.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.DiscoverScheduleRequest) (string, error) {
 				assert.Equal(t, "daily", req.Name)
@@ -82,6 +82,22 @@ func Test_DiscoverScheduleRestHandler_CreateDiscoverSchedule(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "VegaBackend.Catalog.NotFound")
 	})
 
+	t.Run("rejects logical catalog", func(t *testing.T) {
+		engine, cs, _ := setupDiscoverScheduleHandlerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{
+			ID: "catalog-1", Type: interfaces.CatalogTypeLogical,
+		}, nil)
+
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "discover schedules are only supported for physical catalogs")
+	})
+
 	t.Run("rejects invalid cron expression", func(t *testing.T) {
 		engine, _, _ := setupDiscoverScheduleHandlerTest(t)
 
@@ -111,7 +127,7 @@ func Test_DiscoverScheduleRestHandler_CreateDiscoverSchedule(t *testing.T) {
 
 	t.Run("creates enabled discover schedule", func(t *testing.T) {
 		engine, cs, dss := setupDiscoverScheduleHandlerTest(t)
-		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1"}, nil)
+		cs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}, nil)
 		dss.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, req *interfaces.DiscoverScheduleRequest) (string, error) {
 				assert.True(t, req.Enabled)
