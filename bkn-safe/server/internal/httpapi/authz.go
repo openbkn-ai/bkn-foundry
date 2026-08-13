@@ -282,7 +282,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	// Instance-level hierarchy (which catalog a table belongs to). Same tokenless
 	// service face; see resourceparents.go for why the shape check is the guard.
 	if db != nil {
-		registerResourceParents(g, db)
+		registerResourceParents(g, e, db)
 	}
 }
 

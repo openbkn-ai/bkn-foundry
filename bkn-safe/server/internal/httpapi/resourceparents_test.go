@@ -265,3 +265,64 @@ func TestDeletePoliciesDropsHierarchyRow(t *testing.T) {
 		t.Errorf("hierarchy row survived the policy teardown (%d rows left)", n)
 	}
 }
+
+// TestOwnershipDryRunWritesNothing is the endpoint half of the confirmation
+// step: the same request body, plus ?dry_run=true, reports the widening and
+// leaves the table untouched — so a synchroniser can ask before it pushes.
+func TestOwnershipDryRunWritesNothing(t *testing.T) {
+	r, e, db := newTestServer(t)
+	declareHierarchy(t, db)
+	const user = "u-1"
+	_ = e.GrantObjectPermission(user, "catalog", "cat-a", "resource_manage")
+
+	body := map[string]any{
+		"resource_type": "resource", "parent_type": "catalog",
+		"items": []map[string]string{
+			{"resource_id": "res-1", "parent_id": "cat-a"},
+			{"resource_id": "res-2", "parent_id": "cat-b"},
+		},
+	}
+	w := do(t, r, http.MethodPut, "/api/safe/v1/authz/resource-parents?dry_run=true", body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("dry run = %d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Changes []struct {
+			AccessorID string `json:"accessor_id"`
+			ResourceID string `json:"resource_id"`
+			Operation  string `json:"operation"`
+			Direction  string `json:"direction"`
+		} `json:"changes"`
+		Total     int  `json:"total"`
+		Truncated bool `json:"truncated"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, w.Body.String())
+	}
+	if resp.Total != 1 || len(resp.Changes) != 1 {
+		t.Fatalf("changes = %+v (total %d), want the single modify on res-1", resp.Changes, resp.Total)
+	}
+	got := resp.Changes[0]
+	if got.AccessorID != user || got.ResourceID != "res-1" || got.Operation != "modify" || got.Direction != "grant" {
+		t.Errorf("change = %+v, want u-1/res-1/modify as a grant", got)
+	}
+	if resp.Truncated {
+		t.Error("truncated = true on a one-row report")
+	}
+
+	var n int64
+	db.Model(&model.ResourceParent{}).Count(&n)
+	if n != 0 {
+		t.Errorf("dry run wrote %d rows", n)
+	}
+
+	// And the real push still works afterwards.
+	w = do(t, r, http.MethodPut, "/api/safe/v1/authz/resource-parents", body)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("push after dry run = %d body=%s", w.Code, w.Body.String())
+	}
+	db.Model(&model.ResourceParent{}).Count(&n)
+	if n != 2 {
+		t.Errorf("rows after push = %d, want 2", n)
+	}
+}

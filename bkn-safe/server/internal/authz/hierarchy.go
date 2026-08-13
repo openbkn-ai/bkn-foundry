@@ -213,9 +213,10 @@ func (en *Enforcer) parentOpMap(resourceType string) (map[string]string, error) 
 	return out, nil
 }
 
-// childIDChunk bounds the size of one "children of these parents" IN clause.
-// An accessor holding many catalogs would otherwise produce a single statement
-// with thousands of bind parameters.
+// childIDChunk bounds one IN clause over resource ids — both "children of these
+// parents" and the preview's "which of these already have a parent". An
+// accessor holding many catalogs, or a full-snapshot preview, would otherwise
+// produce a single statement with thousands of bind parameters.
 const childIDChunk = 500
 
 // inheritedResources lists the instances of resourceType the accessor reaches
@@ -423,4 +424,281 @@ func (en *Enforcer) inheritedOps(accessorID, resourceType, resourceID string, mi
 		return nil, err
 	}
 	return found[r], nil
+}
+
+// Ownership flip directions. A preview reports both because a synchroniser
+// keys its "safe to push" decision on the total: counting only widening would
+// let a re-parenting that REMOVES someone's access report zero.
+const (
+	FlipGrant  = "grant"
+	FlipRevoke = "revoke"
+)
+
+// OwnershipFlip is one decision that would change if a proposed set of
+// ownership rows were recorded: subject, resource, operation, and which way it
+// moves. The subject is reported verbatim — it may be a user or a role, and
+// reporting the role rather than expanding it keeps the report the size of the
+// grant that causes the change rather than the size of that role's membership.
+type OwnershipFlip struct {
+	AccessorID string
+	ResourceID string
+	Operation  string
+	Direction  string
+}
+
+// PreviewOwnership answers "who would gain and lose what" BEFORE any ownership
+// row is written. It exists because recording ownership is the moment
+// inheritance starts applying, and there is no flag to stage that (an
+// allow-only engine has nothing to tighten), so the confirmation has to happen
+// before the write rather than after it.
+//
+// links maps each proposed resource id to its proposed parent id. limit caps
+// the returned slice; the total is always exact, so a caller can say "3 shown
+// of 412" rather than implying the list is complete.
+//
+// Whether a subject reaches the proposed parent is decided by the SAME
+// evaluation the enforcer uses, not by reading policy rows on that parent: the
+// hierarchy has no depth limit, so a grant two levels up reaches the parent and
+// therefore the child. A preview that only read the immediate parent would
+// under-report, and a safety preview that under-reports is worse than none.
+func (en *Enforcer) PreviewOwnership(resourceType, parentType string, links map[string]string, limit int) ([]OwnershipFlip, int, error) {
+	if en.db == nil || len(links) == 0 {
+		return nil, 0, nil
+	}
+	mapping, err := en.parentOpMap(resourceType)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(mapping) == 0 {
+		return nil, 0, nil // nothing about this type inherits
+	}
+	childOps := make([]string, 0, len(mapping))
+	for op := range mapping {
+		childOps = append(childOps, op)
+	}
+	sort.Strings(childOps)
+	parentOps := distinctSorted(mapping)
+
+	children := make([]string, 0, len(links))
+	parentSet := map[string]bool{}
+	for child, parent := range links {
+		children = append(children, child)
+		parentSet[parent] = true
+	}
+	sort.Strings(children)
+	parents := make([]string, 0, len(parentSet))
+	for p := range parentSet {
+		parents = append(parents, p)
+	}
+	sort.Strings(parents)
+
+	childRefs := make([]ResourceRef, 0, len(children))
+	for _, id := range children {
+		childRefs = append(childRefs, ResourceRef{Type: resourceType, ID: id})
+	}
+	parentRefs := make([]ResourceRef, 0, len(parents))
+	for _, id := range parents {
+		parentRefs = append(parentRefs, ResourceRef{Type: parentType, ID: id})
+	}
+
+	// Which children are being MOVED. Only those can lose anything: a resource
+	// that had no parent, or keeps the one it has, cannot stop reaching a grant
+	// it already reaches.
+	current, err := en.currentParents(resourceType, children)
+	if err != nil {
+		return nil, 0, err
+	}
+	moved := map[string]bool{}
+	for child, proposed := range links {
+		if now, ok := current[child]; ok && now != proposed {
+			moved[child] = true
+		}
+	}
+
+	// Candidates must include whoever reaches the OLD parent as well: those are
+	// exactly the subjects a move takes access away from, and they may hold
+	// nothing anywhere near the new one.
+	lookIn := append([]ResourceRef{}, parentRefs...)
+	seenOld := map[string]bool{}
+	for child := range moved {
+		old := current[child]
+		if old == "" || seenOld[old] {
+			continue
+		}
+		seenOld[old] = true
+		lookIn = append(lookIn, ResourceRef{Type: parentType, ID: old})
+	}
+	subjects, err := en.previewCandidates(lookIn)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	out := make([]OwnershipFlip, 0, limit)
+	total := 0
+	record := func(sub, child, op, dir string) {
+		total++
+		if len(out) < limit {
+			out = append(out, OwnershipFlip{
+				AccessorID: sub, ResourceID: child, Operation: op, Direction: dir,
+			})
+		}
+	}
+
+	for _, sub := range subjects {
+		// What the subject may do on the proposed parents — through direct
+		// grants, roles, wildcards, the grant-to-everyone subject, AND the
+		// parents' own ancestors. This is the enforcer's answer, not a row scan.
+		onParents, err := en.FilterResourceOps(sub, parentRefs, nil, parentOps)
+		if err != nil {
+			return nil, 0, err
+		}
+		heldOnParent := make(map[string]map[string]bool, len(onParents))
+		for _, p := range onParents {
+			set := make(map[string]bool, len(p.Operations))
+			for _, op := range p.Operations {
+				set[op] = true
+			}
+			heldOnParent[p.ID] = set
+		}
+		// What the subject may do on the children TODAY, including whatever the
+		// current ownership rows already confer.
+		onChildren, err := en.FilterResourceOps(sub, childRefs, nil, childOps)
+		if err != nil {
+			return nil, 0, err
+		}
+		have := make(map[string]map[string]bool, len(onChildren))
+		for _, c := range onChildren {
+			set := make(map[string]bool, len(c.Operations))
+			for _, op := range c.Operations {
+				set[op] = true
+			}
+			have[c.ID] = set
+		}
+
+		for _, child := range children {
+			gained := map[string]bool{}
+			for _, childOp := range childOps {
+				if heldOnParent[links[child]][mapping[childOp]] {
+					gained[childOp] = true
+				}
+			}
+			for _, op := range childOps {
+				if gained[op] && !have[child][op] {
+					record(sub, child, op, FlipGrant)
+				}
+			}
+			if !moved[child] {
+				continue
+			}
+			// A move can take access away: what the subject holds today may have
+			// come from the OLD parent, and the new one need not confer it. What
+			// survives is the grant on the resource itself plus what the new
+			// parent confers.
+			for _, op := range childOps {
+				if !have[child][op] || gained[op] {
+					continue
+				}
+				direct, err := en.e.Enforce(sub, obj(resourceType, child), op)
+				if err != nil {
+					return nil, 0, err
+				}
+				if !direct {
+					record(sub, child, op, FlipRevoke)
+				}
+			}
+		}
+	}
+	return out, total, nil
+}
+
+// currentParents reads the ownership rows the proposed children have right now,
+// so a re-parenting can be told apart from a first-time registration.
+func (en *Enforcer) currentParents(resourceType string, children []string) (map[string]string, error) {
+	out := map[string]string{}
+	for start := 0; start < len(children); start += childIDChunk {
+		end := min(start+childIDChunk, len(children))
+		var rows []model.ResourceParent
+		if err := en.db.Where("resource_type_id = ? AND resource_id IN ?", resourceType, children[start:end]).
+			Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			out[r.ResourceID] = r.ParentID
+		}
+	}
+	return out, nil
+}
+
+// previewCandidates narrows the subjects a preview has to evaluate. Every
+// subject in the policy store would be correct but wasteful, so it keeps those
+// whose object pattern can reach one of the proposed parents: an exact match, a
+// wildcard pattern (which can match anything), or one of the parents' own
+// ancestors (a grant up there reaches the parent through the same climb the
+// enforcer performs). Being generous here is safe — the evaluation below is
+// what decides; this only bounds the work.
+func (en *Enforcer) previewCandidates(parentRefs []ResourceRef) ([]string, error) {
+	reachable := map[string]bool{}
+	for _, r := range parentRefs {
+		reachable[obj(r.Type, r.ID)] = true
+	}
+	ancestors, err := en.ancestorObjects(parentRefs)
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range ancestors {
+		reachable[o] = true
+	}
+
+	rows, err := en.e.GetPolicy()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, 16)
+	for _, row := range rows {
+		if len(row) < 3 || seen[row[0]] {
+			continue
+		}
+		object := row[1]
+		hit := hasWildcard(object)
+		if !hit {
+			hit = reachable[object]
+		}
+		if !hit {
+			continue
+		}
+		seen[row[0]] = true
+		out = append(out, row[0])
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// ancestorObjects walks up from each ref and returns every ancestor's object
+// key. Bounded by the same depth backstop as the enforce-time climb.
+func (en *Enforcer) ancestorObjects(refs []ResourceRef) ([]string, error) {
+	level := make([]*climber, 0, len(refs))
+	for _, r := range refs {
+		level = append(level, &climber{origin: r, node: r, visited: map[ResourceRef]bool{r: true}})
+	}
+	out := make([]string, 0, len(refs))
+	for depth := 0; len(level) > 0 && depth < maxHierarchyDepth; depth++ {
+		parents, err := en.parentsOf(level)
+		if err != nil {
+			return nil, err
+		}
+		next := make([]*climber, 0, len(level))
+		for _, c := range level {
+			parent, ok := parents[c.node]
+			if !ok || c.visited[parent] {
+				continue
+			}
+			out = append(out, obj(parent.Type, parent.ID))
+			c.node = parent
+			c.visited[parent] = true
+			next = append(next, c)
+		}
+		level = next
+	}
+	return out, nil
 }
