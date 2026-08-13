@@ -392,6 +392,7 @@ func (bta *buildTaskAccess) markTerminal(
 		"f_status": []string{
 			interfaces.BuildTaskStatusPending,
 			interfaces.BuildTaskStatusRunning,
+			interfaces.BuildTaskStatusStopping,
 		},
 	})
 }
