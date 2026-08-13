@@ -44,7 +44,9 @@ type RestHandler interface {
 type restHandler struct {
 	appSetting            *common.AppSetting
 	auditRecorder         operationAuditRecorder
+	auditQueryStore       operationAuditQueryStore
 	auditIdentityResolver func(context.Context, string, hydra.Visitor) operationAuditActor
+	auditAccessResolver   func(context.Context, string, string) (bkntrace.OperationAuditProfile, error)
 	as                    interfaces.AuthService
 	ass                   interfaces.ActionScheduleService
 	ats                   interfaces.ActionTypeService
@@ -59,8 +61,10 @@ type restHandler struct {
 
 func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
 	r := &restHandler{
-		appSetting:    appSetting,
-		auditRecorder: auditStore,
+		appSetting:          appSetting,
+		auditRecorder:       auditStore,
+		auditQueryStore:     auditStore,
+		auditAccessResolver: bkntrace.ResolveOperationAuditProfile,
 		auditIdentityResolver: func(ctx context.Context, authorization string, visitor hydra.Visitor) operationAuditActor {
 			actor := basicOperationAuditActor(authorization, visitor)
 			profile, err := bkntrace.ResolveOperationAuditIdentity(ctx, authorization, visitor.ID)
@@ -97,6 +101,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	bknApiV1.GET("/trace/outbox/:outbox_id", r.GetTraceOutbox)
 	bknApiV1.POST("/trace/outbox/:outbox_id/retry", r.verifyJsonContentType(), r.RetryTraceOutbox)
 	bknApiV1.POST("/trace/outbox/:outbox_id/abandon", r.verifyJsonContentType(), r.AbandonTraceOutbox)
+	bknApiV1.GET("/operation-audits", r.ListOperationAudits)
+	bknApiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
 
 	for _, apiV1 := range []*gin.RouterGroup{bknApiV1, otlApiV1} {
 		// 业务知识网络
