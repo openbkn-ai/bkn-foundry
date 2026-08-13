@@ -370,6 +370,42 @@ func TestInstanceKey(t *testing.T) {
 		t.Error("expected fallback to instance name")
 	}
 	if instanceKey(&interfaces.KnSearchNode{ObjectTypeID: "ot1"}) != "" {
-		t.Error("expected empty key when neither identity nor name is present")
+		t.Error("expected empty key when neither identity, id property, name nor properties are present")
+	}
+}
+
+// 索引行常常两个顶层身份字段都空，身份落在 properties 的 _instance_id 上（VM 实测）。
+func TestInstanceKey_FallsBackToInstanceIDProperty(t *testing.T) {
+	knnRow := &interfaces.KnSearchNode{
+		ObjectTypeID: "stadiums",
+		Properties:   map[string]any{"_instance_id": "sid-42", "stadium_name": "Maracana", "_score": 0.63},
+	}
+	matchRow := &interfaces.KnSearchNode{
+		ObjectTypeID: "stadiums",
+		Properties:   map[string]any{"_instance_id": "sid-42", "stadium_name": "Maracana", "_score": 3.09},
+	}
+	if instanceKey(knnRow) != instanceKey(matchRow) {
+		t.Fatalf("same instance across channels must share a key: %q vs %q", instanceKey(knnRow), instanceKey(matchRow))
+	}
+
+	fused := fuseByRRF([]channelOutcome{
+		{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{knnRow}},
+		{name: channelMatch, scored: true, nodes: []*interfaces.KnSearchNode{matchRow}},
+	}, 60)
+	if len(fused) != 1 {
+		t.Fatalf("expected the duplicate to be merged, got %d nodes", len(fused))
+	}
+}
+
+// 连 _instance_id 都没有时按属性内容取指纹，仍能跨通道认出同一行。
+func TestInstanceKey_FallsBackToPropertiesFingerprint(t *testing.T) {
+	a := &interfaces.KnSearchNode{ObjectTypeID: "ot1", Properties: map[string]any{"b": 2, "a": 1}}
+	b := &interfaces.KnSearchNode{ObjectTypeID: "ot1", Properties: map[string]any{"a": 1, "b": 2}}
+	if instanceKey(a) != instanceKey(b) {
+		t.Errorf("fingerprint must not depend on map order: %q vs %q", instanceKey(a), instanceKey(b))
+	}
+	c := &interfaces.KnSearchNode{ObjectTypeID: "ot1", Properties: map[string]any{"a": 1, "b": 3}}
+	if instanceKey(a) == instanceKey(c) {
+		t.Error("different property values must produce different keys")
 	}
 }

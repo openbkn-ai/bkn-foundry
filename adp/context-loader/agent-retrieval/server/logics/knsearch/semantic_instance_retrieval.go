@@ -10,6 +10,8 @@ package knsearch
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -626,8 +628,15 @@ func mergeChannelNodes(outcomes []channelOutcome) []*interfaces.KnSearchNode {
 	return merged
 }
 
-// instanceKey 生成跨通道稳定的实例标识。唯一标识缺失时退回实例名，两者皆空返回空串
-// 交由调用方处理。
+// instanceIDProperties 是索引行携带的身份列，按可靠性排序。
+//
+// 这条链路上 `unique_identities` / `instance_name` 经常都是空的——VM 实测（#818）
+// 对象类实例返回的身份落在 properties 的 `_instance_id` 里。只认顶层字段的话，
+// 两路召回的同一行会被当成两个匿名实例各占一个名额。
+var instanceIDProperties = []string{"_instance_id", "_instance_identity"}
+
+// instanceKey 生成跨通道稳定的实例标识。按 唯一标识 → 身份列 → 实例名 → 属性内容
+// 依次退让；全都拿不到才返回空串交由调用方当匿名行处理。
 func instanceKey(node *interfaces.KnSearchNode) string {
 	if node == nil {
 		return ""
@@ -644,10 +653,37 @@ func instanceKey(node *interfaces.KnSearchNode) string {
 		}
 		return node.ObjectTypeID + "|" + strings.Join(parts, "&")
 	}
+	for _, name := range instanceIDProperties {
+		if v, ok := node.Properties[name]; ok {
+			if s := strings.TrimSpace(fmt.Sprint(v)); s != "" {
+				return node.ObjectTypeID + "|" + name + "=" + s
+			}
+		}
+	}
 	if node.InstanceName != "" {
 		return node.ObjectTypeID + "|name=" + node.InstanceName
 	}
+	// 兜底按属性内容取指纹：同一行经两路召回拿到的字段完全相同（两路请求同一组
+	// 字段），指纹必然一致。两个属性完全相同的不同实例会被合并，但那样的两行在
+	// 输出里本就无法区分，合并不比重复更糟。属性为空则无从判断，留给匿名分支。
+	if len(node.Properties) > 0 {
+		return node.ObjectTypeID + "|fingerprint=" + propertiesFingerprint(node.Properties)
+	}
 	return ""
+}
+
+// propertiesFingerprint 对属性做与 map 遍历顺序无关的指纹。
+func propertiesFingerprint(props map[string]any) string {
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	h := sha256.New()
+	for _, k := range keys {
+		fmt.Fprintf(h, "%s=%v\x00", k, props[k])
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // sortNodesByScore 按分数降序，同分时按原始召回分降序、再按实例名升序——
