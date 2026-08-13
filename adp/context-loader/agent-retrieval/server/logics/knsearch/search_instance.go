@@ -19,7 +19,7 @@ import (
 )
 
 // SearchInstance 用一句自然语言召回实例：概念召回锁定对象类，再在这些对象类上做
-// 语义实例召回，只回实例行。
+// 语义实例召回，回实例行与读懂它们所需的对象类定义。
 func (s *knSearchService) SearchInstance(
 	ctx context.Context,
 	req *interfaces.SearchInstanceReq,
@@ -75,6 +75,7 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 		Query:        req.Query,
 		KnID:         knID,
 		OnlySchema:   &onlySchema,
+		IndexOpsOnly: req.IndexOpsOnly,
 		// 这里刻意用**本地**配置结构体（字段是 *bool）而不是请求面的
 		// RetrievalConfig（字段是 bool 值类型）。请求面那条转换路径
 		// （retrievalConfigStructToLocal）会把每个 bool 无条件包成 boolPtr，

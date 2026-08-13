@@ -205,3 +205,26 @@ func TestNormalizeSearchInstanceReq_DoesNotClobberDefaultSwitches(t *testing.T) 
 		t.Errorf("expected per-type limit 5, got %d", merged.SemanticInstanceRetrieval.PerTypeInstanceLimit)
 	}
 }
+
+// MCP 面必须只发索引带来的算子。比较算子按属性 type 可推导，逐个下发是纯噪音，
+// 而且很贵——实测 154 个属性的全量算子 15KB，只留索引算子 364 字节。
+func TestNormalizeSearchInstanceReq_PassesIndexOpsOnly(t *testing.T) {
+	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{
+		KnID: "kn1", Query: "q", IndexOpsOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !knReq.IndexOpsOnly {
+		t.Error("index_ops_only must reach KnSearchReq, otherwise MCP callers get every comparison operator")
+	}
+
+	// REST 调用方不设它，拿全量算子。
+	restReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if restReq.IndexOpsOnly {
+		t.Error("index_ops_only must stay off unless the MCP layer sets it")
+	}
+}

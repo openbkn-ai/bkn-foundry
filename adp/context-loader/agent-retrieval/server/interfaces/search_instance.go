@@ -26,6 +26,12 @@ type SearchInstanceReq struct {
 	// IncludeObjectTypes 控制是否附带命中对象类的精简定义，默认开。
 	// 关掉只在「调用方已经拿着这些对象类的 Schema」时才划算。
 	IncludeObjectTypes *bool `json:"include_object_types,omitempty" default:"true"`
+
+	// IndexOpsOnly 让附带的 condition_operations 只保留索引带来的算子。由 MCP 层设置，
+	// 不进请求契约——比较算子按属性 type 可推导，逐个下发对 Agent 是纯噪音，而且很贵：
+	// 实测一个知识网络的 154 个属性，全量算子 15KB，只留索引算子 364 字节。
+	// REST 调用方（Studio 这类直连消费者）仍拿全量。
+	IndexOpsOnly bool `json:"-"`
 }
 
 // SearchInstanceResp search_instance response.

@@ -90,6 +90,8 @@ func handleSearchInstance(knSearchService knsearch.KnSearchService) func(ctx con
 
 		instanceReq := &interfaces.SearchInstanceReq{}
 		_ = bindArguments(req, instanceReq)
+		// MCP 面只发不可推导的算子，比较算子由属性 type 决定——与 search_schema 同一姿势。
+		instanceReq.IndexOpsOnly = true
 		instanceReq.XKnID = getKnIDFromHeader(req)
 		if authCtx != nil {
 			instanceReq.XAccountID = authCtx.AccountID
