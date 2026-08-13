@@ -136,9 +136,14 @@ func (s *localSearchImpl) rerankInstances(
 		return nodes
 	}
 
-	for _, node := range reranked {
-		node.Score = node.RerankScore
-	}
+	// on 模式只改**顺序**，不覆盖 Score。
+	//
+	// 覆盖是错的：模型没回填到的候选（厂商少返一条就会发生）会被赋 0，超出 top_n 的
+	// 尾部则从没进过模型，一次响应里于是同时出现融合分与模型分两把尺子——按 score
+	// 二次排序的调用方会拿到错误次序，而 Score 带 omitempty 时 0 分还会让整个字段消失。
+	//
+	// 融合分是 PR1 挣来的、跨对象类可比的单一量纲，不该被精排破坏。精排要表达的是
+	// 「谁该排前面」，那就体现在返回顺序上；模型判了多少分，rerank_score 单独带出。
 	return append(reranked, tail...)
 }
 
@@ -248,4 +253,31 @@ func orderDelta(before, after []*interfaces.KnSearchNode, k int) (float64, int) 
 		}
 	}
 	return spearman, changed
+}
+
+// deploymentRetrievalConfig 把部署级的实例精排设置摊成一份 base 配置。
+//
+// 读的是 s.config（构造期注入的 loader），不是在包级纯函数里现读文件——那样单测
+// 环境没有 /sysvol/config 就 panic，而配置读取本不该是纯函数的职责。
+func (s *localSearchImpl) deploymentRetrievalConfig() *interfaces.KnSearchRetrievalConfig {
+	if s == nil || s.config == nil {
+		return nil
+	}
+	conceptSearch := s.config.ConceptSearchConfig
+
+	mode := normalizeRerankMode(conceptSearch.InstanceRerankMode)
+	model := conceptSearch.InstanceRerankModel
+	if model == "" {
+		// 留空则沿用关系精排那个模型名；两级精排用同一个 reranker 是常态。
+		model = conceptSearch.RerankModel
+	}
+	if mode == "" && model == "" {
+		return nil
+	}
+	return &interfaces.KnSearchRetrievalConfig{
+		SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
+			InstanceRerankMode:  mode,
+			InstanceRerankModel: model,
+		},
+	}
 }

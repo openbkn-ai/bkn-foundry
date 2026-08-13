@@ -62,11 +62,43 @@ func TestRerankInstances_OnReordersByModelScore(t *testing.T) {
 	if got[0].InstanceName != "欠款单" {
 		t.Fatalf("expected the model to promote 欠款单, got %s", got[0].InstanceName)
 	}
-	if math.Abs(got[0].Score-0.94) > 1e-9 {
-		t.Errorf("score must become the model score, got %.4f", got[0].Score)
-	}
 	if math.Abs(got[0].RerankScore-0.94) > 1e-9 {
 		t.Errorf("rerank_score must be carried out, got %.4f", got[0].RerankScore)
+	}
+	// 精排只改顺序，不覆盖 score：一次响应里只能有一把尺子。融合分跨对象类可比，
+	// 覆盖之后未打分候选与 top_n 之外的尾部会带着另一种量纲混进同一个列表。
+	if math.Abs(got[0].Score-0.98) > 1e-9 {
+		t.Errorf("fusion score must survive reranking, got %.4f", got[0].Score)
+	}
+	if math.Abs(got[1].Score-1.0) > 1e-9 {
+		t.Errorf("fusion score must survive reranking, got %.4f", got[1].Score)
+	}
+}
+
+// on 模式下，模型没打到分的候选与 top_n 之外的尾部都必须保住各自的融合分——
+// 覆盖成模型分会把它们打成 0，而 score 一旦为 0 就与「本地兜底打不出重叠」不可区分。
+func TestRerankInstances_OnKeepsFusionScoreForUnscoredAndTail(t *testing.T) {
+	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
+		{Index: 1, RelevanceScore: 0.9},
+	}}}
+	config := rerankConfig(InstanceRerankModeOn)
+	config.RerankTopN = 2
+	nodes := []*interfaces.KnSearchNode{rerankNode("unscored", 1.0), rerankNode("scored", 0.9), rerankNode("tail", 0.8)}
+
+	got := rerankService(client).rerankInstances(context.Background(), "q", nodes, config)
+
+	byName := map[string]*interfaces.KnSearchNode{}
+	for _, n := range got {
+		byName[n.InstanceName] = n
+	}
+	if math.Abs(byName["unscored"].Score-1.0) > 1e-9 {
+		t.Errorf("an unscored candidate must keep its fusion score, got %.4f", byName["unscored"].Score)
+	}
+	if math.Abs(byName["tail"].Score-0.8) > 1e-9 {
+		t.Errorf("the tail must keep its fusion score, got %.4f", byName["tail"].Score)
+	}
+	if got[0].InstanceName != "scored" {
+		t.Errorf("the scored candidate must lead, got %s", got[0].InstanceName)
 	}
 }
 
@@ -275,5 +307,40 @@ func TestOrderDelta(t *testing.T) {
 	_, changed = orderDelta([]*interfaces.KnSearchNode{a, b, c}, []*interfaces.KnSearchNode{c, a, b}, 1)
 	if changed != 1 {
 		t.Errorf("expected the top-1 to have changed, got %d", changed)
+	}
+}
+
+// 部署级开关是精排的正路：Agent 判断不了部署有没有 reranker、也不知道延迟预算，
+// 该由部署方在 config 里定；请求仍要能覆盖它，否则「部署开了、这次不想要」表达不出来。
+func TestMergeRetrievalConfigWithBase_DeploymentRerankMode(t *testing.T) {
+	base := &interfaces.KnSearchRetrievalConfig{
+		SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
+			InstanceRerankMode:  InstanceRerankModeOn,
+			InstanceRerankModel: "gte-rerank-v2",
+		},
+	}
+
+	// 请求没提精排：用部署级
+	merged := MergeRetrievalConfigWithBase(base, nil)
+	if merged.SemanticInstanceRetrieval.InstanceRerankMode != InstanceRerankModeOn {
+		t.Errorf("deployment mode must apply, got %q", merged.SemanticInstanceRetrieval.InstanceRerankMode)
+	}
+	if merged.SemanticInstanceRetrieval.InstanceRerankModel != "gte-rerank-v2" {
+		t.Errorf("deployment model must apply, got %q", merged.SemanticInstanceRetrieval.InstanceRerankModel)
+	}
+	// 其余默认不受影响
+	if merged.SemanticInstanceRetrieval.PerTypeInstanceLimit != 5 {
+		t.Errorf("unrelated defaults must survive, got %d", merged.SemanticInstanceRetrieval.PerTypeInstanceLimit)
+	}
+
+	// 请求显式关掉：必须盖过部署级
+	off := MergeRetrievalConfigWithBase(base, &interfaces.KnSearchRetrievalConfig{
+		SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
+			InstanceRerankMode: InstanceRerankModeOff,
+		},
+	})
+	if off.SemanticInstanceRetrieval.InstanceRerankMode != InstanceRerankModeOff {
+		t.Errorf("an explicit request must override the deployment switch, got %q",
+			off.SemanticInstanceRetrieval.InstanceRerankMode)
 	}
 }

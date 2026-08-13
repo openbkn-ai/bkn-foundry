@@ -186,7 +186,9 @@ type KnSearchNode struct {
 	InstanceName     string         `json:"instance_name,omitempty"`
 	UniqueIdentities map[string]any `json:"unique_identities,omitempty"`
 	Properties       map[string]any `json:"properties,omitempty"`
-	Score            float64        `json:"score,omitempty"`
+	// Score 相关性分。**不带 omitempty**：0 分是有意义的取值（本地兜底打分给不出重叠
+	// 时就是 0），省略字段会让调用方分不清「没这个字段」与「分是 0」。
+	Score float64 `json:"score"`
 	// RecallScore 保留召回阶段的原始 _score（OpenSearch 相关性）。Score 在 RRF 路径上
 	// 会被融合分覆盖，两个量纲不同，排障时需要能同时看见。
 	RecallScore float64 `json:"recall_score,omitempty"`
