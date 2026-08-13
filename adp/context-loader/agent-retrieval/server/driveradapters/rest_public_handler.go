@@ -124,7 +124,7 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 // handlePTCToolkit 返回 PTC 工具包（GET …/mcp/toolkit）。
 // 内容随工具面变化，客户端按 version 缓存。
 func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
-	toolkit, err := mcp.BuildPTCToolkit(publicEndpointURL(c.Request, "/mcp"), r.ServicePort)
+	toolkit, err := mcp.BuildPTCToolkit(publicEndpointURL(c.Request, mcpPath), r.ServicePort)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -132,18 +132,40 @@ func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
 	c.JSON(http.StatusOK, toolkit)
 }
 
-// handleMCP 在 MCP catch-all 路由内分流：GET …/mcp/info 返回自描述文档，其余交给 MCP Server。
+// handleMCP 在 MCP catch-all 路由内分流。
+//
+// 路径布局（两台 MCP Server，接入时二选一）：
+//
+//	/mcp                 MCP，二十来个业务工具逐个暴露
+//	/mcp/info            文档：描述 /mcp
+//	/mcp/ptc             MCP，只有 run_code / run_shell 加生命周期
+//	/mcp/ptc/info        文档：描述 /mcp/ptc
+//	/mcp/ptc/toolkit     自己实现 PTC 的素材（stub / digest / 工具表）
+//	/mcp/toolkit         /mcp/ptc/toolkit 的旧别名，已弃用
+//
+// 分流顺序是有意的：**精确匹配必须排在 /ptc 的前缀判断之前**。mcp-go 按前缀吃
+// 路径，把前缀判断提前会让 /mcp/ptc/toolkit 被当成一次 MCP 调用交给 PTC Server，
+// 然后 404——而且是静默的，看起来就像端点没上线。
 func (r *restPublicHandler) handleMCP(c *gin.Context) {
-	// /toolkit 与 /info 是同一份工具面的两种投影：/info 给要接 MCP 的客户端，
-	// /toolkit 给把工具面收进沙箱的代码模式客户端。放在同一前缀下，是因为两者
-	// 的内容都随工具面变化，分开会让人以为它们可能不一致。
-	if c.Request.Method == http.MethodGet && c.Param("path") == "/toolkit" {
+	path := c.Param("path")
+	isGet := c.Request.Method == http.MethodGet
+
+	switch {
+	case isGet && path == ptcToolkitPath:
 		r.handlePTCToolkit(c)
 		return
-	}
-	// …/mcp/ptc 是另一套 MCP 工具面（只有 run_code / run_shell 加生命周期），
-	// 服务端代跑代码。mcp-go 按前缀匹配路径，所以要在交给主 MCP Server 之前拦下。
-	if strings.HasPrefix(c.Param("path"), "/ptc") {
+	// 旧路径。它描述的是 PTC 那套，却挂在 /mcp 下面，读起来像在描述 /mcp——
+	// 与 /mcp/info 的对称关系是错的。保留只为兼容先上线的客户端。
+	case isGet && path == legacyToolkitPath:
+		r.handlePTCToolkit(c)
+		return
+	case isGet && path == ptcInfoPath:
+		r.replyMCPInfo(c, publicEndpointURL(c.Request, ptcMCPPath))
+		return
+	case isGet && path == mcpInfoPath:
+		r.replyMCPInfo(c, mcpEndpointURL(c.Request))
+		return
+	case strings.HasPrefix(path, ptcPathPrefix):
 		if r.PTCMCPHandler == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "PTC MCP endpoint is unavailable"})
 			return
@@ -151,16 +173,28 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 		r.PTCMCPHandler.ServeHTTP(c.Writer, c.Request)
 		return
 	}
-	if c.Request.Method == http.MethodGet && c.Param("path") == "/info" {
-		info, err := mcp.BuildMCPInfo(mcpEndpointURL(c.Request))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, info)
+	r.MCPHandler.ServeHTTP(c.Writer, c.Request)
+}
+
+// MCP catch-all 之下的子路径。集中在一处，好让分流顺序与这份清单对着看。
+const (
+	mcpPath           = "/mcp"
+	ptcMCPPath        = "/mcp/ptc"
+	ptcPathPrefix     = "/ptc"
+	mcpInfoPath       = "/info"
+	ptcInfoPath       = "/ptc/info"
+	ptcToolkitPath    = "/ptc/toolkit"
+	legacyToolkitPath = "/toolkit"
+)
+
+// replyMCPInfo 输出某个 MCP 端点的自描述文档。
+func (r *restPublicHandler) replyMCPInfo(c *gin.Context, endpoint string) {
+	info, err := mcp.BuildMCPInfo(endpoint)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	r.MCPHandler.ServeHTTP(c.Writer, c.Request)
+	c.JSON(http.StatusOK, info)
 }
 
 // mcpEndpointURL 依据请求推导本服务对外的 MCP 端点（去掉末尾的 /info）。

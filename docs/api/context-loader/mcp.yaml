@@ -83,9 +83,15 @@ paths:
     get:
       tags:
         - MCP
-      summary: PTC（代码化工具调用）工具包
-      operationId: getPTCToolkit
+      deprecated: true
+      summary: PTC 工具包（旧路径，已弃用）
+      operationId: getPTCToolkitLegacy
       description: |
+        **已弃用，改用 `GET /mcp/ptc/toolkit`。** 响应完全相同，仅路径不同。
+
+        旧路径描述的是 PTC 那套工具面，却挂在 `/mcp` 下面，读起来像在描述 `/mcp`——
+        与 `/mcp/info` 的对称关系是错的。保留只为兼容先上线的客户端，新接入不要用。
+
         面向「只给模型一个写代码的工具」这种用法：模型写一段 Python，沙箱执行，
         脚本里调用本服务的能力，中间结果留在沙箱，只有 stdout 回到上下文。
 
@@ -153,7 +159,7 @@ paths:
         **执行在服务端**：客户端只发代码，context-loader 带上**调用方本人的令牌**去打
         执行工厂的公开面，那边照常校验算子类型上的 `execute` 权限。因此任何 MCP
         客户端（Claude Desktop、Cursor、第三方 Agent）都能直接用，不必自己实现
-        「取工具包 + 拼 handler + 打执行工厂」那一套。想自己实现的走 `GET /mcp/toolkit`。
+        「取工具包 + 拼 handler + 打执行工厂」那一套。想自己实现的走 `GET /mcp/ptc/toolkit`。
 
         `run_code` 与 `run_shell` 共用同一个工作目录（按 `conversation_id` 分），
         前者写下的文件后者能直接 `wc` / `head` / `grep`。
@@ -189,6 +195,79 @@ paths:
                 properties:
                   error:
                     type: string
+
+  /mcp/ptc/toolkit:
+    get:
+      tags:
+        - MCP
+      summary: PTC 工具包（自行实现 PTC 时用）
+      operationId: getPTCToolkit
+      description: |
+        给不走 `POST /mcp/ptc`、想自己实现 PTC 的客户端（例如自建前端）用：一次返回
+        全部素材，客户端自行组装工具并打执行工厂。
+
+        - `tools` —— 要暴露给模型的工具全表。**遍历它建工具，不要按名字硬编码**，
+          这样以后加工具是纯服务端改动。
+        - `stub` —— 沙箱内的 Python 实现，随每次执行内联进脚本。
+        - `sandbox_mcp_url` —— 沙箱回访本服务的**集群内**地址。沙箱用不了浏览器侧的
+          网关地址，而集群内地址只有服务端知道。
+        - `version` —— 内容哈希，客户端据此缓存；工具表一变它就变。
+
+        由服务端而非客户端渲染工具说明，有两个客户端做不到的地方：一是 schema 里
+        没有 `bkn_context`（它是生命周期守卫在运行时向业务工具索取的），从
+        `tools/list` 自行渲染的客户端会把它当成必填参数写进签名，让模型去填一个它
+        没有的值；二是只有服务端知道哪些工具真正注册了。
+
+        注意与 `POST /mcp/ptc` 的差别：那边由服务端代跑代码，`bkn_context` 是工具的
+        必填入参；这里返回的 schema **不含** `bkn_context`，因为自建前端自己管会话。
+
+        `digest` / `stub` / `sandbox_mcp_url` 三个顶层字段先于 `tools` 上线，保留为
+        兼容字段；`digest` 与 `tools` 里 `run_code` 的 `description` 恒为同一份内容。
+      responses:
+        '200':
+          description: 工具包
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PTCToolkit'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误（内嵌的工具元数据读取失败）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /mcp/ptc/info:
+    get:
+      tags:
+        - MCP
+      summary: PTC MCP 端点自描述文档
+      operationId: getPTCMCPInfo
+      description: |
+        与 `GET /mcp/info` 同构，只是 `endpoint` 指向 `/mcp/ptc`。给要接 PTC 端点的
+        客户端抄连接配置用。
+      responses:
+        '200':
+          description: 自描述文档
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPInfo'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
 
   /mcp:
     post:
