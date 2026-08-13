@@ -66,7 +66,15 @@ func NewEmbeddingBuildWorker(appSetting *common.AppSetting) *embeddingWorker {
 func (ew *embeddingWorker) Run(ctx context.Context, taskID string) error {
 	buildTaskInfo, err := ew.bts.InternalGetByID(ctx, taskID)
 	if err != nil {
-		return fmt.Errorf("get build task failed: %w", err)
+		runErr := fmt.Errorf("get build task failed: %w", err)
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg(runErr.Error())
+		if _, updateErr := ew.bts.InternalUpdateStatus(ctx, nil, taskID, update,
+			interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning); updateErr != nil {
+			logger.Errorf("Mark build task failed after embedding task lookup error: id=%s, error=%v", taskID, updateErr)
+		}
+		return runErr
 	}
 	if buildTaskInfo == nil {
 		// Task not found, return nil

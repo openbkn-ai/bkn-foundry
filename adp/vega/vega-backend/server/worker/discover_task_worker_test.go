@@ -83,6 +83,23 @@ func TestDiscoverTaskWorkerMarksTaskFailedWhenCatalogLookupFails(t *testing.T) {
 	require.ErrorContains(t, err, "temporary database error")
 }
 
+func TestDiscoverTaskWorkerStopsWhenRunningTransitionMisses(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").
+		Return(false, nil)
+
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
+}
+
 func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)

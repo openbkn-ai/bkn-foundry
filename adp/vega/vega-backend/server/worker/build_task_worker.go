@@ -289,7 +289,7 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	if err := btw.bbw.Run(ctx, taskID); err != nil {
+	if err := btw.bbw.Run(ctx, task); err != nil {
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
@@ -312,7 +312,7 @@ func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string)
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	if err := btw.sbw.Run(ctx, taskID); err != nil {
+	if err := btw.sbw.Run(ctx, task); err != nil {
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}

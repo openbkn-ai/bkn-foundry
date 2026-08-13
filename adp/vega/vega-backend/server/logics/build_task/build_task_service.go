@@ -440,6 +440,17 @@ func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.T
 	return bts.bta.UpdateStatus(ctx, tx, id, update, time.Now().UnixMilli(), allowedStatuses...)
 }
 
+func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkRunning")
+	defer span.End()
+
+	return bts.bta.UpdateStatus(ctx, nil, id,
+		interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusRunning).
+			WithErrorMsg(""),
+		time.Now().UnixMilli(), interfaces.BuildTaskStatusPending)
+}
+
 // populateBuildTaskReferences 批量补齐任务关联的资源与目录展示字段。它只查询当前
 // 返回的任务所引用的实体，避免任务列表由前端触发全量资源/目录加载。
 func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, buildTasks []*interfaces.BuildTask) error {

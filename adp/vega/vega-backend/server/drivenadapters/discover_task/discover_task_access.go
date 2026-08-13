@@ -412,6 +412,39 @@ func (dta *discoverTaskAccess) UpdateStatus(ctx context.Context, id, status, mes
 	return nil
 }
 
+func (dta *discoverTaskAccess) MarkRunning(ctx context.Context, id string, startTime int64) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover task running")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
+		Set("f_status", interfaces.DiscoverTaskStatusRunning).
+		Set("f_message", "").
+		Set("f_start_time", startTime).
+		Where(sq.Eq{
+			"f_id":     id,
+			"f_status": interfaces.DiscoverTaskStatusPending,
+		}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+
+	result, err := dta.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Read affected rows failed")
+		return false, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return affected == 1, nil
+}
+
 func (dta *discoverTaskAccess) MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover task cancelled")
 	defer span.End()

@@ -265,7 +265,7 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 
 	agentTaskID := taskInfo.AgentTaskID
 	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
-		claimed, err := sutw.suts.ClaimRunning(ctx, taskInfo.ID)
+		claimed, err := sutw.suts.InternalMarkRunning(ctx, taskInfo.ID)
 		if err != nil {
 			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 				logger.Errorf("Mark semantic understanding task failed after claim error: id=%s, error=%v", taskInfo.ID, updateErr)

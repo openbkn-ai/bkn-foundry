@@ -276,6 +276,13 @@ func (dts *discoverTaskService) InternalUpdateStatus(ctx context.Context, id, st
 	return dts.dta.UpdateStatus(ctx, id, status, message, stime)
 }
 
+func (dts *discoverTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalMarkRunning")
+	defer span.End()
+
+	return dts.dta.MarkRunning(ctx, id, time.Now().UnixMilli())
+}
+
 func (dts *discoverTaskService) InternalMarkCancelled(ctx context.Context, id string, message string, finishTime int64) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalMarkCancelled")
 	defer span.End()

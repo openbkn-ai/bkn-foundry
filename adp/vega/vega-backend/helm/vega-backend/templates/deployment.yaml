@@ -8,10 +8,7 @@ metadata:
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 2
-      maxUnavailable: 1
+    type: Recreate
   selector:
     matchLabels:
       module: {{ .Values.moduleName }}

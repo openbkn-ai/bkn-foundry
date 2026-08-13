@@ -224,6 +224,16 @@ func TestDiscoverTaskServiceUpdateAndExistence(t *testing.T) {
 		require.NoError(t, service.UpdateStatus(context.Background(), "task-1", interfaces.DiscoverTaskStatusRunning, "started", 100))
 	})
 
+	t.Run("delegates internal running update", func(t *testing.T) {
+		service, dta, _ := newTestDiscoverTaskService(t)
+		dta.EXPECT().MarkRunning(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
+
+		updated, err := service.InternalMarkRunning(context.Background(), "task-1")
+
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
+
 	t.Run("delegates result update", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		result := &interfaces.DiscoverResult{}

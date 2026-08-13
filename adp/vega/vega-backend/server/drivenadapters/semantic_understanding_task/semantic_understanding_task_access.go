@@ -474,15 +474,7 @@ func (suta *semanticUnderstandingTaskAccess) MarkCancelledByCatalogID(
 	return nil
 }
 
-func (suta *semanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id string, agentTaskID string, updateTime int64) (bool, error) {
-	return suta.update(ctx, id, map[string]any{
-		"f_status":         interfaces.SemanticUnderstandingTaskStatusRunning,
-		"f_agent_task_id":  agentTaskID,
-		"f_failure_detail": "",
-	}, updateTime, interfaces.SemanticUnderstandingTaskStatusPending)
-}
-
-func (suta *semanticUnderstandingTaskAccess) ClaimRunning(ctx context.Context, id string, updateTime int64) (bool, error) {
+func (suta *semanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id string, updateTime int64) (bool, error) {
 	return suta.update(ctx, id, map[string]any{
 		"f_status": interfaces.SemanticUnderstandingTaskStatusRunning,
 	}, updateTime, interfaces.SemanticUnderstandingTaskStatusPending)

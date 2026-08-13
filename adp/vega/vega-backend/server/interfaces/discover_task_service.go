@@ -38,6 +38,8 @@ type DiscoverTaskService interface {
 	InternalList(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, int64, error)
 	// InternalUpdateStatus updates a DiscoverTask's status for internal workers.
 	InternalUpdateStatus(ctx context.Context, id string, status string, message string, stime int64) error
+	// InternalMarkRunning transitions a pending DiscoverTask to running.
+	InternalMarkRunning(ctx context.Context, id string) (bool, error)
 	// InternalMarkCancelled 仅取消活动状态的 DiscoverTask。
 	InternalMarkCancelled(ctx context.Context, id string, message string, finishTime int64) (bool, error)
 	// InternalMarkFailed only fails active DiscoverTasks.

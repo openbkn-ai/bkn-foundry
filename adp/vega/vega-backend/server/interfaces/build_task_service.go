@@ -39,6 +39,8 @@ type BuildTaskService interface {
 	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
 	// InternalUpdateStatus updates a build task status for internal workers.
 	InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
+	// InternalMarkRunning transitions a pending build task to running.
+	InternalMarkRunning(ctx context.Context, id string) (bool, error)
 	// InternalGetStatus retrieves the status of a build task for internal workers.
 	InternalGetStatus(ctx context.Context, id string) (string, error)
 

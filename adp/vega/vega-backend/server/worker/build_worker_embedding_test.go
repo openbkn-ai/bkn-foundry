@@ -25,6 +25,24 @@ import (
 )
 
 func TestEmbeddingWorkerHandleTask(t *testing.T) {
+	t.Run("marks task failed when task lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		ew := &embeddingWorker{bts: bts}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(nil, errors.New("database unavailable"))
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusFailed).
+				WithErrorMsg("get build task failed: database unavailable"),
+			interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning).
+			Return(true, nil)
+
+		err := ew.Run(context.Background(), "t1")
+
+		require.EqualError(t, err, "get build task failed: database unavailable")
+	})
+
 	t.Run("skips terminal task without reviving it", func(t *testing.T) {
 		for _, status := range []string{
 			interfaces.BuildTaskStatusFailed,

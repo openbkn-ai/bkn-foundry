@@ -187,33 +187,33 @@ func boolPtr(value bool) *bool {
 }
 
 func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {
-	t.Run("claims pending task", func(t *testing.T) {
+	t.Run("marks pending task running", func(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_agent_task_id = ?, f_failure_detail = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs("agent-task-1", "", interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.MarkRunning(context.Background(), "semantic-task-1", "agent-task-1", 123)
+		updated, err := access.MarkRunning(context.Background(), "semantic-task-1", 123)
 
 		require.NoError(t, err)
-		assert.True(t, claimed)
+		assert.True(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("returns false when status does not match", func(t *testing.T) {
+	t.Run("reports status mismatch", func(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_agent_task_id = ?, f_failure_detail = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs("agent-task-1", "", interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		claimed, err := access.MarkRunning(context.Background(), "semantic-task-1", "agent-task-1", 123)
+		updated, err := access.MarkRunning(context.Background(), "semantic-task-1", 123)
 
 		require.NoError(t, err)
-		assert.False(t, claimed)
+		assert.False(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

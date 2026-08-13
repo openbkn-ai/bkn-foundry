@@ -175,6 +175,21 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkFailed(ctx, id, messa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkFailed", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkFailed), ctx, id, message, finishTime)
 }
 
+// InternalMarkRunning mocks base method.
+func (m *MockDiscoverTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalMarkRunning", ctx, id)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalMarkRunning indicates an expected call of InternalMarkRunning.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkRunning(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkRunning", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkRunning), ctx, id)
+}
+
 // InternalUpdateResult mocks base method.
 func (m *MockDiscoverTaskService) InternalUpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
 	m.ctrl.T.Helper()

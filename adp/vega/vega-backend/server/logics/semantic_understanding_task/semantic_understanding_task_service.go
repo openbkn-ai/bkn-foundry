@@ -434,19 +434,11 @@ func (suts *semanticUnderstandingTaskService) Delete(ctx context.Context, ids []
 	return nil
 }
 
-func (suts *semanticUnderstandingTaskService) MarkRunning(ctx context.Context, id string, agentTaskID string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkRunning")
+func (suts *semanticUnderstandingTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalMarkRunning")
 	defer span.End()
 
-	if agentTaskID == "" {
-		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
-			WithErrorDetails("agent_task_id is required")
-	}
-	return suts.suta.MarkRunning(ctx, id, agentTaskID, time.Now().UnixMilli())
-}
-
-func (suts *semanticUnderstandingTaskService) ClaimRunning(ctx context.Context, id string) (bool, error) {
-	return suts.suta.ClaimRunning(ctx, id, time.Now().UnixMilli())
+	return suts.suta.MarkRunning(ctx, id, time.Now().UnixMilli())
 }
 
 func (suts *semanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {

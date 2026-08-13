@@ -53,18 +53,13 @@ func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	}
 }
 
-// Run executes one persisted batch build task.
-func (bbw *batchBuildWorker) Run(ctx context.Context, taskID string) error {
-	logger.Infof("Starting batch build task: %s", taskID)
-
-	buildTaskInfo, err := bbw.bts.InternalGetByID(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("get build task failed: %w", err)
-	}
+// Run executes one persisted batch build task already selected by the database producer.
+func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.BuildTask) error {
 	if buildTaskInfo == nil {
-		// Task not found, return nil
 		return nil
 	}
+	taskID := buildTaskInfo.ID
+	logger.Infof("Starting batch build task: %s", taskID)
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
@@ -82,7 +77,7 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, taskID string) error {
 		}
 		return nil
 	}
-	claimed, err := claimBuildTaskExecution(ctx, bbw.bts, taskID)
+	claimed, err := bbw.bts.InternalMarkRunning(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("claim build task execution failed: %w", err)
 	}

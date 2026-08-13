@@ -45,15 +45,10 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		bbw := &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
-		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
-		}, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusRunning).
-				WithErrorMsg(""),
-			interfaces.BuildTaskStatusPending).
-			Return(true, nil)
+		}
+		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
@@ -65,7 +60,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 				return nil, errors.New("forbidden")
 			})
 
-		require.NoError(t, bbw.Run(context.Background(), "t1"))
+		require.NoError(t, bbw.Run(context.Background(), task))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
 	})
@@ -75,21 +70,16 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		bbw := &batchBuildWorker{bts: bts}
 
-		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		task := &interfaces.BuildTask{
 			ID:          "t1",
 			ResourceID:  "r1",
 			Mode:        interfaces.BuildTaskModeBatch,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 			Status:      interfaces.BuildTaskStatusPending,
-		}, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusRunning).
-				WithErrorMsg(""),
-			interfaces.BuildTaskStatusPending).
-			Return(false, nil)
+		}
+		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(false, nil)
 
-		require.NoError(t, bbw.Run(context.Background(), "t1"))
+		require.NoError(t, bbw.Run(context.Background(), task))
 	})
 
 	t.Run("cancels task when resource was deleted", func(t *testing.T) {
@@ -98,18 +88,16 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bbw := &batchBuildWorker{bts: bts, rs: rs}
 
-		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
-		}, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning).WithErrorMsg(""),
-			interfaces.BuildTaskStatusPending).Return(true, nil)
+		}
+		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
 			interfaces.BuildTaskStatusRunning).Return(true, nil)
 
-		require.NoError(t, bbw.Run(context.Background(), "t1"))
+		require.NoError(t, bbw.Run(context.Background(), task))
 	})
 
 	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
@@ -124,10 +112,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 		}
-		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(taskInfo, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning).WithErrorMsg(""),
-			interfaces.BuildTaskStatusPending).Return(true, nil)
+		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).
@@ -136,7 +121,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("catalog deleted"),
 			interfaces.BuildTaskStatusRunning).Return(true, nil)
 
-		require.NoError(t, bbw.Run(context.Background(), "t1"))
+		require.NoError(t, bbw.Run(context.Background(), taskInfo))
 	})
 
 	t.Run("does not switch local index when build fails", func(t *testing.T) {
@@ -153,19 +138,14 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			CatalogID:      "c1",
 			LocalIndexName: interfaces.BuildIndexName("r1", "old-task"),
 		}
-		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+		task := &interfaces.BuildTask{
 			ID:          "t1",
 			ResourceID:  "r1",
 			Mode:        interfaces.BuildTaskModeBatch,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 			Status:      interfaces.BuildTaskStatusPending,
-		}, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusRunning).
-				WithErrorMsg(""),
-			interfaces.BuildTaskStatusPending).
-			Return(true, nil)
+		}
+		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
@@ -174,7 +154,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 				WithErrorMsg("get catalog failed: catalog down")).
 			Return(true, nil)
 
-		require.NoError(t, bbw.Run(context.Background(), "t1"))
+		require.NoError(t, bbw.Run(context.Background(), task))
 		assert.Equal(t, interfaces.BuildIndexName("r1", "old-task"), resource.LocalIndexName)
 	})
 }

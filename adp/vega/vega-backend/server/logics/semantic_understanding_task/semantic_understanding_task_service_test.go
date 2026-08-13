@@ -430,10 +430,10 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	service := &semanticUnderstandingTaskService{suta: taskAccess}
 
 	taskAccess.EXPECT().
-		MarkRunning(gomock.Any(), "semantic-task-1", "agent-task-1", gomock.Any()).
+		MarkRunning(gomock.Any(), "semantic-task-1", gomock.Any()).
 		Return(true, nil)
 
-	running, err := service.MarkRunning(context.Background(), "semantic-task-1", "agent-task-1")
+	running, err := service.InternalMarkRunning(context.Background(), "semantic-task-1")
 	require.NoError(t, err)
 	assert.True(t, running)
 

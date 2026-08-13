@@ -42,21 +42,6 @@ func (m *MockSemanticUnderstandingTaskAccess) EXPECT() *MockSemanticUnderstandin
 	return m.recorder
 }
 
-// ClaimRunning mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) ClaimRunning(ctx context.Context, id string, updateTime int64) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClaimRunning", ctx, id, updateTime)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ClaimRunning indicates an expected call of ClaimRunning.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) ClaimRunning(ctx, id, updateTime any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).ClaimRunning), ctx, id, updateTime)
-}
-
 // Create mocks base method.
 func (m *MockSemanticUnderstandingTaskAccess) Create(ctx context.Context, task *interfaces.SemanticUnderstandingTask) error {
 	m.ctrl.T.Helper()
@@ -251,18 +236,18 @@ func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkFailed(ctx, id, f
 }
 
 // MarkRunning mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id, agentTaskID string, updateTime int64) (bool, error) {
+func (m *MockSemanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id string, updateTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkRunning", ctx, id, agentTaskID, updateTime)
+	ret := m.ctrl.Call(m, "MarkRunning", ctx, id, updateTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkRunning indicates an expected call of MarkRunning.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkRunning(ctx, id, agentTaskID, updateTime any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkRunning(ctx, id, updateTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkRunning), ctx, id, agentTaskID, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkRunning), ctx, id, updateTime)
 }
 
 // SetAgentTaskID mocks base method.

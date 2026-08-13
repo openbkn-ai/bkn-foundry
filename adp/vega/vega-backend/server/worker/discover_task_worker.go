@@ -253,13 +253,17 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	}
 
 	// Update task status to running and set start time
-	now := time.Now().UnixMilli()
-	if err := dtw.dts.InternalUpdateStatus(ctx, taskID, interfaces.DiscoverTaskStatusRunning, "", now); err != nil {
+	updated, err := dtw.dts.InternalMarkRunning(ctx, taskID)
+	if err != nil {
 		logger.Errorf("Failed to set start time for task %s: %v", taskID, err)
 		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error(), time.Now().UnixMilli()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after claim error: id=%s, error=%v", taskID, updateErr)
 		}
 		return err
+	}
+	if !updated {
+		logger.Infof("Discover task status changed before running: id=%s", taskID)
+		return nil
 	}
 
 	// Execute discover : 元数据采集主要逻辑
@@ -277,7 +281,7 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	}
 
 	// Update task result
-	now = time.Now().UnixMilli()
+	now := time.Now().UnixMilli()
 	if err := dtw.dts.InternalUpdateResult(ctx, taskID, result, now); err != nil {
 		logger.Errorf("Failed to update result for task %s: %v", taskID, err)
 		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error(), time.Now().UnixMilli()); updateErr != nil {

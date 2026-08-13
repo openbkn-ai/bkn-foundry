@@ -19,8 +19,6 @@ type SemanticUnderstandingTaskService interface {
 	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
 	Delete(ctx context.Context, ids []string, ignoreMissing bool) error
 
-	MarkRunning(ctx context.Context, id string, agentTaskID string) (bool, error)
-	ClaimRunning(ctx context.Context, id string) (bool, error)
 	SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)
 	MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
 	MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
@@ -30,6 +28,7 @@ type SemanticUnderstandingTaskService interface {
 	InternalGetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
 	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
 	InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error)
+	InternalMarkRunning(ctx context.Context, id string) (bool, error)
 
 	DispatchSignal() <-chan struct{}
 	RequestDispatch()

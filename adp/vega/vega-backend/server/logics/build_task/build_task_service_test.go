@@ -30,6 +30,24 @@ type analyzerValidatingIndexManager struct {
 	captured  []string
 }
 
+func TestBuildTaskServiceInternalMarkRunning(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+	service := &buildTaskService{bta: mockBTA}
+	mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
+		interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusRunning).
+			WithErrorMsg(""),
+		gomock.Any(), interfaces.BuildTaskStatusPending).
+		Return(true, nil)
+
+	updated, err := service.InternalMarkRunning(context.Background(), "task-1")
+
+	require.NoError(t, err)
+	assert.True(t, updated)
+}
+
 func (m *analyzerValidatingIndexManager) ValidateAnalyzer(_ context.Context, analyzer string) (bool, error) {
 	m.captured = append(m.captured, analyzer)
 	return m.available, m.err

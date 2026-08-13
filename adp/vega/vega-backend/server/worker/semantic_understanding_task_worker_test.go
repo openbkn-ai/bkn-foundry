@@ -221,7 +221,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			Run(ctxWithAccountID(t, "account-1"), semanticTask).
 			Return("agent-task-1", nil)
 		taskService.EXPECT().
-			ClaimRunning(ctxWithAccountID(t, "account-1"), "semantic-task-1").
+			InternalMarkRunning(ctxWithAccountID(t, "account-1"), "semantic-task-1").
 			Return(true, nil)
 		taskService.EXPECT().
 			SetAgentTaskID(ctxWithAccountID(t, "account-1"), "semantic-task-1", "agent-task-1").
@@ -418,7 +418,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			InternalGetByID(gomock.Any(), "semantic-task-1").
 			Return(semanticTask, nil)
 		taskService.EXPECT().
-			ClaimRunning(ctxWithAccountID(t, "account-1"), "semantic-task-1").
+			InternalMarkRunning(ctxWithAccountID(t, "account-1"), "semantic-task-1").
 			Return(true, nil)
 		agentService.EXPECT().
 			Run(ctxWithAccountID(t, "account-1"), semanticTask).

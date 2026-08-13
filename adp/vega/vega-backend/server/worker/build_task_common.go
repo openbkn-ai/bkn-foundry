@@ -112,15 +112,6 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 	return nil
 }
 
-func claimBuildTaskExecution(ctx context.Context, bts interfaces.BuildTaskService, taskID string) (bool, error) {
-	return bts.InternalUpdateStatus(ctx, nil, taskID,
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusRunning).
-			WithErrorMsg(""),
-		interfaces.BuildTaskStatusPending,
-	)
-}
-
 // isBuildTaskTerminal reports statuses that background workers must never revive.
 func isBuildTaskTerminal(status string) bool {
 	return status == interfaces.BuildTaskStatusFailed ||
