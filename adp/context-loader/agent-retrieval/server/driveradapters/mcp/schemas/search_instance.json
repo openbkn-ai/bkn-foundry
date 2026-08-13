@@ -1,0 +1,84 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "toon"
+        ],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
+      "query": {
+        "type": "string",
+        "description": "自然语言问题或关键词。整句直接传，不必拆成字段条件——向量通道吃整句，全文通道由分析器分词。"
+      },
+      "concept_groups": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "限定召回范围到指定的 BKN 概念分组；不传则在整个知识网络内召回。"
+      },
+      "max_object_types": {
+        "type": "integer",
+        "default": 10,
+        "minimum": 1,
+        "description": "参与实例召回的对象类数量上限。调大能覆盖更多对象类，代价是每多一个对象类多一轮下游查询。"
+      },
+      "max_instances_per_type": {
+        "type": "integer",
+        "default": 5,
+        "minimum": 1,
+        "description": "每个对象类最多返回几条实例。"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "description": "命中的实例。按相关性降序，可跨对象类比较。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "object_type_id": {
+              "type": "string",
+              "description": "该实例所属对象类 ID，可直接喂给 get_object_types / query_object_instance。"
+            },
+            "object_type_name": {
+              "type": "string"
+            },
+            "properties": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "实例属性。字段含义见 search_schema / get_object_types 返回的对象类定义。"
+            },
+            "score": {
+              "type": "number",
+              "description": "相关性分，可跨对象类比较；不表达绝对相关性，只表达相对次序。"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "message": {
+        "type": "string",
+        "description": "仅在没有命中时出现，说明为什么是空的。"
+      }
+    },
+    "required": [
+      "nodes"
+    ]
+  }
+}

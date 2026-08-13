@@ -23,6 +23,14 @@
     "order": 130,
     "description": "统一的 Schema 探索入口，先锁定对象类（object_types）。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费；其中 metric_types 只是辅助线索，指标的权威清单以 get_object_types 返回的 related_metrics 为准（按对象类 scope 全量枚举）。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type，并只列索引带来的算子 match/multi_match/knn，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
   },
+  "search_instance": {
+    "name": "search_instance",
+    "title": "实例语义检索",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 205,
+    "description": "用一句自然语言直接召回实例，不需要先知道对象类和字段名。先按 query 锁定相关对象类，再在这些对象类上做语义实例召回（向量 + 全文两路并发，按名次融合），只返回实例行。适合「这句话说的是哪几条数据」这类起点问题；已经知道对象类和过滤条件时用 query_object_instance，只要 Schema 不要数据时用 search_schema。只有 condition_operations 含 match / knn 的属性参与召回，因此没建索引的对象类不会出实例。"
+  },
   "query_object_instance": {
     "name": "query_object_instance",
     "title": "实例查询",

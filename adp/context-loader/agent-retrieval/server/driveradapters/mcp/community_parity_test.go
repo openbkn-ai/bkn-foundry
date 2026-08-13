@@ -59,6 +59,7 @@ var communityTools = []string{
 	"query_object_instance",
 	"read_skill_file",
 	"run_sql",
+	"search_instance",
 	"search_schema",
 	// execute_skill 默认不装配（MCP_EXECUTE_SKILL_ENABLED），所以不在这份基线里，
 	// 由 TestExecuteSkillOnlyAppearsWhenEnabled 单独盯。

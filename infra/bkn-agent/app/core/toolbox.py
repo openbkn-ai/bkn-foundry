@@ -44,6 +44,7 @@ _NAME_RE = re.compile(r"[^a-zA-Z0-9_-]")
 _IDENTITY_HEADERS = {"x-account-id", "x-account-type", "user_id"}
 _CONTEXT_LOADER_RETRIEVAL_PATHS = {
     "/api/agent-retrieval/in/v1/kn/search_schema",
+    "/api/agent-retrieval/in/v1/kn/search_instance",
     "/api/agent-retrieval/in/v1/kn/query_object_instance",
     "/api/agent-retrieval/in/v1/kn/query_instance_subgraph",
 }

@@ -35,6 +35,7 @@ const (
 	serverVersion                   = "1.0.0"
 	endpointPath                    = "/api/agent-retrieval/v1/mcp"
 	toolKeySearchSchema             = "search_schema"
+	toolKeySearchInstance           = "search_instance"
 	toolKeyQueryObjectInstance      = "query_object_instance"
 	toolKeyQueryInstanceSubgraph    = "query_instance_subgraph"
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
@@ -147,6 +148,7 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 
 	knSearchService := knsearch.NewKnSearchService()
 	b.add(toolKeySearchSchema, handleSearchSchema(knSearchService))
+	b.add(toolKeySearchInstance, handleSearchInstance(knSearchService))
 
 	ontologyQuery := drivenadapters.NewOntologyQueryAccess()
 	b.add(toolKeyQueryObjectInstance, handleQueryObjectInstance(ontologyQuery))

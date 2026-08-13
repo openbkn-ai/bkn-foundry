@@ -171,6 +171,68 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
 
+  /kn/search_instance:
+    post:
+      tags:
+        - ObjectInstance
+      summary: 语义召回实例
+      operationId: searchInstance
+      x-contract-probe:
+        readonly: true
+        order: 4
+        body:
+          kn_id: '{cl_kn_id}'
+          query: 巡检探测
+      description: |
+        用一句自然语言直接召回实例，**不需要先知道对象类和字段名**——这是
+        `search_schema`（只回 Schema）与 `query_object_instance`（要先给出结构化条件）
+        之间缺的那一步。
+
+        执行两段：先按 `query` 锁定相关对象类，再在这些对象类上做语义实例召回；
+        向量（`knn`）与全文（`match`）两路并发发出后按名次融合，因此两种命中都能进入结果。
+
+        **只回实例**。字段含义走 `search_schema` 或 `get_object_types`，本接口不重复一份
+        Schema。只有 `condition_operations` 含 `match` / `knn` 的属性参与召回，
+        **没建索引的对象类不会出实例**。
+
+        **无命中不是错误**：返回空 `nodes` 加一句 `message`，不返回 5xx。
+      parameters:
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchInstanceRequest'
+      responses:
+        '200':
+          description: 召回结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchInstanceResponse'
+            application/toon:
+              schema:
+                type: string
+        '400':
+          description: 参数错误（缺 kn_id / query 为空 / max_* 非正）
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误，或下游依赖故障
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
 components:
   securitySchemes:
     OAuth2:
@@ -192,6 +254,55 @@ components:
       description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
 
   schemas:
+    SearchInstanceRequest:
+      type: object
+      required:
+        - query
+      properties:
+        kn_id:
+          type: string
+          description: 知识网络 ID。也可改用 `X-Kn-ID` 请求头传入。
+        query:
+          type: string
+          description: |
+            自然语言问题或关键词。整句直接传，不必拆成字段条件——向量通道吃整句，
+            全文通道由分析器分词。
+        concept_groups:
+          type: array
+          items:
+            type: string
+          description: 限定召回范围到指定的 BKN 概念分组；不传则在整个知识网络内召回。
+        max_object_types:
+          type: integer
+          default: 10
+          minimum: 1
+          description: 参与实例召回的对象类数量上限。每多一个对象类多一轮下游查询。
+        max_instances_per_type:
+          type: integer
+          default: 5
+          minimum: 1
+          description: 每个对象类最多返回几条实例。
+
+    SearchInstanceResponse:
+      type: object
+      required:
+        - nodes
+      properties:
+        nodes:
+          type: array
+          description: |
+            命中的实例，按相关性降序。每条带 `object_type_id`（可直接喂给
+            `get_object_types` / `query_object_instance`）、`properties`、以及两个分数：
+
+            - `score` 是**融合后的名次分**，可跨对象类比较，但不表达绝对相关性；
+            - `recall_score` 是召回阶段的原始索引分，仅在同一对象类同一通道内可比。
+          items:
+            type: object
+            additionalProperties: true
+        message:
+          type: string
+          description: 仅在没有命中时出现，说明为什么是空的。
+
     QueryObjectInstanceRequest:
       type: object
       required:

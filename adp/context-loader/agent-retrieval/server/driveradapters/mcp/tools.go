@@ -78,6 +78,37 @@ func buildSearchSchemaReqFromMCP(req mcp.CallToolRequest, authCtx *interfaces.Ac
 	return schemaReq
 }
 
+// handleSearchInstance returns a tool handler for search_instance.
+func handleSearchInstance(knSearchService knsearch.KnSearchService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		authCtx, _ := common.GetAccountAuthContextFromCtx(ctx)
+
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		instanceReq := &interfaces.SearchInstanceReq{}
+		_ = bindArguments(req, instanceReq)
+		instanceReq.XKnID = getKnIDFromHeader(req)
+		if authCtx != nil {
+			instanceReq.XAccountID = authCtx.AccountID
+			instanceReq.XAccountType = string(authCtx.AccountType)
+		}
+
+		resp, err := knSearchService.SearchInstance(ctx, instanceReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
 // handleQueryObjectInstance handles query_object_instance tool calls.
 func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

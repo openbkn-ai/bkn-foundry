@@ -25,6 +25,11 @@ type stubKnSearchService struct {
 	knSearchReq    *interfaces.KnSearchReq
 	knSearchResp   *interfaces.KnSearchResp
 	knSearchErr    error
+
+	searchInstanceCalled bool
+	searchInstanceReq    *interfaces.SearchInstanceReq
+	searchInstanceResp   *interfaces.SearchInstanceResp
+	searchInstanceErr    error
 }
 
 func (s *stubKnSearchService) KnSearch(_ context.Context, req *interfaces.KnSearchReq) (*interfaces.KnSearchResp, error) {
@@ -57,6 +62,18 @@ func (s *stubKnSearchService) SearchSchema(_ context.Context, req *interfaces.Se
 		RelationTypes: []any{},
 		ActionTypes:   []any{},
 	}, nil
+}
+
+func (s *stubKnSearchService) SearchInstance(_ context.Context, req *interfaces.SearchInstanceReq) (*interfaces.SearchInstanceResp, error) {
+	s.searchInstanceCalled = true
+	s.searchInstanceReq = req
+	if s.searchInstanceErr != nil {
+		return nil, s.searchInstanceErr
+	}
+	if s.searchInstanceResp != nil {
+		return s.searchInstanceResp, nil
+	}
+	return &interfaces.SearchInstanceResp{Nodes: []any{}}, nil
 }
 
 func TestSearchSchema_AllScopeDisabled_ReturnsBadRequest(t *testing.T) {
