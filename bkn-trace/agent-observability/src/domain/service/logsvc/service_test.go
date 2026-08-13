@@ -410,6 +410,22 @@ func TestDetailAndFacetsUseTheSameRecordAuthorization(t *testing.T) {
 	}
 }
 
+func TestOperationAuditDetailUsesTheSameCategoryAuthorizationAsList(t *testing.T) {
+	securityRecord := validTestRecord(observabilityvo.LogRecord{
+		LogID: "security-a", Category: observabilityvo.CategoryAuditSecurity, EventName: "access.denied",
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EventTimestamp: time.Now(),
+		TrustLevel: "trusted", IngressPrincipal: "bkn-safe", ActorID: "admin-a",
+	})
+	service := NewWithOptions([]Source{fakeDetailSource{
+		fakeSource: fakeSource{id: "security-audit", records: []observabilityvo.LogRecord{securityRecord}},
+		record:     securityRecord,
+	}}, Options{OperationAuditOnly: true})
+
+	if _, err := service.Get(context.Background(), activeProfile("admin-a", "admin"), securityRecord.LogID); !errors.Is(err, ErrNotDisclosed) {
+		t.Fatalf("admin detail must not bypass the list category boundary: %v", err)
+	}
+}
+
 func TestSourcesAndPoliciesFollowTheAccessProfile(t *testing.T) {
 	service := New([]Source{fakeDetailSource{fakeSource: fakeSource{id: "otel"}}})
 	admin := activeProfile("admin-a", "admin")

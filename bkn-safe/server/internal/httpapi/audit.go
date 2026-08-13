@@ -48,7 +48,7 @@ var sensitiveBodyKeys = []string{"password", "new_password", "old_password"}
 func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := strings.TrimSpace(c.GetHeader("x-request-id"))
-		if requestID == "" {
+		if !validAuditRequestID(requestID) {
 			requestID = audit.NewID()
 		}
 		c.Header("x-request-id", requestID)
@@ -96,7 +96,7 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			ActorID:           actorID,
 			ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
 			ActorType:         "user",
-			AuthMethod:        "unknown",
+			AuthMethod:        "oauth",
 			RequestID:         requestID,
 			SourceChannel:     "api",
 			Method:            c.Request.Method,
@@ -117,6 +117,15 @@ func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gi
 			_ = c.Error(err)
 		}
 	}
+}
+
+func validAuditRequestID(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	return !strings.ContainsFunc(value, func(character rune) bool {
+		return character < 0x20 || character > 0x7e
+	})
 }
 
 func auditActorName(ctx context.Context, dir *directory.Service, actorID string) string {

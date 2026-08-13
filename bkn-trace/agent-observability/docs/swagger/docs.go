@@ -5316,7 +5316,13 @@ const docTemplate = `{
                 "updated_at"
             ],
             "properties": {
+                "actor_name_snapshot": {
+                    "type": "string"
+                },
                 "agent_name": {
+                    "type": "string"
+                },
+                "business_context": {
                     "type": "string"
                 },
                 "closed_at": {
@@ -5326,6 +5332,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "creation_auth_method": {
+                    "type": "string"
+                },
+                "creation_request_id": {
                     "type": "string"
                 },
                 "external_conversation_key": {

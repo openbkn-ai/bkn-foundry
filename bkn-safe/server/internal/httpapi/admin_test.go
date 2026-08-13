@@ -880,7 +880,7 @@ func TestAuditTrail(t *testing.T) {
 		got.TargetID != "ghost" || got.Status != http.StatusNotFound {
 		t.Errorf("ghost-delete entry = %+v", got)
 	}
-	if got.ActorNameSnapshot != "Administrator" || got.ActorType != "user" || got.AuthMethod != "unknown" ||
+	if got.ActorNameSnapshot != "Administrator" || got.ActorType != "user" || got.AuthMethod != "oauth" ||
 		got.RequestID == "" || got.SourceChannel != "api" {
 		t.Errorf("ghost-delete identity/correlation facts = %+v", got)
 	}
@@ -924,6 +924,33 @@ func TestAuditTrail(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &failed)
 	if failed.Total != 1 || len(failed.Logs) != 1 || failed.Logs[0].Status < http.StatusBadRequest {
 		t.Errorf("failed_only: total=%d logs=%+v", failed.Total, failed.Logs)
+	}
+}
+
+func TestAuditTrailReplacesOversizedRequestID(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	body := bytes.NewBufferString(`{"id":"d-request-id","name":"Request ID"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/admin/departments", body)
+	request.Header.Set("Authorization", "Bearer "+adminSub)
+	request.Header.Set("Content-Type", "application/json")
+	untrustedRequestID := strings.Repeat("x", 129)
+	request.Header.Set("x-request-id", untrustedRequestID)
+	response := httptest.NewRecorder()
+
+	r.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create department: want 201, got %d (%s)", response.Code, response.Body.String())
+	}
+	var record model.AuditLog
+	if err := db.Order("created_at DESC").First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.RequestID == untrustedRequestID || record.RequestID == "" || len(record.RequestID) > 128 {
+		t.Fatalf("unsafe request ID reached audit storage: %q", record.RequestID)
+	}
+	if response.Header().Get("x-request-id") != record.RequestID {
+		t.Fatalf("response and audit request IDs differ: response=%q audit=%q", response.Header().Get("x-request-id"), record.RequestID)
 	}
 }
 

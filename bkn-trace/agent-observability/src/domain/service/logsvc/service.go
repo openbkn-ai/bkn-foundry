@@ -467,11 +467,9 @@ func (service *Service) Get(
 	capabilities := observabilityvo.CapabilitiesFor(profile)
 	detailCategories := append([]string(nil), capabilities.AllowedLogCategories...)
 	if service.operationAuditOnly {
-		detailCategories = []string{
-			observabilityvo.CategoryAccessUser,
-			observabilityvo.CategoryAuditAdmin,
-			observabilityvo.CategoryAuditSecurity,
-			observabilityvo.CategoryRuntimeBusiness,
+		detailCategories = authorizedOperationAuditCategories(profile, capabilities, observabilityvo.LogQuery{})
+		if !capabilities.GlobalLogSearch {
+			detailCategories = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryRuntimeBusiness}
 		}
 		capabilities.AllowedLogCategories = normalizedStrings(append(
 			capabilities.AllowedLogCategories, detailCategories...,
