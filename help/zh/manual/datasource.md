@@ -79,13 +79,21 @@ openbkn vega resource query <resource_id> --limit 10
 
 #### 导入 CSV
 
-平台侧的 CSV 导入命令已下线。现在的做法是先用标准 `mysql` 客户端把 CSV 装进目标数据库，再注册 Catalog 并发现——`examples/02-csv-to-kn` 就是这个流程的完整可运行版本。
+平台侧的 CSV 导入命令已下线。现在的做法是先用标准 `mysql` 客户端把 CSV 装进目标数据库，再注册 Catalog 并发现。
 
 ```bash
-# 以 examples/02-csv-to-kn 为例：CSV → MySQL → Catalog → 知识网络
-cd examples/02-csv-to-kn
-cp env.sample .env && vim .env
-./run.sh
+# CSV → MySQL → Catalog → 知识网络
+# 1. 用 mysql 客户端把 CSV 装进目标库（建表语句自行准备）
+mysql -h db.example.com -u root -p supply_chain < load_csv.sql
+
+# 2. 注册 Catalog、启用并发现（表结构变化后重新发现即可）
+openbkn vega catalog create --name "supply" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["supply_chain"]}'
+openbkn vega catalog enable <catalog_id>
+openbkn vega catalog discover <catalog_id> --wait
+
+# 3. 从 Catalog 建知识网络
+openbkn bkn create-from-catalog <catalog_id> --name "supply-chain" --build
 ```
 
 #### 删除 Catalog
@@ -210,6 +218,6 @@ curl -sk -X DELETE "https://<访问地址>/api/vega-backend/v1/catalogs/<catalog
 | `openbkn ds connect <type> <host> <port> <db>` | `openbkn vega catalog create --connector-type <type> --connector-config '<json>'`，再 `enable` |
 | `openbkn ds list` / `openbkn ds get <id>` | `openbkn vega catalog list` / `openbkn vega catalog get <id>` |
 | `openbkn ds tables <id>` | `openbkn vega catalog discover <id> --wait` 后 `openbkn vega resource list --catalog-id <id> --category table` |
-| `openbkn ds import-csv <id> --files ...` | 用 `mysql` 客户端把 CSV 装进数据库后再发现，参见 `examples/02-csv-to-kn` |
+| `openbkn ds import-csv <id> --files ...` | 用 `mysql` 客户端把 CSV 装进数据库后再发现 |
 | `openbkn ds delete <id>` | `openbkn vega catalog delete <id>` |
 | `openbkn bkn create-from-ds <ds_id>` | `openbkn bkn create-from-catalog <catalog_id>` |

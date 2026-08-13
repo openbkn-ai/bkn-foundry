@@ -7,7 +7,10 @@
 // Package interfaces defines entities, DTOs, and service interfaces.
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // DiscoverTaskAccess defines discover task data access interface.
 //
@@ -21,6 +24,8 @@ type DiscoverTaskAccess interface {
 	List(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, int64, error)
 	// UpdateStatus updates a DiscoverTask's status and message.
 	UpdateStatus(ctx context.Context, id, status, message string, stime int64) error
+	// MarkCancelled 仅取消 pending 或 running 状态的 DiscoverTask。
+	MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error)
 	// UpdateProgress updates a DiscoverTask's progress.
 	UpdateProgress(ctx context.Context, id string, progress int) error
 	// UpdateResult updates a DiscoverTask's result and sets status to completed.
@@ -31,4 +36,6 @@ type DiscoverTaskAccess interface {
 
 	// Delete deletes a DiscoverTask by ID. Returns sql.ErrNoRows if no row was affected.
 	Delete(ctx context.Context, id string) error
+	// MarkCancelledByCatalogID marks pending tasks as cancelled when their Catalog is deleted.
+	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64) error
 }

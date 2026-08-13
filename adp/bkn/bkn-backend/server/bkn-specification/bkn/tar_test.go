@@ -271,9 +271,9 @@ func TestWriteNetworkToTar_FullNetwork(t *testing.T) {
 				},
 				Description: "Kubernetes Pod",
 				DataSource: &ResourceInfo{
-					Type: "data_view",
-					ID:   "dv1",
-					Name: "Pod View",
+					Type: "resource",
+					ID:   "res1",
+					Name: "Pod Resource",
 				},
 				DataProperties: []*DataProperty{
 					{Name: "name", DisplayName: "Name", Type: "string"},
@@ -330,7 +330,7 @@ func TestWriteNetworkToTar_FullNetwork(t *testing.T) {
 	assert.Equal(t, "pod", loaded.ObjectTypes[0].ID)
 	assert.Equal(t, "Pod", loaded.ObjectTypes[0].Name)
 	require.NotNil(t, loaded.ObjectTypes[0].DataSource)
-	assert.Equal(t, "data_view", loaded.ObjectTypes[0].DataSource.Type)
+	assert.Equal(t, "resource", loaded.ObjectTypes[0].DataSource.Type)
 	assert.ElementsMatch(t, []string{"id"}, loaded.ObjectTypes[0].PrimaryKeys)
 	assert.Equal(t, "name", loaded.ObjectTypes[0].DisplayKey)
 

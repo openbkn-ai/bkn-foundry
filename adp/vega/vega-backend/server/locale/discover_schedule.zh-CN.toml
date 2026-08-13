@@ -5,7 +5,7 @@ ErrorLink = "暂无"
 
 [VegaBackend.DiscoverSchedule.InvalidCronExpr]
 Description = "cron 表达式非法"
-Solution = "请提供合法的 5/6 字段 cron 表达式"
+Solution = "请提供合法的 5 字段 cron 表达式，且相邻两次触发至少间隔 1 小时"
 ErrorLink = "暂无"
 
 [VegaBackend.DiscoverSchedule.InvalidStrategies]

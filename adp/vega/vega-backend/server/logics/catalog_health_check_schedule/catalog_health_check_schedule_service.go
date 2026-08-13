@@ -50,7 +50,7 @@ func NewCatalogHealthCheckScheduleService(appSetting *common.AppSetting) interfa
 		if appSetting.CatalogHealthCheck.CronExpr != "" {
 			defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
 		}
-		defaultCronSchedule, err := ParseCronExpr(defaultCronExpr)
+		defaultCronSchedule, err := common.ParseHourlyCronExpr(defaultCronExpr)
 		if err != nil {
 			logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
 		}
@@ -253,20 +253,20 @@ func (chcss *catalogHealthCheckScheduleService) nextRun(mode, cronExpr string, n
 		return chcss.defaultCronSchedule.Next(now).UnixMilli(), nil
 	}
 
-	schedule, err := ParseCronExpr(cronExpr)
+	schedule, err := common.ParseHourlyCronExpr(cronExpr)
 	if err != nil {
 		return 0, err
 	}
 	return schedule.Next(now).UnixMilli(), nil
 }
 
-func (chcss *catalogHealthCheckScheduleService) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogHealthCheckScheduleService.DeleteByCatalogIDs")
+func (chcss *catalogHealthCheckScheduleService) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogHealthCheckScheduleService.DeleteByCatalogID")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("catalog_ids").StringSlice(catalogIDs))
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	if err := chcss.sa.DeleteByCatalogIDs(ctx, tx, catalogIDs); err != nil {
+	if err := chcss.sa.DeleteByCatalogID(ctx, tx, catalogID); err != nil {
 		span.SetStatus(codes.Error, "Delete health check schedules failed")
 		otellog.LogError(ctx, "Delete catalog health check schedules failed", err)
 		return err

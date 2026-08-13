@@ -20,7 +20,7 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 		return &interfaces.DiscoverScheduleRequest{
 			Name:      "schedule-1",
 			CatalogID: "catalog-1",
-			CronExpr:  "*/5 * * * *",
+			CronExpr:  "0 * * * *",
 			StartTime: 1000,
 			EndTime:   2000,
 			Strategy:  interfaces.DiscoverStrategyFullSync,
@@ -60,6 +60,13 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 			name: "invalid cron expression",
 			mutate: func(req *interfaces.DiscoverScheduleRequest) {
 				req.CronExpr = "invalid"
+			},
+			wantErr: true,
+		},
+		{
+			name: "cron expression more frequent than hourly",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.CronExpr = "*/30 * * * *"
 			},
 			wantErr: true,
 		},

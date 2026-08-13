@@ -9,12 +9,13 @@ package interfaces
 import "strings"
 
 const (
-	BuildTaskStatusInit      string = "init"
+	BuildTaskStatusPending   string = "pending"
 	BuildTaskStatusRunning   string = "running"
 	BuildTaskStatusCompleted string = "completed"
 	BuildTaskStatusStopping  string = "stopping"
 	BuildTaskStatusStopped   string = "stopped"
 	BuildTaskStatusFailed    string = "failed"
+	BuildTaskStatusCancelled string = "cancelled"
 
 	BuildTaskTypeBatch     string = "batch:execute"
 	BuildTaskTypeStreaming string = "streaming:execute"
@@ -194,7 +195,7 @@ type BuildTasksQueryParams struct {
 	PaginationQueryParams
 	ResourceID string
 	CatalogID  string
-	Statuses   []string // 多值状态过滤(IN);空为不过滤。active=true 等价 [running,init]
+	Statuses   []string // 多值状态过滤(IN);空为不过滤
 	Mode       string
 	OrderBy    string // created_at|updated_at；缺省 created_at
 	Order      string // asc|desc；缺省 desc

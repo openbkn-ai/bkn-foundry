@@ -60,35 +60,15 @@ func Test_queryLogicMetricViaKN(t *testing.T) {
 			},
 		}
 
-		Convey("allows data_view-backed object type", func() {
+		Convey("rejects metric when scope_ref mismatches object type id", func() {
 			omAccess.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").Return(interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID: "ot1",
 					DataSource: &interfaces.ResourceInfo{
-						Type: interfaces.DATA_SOURCE_TYPE_DATA_VIEW,
-						ID:   "view1",
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
 					},
 				},
-			}, true, nil)
-			omAccess.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "metric1").Return(&interfaces.MetricDefinition{
-				ID:       "metric1",
-				ScopeRef: "ot1",
-			}, true, nil)
-			mqs.EXPECT().QueryMetricData(gomock.Any(), "kn1", "main", "metric1", gomock.Any()).Return(interfaces.MetricData{
-				Datas: []interfaces.Data{{Values: []interface{}{1}}},
-			}, nil)
-
-			result, err := service.queryLogicMetricViaKN(
-				ctx, "kn1", "main", "ot1", logicProp, nil,
-				interfaces.MetricPropertyDynamicParams{}, 0, 0, true, "",
-			)
-			So(err, ShouldBeNil)
-			So(len(result.Datas), ShouldEqual, 1)
-		})
-
-		Convey("rejects metric when scope_ref mismatches object type id", func() {
-			omAccess.EXPECT().GetObjectType(gomock.Any(), "kn1", "main", "ot1").Return(interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1"},
 			}, true, nil)
 			omAccess.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "metric1").Return(&interfaces.MetricDefinition{
 				ID:       "metric1",

@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bytedance/sonic"
@@ -297,9 +296,9 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 		builder = builder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
 		countBuilder = countBuilder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
 	}
-	if params.Status != "" {
-		builder = builder.Where(sq.Eq{"f_status": params.Status})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Status})
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
 	}
 	if params.Strategy != "" {
 		builder = builder.Where(sq.Eq{"f_strategy": params.Strategy})
@@ -396,6 +395,7 @@ func (dta *discoverTaskAccess) UpdateStatus(ctx context.Context, id, status, mes
 	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
 		SetMap(data).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -412,6 +412,40 @@ func (dta *discoverTaskAccess) UpdateStatus(ctx context.Context, id, status, mes
 	return nil
 }
 
+func (dta *discoverTaskAccess) MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover task cancelled")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
+		Set("f_status", interfaces.DiscoverTaskStatusCancelled).
+		Set("f_message", message).
+		Set("f_finish_time", finishTime).
+		Where(sq.Eq{"f_id": id}).
+		Where(sq.Eq{"f_status": []string{
+			interfaces.DiscoverTaskStatusPending,
+			interfaces.DiscoverTaskStatusRunning,
+		}}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+
+	result, err := dta.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "RowsAffected failed")
+		return false, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return affected > 0, nil
+}
+
 // UpdateProgress updates a DiscoverTask's progress.
 func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update discover_task progress")
@@ -419,8 +453,8 @@ func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, pr
 
 	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
 		Set("f_progress", progress).
-		Set("f_update_time", time.Now().UnixMilli()).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -450,6 +484,7 @@ func (dta *discoverTaskAccess) UpdateResult(ctx context.Context, id string, resu
 		Set("f_progress", 100).
 		Set("f_finish_time", stime).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -525,6 +560,38 @@ func (dta *discoverTaskAccess) Delete(ctx context.Context, id string) error {
 		return sql.ErrNoRows
 	}
 
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// MarkCancelledByCatalogID marks pending tasks as cancelled when their Catalog is deleted.
+func (dta *discoverTaskAccess) MarkCancelledByCatalogID(
+	ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64,
+) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover tasks cancelled by catalog ID")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
+		Set("f_status", interfaces.DiscoverTaskStatusCancelled).
+		Set("f_message", message).
+		Set("f_finish_time", finishTime).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
+		Where(sq.Eq{"f_status": interfaces.DiscoverTaskStatusPending}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = dta.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return err
+	}
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

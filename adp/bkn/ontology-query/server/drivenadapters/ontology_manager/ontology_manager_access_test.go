@@ -321,42 +321,6 @@ func Test_ontologyManagerAccess_GetRelationType(t *testing.T) {
 			So(result.Type, ShouldEqual, interfaces.RELATION_TYPE_DIRECT)
 		})
 
-		Convey("成功 - 获取关系类信息 (DATA_VIEW类型)", func() {
-			accountInfo := interfaces.AccountInfo{
-				ID:   "account1",
-				Type: "user",
-			}
-			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
-
-			relationType := interfaces.RelationType{
-				RTID: rtID,
-				Type: interfaces.RELATION_TYPE_DATA_VIEW,
-				MappingRules: &interfaces.InDirectMapping{
-					BackingDataSource: &interfaces.ResourceInfo{
-						Type: "view",
-						ID:   "view1",
-					},
-				},
-			}
-			response := struct {
-				RelationTypes []interfaces.RelationType `json:"entries"`
-			}{
-				RelationTypes: []interfaces.RelationType{relationType},
-			}
-			responseBytes, _ := sonic.Marshal(response)
-
-			mockHTTPClient.EXPECT().
-				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusOK, responseBytes, nil)
-
-			result, exists, err := oma.GetRelationType(ctx, knID, branch, rtID)
-
-			So(err, ShouldBeNil)
-			So(exists, ShouldBeTrue)
-			So(result.RTID, ShouldEqual, rtID)
-			So(result.Type, ShouldEqual, interfaces.RELATION_TYPE_DATA_VIEW)
-		})
-
 		Convey("失败 - HTTP 请求错误", func() {
 			accountInfo := interfaces.AccountInfo{
 				ID:   "account1",
@@ -882,47 +846,5 @@ func Test_ontologyManagerAccess_GetRelationTypePathsBaseOnSource(t *testing.T) {
 			So(result, ShouldBeNil)
 		})
 
-		Convey("成功 - 获取关系类路径 (DATA_VIEW类型)", func() {
-			accountInfo := interfaces.AccountInfo{
-				ID:   "account1",
-				Type: "user",
-			}
-			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
-
-			typePath := interfaces.RelationTypePath{
-				ID: 0,
-				TypeEdges: []interfaces.TypeEdge{
-					{
-						RelationType: interfaces.RelationType{
-							RTID: "rt1",
-							Type: interfaces.RELATION_TYPE_DATA_VIEW,
-							MappingRules: &interfaces.InDirectMapping{
-								BackingDataSource: &interfaces.ResourceInfo{
-									Type: "view",
-									ID:   "view1",
-								},
-							},
-						},
-					},
-				},
-			}
-			response := struct {
-				TypePaths []interfaces.RelationTypePath `json:"entries"`
-			}{
-				TypePaths: []interfaces.RelationTypePath{typePath},
-			}
-			responseBytes, _ := sonic.Marshal(response)
-
-			mockHTTPClient.EXPECT().
-				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(http.StatusOK, responseBytes, nil)
-
-			result, err := oma.GetRelationTypePathsBaseOnSource(ctx, knID, branch, query)
-
-			So(err, ShouldBeNil)
-			So(len(result), ShouldEqual, 1)
-			So(result[0].ID, ShouldEqual, 0)
-			So(result[0].TypeEdges[0].RelationType.Type, ShouldEqual, interfaces.RELATION_TYPE_DATA_VIEW)
-		})
 	})
 }

@@ -24,6 +24,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/bkn_agent"
+	"vega-backend/logics/catalog"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/semantic_understanding_task"
 )
@@ -35,6 +36,7 @@ type SemanticUnderstandingTaskWorker struct {
 	appSetting *common.AppSetting
 	suts       interfaces.SemanticUnderstandingTaskService
 	bas        interfaces.BknAgentService
+	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
 }
 
@@ -44,6 +46,7 @@ func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *Semantic
 		appSetting: appSetting,
 		suts:       semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting),
 		bas:        bkn_agent.NewBknAgentService(appSetting),
+		cs:         catalog.NewCatalogService(appSetting),
 		rs:         resource.NewResourceService(appSetting),
 	}
 }
@@ -69,15 +72,33 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 	}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, taskInfo.Creator)
 
-	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusFailed {
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusFailed ||
+		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCancelled {
 		logger.Infof("Semantic understanding task already finished: id=%s, status=%s", taskInfo.ID, taskInfo.Status)
 		return nil
 	}
-	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusSucceeded {
-		if taskInfo.AppliedTime != 0 {
-			logger.Infof("Semantic understanding task already applied: id=%s", taskInfo.ID)
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted && taskInfo.AppliedTime != 0 {
+		logger.Infof("Semantic understanding task already applied: id=%s", taskInfo.ID)
+		return nil
+	}
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending ||
+		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusRunning ||
+		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted {
+		parentExists, err := sutw.taskParentExists(ctx, taskInfo)
+		if err != nil {
+			return err
+		}
+		if !parentExists {
+			if taskInfo.Status != interfaces.SemanticUnderstandingTaskStatusCompleted {
+				if _, err := sutw.suts.MarkCancelled(ctx, taskInfo.ID, "catalog or resource deleted"); err != nil {
+					return fmt.Errorf("cancel semantic understanding task after parent deletion: %w", err)
+				}
+			}
+			logger.Infof("Semantic understanding task stopped because its parent was deleted: id=%s", taskInfo.ID)
 			return nil
 		}
+	}
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted {
 		return sutw.applyAndMark(ctx, taskInfo)
 	}
 
@@ -132,11 +153,11 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 		}
 	}
 
-	succeeded, err := sutw.suts.MarkSucceeded(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
+	completed, err := sutw.suts.MarkCompleted(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	if err != nil {
 		return err
 	}
-	if !succeeded {
+	if !completed {
 		return nil
 	}
 	taskInfo.ResultJSON = resultJSON
@@ -147,6 +168,30 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 
 	logger.Infof("Semantic understanding completed for task: %s", taskID)
 	return nil
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) taskParentExists(
+	ctx context.Context, task *interfaces.SemanticUnderstandingTask,
+) (bool, error) {
+	if task.Scope == interfaces.SemanticUnderstandingTaskScopeResource {
+		resourceInfo, err := sutw.rs.InternalGetByID(ctx, task.ResourceID)
+		if err != nil {
+			return false, fmt.Errorf("get semantic understanding task resource: %w", err)
+		}
+		return resourceInfo != nil, nil
+	}
+	if task.Scope != interfaces.SemanticUnderstandingTaskScopeCatalog {
+		return true, nil
+	}
+
+	_, err := sutw.cs.InternalGetByID(ctx, task.CatalogID, false)
+	if err == nil {
+		return true, nil
+	}
+	if isNotFoundError(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("get semantic understanding task catalog: %w", err)
 }
 
 func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, task *interfaces.SemanticUnderstandingTask) error {

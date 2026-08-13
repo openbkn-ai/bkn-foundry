@@ -14,12 +14,51 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 )
 
 var testSortTypes = map[string]string{
 	"name":        "f_name",
 	"create_time": "f_create_time",
+}
+
+func TestParseTaskStatuses(t *testing.T) {
+	ctx := context.Background()
+	isValid := func(status string) bool {
+		return status == "pending" || status == "running"
+	}
+
+	tests := []struct {
+		name    string
+		values  []string
+		want    []string
+		wantErr bool
+	}{
+		{name: "absent", want: []string{}},
+		{name: "single value", values: []string{"pending"}, want: []string{"pending"}},
+		{
+			name:   "multiple values are trimmed and deduplicated",
+			values: []string{" pending ", "running", "pending"},
+			want:   []string{"pending", "running"},
+		},
+		{name: "unknown value", values: []string{"unknown"}, wantErr: true},
+		{name: "explicit empty value", values: []string{""}, wantErr: true},
+		{name: "comma-separated value", values: []string{"pending,running"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTaskStatuses(ctx, tt.values, isValid, verrors.VegaBackend_InvalidParameter_Format)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestValidateName(t *testing.T) {

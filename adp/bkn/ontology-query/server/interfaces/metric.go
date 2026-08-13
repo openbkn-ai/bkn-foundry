@@ -34,7 +34,7 @@ const (
 
 	MetricHavingFieldValue = "__value"
 
-	// 聚合/时序别名字段，与 mdl-uniquery / Vega 约定一致；resource 聚合 alias 为 __value。
+	// 聚合/时序别名字段，与 Vega Resource 聚合结果约定一致；resource 聚合 alias 为 __value。
 	VALUE_FIELD = "__value"
 	TIME_FIELD  = "__time"
 
@@ -48,7 +48,7 @@ const (
 	METRICS_SAMEPERIOD_TIME_GRANULARITY_QUARTER string = "quarter"
 	METRICS_SAMEPERIOD_TIME_GRANULARITY_YEAR    string = "year"
 
-	// DefaultFillNullQuery is the default for URL query "fill_null" on metric data endpoints (mdl-uniquery: range query null-padding).
+	// DefaultFillNullQuery is the default for URL query "fill_null" on metric data endpoints.
 	DefaultFillNullQuery = "false"
 
 	// Default time range policies for MetricTimeDimension (DESIGN appendix B.2; aligned with bkn-backend).
@@ -187,7 +187,7 @@ type MetricQueryRequest struct {
 	Having             *MetricHaving     `json:"having,omitempty"`
 	Metrics            *Metrics          `json:"metrics,omitempty"`
 	Limit              *int              `json:"limit,omitempty"`
-	// FillNull is set from URL query fill_null by the handler (SetFillNullFromQueryParam); not in JSON body (mdl-uniquery).
+	// FillNull is set from URL query fill_null by the handler (SetFillNullFromQueryParam); not in JSON body.
 	FillNull bool `json:"-"`
 }
 

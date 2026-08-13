@@ -11,8 +11,9 @@ const (
 
 	SemanticUnderstandingTaskStatusPending   string = "pending"
 	SemanticUnderstandingTaskStatusRunning   string = "running"
-	SemanticUnderstandingTaskStatusSucceeded string = "succeeded"
+	SemanticUnderstandingTaskStatusCompleted string = "completed"
 	SemanticUnderstandingTaskStatusFailed    string = "failed"
+	SemanticUnderstandingTaskStatusCancelled string = "cancelled"
 
 	SemanticUnderstandingApplyModeDryRun    string = "dry_run"
 	SemanticUnderstandingApplyModeFillEmpty string = "fill_empty"

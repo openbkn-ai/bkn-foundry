@@ -59,5 +59,4 @@ Add a quick-reference table when the command has many flags:
 ## 6. See also
 
 - References: [<manual page>](../manual/<x>.md) · [Quick start](../quick-start.md)
-- End-to-end sample project: [`examples/<NN-slug>/`](../../../examples/<NN-slug>/)
 - Related recipe: [<other cookbook>](./<other-recipe>.md)

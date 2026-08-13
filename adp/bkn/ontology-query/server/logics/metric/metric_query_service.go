@@ -597,7 +597,7 @@ func entryTimeToMillis(v any, calendarStep *string) (int64, error) {
 }
 
 // vegaEntriesToMetricData maps resource /resources/:id/data "entries" ([]map) to the same BknMetricData shape
-// as mdl-uniquery parseVegaResult2Uniresponse (Vega: Columns + Data rows). Labels use object data property names, not resource column names.
+// as Vega resource query responses (Columns + Data rows). Labels use object data property names, not resource column names.
 func vegaEntriesToMetricData(ctx context.Context, def interfaces.MetricDefinition,
 	datas *interfaces.DatasetQueryResponse,
 	samePeriodDatas *interfaces.DatasetQueryResponse, query *interfaces.MetricQueryRequest,

@@ -106,6 +106,8 @@ spec:
               value: {{ required "enterpriseBusinessProvenance.agentURL is required when enabled" .Values.enterpriseBusinessProvenance.agentURL | quote }}
             - name: BKN_TRACE_PROVENANCE_AGENT_ID
               value: {{ required "enterpriseBusinessProvenance.agentID is required when enabled" .Values.enterpriseBusinessProvenance.agentID | quote }}
+            - name: BKN_TRACE_PROVENANCE_AGENT_NAME
+              value: {{ required "enterpriseBusinessProvenance.agentName is required when enabled" .Values.enterpriseBusinessProvenance.agentName | quote }}
             {{- end }}
             - name: OPENSEARCH_AUTH_ENABLED
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}

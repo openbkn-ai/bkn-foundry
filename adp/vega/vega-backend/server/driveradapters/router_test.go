@@ -17,7 +17,6 @@ import (
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
-	"vega-backend/worker"
 )
 
 func setGinMode() func() {
@@ -39,7 +38,6 @@ func MockNewRestHandler(
 	dts interfaces.DiscoverTaskService,
 	dss interfaces.DiscoverScheduleService,
 	rds interfaces.ResourceDataService,
-	sw *worker.ScheduleWorker,
 ) *restHandler {
 	return &restHandler{
 		appSetting: appSetting,
@@ -52,7 +50,6 @@ func MockNewRestHandler(
 		dts:        dts,
 		dss:        dss,
 		rds:        rds,
-		sw:         sw,
 	}
 }
 

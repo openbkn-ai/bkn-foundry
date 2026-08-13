@@ -117,7 +117,7 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 }
 
 func claimBuildTaskExecution(ctx context.Context, bts interfaces.BuildTaskService, taskID string) (bool, error) {
-	allowedStatuses := []string{interfaces.BuildTaskStatusInit}
+	allowedStatuses := []string{interfaces.BuildTaskStatusPending}
 	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
 		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
 	}
@@ -145,7 +145,18 @@ func isAsynqFinalRetry(ctx context.Context) bool {
 func isBuildTaskTerminal(status string) bool {
 	return status == interfaces.BuildTaskStatusFailed ||
 		status == interfaces.BuildTaskStatusStopped ||
-		status == interfaces.BuildTaskStatusCompleted
+		status == interfaces.BuildTaskStatusCompleted ||
+		status == interfaces.BuildTaskStatusCancelled
+}
+
+func cancelBuildTaskForDeletedParent(ctx context.Context, bts interfaces.BuildTaskService, taskID, detail string) error {
+	_, err := bts.InternalUpdateStatus(ctx, nil, taskID,
+		interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusCancelled).
+			WithErrorMsg(detail),
+		interfaces.BuildTaskStatusRunning,
+	)
+	return err
 }
 
 // createManagedLocalIndex creates a build-task local index through LocalIndexManager.
@@ -422,7 +433,7 @@ func sendEmbeddingMessage(ctx context.Context, writer *kafka.Writer, kafkaAccess
 		// Use docID + timestamp as key to avoid conflicts even if document is modified multiple times
 		err = kafkaAccess.WriteMessages(ctx, writer, []kafka.Message{
 			{
-				Key:   []byte(fmt.Sprintf("%s-%d", docID, time.Now().UnixNano())),
+				Key:   fmt.Appendf(nil, "%s-%d", docID, time.Now().UnixNano()),
 				Value: messageBytes,
 			},
 		}...)

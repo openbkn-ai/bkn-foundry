@@ -11,6 +11,7 @@ package mock_interfaces
 
 import (
 	context "context"
+	sql "database/sql"
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
@@ -113,6 +114,35 @@ func (m *MockDiscoverTaskAccess) List(ctx context.Context, params interfaces.Dis
 func (mr *MockDiscoverTaskAccessMockRecorder) List(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).List), ctx, params)
+}
+
+// MarkCancelled mocks base method.
+func (m *MockDiscoverTaskAccess) MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkCancelled", ctx, id, message, finishTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkCancelled indicates an expected call of MarkCancelled.
+func (mr *MockDiscoverTaskAccessMockRecorder) MarkCancelled(ctx, id, message, finishTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).MarkCancelled), ctx, id, message, finishTime)
+}
+
+// MarkCancelledByCatalogID mocks base method.
+func (m *MockDiscoverTaskAccess) MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkCancelledByCatalogID", ctx, tx, catalogID, message, finishTime)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkCancelledByCatalogID indicates an expected call of MarkCancelledByCatalogID.
+func (mr *MockDiscoverTaskAccessMockRecorder) MarkCancelledByCatalogID(ctx, tx, catalogID, message, finishTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelledByCatalogID", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).MarkCancelledByCatalogID), ctx, tx, catalogID, message, finishTime)
 }
 
 // UpdateProgress mocks base method.

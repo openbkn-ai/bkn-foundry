@@ -401,7 +401,7 @@ The trace returns a Span tree ordered by time, showing:
 CSV still needs a database to land in: load the files, then register a catalog and build.
 
 ```bash
-# 1. Load the CSVs with the standard mysql client (see examples/02-csv-to-kn)
+# 1. Load the CSVs with the standard mysql client
 mysql -h db.example.com -u root -p supply_chain < load_csv.sql
 
 # 2. Register the catalog and discover tables (as in the scenario above)
@@ -419,8 +419,7 @@ openbkn bkn search <kn_id> "zero inventory"
 ```
 
 > `openbkn bkn create-from-csv <catalog_id> --files ...` still exists in the CLI, but it relies on the
-> retired dataflow import path and does not work on current deployments. Use the three steps above;
-> `examples/02-csv-to-kn` is a runnable version.
+> retired dataflow import path and does not work on current deployments. Use the three steps above.
 
 ---
 

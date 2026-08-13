@@ -175,13 +175,6 @@ func projectConversation(conversation sessionvo.Conversation) observabilityvo.Lo
 	}
 }
 
-func normalizedBusinessContext(value string) string {
-	if strings.TrimSpace(value) == "detached" {
-		return "detached"
-	}
-	return "managed"
-}
-
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

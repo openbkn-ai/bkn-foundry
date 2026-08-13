@@ -22,6 +22,6 @@ BKN Foundry 的 **场景化操作手册**：每篇是一段「**一目标 / 一�
 3. **Steps**：编号步骤 + 可执行命令；步骤多于 1 个时拆 `### 3.x`，进阶/替代路径放 `<details>` 折叠
 4. **Expected output**：先一句「**判定成功的依据**」，再贴精简后的真实输出
 5. **Troubleshooting**：「现象」列写**用户能直接看到的具体输出 / 报错**
-6. **See also**：链回 [模块文档](../README.md)、[`examples/`](../../../examples/README.md) 与相关 Recipe
+6. **See also**：链回 [模块文档](../README.md) 与相关 Recipe
 
 > 命令以 **`openbkn`** CLI 优先，必要时给出等价 `curl`；不要把私密 token / 真实业务数据写进示例里。

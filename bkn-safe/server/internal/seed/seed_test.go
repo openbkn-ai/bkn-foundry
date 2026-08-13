@@ -359,3 +359,104 @@ func TestApplyReconcilesCurrentSeedRoleGrants(t *testing.T) {
 		t.Fatal("normal_user desired grant was not restored after reconcile")
 	}
 }
+
+// TestCatalogResourceOperationSplit pins the #801 first step, which is purely
+// additive: the catalog gains resource_manage, the resource gains query_data.
+//
+// The management verbs are still declared on the resource on purpose. Apply
+// wipes every seeded role's p-lines (reconcileSeedRoles) and rebuilds them from
+// grants.json, so dropping them here — before vega judges the catalog instead —
+// would revoke network_builder's ability to create a table on upgrade.
+// Remove them in the same change that switches vega, not before, and update
+// this test consciously when you do.
+func TestCatalogResourceOperationSplit(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	ops := func(resourceType string) map[string]bool {
+		var rows []model.Operation
+		if err := db.Where("resource_type_id = ?", resourceType).Find(&rows).Error; err != nil {
+			t.Fatalf("load operations for %s: %v", resourceType, err)
+		}
+		got := make(map[string]bool, len(rows))
+		for _, r := range rows {
+			got[r.ID] = true
+		}
+		return got
+	}
+
+	catalogOps := ops("catalog")
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
+		if !catalogOps[op] {
+			t.Errorf("catalog is missing operation %q", op)
+		}
+	}
+
+	resourceOps := ops("resource")
+	for _, op := range []string{"view_detail", "query_data"} {
+		if !resourceOps[op] {
+			t.Errorf("resource is missing read operation %q", op)
+		}
+	}
+	// Transitional: still present until vega switches. See the doc comment.
+	for _, op := range []string{"create", "modify", "delete", "authorize", "task_manage"} {
+		if !resourceOps[op] {
+			t.Errorf("resource lost management operation %q too early — vega still judges it, "+
+				"so network_builder would fail to create a table after an upgrade", op)
+		}
+	}
+}
+
+// TestSeedGrantsKeepResourceReadBehaviour guards the compatibility promise of
+// #801: today a normal user reading a table also reads its rows through the
+// single view_detail verb. Splitting the verb must not silently take that away,
+// so the seed grants query_data alongside view_detail.
+func TestSeedGrantsKeepResourceReadBehaviour(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		normalUser     = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
+		networkBuilder = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+	)
+
+	user := "u-normal"
+	if err := e.AssignRole(user, normalUser); err != nil {
+		t.Fatal(err)
+	}
+	for _, op := range []string{"view_detail", "query_data"} {
+		allowed, err := e.Check(user, "resource", "res-1", op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !allowed {
+			t.Errorf("normal_user lost resource %q after the split", op)
+		}
+	}
+
+	// The builder must keep creating tables across the upgrade: vega still
+	// judges resource+create until it switches to catalog+resource_manage.
+	builder := "u-builder"
+	if err := e.AssignRole(builder, networkBuilder); err != nil {
+		t.Fatal(err)
+	}
+	allowed, err := e.Check(builder, "resource", "res-1", "create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !allowed {
+		t.Error("network_builder lost resource create — creating a data table would 403 after upgrade")
+	}
+}

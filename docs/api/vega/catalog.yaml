@@ -296,15 +296,44 @@ paths:
     delete:
       summary: 删除 catalog
       description: |
-        路径参数支持单条或批量（逗号分隔）。删除会同步移除该 catalog 下的资源、调度等关联记录，
-        并删除 `t_entity_extension` 中 `f_entity_id` 等于被删 catalog / resource `f_id` 的行（应用层同事务）。
+        一次只允许删除一个 catalog；路径参数包含逗号时返回 400。删除会同步移除该 catalog 下的资源、
+        探查计划与健康检查计划，并删除 `t_entity_extension` 中 `f_entity_id` 等于被删 catalog / resource
+        `f_id` 的行。构建索引不在此流程中清理。三类任务记录均保留：尚未开始的构建、探查和语义理解任务
+        标记为 `cancelled`；已有终态任务保持原状态。存在 `running` 任务时拒绝删除，
+        构建任务处于 `stopping` 时也会拒绝删除。
+
+        传入 `dry_run=true` 时仅执行权限、存在性和影响分析，不写入任何数据；返回该 catalog
+        的资源、构建任务、探查计划、健康检查计划、探查任务和语义理解任务计数；
+        `protected_resources` 返回不能随 Catalog 级联删除的 dataset/logicview 数量，`blockers`
+        返回稳定的机器可读阻断原因。`can_delete` 严格反映当前 DELETE 的阻断规则，调用方仍须
+        以不带 `dry_run` 的请求结果为准，因为预检与实际删除之间可能有并发变更。
+      parameters:
+        - name: dry_run
+          in: query
+          required: false
+          description: 为 true 时模拟删除并返回影响报告；默认 false，执行真实删除。
+          schema:
+            type: boolean
+            default: false
       responses:
+        "200":
+          description: dry_run 影响报告
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogDeletionImpact"
         "204":
           description: 删除成功
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
@@ -600,6 +629,12 @@ components:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Conflict:
+      description: 当前依赖状态不允许删除
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotAcceptable:
       description: Content-Type 不是 application/json
       content:
@@ -613,6 +648,72 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
+    CatalogDeletionImpact:
+      type: object
+      description: |
+        Physical Catalog 检查全部级联对象；Logical Catalog 仅检查 Resource 和 Semantic Understanding Task，
+        其 Build/Discover Task 与两类 Schedule 影响固定为 0。
+      required:
+        - catalog_id
+        - can_delete
+        - blockers
+        - resources
+        - protected_resources
+        - build_tasks
+        - catalog_health_check_schedules
+        - discover_schedules
+        - discover_tasks
+        - semantic_understanding_tasks
+      properties:
+        catalog_id:
+          type: string
+        can_delete:
+          type: boolean
+          description: 无受保护资源且三类任务均未正在执行时为 true。
+        blockers:
+          type: array
+          description: 当前阻止真实删除的机器可读原因；可删除时为空数组。
+          items:
+            type: string
+            enum:
+              - protected_resources
+              - build_tasks_running_or_stopping
+              - discover_tasks_running
+              - semantic_understanding_tasks_running
+        resources:
+          type: integer
+          description: 将随 Catalog 删除的全部资源数（包含受保护资源）。
+        protected_resources:
+          type: integer
+          description: 不允许随 Catalog 级联删除的 dataset/logicview 资源数。
+        build_tasks:
+          $ref: "#/components/schemas/CatalogDeletionTaskImpact"
+        catalog_health_check_schedules:
+          type: integer
+          format: int64
+          description: 将随 Catalog 级联删除的健康检查计划数量。
+        discover_schedules:
+          type: integer
+          format: int64
+          description: 将随 Catalog 级联删除的发现计划数量。
+        discover_tasks:
+          $ref: "#/components/schemas/CatalogDeletionTaskImpact"
+        semantic_understanding_tasks:
+          $ref: "#/components/schemas/CatalogDeletionTaskImpact"
+    CatalogDeletionTaskImpact:
+      type: object
+      required:
+        - will_cancel
+        - blocking
+      properties:
+        will_cancel:
+          type: integer
+          format: int64
+          description: 当前为 pending、真实删除时将被标记为 cancelled 的任务数。
+        blocking:
+          type: integer
+          format: int64
+          description: 当前阻止删除的执行中任务数；Build Task 包含 running/stopping，其他任务包含 running。
     EntityExtensions:
       description: |
         扁平 KV 的 JSON object 形态（`string`→`string`）。用于 **`Catalog` / `CatalogRequest` / `CatalogRef`**

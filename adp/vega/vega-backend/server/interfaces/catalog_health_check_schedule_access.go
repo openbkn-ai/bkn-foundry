@@ -15,7 +15,7 @@ type CatalogHealthCheckScheduleAccess interface {
 	Create(ctx context.Context, tx *sql.Tx, schedule *CatalogHealthCheckSchedule) error
 	GetByCatalogID(ctx context.Context, catalogID string) (*CatalogHealthCheckSchedule, error)
 	Update(ctx context.Context, schedule *CatalogHealthCheckSchedule) error
-	DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error
+	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
 
 	ListDue(ctx context.Context, now int64) ([]*CatalogHealthCheckSchedule, error)
 	UpdateInheritedNextRun(ctx context.Context, now, nextRun int64) error

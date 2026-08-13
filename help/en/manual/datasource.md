@@ -79,13 +79,21 @@ openbkn vega resource query <resource_id> --limit 10
 
 ### Import CSV
 
-The platform-side CSV import command is gone. Load the CSVs into the target database with the standard `mysql` client first, then register the catalog and discover — `examples/02-csv-to-kn` is a runnable version of exactly this flow.
+The platform-side CSV import command is gone. Load the CSVs into the target database with the standard `mysql` client first, then register the catalog and discover.
 
 ```bash
-# examples/02-csv-to-kn: CSV → MySQL → Catalog → knowledge network
-cd examples/02-csv-to-kn
-cp env.sample .env && vim .env
-./run.sh
+# CSV → MySQL → Catalog → knowledge network
+# 1. Load the CSVs with the mysql client (bring your own DDL)
+mysql -h db.example.com -u root -p supply_chain < load_csv.sql
+
+# 2. Register the catalog, enable it, and discover (re-discover after schema changes)
+openbkn vega catalog create --name "supply" --connector-type mysql \
+  --connector-config '{"host":"db.example.com","port":3306,"username":"root","password":"pass123","databases":["supply_chain"]}'
+openbkn vega catalog enable <catalog_id>
+openbkn vega catalog discover <catalog_id> --wait
+
+# 3. Build the knowledge network from the catalog
+openbkn bkn create-from-catalog <catalog_id> --name "supply-chain" --build
 ```
 
 ### Delete a catalog
@@ -210,6 +218,6 @@ curl -sk -X DELETE "https://<platform-url>/api/vega-backend/v1/catalogs/<catalog
 | `openbkn ds connect <type> <host> <port> <db>` | `openbkn vega catalog create --connector-type <type> --connector-config '<json>'`, then `enable` |
 | `openbkn ds list` / `openbkn ds get <id>` | `openbkn vega catalog list` / `openbkn vega catalog get <id>` |
 | `openbkn ds tables <id>` | `openbkn vega catalog discover <id> --wait`, then `openbkn vega resource list --catalog-id <id> --category table` |
-| `openbkn ds import-csv <id> --files ...` | Load the CSVs with the `mysql` client, then discover — see `examples/02-csv-to-kn` |
+| `openbkn ds import-csv <id> --files ...` | Load the CSVs with the `mysql` client, then discover |
 | `openbkn ds delete <id>` | `openbkn vega catalog delete <id>` |
 | `openbkn bkn create-from-ds <ds_id>` | `openbkn bkn create-from-catalog <catalog_id>` |

@@ -5,9 +5,6 @@ Vega是一个企业级数据管理平台，旨在提供统一的数据连接、�
 ## 项目结构
 
 - [data-connection](./data-connection/) - 统一数据连接服务，支持多种数据库类型的连接和认证
-- [mdl-data-model](./mdl-data-model/) - 数据模型定义与管理服务
-- [mdl-data-model-job](./mdl-data-model-job/) - 数据模型相关任务调度服务
-- [mdl-uniquery](./mdl-uniquery/) - 统一查询服务，提供标准化的数据访问接口
 - [vega-gateway](./vega-gateway/) - API网关服务
 - [vega-gateway-pro](./vega-gateway-pro/) - 高级API网关功能
 

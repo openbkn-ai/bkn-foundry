@@ -59,7 +59,7 @@ type buildTaskService struct {
 }
 
 var activeBuildTaskStatuses = []string{
-	interfaces.BuildTaskStatusInit,
+	interfaces.BuildTaskStatusPending,
 	interfaces.BuildTaskStatusRunning,
 	interfaces.BuildTaskStatusStopping,
 }
@@ -171,8 +171,8 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 			WithErrorDetails(err.Error())
 	}
 
-	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 init（界面"排队中"）。
-	// 入队失败仅记日志，任务保持 init，可由 /start 重新触发
+	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 pending（界面"排队中"）。
+	// 入队失败仅记日志，任务保持 pending，由 Build Task reconciler 自动重新入队。
 	if err := bts.enqueueTask(ctx, buildTask, false); err != nil {
 		otellog.LogError(ctx, "Enqueue build task failed", err)
 	}
@@ -268,7 +268,7 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 		ID:          xid.New().String(),
 		ResourceID:  resource.ID,
 		CatalogID:   resource.CatalogID,
-		Status:      interfaces.BuildTaskStatusInit,
+		Status:      interfaces.BuildTaskStatusPending,
 		Mode:        req.Mode,
 		ExecuteType: req.ExecuteType,
 		Creator:     accountInfo,
@@ -493,7 +493,7 @@ func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.T
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalUpdateStatus")
 	defer span.End()
 
-	return bts.bta.UpdateStatus(ctx, tx, id, update, allowedStatuses...)
+	return bts.bta.UpdateStatus(ctx, tx, id, update, time.Now().UnixMilli(), allowedStatuses...)
 }
 
 // populateBuildTaskReferences 批量补齐任务关联的资源与目录展示字段。它只查询当前
@@ -618,7 +618,7 @@ func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
 	switch {
 	case !hasEmbeddingIndexConfig(bt):
 		h.Embedding = "none"
-	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusInit:
+	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusPending:
 		h.Embedding = "building"
 	case bt.SyncedCount == 0:
 		// 无数据可向量化，空索引视为可用
@@ -718,8 +718,8 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	return buildTasks, total, nil
 }
 
-// Start transitions a task from {init/stopped/completed, failed task auto retry} to running.
-// Note: persisted status remains init/stopped/completed until the worker picks it up — clients should poll.
+// Start transitions a stopped or failed task to pending before enqueueing it.
+// The worker persists running only after it claims the queued task.
 func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Start build task")
 	defer span.End()
@@ -735,9 +735,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	// failed 也允许重启：否则失败任务成死胡同，只能删除重建
-	if buildTask.Status != interfaces.BuildTaskStatusInit &&
-		buildTask.Status != interfaces.BuildTaskStatusStopped &&
-		buildTask.Status != interfaces.BuildTaskStatusCompleted &&
+	if buildTask.Status != interfaces.BuildTaskStatusStopped &&
 		buildTask.Status != interfaces.BuildTaskStatusFailed {
 		span.SetStatus(codes.Error, "Invalid state transition for start")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
@@ -773,16 +771,20 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return err
 	}
 
-	// 入队前先置回 init：worker 出队时会跳过 stopped/stopping 的任务
+	// 入队前先置回 pending：worker 出队时会跳过 stopped/stopping 的任务
 	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
 	// running 仍由 worker 实际执行时落账。
-	if buildTask.Status != interfaces.BuildTaskStatusInit {
-		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusInit)
-		if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
-			otellog.LogError(ctx, "Update build task status failed", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
-				WithErrorDetails(err.Error())
-		}
+	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusPending)
+	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	if err != nil {
+		otellog.LogError(ctx, "Update build task status failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
+			WithErrorDetails(err.Error())
+	}
+	if !updated {
+		span.SetStatus(codes.Error, "Build task status changed while starting")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("build task status changed while starting; retry with the latest task state")
 	}
 
 	if err := bts.enqueueTask(ctx, buildTask, reset); err != nil {
@@ -832,8 +834,7 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	return nil
 }
 
-// Stop transitions a task from running to stopping.
-// Note: persisted status remains running until the worker advances it — clients should poll.
+// Stop transitions a queued task directly to stopped, or a running task to stopping.
 func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Stop build task")
 	defer span.End()
@@ -849,28 +850,30 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	if buildTask.Status != interfaces.BuildTaskStatusRunning &&
-		buildTask.Status != interfaces.BuildTaskStatusStopping &&
-		buildTask.Status != interfaces.BuildTaskStatusInit {
+		buildTask.Status != interfaces.BuildTaskStatusPending {
 		span.SetStatus(codes.Error, "Invalid state transition for stop")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot stop task in status: %s", buildTask.Status))
 	}
 
 	// running → stopping：通知 worker 在批间检查点退出。
-	// stopping → stopped：兜底强制落停。worker 已不在（asynq 任务耗尽重试/服务重启）
-	// 时 stopping 永远不会被推进，任务卡死无法删除，二次 stop 即强制完结。
-	// init → stopped：排队中尚无 worker 观察 stopping，直接落停；
+	// pending → stopped：排队中尚无 worker 观察 stopping，直接落停；
 	// 出队时 worker 检查到 stopped 即跳过，不会复活执行。
 	targetStatus := interfaces.BuildTaskStatusStopping
-	if buildTask.Status == interfaces.BuildTaskStatusStopping ||
-		buildTask.Status == interfaces.BuildTaskStatusInit {
+	if buildTask.Status == interfaces.BuildTaskStatusPending {
 		targetStatus = interfaces.BuildTaskStatusStopped
 	}
 	update := interfaces.NewBuildTaskUpdate().WithStatus(targetStatus)
-	if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
+	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
+	}
+	if !updated {
+		span.SetStatus(codes.Error, "Build task status changed while stopping")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("build task status changed while stopping; retry with the latest task state")
 	}
 
 	span.SetStatus(codes.Ok, "")

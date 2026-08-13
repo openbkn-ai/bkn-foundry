@@ -9,14 +9,12 @@ package bkn
 // RelationType mapping types.
 const (
 	RELATION_MAPPING_TYPE_DIRECT              = "direct"
-	RELATION_MAPPING_TYPE_DATA_VIEW           = "data_view"
 	RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN = "filtered_cross_join"
 )
 
 // ObjectType data source types.
 const (
-	DATA_SOURCE_TYPE_DATA_VIEW = "data_view"
-	DATA_SOURCE_TYPE_RESOURCE  = "resource"
+	DATA_SOURCE_TYPE_RESOURCE = "resource"
 )
 
 // BknNetworkFrontmatter is YAML frontmatter metadata for a .bkn file.
@@ -254,7 +252,7 @@ type BknRelationType struct {
 type Endpoint struct {
 	Source string
 	Target string
-	Type   string // direct | data_view | filtered_cross_join
+	Type   string // direct | filtered_cross_join
 }
 
 // MappingRule represents a property mapping between source and target.

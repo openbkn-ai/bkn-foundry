@@ -22,6 +22,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/build_task"
+	"vega-backend/logics/catalog"
 	"vega-backend/logics/local_index"
 	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/resource"
@@ -31,6 +32,7 @@ import (
 type embeddingWorker struct {
 	appSetting  *common.AppSetting
 	bts         interfaces.BuildTaskService
+	cs          interfaces.CatalogService
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
 	mfs         interfaces.ModelFactoryService
@@ -53,6 +55,7 @@ func NewEmbeddingBuildWorker(appSetting *common.AppSetting) *embeddingWorker {
 	return &embeddingWorker{
 		appSetting:  appSetting,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
+		cs:          catalog.NewCatalogService(appSetting),
 		kafkaAccess: logics.KA,
 		lim:         local_index.NewLocalIndexManager(appSetting),
 		mfs:         model_factory.NewModelFactoryService(appSetting),
@@ -93,9 +96,26 @@ func (ew *embeddingWorker) HandleTask(ctx context.Context, task *asynq.Task) err
 	}
 	if resource == nil {
 		logger.Errorf("Resource not found for task %s, resourceID: %s", taskID, buildTaskInfo.ResourceID)
+		if err := cancelBuildTaskForDeletedParent(ctx, ew.bts, taskID, "resource deleted"); err != nil {
+			return fmt.Errorf("update build task status failed: %w", err)
+		}
+		return nil
+	}
+
+	catalogInfo, err := ew.cs.InternalGetByID(ctx, resource.CatalogID, false)
+	if err != nil {
+		if isNotFoundError(err) {
+			if updateErr := cancelBuildTaskForDeletedParent(ctx, ew.bts, taskID, "catalog deleted"); updateErr != nil {
+				return fmt.Errorf("update build task status failed: %w", updateErr)
+			}
+			return nil
+		}
+		return fmt.Errorf("get catalog failed: %w", err)
+	}
+	if !catalogInfo.Enabled {
 		update := interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("resource not found")
+			WithErrorMsg("catalog is disabled")
 		if _, err := ew.bts.InternalUpdateStatus(ctx, nil, taskID, update); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}

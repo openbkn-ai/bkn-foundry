@@ -34,7 +34,7 @@ func setupCatalogHealthCheckScheduleHandlerTest(t *testing.T) (*gin.Engine, *vmo
 	ctrl := gomock.NewController(t)
 	cs := vmock.NewMockCatalogService(ctrl)
 	hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, cs, nil, nil, nil, nil, nil, nil, nil)
 	handler.hcss = hcss
 	handler.RegisterPublic(engine)
 	return engine, cs, hcss

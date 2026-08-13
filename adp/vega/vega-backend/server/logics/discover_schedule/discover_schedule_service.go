@@ -41,8 +41,10 @@ type discoverScheduleService struct {
 	ums        interfaces.UserMgmtService
 }
 
-func (dss *discoverScheduleService) UpdateLastRun(ctx context.Context, id string, lastRun int64) error {
-	return dss.dsa.UpdateLastRun(ctx, id, lastRun)
+func (dss *discoverScheduleService) UpdateRunMetadata(
+	ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64,
+) error {
+	return dss.dsa.UpdateRunMetadata(ctx, id, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun)
 }
 
 // NewDiscoverScheduleService creates a new DiscoverScheduleService.
@@ -82,7 +84,12 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 
-	now := time.Now().UnixMilli()
+	nowTime := time.Now()
+	nextRun, err := calculateScheduleNextRun(req.CronExpr, nowTime, req.StartTime)
+	if err != nil {
+		return "", err
+	}
+	now := nowTime.UnixMilli()
 	schedule := &interfaces.DiscoverSchedule{
 		ID:        xid.New().String(),
 		Name:      req.Name,
@@ -92,6 +99,7 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 		EndTime:   req.EndTime,
 		Enabled:   req.Enabled,
 		Strategy:  req.Strategy,
+		NextRun:   nextRun.UnixMilli(),
 
 		Creator:    accountInfo,
 		CreateTime: now,
@@ -214,7 +222,13 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 	schedule.EndTime = req.EndTime
 	schedule.Strategy = req.Strategy
 	schedule.Updater = accountInfo
-	schedule.UpdateTime = time.Now().UnixMilli()
+	now := time.Now()
+	nextRun, err := calculateScheduleNextRun(schedule.CronExpr, now, schedule.StartTime)
+	if err != nil {
+		return err
+	}
+	schedule.NextRun = nextRun.UnixMilli()
+	schedule.UpdateTime = now.UnixMilli()
 
 	// Update schedule
 	if err := dss.dsa.Update(ctx, schedule); err != nil {
@@ -245,12 +259,40 @@ func (dss *discoverScheduleService) Enable(ctx context.Context, id string) error
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.Enable")
 	defer span.End()
 
-	if err := dss.dsa.Enable(ctx, id); err != nil {
+	schedule, err := dss.dsa.GetByID(ctx, id)
+	if err != nil {
+		otellog.LogError(ctx, "Failed to get discover schedule", err)
+		return err
+	}
+	if schedule == nil {
+		return fmt.Errorf("discover schedule not found")
+	}
+
+	nextRun, err := calculateScheduleNextRun(schedule.CronExpr, time.Now(), schedule.StartTime)
+	if err != nil {
+		return err
+	}
+	if err := dss.dsa.Enable(ctx, id, nextRun.UnixMilli()); err != nil {
 		otellog.LogError(ctx, "Failed to enable discover schedule", err)
 		return err
 	}
 
 	return nil
+}
+
+// calculateScheduleNextRun 计算符合未来 startTime 限制的下一次 cron 触发时间。
+// 向前偏移一纳秒，确保恰好位于 startTime 的 cron 时间点仍可被选中。
+func calculateScheduleNextRun(cronExpr string, now time.Time, startTime int64) (time.Time, error) {
+	cronSchedule, err := common.ParseHourlyCronExpr(cronExpr)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid cron expression: %w", err)
+	}
+
+	from := now
+	if startTime > now.UnixMilli() {
+		from = time.UnixMilli(startTime).In(now.Location()).Add(-time.Nanosecond)
+	}
+	return cronSchedule.Next(from), nil
 }
 
 // Disable disables a discover schedule.
@@ -266,13 +308,6 @@ func (dss *discoverScheduleService) Disable(ctx context.Context, id string) erro
 	return nil
 }
 
-// GetEnabledSchedules retrieves all enabled discover schedules.
-func (dss *discoverScheduleService) GetEnabledSchedules(ctx context.Context) ([]*interfaces.DiscoverSchedule, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.GetEnabledSchedules")
-	defer span.End()
-	return dss.dsa.GetEnabledSchedules(ctx)
-}
-
 // ExecuteSchedule 是一个执行计划发现任务的方法
 // 它接收一个上下文和一个计划发现任务作为参数，返回一个错误
 func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
@@ -286,10 +321,22 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		return fmt.Errorf("DiscoverTaskService not set")
 	}
 
+	catalogInfo, err := dss.cs.InternalGetByID(ctx, schedule.CatalogID, false)
+	if err != nil {
+		otellog.LogError(ctx, "Failed to get catalog before executing discover schedule", err)
+		return err
+	}
+	if catalogInfo == nil || !catalogInfo.Enabled {
+		logger.Infof("Skip discover schedule for missing or disabled catalog: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
+		return nil
+	}
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
+
 	// 检查是否有正在执行的相同任务
 	_, tasks, err := dss.dts.List(ctx, interfaces.DiscoverTaskQueryParams{
 		CatalogID:   schedule.CatalogID,
-		Status:      interfaces.DiscoverTaskStatusRunning,
+		Statuses:    []string{interfaces.DiscoverTaskStatusRunning},
 		TriggerType: interfaces.DiscoverTaskTriggerScheduled,
 	})
 	if err != nil {
@@ -300,8 +347,6 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		logger.Warnf("There is already a running discover task for catalog %s, skipping execution", schedule.CatalogID)
 		return nil
 	}
-
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
 
 	// Create discover task：这里会创建一个task然后发送到redis mq里面去
 	_, err = dss.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
@@ -315,12 +360,6 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		return err
 	}
 
-	// Update last run time
-	now := time.Now().UnixMilli()
-	if err := dss.UpdateLastRun(ctx, schedule.ID, now); err != nil {
-		otellog.LogError(ctx, "Failed to update last run time", err)
-		return err
-	}
 	logger.Infof("Executed discover schedule: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
 	return nil
 }

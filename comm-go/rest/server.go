@@ -8,6 +8,7 @@ package rest
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 		}
 	}
 
+	setResponseLanguage(c)
 	c.Writer.Header().Set(ContentTypeKey, ContentTypeJson)
 	c.String(statusCode, bodyStr)
 }
@@ -62,6 +64,7 @@ func ReplyError(c *gin.Context, err error) {
 		body = NewHTTPError(ctx, statusCode, PublicError_InternalServerError).WithErrorDetails(e.Error()).Error()
 	}
 
+	setResponseLanguage(c)
 	c.Writer.Header().Set(ContentTypeKey, ContentTypeJson)
 	c.String(statusCode, body)
 }
@@ -77,4 +80,22 @@ func addHeaders(c *gin.Context, headers map[string]string) {
 			c.Writer.Header().Set(k, v)
 		}
 	}
+}
+
+func setResponseLanguage(c *gin.Context) {
+	c.Writer.Header().Set(ContentLanguageHeader, GetLanguageByCtx(c.Request.Context()))
+	addVaryHeader(c, AcceptLanguageHeader)
+}
+
+func addVaryHeader(c *gin.Context, value string) {
+	values := c.Writer.Header().Values("Vary")
+	for _, headerValue := range values {
+		for _, token := range strings.Split(headerValue, ",") {
+			token = strings.TrimSpace(token)
+			if token == "*" || strings.EqualFold(token, value) {
+				return
+			}
+		}
+	}
+	c.Writer.Header().Add("Vary", value)
 }

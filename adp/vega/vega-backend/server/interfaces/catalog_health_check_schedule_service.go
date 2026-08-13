@@ -15,5 +15,5 @@ type CatalogHealthCheckScheduleService interface {
 	Create(ctx context.Context, tx *sql.Tx, catalog *Catalog, req *CatalogHealthCheckScheduleRequest) (*CatalogHealthCheckSchedule, error)
 	GetByCatalogID(ctx context.Context, catalogID string) (*CatalogHealthCheckSchedule, error)
 	Update(ctx context.Context, catalogID string, req *CatalogHealthCheckScheduleRequest) (*CatalogHealthCheckSchedule, error)
-	DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error
+	DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error
 }

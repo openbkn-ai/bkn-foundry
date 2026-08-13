@@ -179,16 +179,35 @@ jobs:
           import collections, json, os, pathlib, subprocess
 
           pr = os.environ["PR_NUMBER"]
-          out = subprocess.run(
-              ["gh", "pr", "view", pr, "--json", "files,changedFiles",
-               "--jq", '.changedFiles, (.files[].path)'],
+          repo = os.environ["GH_REPO"]
+          # `gh pr view --json files` 一次最多返回 100 个文件，超出部分静默丢掉，那些文件
+          # 就永远不进任何分片、也永远不被评审——比漏审更糟的是没人知道漏了。改走 REST
+          # /pulls/{n}/files 自己翻页：每页 100，取到 FILE_CAP 为止。
+          #
+          # 不用 --paginate 是给超大 PR 兜底——那种 PR 翻十几页也只会用到前 FILE_CAP 个，
+          # 多出来的页是白花的 API 调用。上限本身仍然存在（单 agent 的上下文吃不下无限
+          # 文件），差额照旧由 verdict 在结论里点明。
+          FILE_CAP = 150
+          PER_PAGE = 100
+          paths = []
+          page = 1
+          while len(paths) < FILE_CAP:
+              batch = subprocess.run(
+                  ["gh", "api",
+                   "repos/%s/pulls/%s/files?per_page=%d&page=%d" % (repo, pr, PER_PAGE, page),
+                   "--jq", ".[].filename"],
+                  capture_output=True, text=True, check=True,
+              ).stdout.splitlines()
+              batch = [p for p in batch if p.strip()]
+              paths += batch
+              if len(batch) < PER_PAGE:
+                  break
+              page += 1
+          paths = paths[:FILE_CAP]
+          total = int(subprocess.run(
+              ["gh", "pr", "view", pr, "--json", "changedFiles", "--jq", ".changedFiles"],
               capture_output=True, text=True, check=True,
-          ).stdout.splitlines()
-          # `gh pr view --json files` 一次最多返回 100 个文件。超出部分会被静默丢掉，
-          # 那些文件就永远不进任何分片、也永远不被评审——比漏审更糟的是没人知道漏了。
-          # 这里把总数单独取出来对账，差额由 verdict 在结论里点明。
-          total = int(out[0].strip())
-          paths = [p for p in out[1:] if p.strip()]
+          ).stdout.strip())
 
           # adp/ 与 infra/ 下一层才是服务边界（adp/bkn、infra/bkn-agent）；其余仓根目录
           # 本身就是一个服务。归不进这两类的（docs/、examples/、根文件）落 misc，
@@ -291,7 +310,7 @@ jobs:
           RISKY = ("migrations/", "/helm/", "bkn-safe/")
           risky = [p_ for p_ in paths
                    if any(m in p_ for m in RISKY) or p_.endswith("values.yaml")]
-          # 文件清单被 gh 的 100 上限截断时不跳过：截掉的那部分里可能正有 migrations
+          # 文件清单被 FILE_CAP 截断时不跳过：截掉的那部分里可能正有 migrations
           # 或 helm 改动，按「未触及高危面」放过就是拿看不见的东西赌。
           truncated = total > len(paths)
           skip = (os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
@@ -1144,7 +1163,7 @@ jobs:
                "reason_absent": "整个分片没跑起来或中途挂了",
                "reason_malformed": "写出的结论文件解析不了",
                "trunc": "文件清单被截断",
-               "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（`gh pr view --json files` 单次上限 100），**其余 %d 个未进入任何分片、本轮未经评审**。",
+               "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（评审的文件清单上限 150），**其余 %d 个未进入任何分片、本轮未经评审**。",
                "footer": "改完请推新提交，或回复 `/review` 要一轮复评。",
                "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评，且回帖人需为本仓 OWNER/MEMBER/COLLABORATOR。"}
 

@@ -42,6 +42,19 @@ func parseAllowUnhealthy(ctx context.Context, c *gin.Context) (bool, error) {
 	return allowUnhealthy, nil
 }
 
+func parseDryRun(ctx context.Context, c *gin.Context) (bool, error) {
+	value := strings.TrimSpace(c.Query("dry_run"))
+	if value == "" {
+		return false, nil
+	}
+	dryRun, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("invalid dry_run: %s", value))
+	}
+	return dryRun, nil
+}
+
 // ========== ListCatalogs ==========
 
 // ListCatalogsByEx handles GET /api/vega-backend/v1/catalogs (External)
@@ -541,27 +554,27 @@ func (r *restHandler) setCatalogEnabled(c *gin.Context, visitor hydra.Visitor, e
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
 
-// ========== DeleteCatalogs ==========
+// ========== DeleteCatalog ==========
 
-// DeleteCatalogsByEx handles DELETE /api/vega-backend/v1/catalogs/:ids (External)
-func (r *restHandler) DeleteCatalogsByEx(c *gin.Context) {
+// DeleteCatalogByEx handles DELETE /api/vega-backend/v1/catalogs/:id (External).
+func (r *restHandler) DeleteCatalogByEx(c *gin.Context) {
 	// 外网接口：校验token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
-	r.deleteCatalogs(c, visitor)
+	r.deleteCatalog(c, visitor)
 }
 
-// DeleteCatalogsByIn handles DELETE /api/vega-backend/in/v1/catalogs/:ids (Internal)
-func (r *restHandler) DeleteCatalogsByIn(c *gin.Context) {
+// DeleteCatalogByIn handles DELETE /api/vega-backend/in/v1/catalogs/:id (Internal).
+func (r *restHandler) DeleteCatalogByIn(c *gin.Context) {
 	// 内网接口：user_id从header中取
 	visitor := visitor.GenerateVisitor(c)
-	r.deleteCatalogs(c, visitor)
+	r.deleteCatalog(c, visitor)
 }
 
-// deleteCatalogs is the shared implementation
-func (r *restHandler) deleteCatalogs(c *gin.Context, visitor hydra.Visitor) {
+// deleteCatalog is the shared implementation.
+func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
@@ -573,70 +586,62 @@ func (r *restHandler) deleteCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	ids := strings.Split(c.Param("id"), ",")
-
-	// Check if ids exists
-	for _, id := range ids {
-		exists, err := r.cs.CheckExistByID(ctx, id)
-		if err != nil {
-			httpErr := err.(*rest.HTTPError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		if !exists {
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound).
-				WithErrorDetails(fmt.Sprintf("id %s not found", id))
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-
-		// check if catalog discover tasks exists
-		exists, err = r.dts.CheckExistByStatuses(ctx, id, []string{interfaces.DiscoverTaskStatusPending, interfaces.DiscoverTaskStatusRunning})
-		if err != nil {
-			httpErr := err.(*rest.HTTPError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		if exists {
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("catalog %s contains tasks in the pending or running statuses and cannot be deleted.", id))
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-
-		// check if catalog resources exists
-		exists, err = r.rs.CheckExistByCategories(ctx, id, []string{interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicView})
-		if err != nil {
-			httpErr := err.(*rest.HTTPError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-		if exists {
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("catalog %s contains data from dataset or logicview class resources and cannot be deleted.", id))
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-
+	id := c.Param("id")
+	if strings.Contains(id, ",") {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails("catalog delete accepts exactly one id")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
 	}
 
-	if err := r.cs.DeleteByIDs(ctx, ids); err != nil {
+	dryRun, err := parseDryRun(ctx, c)
+	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	for _, id := range ids {
-		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
-			interfaces.GenerateCatalogAuditObject(id, ""), audit.SUCCESS, "")
+	// Check if catalog exists before choosing dry-run or deletion behavior.
+	exists, err := r.cs.CheckExistByID(ctx, id)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
 	}
+	if !exists {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound).
+			WithErrorDetails(fmt.Sprintf("id %s not found", id))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if dryRun {
+		result, err := r.cs.GetDeletionImpact(ctx, id)
+		if err != nil {
+			httpErr := err.(*rest.HTTPError)
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+		rest.ReplyOK(c, http.StatusOK, result)
+		return
+	}
+
+	if err := r.cs.DeleteByID(ctx, id); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
+		interfaces.GenerateCatalogAuditObject(id, ""), audit.SUCCESS, "")
 
 	logger.Debug("Handler DeleteCatalog Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)

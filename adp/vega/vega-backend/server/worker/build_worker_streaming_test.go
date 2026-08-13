@@ -30,13 +30,13 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 
@@ -63,17 +63,38 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 		sh := &streamingBuildWorker{bts: bts}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(false, nil)
 
 		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
 		require.NoError(t, sh.HandleTask(context.Background(), task))
+	})
+
+	t.Run("cancels task when resource was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		worker := &streamingBuildWorker{bts: bts, rs: rs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
+		}, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning).WithErrorMsg(""),
+			interfaces.BuildTaskStatusPending).Return(true, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
+			interfaces.BuildTaskStatusRunning).Return(true, nil)
+
+		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, worker.HandleTask(context.Background(), task))
 	})
 
 	t.Run("marks task failed for invalid streaming connector configuration", func(t *testing.T) {
@@ -84,13 +105,13 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 		sh := &streamingBuildWorker{bts: bts, rs: rs, cs: cs}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{

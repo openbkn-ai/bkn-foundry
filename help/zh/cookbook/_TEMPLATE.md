@@ -59,5 +59,4 @@
 ## 6. See also（延伸阅读）
 
 - 参考：[<手册条目>](../manual/<x>.md) · [快速开始](../quick-start.md)
-- 完整示例项目：[`examples/<NN-slug>/`](../../../examples/<NN-slug>/)
 - 相关 Recipe：[<另一篇 cookbook>](./<other-recipe>.md)

@@ -2009,7 +2009,7 @@ components:
       type: object
       properties:
         type:
-          description: 数据来源类型。当前仅支持 vega resource；legacy `data_view` 已废弃。
+          description: 数据来源类型。当前仅支持 vega resource。
           enum:
             - resource
           type: string

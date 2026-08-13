@@ -51,7 +51,6 @@ bkn-backend 同时注册了 `/api/bkn-backend/v1` 与 `/api/ontology-manager/v1`
 **规范前缀是 `/api/bkn-backend/v1`**，本文档只按它编写：
 
 - 仓库内的服务调用一律走 `/api/bkn-backend/v1`（128 处），无一处使用别名；
-- 唯一残留的使用方是 examples 脚本，已切到规范前缀；
 - 别名路由暂不下线，避免破坏存量客户端；待确认外部无调用后再移除。
 
 ## 🔗 共享定义

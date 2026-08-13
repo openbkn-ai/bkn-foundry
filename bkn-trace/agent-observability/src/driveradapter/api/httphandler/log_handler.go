@@ -32,10 +32,7 @@ type observabilityError struct {
 	RetryAfterMS   int    `json:"retry_after_ms,omitempty"`
 }
 
-var (
-	traceIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
-	spanIDPattern  = regexp.MustCompile(`^[0-9a-f]{16}$`)
-)
+var traceIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func NewLogHandler(service *logsvc.Service, authorizer *EvidenceHandler) *LogHandler {
 	return &LogHandler{service: service, authorizer: authorizer}

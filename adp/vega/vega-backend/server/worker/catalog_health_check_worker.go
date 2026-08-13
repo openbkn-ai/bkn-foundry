@@ -17,7 +17,6 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
-	catalog_health_check_schedule "vega-backend/logics/catalog_health_check_schedule"
 )
 
 const (
@@ -44,7 +43,7 @@ func NewCatalogHealthCheckWorker(appSetting *common.AppSetting) *CatalogHealthCh
 		if appSetting.CatalogHealthCheck.CronExpr != "" {
 			defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
 		}
-		defaultCronSchedule, err := catalog_health_check_schedule.ParseCronExpr(defaultCronExpr)
+		defaultCronSchedule, err := common.ParseHourlyCronExpr(defaultCronExpr)
 		if err != nil {
 			logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
 		}
@@ -59,38 +58,38 @@ func NewCatalogHealthCheckWorker(appSetting *common.AppSetting) *CatalogHealthCh
 	return chcWorker
 }
 
-func (w *CatalogHealthCheckWorker) Start() error {
-	if !w.appSetting.CatalogHealthCheck.WorkerEnabled {
+func (chcw *CatalogHealthCheckWorker) Start() error {
+	if !chcw.appSetting.CatalogHealthCheck.WorkerEnabled {
 		logger.Info("Catalog health check worker is disabled")
 		return nil
 	}
 
 	now := time.Now()
-	if err := w.chcsa.UpdateInheritedNextRun(
+	if err := chcw.chcsa.UpdateInheritedNextRun(
 		context.Background(),
 		now.UnixMilli(),
-		w.defaultCronSchedule.Next(now).UnixMilli(),
+		chcw.defaultCronSchedule.Next(now).UnixMilli(),
 	); err != nil {
 		return err
 	}
 
-	go w.run()
+	go chcw.run()
 	logger.Info("Catalog health check worker started")
 	return nil
 }
 
-func (w *CatalogHealthCheckWorker) run() {
-	w.runDue()
+func (chcw *CatalogHealthCheckWorker) run() {
+	chcw.runDue()
 
 	ticker := time.NewTicker(catalogHealthCheckScanInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		w.runDue()
+		chcw.runDue()
 	}
 }
 
-func (w *CatalogHealthCheckWorker) runDue() {
+func (chcw *CatalogHealthCheckWorker) runDue() {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.Errorf("Run due catalog health checks panicked: %v", recovered)
@@ -98,17 +97,17 @@ func (w *CatalogHealthCheckWorker) runDue() {
 	}()
 
 	ctx := context.Background()
-	schedules, err := w.chcsa.ListDue(ctx, time.Now().UnixMilli())
+	schedules, err := chcw.chcsa.ListDue(ctx, time.Now().UnixMilli())
 	if err != nil {
 		logger.Errorf("List due catalog health check schedules failed: %v", err)
 		return
 	}
 	for _, schedule := range schedules {
-		w.runCatalogHealthCheck(ctx, schedule)
+		chcw.runSchedule(ctx, schedule)
 	}
 }
 
-func (w *CatalogHealthCheckWorker) runCatalogHealthCheck(ctx context.Context, schedule *interfaces.CatalogHealthCheckSchedule) {
+func (chcw *CatalogHealthCheckWorker) runSchedule(ctx context.Context, schedule *interfaces.CatalogHealthCheckSchedule) {
 	catalogID := schedule.CatalogID
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -116,39 +115,37 @@ func (w *CatalogHealthCheckWorker) runCatalogHealthCheck(ctx context.Context, sc
 		}
 	}()
 
-	if schedule.Mode == interfaces.CatalogHealthCheckScheduleModeDisabled || schedule.NextRun > time.Now().UnixMilli() {
+	now := time.Now()
+	if schedule.Mode == interfaces.CatalogHealthCheckScheduleModeDisabled || schedule.NextRun > now.UnixMilli() {
 		return
 	}
 
 	var cronSchedule cron.Schedule
 	if schedule.Mode == interfaces.CatalogHealthCheckScheduleModeInherit {
-		cronSchedule = w.defaultCronSchedule
+		cronSchedule = chcw.defaultCronSchedule
 	} else {
 		var err error
-		cronSchedule, err = catalog_health_check_schedule.ParseCronExpr(schedule.CronExpr)
+		cronSchedule, err = common.ParseHourlyCronExpr(schedule.CronExpr)
 		if err != nil {
 			logger.Errorf("Parse catalog health check cron expression failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
 			return
 		}
 	}
 
-	if _, err := w.cs.InternalTestConnection(
-		ctx,
-		schedule.CatalogID,
+	// 创建任务前先推进数据库中的运行时间。任务创建失败时跳过本次触发，且服务停机期间
+	// 错过的历史周期不会在恢复后逐次补跑。
+	nextRun := cronSchedule.Next(now)
+	if err := chcw.chcsa.UpdateRunMetadata(ctx, schedule.CatalogID,
+		schedule.UpdateTime, now.UnixMilli(), nextRun.UnixMilli(),
 	); err != nil {
+		logger.Errorf("Update catalog health check run metadata failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
+		return
+	}
+
+	if _, err := chcw.cs.InternalTestConnection(ctx, schedule.CatalogID); err != nil {
 		logger.Errorf("Run catalog health check failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
 		return
 	}
 
-	lastRun := time.Now()
-	nextRun := cronSchedule.Next(lastRun)
-	if err := w.chcsa.UpdateRunMetadata(
-		ctx,
-		schedule.CatalogID,
-		schedule.UpdateTime,
-		lastRun.UnixMilli(),
-		nextRun.UnixMilli(),
-	); err != nil {
-		logger.Errorf("Update catalog health check run metadata failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
-	}
+	logger.Infof("Executed catalog health check schedule: id=%s", schedule.CatalogID)
 }

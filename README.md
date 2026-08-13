@@ -29,7 +29,7 @@ OpenBKN is an ontology-driven business knowledge network platform. Through ontol
 - 🚢 [Deployment](deploy/README.md) - One-click deploy to Kubernetes
 - 📘 [Documentation](help/README.md) - Product documentation and usage guides ([EN](help/en/README.md) / [中文](help/zh/README.md))
 - 📖 [API Reference](docs/api/) - OpenAPI docs for every service (YAML source + rendered Markdown / interactive HTML)
-- 📦 [Examples](examples/README.md) - End-to-end CLI walkthroughs (DB / CSV / actions)
+- 📦 [Samples](https://github.com/openbkn-ai/bkn-samples) - Runnable end-to-end walkthroughs, in their own repo
 - 🧾 [Release Notes](release-notes/) - All notable changes
 
 <a id="toc-quick-start"></a>

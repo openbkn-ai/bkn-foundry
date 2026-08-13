@@ -378,38 +378,6 @@ func SerializeRelationType(rt *BknRelationType) string {
 		}
 		_, _ = fmt.Fprintf(&sb, "\n")
 
-	case RELATION_MAPPING_TYPE_DATA_VIEW:
-		// ### Mapping View — backing data source reference
-		_, _ = fmt.Fprintf(&sb, "### Mapping View\n\n")
-		_, _ = fmt.Fprintf(&sb, "| Type | ID |\n")
-		_, _ = fmt.Fprintf(&sb, "|------|----|\n")
-		if rules, ok := rt.MappingRules.(*InDirectMappingRule); ok {
-			if rules.BackingDataSource != nil {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", rules.BackingDataSource.Type, rules.BackingDataSource.ID)
-			}
-			_, _ = fmt.Fprintf(&sb, "\n")
-
-			// ### Source Mapping — source property → view property
-			_, _ = fmt.Fprintf(&sb, "### Source Mapping\n\n")
-			_, _ = fmt.Fprintf(&sb, "| Source Property | View Property |\n")
-			_, _ = fmt.Fprintf(&sb, "|-----------------|---------------|\n")
-			for _, r := range rules.SourceMappingRules {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", r.SourceProperty, r.TargetProperty)
-			}
-			_, _ = fmt.Fprintf(&sb, "\n")
-
-			// ### Target Mapping — view property → target property
-			_, _ = fmt.Fprintf(&sb, "### Target Mapping\n\n")
-			_, _ = fmt.Fprintf(&sb, "| View Property | Target Property |\n")
-			_, _ = fmt.Fprintf(&sb, "|---------------|-----------------|\n")
-			for _, r := range rules.TargetMappingRules {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", r.SourceProperty, r.TargetProperty)
-			}
-			_, _ = fmt.Fprintf(&sb, "\n")
-		} else {
-			_, _ = fmt.Fprintf(&sb, "\n")
-		}
-
 	case RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN:
 		if fcj, ok := rt.MappingRules.(*FilteredCrossJoinMapping); ok {
 			_, _ = fmt.Fprintf(&sb, "### Source Condition\n\n")

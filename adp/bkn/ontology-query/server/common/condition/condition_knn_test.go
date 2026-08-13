@@ -488,7 +488,7 @@ func Test_rewriteKnnCond(t *testing.T) {
 //   - 属性本身是 vector 类型：向量就在该字段上，模型由对象类声明，在这里算好传下去。
 //     这类资源可能没有本地构建索引，下游没有别的依据可用。
 //   - 标量属性：向量在构建任务生成的字段上，字段名与模型都归 vega 解析，文本原样下传。
-func Test_rewriteKnnCond_NativeVectorPropertyVectorizesHere(t *testing.T) {
+func Test_rewriteKnnCond_NativeVectorPropertyPassesTextDownstream(t *testing.T) {
 	Convey("Test rewriteKnnCond on a native vector property", t, func() {
 		ctx := context.Background()
 		called := false
@@ -512,14 +512,15 @@ func Test_rewriteKnnCond_NativeVectorPropertyVectorizesHere(t *testing.T) {
 		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
 
 		So(err, ShouldBeNil)
-		So(called, ShouldBeTrue)
+		So(called, ShouldBeFalse)
 		So(result.Name, ShouldEqual, "embedding_col")
-		So(result.Value, ShouldResemble, []float32{0.1, 0.2})
+		So(result.Operation, ShouldEqual, OperationKNNVector)
+		So(result.Value, ShouldEqual, "famous stadium")
 	})
 }
 
-func Test_rewriteKnnCond_NativeVectorPropertyNeedsModel(t *testing.T) {
-	Convey("Test rewriteKnnCond rejects a vector property without a model", t, func() {
+func Test_rewriteKnnCond_NativeVectorPropertyDoesNotNeedLocalModel(t *testing.T) {
+	Convey("Test rewriteKnnCond accepts a vector property without a local model", t, func() {
 		ctx := context.Background()
 		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
 			return []VectorResp{{Vector: []float32{0.1}}}, nil
@@ -536,9 +537,13 @@ func Test_rewriteKnnCond_NativeVectorPropertyNeedsModel(t *testing.T) {
 			ValueOptCfg: ValueOptCfg{Value: "x"},
 		}
 
-		_, err := rewriteKnnCond(ctx, cfg, vectorizer)
+		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
 
-		So(err, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		So(result, ShouldNotBeNil)
+		So(result.Name, ShouldEqual, "embedding_col")
+		So(result.Operation, ShouldEqual, OperationKNNVector)
+		So(result.Value, ShouldEqual, "x")
 	})
 }
 

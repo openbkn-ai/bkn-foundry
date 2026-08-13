@@ -21,9 +21,9 @@ import (
 const (
 	// buildTaskReconcileInterval 对账周期
 	buildTaskReconcileInterval = 5 * time.Minute
-	// buildTaskInitStaleAfter init 停留超过该时长且队列无对应消息即判为消息丢失；
+	// buildTaskPendingStaleAfter pending 停留超过该时长且队列无对应消息即判为消息丢失；
 	// 需大于创建事务提交→入队完成的间隙，避免把正常创建流程误判为卡死
-	buildTaskInitStaleAfter = 3 * time.Minute
+	buildTaskPendingStaleAfter = 3 * time.Minute
 	// buildTaskStoppingStaleAfter stopping 停留超过该时长且队列无对应消息即判为 worker 已不在；
 	// 自动落到 stopped，避免任务永久无法删除或重跑。
 	buildTaskStoppingStaleAfter = 3 * time.Minute
@@ -32,8 +32,8 @@ const (
 )
 
 // buildTaskReconciler 周期对账自愈：任务创建即入队，但入队消息会因 pod 更替或
-// 入队失败而丢失，DB 状态停在 init（界面"排队中"）后没有任何机制重新入队。
-// 对账把"init 超时且 asynq 队列中无对应消息"的任务重新入队，消除永久假排队。
+// 入队失败而丢失，DB 状态停在 pending（界面"排队中"）后没有任何机制重新入队。
+// 对账把"pending 超时且 asynq 队列中无对应消息"的任务重新入队，消除永久假排队。
 type buildTaskReconciler struct {
 	bts interfaces.BuildTaskService
 	aqa interfaces.AsynqAccess
@@ -64,7 +64,7 @@ func (btr *buildTaskReconciler) run() {
 // reconcileOnce 执行一轮对账
 func (btr *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 	tasks, _, err := btr.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
-		Statuses: []string{interfaces.BuildTaskStatusInit, interfaces.BuildTaskStatusStopping},
+		Statuses: []string{interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusStopping},
 	})
 	if err != nil {
 		return err
@@ -79,16 +79,16 @@ func (btr *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 	}
 
 	now := time.Now()
-	stuckInit := findStuckBuildTasks(tasks, queued, now, buildTaskInitStaleAfter)
-	if len(stuckInit) > 0 {
+	stuckPending := findStuckBuildTasks(tasks, queued, now, buildTaskPendingStaleAfter)
+	if len(stuckPending) > 0 {
 		client := btr.aqa.CreateClient()
 		defer func() { _ = client.Close() }()
-		for _, task := range stuckInit {
+		for _, task := range stuckPending {
 			if err := enqueueBuildTaskMessage(client, task); err != nil {
 				logger.Errorf("Reconciler re-enqueue build task %s failed: %v", task.ID, err)
 				continue
 			}
-			logger.Infof("Reconciler re-enqueued stuck build task %s (init since %s)",
+			logger.Infof("Reconciler re-enqueued stuck build task %s (pending since %s)",
 				task.ID, time.UnixMilli(task.UpdateTime).Format(time.RFC3339))
 		}
 	}
@@ -106,12 +106,12 @@ func (btr *buildTaskReconciler) reconcileOnce(ctx context.Context) error {
 	return nil
 }
 
-// findStuckBuildTasks 返回卡死任务：init 停留超过 staleAfter 且队列中无对应消息。
+// findStuckBuildTasks 返回卡死任务：pending 停留超过 staleAfter 且队列中无对应消息。
 // 纯判定函数，便于单测。
 func findStuckBuildTasks(tasks []*interfaces.BuildTask, queuedIDs map[string]struct{}, now time.Time, staleAfter time.Duration) []*interfaces.BuildTask {
 	stuck := []*interfaces.BuildTask{}
 	for _, task := range tasks {
-		if task.Status != interfaces.BuildTaskStatusInit {
+		if task.Status != interfaces.BuildTaskStatusPending {
 			continue
 		}
 		if now.Sub(time.UnixMilli(task.UpdateTime)) < staleAfter {

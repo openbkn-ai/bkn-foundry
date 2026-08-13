@@ -155,15 +155,31 @@ func TestBuildTaskAccessUpdateStatus(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ?")).
-			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?")).
+			WithArgs(interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusCancelled).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
-		updated, err := access.UpdateStatus(context.Background(), nil, "task-1", update)
+		updated, err := access.UpdateStatus(context.Background(), nil, "task-1", update, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("does not overwrite cancelled task", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?")).
+			WithArgs(interfaces.BuildTaskStatusFailed, int64(123), "task-1", interfaces.BuildTaskStatusCancelled).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		updated, err := access.UpdateStatus(context.Background(), nil, "task-1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusFailed), 123)
+
+		require.NoError(t, err)
+		assert.False(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -174,14 +190,15 @@ func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs("", interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
+			WithArgs("", interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit,
+			123,
+			interfaces.BuildTaskStatusPending,
 		)
 
 		require.NoError(t, err)
@@ -194,12 +211,13 @@ func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs(interfaces.BuildTaskStatusRunning, sqlmock.AnyArg(), "task-1", interfaces.BuildTaskStatusInit).
+			WithArgs(interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning),
-			interfaces.BuildTaskStatusInit,
+			123,
+			interfaces.BuildTaskStatusPending,
 		)
 
 		require.NoError(t, err)
@@ -254,18 +272,18 @@ func TestBuildTaskAccessList(t *testing.T) {
 			},
 			ResourceID: task.ResourceID,
 			CatalogID:  task.CatalogID,
-			Statuses:   []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusInit},
+			Statuses:   []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending},
 			Mode:       interfaces.BuildTaskModeBatch,
 			OrderBy:    interfaces.BuildTaskOrderByCreatedAt,
 			Order:      interfaces.ASC_DIRECTION,
 		}
 
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_build_task WHERE f_resource_id = ? AND f_catalog_id = ? AND f_status IN (?,?) AND f_mode = ?")).
-			WithArgs(task.ResourceID, task.CatalogID, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusInit, interfaces.BuildTaskModeBatch).
+			WithArgs(task.ResourceID, task.CatalogID, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
 		rows := sqlmock.NewRows(buildTaskSummaryColumns()).AddRow(buildTaskSummaryRowValues(task)...)
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinBuildTaskSummaryColumns()+" FROM t_build_task WHERE f_resource_id = ? AND f_catalog_id = ? AND f_status IN (?,?) AND f_mode = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
-			WithArgs(task.ResourceID, task.CatalogID, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusInit, interfaces.BuildTaskModeBatch).
+			WithArgs(task.ResourceID, task.CatalogID, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch).
 			WillReturnRows(rows)
 
 		got, total, err := access.List(context.Background(), params)
@@ -401,7 +419,7 @@ func sampleBuildTask() *interfaces.BuildTask {
 		ID:              "task-1",
 		ResourceID:      "resource-1",
 		CatalogID:       "catalog-1",
-		Status:          interfaces.BuildTaskStatusInit,
+		Status:          interfaces.BuildTaskStatusPending,
 		Mode:            interfaces.BuildTaskModeBatch,
 		ExecuteType:     interfaces.BuildTaskExecuteTypeIncremental,
 		TotalCount:      100,

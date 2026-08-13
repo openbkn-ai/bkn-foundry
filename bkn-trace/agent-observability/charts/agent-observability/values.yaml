@@ -80,6 +80,7 @@ enterpriseBusinessProvenance:
   enabled: false
   agentURL: ""
   agentID: ""
+  agentName: ""
 
 observability:
   # Configure the same Secret on every replica so signed pagination cursors

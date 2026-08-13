@@ -9,6 +9,7 @@ package catalog_health_check_schedule
 import (
 	"fmt"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 )
 
@@ -25,7 +26,7 @@ func validateRequest(req *interfaces.CatalogHealthCheckScheduleRequest) error {
 		if req.CronExpr == "" {
 			return fmt.Errorf("cron_expr is required when mode is enabled")
 		}
-		if _, err := ParseCronExpr(req.CronExpr); err != nil {
+		if _, err := common.ParseHourlyCronExpr(req.CronExpr); err != nil {
 			return fmt.Errorf("invalid cron_expr: %w", err)
 		}
 	case interfaces.CatalogHealthCheckScheduleModeDisabled:

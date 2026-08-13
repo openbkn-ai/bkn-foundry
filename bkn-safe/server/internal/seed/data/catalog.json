@@ -44,26 +44,31 @@
       "id": "catalog",
       "name": "数据目录",
       "_source": "vega",
+      "_note": "create/modify/delete 只针对目录本身;管理目录下的数据表用 resource_manage;query_data 是「目录下的表默认可取数」,它能一次性放开整个目录的数据,界面上不要与 view_detail 捆绑勾选(#800 / #801)",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
-        {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
+        {"id": "create", "name": "创建目录"},
+        {"id": "modify", "name": "修改目录本身"},
+        {"id": "delete", "name": "删除目录"},
         {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"}
+        {"id": "task_manage", "name": "任务管理"},
+        {"id": "resource_manage", "name": "管理目录下的数据表"},
+        {"id": "query_data", "name": "查询目录下的表数据"}
       ]
     },
     {
       "id": "resource",
       "name": "数据资源",
       "_source": "vega",
+      "_note": "过渡态(#801 第一段,只加不改):新增 query_data 让资源侧能区分「只看结构」与「能取数」。create/modify/delete/authorize/task_manage 目标是上移到所属目录(catalog.resource_manage / task_manage / authorize),但在 vega 判定切换前必须保留——seed 的 reconcileSeedRoles 会先清空角色 p 行再按本文件重建,此刻移除会让 network_builder 升级后建表 403",
       "operations": [
-        {"id": "view_detail", "name": "查看详情"},
-        {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"}
+        {"id": "view_detail", "name": "查看表结构"},
+        {"id": "query_data", "name": "查询表数据"},
+        {"id": "create", "name": "创建(待上移目录)"},
+        {"id": "modify", "name": "修改(待上移目录)"},
+        {"id": "delete", "name": "删除(待上移目录)"},
+        {"id": "authorize", "name": "授权(待上移目录)"},
+        {"id": "task_manage", "name": "任务管理(待上移目录)"}
       ]
     },
     {

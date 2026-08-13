@@ -93,35 +93,6 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
 		}
 	}
-	if objectType.DataProperties != nil {
-		for _, prop := range objectType.DataProperties {
-			if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled && prop.IndexConfig.VectorConfig.ModelID != "" {
-				model, err := ots.mfs.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
-				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]属性[%s]的小模型[%s]获取失败: %s",
-							objectType.OTName, prop.Name, prop.IndexConfig.VectorConfig.ModelID, err.Error()))
-				}
-				if model == nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]属性[%s]的小模型[%s]不存在",
-							objectType.OTName, prop.Name, prop.IndexConfig.VectorConfig.ModelID))
-				}
-				if model.ModelType != interfaces.SMALL_MODEL_TYPE_EMBEDDING {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("model type %s is not %s model", model.ModelType, interfaces.SMALL_MODEL_TYPE_EMBEDDING))
-				}
-				if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("model %s has invalid embedding dim, batch size or max tokens", model.ModelID))
-				}
-			}
-		}
-	}
 	// Schema for logic properties (type, data_source) is validated in driveradapters.ValidateObjectType.
 	for _, lp := range objectType.LogicProperties {
 		switch lp.Type {

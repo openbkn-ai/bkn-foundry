@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
@@ -34,6 +35,43 @@ func newTestDiscoverScheduleService(t *testing.T) (*discoverScheduleService, *vm
 		dts: dts,
 		ums: ums,
 	}, dsa, dts, ums
+}
+
+func TestCalculateScheduleNextRun(t *testing.T) {
+	now := time.Date(2026, 7, 9, 9, 30, 0, 0, time.UTC)
+
+	t.Run("uses next cron occurrence when start time is not in the future", func(t *testing.T) {
+		next, err := calculateScheduleNextRun("0 * * * *", now, now.Add(-time.Hour).UnixMilli())
+
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC), next)
+	})
+
+	t.Run("does not run immediately after an off-cron future start time", func(t *testing.T) {
+		startTime := time.Date(2026, 7, 9, 10, 15, 0, 0, time.UTC)
+
+		next, err := calculateScheduleNextRun("0 * * * *", now, startTime.UnixMilli())
+
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2026, 7, 9, 11, 0, 0, 0, time.UTC), next)
+	})
+
+	t.Run("includes a cron occurrence exactly at the future start time", func(t *testing.T) {
+		startTime := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+
+		next, err := calculateScheduleNextRun("0 * * * *", now, startTime.UnixMilli())
+
+		require.NoError(t, err)
+		assert.Equal(t, startTime, next)
+	})
+
+	t.Run("rejects invalid or too frequent cron expressions", func(t *testing.T) {
+		_, invalidErr := calculateScheduleNextRun("bad cron", now, 0)
+		_, frequentErr := calculateScheduleNextRun("*/30 * * * *", now, 0)
+
+		require.Error(t, invalidErr)
+		require.ErrorContains(t, frequentErr, "minimum interval is 1 hour")
+	})
 }
 
 func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
@@ -65,6 +103,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 				assert.Equal(t, account, schedule.Updater)
 				assert.NotZero(t, schedule.CreateTime)
 				assert.NotZero(t, schedule.UpdateTime)
+				assert.Greater(t, schedule.NextRun, schedule.CreateTime)
 				return nil
 			})
 
@@ -101,6 +140,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 				assert.Equal(t, "create_only", schedule.Strategy)
 				assert.Equal(t, account, schedule.Updater)
 				assert.NotZero(t, schedule.UpdateTime)
+				assert.Greater(t, schedule.NextRun, schedule.UpdateTime)
 				return nil
 			})
 
@@ -188,16 +228,20 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
 	})
 
-	t.Run("delegates enable disable delete and last run", func(t *testing.T) {
+	t.Run("delegates enable disable delete and run metadata", func(t *testing.T) {
 		service, dsa, _, _ := newTestDiscoverScheduleService(t)
-		dsa.EXPECT().Enable(gomock.Any(), "schedule-1").Return(nil)
+		dsa.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(&interfaces.DiscoverSchedule{
+			ID:       "schedule-1",
+			CronExpr: "0 * * * *",
+		}, nil)
+		dsa.EXPECT().Enable(gomock.Any(), "schedule-1", gomock.Any()).Return(nil)
 		dsa.EXPECT().Disable(gomock.Any(), "schedule-1").Return(nil)
-		dsa.EXPECT().UpdateLastRun(gomock.Any(), "schedule-1", int64(123)).Return(nil)
+		dsa.EXPECT().UpdateRunMetadata(gomock.Any(), "schedule-1", int64(100), int64(110), int64(123), int64(456)).Return(nil)
 		dsa.EXPECT().Delete(gomock.Any(), "schedule-1").Return(nil)
 
 		require.NoError(t, service.Enable(context.Background(), "schedule-1"))
 		require.NoError(t, service.Disable(context.Background(), "schedule-1"))
-		require.NoError(t, service.UpdateLastRun(context.Background(), "schedule-1", 123))
+		require.NoError(t, service.UpdateRunMetadata(context.Background(), "schedule-1", 100, 110, 123, 456))
 		require.NoError(t, service.Delete(context.Background(), "schedule-1"))
 	})
 }
@@ -281,12 +325,13 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 	})
 
 	t.Run("skips when scheduled task is already running", func(t *testing.T) {
-		service, _, dts, _ := newTestDiscoverScheduleService(t)
+		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
 		schedule := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1"}
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		dts.EXPECT().
 			List(gomock.Any(), interfaces.DiscoverTaskQueryParams{
 				CatalogID:   "catalog-1",
-				Status:      interfaces.DiscoverTaskStatusRunning,
+				Statuses:    []string{interfaces.DiscoverTaskStatusRunning},
 				TriggerType: interfaces.DiscoverTaskTriggerScheduled,
 			}).
 			Return(nil, int64(1), nil)
@@ -294,8 +339,8 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		require.NoError(t, service.ExecuteSchedule(context.Background(), schedule))
 	})
 
-	t.Run("creates scheduled task and updates last run", func(t *testing.T) {
-		service, dsa, dts, _ := newTestDiscoverScheduleService(t)
+	t.Run("creates scheduled task", func(t *testing.T) {
+		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
 		schedule := &interfaces.DiscoverSchedule{
 			ID:        "schedule-1",
 			CatalogID: "catalog-1",
@@ -303,6 +348,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 			Creator:   interfaces.AccountInfo{ID: "u1"},
 		}
 
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		dts.EXPECT().
 			List(gomock.Any(), gomock.Any()).
 			Return(nil, int64(0), nil)
@@ -314,15 +360,12 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 				Strategy:    "full_sync",
 			}).
 			Return("task-1", nil)
-		dsa.EXPECT().
-			UpdateLastRun(gomock.Any(), "schedule-1", gomock.Any()).
-			Return(nil)
-
 		require.NoError(t, service.ExecuteSchedule(context.Background(), schedule))
 	})
 
 	t.Run("returns list error", func(t *testing.T) {
-		service, _, dts, _ := newTestDiscoverScheduleService(t)
+		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "", false).Return(&interfaces.Catalog{Enabled: true}, nil)
 		dts.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), errors.New("list failed"))
 
 		err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{ID: "schedule-1"})
@@ -330,4 +373,22 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "list failed")
 	})
+
+	t.Run("skips task creation for disabled catalog", func(t *testing.T) {
+		service, cs, _ := newTestDiscoverScheduleExecutionService(t)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+
+		require.NoError(t, service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{
+			ID: "schedule-1", CatalogID: "catalog-1",
+		}))
+	})
+}
+
+func newTestDiscoverScheduleExecutionService(t *testing.T) (*discoverScheduleService, *vmock.MockCatalogService, *vmock.MockDiscoverTaskService) {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	cs := vmock.NewMockCatalogService(ctrl)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	return &discoverScheduleService{cs: cs, dts: dts}, cs, dts
 }

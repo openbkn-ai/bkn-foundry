@@ -81,6 +81,13 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if catalog.Type != interfaces.CatalogTypePhysical {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
+			WithErrorDetails("discover schedules are only supported for physical catalogs")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	scheduleID, err := r.dss.Create(ctx, &req)
 	if err != nil {
@@ -89,12 +96,6 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	if req.Enabled {
-		if err := r.sw.Schedule(scheduleID); err != nil {
-			logger.Errorf("Failed to schedule schedule %s: %v", scheduleID, err)
-		}
 	}
 
 	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
@@ -304,12 +305,6 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	if current.Enabled {
-		if err := r.sw.Schedule(id); err != nil {
-			logger.Errorf("Failed to reschedule schedule %s after update: %v", id, err)
-		}
-	}
-
 	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
 		interfaces.GenerateCatalogAuditObject(current.CatalogID, ""), "")
 
@@ -359,9 +354,6 @@ func (r *restHandler) deleteDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	// Unschedule first; ignore error since DB delete is the source of truth.
-	_ = r.sw.Unschedule(id)
 
 	if err := r.dss.Delete(ctx, id); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_DeleteFailed).
@@ -452,9 +444,6 @@ func (r *restHandler) toggleDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 			rest.ReplyError(c, httpErr)
 			return
 		}
-		if err := r.sw.Schedule(id); err != nil {
-			logger.Errorf("Failed to schedule schedule %s: %v", id, err)
-		}
 	} else {
 		if err := r.dss.Disable(ctx, id); err != nil {
 			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed).
@@ -463,7 +452,6 @@ func (r *restHandler) toggleDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 			rest.ReplyError(c, httpErr)
 			return
 		}
-		_ = r.sw.Unschedule(id)
 	}
 
 	op := audit.UPDATE

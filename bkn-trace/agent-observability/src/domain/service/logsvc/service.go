@@ -601,16 +601,6 @@ func associatedCategoriesOnly(categories []string) bool {
 	return true
 }
 
-func operationAuditCategories(categories []string) []string {
-	result := make([]string, 0, len(categories))
-	for _, category := range categories {
-		if isOperationAuditCategory(category) {
-			result = append(result, category)
-		}
-	}
-	return normalizedStrings(result)
-}
-
 func authorizedOperationAuditCategories(
 	profile evidencevo.AccessProfile,
 	capabilities observabilityvo.AccessCapabilities,

@@ -18,7 +18,6 @@ BKN Foundry is a **monorepo** ([`openbkn-ai/bkn-foundry`](https://github.com/ope
 | **BKN Trace** | [`bkn-trace/`](../bkn-trace) | Agent observability and OpenTelemetry collector chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager` (model registry), `oss-gateway-backend`, `sandbox` runtime |
 | **BKN samples** | [`bkn/`](../bkn) | Reference Business Knowledge Networks (e.g. `smart_home_supply_chain`) |
-| **Examples** | [`examples/`](../examples) | End-to-end CLI walkthroughs (DB / CSV / actions) |
 | **Help** | [`help/`](../help) | Bilingual product docs |
 | **Deploy** | [`deploy/`](../deploy) | One-click `deploy.sh` for Kubernetes (k8s + BKN Foundry charts) |
 

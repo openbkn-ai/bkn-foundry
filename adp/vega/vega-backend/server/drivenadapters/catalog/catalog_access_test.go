@@ -479,30 +479,22 @@ func TestCatalogAccessUpdateHealthCheckStatus(t *testing.T) {
 	})
 }
 
-func TestCatalogAccessDeleteByIDs(t *testing.T) {
-	t.Run("skips empty ids", func(t *testing.T) {
-		access, mock, cleanup := newCatalogAccessMock(t)
-		defer cleanup()
-
-		require.NoError(t, access.DeleteByIDs(context.Background(), nil, nil))
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("deletes extensions and catalogs", func(t *testing.T) {
+func TestCatalogAccessDeleteByID(t *testing.T) {
+	t.Run("deletes extensions and catalog", func(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 		store := &fakeCatalogExtensionStore{}
 		restore := replaceCatalogExtensionStore(store)
 		defer restore()
 
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog WHERE f_id IN (?,?)")).
-			WithArgs("catalog-1", "catalog-2").
-			WillReturnResult(sqlmock.NewResult(0, 2))
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog WHERE f_id = ?")).
+			WithArgs("catalog-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		err := access.DeleteByIDs(context.Background(), nil, []string{"catalog-1", "catalog-2"})
+		err := access.DeleteByID(context.Background(), nil, "catalog-1")
 
 		require.NoError(t, err)
-		assert.Equal(t, []string{"catalog-1", "catalog-2"}, store.deletedIDs)
+		assert.Equal(t, []string{"catalog-1"}, store.deletedIDs)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -512,7 +504,7 @@ func TestCatalogAccessDeleteByIDs(t *testing.T) {
 		restore := replaceCatalogExtensionStore(&fakeCatalogExtensionStore{err: errors.New("store down")})
 		defer restore()
 
-		err := access.DeleteByIDs(context.Background(), nil, []string{"catalog-1"})
+		err := access.DeleteByID(context.Background(), nil, "catalog-1")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "store down")
