@@ -2,8 +2,10 @@ package driveradapters
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +13,23 @@ import (
 	infra "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
+
+func TestCaptureExecutionAuditRequestRestoresOversizedBody(t *testing.T) {
+	body := strings.Repeat("x", maximumExecutionAuditRequestBody+1)
+	request := httptest.NewRequest(http.MethodPost, "/operator/register", strings.NewReader(body))
+	request.ContentLength = -1 // chunked body: the middleware must restore its consumed prefix.
+
+	if captured := captureExecutionAuditRequest(request); captured != nil {
+		t.Fatalf("captured oversized body = %#v, want nil", captured)
+	}
+	restored, err := io.ReadAll(request.Body)
+	if err != nil {
+		t.Fatalf("read restored request body: %v", err)
+	}
+	if string(restored) != body {
+		t.Fatalf("request body was not restored: got %d bytes, want %d", len(restored), len(body))
+	}
+}
 
 type capturedExecutionAuditRecorder struct{ entries []operationaudit.Entry }
 

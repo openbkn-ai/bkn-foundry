@@ -7,6 +7,7 @@ package driveradapters
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +21,23 @@ import (
 	"vega-backend/common/operationaudit"
 	"vega-backend/interfaces"
 )
+
+func TestCaptureOperationAuditRequestRestoresOversizedBody(t *testing.T) {
+	body := strings.Repeat("x", maximumOperationAuditRequestBody+1)
+	request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/catalogs", strings.NewReader(body))
+	request.ContentLength = -1 // chunked body: the middleware must restore its consumed prefix.
+
+	if captured := captureOperationAuditRequest(request); captured != nil {
+		t.Fatalf("captured oversized body = %#v, want nil", captured)
+	}
+	restored, err := io.ReadAll(request.Body)
+	if err != nil {
+		t.Fatalf("read restored request body: %v", err)
+	}
+	if string(restored) != body {
+		t.Fatalf("request body was not restored: got %d bytes, want %d", len(restored), len(body))
+	}
+}
 
 type capturedOperationAuditRecorder struct{ entries []operationaudit.Entry }
 

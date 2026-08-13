@@ -20,6 +20,34 @@ func TestAccessLogReadEndpointIsAvailableToTheExistingAdminSurface(t *testing.T)
 	}
 }
 
+func TestAccessLogReadsRequireAuditViewPermission(t *testing.T) {
+	r, e, _, users := newAdminServer(t)
+	const (
+		securityUser = "access-log-security"
+		securityRole = "access-log-security-role"
+		auditUser    = "access-log-auditor"
+		auditRole    = "access-log-auditor-role"
+	)
+	for _, roleID := range []string{securityRole, auditRole} {
+		grantAdminSurface(t, e, roleID)
+	}
+	grantRoleOps(t, e, auditRole, "admin-audit", "view")
+	for _, userID := range []string{securityUser, auditUser} {
+		if err := users.CreateLocalUser(t.Context(), &model.User{ID: userID, Account: userID, Name: userID, Enabled: true}, "pw-init0"); err != nil {
+			t.Fatalf("create user %s: %v", userID, err)
+		}
+	}
+	bindRole(t, e, securityUser, securityRole)
+	bindRole(t, e, auditUser, auditRole)
+
+	if response := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/access-logs", nil, securityUser); response.Code != http.StatusForbidden {
+		t.Fatalf("security role status = %d, want 403: %s", response.Code, response.Body.String())
+	}
+	if response := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/access-logs", nil, auditUser); response.Code != http.StatusOK {
+		t.Fatalf("audit role status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+}
+
 func TestVoluntaryLogoutRecordsAnAccessFact(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
 

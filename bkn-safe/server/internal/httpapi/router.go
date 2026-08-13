@@ -114,7 +114,7 @@ func New(deps Deps) *gin.Engine {
 			registerAuditReads(admin, deps.Audit, deps.Enforcer)
 		}
 		if deps.AccessLog != nil {
-			registerAccessLogReads(admin, deps.AccessLog)
+			registerAccessLogReads(admin, deps.AccessLog, deps.Enforcer)
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
 		registerAdminReads(admin, deps.Directory, deps.Enforcer)

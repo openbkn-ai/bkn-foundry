@@ -82,11 +82,23 @@ func captureExecutionAuditRequest(request *http.Request) map[string]any {
 	if request == nil || request.Body == nil {
 		return nil
 	}
+	// A declared oversized body is not audit input. Leave it untouched for the
+	// business handler instead of consuming any of its stream.
+	if request.ContentLength > maximumExecutionAuditRequestBody {
+		return nil
+	}
 	body, err := io.ReadAll(io.LimitReader(request.Body, maximumExecutionAuditRequestBody+1))
+	remaining := request.Body
+	// For chunked requests the size is not known up front. Reassemble the
+	// consumed prefix and unread suffix before returning, including on the
+	// oversized path, so audit collection cannot change handler semantics.
+	request.Body = struct {
+		io.Reader
+		io.Closer
+	}{Reader: io.MultiReader(bytes.NewReader(body), remaining), Closer: remaining}
 	if err != nil || len(body) > maximumExecutionAuditRequestBody {
 		return nil
 	}
-	request.Body = io.NopCloser(bytes.NewReader(body))
 	var value map[string]any
 	if json.Unmarshal(body, &value) != nil {
 		return nil

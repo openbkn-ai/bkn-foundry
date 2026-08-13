@@ -12,14 +12,15 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 )
 
 // registerAccessLogReads keeps access facts on the existing authenticated admin
 // surface. It deliberately does not add another role model; the Trace log
 // service continues to apply the platform's existing log/Trace access policy.
-func registerAccessLogReads(group *gin.RouterGroup, store *accesslog.Store) {
-	group.GET("/access-logs", func(c *gin.Context) {
+func registerAccessLogReads(group *gin.RouterGroup, store *accesslog.Store, e *authz.Enforcer) {
+	group.GET("/access-logs", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
 		filter := accesslog.Filter{
 			ActorID: c.Query("actor_id"),
 			Action:  c.Query("action"),
@@ -37,7 +38,7 @@ func registerAccessLogReads(group *gin.RouterGroup, store *accesslog.Store) {
 		}
 		c.JSON(http.StatusOK, gin.H{"logs": logs, "total": total})
 	})
-	group.GET("/access-logs/:id", func(c *gin.Context) {
+	group.GET("/access-logs/:id", RequirePermission(e, "admin-audit", "view"), func(c *gin.Context) {
 		entry, found, err := store.Get(c.Request.Context(), c.Param("id"))
 		if err != nil {
 			serverError(c, err)
