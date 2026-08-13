@@ -227,6 +227,31 @@ func TestOperationAuditMiddlewareDoesNotTrustUnverifiedIdentityHeaders(t *testin
 	}
 }
 
+func TestOperationAuditMiddlewareUsesInternalCallerIdentityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.PUT("/api/bkn-backend/in/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/kn-a", nil)
+	request.Header.Set("x-tenant-id", "tenant-a")
+	request.Header.Set("x-business-domain", "domain-a")
+	request.Header.Set("x-account-id", "internal-user")
+	request.Header.Set("x-account-type", "user")
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+
+	if len(store.entries) != 1 {
+		t.Fatalf("audit entries = %d", len(store.entries))
+	}
+	entry := store.entries[0]
+	if entry.ActorID != "internal-user" || entry.ActorName != "internal-user" || entry.ActorType != "user" {
+		t.Fatalf("internal caller identity was lost: %#v", entry)
+	}
+}
+
 func TestOperationAuditMiddlewareDoesNotPersistUnscopedFact(t *testing.T) {
 	t.Setenv("BKN_OPERATION_AUDIT_TENANT_ID", "")
 	t.Setenv("BKN_OPERATION_AUDIT_BUSINESS_DOMAIN", "")

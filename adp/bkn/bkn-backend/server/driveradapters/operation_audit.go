@@ -219,7 +219,8 @@ func (w *boundedResponseWriter) Write(data []byte) (int, error) {
 	// Registered operation-audit routes are JSON APIs. The wrapper only observes
 	// the already-rendered handler response and preserves it byte-for-byte; the
 	// forced JSON media type plus nosniff prevents browser HTML interpretation.
-	return w.ResponseWriter.Write(data) // lgtm[go/reflected-xss]
+	// lgtm[go/reflected-xss]
+	return w.ResponseWriter.Write(data)
 }
 
 func (w *boundedResponseWriter) WriteString(value string) (int, error) {
@@ -254,7 +255,19 @@ func operationAuditVisitor(c *gin.Context) (hydra.Visitor, bool) {
 			return visitor, true
 		}
 	}
+	if operationAuditInternalRoute(c.FullPath()) {
+		return hydra.Visitor{
+			ID:   strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_ID)),
+			Type: hydra.VisitorType(strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE))),
+		}, true
+	}
 	return hydra.Visitor{}, false
+}
+
+func operationAuditInternalRoute(fullPath string) bool {
+	path := strings.TrimSpace(fullPath)
+	return strings.HasPrefix(path, "/api/bkn-backend/in/v1/") ||
+		strings.HasPrefix(path, "/api/ontology-manager/in/v1/")
 }
 
 type extractedOperationAuditFacts struct {
