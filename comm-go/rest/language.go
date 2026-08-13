@@ -73,7 +73,7 @@ func ResolveLanguage(acceptLanguage string) Language {
 	}
 
 	candidates := make([]languageRange, 0, len(Languages))
-	for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
+	for _, lang := range supportedLanguagesByDefault() {
 		if item, ok := explicitRanges[lang]; ok {
 			if item.quality > 0 {
 				candidates = append(candidates, item)
@@ -101,6 +101,16 @@ func ResolveLanguage(acceptLanguage string) Language {
 		return lang
 	}
 	return DefaultLanguage
+}
+
+func supportedLanguagesByDefault() []Language {
+	languages := []Language{DefaultLanguage}
+	for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
+		if lang != DefaultLanguage {
+			languages = append(languages, lang)
+		}
+	}
+	return languages
 }
 
 // GetLanguageCtx resolves the request language once and stores it in the request context.

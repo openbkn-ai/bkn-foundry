@@ -60,6 +60,16 @@ func TestResolveLanguageDoesNotMapTraditionalChineseToSimplifiedChinese(t *testi
 	}
 }
 
+func TestResolveLanguageUsesConfiguredDefaultForWildcard(t *testing.T) {
+	originalDefault := DefaultLanguage
+	DefaultLanguage = AmericanEnglish
+	t.Cleanup(func() { DefaultLanguage = originalDefault })
+
+	if got := ResolveLanguage("ja, *;q=0.8"); got != AmericanEnglish {
+		t.Fatalf("ResolveLanguage() = %q, want default %q", got, AmericanEnglish)
+	}
+}
+
 func TestGetLanguageCtx(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
