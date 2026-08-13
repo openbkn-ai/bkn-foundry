@@ -95,7 +95,7 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	// 默认 off：多一次模型调用、延迟涨 100~400ms，且 reranker 未注册在客户环境是常态。
 	// shadow 照常返回融合序，但额外调一次模型并记录两个序列的差异，用于翻默认前取证。
 	InstanceRerankMode string `json:"instance_rerank_mode" default:"off"`
-	// InstanceRerankModel 覆盖精排小模型名；留空由下游解析部署级默认。
+	// InstanceRerankModel 覆盖精排小模型名；留空即用模型管理配置的默认 reranker（#842）。
 	InstanceRerankModel string `json:"instance_rerank_model,omitempty"`
 	// RerankTopN 进入精排的候选数。精排是 O(N) 次前向，必须有上界。
 	RerankTopN int `json:"rerank_top_n" default:"50"`

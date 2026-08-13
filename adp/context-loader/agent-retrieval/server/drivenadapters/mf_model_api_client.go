@@ -33,9 +33,6 @@ type mfModelAPIClient struct {
 	logger     interfaces.Logger
 	baseURL    string
 	httpClient interfaces.HTTPClient
-	// defaultRerankModel 精排小模型名的部署级默认值（config.concept_search_config.rerank_model，
-	// 默认 "reranker"）。Rerank 收到空 model 时用它，避免把模型名硬编码进代码。
-	defaultRerankModel string
 }
 
 var (
@@ -52,7 +49,6 @@ func NewMFModelAPIClient() *mfModelAPIClient {
 			logger:             conf.GetLogger(),
 			baseURL:            conf.MFModelAPI.BuildURL("/api/private/mf-model-api"),
 			httpClient:         rest.NewHTTPClient(),
-			defaultRerankModel: conf.ConceptSearchConfig.RerankModel,
 		}
 	})
 	return mfModelAPIClientInst
@@ -139,17 +135,14 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 // DrivenRerankClient 接口实现
 // ============================================================
 
-// Rerank 对文档进行重排序。model 解析优先级：入参 model > 部署级默认
-// (config.concept_search_config.rerank_model) > 字面量 "reranker"（最后兜底）。
+// Rerank 对文档进行重排序。
+//
+// model 为空即「用模型管理里勾选的默认 reranker」，由 mf-model-api 按类型解析
+// （t_small_model.f_default=1）。**不再兜底成字面量 "reranker"**：那是拿一个猜出来的
+// 注册名去撞运气，注册名只要不叫 reranker 就是 NameNotExist 全线降级，而管理员在
+// 模型管理里勾的默认反倒没人读（#842）。要指定具体模型仍可由调用方传 model。
 func (c *mfModelAPIClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	url := fmt.Sprintf("%s%s", c.baseURL, rerankURI)
-
-	if model == "" {
-		model = c.defaultRerankModel
-	}
-	if model == "" {
-		model = "reranker"
-	}
 	// 构建请求体
 	reqBody := map[string]interface{}{
 		"query":     query,

@@ -19,9 +19,9 @@ type SearchSchemaReq struct {
 	SchemaBrief  *bool              `json:"schema_brief,omitempty" default:"false"`
 	EnableRerank *bool              `json:"enable_rerank,omitempty" default:"true"`
 	// RerankModel overrides the relation fine-ranking small model for this request.
-	// Ops/power-user escape hatch: empty falls back to the deployment default
-	// (config.concept_search_config.rerank_model). Not surfaced in the MCP tool
-	// schema — agents should not pick reranker model names.
+	// Ops/power-user escape hatch: empty means "use whatever the model factory has
+	// marked as the default reranker" (#842). Not surfaced in the MCP tool schema —
+	// agents should not pick reranker model names.
 	RerankModel *string `json:"rerank_model,omitempty"`
 	// IncludeColumns, when true, adds each data property's physical column name
 	// (mapped_field) to the response, for writing run_sql against the resource.

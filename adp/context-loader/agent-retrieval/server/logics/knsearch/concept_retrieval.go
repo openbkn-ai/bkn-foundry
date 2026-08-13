@@ -653,7 +653,7 @@ func (s *localSearchImpl) rankRelationTypes(
 		documents[i] = buildRelationText(sourceName, relationName, targetName, rel.Comment)
 	}
 
-	// 调用 Rerank 服务；model 为空由 client 解析部署级默认（config.rerank_model → "reranker"）
+	// 调用 Rerank 服务；model 为空即用模型管理里勾选的默认 reranker（#842）
 	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, rerankModel)
 	if err != nil {
 		// 优雅降级：reranker 不可用（未注册 / NameNotExist）时，不丢相关性。
