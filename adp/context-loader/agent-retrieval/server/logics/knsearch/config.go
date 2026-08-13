@@ -61,31 +61,10 @@ func DefaultPropertyFilterConfig() *interfaces.KnSearchPropertyFilterConfig {
 
 // MergeRetrievalConfig 合并用户配置和默认配置。
 func MergeRetrievalConfig(userConfig *interfaces.KnSearchRetrievalConfig) *interfaces.KnSearchRetrievalConfig {
-	return MergeRetrievalConfigWithBase(nil, userConfig)
-}
-
-// MergeRetrievalConfigWithBase 在给定 base 之上合并用户配置；base 为 nil 时用内置默认。
-//
-// 分出这一层是为了让**部署级**配置有地方落脚：实例精排开不开由部署方决定，而请求
-// 仍要能覆盖它——「部署开了、这次调用不想要」必须表达得出来。把部署值直接塞进
-// 内置默认做不到这点，塞进 user 又会盖掉调用方的显式取值。
-func MergeRetrievalConfigWithBase(base, userConfig *interfaces.KnSearchRetrievalConfig) *interfaces.KnSearchRetrievalConfig {
 	result := &interfaces.KnSearchRetrievalConfig{
 		ConceptRetrieval:          DefaultConceptRetrievalConfig(),
 		SemanticInstanceRetrieval: DefaultSemanticInstanceRetrievalConfig(),
 		PropertyFilter:            DefaultPropertyFilterConfig(),
-	}
-
-	if base != nil {
-		if base.ConceptRetrieval != nil {
-			mergeConceptRetrievalConfig(result.ConceptRetrieval, base.ConceptRetrieval)
-		}
-		if base.SemanticInstanceRetrieval != nil {
-			mergeSemanticInstanceRetrievalConfig(result.SemanticInstanceRetrieval, base.SemanticInstanceRetrieval)
-		}
-		if base.PropertyFilter != nil {
-			mergePropertyFilterConfig(result.PropertyFilter, base.PropertyFilter)
-		}
 	}
 
 	if userConfig == nil {

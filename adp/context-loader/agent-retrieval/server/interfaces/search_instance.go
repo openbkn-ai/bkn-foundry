@@ -27,6 +27,17 @@ type SearchInstanceReq struct {
 	// 关掉只在「调用方已经拿着这些对象类的 Schema」时才划算。
 	IncludeObjectTypes *bool `json:"include_object_types,omitempty" default:"true"`
 
+	// Rerank 是否对召回结果做 cross-encoder 精排，默认关。
+	//
+	// 交给调用方而不是部署方：这一次查询要精度还是要速度，只有发起查询的人知道。
+	// 代价是多一次模型调用（约 100~400ms），且要求模型工厂里注册了 rerank 小模型；
+	// 模型不可用时自动退回融合序，不报错。
+	//
+	// 只有开/关两档。shadow（调模型但不改序、只记录排序差异）是取证用的运维档，
+	// 走 kn_search 的 retrieval_config.semantic_instance_retrieval.instance_rerank_mode，
+	// 不放进工具参数表——Agent 拿它没有用处。
+	Rerank *bool `json:"rerank,omitempty" default:"false"`
+
 	// IndexOpsOnly 让附带的 condition_operations 只保留索引带来的算子。由 MCP 层设置，
 	// 不进请求契约——比较算子按属性 type 可推导，逐个下发对 Agent 是纯噪音，而且很贵：
 	// 实测一个知识网络的 154 个属性，全量算子 15KB，只留索引算子 364 字节。

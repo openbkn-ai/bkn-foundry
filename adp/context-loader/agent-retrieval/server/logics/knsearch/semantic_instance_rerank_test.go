@@ -309,38 +309,3 @@ func TestOrderDelta(t *testing.T) {
 		t.Errorf("expected the top-1 to have changed, got %d", changed)
 	}
 }
-
-// 部署级开关是精排的正路：Agent 判断不了部署有没有 reranker、也不知道延迟预算，
-// 该由部署方在 config 里定；请求仍要能覆盖它，否则「部署开了、这次不想要」表达不出来。
-func TestMergeRetrievalConfigWithBase_DeploymentRerankMode(t *testing.T) {
-	base := &interfaces.KnSearchRetrievalConfig{
-		SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
-			InstanceRerankMode:  InstanceRerankModeOn,
-			InstanceRerankModel: "gte-rerank-v2",
-		},
-	}
-
-	// 请求没提精排：用部署级
-	merged := MergeRetrievalConfigWithBase(base, nil)
-	if merged.SemanticInstanceRetrieval.InstanceRerankMode != InstanceRerankModeOn {
-		t.Errorf("deployment mode must apply, got %q", merged.SemanticInstanceRetrieval.InstanceRerankMode)
-	}
-	if merged.SemanticInstanceRetrieval.InstanceRerankModel != "gte-rerank-v2" {
-		t.Errorf("deployment model must apply, got %q", merged.SemanticInstanceRetrieval.InstanceRerankModel)
-	}
-	// 其余默认不受影响
-	if merged.SemanticInstanceRetrieval.PerTypeInstanceLimit != 5 {
-		t.Errorf("unrelated defaults must survive, got %d", merged.SemanticInstanceRetrieval.PerTypeInstanceLimit)
-	}
-
-	// 请求显式关掉：必须盖过部署级
-	off := MergeRetrievalConfigWithBase(base, &interfaces.KnSearchRetrievalConfig{
-		SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
-			InstanceRerankMode: InstanceRerankModeOff,
-		},
-	})
-	if off.SemanticInstanceRetrieval.InstanceRerankMode != InstanceRerankModeOff {
-		t.Errorf("an explicit request must override the deployment switch, got %q",
-			off.SemanticInstanceRetrieval.InstanceRerankMode)
-	}
-}
