@@ -28,6 +28,13 @@ func declareHierarchy(t *testing.T, db *gorm.DB) {
 	if err := db.Create(&rows).Error; err != nil {
 		t.Fatalf("seed resource types: %v", err)
 	}
+	ops := []model.Operation{
+		{ResourceTypeID: "catalog", ID: "resource_manage"},
+		{ResourceTypeID: "resource", ID: "modify", ParentOperationID: "resource_manage"},
+	}
+	if err := db.Create(&ops).Error; err != nil {
+		t.Fatalf("seed operations: %v", err)
+	}
 }
 
 type parentItem struct {
@@ -192,6 +199,46 @@ func TestResourceParentsDelete(t *testing.T) {
 	items, total := getParents(t, r, "resource_type=resource")
 	if total != 1 || len(items) != 1 || items[0].ResourceID != "res-2" {
 		t.Errorf("after delete = %v (total %d), want only res-2", items, total)
+	}
+}
+
+// TestOwnershipPushMakesCheckInherit walks the whole contract end to end: a
+// module pushes the ownership fact over HTTP, and the very next /authz/check on
+// a resource with no policy row of its own is answered by its catalog's grant.
+// Before the push, the same call is refused.
+func TestOwnershipPushMakesCheckInherit(t *testing.T) {
+	r, e, db := newTestServer(t)
+	declareHierarchy(t, db)
+	const user = "u-1"
+	_ = e.GrantObjectPermission(user, "catalog", "cat-a", "resource_manage")
+
+	check := func() bool {
+		w := do(t, r, http.MethodPost, "/api/safe/v1/authz/check", map[string]any{
+			"accessor_id": user,
+			"resource":    map[string]string{"type": "resource", "id": "res-1"},
+			"operation":   "modify",
+		})
+		if w.Code != http.StatusOK {
+			t.Fatalf("check = %d body=%s", w.Code, w.Body.String())
+		}
+		var resp struct {
+			Allowed bool `json:"allowed"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return resp.Allowed
+	}
+
+	if check() {
+		t.Fatal("resource/modify was allowed before any ownership was recorded")
+	}
+	do(t, r, http.MethodPut, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": "resource", "parent_type": "catalog",
+		"items": []map[string]string{{"resource_id": "res-1", "parent_id": "cat-a"}},
+	})
+	if !check() {
+		t.Error("resource/modify still refused after the table was recorded under a granted catalog")
 	}
 }
 

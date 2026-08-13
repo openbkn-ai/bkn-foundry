@@ -64,6 +64,11 @@ const ActAll = "*"
 // Enforcer wraps a Casbin enforcer with the bkn-safe object convention.
 type Enforcer struct {
 	e *casbin.Enforcer
+	// db reads the resource hierarchy (which catalog a table belongs to) that
+	// casbin cannot express: policies are keyed by an opaque "type:id", so
+	// inheritance is resolved around the matcher, not inside it. Nil disables
+	// inheritance entirely, which is the pre-#800 behaviour.
+	db *gorm.DB
 }
 
 // New builds an Enforcer using a GORM-backed policy store on the given db.
@@ -83,15 +88,29 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	if err := e.LoadPolicy(); err != nil {
 		return nil, fmt.Errorf("load policy: %w", err)
 	}
-	return &Enforcer{e: e}, nil
+	return &Enforcer{e: e, db: db}, nil
 }
 
 // obj builds the "type:id" object key.
 func obj(resourceType, id string) string { return resourceType + ":" + id }
 
 // Check reports whether accessor may perform op on the given resource instance.
+//
+// A grant on the resource itself is answered by casbin alone. Only when that
+// fails does the resource's hierarchy come into play: a grant on an ancestor
+// (the catalog a table sits in) counts, translated through the operation
+// mapping. With no ownership row recorded the second step finds nothing, which
+// is exactly the pre-#800 decision (#800).
 func (en *Enforcer) Check(accessorID, resourceType, resourceID, op string) (bool, error) {
-	return en.e.Enforce(accessorID, obj(resourceType, resourceID), op)
+	ok, err := en.e.Enforce(accessorID, obj(resourceType, resourceID), op)
+	if err != nil || ok {
+		return ok, err
+	}
+	inherited, err := en.inheritedOps(accessorID, resourceType, resourceID, []string{op})
+	if err != nil {
+		return false, err
+	}
+	return inherited[op], nil
 }
 
 // AllowedOps returns, from the candidate ops, those the accessor may perform on
@@ -99,12 +118,26 @@ func (en *Enforcer) Check(accessorID, resourceType, resourceID, op string) (bool
 // a set; callers must not depend on order.
 func (en *Enforcer) AllowedOps(accessorID, resourceType, resourceID string, candidates []string) ([]string, error) {
 	out := make([]string, 0, len(candidates))
+	missing := make([]string, 0, len(candidates))
 	for _, op := range candidates {
 		ok, err := en.e.Enforce(accessorID, obj(resourceType, resourceID), op)
 		if err != nil {
 			return nil, err
 		}
 		if ok {
+			out = append(out, op)
+			continue
+		}
+		missing = append(missing, op)
+	}
+	// One climb for everything that missed, rather than one per operation: the
+	// ancestor chain and its operation mapping are the same for all of them.
+	inherited, err := en.inheritedOps(accessorID, resourceType, resourceID, missing)
+	if err != nil {
+		return nil, err
+	}
+	for _, op := range missing {
+		if inherited[op] {
 			out = append(out, op)
 		}
 	}

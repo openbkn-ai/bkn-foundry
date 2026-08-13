@@ -9,20 +9,35 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 )
 
-// newTestEnforcer builds an Enforcer over an in-memory sqlite DB.
+// newTestEnforcer builds an Enforcer over an in-memory sqlite DB carrying the
+// full bkn-safe schema — the enforcer reads the resource hierarchy from it, as
+// it does in production where Migrate always precedes New.
 func newTestEnforcer(t *testing.T) *Enforcer {
+	t.Helper()
+	e, _ := newTestEnforcerDB(t)
+	return e
+}
+
+// newTestEnforcerDB also returns the db behind the enforcer, for tests that
+// need to write hierarchy rows.
+func newTestEnforcerDB(t *testing.T) (*Enforcer, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 	e, err := New(db)
 	if err != nil {
 		t.Fatalf("new enforcer: %v", err)
 	}
-	return e
+	return e, db
 }
 
 // TestRoleGrantAndWildcard covers the core RBAC path and the keyMatch wildcard
