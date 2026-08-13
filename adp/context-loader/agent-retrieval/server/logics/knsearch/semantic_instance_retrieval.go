@@ -13,11 +13,33 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
+
+// 召回通道名，进日志用于分辨是哪一路出的问题。
+const (
+	channelKnn   = "knn"
+	channelMatch = "match"
+)
+
+// retrievalChannel 一路召回通道：一条独立发出的查询。
+type retrievalChannel struct {
+	name string
+	cond *interfaces.KnCondition
+}
+
+// channelOutcome 单通道的召回结果。scored 记录这一路的行是否带 _score——
+// 没有的话（回落源库直查）响应顺序不代表相关性，名次无意义，不能拿去做 RRF。
+type channelOutcome struct {
+	name   string
+	nodes  []*interfaces.KnSearchNode
+	scored bool
+	err    error
+}
 
 // semanticInstanceRetrieval 语义实例召回主逻辑
 // 流程：遍历对象类型 -> 向量检索 -> 打分与排序 -> 全局分数过滤 -> 属性过滤
@@ -98,7 +120,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	return result, nil
 }
 
-// retrieveInstancesForObjectType 对单个对象类型进行语义检索
+// retrieveInstancesForObjectType 对单个对象类型进行语义检索。
+//
+// 默认走两通道：knn 与 match 各发一条查询，再按名次做 RRF 融合。拆开发是必需的——
+// 合在一条 OR 里时 OpenSearch 把两路子句分直接相加，knn 分落在 0~1 而 BM25 无上界，
+// 向量命中会被挤出 InitialCandidateCount 条候选，排序阶段再怎么修都救不回来。
+// 而拆出来的子句分拿不到：named queries 只回答命中与否，取子句分只能走 explain。
 func (s *localSearchImpl) retrieveInstancesForObjectType(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -112,6 +139,179 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 		return nil, nil
 	}
 
+	if boolValue(config.EnableRRFFusion) {
+		return s.retrieveInstancesFused(ctx, req, objType, config, searchable, allowKnn)
+	}
+	return s.retrieveInstancesSingleQuery(ctx, req, objType, config, searchable, allowKnn)
+}
+
+// retrieveInstancesFused 双通道召回 + RRF 融合。
+func (s *localSearchImpl) retrieveInstancesFused(
+	ctx context.Context,
+	req *interfaces.KnSearchLocalRequest,
+	objType *interfaces.KnSearchObjectType,
+	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	searchable []searchableField,
+	allowKnn bool,
+) ([]*interfaces.KnSearchNode, error) {
+	channels := make([]retrievalChannel, 0, 2)
+	if cond := buildKnnOnlyCondition(req.Query, searchable, config, allowKnn); cond != nil {
+		channels = append(channels, retrievalChannel{name: channelKnn, cond: cond})
+	}
+	if cond := buildMatchOnlyCondition(req.Query, searchable, config); cond != nil {
+		channels = append(channels, retrievalChannel{name: channelMatch, cond: cond})
+	}
+	if len(channels) == 0 {
+		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no index-backed condition to issue, skip", objType.ConceptID)
+		return nil, nil
+	}
+
+	outcomes := make([]channelOutcome, len(channels))
+	var wg sync.WaitGroup
+	for i := range channels {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			outcomes[idx] = s.fetchChannel(ctx, req, objType, config, channels[idx])
+		}(i)
+	}
+	wg.Wait()
+
+	live := make([]channelOutcome, 0, len(outcomes))
+	for _, o := range outcomes {
+		if o.err != nil {
+			// 单通道失败不打掉整个对象类。knn 打在没有向量映射的字段上时下游回 400
+			// （condition_operations 由建网方声明并原样落库，不可信），过去这个 400
+			// 会连带 match 一起失败，该对象类一条实例都召不回。
+			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Channel %s failed for %s: %v",
+				o.name, objType.ConceptID, o.err)
+			continue
+		}
+		live = append(live, o)
+	}
+	if len(live) == 0 {
+		return nil, fmt.Errorf("all retrieval channels failed for object type %s", objType.ConceptID)
+	}
+
+	anyScored := false
+	for _, o := range live {
+		if o.scored {
+			anyScored = true
+			break
+		}
+	}
+
+	var nodes []*interfaces.KnSearchNode
+	if anyScored {
+		// 除以本对象类实际发出的通道数：没有向量字段的对象类天生只有一路，
+		// 不除的话它们的 RRF 分系统性只有双路对象类的一半，跨类比较会被这个
+		// 与相关性无关的差异带偏。
+		nodes = fuseByRRF(live, rrfK(config))
+	} else {
+		// 源库直查路径没有 _score，响应顺序是库的自然序，名次无意义。
+		// 退回本地兜底打分——0/0.3/0.5/0.85 那套分档本来就是为这条路设计的。
+		nodes = mergeChannelNodes(live)
+		s.scoreNodes(req.Query, nodes, searchable, config)
+	}
+
+	sortNodesByScore(nodes)
+
+	if config.PerTypeInstanceLimit > 0 && len(nodes) > config.PerTypeInstanceLimit {
+		nodes = nodes[:config.PerTypeInstanceLimit]
+	}
+
+	// MinDirectRelevance 是绝对阈值，只对本地兜底打分有意义。打在 RRF 分上会把
+	// 全部结果滤掉（RRF 分量级在 0.0x），打在原始 _score 上则是另一种坏：BM25 行
+	// 恒大于阈值全部放过、纯向量行卡在边缘随机掉。
+	if !anyScored {
+		nodes = s.filterLowRelevanceNodes(nodes, config.MinDirectRelevance)
+	}
+
+	return nodes, nil
+}
+
+// fetchChannel 发出一路查询并转成节点，同时记录这一路是否带 _score。
+func (s *localSearchImpl) fetchChannel(
+	ctx context.Context,
+	req *interfaces.KnSearchLocalRequest,
+	objType *interfaces.KnSearchObjectType,
+	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	ch retrievalChannel,
+) channelOutcome {
+	queryReq := &interfaces.QueryObjectInstancesReq{
+		KnID:               req.KnID,
+		OtID:               objType.ConceptID,
+		IncludeTypeInfo:    true,
+		IncludeLogicParams: false,
+		Limit:              config.InitialCandidateCount,
+		Cond:               ch.cond,
+	}
+
+	resp, err := s.ontologyQuery.QueryObjectInstances(ctx, queryReq)
+	if err != nil {
+		return channelOutcome{name: ch.name, err: fmt.Errorf("query instances failed: %w", err)}
+	}
+
+	out := channelOutcome{name: ch.name, nodes: make([]*interfaces.KnSearchNode, 0, len(resp.Data))}
+	for _, data := range resp.Data {
+		dataMap, ok := data.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, has := dataMap["_score"]; has {
+			out.scored = true
+		}
+		node := s.convertToKnSearchNode(objType, dataMap)
+		node.RecallScore = node.Score
+		out.nodes = append(out.nodes, node)
+	}
+
+	// 相对分数过滤放在通道内、融合之前——这是原始分唯一可比的地方：同一对象类、
+	// 同一索引、同一查询、同一种算子。融合之后就没法做了：RRF 分只表达名次，
+	// 第一名恒为 1.0，哪怕它其实毫不相关，"整体都不相关"这个信息在名次里表达不出来。
+	if out.scored && boolValue(config.EnableGlobalFinalScoreRatioFilter) && config.GlobalFinalScoreRatio > 0 {
+		out.nodes = pruneChannelByScoreRatio(out.nodes, config.GlobalFinalScoreRatio)
+	}
+	return out
+}
+
+// pruneChannelByScoreRatio 丢掉与本通道最高分差距过大的行，最高分那条始终保留。
+func pruneChannelByScoreRatio(nodes []*interfaces.KnSearchNode, ratio float64) []*interfaces.KnSearchNode {
+	if len(nodes) <= 1 {
+		return nodes
+	}
+	maxScore := 0.0
+	for _, n := range nodes {
+		if n.RecallScore > maxScore {
+			maxScore = n.RecallScore
+		}
+	}
+	if maxScore <= 0 {
+		return nodes
+	}
+	threshold := maxScore * ratio
+	kept := make([]*interfaces.KnSearchNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n.RecallScore >= threshold {
+			kept = append(kept, n)
+		}
+	}
+	if len(kept) == 0 {
+		return nodes[:1]
+	}
+	return kept
+}
+
+// retrieveInstancesSingleQuery 旧路径：单条 OR 查询。仅 enable_rrf_fusion=false 时走，
+// 作为新融合逻辑出问题时的逃生门。
+func (s *localSearchImpl) retrieveInstancesSingleQuery(
+	ctx context.Context,
+	req *interfaces.KnSearchLocalRequest,
+	objType *interfaces.KnSearchObjectType,
+	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	searchable []searchableField,
+	allowKnn bool,
+) ([]*interfaces.KnSearchNode, error) {
 	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config, allowKnn)
 	if cond == nil {
 		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no index-backed condition to issue, skip", objType.ConceptID)
@@ -138,6 +338,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 	for _, data := range resp.Data {
 		if dataMap, ok := data.(map[string]any); ok {
 			node := s.convertToKnSearchNode(objType, dataMap)
+			node.RecallScore = node.Score
 			nodes = append(nodes, node)
 		}
 	}
@@ -241,6 +442,226 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 		Operation:     interfaces.KnOperationTypeOr,
 		SubConditions: subConditions,
 	}
+}
+
+// buildKnnOnlyCondition 只含向量子条件的通道。对象类没有向量字段、或本轮不允许发
+// 向量条件时返回 nil，调用方据此跳过这一路。
+//
+// k 沿用 PerTypeInstanceLimit 而不是 InitialCandidateCount：向量检索的成本随 k 增长，
+// 而这一路的作用是「保底名额」——把最相关的几条送进融合池，够用即可。调大 k 的收益
+// 需要召回率实验支撑，属于 #708 的范围。
+func buildKnnOnlyCondition(
+	query string,
+	searchable []searchableField,
+	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	allowKnn bool,
+) *interfaces.KnCondition {
+	if !allowKnn || len(searchable) == 0 {
+		return nil
+	}
+	budget := config.MaxKnnSubConditionsPerType
+	if budget <= 0 {
+		budget = 1
+	}
+	knnLimit := config.PerTypeInstanceLimit
+	if knnLimit <= 0 {
+		knnLimit = 5
+	}
+
+	var subConditions []*interfaces.KnCondition
+	for i := range searchable {
+		if budget <= 0 {
+			break
+		}
+		f := &searchable[i]
+		if !f.HasKnn {
+			continue
+		}
+		budget--
+		subConditions = append(subConditions, &interfaces.KnCondition{
+			Field:      f.Name,
+			Operation:  interfaces.KnOperationTypeKnn,
+			Value:      query,
+			ValueFrom:  interfaces.CondValueFromConst,
+			LimitKey:   interfaces.CondLimitKeyK,
+			LimitValue: knnLimit,
+		})
+	}
+	if len(subConditions) == 0 {
+		return nil
+	}
+	return &interfaces.KnCondition{
+		Operation:     interfaces.KnOperationTypeOr,
+		SubConditions: subConditions,
+	}
+}
+
+// buildMatchOnlyCondition 只含全文子条件的通道。等值不参与：拿整句去和某个字段做 ==
+// 永远为假，还要白占一个 max_sub_conditions 名额。
+func buildMatchOnlyCondition(
+	query string,
+	searchable []searchableField,
+	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+) *interfaces.KnCondition {
+	if len(searchable) == 0 {
+		return nil
+	}
+	maxSub := config.MaxSemanticSubConditions
+	if maxSub <= 0 {
+		maxSub = 10
+	}
+
+	var subConditions []*interfaces.KnCondition
+	for i := range searchable {
+		if len(subConditions) >= maxSub {
+			break
+		}
+		f := &searchable[i]
+		if f.HasMatch {
+			subConditions = append(subConditions, &interfaces.KnCondition{
+				Field:     f.Name,
+				Operation: interfaces.KnOperationTypeMatch,
+				Value:     query,
+				ValueFrom: interfaces.CondValueFromConst,
+			})
+		}
+	}
+	if len(subConditions) == 0 {
+		return nil
+	}
+	return &interfaces.KnCondition{
+		Operation:     interfaces.KnOperationTypeOr,
+		SubConditions: subConditions,
+	}
+}
+
+// rrfK 取融合常数，非正值回落默认 60。
+func rrfK(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) int {
+	if config != nil && config.RRFK > 0 {
+		return config.RRFK
+	}
+	return 60
+}
+
+// fuseByRRF 按 Reciprocal Rank Fusion 融合多路召回：
+//
+//	score = Σ 1/(k + rank_i) × (k+1) / 通道数
+//
+// 用名次而不是分数，是因为两路的分根本不同量纲：knn 分在 0~1，BM25 无上界且跨索引
+// 不可比。归一化加权和也能凑合，但 min-max 在候选少、分数集中时噪声很大（top1 恒为
+// 1.0），且权重要按知识网络手调；RRF 只有一个常数，跨网不用调。
+//
+// 后面那两个因子把裸 RRF 分归一到 [0,1]（各路都排第一即 1.0）：
+//   - 除以通道数消除跨对象类偏置——没有向量字段的对象类只发一路，不除的话它们的
+//     融合分系统性只有双路对象类的一半，全局比例过滤会据此误杀。同一对象类内部，
+//     两路都命中的实例仍然高于只命中一路的，那是真信号，保留。
+//   - 乘 (k+1) 把量纲拉回 0~1，与无 _score 路径的本地兜底打分同量级。两条路径的
+//     结果会在 semanticInstanceRetrieval 里汇成同一个池子做全局比例过滤，量级差两个
+//     数量级的话，只要有一个对象类回落到本地打分，全部 RRF 结果都会被阈值抹掉。
+func fuseByRRF(outcomes []channelOutcome, k int) []*interfaces.KnSearchNode {
+	if len(outcomes) == 0 {
+		return nil
+	}
+	if k <= 0 {
+		k = 60
+	}
+
+	type entry struct {
+		node  *interfaces.KnSearchNode
+		score float64
+	}
+	byKey := make(map[string]*entry)
+	order := make([]string, 0)
+
+	for _, o := range outcomes {
+		for rank, node := range o.nodes {
+			key := instanceKey(node)
+			if key == "" {
+				// 既无唯一标识又无实例名：无法安全判定与其他行是否同一实例。
+				// 宁可重复也不误合并两个不同实例，给它一个不会碰撞的键。
+				key = fmt.Sprintf("%s|anon:%s:%d", node.ObjectTypeID, o.name, rank)
+			}
+			e, ok := byKey[key]
+			if !ok {
+				e = &entry{node: node}
+				byKey[key] = e
+				order = append(order, key)
+			} else if node.RecallScore > e.node.RecallScore {
+				// 同一实例两路都召回：属性内容一致（两路请求同一组字段），
+				// 只把原始召回分取较大者留作观测。
+				e.node.RecallScore = node.RecallScore
+			}
+			e.score += 1 / float64(k+rank+1)
+		}
+	}
+
+	fused := make([]*interfaces.KnSearchNode, 0, len(order))
+	norm := float64(k+1) / float64(len(outcomes))
+	for _, key := range order {
+		e := byKey[key]
+		e.node.Score = e.score * norm
+		fused = append(fused, e.node)
+	}
+	return fused
+}
+
+// mergeChannelNodes 只做去重合并、不打分。用于无 _score 的源库直查路径：
+// 那条路上名次无意义，分数交给本地兜底打分算。
+func mergeChannelNodes(outcomes []channelOutcome) []*interfaces.KnSearchNode {
+	seen := make(map[string]struct{})
+	merged := make([]*interfaces.KnSearchNode, 0)
+	for _, o := range outcomes {
+		for rank, node := range o.nodes {
+			key := instanceKey(node)
+			if key == "" {
+				key = fmt.Sprintf("%s|anon:%s:%d", node.ObjectTypeID, o.name, rank)
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, node)
+		}
+	}
+	return merged
+}
+
+// instanceKey 生成跨通道稳定的实例标识。唯一标识缺失时退回实例名，两者皆空返回空串
+// 交由调用方处理。
+func instanceKey(node *interfaces.KnSearchNode) string {
+	if node == nil {
+		return ""
+	}
+	if len(node.UniqueIdentities) > 0 {
+		keys := make([]string, 0, len(node.UniqueIdentities))
+		for k := range node.UniqueIdentities {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s=%v", k, node.UniqueIdentities[k]))
+		}
+		return node.ObjectTypeID + "|" + strings.Join(parts, "&")
+	}
+	if node.InstanceName != "" {
+		return node.ObjectTypeID + "|name=" + node.InstanceName
+	}
+	return ""
+}
+
+// sortNodesByScore 按分数降序，同分时按原始召回分降序、再按实例名升序——
+// 没有兜底列时同分行的次序会随 map 遍历漂移，同一查询两次结果不一致。
+func sortNodesByScore(nodes []*interfaces.KnSearchNode) {
+	sort.SliceStable(nodes, func(i, j int) bool {
+		if nodes[i].Score != nodes[j].Score {
+			return nodes[i].Score > nodes[j].Score
+		}
+		if nodes[i].RecallScore != nodes[j].RecallScore {
+			return nodes[i].RecallScore > nodes[j].RecallScore
+		}
+		return nodes[i].InstanceName < nodes[j].InstanceName
+	})
 }
 
 // convertToKnSearchNode 将原始数据转换为 KnSearchNode 格式

@@ -42,6 +42,8 @@ func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstan
 		ExactNameMatchScore:               0.85,
 		EnableKnnInstanceRetrieval:        boolPtr(true),
 		MaxKnnSubConditionsPerType:        1,
+		EnableRRFFusion:                   boolPtr(true),
+		RRFK:                              60,
 	}
 }
 
@@ -160,6 +162,12 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	}
 	if user.ExactNameMatchScore > 0 {
 		base.ExactNameMatchScore = user.ExactNameMatchScore
+	}
+	if user.EnableRRFFusion != nil {
+		base.EnableRRFFusion = user.EnableRRFFusion
+	}
+	if user.RRFK > 0 {
+		base.RRFK = user.RRFK
 	}
 }
 

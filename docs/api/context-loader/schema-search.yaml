@@ -446,6 +446,16 @@ components:
           type: array
           description: |
             语义实例召回命中的实例（仅 `kn_search` 且 `only_schema: false`）。
+
+            实例召回默认把向量（`knn`）与全文（`match`）拆成两条查询后按名次做
+            RRF 融合，因此每个实例上：
+
+            - `score` 是**融合后的名次分**，归一到 `0~1`（各路都排第一即 `1.0`），
+              可跨对象类比较，但不表达绝对相关性；
+            - `recall_score` 保留召回阶段的原始索引分（OpenSearch `_score`），
+              仅在同一对象类同一通道内可比，跨对象类无意义。
+
+            回落到源库直查（无索引分）的对象类不做融合，`score` 为本地匹配打分。
           items:
             type: object
             additionalProperties: true
