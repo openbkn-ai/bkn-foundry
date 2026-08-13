@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -31,6 +32,11 @@ import (
 
 var semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+const (
+	semanticTaskPollInterval   = 30 * time.Second
+	defaultSemanticWorkerCount = 1
+)
+
 // SemanticUnderstandingTaskWorker handles semantic-understanding execution tasks.
 type SemanticUnderstandingTaskWorker struct {
 	appSetting *common.AppSetting
@@ -38,17 +44,160 @@ type SemanticUnderstandingTaskWorker struct {
 	bas        interfaces.BknAgentService
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
+
+	workerCount int
+	queueSize   int
+	queue       chan string
+	mu          sync.Mutex
+	inFlight    map[string]struct{}
 }
 
 // NewSemanticUnderstandingTaskWorker creates a semantic-understanding task worker.
 func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *SemanticUnderstandingTaskWorker {
+	workerCount := defaultSemanticWorkerCount
+	if appSetting != nil && appSetting.TaskWorker.SemanticWorkerCount > 0 {
+		workerCount = appSetting.TaskWorker.SemanticWorkerCount
+	}
 	return &SemanticUnderstandingTaskWorker{
 		appSetting: appSetting,
 		suts:       semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting),
 		bas:        bkn_agent.NewBknAgentService(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
 		rs:         resource.NewResourceService(appSetting),
+
+		workerCount: workerCount,
+		queueSize:   workerCount,
+		queue:       make(chan string, workerCount),
+		inFlight:    make(map[string]struct{}),
 	}
+}
+
+// Start starts the single-instance database-backed task loop and its local workers.
+func (sutw *SemanticUnderstandingTaskWorker) Start(ctx context.Context) {
+	// 1. Resolve leftover running tasks before starting to avoid duplicate external agent calls.
+	sutw.recoverInterruptedTasks(ctx)
+	// 2. A fixed local worker pool executes tasks instead of creating a goroutine per Task.
+	for i := 0; i < sutw.workerCount; i++ {
+		go sutw.runQueuedTasks(ctx)
+	}
+	// 3. The producer listens for creation notifications and fallback ticks to fill the bounded queue.
+	go sutw.pollTasks(ctx)
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context.Context) {
+	const recoveryFailure = "semantic understanding task interrupted by service restart"
+	for {
+		// Always read running tasks from offset zero; the result set shrinks after each failure update.
+		tasks, _, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{
+				Limit:     sutw.queueSize,
+				Sort:      "create_time",
+				Direction: interfaces.ASC_DIRECTION,
+			},
+			Statuses: []string{interfaces.SemanticUnderstandingTaskStatusRunning},
+		})
+		if err != nil {
+			logger.Errorf("List interrupted semantic understanding tasks failed: %v", err)
+			return
+		}
+		for _, task := range tasks {
+			if task != nil {
+				if _, err := sutw.suts.MarkFailed(ctx, task.ID, recoveryFailure); err != nil {
+					logger.Errorf("Mark interrupted semantic understanding task failed: id=%s, error=%v", task.ID, err)
+				}
+			}
+		}
+		if len(tasks) < sutw.queueSize {
+			return
+		}
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) pollTasks(ctx context.Context) {
+	// The producer owns the initial recovery scan as well as all later refills.
+	sutw.fillQueue(ctx)
+
+	ticker := time.NewTicker(semanticTaskPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		// The 30-second poll is only a fallback for missed notifications and restart recovery.
+		case <-ticker.C:
+		// The service notifies after the create request has durably persisted the task.
+		case <-sutw.suts.DispatchSignal():
+		}
+		sutw.fillQueue(ctx)
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) fillQueue(ctx context.Context) {
+	// Channel capacity is the local queue limit; do not query or advance scheduling when full.
+	free := cap(sutw.queue) - len(sutw.queue)
+	if free == 0 {
+		return
+	}
+	// Normal execution prioritizes pending tasks in stable create_time, id order.
+	tasks, _, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{
+			Limit:     free,
+			Sort:      "create_time",
+			Direction: interfaces.ASC_DIRECTION,
+		},
+		Statuses: []string{interfaces.SemanticUnderstandingTaskStatusPending},
+	})
+	if err != nil {
+		logger.Errorf("List pending semantic understanding tasks failed: %v", err)
+		return
+	}
+
+	for _, task := range tasks {
+		// The database still shows pending between local enqueue and the running write.
+		// inFlight prevents this process from enqueueing the same task twice in that window.
+		if task == nil || !sutw.addInFlight(task.ID) {
+			continue
+		}
+		select {
+		case sutw.queue <- task.ID:
+		case <-ctx.Done():
+			sutw.removeInFlight(task.ID)
+			return
+		}
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) runQueuedTasks(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case taskID := <-sutw.queue:
+			// Run reloads the task and lets the existing state guards decide whether to execute it.
+			if err := sutw.Run(ctx, taskID); err != nil {
+				logger.Errorf("Run semantic understanding task failed: id=%s, error=%v", taskID, err)
+			}
+			sutw.removeInFlight(taskID)
+			// Wake the single producer after releasing a worker slot.
+			sutw.suts.RequestDispatch()
+		}
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) addInFlight(id string) bool {
+	sutw.mu.Lock()
+	defer sutw.mu.Unlock()
+	if _, ok := sutw.inFlight[id]; ok {
+		return false
+	}
+	sutw.inFlight[id] = struct{}{}
+	return true
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) removeInFlight(id string) {
+	sutw.mu.Lock()
+	defer sutw.mu.Unlock()
+	delete(sutw.inFlight, id)
 }
 
 // HandleTask runs a semantic-understanding task through bkn-agent and persists the result.
@@ -59,7 +208,11 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 		return err
 	}
 
-	taskID := msg.TaskID
+	return sutw.Run(ctx, msg.TaskID)
+}
+
+// Run executes a semantic-understanding task selected from the task table.
+func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID string) error {
 	logger.Infof("Starting semantic understanding task: %s", taskID)
 
 	taskInfo, err := sutw.suts.InternalGetByID(ctx, taskID)

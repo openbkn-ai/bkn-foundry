@@ -45,6 +45,7 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 	taskWorkerMangerOnce.Do(func() {
 		rs := resource.NewResourceService(appSetting)
 		bts := build_task.NewBuildTaskService(appSetting, rs)
+		sutw := NewSemanticUnderstandingTaskWorker(appSetting)
 		taskWorkerManger = &TaskWorkerManger{
 			appSetting: appSetting,
 			aqa:        logics.AQA,
@@ -53,7 +54,7 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 			ebw:        NewEmbeddingBuildWorker(appSetting),
 			dtw:        NewDiscoverTaskWorker(appSetting),
 			sbw:        NewStreamingBuildWorker(appSetting),
-			sutw:       NewSemanticUnderstandingTaskWorker(appSetting),
+			sutw:       sutw,
 		}
 	})
 	return taskWorkerManger
@@ -61,6 +62,8 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 
 // Start starts the task worker.
 func (twm *TaskWorkerManger) Start() {
+	twm.sutw.Start(context.Background())
+
 	if common.GetDebugMode() {
 		twm.startDebugSubscribers()
 		return
@@ -92,14 +95,6 @@ func (twm *TaskWorkerManger) startDebugSubscribers() {
 		}
 	}()
 	go func() {
-		logger.Info("debug semantic understanding task channel subscriber started")
-		for task := range twm.sutw.suts.DebugTaskQueue() {
-			if err := twm.ProcessTask(context.Background(), task); err != nil {
-				logger.Errorf("debug semantic understanding task failed: %v", err)
-			}
-		}
-	}()
-	go func() {
 		logger.Info("debug build task channel subscriber started")
 		for task := range twm.bts.DebugTaskQueue() {
 			if err := twm.ProcessTask(context.Background(), task); err != nil {
@@ -122,13 +117,11 @@ func (twm *TaskWorkerManger) Run(ctx context.Context) error {
 	// Register task workers
 	mux := asynq.NewServeMux()
 	mux.Handle(interfaces.DiscoverTaskType, twm)
-	mux.Handle(interfaces.SemanticUnderstandingTaskType, twm)
-
 	mux.Handle(interfaces.BuildTaskTypeBatch, twm)
 	mux.Handle(interfaces.BuildTaskTypeEmbedding, twm)
 	mux.Handle(interfaces.BuildTaskTypeStreaming, twm)
 
-	logger.Infof("Task worker starting, listening for task types: %s, %s, %s, %s, %s", interfaces.DiscoverTaskType, interfaces.SemanticUnderstandingTaskType, interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
+	logger.Infof("Task worker starting, listening for task types: %s, %s, %s, %s", interfaces.DiscoverTaskType, interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
 	if err := srv.Run(mux); err != nil {
 		logger.Errorf("Task worker failed: %v", err)
 		return err
@@ -141,8 +134,6 @@ func (twm *TaskWorkerManger) ProcessTask(ctx context.Context, task *asynq.Task) 
 	switch task.Type() {
 	case interfaces.DiscoverTaskType:
 		return twm.dtw.HandleTask(ctx, task)
-	case interfaces.SemanticUnderstandingTaskType:
-		return twm.sutw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeBatch:
 		return twm.bbw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeEmbedding:

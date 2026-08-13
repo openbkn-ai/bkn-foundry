@@ -101,6 +101,11 @@ type CatalogHealthCheckConfig struct {
 	CronExpr string `mapstructure:"cronExpr"`
 }
 
+// TaskWorkerConfig configures local worker-pool concurrency for database-backed tasks.
+type TaskWorkerConfig struct {
+	SemanticWorkerCount int `mapstructure:"semanticWorkerCount"`
+}
+
 // AppSetting app配置项
 type AppSetting struct {
 	ServerSetting       ServerSetting             `mapstructure:"server"`
@@ -111,6 +116,7 @@ type AppSetting struct {
 	RateLimitingSetting RateLimitingConfig        `mapstructure:"rateLimiting"`
 	QuerySetting        QueryConfig               `mapstructure:"query"`
 	CatalogHealthCheck  CatalogHealthCheckConfig  `mapstructure:"catalogHealthCheck"`
+	TaskWorker          TaskWorkerConfig          `mapstructure:"taskWorker"`
 
 	DBSetting           libdb.DBSetting
 	MQSetting           libmq.MQSetting

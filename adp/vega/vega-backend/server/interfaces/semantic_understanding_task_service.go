@@ -8,8 +8,6 @@ package interfaces
 import (
 	"context"
 	"database/sql"
-
-	"github.com/hibiken/asynq"
 )
 
 //go:generate mockgen -source ../interfaces/semantic_understanding_task_service.go -destination ../interfaces/mock/mock_semantic_understanding_task_service.go
@@ -29,8 +27,10 @@ type SemanticUnderstandingTaskService interface {
 	MarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error)
 	MarkApplied(ctx context.Context, id string, applied bool, applyDetailJSON string) (bool, error)
 
-	DebugTaskQueue() <-chan *asynq.Task
-
 	InternalGetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
+	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
 	InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error)
+
+	DispatchSignal() <-chan struct{}
+	RequestDispatch()
 }

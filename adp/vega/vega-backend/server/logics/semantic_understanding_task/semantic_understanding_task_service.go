@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"sort"
 	"sync"
@@ -21,7 +20,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
@@ -43,43 +41,44 @@ var (
 	sutService     interfaces.SemanticUnderstandingTaskService
 )
 
-const debugQueueSize = 100
+const semanticTaskWakeupBuffer = 1
 
 type semanticUnderstandingTaskService struct {
 	appSetting *common.AppSetting
-	client     *asynq.Client
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
 	rds        interfaces.ResourceDataService
 	suta       interfaces.SemanticUnderstandingTaskAccess
 	ums        interfaces.UserMgmtService
 
-	debugTaskQueue chan *asynq.Task
+	wakeCh chan struct{}
 }
 
 func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfaces.SemanticUnderstandingTaskService {
 	sutServiceOnce.Do(func() {
-		var client *asynq.Client
-		if !common.GetDebugMode() && logics.AQA != nil {
-			client = logics.AQA.CreateClient()
-		}
 		sutService = &semanticUnderstandingTaskService{
 			appSetting: appSetting,
-			client:     client,
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resourcelogic.NewResourceService(appSetting),
 			rds:        resource_data.NewResourceDataService(appSetting),
 			suta:       logics.SUTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
-			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
+			wakeCh: make(chan struct{}, semanticTaskWakeupBuffer),
 		}
 	})
 	return sutService
 }
 
-func (suts *semanticUnderstandingTaskService) DebugTaskQueue() <-chan *asynq.Task {
-	return suts.debugTaskQueue
+func (suts *semanticUnderstandingTaskService) DispatchSignal() <-chan struct{} {
+	return suts.wakeCh
+}
+
+func (suts *semanticUnderstandingTaskService) RequestDispatch() {
+	select {
+	case suts.wakeCh <- struct{}{}:
+	default:
+	}
 }
 
 func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Context, resourceID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
@@ -178,45 +177,9 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_CreateResourcesFailed).
 			WithErrorDetails(err.Error())
 	}
-
-	if err := suts.enqueueTask(ctx, task.ID); err != nil {
-		if _, markErr := suts.suta.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to enqueue task: %v", err), time.Now().UnixMilli()); markErr != nil {
-			logger.Errorf("Failed to mark semantic understanding task failed after enqueue failure: id=%s, error=%v", task.ID, markErr)
-		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_CreateResourcesFailed).
-			WithErrorDetails(err.Error())
-	}
+	suts.RequestDispatch()
 
 	return task, nil
-}
-
-func (suts *semanticUnderstandingTaskService) enqueueTask(ctx context.Context, taskID string) error {
-	payload, err := sonic.Marshal(&interfaces.SemanticUnderstandingTaskMessage{
-		TaskID: taskID,
-	})
-	if err != nil {
-		return err
-	}
-
-	asynqTask := asynq.NewTask(interfaces.SemanticUnderstandingTaskType, payload)
-	if common.GetDebugMode() || suts.client == nil {
-		suts.debugTaskQueue <- asynqTask
-		logger.Infof("Enqueued debug semantic understanding task: id=%s, type=%s", taskID, asynqTask.Type())
-		return nil
-	}
-
-	info, err := suts.client.Enqueue(asynqTask,
-		asynq.Queue(interfaces.DefaultQueue),
-		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
-		asynq.Timeout(math.MaxInt64),
-		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
-	)
-	if err != nil {
-		return err
-	}
-
-	logger.Infof("Enqueued semantic understanding task: id=%s, type=%s, queue=%s", info.ID, info.Type, info.Queue)
-	return nil
 }
 
 func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
@@ -278,6 +241,19 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 		span.RecordError(err)
 		logger.Warnf("Failed to populate semantic understanding task references: %v", err)
 	}
+	return tasks, total, nil
+}
+
+func (suts *semanticUnderstandingTaskService) InternalList(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalList")
+	defer span.End()
+
+	tasks, total, err := suts.suta.List(ctx, params)
+	if err != nil {
+		span.SetStatus(codes.Error, "List semantic understanding tasks failed")
+		return nil, 0, err
+	}
+	span.SetStatus(codes.Ok, "")
 	return tasks, total, nil
 }
 
