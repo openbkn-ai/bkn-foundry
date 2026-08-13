@@ -149,7 +149,7 @@ func TestSingleQueryRetrieval_VectorHitsLostToBM25(t *testing.T) {
 	}
 }
 
-// RRF 分的算式：Σ 1/(k+rank) × (k+1) / 通道数。
+// RRF 分的算式：Σ 1/(k+rank) × (k+1)。
 func TestFuseByRRF_ScoreMath(t *testing.T) {
 	k := 60
 	knn := channelOutcome{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{
@@ -170,9 +170,9 @@ func TestFuseByRRF_ScoreMath(t *testing.T) {
 	for _, n := range fused {
 		byName[n.InstanceName] = n.Score
 	}
-	norm := float64(k+1) / 2.0
+	norm := float64(k + 1)
 	want := map[string]float64{
-		"a": (1.0 / float64(k+1)) * norm,                  // 仅 knn 第 1
+		"a": (1.0 / float64(k+1)) * norm,                  // 仅 knn 第 1 → 1.0
 		"b": (1.0/float64(k+2) + 1.0/float64(k+1)) * norm, // knn 第 2 + match 第 1
 		"c": (1.0 / float64(k+2)) * norm,                  // 仅 match 第 2
 	}
@@ -186,10 +186,14 @@ func TestFuseByRRF_ScoreMath(t *testing.T) {
 	if fused[0].InstanceName != "b" {
 		t.Errorf("expected 'b' (hit by both channels) first, got %s", fused[0].InstanceName)
 	}
-	// 各路都排第一的分恰为 1.0，量纲与本地兜底打分对齐。
+	// 任一通道的第 1 名恰为 1.0——这个锚点不随该对象类发了几路而变，
+	// 否则双通道对象类里只被一路命中的实例会被系统性压低（VM 实测踩过）。
 	single := fuseByRRF([]channelOutcome{knn}, k)
 	if math.Abs(single[0].Score-1.0) > 1e-9 {
-		t.Errorf("expected normalized top score 1.0, got %.6f", single[0].Score)
+		t.Errorf("expected rank-1-in-one-channel to score 1.0, got %.6f", single[0].Score)
+	}
+	if math.Abs(byName["a"]-1.0) > 1e-9 {
+		t.Errorf("rank-1 in one of two channels must also score 1.0, got %.6f", byName["a"])
 	}
 }
 
@@ -214,8 +218,8 @@ func TestFuseByRRF_DedupKeepsMaxRecallScore(t *testing.T) {
 	if math.Abs(fused[0].RecallScore-17.2) > 1e-9 {
 		t.Errorf("expected max recall score 17.2, got %.4f", fused[0].RecallScore)
 	}
-	if math.Abs(fused[0].Score-1.0) > 1e-9 {
-		t.Errorf("expected fused score 1.0 (rank 1 in both channels), got %.6f", fused[0].Score)
+	if math.Abs(fused[0].Score-2.0) > 1e-9 {
+		t.Errorf("expected fused score 2.0 (rank 1 in both channels), got %.6f", fused[0].Score)
 	}
 }
 

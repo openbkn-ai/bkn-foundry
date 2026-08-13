@@ -205,9 +205,6 @@ func (s *localSearchImpl) retrieveInstancesFused(
 
 	var nodes []*interfaces.KnSearchNode
 	if anyScored {
-		// 除以本对象类实际发出的通道数：没有向量字段的对象类天生只有一路，
-		// 不除的话它们的 RRF 分系统性只有双路对象类的一半，跨类比较会被这个
-		// 与相关性无关的差异带偏。
 		nodes = fuseByRRF(live, rrfK(config))
 	} else {
 		// 源库直查路径没有 _score，响应顺序是库的自然序，名次无意义。
@@ -547,19 +544,21 @@ func rrfK(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) int {
 
 // fuseByRRF 按 Reciprocal Rank Fusion 融合多路召回：
 //
-//	score = Σ 1/(k + rank_i) × (k+1) / 通道数
+//	score = Σ 1/(k + rank_i) × (k+1)
 //
 // 用名次而不是分数，是因为两路的分根本不同量纲：knn 分在 0~1，BM25 无上界且跨索引
 // 不可比。归一化加权和也能凑合，但 min-max 在候选少、分数集中时噪声很大（top1 恒为
 // 1.0），且权重要按知识网络手调；RRF 只有一个常数，跨网不用调。
 //
-// 后面那两个因子把裸 RRF 分归一到 [0,1]（各路都排第一即 1.0）：
-//   - 除以通道数消除跨对象类偏置——没有向量字段的对象类只发一路，不除的话它们的
-//     融合分系统性只有双路对象类的一半，全局比例过滤会据此误杀。同一对象类内部，
-//     两路都命中的实例仍然高于只命中一路的，那是真信号，保留。
-//   - 乘 (k+1) 把量纲拉回 0~1，与无 _score 路径的本地兜底打分同量级。两条路径的
-//     结果会在 semanticInstanceRetrieval 里汇成同一个池子做全局比例过滤，量级差两个
-//     数量级的话，只要有一个对象类回落到本地打分，全部 RRF 结果都会被阈值抹掉。
+// 乘 (k+1) 只是换量纲：任意一路的第 1 名恰好得 1.0，两路都第 1 得 2.0。这样跨对象
+// 类比较有一个稳定的锚——「在自己能发的通道里排第 1」在哪个对象类都是 1.0，不受
+// 该类发了几路影响；两路都命中的实例高出一截，那是真信号。同时量级与无 _score
+// 路径的本地兜底打分（0~0.85）相当，两条路径的结果汇进同一个池子做全局比例过滤时
+// 不会互相抹掉。
+//
+// 不要再除以通道数：那样做会把「双通道对象类里只被一路命中的实例」压到单通道
+// 对象类同名次实例的一半（VM 实测 0.5 vs 1.0），偏置只是换了个方向。缺席另一路
+// 本身已经通过「少加一项」体现了，不需要再罚一次。
 func fuseByRRF(outcomes []channelOutcome, k int) []*interfaces.KnSearchNode {
 	if len(outcomes) == 0 {
 		return nil
@@ -598,7 +597,7 @@ func fuseByRRF(outcomes []channelOutcome, k int) []*interfaces.KnSearchNode {
 	}
 
 	fused := make([]*interfaces.KnSearchNode, 0, len(order))
-	norm := float64(k+1) / float64(len(outcomes))
+	norm := float64(k + 1)
 	for _, key := range order {
 		e := byKey[key]
 		e.node.Score = e.score * norm
