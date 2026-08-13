@@ -297,6 +297,27 @@ print(top)
 沙箱是完整的 Python 3.11：pandas、numpy、scipy、requests、httpx、sqlite3 与全部
 标准库都在，分组、连接、统计交给它们，不要为此多跑一轮。
 
+需要执行命令时用 ` + "`subprocess.run(cmd, shell=True, capture_output=True, text=True)`" + `，
+沙箱是一台完整的 Linux，无需另找工具。
+
+## 大结果写文件，只 print 摘要
+
+回到你面前的只有 stdout，因此**不要把大结果打印出来**：写进 ` + "`/workspace`" + ` 下的文件，
+再打印头部若干行、行数、字段名这类足以判断下一步的信息。需要细看时读取文件的某一段，
+而不是整份倒出来。
+
+` + "```python" + `
+import json, pathlib
+rows = query_object_instance(kn_id=kn, ot_id=ot_id, limit=5000).get("datas", [])
+path = pathlib.Path("/workspace/rows.json")
+path.write_text(json.dumps(rows, ensure_ascii=False))
+print(f"{len(rows)} 行已写入 {path}，字段：{sorted(rows[0])[:12] if rows else []}")
+print(json.dumps(rows[:3], ensure_ascii=False)[:600])   # 只看头部三行
+` + "```" + `
+
+` + "`/workspace`" + ` 里的文件在同一沙箱会话内跨次调用通常仍在，但会话是池化复用的、
+不保证命中同一个，所以再次使用前先 ` + "`Path(...).exists()`" + ` 判断，不存在就重算。
+
 不确定的地方用代码兜住而不是回到对话：取值一律 ` + "`.get()`" + `，可能失败的分支用
 try/except 包住并 print 出关键中间信息，让一次执行既拿到答案、又带回排查线索。
 
@@ -314,8 +335,21 @@ help(query_object_instance)
 
 ## 错误处理
 
-调用失败抛 ` + "`ToolError`" + `，message 为服务端原文。在脚本内捕获、修正参数、当场重试，
-不必回到对话轮次。
+调用失败抛 ` + "`ToolError`" + `，message 为服务端原文的 JSON，形如：
+
+` + "```json" + `
+{"error":{"code":"...","message":"...","required_action":"...","retryable":false}}
+` + "```" + `
+
+**先读 ` + "`retryable`" + ` 再决定下一步。** 为 false 表示同样的请求再发一次仍会失败——
+换参数、换工具，或者把这条错误原样 print 出来交回，不要重试。原地重试三次只是把
+同一个失败抄三遍，既拖慢一轮又什么都没换来。
+
+` + "`required_action`" + ` 有值时按它做（例如提示先查某个工具）。属于参数写错的（字段名
+不存在、算子不支持），在同一段脚本里改完接着跑，不必回到对话轮次。
+
+不要用 ` + "`try/except` + `pass`" + ` 把错误吞掉：你看不到的东西没法修，而调用方只会
+收到一段没有解释的空输出。
 `)
 	return b.String()
 }
