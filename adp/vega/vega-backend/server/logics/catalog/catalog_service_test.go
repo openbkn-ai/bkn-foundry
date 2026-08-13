@@ -1141,7 +1141,7 @@ func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 	ra.EXPECT().GetByCatalogID(gomock.Any(), "catalog-1").Return([]*interfaces.Resource{
 		{ID: "resource-1", Category: interfaces.ResourceCategoryDataset},
 	}, nil)
-	bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+	bta.EXPECT().List(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 			if slices.Equal(params.Statuses, []string{
 				interfaces.BuildTaskStatusRunning,
@@ -1264,7 +1264,7 @@ func expectCatalogDeletionImpact(
 	ra.EXPECT().GetByCatalogID(gomock.Any(), "c1").Return(resources, nil)
 	if catalogType == interfaces.CatalogTypePhysical {
 		listCalls := 2
-		bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.Limit == 1 {
 					if len(params.Statuses) > 0 {

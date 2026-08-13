@@ -284,56 +284,50 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List discover_tasks")
 	defer span.End()
 
-	builder := sq.Select(discoverTaskListColumns()...).From(DISCOVER_TASK_TABLE_NAME)
-
 	countBuilder := sq.Select("COUNT(*)").From(DISCOVER_TASK_TABLE_NAME)
-
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.ScheduleID != "" {
-		builder = builder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
-	}
-	if len(params.Statuses) > 0 {
-		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
-	}
-	if params.Strategy != "" {
-		builder = builder.Where(sq.Eq{"f_strategy": params.Strategy})
-		countBuilder = countBuilder.Where(sq.Eq{"f_strategy": params.Strategy})
-	}
-	if params.TriggerType != "" {
-		builder = builder.Where(sq.Eq{"f_trigger_type": params.TriggerType})
-		countBuilder = countBuilder.Where(sq.Eq{"f_trigger_type": params.TriggerType})
-	}
-
-	countSql, countVals, _ := countBuilder.ToSql()
-	var total int64
-	err := dta.db.QueryRowContext(ctx, countSql, countVals...).Scan(&total)
+	countBuilder = applyDiscoverTaskFilters(countBuilder, params)
+	countSQL, countVals, err := countBuilder.ToSql()
 	if err != nil {
+		span.SetStatus(codes.Error, "Build count sql failed")
+		return nil, 0, err
+	}
+	var total int64
+	if err := dta.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
 		logger.Errorf("Failed to count discover_tasks: %v", err)
 		span.SetStatus(codes.Error, "Count failed")
 		return nil, 0, err
 	}
 
-	// Pagination
+	tasks, err := dta.InternalList(ctx, params)
+	if err != nil {
+		return nil, 0, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return tasks, total, nil
+}
+
+// InternalList lists DiscoverTask summaries without an additional count query.
+func (dta *discoverTaskAccess) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal discover tasks")
+	defer span.End()
+
+	builder := sq.Select(discoverTaskListColumns()...).From(DISCOVER_TASK_TABLE_NAME)
+	builder = applyDiscoverTaskFilters(builder, params).
+		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
-	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, 0, err
+		return nil, err
 	}
 
 	rows, err := dta.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Query failed")
-		return nil, 0, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -342,7 +336,7 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 		task, err := scanDiscoverTaskListItem(rows)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
-			return nil, 0, err
+			return nil, err
 		}
 
 		tasks = append(tasks, task)
@@ -350,11 +344,31 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate discover_task rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, 0, err
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return tasks, total, nil
+	return tasks, nil
+}
+
+func applyDiscoverTaskFilters(builder sq.SelectBuilder,
+	params interfaces.DiscoverTaskQueryParams) sq.SelectBuilder {
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	}
+	if params.ScheduleID != "" {
+		builder = builder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
+	}
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+	}
+	if params.Strategy != "" {
+		builder = builder.Where(sq.Eq{"f_strategy": params.Strategy})
+	}
+	if params.TriggerType != "" {
+		builder = builder.Where(sq.Eq{"f_trigger_type": params.TriggerType})
+	}
+	return builder
 }
 
 func buildOrderByClause(sort, direction string) string {

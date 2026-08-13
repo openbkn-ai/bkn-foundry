@@ -107,17 +107,17 @@ func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 	worker := &DiscoverTaskWorker{dts: dts, queueSize: 2}
 
 	firstList := dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
 			assert.Equal(t, []string{interfaces.DiscoverTaskStatusRunning}, params.Statuses)
 			assert.Equal(t, 2, params.Limit)
 			assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
+			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil
 		})
 	markFailed := dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
 		"discover task interrupted by service restart").Return(true, nil).After(firstList)
 	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
-		[]*interfaces.DiscoverTaskSummary{}, int64(0), nil).After(markFailed)
+		[]*interfaces.DiscoverTaskSummary{}, nil).After(markFailed)
 
 	require.NoError(t, worker.recoverInterruptedTasks(context.Background()))
 }
@@ -128,7 +128,7 @@ func TestDiscoverTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	worker := &DiscoverTaskWorker{dts: dts, queueSize: 1}
 	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
-		[]*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, int64(1), nil)
+		[]*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil)
 	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
 		"discover task interrupted by service restart").Return(false, errors.New("database unavailable"))
 
@@ -147,12 +147,12 @@ func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
 		inFlight: make(map[string]struct{}),
 	}
 	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
 			assert.Equal(t, 2, params.Limit)
 			assert.Equal(t, []string{interfaces.DiscoverTaskStatusPending}, params.Statuses)
 			assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
+			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil
 		})
 
 	worker.fillQueue(context.Background())

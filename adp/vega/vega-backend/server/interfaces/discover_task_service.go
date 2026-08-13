@@ -27,7 +27,7 @@ type DiscoverTaskService interface {
 	// InternalGetByID retrieves a DiscoverTask by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*DiscoverTask, error)
 	// InternalList returns task summaries for the local database-backed worker.
-	InternalList(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, int64, error)
+	InternalList(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, error)
 	// InternalMarkRunning transitions a pending DiscoverTask to running.
 	InternalMarkRunning(ctx context.Context, id string) (bool, error)
 	// InternalMarkCancelled only cancels active DiscoverTasks.

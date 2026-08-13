@@ -86,6 +86,21 @@ func (mr *MockDiscoverTaskAccessMockRecorder) GetByID(ctx, id any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).GetByID), ctx, id)
 }
 
+// InternalList mocks base method.
+func (m *MockDiscoverTaskAccess) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalList", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.DiscoverTaskSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalList indicates an expected call of InternalList.
+func (mr *MockDiscoverTaskAccessMockRecorder) InternalList(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).InternalList), ctx, params)
+}
+
 // List mocks base method.
 func (m *MockDiscoverTaskAccess) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	m.ctrl.T.Helper()

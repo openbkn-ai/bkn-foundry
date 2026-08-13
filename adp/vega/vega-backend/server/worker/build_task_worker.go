@@ -88,7 +88,7 @@ func (btw *BuildTaskWorker) startLoops(ctx context.Context) {
 func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 	pageSize := cap(btw.batchQueue) + cap(btw.streamingQueue)
 	for {
-		tasks, _, err := btw.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		tasks, err := btw.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{
 				Limit:     pageSize,
 				Sort:      interfaces.BuildTaskSortCreateTime,
@@ -147,7 +147,7 @@ func (btw *BuildTaskWorker) fillBatchQueue(ctx context.Context) {
 	if len(btw.batchQueue) != 0 {
 		return
 	}
-	tasks, _, err := btw.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+	tasks, err := btw.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{
 			Limit:     cap(btw.batchQueue),
 			Sort:      interfaces.BuildTaskSortCreateTime,
@@ -177,7 +177,7 @@ func (btw *BuildTaskWorker) fillStreamingQueue(ctx context.Context) {
 	if len(btw.streamingQueue) != 0 {
 		return
 	}
-	tasks, _, err := btw.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+	tasks, err := btw.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{
 			Limit:     cap(btw.streamingQueue),
 			Sort:      interfaces.BuildTaskSortCreateTime,

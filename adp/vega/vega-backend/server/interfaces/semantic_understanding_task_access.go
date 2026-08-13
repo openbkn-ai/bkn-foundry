@@ -28,4 +28,6 @@ type SemanticUnderstandingTaskAccess interface {
 
 	SetAgentTaskID(ctx context.Context, id string, agentTaskID string, updateTime int64) (bool, error)
 	SetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error)
+
+	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, error)
 }

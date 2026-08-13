@@ -77,7 +77,7 @@ func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) erro
 	const recoveryFailure = "discover task interrupted by service restart"
 	for {
 		// Always read from offset zero because each batch is removed from the running result set.
-		tasks, _, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+		tasks, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{
 				Limit:     dtw.queueSize,
 				Sort:      interfaces.DiscoverTaskSortCreateTime,
@@ -131,7 +131,7 @@ func (dtw *DiscoverTaskWorker) fillQueue(ctx context.Context) {
 		return
 	}
 	limit := cap(dtw.queue)
-	tasks, _, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+	tasks, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{
 			Limit:     limit,
 			Sort:      interfaces.DiscoverTaskSortCreateTime,

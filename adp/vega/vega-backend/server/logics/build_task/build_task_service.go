@@ -220,7 +220,7 @@ func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.Cr
 }
 
 func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID string, excludeTaskID string) error {
-	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+	tasks, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 2},
 		ResourceID:            resourceID,
 		Statuses:              activeBuildTaskStatuses,
@@ -426,7 +426,7 @@ func (bts *buildTaskService) InternalGetByCatalogID(ctx context.Context, catalog
 	return bts.bta.GetByCatalogID(ctx, catalogID)
 }
 
-func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalList")
 	defer span.End()
 
@@ -768,7 +768,7 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 			WithErrorDetails("resource index config has changed; create a new build task instead")
 	}
 
-	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+	tasks, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{
 			Limit:     1,
 			Sort:      interfaces.BuildTaskSortCreateTime,

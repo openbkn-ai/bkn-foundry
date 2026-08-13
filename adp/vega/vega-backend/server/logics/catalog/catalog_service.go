@@ -898,7 +898,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	var pendingBuild, buildExecuting, scheduleTotal, pendingDiscover, runningDiscover int64
 	healthCheckScheduleTotal := int64(0)
 	if catalog.Type == interfaces.CatalogTypePhysical {
-		_, pendingBuild, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		_, pendingBuild, err = cs.bta.List(ctx, interfaces.BuildTasksQueryParams{
 			PaginationQueryParams: page,
 			CatalogID:             id,
 			Statuses:              []string{interfaces.BuildTaskStatusPending},
@@ -906,7 +906,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 		if err != nil {
 			return nil, err
 		}
-		_, buildExecuting, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		_, buildExecuting, err = cs.bta.List(ctx, interfaces.BuildTasksQueryParams{
 			PaginationQueryParams: page,
 			CatalogID:             id,
 			Statuses: []string{

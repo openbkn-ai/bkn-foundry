@@ -87,7 +87,7 @@ func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context
 	const recoveryFailure = "semantic understanding task interrupted by service restart"
 	for {
 		// Always read running tasks from offset zero; the result set shrinks after each failure update.
-		tasks, _, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		tasks, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{
 				Limit:     sutw.queueSize,
 				Sort:      interfaces.SemanticUnderstandingTaskSortCreateTime,
@@ -142,7 +142,7 @@ func (sutw *SemanticUnderstandingTaskWorker) fillQueue(ctx context.Context) {
 	}
 	limit := cap(sutw.queue)
 	// Normal execution prioritizes pending tasks in stable create_time, id order.
-	tasks, _, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+	tasks, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{
 			Limit:     limit,
 			Sort:      interfaces.SemanticUnderstandingTaskSortCreateTime,

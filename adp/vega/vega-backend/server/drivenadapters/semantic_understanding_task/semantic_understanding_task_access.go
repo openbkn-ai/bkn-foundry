@@ -307,33 +307,8 @@ func (suta *semanticUnderstandingTaskAccess) List(ctx context.Context, params in
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List semantic understanding tasks")
 	defer span.End()
 
-	builder := sq.Select(semanticUnderstandingTaskListColumns()...).From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
 	countBuilder := sq.Select("COUNT(*)").From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
-
-	applyFilters := func(b sq.SelectBuilder) sq.SelectBuilder {
-		if params.Scope != "" {
-			b = b.Where(sq.Eq{"f_scope": params.Scope})
-		}
-		if params.CatalogID != "" {
-			b = b.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-		}
-		if params.ResourceID != "" {
-			b = b.Where(sq.Eq{"f_resource_id": params.ResourceID})
-		}
-		if len(params.Statuses) > 0 {
-			b = b.Where(sq.Eq{"f_status": params.Statuses})
-		}
-		if params.ApplyMode != "" {
-			b = b.Where(sq.Eq{"f_apply_mode": params.ApplyMode})
-		}
-		if params.Applied != nil {
-			b = b.Where(sq.Eq{"f_applied": *params.Applied})
-		}
-		return b
-	}
-	builder = applyFilters(builder)
-	countBuilder = applyFilters(countBuilder)
-
+	countBuilder = applySemanticUnderstandingTaskFilters(countBuilder, params)
 	countSQL, countVals, err := countBuilder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build count sql failed")
@@ -346,7 +321,22 @@ func (suta *semanticUnderstandingTaskAccess) List(ctx context.Context, params in
 		return nil, 0, err
 	}
 
-	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
+	tasks, err := suta.InternalList(ctx, params)
+	if err != nil {
+		return nil, 0, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return tasks, total, nil
+}
+
+func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
+	params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal semantic understanding tasks")
+	defer span.End()
+
+	builder := sq.Select(semanticUnderstandingTaskListColumns()...).From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
+	builder = applySemanticUnderstandingTaskFilters(builder, params).
+		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
@@ -354,13 +344,13 @@ func (suta *semanticUnderstandingTaskAccess) List(ctx context.Context, params in
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, 0, err
+		return nil, err
 	}
 
 	rows, err := suta.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		otellog.LogError(ctx, "List semantic understanding tasks failed", err)
-		return nil, 0, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -369,17 +359,40 @@ func (suta *semanticUnderstandingTaskAccess) List(ctx context.Context, params in
 		task, err := scanSemanticUnderstandingTaskListItem(rows)
 		if err != nil {
 			otellog.LogError(ctx, "Scan semantic understanding task row failed", err)
-			return nil, 0, err
+			return nil, err
 		}
 		tasks = append(tasks, task)
 	}
 	if err := rows.Err(); err != nil {
 		otellog.LogError(ctx, "Rows iteration failed", err)
-		return nil, 0, err
+		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return tasks, total, nil
+	return tasks, nil
+}
+
+func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
+	params interfaces.SemanticUnderstandingTaskQueryParams) sq.SelectBuilder {
+	if params.Scope != "" {
+		builder = builder.Where(sq.Eq{"f_scope": params.Scope})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	}
+	if params.ResourceID != "" {
+		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})
+	}
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+	}
+	if params.ApplyMode != "" {
+		builder = builder.Where(sq.Eq{"f_apply_mode": params.ApplyMode})
+	}
+	if params.Applied != nil {
+		builder = builder.Where(sq.Eq{"f_applied": *params.Applied})
+	}
+	return builder
 }
 
 func (suta *semanticUnderstandingTaskAccess) DeleteByIDs(ctx context.Context, ids []string) (int64, error) {

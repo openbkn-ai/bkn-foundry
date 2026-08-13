@@ -29,7 +29,7 @@ func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess
 	// Limit=0 → 不分页，取全部命中任务（含历史任务，连同其孤儿索引一并清）
 	filter.Limit = 0
 	filter.Offset = 0
-	tasks, _, err := bta.InternalList(ctx, filter)
+	tasks, err := bta.InternalList(ctx, filter)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())

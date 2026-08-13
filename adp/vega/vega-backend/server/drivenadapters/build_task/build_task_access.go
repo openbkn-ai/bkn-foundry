@@ -440,80 +440,46 @@ func (bta *buildTaskAccess) GetStatus(ctx context.Context, id string) (string, e
 	return status, nil
 }
 
-// InternalList retrieves complete build tasks with optional filters and pagination.
-func (bta *buildTaskAccess) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get build tasks with filters")
+// InternalList retrieves build task summaries without an additional count query.
+func (bta *buildTaskAccess) InternalList(ctx context.Context,
+	params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal build task summaries")
 	defer span.End()
 
-	builder := sq.Select(buildTaskColumns()...).
-		From(BUILD_TASK_TABLE_NAME)
-
-	countBuilder := sq.Select("COUNT(*)").
-		From(BUILD_TASK_TABLE_NAME)
-
-	if params.ResourceID != "" {
-		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_resource_id": params.ResourceID})
-	}
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if len(params.Statuses) > 0 {
-		// squirrel: Eq 的值为切片 → 生成 f_status IN (?,?,...)
-		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
-	}
-	if params.Mode != "" {
-		builder = builder.Where(sq.Eq{"f_mode": params.Mode})
-		countBuilder = countBuilder.Where(sq.Eq{"f_mode": params.Mode})
-	}
-
-	countSQL, countVals, err := countBuilder.ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build count sql failed")
-		return nil, 0, err
-	}
-	var totalCount int64
-	if err := bta.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&totalCount); err != nil {
-		otellog.LogError(ctx, "Count build tasks failed", err)
-		return nil, 0, err
-	}
-
-	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
-
+	builder := sq.Select(buildTaskSummaryColumns()...).From(BUILD_TASK_TABLE_NAME)
+	builder = applyBuildTaskFilters(builder, params).
+		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
 
-	query, queryArgs, err := builder.ToSql()
+	query, args, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, 0, err
+		return nil, err
 	}
-	rows, err := bta.db.QueryContext(ctx, query, queryArgs...)
+	rows, err := bta.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		otellog.LogError(ctx, "Get build tasks with filters failed", err)
-		return nil, 0, err
+		otellog.LogError(ctx, "List build task summaries failed", err)
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	buildTasks := []*interfaces.BuildTask{}
+	tasks := make([]*interfaces.BuildTaskSummary, 0)
 	for rows.Next() {
-		buildTask, err := scanBuildTask(rows)
+		task, err := scanBuildTaskSummary(rows)
 		if err != nil {
-			otellog.LogError(ctx, "Scan build task row failed", err)
-			return nil, 0, err
+			otellog.LogError(ctx, "Scan build task summary row failed", err)
+			return nil, err
 		}
-		buildTasks = append(buildTasks, buildTask)
+		tasks = append(tasks, task)
 	}
 	if err := rows.Err(); err != nil {
 		otellog.LogError(ctx, "Rows iteration failed", err)
-		return nil, 0, err
+		return nil, err
 	}
-
 	span.SetStatus(codes.Ok, "")
-	return buildTasks, totalCount, nil
+	return tasks, nil
 }
 
 // List retrieves build task summaries with optional filters and pagination.
@@ -521,57 +487,42 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List build task summaries")
 	defer span.End()
 
-	builder := sq.Select(buildTaskSummaryColumns()...).From(BUILD_TASK_TABLE_NAME)
 	countBuilder := sq.Select("COUNT(*)").From(BUILD_TASK_TABLE_NAME)
-	if params.ResourceID != "" {
-		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_resource_id": params.ResourceID})
-	}
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if len(params.Statuses) > 0 {
-		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
-	}
-	if params.Mode != "" {
-		builder = builder.Where(sq.Eq{"f_mode": params.Mode})
-		countBuilder = countBuilder.Where(sq.Eq{"f_mode": params.Mode})
-	}
+	countBuilder = applyBuildTaskFilters(countBuilder, params)
 	countSQL, countVals, err := countBuilder.ToSql()
 	if err != nil {
+		span.SetStatus(codes.Error, "Build count sql failed")
 		return nil, 0, err
 	}
 	var total int64
 	if err := bta.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
+		otellog.LogError(ctx, "Count build tasks failed", err)
 		return nil, 0, err
 	}
-	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
-	if params.Limit > 0 {
-		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
-	}
-	query, args, err := builder.ToSql()
+	tasks, err := bta.InternalList(ctx, params)
 	if err != nil {
+		span.SetStatus(codes.Error, "List build task summaries failed")
 		return nil, 0, err
 	}
-	rows, err := bta.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = rows.Close() }()
-	tasks := make([]*interfaces.BuildTaskSummary, 0)
-	for rows.Next() {
-		task, err := scanBuildTaskSummary(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		tasks = append(tasks, task)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
+	span.SetStatus(codes.Ok, "")
 	return tasks, total, nil
+}
+
+func applyBuildTaskFilters(builder sq.SelectBuilder,
+	params interfaces.BuildTasksQueryParams) sq.SelectBuilder {
+	if params.ResourceID != "" {
+		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	}
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+	}
+	if params.Mode != "" {
+		builder = builder.Where(sq.Eq{"f_mode": params.Mode})
+	}
+	return builder
 }
 
 // buildOrderByClause translates sort/direction into an ORDER BY clause.

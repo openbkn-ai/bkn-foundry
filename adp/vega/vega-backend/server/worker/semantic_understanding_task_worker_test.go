@@ -55,12 +55,12 @@ func TestSemanticUnderstandingTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T)
 		inFlight: make(map[string]struct{}),
 	}
 	taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+		DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, error) {
 			assert.Equal(t, 4, params.Limit)
 			assert.Equal(t, []string{interfaces.SemanticUnderstandingTaskStatusPending}, params.Statuses)
 			assert.Equal(t, interfaces.SemanticUnderstandingTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-			return []*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, 1, nil
+			return []*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, nil
 		})
 
 	worker.fillQueue(context.Background())
@@ -91,11 +91,11 @@ func TestSemanticUnderstandingTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 
 	gomock.InOrder(
 		taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
-			[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, int64(1), nil),
+			[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, nil),
 		taskService.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
 			"semantic understanding task interrupted by service restart").Return(true, nil),
 		taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
-			[]*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil),
+			[]*interfaces.SemanticUnderstandingTaskSummary{}, nil),
 	)
 
 	require.NoError(t, worker.recoverInterruptedTasks(context.Background()))
@@ -107,7 +107,7 @@ func TestSemanticUnderstandingTaskWorkerRecoveryFailsWhenTaskIsNotUpdated(t *tes
 	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
 	worker := &SemanticUnderstandingTaskWorker{suts: taskService, queueSize: 1}
 	taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
-		[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, int64(1), nil)
+		[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, nil)
 	taskService.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
 		"semantic understanding task interrupted by service restart").Return(false, nil)
 

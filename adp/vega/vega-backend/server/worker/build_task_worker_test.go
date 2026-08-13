@@ -29,13 +29,13 @@ func TestBuildTaskWorkerFillBatchQueueRefillsEmptyQueue(t *testing.T) {
 		inFlight:   make(map[string]struct{}),
 	}
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 			assert.Equal(t, 4, params.Limit)
 			assert.Equal(t, []string{interfaces.BuildTaskStatusPending}, params.Statuses)
 			assert.Equal(t, interfaces.BuildTaskModeBatch, params.Mode)
 			assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-			return []*interfaces.BuildTask{{ID: "task-1"}}, 1, nil
+			return []*interfaces.BuildTaskSummary{{ID: "task-1"}}, nil
 		})
 
 	worker.fillBatchQueue(context.Background())
@@ -54,13 +54,13 @@ func TestBuildTaskWorkerFillStreamingQueueRefillsEmptyQueue(t *testing.T) {
 		inFlight:       make(map[string]struct{}),
 	}
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 			assert.Equal(t, 4, params.Limit)
 			assert.Equal(t, []string{interfaces.BuildTaskStatusPending}, params.Statuses)
 			assert.Equal(t, interfaces.BuildTaskModeStreaming, params.Mode)
 			assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-			return []*interfaces.BuildTask{{ID: "task-1"}}, 1, nil
+			return []*interfaces.BuildTaskSummary{{ID: "task-1"}}, nil
 		})
 
 	worker.fillStreamingQueue(context.Background())
@@ -93,19 +93,19 @@ func TestBuildTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 		streamingQueue: make(chan string, 2),
 	}
 	firstList := bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 			assert.Equal(t, 4, params.Limit)
 			assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}, params.Statuses)
-			return []*interfaces.BuildTask{
+			return []*interfaces.BuildTaskSummary{
 				{ID: "running-task", Status: interfaces.BuildTaskStatusRunning},
 				{ID: "stopping-task", Status: interfaces.BuildTaskStatusStopping},
-			}, 2, nil
+			}, nil
 		})
 	runningUpdate := bts.EXPECT().InternalMarkFailed(gomock.Any(), "running-task",
 		"build task interrupted by service restart").Return(true, nil).After(firstList)
 	stoppingUpdate := bts.EXPECT().InternalMarkStopped(gomock.Any(), "stopping-task").Return(true, nil).After(runningUpdate)
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
-		[]*interfaces.BuildTask{}, int64(0), nil).After(stoppingUpdate)
+		[]*interfaces.BuildTaskSummary{}, nil).After(stoppingUpdate)
 
 	require.NoError(t, worker.recoverInterruptedTasks(context.Background()))
 }
@@ -119,9 +119,9 @@ func TestBuildTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
 		batchQueue:     make(chan string, 1),
 		streamingQueue: make(chan string, 1),
 	}
-	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{{
+	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTaskSummary{{
 		ID: "task-1", Status: interfaces.BuildTaskStatusRunning,
-	}}, int64(1), nil)
+	}}, nil)
 	bts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
 		"build task interrupted by service restart").Return(false, errors.New("database unavailable"))
 

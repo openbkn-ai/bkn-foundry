@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -307,19 +308,15 @@ func TestBuildTaskAccessInternalList(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	task := sampleBuildTask()
 
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_build_task")).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-	rows := sqlmock.NewRows(buildTaskColumns()).AddRow(buildTaskRowValues(task)...)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskColumns() + " FROM t_build_task ORDER BY f_create_time DESC")).
+	rows := sqlmock.NewRows(buildTaskSummaryColumns()).AddRow(buildTaskSummaryRowValues(task)...)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + strings.Join(buildTaskSummaryColumns(), ", ") + " FROM t_build_task ORDER BY f_create_time DESC")).
 		WillReturnRows(rows)
 
-	got, total, err := access.InternalList(context.Background(), interfaces.BuildTasksQueryParams{})
+	got, err := access.InternalList(context.Background(), interfaces.BuildTasksQueryParams{})
 
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), total)
 	require.Len(t, got, 1)
 	assert.Equal(t, task.IndexConfig, got[0].IndexConfig)
-	assert.Equal(t, task.FailureDetail, got[0].FailureDetail)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

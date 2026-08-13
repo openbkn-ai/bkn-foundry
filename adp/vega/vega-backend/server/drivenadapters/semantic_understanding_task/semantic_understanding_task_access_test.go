@@ -180,6 +180,27 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		assert.NotContains(t, string(payload), `"failure_detail"`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("internal list skips count query", func(t *testing.T) {
+		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		task := sampleSemanticUnderstandingTask()
+		params := interfaces.SemanticUnderstandingTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+			Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusPending},
+		}
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinSemanticUnderstandingTaskListColumns() + " FROM t_semantic_understanding_task WHERE f_status IN (?) ORDER BY f_create_time DESC LIMIT 1 OFFSET 0")).
+			WithArgs(interfaces.SemanticUnderstandingTaskStatusPending).
+			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskListColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
+
+		got, err := access.InternalList(context.Background(), params)
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, task.ID, got[0].ID)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func boolPtr(value bool) *bool {

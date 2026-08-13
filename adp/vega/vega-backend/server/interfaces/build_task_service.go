@@ -33,8 +33,8 @@ type BuildTaskService interface {
 	InternalGetByID(ctx context.Context, id string) (*BuildTask, error)
 	// InternalGetByCatalogID retrieves build tasks by catalog ID for internal workers.
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*BuildTask, error)
-	// InternalList retrieves build tasks for internal workers.
-	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
+	// InternalList retrieves build task summaries for internal workers without a count query.
+	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTaskSummary, error)
 	// InternalGetStatus retrieves the status of a build task for internal workers.
 	InternalGetStatus(ctx context.Context, id string) (string, error)
 

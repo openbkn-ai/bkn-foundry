@@ -87,6 +87,26 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		assert.NotContains(t, serialized, "large detail")
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("internal list skips count query", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
+
+		params := interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+			Statuses:              []string{interfaces.DiscoverTaskStatusPending},
+		}
+		mock.ExpectQuery("SELECT f_id, f_catalog_id, f_schedule_id, f_strategy, f_trigger_type, f_status, f_progress, f_start_time, f_finish_time, f_result, f_creator, f_creator_type, f_create_time FROM t_discover_task WHERE f_status IN (?) ORDER BY f_create_time DESC LIMIT 1 OFFSET 0").
+			WithArgs(interfaces.DiscoverTaskStatusPending).
+			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "", "full_sync", "manual", interfaces.DiscoverTaskStatusPending, 0, int64(0), int64(0), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
+
+		got, err := access.InternalList(context.Background(), params)
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "task-1", got[0].ID)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestDiscoverTaskAccessCreate(t *testing.T) {

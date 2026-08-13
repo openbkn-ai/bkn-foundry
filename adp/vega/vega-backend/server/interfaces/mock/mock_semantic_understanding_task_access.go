@@ -116,6 +116,21 @@ func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) GetByIDs(ctx, ids any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).GetByIDs), ctx, ids)
 }
 
+// InternalList mocks base method.
+func (m *MockSemanticUnderstandingTaskAccess) InternalList(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalList", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.SemanticUnderstandingTaskSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalList indicates an expected call of InternalList.
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) InternalList(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).InternalList), ctx, params)
+}
+
 // List mocks base method.
 func (m *MockSemanticUnderstandingTaskAccess) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
 	m.ctrl.T.Helper()

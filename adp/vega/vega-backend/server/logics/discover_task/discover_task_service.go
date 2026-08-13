@@ -182,17 +182,17 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	return tasks, total, nil
 }
 
-func (dts *discoverTaskService) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+func (dts *discoverTaskService) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalList")
 	defer span.End()
 
-	tasks, total, err := dts.dta.List(ctx, params)
+	tasks, err := dts.dta.InternalList(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List discover tasks failed")
-		return nil, 0, err
+		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
-	return tasks, total, nil
+	return tasks, nil
 }
 
 // populateDiscoverTaskSummaryReferences 批量补齐当前页任务关联目录的展示名称。

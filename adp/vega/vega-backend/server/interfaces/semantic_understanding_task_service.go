@@ -20,7 +20,7 @@ type SemanticUnderstandingTaskService interface {
 	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
 
 	InternalGetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
-	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
+	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, error)
 
 	InternalMarkRunning(ctx context.Context, id string) (bool, error)
 	InternalMarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)

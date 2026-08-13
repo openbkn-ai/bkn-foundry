@@ -244,17 +244,17 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 	return tasks, total, nil
 }
 
-func (suts *semanticUnderstandingTaskService) InternalList(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+func (suts *semanticUnderstandingTaskService) InternalList(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalList")
 	defer span.End()
 
-	tasks, total, err := suts.suta.List(ctx, params)
+	tasks, err := suts.suta.InternalList(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List semantic understanding tasks failed")
-		return nil, 0, err
+		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
-	return tasks, total, nil
+	return tasks, nil
 }
 
 // populateSemanticUnderstandingTaskSummaryReferences 批量补齐列表任务关联的目录与资源展示名称。

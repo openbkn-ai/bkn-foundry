@@ -47,6 +47,6 @@ type BuildTaskAccess interface {
 	// GetStatus retrieves the status of a build task by ID.
 	GetStatus(ctx context.Context, id string) (string, error)
 
-	// InternalList retrieves complete build tasks for internal callers without permission checks.
-	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
+	// InternalList retrieves build task summaries for internal callers without a count query.
+	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTaskSummary, error)
 }

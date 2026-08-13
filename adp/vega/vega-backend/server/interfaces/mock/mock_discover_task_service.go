@@ -115,13 +115,12 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalGetByID(ctx, id any) *gom
 }
 
 // InternalList mocks base method.
-func (m *MockDiscoverTaskService) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+func (m *MockDiscoverTaskService) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InternalList", ctx, params)
 	ret0, _ := ret[0].([]*interfaces.DiscoverTaskSummary)
-	ret1, _ := ret[1].(int64)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // InternalList indicates an expected call of InternalList.
