@@ -32,10 +32,10 @@ func TestHTTPClientPropagatesEffectiveLanguage(t *testing.T) {
 	}
 }
 
-func TestHTTPClientPreservesExplicitAcceptLanguage(t *testing.T) {
+func TestHTTPClientOverridesExplicitAcceptLanguageWithEffectiveLocale(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get(AcceptLanguageHeader); got != SimplifiedChinese {
-			t.Errorf("Accept-Language = %q, want %q", got, SimplifiedChinese)
+		if got := r.Header.Get(AcceptLanguageHeader); got != AmericanEnglish {
+			t.Errorf("Accept-Language = %q, want %q", got, AmericanEnglish)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -44,7 +44,7 @@ func TestHTTPClientPreservesExplicitAcceptLanguage(t *testing.T) {
 	client := NewHTTPClientWithRawClient(server.Client())
 	ctx := WithLanguage(context.Background(), AmericanEnglish)
 	status, _, err := client.GetNoUnmarshal(ctx, server.URL, nil, map[string]string{
-		AcceptLanguageHeader: SimplifiedChinese,
+		AcceptLanguageHeader: "zh-CN, en-US;q=0.8",
 	})
 	if err != nil {
 		t.Fatalf("GetNoUnmarshal() error = %v", err)
