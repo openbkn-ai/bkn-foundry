@@ -43,9 +43,7 @@ type I18nTranslator struct {
 
 // NewI18nTranslator 新建翻译器
 func NewI18nTranslator(lang string) *I18nTranslator {
-	if lang == "" {
-		lang = defaultLang
-	}
+	lang = normalizeLanguageKey(lang)
 	lt, ok := langMap[lang]
 	if !ok {
 		lt = language.SimplifiedChinese
@@ -61,6 +59,14 @@ func NewI18nTranslator(lang string) *I18nTranslator {
 	}
 	tr.loc = i18n.NewLocalizer(bundle, tr.current.String())
 	return tr
+}
+
+func normalizeLanguageKey(lang string) string {
+	lang = strings.ReplaceAll(strings.TrimSpace(lang), "-", "_")
+	if lang == "" {
+		return defaultLang
+	}
+	return lang
 }
 
 // Trans 翻译
