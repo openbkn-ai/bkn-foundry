@@ -120,6 +120,11 @@ type ResourceType struct {
 	Name        string `gorm:"size:128"`
 	Description string `gorm:"size:1024"`
 	Hidden      bool
+	// ParentTypeID declares that instances of this type sit UNDER an instance of
+	// another type ("resource" under "catalog"). It is the type-level half of the
+	// hierarchy; the instance-level half is ResourceParent. Empty = no parent,
+	// which is every type today except the ones seeded in catalog.json (#800).
+	ParentTypeID string `gorm:"size:64;index"`
 }
 
 // Operation is an action defined on a resource type (e.g. agent/use).
@@ -128,6 +133,30 @@ type Operation struct {
 	ID             string `gorm:"primaryKey;size:64"` // e.g. "use"
 	Name           string `gorm:"size:128"`
 	Description    string `gorm:"size:1024"`
+	// ParentOperationID is the operation to look for ON THE PARENT when this one
+	// is not granted on the instance itself. It is an explicit MAPPING, never the
+	// same name by convention: "modify" on a data table means "edit that table",
+	// while "modify" on its catalog means "rename the catalog" — inheriting by
+	// name would turn the right to rename a catalog into the right to rewrite
+	// every table in it. Empty = the operation does not inherit at all (#800).
+	ParentOperationID string `gorm:"size:64"`
+}
+
+// ResourceParent records that ONE concrete resource instance sits under one
+// concrete parent instance — the fact bkn-safe has never had, and the reason a
+// grant on a catalog could not previously reach the tables inside it: policies
+// are keyed by "type:id" and nothing said which catalog a given table belongs to.
+//
+// bkn-safe does not discover this itself; the owning module (vega for
+// catalog/resource) pushes it through PUT /authz/resource-parents. A missing row
+// is not an error — it degrades to the pre-#800 judgement, where only grants on
+// the instance itself count.
+type ResourceParent struct {
+	ResourceTypeID string `gorm:"primaryKey;size:64"`
+	ResourceID     string `gorm:"primaryKey;size:128"`
+	ParentTypeID   string `gorm:"size:64;index:idx_resource_parent_parent,priority:1"`
+	ParentID       string `gorm:"size:128;index:idx_resource_parent_parent,priority:2"`
+	UpdatedAt      time.Time
 }
 
 // AuditLog records a privileged admin-API mutation: who (ActorID, the verified
@@ -201,6 +230,6 @@ func AllModels() []any {
 	return []any{
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
-		&AuditLog{}, &APIKey{}, &License{},
+		&AuditLog{}, &APIKey{}, &License{}, &ResourceParent{},
 	}
 }

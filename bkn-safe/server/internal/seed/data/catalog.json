@@ -61,14 +61,16 @@
       "name": "数据资源",
       "_source": "vega",
       "_note": "过渡态(#801 第一段,只加不改):新增 query_data 让资源侧能区分「只看结构」与「能取数」。create/modify/delete/authorize/task_manage 目标是上移到所属目录(catalog.resource_manage / task_manage / authorize),但在 vega 判定切换前必须保留——seed 的 reconcileSeedRoles 会先清空角色 p 行再按本文件重建,此刻移除会让 network_builder 升级后建表 403",
+      "_parent_note": "parent_operation 是「本资源上没授权时,去父目录上找哪个操作」。故意逐条列而不按同名继承:目录上的 modify 是「改目录自己」,若按同名继承就等于把「重命名目录」的人升级成「能改目录下每张表」。authorize 不给映射——目录的授权权不向下变成对每张表的二次授权(#800)",
+      "parent_type": "catalog",
       "operations": [
-        {"id": "view_detail", "name": "查看表结构"},
-        {"id": "query_data", "name": "查询表数据"},
-        {"id": "create", "name": "创建(待上移目录)"},
-        {"id": "modify", "name": "修改(待上移目录)"},
-        {"id": "delete", "name": "删除(待上移目录)"},
+        {"id": "view_detail", "name": "查看表结构", "parent_operation": "view_detail"},
+        {"id": "query_data", "name": "查询表数据", "parent_operation": "query_data"},
+        {"id": "create", "name": "创建(待上移目录)", "parent_operation": "resource_manage"},
+        {"id": "modify", "name": "修改(待上移目录)", "parent_operation": "resource_manage"},
+        {"id": "delete", "name": "删除(待上移目录)", "parent_operation": "resource_manage"},
         {"id": "authorize", "name": "授权(待上移目录)"},
-        {"id": "task_manage", "name": "任务管理(待上移目录)"}
+        {"id": "task_manage", "name": "任务管理(待上移目录)", "parent_operation": "task_manage"}
       ]
     },
     {
