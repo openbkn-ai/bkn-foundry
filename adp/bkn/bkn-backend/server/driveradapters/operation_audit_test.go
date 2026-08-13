@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
@@ -197,6 +199,84 @@ func TestOperationAuditMiddlewareRecordsDeniedAttempt(t *testing.T) {
 
 	if len(store.entries) != 1 || store.entries[0].Outcome != "denied" || store.entries[0].FailureCode != "permission_denied" {
 		t.Fatalf("denied entry = %#v", store.entries)
+	}
+}
+
+func TestOperationAuditMiddlewareDoesNotTrustUnverifiedIdentityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "unauthorized", "message": "invalid token"}})
+	})
+	request := httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
+	request.Header.Set("x-tenant-id", "tenant-a")
+	request.Header.Set("x-business-domain", "domain-a")
+	request.Header.Set("x-account-id", "spoofed-user")
+	request.Header.Set("x-account-type", "admin")
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+
+	if len(store.entries) != 1 {
+		t.Fatalf("audit entries = %d", len(store.entries))
+	}
+	entry := store.entries[0]
+	if entry.ActorID != "unauthenticated" || entry.ActorName != "未认证调用者" || entry.ActorType != "unknown" {
+		t.Fatalf("unverified identity was trusted: %#v", entry)
+	}
+}
+
+func TestOperationAuditMiddlewareDoesNotPersistUnscopedFact(t *testing.T) {
+	t.Setenv("BKN_OPERATION_AUDIT_TENANT_ID", "")
+	t.Setenv("BKN_OPERATION_AUDIT_BUSINESS_DOMAIN", "")
+	gin.SetMode(gin.TestMode)
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType("user")})
+		c.Status(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+
+	if len(store.entries) != 0 {
+		t.Fatalf("unscoped audit fact must not be persisted: %#v", store.entries)
+	}
+}
+
+func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &recordingOperationAuditStore{}
+	handler := &restHandler{auditRecorder: store}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType("user")})
+		c.Status(http.StatusBadRequest)
+		_, _ = c.Writer.Write([]byte(`<script>alert("reflected")</script>`))
+	})
+	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
+	request.Header.Set("x-tenant-id", "tenant-a")
+	request.Header.Set("x-business-domain", "domain-a")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+
+	if contentType := response.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
+		t.Fatalf("content type = %q", contentType)
+	}
+	if response.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q", response.Header().Get("X-Content-Type-Options"))
+	}
+}
+
+func TestBoundTextPreservesUTF8AtByteLimit(t *testing.T) {
+	value := strings.Repeat("物", 341) + "料"
+	result := boundText(value, 1024)
+	if len(result) > 1024 || !utf8.ValidString(result) {
+		t.Fatalf("boundText() returned invalid UTF-8: bytes=%d value=%q", len(result), result)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-comm-go/hydra"
@@ -158,12 +159,17 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		}
 		facts := operationAuditFacts(c, rule, requestBody, responseBody.body.Bytes())
 		now := time.Now().UTC()
-		tenantID := operationAuditScopeValue(c.GetHeader("x-tenant-id"), "BKN_OPERATION_AUDIT_TENANT_ID", "openbkn-local")
 		requestID := operationAuditRequestID(c)
+		tenantID := operationAuditScopeValue(c.GetHeader("x-tenant-id"), "BKN_OPERATION_AUDIT_TENANT_ID")
+		businessDomainID := operationAuditScopeValue(firstNonEmpty(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN), facts.businessDomain), "BKN_OPERATION_AUDIT_BUSINESS_DOMAIN")
+		if tenantID == "" || businessDomainID == "" {
+			logger.Errorf("operation audit fact rejected: request_id=%s action=%s target_type=%s missing_tenant=%t missing_business_domain=%t", requestID, rule.Action, rule.TargetType, tenantID == "", businessDomainID == "")
+			return
+		}
 		entry := operationaudit.Entry{
 			EventID: operationAuditEventID(tenantID, requestID, c.Request.Method, c.Request.URL.Path), EventTime: now, RecordedAt: now,
 			TenantID:           tenantID,
-			BusinessDomainID:   operationAuditScopeValue(firstNonEmpty(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN), facts.businessDomain), "BKN_OPERATION_AUDIT_BUSINESS_DOMAIN", "bd_public"),
+			BusinessDomainID:   businessDomainID,
 			KnowledgeNetworkID: facts.knowledgeNetworkID,
 			ActorID:            actor.ActorID, ActorName: actor.ActorName, ActorType: actor.ActorType,
 			AuthMethod: actor.AuthMethod, CredentialID: actor.CredentialID,
@@ -192,14 +198,37 @@ type boundedResponseWriter struct {
 	limit int
 }
 
+func (w *boundedResponseWriter) WriteHeader(code int) {
+	w.ensureNonExecutableJSON()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *boundedResponseWriter) WriteHeaderNow() {
+	w.ensureNonExecutableJSON()
+	w.ResponseWriter.WriteHeaderNow()
+}
+
 func (w *boundedResponseWriter) Write(data []byte) (int, error) {
+	w.ensureNonExecutableJSON()
 	if remaining := w.limit - w.body.Len(); remaining > 0 {
 		if len(data) < remaining {
 			remaining = len(data)
 		}
 		_, _ = w.body.Write(data[:remaining])
 	}
-	return w.ResponseWriter.Write(data)
+	// Registered operation-audit routes are JSON APIs. The wrapper only observes
+	// the already-rendered handler response and preserves it byte-for-byte; the
+	// forced JSON media type plus nosniff prevents browser HTML interpretation.
+	return w.ResponseWriter.Write(data) // lgtm[go/reflected-xss]
+}
+
+func (w *boundedResponseWriter) WriteString(value string) (int, error) {
+	return w.Write([]byte(value))
+}
+
+func (w *boundedResponseWriter) ensureNonExecutableJSON() {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 }
 
 func captureRequestBody(request *http.Request) []byte {
@@ -225,10 +254,7 @@ func operationAuditVisitor(c *gin.Context) (hydra.Visitor, bool) {
 			return visitor, true
 		}
 	}
-	return hydra.Visitor{
-		ID:   strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_ID)),
-		Type: hydra.VisitorType(strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE))),
-	}, false
+	return hydra.Visitor{}, false
 }
 
 type extractedOperationAuditFacts struct {
@@ -407,8 +433,8 @@ func operationAuditPrintableASCII(value string) bool {
 	return true
 }
 
-func operationAuditScopeValue(headerValue, environmentName, fallback string) string {
-	return firstNonEmpty(strings.TrimSpace(headerValue), strings.TrimSpace(os.Getenv(environmentName)), fallback)
+func operationAuditScopeValue(headerValue, environmentName string) string {
+	return firstNonEmpty(strings.TrimSpace(headerValue), strings.TrimSpace(os.Getenv(environmentName)))
 }
 
 func operationAuditSourceChannel(fullPath string) string {
@@ -428,7 +454,11 @@ func boundText(value string, maximum int) string {
 	if len(value) <= maximum {
 		return value
 	}
-	return value[:maximum]
+	value = value[:maximum]
+	for len(value) > 0 && !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 func uniqueStrings(values []string) []string {
