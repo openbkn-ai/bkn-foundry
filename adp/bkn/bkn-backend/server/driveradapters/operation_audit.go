@@ -148,6 +148,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		responseBody := &boundedResponseWriter{ResponseWriter: c.Writer, limit: maximumOperationAuditBody}
 		c.Writer = responseBody
 		c.Next()
+		responseBody.FlushResponse()
 
 		if r == nil || r.auditRecorder == nil {
 			return
@@ -194,44 +195,65 @@ func operationAuditEventID(tenantID, requestID, method, path string) string {
 
 type boundedResponseWriter struct {
 	gin.ResponseWriter
-	body  bytes.Buffer
-	limit int
+	body        bytes.Buffer
+	limit       int
+	status      int
+	wroteHeader bool
 }
 
 func (w *boundedResponseWriter) WriteHeader(code int) {
-	w.ensureNonExecutableJSON()
-	w.ResponseWriter.WriteHeader(code)
+	if w.wroteHeader {
+		return
+	}
+	w.status = code
+	w.wroteHeader = true
 }
 
 func (w *boundedResponseWriter) WriteHeaderNow() {
-	w.ensureNonExecutableJSON()
-	w.ResponseWriter.WriteHeaderNow()
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 func (w *boundedResponseWriter) Write(data []byte) (int, error) {
-	w.ensureNonExecutableJSON()
-	var escaped bytes.Buffer
-	json.HTMLEscape(&escaped, data)
-	safeData := escaped.Bytes()
-	if remaining := w.limit - w.body.Len(); remaining > 0 {
-		if len(safeData) < remaining {
-			remaining = len(safeData)
-		}
-		_, _ = w.body.Write(safeData[:remaining])
-	}
-	if _, err := w.ResponseWriter.Write(safeData); err != nil {
-		return 0, err
-	}
-	return len(data), nil
+	w.WriteHeaderNow()
+	_, err := w.body.Write(data)
+	return len(data), err
 }
 
 func (w *boundedResponseWriter) WriteString(value string) (int, error) {
 	return w.Write([]byte(value))
 }
 
-func (w *boundedResponseWriter) ensureNonExecutableJSON() {
+func (w *boundedResponseWriter) FlushResponse() {
+	if w.wroteHeader && w.ResponseWriter.Written() {
+		return
+	}
+	status := w.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	payload, ok := marshalJSONResponse(w.body.Bytes())
+	if !ok {
+		status = http.StatusInternalServerError
+		payload = []byte(`{"error":"invalid JSON response"}`)
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.ResponseWriter.WriteHeader(status)
+	_, _ = w.ResponseWriter.Write(payload)
+}
+
+func marshalJSONResponse(data []byte) ([]byte, bool) {
+	if len(data) == 0 {
+		return nil, true
+	}
+	var value any
+	if err := json.Unmarshal(data, &value); err != nil {
+		return nil, false
+	}
+	encoded, err := json.Marshal(value)
+	return encoded, err == nil
 }
 
 func captureRequestBody(request *http.Request) []byte {
