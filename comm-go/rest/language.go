@@ -236,7 +236,10 @@ func parseQValue(value string) (float64, bool) {
 }
 
 func normalizeLanguage(value string) (Language, bool) {
-	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "zh_cn" {
+		normalized = "zh-cn"
+	}
 	if !validLanguageRange(normalized) {
 		return "", false
 	}

@@ -27,7 +27,10 @@ func TestResolveLanguage(t *testing.T) {
 		{name: "selects first supported candidate", header: "fr, en-US;q=0.8", want: AmericanEnglish},
 		{name: "honors weights", header: "zh-CN;q=0.5, en-US;q=0.9", want: AmericanEnglish},
 		{name: "matches English regional variants", header: "en-GB", want: AmericanEnglish},
-		{name: "normalizes aliases", header: "zh_Hans", want: SimplifiedChinese},
+		{name: "normalizes legacy zh_CN alias", header: "zh_CN", want: SimplifiedChinese},
+		{name: "ignores unsupported underscore aliases", header: "zh_Hans, en-US;q=0.8", want: AmericanEnglish},
+		{name: "ignores English underscore alias", header: "en_US, zh-CN;q=0.8", want: SimplifiedChinese},
+		{name: "ignores malformed underscore alias", header: "foo_bar, en-US;q=0.8", want: AmericanEnglish},
 		{name: "excludes rejected language from wildcard", header: "en;q=0, *;q=1", want: SimplifiedChinese},
 		{name: "preserves explicit language when wildcard rejects others", header: "en-US, *;q=0", want: AmericanEnglish},
 		{name: "uses wildcard only for unmatched languages", header: "zh-CN;q=0.2, *;q=0.9", want: AmericanEnglish},
@@ -82,7 +85,7 @@ func TestGetLanguageCtx(t *testing.T) {
 }
 
 func TestWithLanguage(t *testing.T) {
-	for _, input := range []Language{AmericanEnglish, "en-us", "EN_us"} {
+	for _, input := range []Language{AmericanEnglish, "en-us"} {
 		t.Run(string(input), func(t *testing.T) {
 			ctx := WithLanguage(context.Background(), input)
 			if got := GetLanguageByCtx(ctx); got != AmericanEnglish {

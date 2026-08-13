@@ -37,10 +37,10 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 			statusCode = http.StatusInternalServerError
 			ctx := GetLanguageCtx(c)
 			bodyStr = NewHTTPError(ctx, statusCode, PublicError_InternalServerError).WithErrorDetails(err).Error()
+			MarkLocalizedResponse(c)
 		}
 	}
 
-	setResponseLanguage(c)
 	c.Writer.Header().Set(ContentTypeKey, ContentTypeJson)
 	c.String(statusCode, bodyStr)
 }
@@ -64,7 +64,7 @@ func ReplyError(c *gin.Context, err error) {
 		body = NewHTTPError(ctx, statusCode, PublicError_InternalServerError).WithErrorDetails(e.Error()).Error()
 	}
 
-	setResponseLanguage(c)
+	MarkLocalizedResponse(c)
 	c.Writer.Header().Set(ContentTypeKey, ContentTypeJson)
 	c.String(statusCode, body)
 }
@@ -82,9 +82,37 @@ func addHeaders(c *gin.Context, headers map[string]string) {
 	}
 }
 
-func setResponseLanguage(c *gin.Context) {
+// MarkLocalizedResponse records the language used by a response that contains
+// localized text. Callers opt in because a successful response can be purely
+// machine-readable even when the request has an effective locale.
+func MarkLocalizedResponse(c *gin.Context) {
 	c.Writer.Header().Set(ContentLanguageHeader, GetLanguageByCtx(c.Request.Context()))
+}
+
+// MarkLocalizedCacheableResponse additionally declares that a cacheable
+// representation varies by Accept-Language.
+func MarkLocalizedCacheableResponse(c *gin.Context) {
+	MarkLocalizedResponse(c)
 	addVaryHeader(c, AcceptLanguageHeader)
+}
+
+// LanguageMiddleware resolves the request locale once. It intentionally does
+// not write response headers because only localized representations have a
+// Content-Language value.
+func LanguageMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request = c.Request.WithContext(GetLanguageCtx(c))
+		c.Next()
+	}
+}
+
+// PrivateNoCacheMiddleware prevents shared caches from storing authenticated
+// responses and requires a private cache to revalidate before reuse.
+func PrivateNoCacheMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Cache-Control", "private, no-cache")
+		c.Next()
+	}
 }
 
 func addVaryHeader(c *gin.Context, value string) {
