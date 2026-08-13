@@ -116,6 +116,31 @@ func TestSemanticUnderstandingTaskWorkerRecoveryFailsWhenTaskIsNotUpdated(t *tes
 	require.ErrorContains(t, err, "task-1 was not recovered")
 }
 
+func TestSemanticUnderstandingTaskWorkerKeepsPendingTaskWhenClaimFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+	resourceService := vmock.NewMockResourceService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{suts: taskService, rs: resourceService}
+	taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(
+		&interfaces.SemanticUnderstandingTask{
+			ID:         "semantic-task-1",
+			Scope:      interfaces.SemanticUnderstandingTaskScopeResource,
+			ResourceID: "resource-1",
+			Status:     interfaces.SemanticUnderstandingTaskStatusPending,
+		}, nil,
+	)
+	resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(
+		&interfaces.Resource{ID: "resource-1"}, nil,
+	)
+	taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").
+		Return(false, errors.New("temporary database error"))
+
+	err := worker.Run(context.Background(), "semantic-task-1")
+
+	require.ErrorContains(t, err, "temporary database error")
+}
+
 func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)

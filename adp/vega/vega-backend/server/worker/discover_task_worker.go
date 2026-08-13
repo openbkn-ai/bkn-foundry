@@ -253,11 +253,7 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	// Update task status to running and set start time
 	updated, err := dtw.dts.InternalMarkRunning(ctx, taskID)
 	if err != nil {
-		logger.Errorf("Failed to set start time for task %s: %v", taskID, err)
-		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
-			logger.Errorf("Mark discover task failed after claim error: id=%s, error=%v", taskID, updateErr)
-		}
-		return err
+		return fmt.Errorf("mark discover task running: %w", err)
 	}
 	if !updated {
 		logger.Infof("Discover task status changed before running: id=%s", taskID)

@@ -71,7 +71,7 @@ func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorke
 	}
 }
 
-// Run executes one persisted streaming build task already selected by the database producer.
+// Run executes one persisted streaming build task already claimed by the database producer.
 func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.BuildTask) error {
 	if buildTaskInfo == nil {
 		return nil
@@ -92,14 +92,6 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
-		return nil
-	}
-	claimed, err := sbw.bts.InternalMarkRunning(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("claim build task execution failed: %w", err)
-	}
-	if !claimed {
-		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
 		return nil
 	}
 	resourceID := buildTaskInfo.ResourceID

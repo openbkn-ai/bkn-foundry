@@ -187,3 +187,71 @@ func TestBuildTaskWorkerRejectsModeMismatch(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildTaskWorkerClaim(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      string
+		claimed   bool
+		claimErr  error
+		wantError string
+		runTask   func(*BuildTaskWorker) error
+	}{
+		{
+			name:      "batch keeps pending after claim error",
+			mode:      interfaces.BuildTaskModeBatch,
+			claimErr:  errors.New("temporary database error"),
+			wantError: "temporary database error",
+			runTask: func(worker *BuildTaskWorker) error {
+				return worker.runBatchTask(context.Background(), "task-1")
+			},
+		},
+		{
+			name: "batch stops after state change",
+			mode: interfaces.BuildTaskModeBatch,
+			runTask: func(worker *BuildTaskWorker) error {
+				return worker.runBatchTask(context.Background(), "task-1")
+			},
+		},
+		{
+			name:      "streaming keeps pending after claim error",
+			mode:      interfaces.BuildTaskModeStreaming,
+			claimErr:  errors.New("temporary database error"),
+			wantError: "temporary database error",
+			runTask: func(worker *BuildTaskWorker) error {
+				return worker.runStreamingTask(context.Background(), "task-1")
+			},
+		},
+		{
+			name: "streaming stops after state change",
+			mode: interfaces.BuildTaskModeStreaming,
+			runTask: func(worker *BuildTaskWorker) error {
+				return worker.runStreamingTask(context.Background(), "task-1")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+			bts := vmock.NewMockBuildTaskService(ctrl)
+			worker := &BuildTaskWorker{bts: bts}
+			bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
+				ID:     "task-1",
+				Status: interfaces.BuildTaskStatusPending,
+				Mode:   tt.mode,
+			}, nil)
+			bts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").
+				Return(tt.claimed, tt.claimErr)
+
+			err := tt.runTask(worker)
+
+			if tt.wantError == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantError)
+			}
+		})
+	}
+}

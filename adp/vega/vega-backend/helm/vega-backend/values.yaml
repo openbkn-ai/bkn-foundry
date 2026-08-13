@@ -14,8 +14,6 @@ bknSafe:
   directoryProvider: ""
   url: ""
 
-replicaCount: 1
-
 # 节点选择器
 nodeSelector: {}
 

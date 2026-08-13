@@ -40,10 +40,6 @@
                         }
                     }
                 }
-            },
-            "replicaCount": {
-                "type": "number",
-                "title": "服务副本数"
             }
         }
     },

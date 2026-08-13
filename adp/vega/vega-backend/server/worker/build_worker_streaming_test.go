@@ -31,7 +31,6 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 
 		var gotAccount interfaces.AccountInfo
@@ -50,19 +49,6 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		assert.Equal(t, creator, gotAccount)
 	})
 
-	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		bts := vmock.NewMockBuildTaskService(ctrl)
-		sh := &streamingBuildWorker{bts: bts}
-
-		task := &interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
-		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(false, nil)
-
-		require.NoError(t, sh.Run(context.Background(), task))
-	})
-
 	t.Run("cancels task when resource was deleted", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bts := vmock.NewMockBuildTaskService(ctrl)
@@ -72,7 +58,6 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
 		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "resource deleted").Return(true, nil)
 
@@ -89,7 +74,6 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{
 			ID:            "c1",

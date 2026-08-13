@@ -6,7 +6,7 @@ metadata:
   labels:
     module: {{ .Values.moduleName }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 1
   strategy:
     type: Recreate
   selector:

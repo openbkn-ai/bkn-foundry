@@ -48,7 +48,6 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "get catalog failed: forbidden").
 			Return(true, nil)
@@ -66,23 +65,6 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		assert.Equal(t, creator, gotAccount)
 	})
 
-	t.Run("skips duplicate message when task is already claimed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		bts := vmock.NewMockBuildTaskService(ctrl)
-		bbw := &batchBuildWorker{bts: bts}
-
-		task := &interfaces.BuildTask{
-			ID:          "t1",
-			ResourceID:  "r1",
-			Mode:        interfaces.BuildTaskModeBatch,
-			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
-			Status:      interfaces.BuildTaskStatusPending,
-		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(false, nil)
-
-		require.NoError(t, bbw.Run(context.Background(), task))
-	})
-
 	t.Run("cancels task when resource was deleted", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bts := vmock.NewMockBuildTaskService(ctrl)
@@ -92,7 +74,6 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
 		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "resource deleted").Return(true, nil)
 
@@ -111,7 +92,6 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).
@@ -142,7 +122,6 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 			Status:      interfaces.BuildTaskStatusPending,
 		}
-		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
 		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "get catalog failed: catalog down").

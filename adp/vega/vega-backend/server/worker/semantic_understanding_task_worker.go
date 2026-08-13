@@ -267,10 +267,7 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
 		claimed, err := sutw.suts.InternalMarkRunning(ctx, taskInfo.ID)
 		if err != nil {
-			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
-				logger.Errorf("Mark semantic understanding task failed after claim error: id=%s, error=%v", taskInfo.ID, updateErr)
-			}
-			return err
+			return fmt.Errorf("mark semantic understanding task running: %w", err)
 		}
 		if !claimed {
 			logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)

@@ -53,7 +53,7 @@ func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	}
 }
 
-// Run executes one persisted batch build task already selected by the database producer.
+// Run executes one persisted batch build task already claimed by the database producer.
 func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.BuildTask) error {
 	if buildTaskInfo == nil {
 		return nil
@@ -74,14 +74,6 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
-		return nil
-	}
-	claimed, err := bbw.bts.InternalMarkRunning(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("claim build task execution failed: %w", err)
-	}
-	if !claimed {
-		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
 		return nil
 	}
 	resourceID := buildTaskInfo.ResourceID

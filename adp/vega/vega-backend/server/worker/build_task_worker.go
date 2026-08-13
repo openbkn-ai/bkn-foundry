@@ -289,6 +289,14 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
+	claimed, err := btw.bts.InternalMarkRunning(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("claim batch build task execution: %w", err)
+	}
+	if !claimed {
+		logger.Infof("Batch build task was not claimed for running: id=%s", taskID)
+		return nil
+	}
 	if err := btw.bbw.Run(ctx, task); err != nil {
 		btw.failTask(ctx, taskID, err.Error())
 		return err
@@ -311,6 +319,14 @@ func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string)
 		err = fmt.Errorf("streaming build task has mode %q", task.Mode)
 		btw.failTask(ctx, taskID, err.Error())
 		return err
+	}
+	claimed, err := btw.bts.InternalMarkRunning(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("claim streaming build task execution: %w", err)
+	}
+	if !claimed {
+		logger.Infof("Streaming build task was not claimed for running: id=%s", taskID)
+		return nil
 	}
 	if err := btw.sbw.Run(ctx, task); err != nil {
 		btw.failTask(ctx, taskID, err.Error())
