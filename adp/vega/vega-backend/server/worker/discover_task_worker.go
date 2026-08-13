@@ -225,6 +225,17 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	actions := interfaces.ActionsFromDiscoverStrategy(taskInfo.Strategy)
 	taskInfo.DiscoverActions = &actions
 
+	// Claim the pending task before any execution-time dependency lookup. If the
+	// conditional update fails, leave the task pending for a later database poll.
+	updated, err := dtw.dts.InternalMarkRunning(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("mark discover task running: %w", err)
+	}
+	if !updated {
+		logger.Infof("Discover task status changed before running: id=%s", taskID)
+		return nil
+	}
+
 	catalog, err := dtw.cs.InternalGetByID(ctx, taskInfo.CatalogID, true)
 	if err != nil {
 		if isNotFoundError(err) {
@@ -247,16 +258,6 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 		}
 		logger.Infof("Discover task failed because catalog is disabled: id=%s, catalog_id=%s",
 			taskID, taskInfo.CatalogID)
-		return nil
-	}
-
-	// Update task status to running and set start time
-	updated, err := dtw.dts.InternalMarkRunning(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("mark discover task running: %w", err)
-	}
-	if !updated {
-		logger.Infof("Discover task status changed before running: id=%s", taskID)
 		return nil
 	}
 

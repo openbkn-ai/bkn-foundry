@@ -41,6 +41,7 @@ func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
 	}, nil)
+	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").Return(true, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
 	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted").Return(true, nil)
@@ -57,6 +58,7 @@ func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
 	}, nil)
+	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").Return(true, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "catalog is disabled").Return(true, nil)
@@ -70,13 +72,16 @@ func TestDiscoverTaskWorkerMarksTaskFailedWhenCatalogLookupFails(t *testing.T) {
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
 	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
-	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
-		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
-	}, nil)
-	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-		Return(nil, errors.New("temporary database error"))
-	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "temporary database error").
-		Return(true, nil)
+	gomock.InOrder(
+		dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+			ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+		}, nil),
+		dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").Return(true, nil),
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(nil, errors.New("temporary database error")),
+		dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "temporary database error").
+			Return(true, nil),
+	)
 
 	err := worker.Run(context.Background(), "task-1")
 
@@ -87,13 +92,10 @@ func TestDiscoverTaskWorkerStopsWhenRunningTransitionMisses(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
-	cs := vmock.NewMockCatalogService(ctrl)
-	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	worker := &DiscoverTaskWorker{dts: dts}
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
 	}, nil)
-	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").
 		Return(false, nil)
 
@@ -104,13 +106,10 @@ func TestDiscoverTaskWorkerKeepsPendingTaskWhenClaimFails(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
-	cs := vmock.NewMockCatalogService(ctrl)
-	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	worker := &DiscoverTaskWorker{dts: dts}
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
 	}, nil)
-	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").
 		Return(false, errors.New("temporary database error"))
 

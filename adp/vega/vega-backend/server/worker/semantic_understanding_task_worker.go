@@ -239,6 +239,18 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 		logger.Infof("Semantic understanding task already applied: id=%s", taskInfo.ID)
 		return nil
 	}
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
+		// Claim before execution-time parent lookups. A failed conditional update
+		// leaves the task pending so a later database poll can retry it.
+		claimed, err := sutw.suts.InternalMarkRunning(ctx, taskInfo.ID)
+		if err != nil {
+			return fmt.Errorf("mark semantic understanding task running: %w", err)
+		}
+		if !claimed {
+			logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)
+			return nil
+		}
+	}
 	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending ||
 		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusRunning ||
 		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted {
@@ -264,16 +276,6 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	}
 
 	agentTaskID := taskInfo.AgentTaskID
-	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
-		claimed, err := sutw.suts.InternalMarkRunning(ctx, taskInfo.ID)
-		if err != nil {
-			return fmt.Errorf("mark semantic understanding task running: %w", err)
-		}
-		if !claimed {
-			logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)
-			return nil
-		}
-	}
 	if agentTaskID == "" {
 		agentTaskID, err = sutw.bas.Run(ctx, taskInfo)
 		if err != nil {

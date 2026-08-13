@@ -120,8 +120,7 @@ func TestSemanticUnderstandingTaskWorkerKeepsPendingTaskWhenClaimFails(t *testin
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
-	resourceService := vmock.NewMockResourceService(ctrl)
-	worker := &SemanticUnderstandingTaskWorker{suts: taskService, rs: resourceService}
+	worker := &SemanticUnderstandingTaskWorker{suts: taskService}
 	taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(
 		&interfaces.SemanticUnderstandingTask{
 			ID:         "semantic-task-1",
@@ -129,9 +128,6 @@ func TestSemanticUnderstandingTaskWorkerKeepsPendingTaskWhenClaimFails(t *testin
 			ResourceID: "resource-1",
 			Status:     interfaces.SemanticUnderstandingTaskStatusPending,
 		}, nil,
-	)
-	resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(
-		&interfaces.Resource{ID: "resource-1"}, nil,
 	)
 	taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").
 		Return(false, errors.New("temporary database error"))
@@ -346,6 +342,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			ResourceID: "resource-1", Status: interfaces.SemanticUnderstandingTaskStatusPending,
 		}
 		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
+		taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(nil, nil)
 		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
 			Return(true, nil)
