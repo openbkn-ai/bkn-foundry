@@ -164,6 +164,22 @@ func TestDiscoverTaskAccessUpdateStatus(t *testing.T) {
 	})
 }
 
+func TestDiscoverTaskAccessMarkFailed(t *testing.T) {
+	access, mock, cleanup := newDiscoverTaskAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectExec("UPDATE t_discover_task SET f_status = ?, f_message = ?, f_finish_time = ? WHERE f_id = ? AND f_status IN (?,?)").
+		WithArgs(interfaces.DiscoverTaskStatusFailed, "execution failed", int64(123), "task-1",
+			interfaces.DiscoverTaskStatusPending, interfaces.DiscoverTaskStatusRunning).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	updated, err := access.MarkFailed(context.Background(), "task-1", "execution failed", 123)
+
+	require.NoError(t, err)
+	assert.True(t, updated)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestDiscoverTaskAccessUpdateProgress(t *testing.T) {
 	t.Run("updates progress", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)

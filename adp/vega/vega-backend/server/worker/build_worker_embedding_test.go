@@ -76,6 +76,28 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 		assert.Equal(t, creator, gotAccount)
 	})
 
+	t.Run("marks task failed when resource lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		ew := &embeddingWorker{bts: bts, rs: rs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
+		}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, errors.New("resource database unavailable"))
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().
+				WithStatus(interfaces.BuildTaskStatusFailed).
+				WithErrorMsg("resource database unavailable"),
+			interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning).
+			Return(true, nil)
+
+		err := ew.Run(context.Background(), "t1")
+
+		require.ErrorContains(t, err, "resource database unavailable")
+	})
+
 	t.Run("marks task failed when catalog is disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bts := vmock.NewMockBuildTaskService(ctrl)

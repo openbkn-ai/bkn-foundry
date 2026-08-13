@@ -179,14 +179,27 @@ func (sutw *SemanticUnderstandingTaskWorker) runQueuedTasks(ctx context.Context)
 		case <-ctx.Done():
 			return
 		case taskID := <-sutw.queue:
-			// Run reloads the task and lets the existing state guards decide whether to execute it.
-			if err := sutw.Run(ctx, taskID); err != nil {
-				logger.Errorf("Run semantic understanding task failed: id=%s, error=%v", taskID, err)
-			}
+			sutw.runSafely(ctx, taskID)
 			sutw.removeInFlight(taskID)
 			// Wake the single producer after releasing a worker slot.
 			sutw.suts.RequestDispatch()
 		}
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) runSafely(ctx context.Context, taskID string) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			detail := fmt.Sprintf("semantic understanding task panicked: %v", recovered)
+			logger.Errorf("Run semantic understanding task panicked: id=%s, error=%v", taskID, recovered)
+			if _, err := sutw.suts.MarkFailed(ctx, taskID, detail); err != nil {
+				logger.Errorf("Mark semantic understanding task failed after panic: id=%s, error=%v", taskID, err)
+			}
+		}
+	}()
+	// Run reloads the task and lets the existing state guards decide whether to execute it.
+	if err := sutw.Run(ctx, taskID); err != nil {
+		logger.Errorf("Run semantic understanding task failed: id=%s, error=%v", taskID, err)
 	}
 }
 
@@ -234,6 +247,9 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted {
 		parentExists, err := sutw.taskParentExists(ctx, taskInfo)
 		if err != nil {
+			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				logger.Errorf("Mark semantic understanding task failed after parent lookup error: id=%s, error=%v", taskInfo.ID, updateErr)
+			}
 			return err
 		}
 		if !parentExists {
@@ -254,6 +270,9 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
 		claimed, err := sutw.suts.ClaimRunning(ctx, taskInfo.ID)
 		if err != nil {
+			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				logger.Errorf("Mark semantic understanding task failed after claim error: id=%s, error=%v", taskInfo.ID, updateErr)
+			}
 			return err
 		}
 		if !claimed {
@@ -264,11 +283,17 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	if agentTaskID == "" {
 		agentTaskID, err = sutw.bas.Run(ctx, taskInfo)
 		if err != nil {
+			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				logger.Errorf("Mark semantic understanding task failed after agent start error: id=%s, error=%v", taskInfo.ID, updateErr)
+			}
 			return err
 		}
 
 		running, err := sutw.suts.SetAgentTaskID(ctx, taskInfo.ID, agentTaskID)
 		if err != nil {
+			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				logger.Errorf("Mark semantic understanding task failed after agent task update error: id=%s, error=%v", taskInfo.ID, updateErr)
+			}
 			return err
 		}
 		if !running {
@@ -279,16 +304,23 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 
 	agentTask, err := sutw.bas.WaitResult(ctx, agentTaskID)
 	if err != nil {
+		if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			logger.Errorf("Mark semantic understanding task failed after agent wait error: id=%s, error=%v", taskInfo.ID, updateErr)
+		}
 		return err
 	}
 	if agentTask.Status == interfaces.BknAgentTaskStatusFailed {
-		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask))
+		if _, err := sutw.suts.MarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask)); err != nil {
+			return fmt.Errorf("mark semantic understanding task failed after agent failure: %w", err)
+		}
 		return nil
 	}
 
 	resultJSON, confidence, confidenceDetailJSON, err := parseBknAgentResult(agentTask)
 	if err != nil {
-		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+		if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			return fmt.Errorf("mark semantic understanding task failed after result parsing error: %w", updateErr)
+		}
 		return nil
 	}
 	if taskInfo.Scope == interfaces.SemanticUnderstandingTaskScopeResource {
@@ -296,13 +328,18 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 			resultJSON, taskInfo.Input, confidenceDetailJSON, confidence,
 		)
 		if err != nil {
-			_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				return fmt.Errorf("mark semantic understanding task failed after quality assessment error: %w", updateErr)
+			}
 			return nil
 		}
 	}
 
 	completed, err := sutw.suts.MarkCompleted(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	if err != nil {
+		if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			logger.Errorf("Mark semantic understanding task failed after completion error: id=%s, error=%v", taskInfo.ID, updateErr)
+		}
 		return err
 	}
 	if !completed {

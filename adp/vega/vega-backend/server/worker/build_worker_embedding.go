@@ -84,6 +84,13 @@ func (ew *embeddingWorker) Run(ctx context.Context, taskID string) error {
 	resource, err := ew.rs.InternalGetByID(ctx, buildTaskInfo.ResourceID)
 	if err != nil {
 		logger.Errorf("Failed to get resource for task %s: %v", taskID, err)
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg(err.Error())
+		if _, updateErr := ew.bts.InternalUpdateStatus(ctx, nil, taskID, update,
+			interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning); updateErr != nil {
+			logger.Errorf("Mark build task failed after resource lookup error: id=%s, error=%v", taskID, updateErr)
+		}
 		return err
 	}
 	if resource == nil {
@@ -102,7 +109,15 @@ func (ew *embeddingWorker) Run(ctx context.Context, taskID string) error {
 			}
 			return nil
 		}
-		return fmt.Errorf("get catalog failed: %w", err)
+		err = fmt.Errorf("get catalog failed: %w", err)
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg(err.Error())
+		if _, updateErr := ew.bts.InternalUpdateStatus(ctx, nil, taskID, update,
+			interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning); updateErr != nil {
+			logger.Errorf("Mark build task failed after catalog lookup error: id=%s, error=%v", taskID, updateErr)
+		}
+		return err
 	}
 	if !catalogInfo.Enabled {
 		update := interfaces.NewBuildTaskUpdate().

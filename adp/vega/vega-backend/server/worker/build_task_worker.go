@@ -277,7 +277,6 @@ func (btw *BuildTaskWorker) runEmbeddingSafely(ctx context.Context, taskID strin
 	}()
 	if err := btw.ebw.Run(ctx, taskID); err != nil {
 		logger.Errorf("Run build embedding failed: id=%s, error=%v", taskID, err)
-		btw.failTask(ctx, taskID, err.Error())
 	}
 }
 

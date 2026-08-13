@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
@@ -58,10 +59,28 @@ func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
 	}, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
-	dts.EXPECT().InternalUpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusFailed,
-		"catalog is disabled", gomock.Any()).Return(nil)
+	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "catalog is disabled", gomock.Any()).Return(true, nil)
 
 	require.NoError(t, worker.Run(context.Background(), "task-1"))
+}
+
+func TestDiscoverTaskWorkerMarksTaskFailedWhenCatalogLookupFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+		Return(nil, errors.New("temporary database error"))
+	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "temporary database error", gomock.Any()).
+		Return(true, nil)
+
+	err := worker.Run(context.Background(), "task-1")
+
+	require.ErrorContains(t, err, "temporary database error")
 }
 
 func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
@@ -120,6 +139,55 @@ func TestDiscoverTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testing.
 	worker.queue <- "already-queued"
 
 	worker.fillQueue(context.Background())
+}
+
+func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockDiscoverTaskService(ctrl)
+	ctx, cancel := context.WithCancel(context.Background())
+	worker := &DiscoverTaskWorker{
+		dts: taskService,
+		queue: func() chan string {
+			queue := make(chan string, 2)
+			queue <- "task-1"
+			queue <- "task-2"
+			return queue
+		}(),
+		inFlight: map[string]struct{}{"task-1": {}, "task-2": {}},
+	}
+	taskService.EXPECT().InternalGetByID(gomock.Any(), "task-1").DoAndReturn(
+		func(context.Context, string) (*interfaces.DiscoverTask, error) {
+			panic("unexpected connector panic")
+		},
+	)
+	taskService.EXPECT().
+		InternalMarkFailed(gomock.Any(), "task-1", "discover task panicked: unexpected connector panic", gomock.Any()).
+		Return(true, nil)
+	taskService.EXPECT().InternalGetByID(gomock.Any(), "task-2").Return(&interfaces.DiscoverTask{
+		ID: "task-2", Status: interfaces.DiscoverTaskStatusFailed,
+	}, nil)
+	dispatchCount := 0
+	taskService.EXPECT().RequestDispatch().Times(2).Do(func() {
+		dispatchCount++
+		if dispatchCount == 2 {
+			cancel()
+		}
+	})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		worker.runQueuedTasks(ctx)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("discover task worker did not continue after panic")
+	}
+	assert.True(t, worker.addInFlight("task-1"), "panic must not leak the in-flight task ID")
+	assert.True(t, worker.addInFlight("task-2"), "worker must continue and release the next task ID")
 }
 
 func TestReconcileTableResources(t *testing.T) {

@@ -138,6 +138,12 @@ config:
     workerEnabled: true
     timeout: 30s
     cronExpr: "0 * * * *"
+  taskWorker:
+    # Local worker counts for the single-instance database task loops.
+    semanticWorkerCount: 1
+    discoverWorkerCount: 1
+    batchWorkerCount: 1
+    streamingWorkerCount: 1
   # RSA 公钥配置
   crypto:
     enabled: false

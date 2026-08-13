@@ -145,6 +145,21 @@ func (mr *MockDiscoverTaskAccessMockRecorder) MarkCancelledByCatalogID(ctx, tx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelledByCatalogID", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).MarkCancelledByCatalogID), ctx, tx, catalogID, message, finishTime)
 }
 
+// MarkFailed mocks base method.
+func (m *MockDiscoverTaskAccess) MarkFailed(ctx context.Context, id, message string, finishTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MarkFailed", ctx, id, message, finishTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MarkFailed indicates an expected call of MarkFailed.
+func (mr *MockDiscoverTaskAccessMockRecorder) MarkFailed(ctx, id, message, finishTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).MarkFailed), ctx, id, message, finishTime)
+}
+
 // UpdateProgress mocks base method.
 func (m *MockDiscoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int) error {
 	m.ctrl.T.Helper()
