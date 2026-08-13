@@ -220,11 +220,11 @@ func (suts *semanticUnderstandingTaskService) InternalGetByID(ctx context.Contex
 	return task, nil
 }
 
-func (suts *semanticUnderstandingTaskService) InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
-	if tx == nil {
-		return false, fmt.Errorf("transaction is required")
-	}
-	return suts.suta.MarkAppliedWithTx(ctx, tx, id, applied, time.Now().UnixMilli(), applyDetailJSON)
+func (suts *semanticUnderstandingTaskService) InternalSetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalSetApplied")
+	defer span.End()
+
+	return suts.suta.SetApplied(ctx, tx, id, applied, time.Now().UnixMilli(), applyDetailJSON)
 }
 
 func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
@@ -367,8 +367,8 @@ func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskR
 	return errors.Join(referenceErrors...)
 }
 
-func (suts *semanticUnderstandingTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.Delete")
+func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.DeleteByIDs")
 	defer span.End()
 
 	seen := make(map[string]struct{}, len(ids))
@@ -441,7 +441,10 @@ func (suts *semanticUnderstandingTaskService) InternalMarkRunning(ctx context.Co
 	return suts.suta.MarkRunning(ctx, id, time.Now().UnixMilli())
 }
 
-func (suts *semanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {
+func (suts *semanticUnderstandingTaskService) InternalSetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalSetAgentTaskID")
+	defer span.End()
+
 	if agentTaskID == "" {
 		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("agent_task_id is required")
@@ -449,8 +452,8 @@ func (suts *semanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context
 	return suts.suta.SetAgentTaskID(ctx, id, agentTaskID, time.Now().UnixMilli())
 }
 
-func (suts *semanticUnderstandingTaskService) MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkCompleted")
+func (suts *semanticUnderstandingTaskService) InternalMarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalMarkCompleted")
 	defer span.End()
 
 	if confidence < 0 || confidence > 1 {
@@ -460,25 +463,18 @@ func (suts *semanticUnderstandingTaskService) MarkCompleted(ctx context.Context,
 	return suts.suta.MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON, time.Now().UnixMilli())
 }
 
-func (suts *semanticUnderstandingTaskService) MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkFailed")
+func (suts *semanticUnderstandingTaskService) InternalMarkFailed(ctx context.Context, id string, failureDetail string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalMarkFailed")
 	defer span.End()
 
 	return suts.suta.MarkFailed(ctx, id, failureDetail, time.Now().UnixMilli())
 }
 
-func (suts *semanticUnderstandingTaskService) MarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkCancelled")
+func (suts *semanticUnderstandingTaskService) InternalMarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalMarkCancelled")
 	defer span.End()
 
 	return suts.suta.MarkCancelled(ctx, id, failureDetail, time.Now().UnixMilli())
-}
-
-func (suts *semanticUnderstandingTaskService) MarkApplied(ctx context.Context, id string, applied bool, applyDetailJSON string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.MarkApplied")
-	defer span.End()
-
-	return suts.suta.MarkApplied(ctx, id, applied, time.Now().UnixMilli(), applyDetailJSON)
 }
 
 func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {

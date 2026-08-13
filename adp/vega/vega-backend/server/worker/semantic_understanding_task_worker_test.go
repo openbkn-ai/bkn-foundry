@@ -7,6 +7,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"testing"
@@ -91,7 +92,7 @@ func TestSemanticUnderstandingTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 	gomock.InOrder(
 		taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 			[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, int64(1), nil),
-		taskService.EXPECT().MarkFailed(gomock.Any(), "task-1",
+		taskService.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
 			"semantic understanding task interrupted by service restart").Return(true, nil),
 		taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 			[]*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil),
@@ -107,7 +108,7 @@ func TestSemanticUnderstandingTaskWorkerRecoveryFailsWhenTaskIsNotUpdated(t *tes
 	worker := &SemanticUnderstandingTaskWorker{suts: taskService, queueSize: 1}
 	taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 		[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, int64(1), nil)
-	taskService.EXPECT().MarkFailed(gomock.Any(), "task-1",
+	taskService.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
 		"semantic understanding task interrupted by service restart").Return(false, nil)
 
 	err := worker.recoverInterruptedTasks(context.Background())
@@ -136,7 +137,7 @@ func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
 		},
 	)
 	taskService.EXPECT().
-		MarkFailed(gomock.Any(), "semantic-task-1", "semantic understanding task panicked: unexpected agent panic").
+		InternalMarkFailed(gomock.Any(), "semantic-task-1", "semantic understanding task panicked: unexpected agent panic").
 		Return(true, nil)
 	taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-2").Return(&interfaces.SemanticUnderstandingTask{
 		ID: "semantic-task-2", Status: interfaces.SemanticUnderstandingTaskStatusFailed,
@@ -224,7 +225,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			InternalMarkRunning(ctxWithAccountID(t, "account-1"), "semantic-task-1").
 			Return(true, nil)
 		taskService.EXPECT().
-			SetAgentTaskID(ctxWithAccountID(t, "account-1"), "semantic-task-1", "agent-task-1").
+			InternalSetAgentTaskID(ctxWithAccountID(t, "account-1"), "semantic-task-1", "agent-task-1").
 			Return(true, nil)
 		agentService.EXPECT().
 			WaitResult(gomock.Any(), "agent-task-1").
@@ -249,7 +250,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 				return nil
 			})
 		taskService.EXPECT().
-			MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
+			InternalMarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, _ string, _ float64, detailJSON string) (bool, error) {
 				var detail map[string]sonic.NoCopyRawMessage
 				require.NoError(t, sonic.Unmarshal([]byte(detailJSON), &detail))
@@ -259,8 +260,8 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 				return true, nil
 			})
 		taskService.EXPECT().
-			MarkApplied(gomock.Any(), "semantic-task-1", true, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, applied bool, detailJSON string) (bool, error) {
+			InternalSetApplied(gomock.Any(), nil, "semantic-task-1", true, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, applied bool, detailJSON string) (bool, error) {
 				assert.True(t, applied)
 				assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name","description"],"updated_fields":["id"],"field_details":[{"name":"id","status":"updated","updated":["display_name","description"]}]}`, detailJSON)
 				return true, nil
@@ -300,7 +301,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 				FailureDetail: "agent failed",
 			}, nil)
 		taskService.EXPECT().
-			MarkFailed(gomock.Any(), "semantic-task-1", "agent failed").
+			InternalMarkFailed(gomock.Any(), "semantic-task-1", "agent failed").
 			Return(true, nil)
 
 		err := worker.Run(context.Background(), "semantic-task-1")
@@ -321,7 +322,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		}
 		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(nil, nil)
-		taskService.EXPECT().MarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
+		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
 			Return(true, nil)
 
 		require.NoError(t, worker.Run(context.Background(), "semantic-task-1"))
@@ -341,7 +342,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
 		catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
 			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
-		taskService.EXPECT().MarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
+		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
 			Return(true, nil)
 
 		require.NoError(t, worker.Run(context.Background(), "semantic-task-1"))
@@ -371,7 +372,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{ID: "resource-1"}, nil)
 		taskService.EXPECT().
-			MarkApplied(ctxWithAccountID(t, "account-1"), "semantic-task-1", false, gomock.Any()).
+			InternalSetApplied(ctxWithAccountID(t, "account-1"), nil, "semantic-task-1", false, gomock.Any()).
 			Return(true, nil)
 
 		err := worker.Run(context.Background(), "semantic-task-1")
@@ -424,7 +425,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			Run(ctxWithAccountID(t, "account-1"), semanticTask).
 			Return("", errors.New("temporary agent error"))
 		taskService.EXPECT().
-			MarkFailed(gomock.Any(), "semantic-task-1", "temporary agent error").
+			InternalMarkFailed(gomock.Any(), "semantic-task-1", "temporary agent error").
 			Return(true, nil)
 
 		err := worker.Run(context.Background(), "semantic-task-1")
@@ -456,7 +457,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			WaitResult(ctxWithAccountID(t, "account-1"), "agent-task-1").
 			Return(nil, errors.New("temporary agent error"))
 		taskService.EXPECT().
-			MarkFailed(gomock.Any(), "semantic-task-1", "temporary agent error").
+			InternalMarkFailed(gomock.Any(), "semantic-task-1", "temporary agent error").
 			Return(true, nil)
 
 		err := worker.Run(context.Background(), "semantic-task-1")
@@ -499,11 +500,11 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 				Result: []byte(`{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`),
 			}, nil)
 		taskService.EXPECT().
-			MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`, 0.8, gomock.Any()).
+			InternalMarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8,"resource":{"description":"business resource"},"fields":[]}`, 0.8, gomock.Any()).
 			Return(true, nil)
 		taskService.EXPECT().
-			MarkApplied(gomock.Any(), "semantic-task-1", false, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, applied bool, detailJSON string) (bool, error) {
+			InternalSetApplied(gomock.Any(), nil, "semantic-task-1", false, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, applied bool, detailJSON string) (bool, error) {
 				assert.False(t, applied)
 				assert.JSONEq(t, `{"reason":"confidence_below_threshold","confidence":0.8,"confidence_threshold":0.9,"scope":"resource"}`, detailJSON)
 				return true, nil

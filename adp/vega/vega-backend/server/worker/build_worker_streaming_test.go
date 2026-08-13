@@ -74,9 +74,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		}
 		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
-			interfaces.BuildTaskStatusRunning).Return(true, nil)
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "resource deleted").Return(true, nil)
 
 		require.NoError(t, worker.Run(context.Background(), task))
 	})
@@ -99,10 +97,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 			ConnectorType: interfaces.ConnectorTypePostgreSQL,
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusFailed).
-				WithErrorMsg("PostgreSQL streaming build requires connector_config.database")).
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "PostgreSQL streaming build requires connector_config.database").
 			Return(true, nil)
 
 		require.NoError(t, sh.Run(context.Background(), task))

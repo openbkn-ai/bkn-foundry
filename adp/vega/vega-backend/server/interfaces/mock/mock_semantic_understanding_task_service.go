@@ -72,18 +72,18 @@ func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) CreateResourceTask(c
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateResourceTask", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).CreateResourceTask), ctx, resourceID, req)
 }
 
-// Delete mocks base method.
-func (m *MockSemanticUnderstandingTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {
+// DeleteByIDs mocks base method.
+func (m *MockSemanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, ids, ignoreMissing)
+	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids, ignoreMissing)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Delete indicates an expected call of Delete.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) Delete(ctx, ids, ignoreMissing any) *gomock.Call {
+// DeleteByIDs indicates an expected call of DeleteByIDs.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) DeleteByIDs(ctx, ids, ignoreMissing any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).Delete), ctx, ids, ignoreMissing)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).DeleteByIDs), ctx, ids, ignoreMissing)
 }
 
 // DispatchSignal mocks base method.
@@ -146,19 +146,49 @@ func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalList(ctx, pa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalList), ctx, params)
 }
 
-// InternalMarkApplied mocks base method.
-func (m *MockSemanticUnderstandingTaskService) InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
+// InternalMarkCancelled mocks base method.
+func (m *MockSemanticUnderstandingTaskService) InternalMarkCancelled(ctx context.Context, id, failureDetail string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalMarkApplied", ctx, tx, id, applied, applyDetailJSON)
+	ret := m.ctrl.Call(m, "InternalMarkCancelled", ctx, id, failureDetail)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// InternalMarkApplied indicates an expected call of InternalMarkApplied.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkApplied(ctx, tx, id, applied, applyDetailJSON any) *gomock.Call {
+// InternalMarkCancelled indicates an expected call of InternalMarkCancelled.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkCancelled(ctx, id, failureDetail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkApplied), ctx, tx, id, applied, applyDetailJSON)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCancelled", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkCancelled), ctx, id, failureDetail)
+}
+
+// InternalMarkCompleted mocks base method.
+func (m *MockSemanticUnderstandingTaskService) InternalMarkCompleted(ctx context.Context, id, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalMarkCompleted", ctx, id, resultJSON, confidence, confidenceDetailJSON)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalMarkCompleted indicates an expected call of InternalMarkCompleted.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCompleted", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkCompleted), ctx, id, resultJSON, confidence, confidenceDetailJSON)
+}
+
+// InternalMarkFailed mocks base method.
+func (m *MockSemanticUnderstandingTaskService) InternalMarkFailed(ctx context.Context, id, failureDetail string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalMarkFailed", ctx, id, failureDetail)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalMarkFailed indicates an expected call of InternalMarkFailed.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkFailed(ctx, id, failureDetail any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkFailed", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkFailed), ctx, id, failureDetail)
 }
 
 // InternalMarkRunning mocks base method.
@@ -174,6 +204,36 @@ func (m *MockSemanticUnderstandingTaskService) InternalMarkRunning(ctx context.C
 func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkRunning(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkRunning), ctx, id)
+}
+
+// InternalSetAgentTaskID mocks base method.
+func (m *MockSemanticUnderstandingTaskService) InternalSetAgentTaskID(ctx context.Context, id, agentTaskID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalSetAgentTaskID", ctx, id, agentTaskID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalSetAgentTaskID indicates an expected call of InternalSetAgentTaskID.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalSetAgentTaskID(ctx, id, agentTaskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalSetAgentTaskID", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalSetAgentTaskID), ctx, id, agentTaskID)
+}
+
+// InternalSetApplied mocks base method.
+func (m *MockSemanticUnderstandingTaskService) InternalSetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalSetApplied", ctx, tx, id, applied, applyDetailJSON)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalSetApplied indicates an expected call of InternalSetApplied.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalSetApplied(ctx, tx, id, applied, applyDetailJSON any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalSetApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalSetApplied), ctx, tx, id, applied, applyDetailJSON)
 }
 
 // List mocks base method.
@@ -192,66 +252,6 @@ func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) List(ctx, params any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).List), ctx, params)
 }
 
-// MarkApplied mocks base method.
-func (m *MockSemanticUnderstandingTaskService) MarkApplied(ctx context.Context, id string, applied bool, applyDetailJSON string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkApplied", ctx, id, applied, applyDetailJSON)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// MarkApplied indicates an expected call of MarkApplied.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkApplied(ctx, id, applied, applyDetailJSON any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkApplied), ctx, id, applied, applyDetailJSON)
-}
-
-// MarkCancelled mocks base method.
-func (m *MockSemanticUnderstandingTaskService) MarkCancelled(ctx context.Context, id, failureDetail string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCancelled", ctx, id, failureDetail)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// MarkCancelled indicates an expected call of MarkCancelled.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkCancelled(ctx, id, failureDetail any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkCancelled), ctx, id, failureDetail)
-}
-
-// MarkCompleted mocks base method.
-func (m *MockSemanticUnderstandingTaskService) MarkCompleted(ctx context.Context, id, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCompleted", ctx, id, resultJSON, confidence, confidenceDetailJSON)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// MarkCompleted indicates an expected call of MarkCompleted.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCompleted", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkCompleted), ctx, id, resultJSON, confidence, confidenceDetailJSON)
-}
-
-// MarkFailed mocks base method.
-func (m *MockSemanticUnderstandingTaskService) MarkFailed(ctx context.Context, id, failureDetail string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkFailed", ctx, id, failureDetail)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// MarkFailed indicates an expected call of MarkFailed.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) MarkFailed(ctx, id, failureDetail any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).MarkFailed), ctx, id, failureDetail)
-}
-
 // RequestDispatch mocks base method.
 func (m *MockSemanticUnderstandingTaskService) RequestDispatch() {
 	m.ctrl.T.Helper()
@@ -262,19 +262,4 @@ func (m *MockSemanticUnderstandingTaskService) RequestDispatch() {
 func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) RequestDispatch() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestDispatch", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).RequestDispatch))
-}
-
-// SetAgentTaskID mocks base method.
-func (m *MockSemanticUnderstandingTaskService) SetAgentTaskID(ctx context.Context, id, agentTaskID string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetAgentTaskID", ctx, id, agentTaskID)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SetAgentTaskID indicates an expected call of SetAgentTaskID.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) SetAgentTaskID(ctx, id, agentTaskID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAgentTaskID", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).SetAgentTaskID), ctx, id, agentTaskID)
 }

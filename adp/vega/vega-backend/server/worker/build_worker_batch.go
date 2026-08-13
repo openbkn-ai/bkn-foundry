@@ -70,8 +70,7 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
-			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			if _, err := bbw.bts.InternalUpdateStatus(ctx, nil, taskID, update); err != nil {
+			if _, err := bbw.bts.InternalMarkStopped(ctx, taskID); err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
@@ -123,12 +122,8 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo, executeType)
 	}
 	if err != nil {
-		// Update task status to failed
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg(err.Error())
-		_, err = bbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
+		_, err = bbw.bts.InternalMarkFailed(ctx, taskID, err.Error())
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -185,11 +180,14 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		// 否则跨运行累计出 synced > total 的显示
 		buildTaskInfo.SyncedCount = 0
 		buildTaskInfo.VectorizedCount = 0
-		update := interfaces.NewBuildTaskUpdate().
-			WithSyncedCount(0).
-			WithVectorizedCount(0).
-			WithSyncedMark("")
-		if _, err := bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update); err != nil {
+		zero := int64(0)
+		emptyMark := ""
+		progress := interfaces.BuildTaskProgress{
+			SyncedCount:     &zero,
+			VectorizedCount: &zero,
+			SyncedMark:      &emptyMark,
+		}
+		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 	}
@@ -288,8 +286,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			// Task is stopping, exit the loop
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
 			// Update task status to stopped
-			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			_, err = bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = bbw.bts.InternalMarkStopped(ctx, buildTaskInfo.ID)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -366,20 +363,21 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 			syncedCount += int64(readRows)
 			// Set firstQuery to false after the first query
-			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
+			progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
 			if firstQuery {
 				firstQuery = false
-				update = update.WithTotalCount(int64(totalRows))
+				totalCount := int64(totalRows)
+				progress.TotalCount = &totalCount
 			}
 			if len(newSyncedMark) > 0 {
 				syncedMarkStr, err := sonic.MarshalString(newSyncedMark)
 				if err != nil {
 					return fmt.Errorf("failed to marshal synced mark: %w", err)
 				} else {
-					update = update.WithSyncedMark(syncedMarkStr)
+					progress.SyncedMark = &syncedMarkStr
 				}
 			}
-			_, err = bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}

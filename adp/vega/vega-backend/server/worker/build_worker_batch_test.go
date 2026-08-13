@@ -50,7 +50,8 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		}
 		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "get catalog failed: forbidden").
+			Return(true, nil)
 
 		var gotAccount interfaces.AccountInfo
 		var hasAccount bool
@@ -93,9 +94,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		}
 		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
-			interfaces.BuildTaskStatusRunning).Return(true, nil)
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "resource deleted").Return(true, nil)
 
 		require.NoError(t, bbw.Run(context.Background(), task))
 	})
@@ -117,9 +116,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).
 			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("catalog deleted"),
-			interfaces.BuildTaskStatusRunning).Return(true, nil)
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "catalog deleted").Return(true, nil)
 
 		require.NoError(t, bbw.Run(context.Background(), taskInfo))
 	})
@@ -148,10 +145,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		bts.EXPECT().InternalMarkRunning(gomock.Any(), "t1").Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusFailed).
-				WithErrorMsg("get catalog failed: catalog down")).
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "get catalog failed: catalog down").
 			Return(true, nil)
 
 		require.NoError(t, bbw.Run(context.Background(), task))

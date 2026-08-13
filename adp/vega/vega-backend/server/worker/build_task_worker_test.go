@@ -101,14 +101,9 @@ func TestBuildTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 				{ID: "stopping-task", Status: interfaces.BuildTaskStatusStopping},
 			}, 2, nil
 		})
-	runningUpdate := bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "running-task",
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("build task interrupted by service restart"),
-		interfaces.BuildTaskStatusRunning).Return(true, nil).After(firstList)
-	stoppingUpdate := bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "stopping-task",
-		interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped),
-		interfaces.BuildTaskStatusStopping).Return(true, nil).After(runningUpdate)
+	runningUpdate := bts.EXPECT().InternalMarkFailed(gomock.Any(), "running-task",
+		"build task interrupted by service restart").Return(true, nil).After(firstList)
+	stoppingUpdate := bts.EXPECT().InternalMarkStopped(gomock.Any(), "stopping-task").Return(true, nil).After(runningUpdate)
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 		[]*interfaces.BuildTask{}, int64(0), nil).After(stoppingUpdate)
 
@@ -127,11 +122,8 @@ func TestBuildTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{{
 		ID: "task-1", Status: interfaces.BuildTaskStatusRunning,
 	}}, int64(1), nil)
-	bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "task-1",
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("build task interrupted by service restart"),
-		interfaces.BuildTaskStatusRunning).Return(false, errors.New("database unavailable"))
+	bts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
+		"build task interrupted by service restart").Return(false, errors.New("database unavailable"))
 
 	err := worker.recoverInterruptedTasks(context.Background())
 
@@ -186,11 +178,7 @@ func TestBuildTaskWorkerRejectsModeMismatch(t *testing.T) {
 				Status: interfaces.BuildTaskStatusPending,
 				Mode:   tt.mode,
 			}, nil)
-			bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "task-1",
-				interfaces.NewBuildTaskUpdate().
-					WithStatus(interfaces.BuildTaskStatusFailed).
-					WithErrorMsg(tt.errorMsg),
-				interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning).
+			bts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", tt.errorMsg).
 				Return(true, nil)
 
 			err := tt.runTask(worker)

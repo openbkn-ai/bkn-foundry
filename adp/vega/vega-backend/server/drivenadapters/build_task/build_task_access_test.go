@@ -87,26 +87,6 @@ func TestBuildTaskAccessCreate(t *testing.T) {
 	})
 }
 
-func TestBuildTaskAccessGetByResourceID(t *testing.T) {
-	t.Run("returns build task", func(t *testing.T) {
-		db, mock, access := newBuildTaskAccessMock(t)
-		defer func() { _ = db.Close() }()
-		task := sampleBuildTask()
-
-		rows := sqlmock.NewRows(buildTaskColumns()).AddRow(buildTaskRowValues(task)...)
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskColumns() + " FROM t_build_task WHERE f_resource_id = ? ORDER BY f_create_time DESC LIMIT 1")).
-			WithArgs(task.ResourceID).
-			WillReturnRows(rows)
-
-		got, err := access.GetByResourceID(context.Background(), task.ResourceID)
-
-		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.Equal(t, task.ID, got.ID)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
 func TestBuildTaskAccessGetByCatalogID(t *testing.T) {
 	t.Run("returns tasks", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
@@ -150,33 +130,35 @@ func TestBuildTaskAccessGetByCatalogID(t *testing.T) {
 	})
 }
 
-func TestBuildTaskAccessUpdateStatus(t *testing.T) {
-	t.Run("updates status", func(t *testing.T) {
+func TestBuildTaskAccessSetProgress(t *testing.T) {
+	t.Run("updates progress for running task", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?")).
-			WithArgs(interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusCancelled).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_synced_count = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?,?)")).
+			WithArgs(int64(10), int64(123), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning)
-		updated, err := access.UpdateStatus(context.Background(), nil, "task-1", update, 123)
+		syncedCount := int64(10)
+		progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
+		updated, err := access.SetProgress(context.Background(), nil, "task-1", progress, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("does not overwrite cancelled task", func(t *testing.T) {
+	t.Run("does not update terminal task", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status <> ?")).
-			WithArgs(interfaces.BuildTaskStatusFailed, int64(123), "task-1", interfaces.BuildTaskStatusCancelled).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_synced_count = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?,?)")).
+			WithArgs(int64(10), int64(123), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		updated, err := access.UpdateStatus(context.Background(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusFailed), 123)
+		syncedCount := int64(10)
+		updated, err := access.SetProgress(context.Background(), nil, "task-1",
+			interfaces.BuildTaskProgress{SyncedCount: &syncedCount}, 123)
 
 		require.NoError(t, err)
 		assert.False(t, updated)
@@ -184,22 +166,16 @@ func TestBuildTaskAccessUpdateStatus(t *testing.T) {
 	})
 }
 
-func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
+func TestBuildTaskAccessMarkRunning(t *testing.T) {
 	t.Run("returns true when a row is claimed", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
 			WithArgs("", interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusRunning).
-				WithErrorMsg(""),
-			123,
-			interfaces.BuildTaskStatusPending,
-		)
+		claimed, err := access.MarkRunning(context.Background(), "task-1", 123)
 
 		require.NoError(t, err)
 		assert.True(t, claimed)
@@ -210,20 +186,30 @@ func TestBuildTaskAccessUpdateStatusWithAllowedStatuses(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs(interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs("", interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		claimed, err := access.UpdateStatus(context.Background(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning),
-			123,
-			interfaces.BuildTaskStatusPending,
-		)
+		claimed, err := access.MarkRunning(context.Background(), "task-1", 123)
 
 		require.NoError(t, err)
 		assert.False(t, claimed)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestBuildTaskAccessMarkCancelledByCatalogID(t *testing.T) {
+	db, mock, access := newBuildTaskAccessMock(t)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_status = ?")).
+		WithArgs("catalog deleted", interfaces.BuildTaskStatusCancelled, int64(123), "catalog-1", interfaces.BuildTaskStatusPending).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	err := access.MarkCancelledByCatalogID(context.Background(), nil, "catalog-1", "catalog deleted", 123)
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestBuildTaskAccessGetStatus(t *testing.T) {
@@ -337,31 +323,30 @@ func TestBuildTaskAccessInternalList(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestBuildTaskAccessDelete(t *testing.T) {
-	t.Run("deletes task", func(t *testing.T) {
+func TestBuildTaskAccessDeleteByIDs(t *testing.T) {
+	t.Run("deletes tasks", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_task WHERE f_id = ?")).
-			WithArgs("task-1").
-			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_task WHERE f_id IN (?,?)")).
+			WithArgs("task-1", "task-2").
+			WillReturnResult(sqlmock.NewResult(0, 2))
 
-		require.NoError(t, access.Delete(context.Background(), "task-1"))
+		deleted, err := access.DeleteByIDs(context.Background(), []string{"task-1", "task-2"})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), deleted)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("returns not found error", func(t *testing.T) {
+	t.Run("empty ids do not query database", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_task WHERE f_id = ?")).
-			WithArgs("missing").
-			WillReturnResult(sqlmock.NewResult(0, 0))
+		deleted, err := access.DeleteByIDs(context.Background(), nil)
 
-		err := access.Delete(context.Background(), "missing")
-
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "build task not found")
+		require.NoError(t, err)
+		assert.Zero(t, deleted)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -369,11 +354,11 @@ func TestBuildTaskAccessDelete(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_task WHERE f_id = ?")).
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_task WHERE f_id IN (?)")).
 			WithArgs("task-1").
 			WillReturnResult(sqlmock.NewErrorResult(errors.New("rows affected failed")))
 
-		err := access.Delete(context.Background(), "task-1")
+		_, err := access.DeleteByIDs(context.Background(), []string{"task-1"})
 
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "rows affected failed")

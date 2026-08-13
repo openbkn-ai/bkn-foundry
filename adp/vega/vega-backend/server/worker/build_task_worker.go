@@ -109,13 +109,13 @@ func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 			if task == nil {
 				return fmt.Errorf("list interrupted build tasks returned a nil task")
 			}
-			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
+			var changed bool
 			if task.Status == interfaces.BuildTaskStatusRunning {
-				update = interfaces.NewBuildTaskUpdate().
-					WithStatus(interfaces.BuildTaskStatusFailed).
-					WithErrorMsg("build task interrupted by service restart")
+				changed, err = btw.bts.InternalMarkFailed(ctx, task.ID,
+					"build task interrupted by service restart")
+			} else {
+				changed, err = btw.bts.InternalMarkStopped(ctx, task.ID)
 			}
-			changed, err := btw.bts.InternalUpdateStatus(ctx, nil, task.ID, update, task.Status)
 			if err != nil {
 				return fmt.Errorf("recover interrupted build task %s: %w", task.ID, err)
 			}
@@ -341,11 +341,7 @@ func (btw *BuildTaskWorker) waitForTerminalStatus(ctx context.Context, taskID st
 }
 
 func (btw *BuildTaskWorker) failTask(ctx context.Context, taskID, detail string) {
-	update := interfaces.NewBuildTaskUpdate().
-		WithStatus(interfaces.BuildTaskStatusFailed).
-		WithErrorMsg(detail)
-	if _, err := btw.bts.InternalUpdateStatus(ctx, nil, taskID, update,
-		interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning); err != nil {
+	if _, err := btw.bts.InternalMarkFailed(ctx, taskID, detail); err != nil {
 		logger.Errorf("Mark build task failed: id=%s, error=%v", taskID, err)
 	}
 }

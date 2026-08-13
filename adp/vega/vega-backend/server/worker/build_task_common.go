@@ -8,6 +8,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -98,10 +99,23 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 		}
 	}
 
-	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCompleted)
-	if _, err := bts.InternalUpdateStatus(ctx, tx, taskID, update); err != nil {
+	completed, err := bts.InternalMarkCompleted(ctx, tx, taskID)
+	if err != nil {
 		resource.LocalIndexName = oldIndexName
 		return fmt.Errorf("update build task status: %w", err)
+	}
+	if !completed {
+		resource.LocalIndexName = oldIndexName
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			return fmt.Errorf("rollback completion after build task state changed: %w", err)
+		}
+		committed = true
+		// A stop request may win the race with completion. The resource update
+		// has been rolled back, so finish the stopping -> stopped transition.
+		if _, err := bts.InternalMarkStopped(ctx, taskID); err != nil {
+			return fmt.Errorf("mark build task stopped: %w", err)
+		}
+		return nil
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -121,12 +135,7 @@ func isBuildTaskTerminal(status string) bool {
 }
 
 func cancelBuildTaskForDeletedParent(ctx context.Context, bts interfaces.BuildTaskService, taskID, detail string) error {
-	_, err := bts.InternalUpdateStatus(ctx, nil, taskID,
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusCancelled).
-			WithErrorMsg(detail),
-		interfaces.BuildTaskStatusRunning,
-	)
+	_, err := bts.InternalMarkCancelled(ctx, taskID, detail)
 	return err
 }
 

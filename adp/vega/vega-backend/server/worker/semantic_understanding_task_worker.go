@@ -105,7 +105,7 @@ func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context
 			if task == nil {
 				return errors.New("list interrupted semantic understanding tasks returned a nil task")
 			}
-			changed, err := sutw.suts.MarkFailed(ctx, task.ID, recoveryFailure)
+			changed, err := sutw.suts.InternalMarkFailed(ctx, task.ID, recoveryFailure)
 			if err != nil {
 				return fmt.Errorf("mark interrupted semantic understanding task %s failed: %w", task.ID, err)
 			}
@@ -189,7 +189,7 @@ func (sutw *SemanticUnderstandingTaskWorker) runSafely(ctx context.Context, task
 		if recovered := recover(); recovered != nil {
 			detail := fmt.Sprintf("semantic understanding task panicked: %v", recovered)
 			logger.Errorf("Run semantic understanding task panicked: id=%s, error=%v", taskID, recovered)
-			if _, err := sutw.suts.MarkFailed(ctx, taskID, detail); err != nil {
+			if _, err := sutw.suts.InternalMarkFailed(ctx, taskID, detail); err != nil {
 				logger.Errorf("Mark semantic understanding task failed after panic: id=%s, error=%v", taskID, err)
 			}
 		}
@@ -244,14 +244,14 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted {
 		parentExists, err := sutw.taskParentExists(ctx, taskInfo)
 		if err != nil {
-			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 				logger.Errorf("Mark semantic understanding task failed after parent lookup error: id=%s, error=%v", taskInfo.ID, updateErr)
 			}
 			return err
 		}
 		if !parentExists {
 			if taskInfo.Status != interfaces.SemanticUnderstandingTaskStatusCompleted {
-				if _, err := sutw.suts.MarkCancelled(ctx, taskInfo.ID, "catalog or resource deleted"); err != nil {
+				if _, err := sutw.suts.InternalMarkCancelled(ctx, taskInfo.ID, "catalog or resource deleted"); err != nil {
 					return fmt.Errorf("cancel semantic understanding task after parent deletion: %w", err)
 				}
 			}
@@ -267,7 +267,7 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
 		claimed, err := sutw.suts.InternalMarkRunning(ctx, taskInfo.ID)
 		if err != nil {
-			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 				logger.Errorf("Mark semantic understanding task failed after claim error: id=%s, error=%v", taskInfo.ID, updateErr)
 			}
 			return err
@@ -280,15 +280,15 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 	if agentTaskID == "" {
 		agentTaskID, err = sutw.bas.Run(ctx, taskInfo)
 		if err != nil {
-			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 				logger.Errorf("Mark semantic understanding task failed after agent start error: id=%s, error=%v", taskInfo.ID, updateErr)
 			}
 			return err
 		}
 
-		running, err := sutw.suts.SetAgentTaskID(ctx, taskInfo.ID, agentTaskID)
+		running, err := sutw.suts.InternalSetAgentTaskID(ctx, taskInfo.ID, agentTaskID)
 		if err != nil {
-			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 				logger.Errorf("Mark semantic understanding task failed after agent task update error: id=%s, error=%v", taskInfo.ID, updateErr)
 			}
 			return err
@@ -301,13 +301,13 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 
 	agentTask, err := sutw.bas.WaitResult(ctx, agentTaskID)
 	if err != nil {
-		if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark semantic understanding task failed after agent wait error: id=%s, error=%v", taskInfo.ID, updateErr)
 		}
 		return err
 	}
 	if agentTask.Status == interfaces.BknAgentTaskStatusFailed {
-		if _, err := sutw.suts.MarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask)); err != nil {
+		if _, err := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask)); err != nil {
 			return fmt.Errorf("mark semantic understanding task failed after agent failure: %w", err)
 		}
 		return nil
@@ -315,7 +315,7 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 
 	resultJSON, confidence, confidenceDetailJSON, err := parseBknAgentResult(agentTask)
 	if err != nil {
-		if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 			return fmt.Errorf("mark semantic understanding task failed after result parsing error: %w", updateErr)
 		}
 		return nil
@@ -325,16 +325,16 @@ func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID str
 			resultJSON, taskInfo.Input, confidenceDetailJSON, confidence,
 		)
 		if err != nil {
-			if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 				return fmt.Errorf("mark semantic understanding task failed after quality assessment error: %w", updateErr)
 			}
 			return nil
 		}
 	}
 
-	completed, err := sutw.suts.MarkCompleted(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
+	completed, err := sutw.suts.InternalMarkCompleted(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	if err != nil {
-		if _, updateErr := sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark semantic understanding task failed after completion error: id=%s, error=%v", taskInfo.ID, updateErr)
 		}
 		return err
@@ -382,7 +382,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, t
 		if err != nil {
 			return err
 		}
-		_, err = sutw.suts.MarkApplied(ctx, task.ID, applyResult.Applied, applyResult.DetailJSON)
+		_, err = sutw.suts.InternalSetApplied(ctx, nil, task.ID, applyResult.Applied, applyResult.DetailJSON)
 		return err
 	}
 
@@ -401,7 +401,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, t
 	if err != nil {
 		return err
 	}
-	if _, err := sutw.suts.InternalMarkApplied(ctx, tx, task.ID, applyResult.Applied, applyResult.DetailJSON); err != nil {
+	if _, err := sutw.suts.InternalSetApplied(ctx, tx, task.ID, applyResult.Applied, applyResult.DetailJSON); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

@@ -258,7 +258,7 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 	deleteActiveIndex := strings.EqualFold(c.Query("delete_active_index"), "true")
 
-	if err := r.bts.Delete(ctx, ids, ignoreMissing, deleteActiveIndex); err != nil {
+	if err := r.bts.DeleteByIDs(ctx, ids, ignoreMissing, deleteActiveIndex); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

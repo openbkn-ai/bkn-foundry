@@ -774,7 +774,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
-		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 		if err := rs.DeleteByIDs(context.Background(), []string{"r1"}); err != nil {

@@ -261,21 +261,6 @@ func (dts *discoverTaskService) populateDiscoverTaskReferences(ctx context.Conte
 	return nil
 }
 
-// UpdateStatus updates a DiscoverTask's status.
-func (dts *discoverTaskService) UpdateStatus(ctx context.Context, id, status, message string, stime int64) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.UpdateStatus")
-	defer span.End()
-
-	return dts.dta.UpdateStatus(ctx, id, status, message, stime)
-}
-
-func (dts *discoverTaskService) InternalUpdateStatus(ctx context.Context, id, status, message string, stime int64) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalUpdateStatus")
-	defer span.End()
-
-	return dts.dta.UpdateStatus(ctx, id, status, message, stime)
-}
-
 func (dts *discoverTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalMarkRunning")
 	defer span.End()
@@ -283,41 +268,25 @@ func (dts *discoverTaskService) InternalMarkRunning(ctx context.Context, id stri
 	return dts.dta.MarkRunning(ctx, id, time.Now().UnixMilli())
 }
 
-func (dts *discoverTaskService) InternalMarkCancelled(ctx context.Context, id string, message string, finishTime int64) (bool, error) {
+func (dts *discoverTaskService) InternalMarkCancelled(ctx context.Context, id string, message string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalMarkCancelled")
 	defer span.End()
 
-	return dts.dta.MarkCancelled(ctx, id, message, finishTime)
+	return dts.dta.MarkCancelled(ctx, id, message, time.Now().UnixMilli())
 }
 
-func (dts *discoverTaskService) InternalMarkFailed(ctx context.Context, id string, message string, finishTime int64) (bool, error) {
+func (dts *discoverTaskService) InternalMarkFailed(ctx context.Context, id string, message string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalMarkFailed")
 	defer span.End()
 
-	return dts.dta.MarkFailed(ctx, id, message, finishTime)
+	return dts.dta.MarkFailed(ctx, id, message, time.Now().UnixMilli())
 }
 
-// UpdateResult updates a DiscoverTask's result.
-func (dts *discoverTaskService) UpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.UpdateResult")
+func (dts *discoverTaskService) InternalMarkCompleted(ctx context.Context, id string, result *interfaces.DiscoverResult) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalMarkCompleted")
 	defer span.End()
 
-	return dts.dta.UpdateResult(ctx, id, result, stime)
-}
-
-func (dts *discoverTaskService) InternalUpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalUpdateResult")
-	defer span.End()
-
-	return dts.dta.UpdateResult(ctx, id, result, stime)
-}
-
-// CheckExistByStatuses checks if DiscoverTasks exists by catalog ID and statuses.
-func (dts *discoverTaskService) CheckExistByStatuses(ctx context.Context, catalogID string, statuses []string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.CheckExistByStatuses")
-	defer span.End()
-
-	return dts.dta.CheckExistByStatuses(ctx, catalogID, statuses)
+	return dts.dta.MarkCompleted(ctx, id, result, time.Now().UnixMilli())
 }
 
 // Delete atomically deletes discover tasks by IDs after pre-validating existence and status.
@@ -328,10 +297,9 @@ func (dts *discoverTaskService) CheckExistByStatuses(ctx context.Context, catalo
 //     with {running_ids: [...]}. This check cannot be bypassed.
 //   - If any id is missing, returns 404 NotFound with {missing_ids: [...]} unless
 //     ignoreMissing=true (then missing ids are silently dropped from the delete set).
-//   - Deletes pass-through tasks one-by-one. Mid-loop errors return 500 (rare, bounded
-//     by pre-validation).
-func (dts *discoverTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.Delete")
+//   - Deletes all validated tasks in one database statement.
+func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.DeleteByIDs")
 	defer span.End()
 
 	// Dedupe ids while preserving order.
@@ -377,13 +345,22 @@ func (dts *discoverTaskService) Delete(ctx context.Context, ids []string, ignore
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound).
 			WithErrorDetails(map[string]any{"missing_ids": missingIDs})
 	}
+	if len(toDelete) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
 
-	for _, id := range toDelete {
-		if err := dts.dta.Delete(ctx, id); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Delete discover_task %s failed", id), err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_DeleteFailed).
-				WithErrorDetails(err.Error())
-		}
+	deleted, err := dts.dta.DeleteByIDs(ctx, toDelete)
+	if err != nil {
+		otellog.LogError(ctx, "Delete discover tasks failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_DeleteFailed).
+			WithErrorDetails(err.Error())
+	}
+	if deleted != int64(len(toDelete)) {
+		err = fmt.Errorf("expected to delete %d discover tasks, deleted %d", len(toDelete), deleted)
+		otellog.LogError(ctx, "Delete discover tasks affected unexpected rows", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_DeleteFailed).
+			WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")

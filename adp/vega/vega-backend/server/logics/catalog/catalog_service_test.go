@@ -1264,9 +1264,6 @@ func expectCatalogDeletionImpact(
 	ra.EXPECT().GetByCatalogID(gomock.Any(), "c1").Return(resources, nil)
 	if catalogType == interfaces.CatalogTypePhysical {
 		listCalls := 2
-		if includeBuildCascade {
-			listCalls++
-		}
 		bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.Limit == 1 {
@@ -1336,12 +1333,7 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		expectCatalogDeletionImpact(ctrl, ca, ra, bta, dsa, dta, suta, hcss,
 			interfaces.CatalogTypePhysical, buildTasks, false, true)
 		sqlMock.ExpectBegin()
-		bta.EXPECT().UpdateStatus(gomock.Any(), gomock.Any(), "pending", gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ int64, _ ...string) (bool, error) {
-				require.Equal(t, interfaces.BuildTaskStatusCancelled, *update.Status)
-				require.Equal(t, catalogDeletedTaskMessage, *update.ErrorMsg)
-				return true, nil
-			})
+		bta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
 		dta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
 		suta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
 		dsa.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "c1").Return(nil)
@@ -1381,6 +1373,7 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		expectCatalogDeletionImpact(ctrl, ca, ra, bta, dsa, dta, suta, hcss,
 			interfaces.CatalogTypePhysical, buildTasks, false, true)
 		sqlMock.ExpectBegin()
+		bta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).Return(nil)
 		dta.EXPECT().MarkCancelledByCatalogID(gomock.Any(), gomock.Any(), "c1", catalogDeletedTaskMessage, gomock.Any()).
 			Return(errors.New("database unavailable"))
 		sqlMock.ExpectRollback()

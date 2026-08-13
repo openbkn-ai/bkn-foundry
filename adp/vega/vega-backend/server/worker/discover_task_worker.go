@@ -95,7 +95,7 @@ func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) erro
 			if task == nil {
 				return fmt.Errorf("list interrupted discover tasks returned a nil task")
 			}
-			changed, err := dtw.dts.InternalMarkFailed(ctx, task.ID, recoveryFailure, time.Now().UnixMilli())
+			changed, err := dtw.dts.InternalMarkFailed(ctx, task.ID, recoveryFailure)
 			if err != nil {
 				return fmt.Errorf("mark interrupted discover task %s failed: %w", task.ID, err)
 			}
@@ -175,7 +175,7 @@ func (dtw *DiscoverTaskWorker) runSafely(ctx context.Context, taskID string) {
 		if recovered := recover(); recovered != nil {
 			detail := fmt.Sprintf("discover task panicked: %v", recovered)
 			logger.Errorf("Run discover task panicked: id=%s, error=%v", taskID, recovered)
-			if _, err := dtw.dts.InternalMarkFailed(ctx, taskID, detail, time.Now().UnixMilli()); err != nil {
+			if _, err := dtw.dts.InternalMarkFailed(ctx, taskID, detail); err != nil {
 				logger.Errorf("Mark discover task failed after panic: id=%s, error=%v", taskID, err)
 			}
 		}
@@ -228,8 +228,7 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	catalog, err := dtw.cs.InternalGetByID(ctx, taskInfo.CatalogID, true)
 	if err != nil {
 		if isNotFoundError(err) {
-			now := time.Now().UnixMilli()
-			if _, updateErr := dtw.dts.InternalMarkCancelled(ctx, taskID, "catalog deleted", now); updateErr != nil {
+			if _, updateErr := dtw.dts.InternalMarkCancelled(ctx, taskID, "catalog deleted"); updateErr != nil {
 				return fmt.Errorf("cancel discover task after catalog deletion: %w", updateErr)
 			}
 			logger.Infof("Discover task cancelled because catalog was deleted: id=%s, catalog_id=%s",
@@ -237,14 +236,13 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 			return nil
 		}
 		logger.Errorf("Failed to get catalog for task %s: %v", taskID, err)
-		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error(), time.Now().UnixMilli()); updateErr != nil {
+		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after catalog lookup error: id=%s, error=%v", taskID, updateErr)
 		}
 		return err
 	}
 	if !catalog.Enabled {
-		now := time.Now().UnixMilli()
-		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, "catalog is disabled", now); updateErr != nil {
+		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, "catalog is disabled"); updateErr != nil {
 			return fmt.Errorf("fail discover task for disabled catalog: %w", updateErr)
 		}
 		logger.Infof("Discover task failed because catalog is disabled: id=%s, catalog_id=%s",
@@ -256,7 +254,7 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	updated, err := dtw.dts.InternalMarkRunning(ctx, taskID)
 	if err != nil {
 		logger.Errorf("Failed to set start time for task %s: %v", taskID, err)
-		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error(), time.Now().UnixMilli()); updateErr != nil {
+		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after claim error: id=%s, error=%v", taskID, updateErr)
 		}
 		return err
@@ -274,20 +272,23 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	//然后根据 catalog 的元数据获取 catalog 的资源信息：元数据
 	result, err := dtw.discoverCatalog(ctx, catalog, taskInfo)
 	if err != nil {
-		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error(), time.Now().UnixMilli()); updateErr != nil {
+		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after execution error: id=%s, error=%v", taskID, updateErr)
 		}
 		return err
 	}
 
 	// Update task result
-	now := time.Now().UnixMilli()
-	if err := dtw.dts.InternalUpdateResult(ctx, taskID, result, now); err != nil {
+	completed, err := dtw.dts.InternalMarkCompleted(ctx, taskID, result)
+	if err != nil {
 		logger.Errorf("Failed to update result for task %s: %v", taskID, err)
-		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error(), time.Now().UnixMilli()); updateErr != nil {
+		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after result update error: id=%s, error=%v", taskID, updateErr)
 		}
 		return err
+	}
+	if !completed {
+		return nil
 	}
 
 	logger.Infof("Discover completed for task: %s, catalog: %s", taskID, catalog.ID)

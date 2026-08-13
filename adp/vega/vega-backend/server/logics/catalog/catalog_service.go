@@ -1040,14 +1040,6 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 			WithErrorDetails(impact)
 	}
 
-	// Task rows are audit records and must be retained.
-	buildTasks, _, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{CatalogID: id})
-	if err != nil {
-		span.SetStatus(codes.Error, "List build tasks failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
-			WithErrorDetails("failed to inspect catalog build tasks")
-	}
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
@@ -1059,20 +1051,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UnixMilli()
-	cancelled := interfaces.BuildTaskStatusCancelled
-	errorMessage := catalogDeletedTaskMessage
-	for _, task := range buildTasks {
-		if task.Status != interfaces.BuildTaskStatusPending {
-			continue
-		}
-		_, err = cs.bta.UpdateStatus(ctx, tx, task.ID, interfaces.BuildTaskUpdate{
-			Status:   &cancelled,
-			ErrorMsg: &errorMessage,
-		}, now, interfaces.BuildTaskStatusPending)
-		if err != nil {
-			break
-		}
-	}
+	err = cs.bta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
 	if err == nil {
 		err = cs.dta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
 	}

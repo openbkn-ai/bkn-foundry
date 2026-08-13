@@ -19,19 +19,33 @@ type BuildTaskAccess interface {
 	Create(ctx context.Context, buildTask *BuildTask) error
 	// GetByID retrieves a build task by ID.
 	GetByID(ctx context.Context, id string) (*BuildTask, error)
-	// GetByResourceID retrieves a build task by resource ID.
-	GetByResourceID(ctx context.Context, resourceID string) (*BuildTask, error)
 	// GetByCatalogID retrieves build tasks by catalog ID.
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*BuildTask, error)
 	// List retrieves build task summaries with filters and pagination.
 	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTaskSummary, int64, error)
-	// UpdateStatus updates a build task's status and progress fields. When allowedStatuses is not empty,
-	// the update is applied only if the current status matches one of them.
-	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, updateTime int64, allowedStatuses ...string) (bool, error)
+	// DeleteByIDs deletes build tasks by IDs.
+	DeleteByIDs(ctx context.Context, ids []string) (int64, error)
+
+	// SetProgress persists execution progress for an active build task.
+	SetProgress(ctx context.Context, tx *sql.Tx, id string, progress BuildTaskProgress, updateTime int64) (bool, error)
+	// MarkPending transitions a stopped or failed build task to pending.
+	MarkPending(ctx context.Context, id string, reset bool, updateTime int64) (bool, error)
+	// MarkRunning transitions a pending build task to running.
+	MarkRunning(ctx context.Context, id string, updateTime int64) (bool, error)
+	// MarkStopping transitions a running build task to stopping.
+	MarkStopping(ctx context.Context, id string, updateTime int64) (bool, error)
+	// MarkStopped transitions a pending or stopping build task to stopped.
+	MarkStopped(ctx context.Context, id string, updateTime int64) (bool, error)
+	// MarkCompleted transitions a running build task to completed.
+	MarkCompleted(ctx context.Context, tx *sql.Tx, id string, updateTime int64) (bool, error)
+	// MarkFailed fails an active build task.
+	MarkFailed(ctx context.Context, id, detail string, updateTime int64) (bool, error)
+	// MarkCancelled cancels an active build task.
+	MarkCancelled(ctx context.Context, id, detail string, updateTime int64) (bool, error)
+	// MarkCancelledByCatalogID cancels pending build tasks for a deleted catalog.
+	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, message string, updateTime int64) error
 	// GetStatus retrieves the status of a build task by ID.
 	GetStatus(ctx context.Context, id string) (string, error)
-	// Delete deletes a build task by ID.
-	Delete(ctx context.Context, id string) error
 
 	// InternalList retrieves complete build tasks for internal callers without permission checks.
 	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)

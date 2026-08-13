@@ -35,17 +35,87 @@ func TestBuildTaskServiceInternalMarkRunning(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	service := &buildTaskService{bta: mockBTA}
-	mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusRunning).
-			WithErrorMsg(""),
-		gomock.Any(), interfaces.BuildTaskStatusPending).
-		Return(true, nil)
+	mockBTA.EXPECT().MarkRunning(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
 
 	updated, err := service.InternalMarkRunning(context.Background(), "task-1")
 
 	require.NoError(t, err)
 	assert.True(t, updated)
+}
+
+func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
+	t.Run("sets progress without changing status", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: mockBTA}
+		syncedCount := int64(10)
+		syncedMark := `{"id":10}`
+		progress := interfaces.BuildTaskProgress{
+			SyncedCount: &syncedCount,
+			SyncedMark:  &syncedMark,
+		}
+		mockBTA.EXPECT().SetProgress(gomock.Any(), nil, "task-1", progress, gomock.Any()).
+			Return(true, nil)
+
+		updated, err := service.InternalSetProgress(context.Background(), nil, "task-1", progress)
+
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
+
+	t.Run("marks failed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: mockBTA}
+		mockBTA.EXPECT().MarkFailed(gomock.Any(), "task-1", "execution failed", gomock.Any()).
+			Return(true, nil)
+
+		updated, err := service.InternalMarkFailed(
+			context.Background(), "task-1", "execution failed")
+
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
+
+	t.Run("marks cancelled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: mockBTA}
+		mockBTA.EXPECT().MarkCancelled(gomock.Any(), "task-1", "resource deleted", gomock.Any()).
+			Return(true, nil)
+
+		updated, err := service.InternalMarkCancelled(
+			context.Background(), "task-1", "resource deleted")
+
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
+
+	t.Run("marks stopped", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: mockBTA}
+		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).
+			Return(true, nil)
+
+		updated, err := service.InternalMarkStopped(context.Background(), "task-1")
+
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
+
+	t.Run("marks completed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: mockBTA}
+		mockBTA.EXPECT().MarkCompleted(gomock.Any(), nil, "task-1", gomock.Any()).
+			Return(true, nil)
+
+		updated, err := service.InternalMarkCompleted(context.Background(), nil, "task-1")
+
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
 }
 
 func (m *analyzerValidatingIndexManager) ValidateAnalyzer(_ context.Context, analyzer string) (bool, error) {
@@ -742,16 +812,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
 			ID: "resource-1", CatalogID: "catalog-1",
 		}, nil)
-		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusPending).
-				WithTotalCount(0).
-				WithSyncedCount(0).
-				WithVectorizedCount(0).
-				WithSyncedMark("").
-				WithErrorMsg("").
-				WithFailureDetail(""),
-			gomock.Any(), interfaces.BuildTaskStatusFailed).Return(true, nil)
+		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", true, gomock.Any()).Return(true, nil)
 
 		require.NoError(t, service.Start(context.Background(), "task-1", true))
 		select {
@@ -779,9 +840,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
 			ID: "resource-1", CatalogID: "catalog-1",
 		}, nil)
-		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusPending), gomock.Any(),
-			interfaces.BuildTaskStatusStopped).Return(false, nil)
+		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", false, gomock.Any()).Return(false, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
@@ -1023,9 +1082,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
-		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopping), gomock.Any(),
-			interfaces.BuildTaskStatusRunning).Return(true, nil)
+		mockBTA.EXPECT().MarkStopping(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})
@@ -1036,9 +1093,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusPending}, nil)
-		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped), gomock.Any(),
-			interfaces.BuildTaskStatusPending).Return(true, nil)
+		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})
@@ -1049,9 +1104,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusPending}, nil)
-		mockBTA.EXPECT().UpdateStatus(gomock.Any(), nil, "task-1",
-			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped), gomock.Any(),
-			interfaces.BuildTaskStatusPending).Return(false, nil)
+		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).Return(false, nil)
 
 		err := service.Stop(context.Background(), "task-1")
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
@@ -1135,7 +1188,7 @@ func buildTaskIndexConfig(vector bool, fulltext bool) *interfaces.BuildTaskIndex
 	}
 }
 
-func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
+func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 	t.Run("drops index and row", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -1148,9 +1201,9 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
 			Return(&interfaces.Resource{ID: "r1", LocalIndexName: interfaces.BuildIndexName("r1", "old-task")}, nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
-		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		require.NoError(t, service.Delete(context.Background(), []string{"t1"}, false, false))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1", "t1"}, false, false))
 	})
 	t.Run("refuses active local index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1166,7 +1219,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 			Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
 		// Active index conflicts must not delete either the index or the task row.
 
-		err := service.Delete(context.Background(), []string{"t1"}, false, false)
+		err := service.DeleteByIDs(context.Background(), []string{"t1"}, false, false)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_ActiveIndexInUse)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
@@ -1193,9 +1246,9 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 				return nil
 			})
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), idx).Return(nil)
-		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		require.NoError(t, service.Delete(context.Background(), []string{"t1"}, false, true))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false, true))
 	})
 	t.Run("clear active local index failure blocks deletion", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1212,7 +1265,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockRS.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(errors.New("update failed"))
 		// Clearing LocalIndexName failed, so the index and task row must remain untouched.
 
-		err := service.Delete(context.Background(), []string{"t1"}, false, true)
+		err := service.DeleteByIDs(context.Background(), []string{"t1"}, false, true)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})
@@ -1227,9 +1280,9 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "missing-resource").Return(nil, nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("missing-resource", "t1")).Return(nil)
-		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
+		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		require.NoError(t, service.Delete(context.Background(), []string{"t1"}, false, false))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false, false))
 	})
 	t.Run("resource lookup failure blocks deletion", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1243,7 +1296,7 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "r1").Return(nil, errors.New("db unavailable"))
 		// If the guard cannot prove the index is safe to delete, deletion must not proceed.
 
-		err := service.Delete(context.Background(), []string{"t1"}, false, false)
+		err := service.DeleteByIDs(context.Background(), []string{"t1"}, false, false)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})
@@ -1257,6 +1310,6 @@ func TestBuildTaskServiceDeleteBuildTasks(t *testing.T) {
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)
 		// 不应调用 local index delete / bta.Delete
 
-		require.Error(t, service.Delete(context.Background(), []string{"t1"}, false, true))
+		require.Error(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false, true))
 	})
 }

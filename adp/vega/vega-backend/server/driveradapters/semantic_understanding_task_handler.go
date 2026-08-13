@@ -236,7 +236,7 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
-	if err := r.suts.Delete(ctx, ids, ignoreMissing); err != nil {
+	if err := r.suts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

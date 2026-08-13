@@ -43,7 +43,7 @@ func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
 	}, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
-	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted", gomock.Any()).Return(true, nil)
+	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted").Return(true, nil)
 
 	require.NoError(t, worker.Run(context.Background(), "task-1"))
 }
@@ -59,7 +59,7 @@ func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
 	}, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
-	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "catalog is disabled", gomock.Any()).Return(true, nil)
+	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "catalog is disabled").Return(true, nil)
 
 	require.NoError(t, worker.Run(context.Background(), "task-1"))
 }
@@ -75,7 +75,7 @@ func TestDiscoverTaskWorkerMarksTaskFailedWhenCatalogLookupFails(t *testing.T) {
 	}, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(nil, errors.New("temporary database error"))
-	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "temporary database error", gomock.Any()).
+	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "temporary database error").
 		Return(true, nil)
 
 	err := worker.Run(context.Background(), "task-1")
@@ -115,7 +115,7 @@ func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
 		})
 	markFailed := dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
-		"discover task interrupted by service restart", gomock.Any()).Return(true, nil).After(firstList)
+		"discover task interrupted by service restart").Return(true, nil).After(firstList)
 	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 		[]*interfaces.DiscoverTaskSummary{}, int64(0), nil).After(markFailed)
 
@@ -130,7 +130,7 @@ func TestDiscoverTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
 	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 		[]*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, int64(1), nil)
 	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
-		"discover task interrupted by service restart", gomock.Any()).Return(false, errors.New("database unavailable"))
+		"discover task interrupted by service restart").Return(false, errors.New("database unavailable"))
 
 	err := worker.recoverInterruptedTasks(context.Background())
 
@@ -196,7 +196,7 @@ func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
 		},
 	)
 	taskService.EXPECT().
-		InternalMarkFailed(gomock.Any(), "task-1", "discover task panicked: unexpected connector panic", gomock.Any()).
+		InternalMarkFailed(gomock.Any(), "task-1", "discover task panicked: unexpected connector panic").
 		Return(true, nil)
 	taskService.EXPECT().InternalGetByID(gomock.Any(), "task-2").Return(&interfaces.DiscoverTask{
 		ID: "task-2", Status: interfaces.DiscoverTaskStatusFailed,

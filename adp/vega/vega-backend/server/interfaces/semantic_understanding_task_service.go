@@ -17,18 +17,17 @@ type SemanticUnderstandingTaskService interface {
 	CreateCatalogTask(ctx context.Context, catalogID string, req *CreateSemanticUnderstandingTaskRequest) (*SemanticUnderstandingTask, error)
 	GetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
 	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
-	Delete(ctx context.Context, ids []string, ignoreMissing bool) error
-
-	SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)
-	MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
-	MarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
-	MarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error)
-	MarkApplied(ctx context.Context, id string, applied bool, applyDetailJSON string) (bool, error)
+	DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error
 
 	InternalGetByID(ctx context.Context, id string) (*SemanticUnderstandingTask, error)
 	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
-	InternalMarkApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error)
+
 	InternalMarkRunning(ctx context.Context, id string) (bool, error)
+	InternalMarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
+	InternalMarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
+	InternalMarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error)
+	InternalSetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)
+	InternalSetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error)
 
 	DispatchSignal() <-chan struct{}
 	RequestDispatch()

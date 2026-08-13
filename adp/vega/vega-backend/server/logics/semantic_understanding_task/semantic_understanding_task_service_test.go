@@ -441,7 +441,7 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 		MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`, gomock.Any()).
 		Return(true, nil)
 
-	completed, err := service.MarkCompleted(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
+	completed, err := service.InternalMarkCompleted(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
 	require.NoError(t, err)
 	assert.True(t, completed)
 }
@@ -566,7 +566,7 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 	})
 }
 
-func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
+func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 	t.Run("deletes completed tasks and ignores missing ids", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -583,7 +583,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 			DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}).
 			Return(int64(2), nil)
 
-		err := service.Delete(context.Background(), []string{"task-1", "task-1", "missing", "task-2"}, true)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1", "task-1", "missing", "task-2"}, true)
 
 		require.NoError(t, err)
 	})
@@ -601,7 +601,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 				{ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
-		err := service.Delete(context.Background(), []string{"task-1", "task-2"}, false)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1", "task-2"}, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "HasRunningExecution")
@@ -619,7 +619,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
-		err := service.Delete(context.Background(), []string{"task-1", "missing"}, false)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1", "missing"}, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "NotFound")

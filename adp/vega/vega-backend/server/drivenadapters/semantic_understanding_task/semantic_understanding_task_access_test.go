@@ -191,7 +191,7 @@ func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
 			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -206,7 +206,7 @@ func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
 			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
@@ -218,32 +218,19 @@ func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {
 	})
 }
 
-func TestSemanticUnderstandingTaskAccessDelete(t *testing.T) {
-	t.Run("deletes task", func(t *testing.T) {
-		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
-		defer func() { _ = db.Close() }()
+func TestSemanticUnderstandingTaskAccessSetApplied(t *testing.T) {
+	db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
+	defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_semantic_understanding_task WHERE f_id = ?")).
-			WithArgs("semantic-task-1").
-			WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_applied = ?, f_applied_time = ?, f_apply_detail_json = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
+		WithArgs(true, int64(123), `{"resource_updated":true}`, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusCompleted).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Delete(context.Background(), "semantic-task-1"))
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
+	updated, err := access.SetApplied(context.Background(), nil, "semantic-task-1", true, 123, `{"resource_updated":true}`)
 
-	t.Run("returns sql err no rows when not found", func(t *testing.T) {
-		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
-		defer func() { _ = db.Close() }()
-
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_semantic_understanding_task WHERE f_id = ?")).
-			WithArgs("missing").
-			WillReturnResult(sqlmock.NewResult(0, 0))
-
-		err := access.Delete(context.Background(), "missing")
-
-		require.ErrorIs(t, err, sql.ErrNoRows)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
+	require.NoError(t, err)
+	assert.True(t, updated)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestSemanticUnderstandingTaskAccessDeleteByIDs(t *testing.T) {

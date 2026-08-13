@@ -60,37 +60,62 @@ func TestUpdateResourceIndexName(t *testing.T) {
 }
 
 func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	rs := vmock.NewMockResourceService(ctrl)
-	ts := vmock.NewMockBuildTaskService(ctrl)
-	resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
+	t.Run("completes task and resource update atomically", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ts := vmock.NewMockBuildTaskService(ctrl)
+		resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
 
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
 
-	oldDB := logics.DB
-	logics.DB = db
-	defer func() { logics.DB = oldDB }()
+		oldDB := logics.DB
+		logics.DB = db
+		defer func() { logics.DB = oldDB }()
 
-	mock.ExpectBegin()
-	txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-	rs.EXPECT().InternalUpdate(gomock.Any(), txMatcher, resource).
-		DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
-			assert.Equal(t, "new-index", got.LocalIndexName)
-			return nil
-		})
-	ts.EXPECT().InternalUpdateStatus(gomock.Any(), txMatcher, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
-		DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
-			require.NotNil(t, update.Status)
-			assert.Equal(t, interfaces.BuildTaskStatusCompleted, *update.Status)
-			return true, nil
-		})
-	mock.ExpectCommit()
+		mock.ExpectBegin()
+		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		rs.EXPECT().InternalUpdate(gomock.Any(), txMatcher, resource).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+				assert.Equal(t, "new-index", got.LocalIndexName)
+				return nil
+			})
+		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(true, nil)
+		mock.ExpectCommit()
 
-	err = completeBuildTaskWithoutEmbedding(context.Background(), resource, rs, ts, "t1", "new-index")
+		err = completeBuildTaskWithoutEmbedding(context.Background(), resource, rs, ts, "t1", "new-index")
 
-	require.NoError(t, err)
-	assert.Equal(t, "new-index", resource.LocalIndexName)
-	require.NoError(t, mock.ExpectationsWereMet())
+		require.NoError(t, err)
+		assert.Equal(t, "new-index", resource.LocalIndexName)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("finishes concurrent stop request", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ts := vmock.NewMockBuildTaskService(ctrl)
+		resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
+
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+
+		oldDB := logics.DB
+		logics.DB = db
+		defer func() { logics.DB = oldDB }()
+
+		mock.ExpectBegin()
+		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		rs.EXPECT().InternalUpdate(gomock.Any(), txMatcher, resource).Return(nil)
+		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(false, nil)
+		mock.ExpectRollback()
+		ts.EXPECT().InternalMarkStopped(gomock.Any(), "t1").Return(true, nil)
+
+		err = completeBuildTaskWithoutEmbedding(context.Background(), resource, rs, ts, "t1", "new-index")
+
+		require.NoError(t, err)
+		assert.Equal(t, "old-index", resource.LocalIndexName)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }

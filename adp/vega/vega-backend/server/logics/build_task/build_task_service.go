@@ -433,22 +433,48 @@ func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces
 	return bts.bta.InternalList(ctx, params)
 }
 
-func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalUpdateStatus")
+func (bts *buildTaskService) InternalSetProgress(
+	ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress,
+) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalSetProgress")
 	defer span.End()
 
-	return bts.bta.UpdateStatus(ctx, tx, id, update, time.Now().UnixMilli(), allowedStatuses...)
+	return bts.bta.SetProgress(ctx, tx, id, progress, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkRunning")
 	defer span.End()
 
-	return bts.bta.UpdateStatus(ctx, nil, id,
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusRunning).
-			WithErrorMsg(""),
-		time.Now().UnixMilli(), interfaces.BuildTaskStatusPending)
+	return bts.bta.MarkRunning(ctx, id, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, id, detail string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkFailed")
+	defer span.End()
+
+	return bts.bta.MarkFailed(ctx, id, detail, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkCancelled(ctx context.Context, id, detail string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkCancelled")
+	defer span.End()
+
+	return bts.bta.MarkCancelled(ctx, id, detail, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkStopped(ctx context.Context, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkStopped")
+	defer span.End()
+
+	return bts.bta.MarkStopped(ctx, id, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkCompleted")
+	defer span.End()
+
+	return bts.bta.MarkCompleted(ctx, tx, id, time.Now().UnixMilli())
 }
 
 // populateBuildTaskReferences 批量补齐任务关联的资源与目录展示字段。它只查询当前
@@ -613,31 +639,6 @@ func hasFulltextIndexConfig(bt *interfaces.BuildTask) bool {
 	return false
 }
 
-// GetByResourceID retrieves a build task by resource ID.
-func (bts *buildTaskService) GetByResourceID(ctx context.Context, resourceID string) (*interfaces.BuildTask, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task by resource ID")
-	defer span.End()
-
-	buildTask, err := bts.bta.GetByResourceID(ctx, resourceID)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get build task failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	if buildTask != nil {
-		accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
-		if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
-			span.RecordError(err)
-			logger.Warnf("Failed to populate build task account names: %v", err)
-		}
-		buildTask.IndexHealth = computeIndexHealth(buildTask)
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return buildTask, nil
-}
-
 // List retrieves build tasks with filters and pagination.
 func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
@@ -728,17 +729,8 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 
 	// Persist pending before signaling the worker. This prevents a stopped task
 	// from being skipped and keeps the running transition owned by execution.
-	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusPending)
-	if reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeFull {
-		update = update.
-			WithTotalCount(0).
-			WithSyncedCount(0).
-			WithVectorizedCount(0).
-			WithSyncedMark("").
-			WithErrorMsg("").
-			WithFailureDetail("")
-	}
-	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	resetProgress := reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeFull
+	updated, err := bts.bta.MarkPending(ctx, taskID, resetProgress, time.Now().UnixMilli())
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
@@ -822,12 +814,12 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	// running → stopping：通知 worker 在批间检查点退出。
 	// pending → stopped：排队中尚无 worker 观察 stopping，直接落停；
 	// 出队时 worker 检查到 stopped 即跳过，不会复活执行。
-	targetStatus := interfaces.BuildTaskStatusStopping
+	var updated bool
 	if buildTask.Status == interfaces.BuildTaskStatusPending {
-		targetStatus = interfaces.BuildTaskStatusStopped
+		updated, err = bts.bta.MarkStopped(ctx, taskID, time.Now().UnixMilli())
+	} else {
+		updated, err = bts.bta.MarkStopping(ctx, taskID, time.Now().UnixMilli())
 	}
-	update := interfaces.NewBuildTaskUpdate().WithStatus(targetStatus)
-	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
@@ -843,27 +835,38 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	return nil
 }
 
-// Delete atomically deletes build tasks by IDs after pre-validating existence and status.
+// DeleteByIDs atomically deletes build tasks by IDs after pre-validating existence and status.
 //
 // Behavior:
+//   - Input IDs are de-duplicated while preserving their first-seen order.
 //   - Loads each id; if any missing, returns 404 BuildTask.NotFound with {missing_ids: [...]}
 //     unless ignoreMissing=true (then missing ids are dropped from the delete set).
 //   - If any task is in running/stopping status, returns 409 HasRunningExecution with {running_ids: [...]}.
 //     This check cannot be bypassed.
 //   - If any task owns the resource's current LocalIndexName, returns 409 ActiveIndexInUse
 //     unless deleteActiveIndex=true. When deleteActiveIndex=true, clears LocalIndexName before deleting.
-//   - Deletes pass-through tasks one-by-one. Mid-loop errors return 500 (rare, bounded by pre-validation).
-func (bts *buildTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete build tasks")
+//   - Deletes all validated task rows in one database statement after dropping their indexes.
+func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.DeleteByIDs")
 	defer span.End()
 
-	toDelete := make([]*interfaces.BuildTask, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	uniqueIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+
+	toDelete := make([]*interfaces.BuildTask, 0, len(uniqueIDs))
 	missingIDs := make([]string, 0)
 	runningIDs := make([]string, 0)
 	activeIndexes := make([]map[string]string, 0)
 	activeResources := make(map[string]*interfaces.Resource)
 
-	for _, id := range ids {
+	for _, id := range uniqueIDs {
 		buildTask, err := bts.bta.GetByID(ctx, id)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get build task failed")
@@ -928,6 +931,7 @@ func (bts *buildTaskService) Delete(ctx context.Context, ids []string, ignoreMis
 		}
 	}
 
+	deleteIDs := make([]string, 0, len(toDelete))
 	for _, bt := range toDelete {
 		// 先 drop 索引（尽力，失败仅记日志），再删任务行——与删资源/删 catalog 的级联
 		// 语义一致，避免 UI 单任务删除留下孤儿索引（#66 只覆盖了资源/目录两条路径）。
@@ -935,11 +939,23 @@ func (bts *buildTaskService) Delete(ctx context.Context, ids []string, ignoreMis
 		if err := bts.lim.DeleteIndex(ctx, idx); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Drop index %s for build task %s failed", idx, bt.ID), err)
 		}
-		if err := bts.bta.Delete(ctx, bt.ID); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Delete build task %s failed", bt.ID), err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
-				WithErrorDetails(err.Error())
-		}
+		deleteIDs = append(deleteIDs, bt.ID)
+	}
+	if len(deleteIDs) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
+	deleted, err := bts.bta.DeleteByIDs(ctx, deleteIDs)
+	if err != nil {
+		otellog.LogError(ctx, "Delete build tasks failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
+			WithErrorDetails(err.Error())
+	}
+	if deleted != int64(len(deleteIDs)) {
+		err = fmt.Errorf("expected to delete %d build tasks, deleted %d", len(deleteIDs), deleted)
+		otellog.LogError(ctx, "Delete build tasks affected unexpected rows", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
+			WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")

@@ -212,7 +212,7 @@ func (r *restHandler) deleteDiscoverTasks(c *gin.Context, visitor hydra.Visitor)
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 
-	if err := r.dts.Delete(ctx, ids, ignoreMissing); err != nil {
+	if err := r.dts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

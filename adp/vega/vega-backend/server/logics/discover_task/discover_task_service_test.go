@@ -214,16 +214,7 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	})
 }
 
-func TestDiscoverTaskServiceUpdateAndExistence(t *testing.T) {
-	t.Run("delegates status update", func(t *testing.T) {
-		service, dta, _ := newTestDiscoverTaskService(t)
-		dta.EXPECT().
-			UpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusRunning, "started", int64(100)).
-			Return(nil)
-
-		require.NoError(t, service.UpdateStatus(context.Background(), "task-1", interfaces.DiscoverTaskStatusRunning, "started", 100))
-	})
-
+func TestDiscoverTaskServiceInternalStatusUpdates(t *testing.T) {
 	t.Run("delegates internal running update", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		dta.EXPECT().MarkRunning(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
@@ -234,37 +225,28 @@ func TestDiscoverTaskServiceUpdateAndExistence(t *testing.T) {
 		assert.True(t, updated)
 	})
 
-	t.Run("delegates result update", func(t *testing.T) {
+	t.Run("delegates internal completed update", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		result := &interfaces.DiscoverResult{}
-		dta.EXPECT().UpdateResult(gomock.Any(), "task-1", result, int64(200)).Return(nil)
+		dta.EXPECT().MarkCompleted(gomock.Any(), "task-1", result, gomock.Any()).Return(true, nil)
 
-		require.NoError(t, service.UpdateResult(context.Background(), "task-1", result, 200))
-	})
-
-	t.Run("checks existence by statuses", func(t *testing.T) {
-		service, dta, _ := newTestDiscoverTaskService(t)
-		statuses := []string{interfaces.DiscoverTaskStatusPending, interfaces.DiscoverTaskStatusRunning}
-		dta.EXPECT().CheckExistByStatuses(gomock.Any(), "catalog-1", statuses).Return(true, nil)
-
-		exists, err := service.CheckExistByStatuses(context.Background(), "catalog-1", statuses)
+		updated, err := service.InternalMarkCompleted(context.Background(), "task-1", result)
 
 		require.NoError(t, err)
-		assert.True(t, exists)
+		assert.True(t, updated)
 	})
 }
 
-func TestDiscoverTaskServiceDelete(t *testing.T) {
+func TestDiscoverTaskServiceDeleteByIDs(t *testing.T) {
 	t.Run("deduplicates ids and deletes completed tasks", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		dta.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.DiscoverTask{ID: "task-1", Status: interfaces.DiscoverTaskStatusCompleted}, nil)
 		dta.EXPECT().GetByID(gomock.Any(), "task-2").
 			Return(&interfaces.DiscoverTask{ID: "task-2", Status: interfaces.DiscoverTaskStatusFailed}, nil)
-		dta.EXPECT().Delete(gomock.Any(), "task-1").Return(nil)
-		dta.EXPECT().Delete(gomock.Any(), "task-2").Return(nil)
+		dta.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}).Return(int64(2), nil)
 
-		require.NoError(t, service.Delete(context.Background(), []string{"task-1", "task-1", "task-2"}, false))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"task-1", "task-1", "task-2"}, false))
 	})
 
 	t.Run("rejects pending or running tasks", func(t *testing.T) {
@@ -272,7 +254,7 @@ func TestDiscoverTaskServiceDelete(t *testing.T) {
 		dta.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.DiscoverTask{ID: "task-1", Status: interfaces.DiscoverTaskStatusRunning}, nil)
 
-		err := service.Delete(context.Background(), []string{"task-1"}, false)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1"}, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "HasRunningExecution")
@@ -283,7 +265,7 @@ func TestDiscoverTaskServiceDelete(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		dta.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
 
-		err := service.Delete(context.Background(), []string{"missing"}, false)
+		err := service.DeleteByIDs(context.Background(), []string{"missing"}, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "NotFound")
@@ -295,16 +277,16 @@ func TestDiscoverTaskServiceDelete(t *testing.T) {
 		dta.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
 		dta.EXPECT().GetByID(gomock.Any(), "done").
 			Return(&interfaces.DiscoverTask{ID: "done", Status: interfaces.DiscoverTaskStatusCompleted}, nil)
-		dta.EXPECT().Delete(gomock.Any(), "done").Return(nil)
+		dta.EXPECT().DeleteByIDs(gomock.Any(), []string{"done"}).Return(int64(1), nil)
 
-		require.NoError(t, service.Delete(context.Background(), []string{"missing", "done"}, true))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"missing", "done"}, true))
 	})
 
 	t.Run("wraps get failure", func(t *testing.T) {
 		service, dta, _ := newTestDiscoverTaskService(t)
 		dta.EXPECT().GetByID(gomock.Any(), "task-1").Return(nil, errors.New("db down"))
 
-		err := service.Delete(context.Background(), []string{"task-1"}, false)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1"}, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "db down")

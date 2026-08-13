@@ -317,7 +317,7 @@ func Test_SemanticUnderstandingTaskRestHandler_DeleteTasks(t *testing.T) {
 
 	t.Run("deletes tasks", func(t *testing.T) {
 		engine, suts := setupSemanticUnderstandingTaskHandlerTest(t)
-		suts.EXPECT().Delete(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
+		suts.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskURL+"/task-1,task-2?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
@@ -331,7 +331,7 @@ func Test_SemanticUnderstandingTaskRestHandler_DeleteTasks(t *testing.T) {
 		engine, as, suts := setupSemanticUnderstandingTaskExternalHandlerTest(t)
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).
 			Return(hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User}, nil)
-		suts.EXPECT().Delete(gomock.Any(), []string{"task-1"}, false).Return(nil)
+		suts.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1"}, false).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskExternalURL+"/task-1", nil)
 		w := httptest.NewRecorder()

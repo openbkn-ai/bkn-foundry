@@ -98,54 +98,13 @@ type BuildTaskSummary struct {
 	IndexConfig *BuildTaskIndexConfig `json:"-"`
 }
 
-// BuildTaskUpdate describes a partial build task update. Nil fields are left unchanged.
-type BuildTaskUpdate struct {
-	Status          *string
+// BuildTaskProgress describes persisted execution progress without changing task status.
+type BuildTaskProgress struct {
 	TotalCount      *int64
 	SyncedCount     *int64
 	VectorizedCount *int64
 	SyncedMark      *string
-	ErrorMsg        *string
 	FailureDetail   *string
-}
-
-func NewBuildTaskUpdate() BuildTaskUpdate {
-	return BuildTaskUpdate{}
-}
-
-func (u BuildTaskUpdate) WithStatus(status string) BuildTaskUpdate {
-	u.Status = &status
-	return u
-}
-
-func (u BuildTaskUpdate) WithTotalCount(totalCount int64) BuildTaskUpdate {
-	u.TotalCount = &totalCount
-	return u
-}
-
-func (u BuildTaskUpdate) WithSyncedCount(syncedCount int64) BuildTaskUpdate {
-	u.SyncedCount = &syncedCount
-	return u
-}
-
-func (u BuildTaskUpdate) WithVectorizedCount(vectorizedCount int64) BuildTaskUpdate {
-	u.VectorizedCount = &vectorizedCount
-	return u
-}
-
-func (u BuildTaskUpdate) WithSyncedMark(syncedMark string) BuildTaskUpdate {
-	u.SyncedMark = &syncedMark
-	return u
-}
-
-func (u BuildTaskUpdate) WithErrorMsg(errorMsg string) BuildTaskUpdate {
-	u.ErrorMsg = &errorMsg
-	return u
-}
-
-func (u BuildTaskUpdate) WithFailureDetail(failureDetail string) BuildTaskUpdate {
-	u.FailureDetail = &failureDetail
-	return u
 }
 
 type BuildTaskIndexConfig struct {
