@@ -52,6 +52,44 @@ func (m accountIDContextMatcher) String() string {
 	return "context with account id " + m.accountID
 }
 
+func TestSemanticUnderstandingTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{
+		suts:     taskService,
+		queue:    make(chan string, 4),
+		inFlight: make(map[string]struct{}),
+	}
+	taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+			assert.Equal(t, 4, params.Limit)
+			assert.Equal(t, []string{interfaces.SemanticUnderstandingTaskStatusPending}, params.Statuses)
+			assert.Equal(t, "create_time", params.Sort)
+			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+			return []*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, 1, nil
+		})
+
+	worker.fillQueue(context.Background())
+
+	assert.Len(t, worker.queue, 1)
+	assert.False(t, worker.addInFlight("task-1"))
+}
+
+func TestSemanticUnderstandingTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{
+		suts:     taskService,
+		queue:    make(chan string, 4),
+		inFlight: make(map[string]struct{}),
+	}
+	worker.queue <- "already-queued"
+
+	worker.fillQueue(context.Background())
+}
+
 func TestSemanticUnderstandingTaskWorkerHandleTask(t *testing.T) {
 	t.Run("skips cancelled task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

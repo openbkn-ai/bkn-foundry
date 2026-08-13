@@ -10,13 +10,10 @@ package discover_task
 import (
 	"context"
 	"fmt"
-	"math"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
@@ -37,44 +34,44 @@ var (
 	dtService     interfaces.DiscoverTaskService
 )
 
-const debugQueueSize = 100
+const discoverTaskDispatchBuffer = 1
 
 type discoverTaskService struct {
 	appSetting *common.AppSetting
-	client     *asynq.Client
 	cs         interfaces.CatalogService
 	dta        interfaces.DiscoverTaskAccess
 	ums        interfaces.UserMgmtService
 
-	debugTaskQueue chan *asynq.Task
+	dispatchCh chan struct{}
 }
 
 // NewDiscoverTaskService creates or returns the singleton DiscoverTaskService.
 func NewDiscoverTaskService(appSetting *common.AppSetting) interfaces.DiscoverTaskService {
 	dtServiceOnce.Do(func() {
-		var client *asynq.Client
-		if !common.GetDebugMode() && logics.AQA != nil {
-			client = logics.AQA.CreateClient()
-		}
 		dtService = &discoverTaskService{
 			appSetting: appSetting,
-			client:     client,
 			cs:         catalog.NewCatalogService(appSetting),
 			dta:        logics.DTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
-			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
+			dispatchCh: make(chan struct{}, discoverTaskDispatchBuffer),
 		}
 	})
 	return dtService
 }
 
-// DebugTaskQueue returns the in-process discover task queue used in DEBUG_MODE.
-func (dts *discoverTaskService) DebugTaskQueue() <-chan *asynq.Task {
-	return dts.debugTaskQueue
+func (dts *discoverTaskService) DispatchSignal() <-chan struct{} {
+	return dts.dispatchCh
 }
 
-// Create creates a new DiscoverTask and enqueues it to the task queue.
+func (dts *discoverTaskService) RequestDispatch() {
+	select {
+	case dts.dispatchCh <- struct{}{}:
+	default:
+	}
+}
+
+// Create persists a new DiscoverTask and notifies the local database-backed worker.
 // Create 创建一个新的发现任务
 // 参数:
 //   - ctx: 上下文，用于传递请求范围的数据和取消信号
@@ -114,42 +111,9 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 		return "", err
 	}
 
-	if err := dts.enqueueTask(ctx, task.ID); err != nil {
-		return "", err
-	}
+	dts.RequestDispatch()
 
 	return task.ID, nil
-}
-
-func (dts *discoverTaskService) enqueueTask(ctx context.Context, taskID string) error {
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{
-		TaskID: taskID,
-	})
-	if err != nil {
-		otellog.LogError(ctx, "Failed to marshal discover task", err)
-		return err
-	}
-
-	asynqTask := asynq.NewTask(interfaces.DiscoverTaskType, payload)
-	if common.GetDebugMode() || dts.client == nil {
-		dts.debugTaskQueue <- asynqTask
-		logger.Infof("Enqueued debug discover task: id=%s, type=%s", taskID, asynqTask.Type())
-		return nil
-	}
-
-	info, err := dts.client.Enqueue(asynqTask,
-		asynq.Queue(interfaces.HighQueue),
-		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
-		asynq.Timeout(math.MaxInt64),
-		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
-	)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to enqueue discover task", err)
-		return err
-	}
-
-	logger.Infof("Enqueued discover task: id=%s, type=%s, queue=%s", info.ID, info.Type, info.Queue)
-	return nil
 }
 
 // CreateScheduled method removed - scheduled tasks are now managed by DiscoverScheduleService
@@ -215,6 +179,19 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task account names: %v", err)
 	}
+	return tasks, total, nil
+}
+
+func (dts *discoverTaskService) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.InternalList")
+	defer span.End()
+
+	tasks, total, err := dts.dta.List(ctx, params)
+	if err != nil {
+		span.SetStatus(codes.Error, "List discover tasks failed")
+		return nil, 0, err
+	}
+	span.SetStatus(codes.Ok, "")
 	return tasks, total, nil
 }
 

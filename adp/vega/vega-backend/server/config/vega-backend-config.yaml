@@ -118,3 +118,4 @@ query:
 taskWorker:
   # 单实例数据库 Task loop 的本地 worker 数。
   semanticWorkerCount: 1
+  discoverWorkerCount: 1

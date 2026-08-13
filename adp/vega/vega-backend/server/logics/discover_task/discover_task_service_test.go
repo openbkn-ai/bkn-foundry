@@ -34,6 +34,31 @@ func newTestDiscoverTaskService(t *testing.T) (*discoverTaskService, *vmock.Mock
 	}, dta, ums
 }
 
+func TestDiscoverTaskServiceCreateRequestsDispatchAfterPersistence(t *testing.T) {
+	service, dta, _ := newTestDiscoverTaskService(t)
+	service.dispatchCh = make(chan struct{}, discoverTaskDispatchBuffer)
+	dta.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.DiscoverTask{})).
+		DoAndReturn(func(_ context.Context, task *interfaces.DiscoverTask) error {
+			assert.Equal(t, "catalog-1", task.CatalogID)
+			assert.Equal(t, interfaces.DiscoverTaskStatusPending, task.Status)
+			return nil
+		})
+
+	id, err := service.Create(context.Background(), &interfaces.CreateDiscoverTaskRequest{
+		CatalogID:   "catalog-1",
+		TriggerType: interfaces.DiscoverTaskTriggerManual,
+		Strategy:    interfaces.DiscoverStrategyFullSync,
+	})
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, id)
+	select {
+	case <-service.DispatchSignal():
+	default:
+		t.Fatal("expected a dispatch signal after the task was persisted")
+	}
+}
+
 func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 	t.Run("get enriches creator name", func(t *testing.T) {
 		service, dta, ums := newTestDiscoverTaskService(t)

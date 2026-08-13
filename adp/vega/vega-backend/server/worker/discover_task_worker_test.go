@@ -11,8 +11,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,10 +28,7 @@ func TestDiscoverTaskWorkerSkipsCancelledTask(t *testing.T) {
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", Status: interfaces.DiscoverTaskStatusCancelled,
 	}, nil)
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
-	require.NoError(t, err)
-
-	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
 }
 
 func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
@@ -49,9 +44,7 @@ func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
 		Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
 	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted", gomock.Any()).Return(true, nil)
 
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
-	require.NoError(t, err)
-	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
 }
 
 func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
@@ -68,9 +61,65 @@ func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
 	dts.EXPECT().InternalUpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusFailed,
 		"catalog is disabled", gomock.Any()).Return(nil)
 
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
-	require.NoError(t, err)
-	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
+}
+
+func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, queueSize: 2}
+
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+			assert.Equal(t, []string{interfaces.DiscoverTaskStatusRunning}, params.Statuses)
+			assert.Equal(t, 2, params.Limit)
+			assert.Equal(t, "create_time", params.Sort)
+			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
+		})
+	dts.EXPECT().InternalUpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusFailed,
+		"discover task interrupted by service restart", gomock.Any()).Return(nil)
+
+	worker.recoverInterruptedTasks(context.Background())
+}
+
+func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{
+		dts:      dts,
+		queue:    make(chan string, 2),
+		inFlight: make(map[string]struct{}),
+	}
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+			assert.Equal(t, 2, params.Limit)
+			assert.Equal(t, []string{interfaces.DiscoverTaskStatusPending}, params.Statuses)
+			assert.Equal(t, "create_time", params.Sort)
+			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
+		})
+
+	worker.fillQueue(context.Background())
+
+	assert.Len(t, worker.queue, 1)
+	assert.False(t, worker.addInFlight("task-1"))
+}
+
+func TestDiscoverTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{
+		dts:      dts,
+		queue:    make(chan string, 2),
+		inFlight: make(map[string]struct{}),
+	}
+	worker.queue <- "already-queued"
+
+	worker.fillQueue(context.Background())
 }
 
 func TestReconcileTableResources(t *testing.T) {

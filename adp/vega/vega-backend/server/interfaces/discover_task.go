@@ -18,12 +18,6 @@ const (
 	// DiscoverTask trigger type constants.
 	DiscoverTaskTriggerManual    string = "manual"    // 手动/立即执行
 	DiscoverTaskTriggerScheduled string = "scheduled" // 定时驱动
-
-	// DiscoverTaskType is the task type for discover tasks.
-	DiscoverTaskType = "discover:execute"
-
-	// KafkaTopic is the topic for discover task messages.
-	DiscoverTaskTopic = "adp-vega-discover-task"
 )
 
 var (
@@ -97,11 +91,6 @@ type DiscoverTaskQueryParams struct {
 	Statuses    []string `form:"status" json:"status"`
 	Strategy    string   `form:"strategy" json:"strategy"`
 	TriggerType string   `form:"trigger_type" json:"trigger_type"`
-}
-
-// DiscoverTaskMessage represents the Kafka message for discover task.
-type DiscoverTaskMessage struct {
-	TaskID string `json:"task_id"`
 }
 
 type CreateDiscoverTaskRequest struct {

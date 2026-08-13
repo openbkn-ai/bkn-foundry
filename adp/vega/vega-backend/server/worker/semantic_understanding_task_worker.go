@@ -58,6 +58,7 @@ func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *Semantic
 	if appSetting != nil && appSetting.TaskWorker.SemanticWorkerCount > 0 {
 		workerCount = appSetting.TaskWorker.SemanticWorkerCount
 	}
+	queueSize := workerCount * taskQueueSizeMultiplier
 	return &SemanticUnderstandingTaskWorker{
 		appSetting: appSetting,
 		suts:       semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting),
@@ -66,8 +67,8 @@ func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *Semantic
 		rs:         resource.NewResourceService(appSetting),
 
 		workerCount: workerCount,
-		queueSize:   workerCount,
-		queue:       make(chan string, workerCount),
+		queueSize:   queueSize,
+		queue:       make(chan string, queueSize),
 		inFlight:    make(map[string]struct{}),
 	}
 }
@@ -100,21 +101,27 @@ func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context
 			logger.Errorf("List interrupted semantic understanding tasks failed: %v", err)
 			return
 		}
+		updated := 0
 		for _, task := range tasks {
 			if task != nil {
-				if _, err := sutw.suts.MarkFailed(ctx, task.ID, recoveryFailure); err != nil {
+				changed, err := sutw.suts.MarkFailed(ctx, task.ID, recoveryFailure)
+				if err != nil {
 					logger.Errorf("Mark interrupted semantic understanding task failed: id=%s, error=%v", task.ID, err)
+					continue
+				}
+				if changed {
+					updated++
 				}
 			}
 		}
-		if len(tasks) < sutw.queueSize {
+		if len(tasks) < sutw.queueSize || updated == 0 {
 			return
 		}
 	}
 }
 
 func (sutw *SemanticUnderstandingTaskWorker) pollTasks(ctx context.Context) {
-	// The producer owns the initial recovery scan as well as all later refills.
+	// The producer performs an initial pending-task scan before waiting for signals.
 	sutw.fillQueue(ctx)
 
 	ticker := time.NewTicker(semanticTaskPollInterval)
@@ -133,15 +140,15 @@ func (sutw *SemanticUnderstandingTaskWorker) pollTasks(ctx context.Context) {
 }
 
 func (sutw *SemanticUnderstandingTaskWorker) fillQueue(ctx context.Context) {
-	// Channel capacity is the local queue limit; do not query or advance scheduling when full.
-	free := cap(sutw.queue) - len(sutw.queue)
-	if free == 0 {
+	// Refill in batches only after workers have drained the local waiting queue.
+	if len(sutw.queue) != 0 {
 		return
 	}
+	limit := cap(sutw.queue)
 	// Normal execution prioritizes pending tasks in stable create_time, id order.
 	tasks, _, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{
-			Limit:     free,
+			Limit:     limit,
 			Sort:      "create_time",
 			Direction: interfaces.ASC_DIRECTION,
 		},

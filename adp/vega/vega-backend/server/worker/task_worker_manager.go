@@ -22,6 +22,8 @@ import (
 	"vega-backend/logics/resource"
 )
 
+const taskQueueSizeMultiplier = 4
+
 var (
 	taskWorkerMangerOnce sync.Once
 	taskWorkerManger     *TaskWorkerManger
@@ -63,6 +65,7 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 // Start starts the task worker.
 func (twm *TaskWorkerManger) Start() {
 	twm.sutw.Start(context.Background())
+	twm.dtw.Start(context.Background())
 
 	if common.GetDebugMode() {
 		twm.startDebugSubscribers()
@@ -87,14 +90,6 @@ func (twm *TaskWorkerManger) Start() {
 
 func (twm *TaskWorkerManger) startDebugSubscribers() {
 	go func() {
-		logger.Info("debug discover task channel subscriber started")
-		for task := range twm.dtw.dts.DebugTaskQueue() {
-			if err := twm.ProcessTask(context.Background(), task); err != nil {
-				logger.Errorf("debug discover task failed: %v", err)
-			}
-		}
-	}()
-	go func() {
 		logger.Info("debug build task channel subscriber started")
 		for task := range twm.bts.DebugTaskQueue() {
 			if err := twm.ProcessTask(context.Background(), task); err != nil {
@@ -116,12 +111,11 @@ func (twm *TaskWorkerManger) Run(ctx context.Context) error {
 
 	// Register task workers
 	mux := asynq.NewServeMux()
-	mux.Handle(interfaces.DiscoverTaskType, twm)
 	mux.Handle(interfaces.BuildTaskTypeBatch, twm)
 	mux.Handle(interfaces.BuildTaskTypeEmbedding, twm)
 	mux.Handle(interfaces.BuildTaskTypeStreaming, twm)
 
-	logger.Infof("Task worker starting, listening for task types: %s, %s, %s, %s", interfaces.DiscoverTaskType, interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
+	logger.Infof("Task worker starting, listening for task types: %s, %s, %s", interfaces.BuildTaskTypeBatch, interfaces.BuildTaskTypeEmbedding, interfaces.BuildTaskTypeStreaming)
 	if err := srv.Run(mux); err != nil {
 		logger.Errorf("Task worker failed: %v", err)
 		return err
@@ -132,8 +126,6 @@ func (twm *TaskWorkerManger) Run(ctx context.Context) error {
 // ProcessTask processes a task from the queue.
 func (twm *TaskWorkerManger) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	switch task.Type() {
-	case interfaces.DiscoverTaskType:
-		return twm.dtw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeBatch:
 		return twm.bbw.HandleTask(ctx, task)
 	case interfaces.BuildTaskTypeEmbedding:

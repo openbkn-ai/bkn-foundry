@@ -9,10 +9,9 @@ package worker
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/common"
@@ -23,6 +22,11 @@ import (
 	"vega-backend/logics/resource"
 )
 
+const (
+	discoverTaskPollInterval   = 30 * time.Second
+	defaultDiscoverWorkerCount = 1
+)
+
 // DiscoverTaskWorker handles discover tasks.
 type DiscoverTaskWorker struct {
 	appSetting *common.AppSetting
@@ -30,28 +34,160 @@ type DiscoverTaskWorker struct {
 	cs         interfaces.CatalogService
 	dts        interfaces.DiscoverTaskService
 	rs         interfaces.ResourceService
+
+	workerCount int
+	queueSize   int
+	queue       chan string
+	mu          sync.Mutex
+	inFlight    map[string]struct{}
 }
 
 // NewDiscoverTaskWorker creates a new discover worker.
 func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
+	workerCount := defaultDiscoverWorkerCount
+	if appSetting != nil && appSetting.TaskWorker.DiscoverWorkerCount > 0 {
+		workerCount = appSetting.TaskWorker.DiscoverWorkerCount
+	}
+	queueSize := workerCount * taskQueueSizeMultiplier
 	return &DiscoverTaskWorker{
 		appSetting: appSetting,
 		cf:         factory.GetFactory(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
 		dts:        discover_task.NewDiscoverTaskService(appSetting),
 		rs:         resource.NewResourceService(appSetting),
+
+		workerCount: workerCount,
+		queueSize:   queueSize,
+		queue:       make(chan string, queueSize),
+		inFlight:    make(map[string]struct{}),
 	}
 }
 
-// HandleTask handles a discover task from the queue.
-func (dtw *DiscoverTaskWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.DiscoverTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal task message: %v", err)
-		return err
+// Start starts the single-instance database-backed task loop and its local workers.
+func (dtw *DiscoverTaskWorker) Start(ctx context.Context) {
+	// 1. Resolve leftover running tasks before starting any new work.
+	dtw.recoverInterruptedTasks(ctx)
+	// 2. Start a fixed worker pool that only consumes the bounded local queue.
+	for i := 0; i < dtw.workerCount; i++ {
+		go dtw.runQueuedTasks(ctx)
 	}
+	// 3. Start the only producer. It owns the initial scan and all later refills.
+	go dtw.pollTasks(ctx)
+}
 
-	taskID := msg.TaskID
+func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) {
+	const recoveryFailure = "discover task interrupted by service restart"
+	for {
+		// Always read from offset zero because each batch is removed from the running result set.
+		tasks, _, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{
+				Limit:     dtw.queueSize,
+				Sort:      "create_time",
+				Direction: interfaces.ASC_DIRECTION,
+			},
+			Statuses: []string{interfaces.DiscoverTaskStatusRunning},
+		})
+		if err != nil {
+			logger.Errorf("List interrupted discover tasks failed: %v", err)
+			return
+		}
+		updated := 0
+		for _, task := range tasks {
+			if task == nil {
+				continue
+			}
+			if err := dtw.dts.InternalUpdateStatus(ctx, task.ID, interfaces.DiscoverTaskStatusFailed, recoveryFailure, time.Now().UnixMilli()); err != nil {
+				logger.Errorf("Mark interrupted discover task failed: id=%s, error=%v", task.ID, err)
+				continue
+			}
+			updated++
+		}
+		if len(tasks) < dtw.queueSize || updated == 0 {
+			return
+		}
+	}
+}
+
+func (dtw *DiscoverTaskWorker) pollTasks(ctx context.Context) {
+	// The producer performs an initial pending-task scan before waiting for signals.
+	dtw.fillQueue(ctx)
+
+	ticker := time.NewTicker(discoverTaskPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		// The 30-second poll is only a fallback for missed notifications and restart recovery.
+		case <-ticker.C:
+		// The service signals only after the new task is durably persisted.
+		case <-dtw.dts.DispatchSignal():
+		}
+		dtw.fillQueue(ctx)
+	}
+}
+
+func (dtw *DiscoverTaskWorker) fillQueue(ctx context.Context) {
+	// Refill in batches only after workers have drained the local waiting queue.
+	if len(dtw.queue) != 0 {
+		return
+	}
+	limit := cap(dtw.queue)
+	tasks, _, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: limit, Sort: "create_time", Direction: interfaces.ASC_DIRECTION},
+		Statuses:              []string{interfaces.DiscoverTaskStatusPending},
+	})
+	if err != nil {
+		logger.Errorf("List pending discover tasks failed: %v", err)
+		return
+	}
+	for _, task := range tasks {
+		// inFlight covers both queued and running tasks while the database may still show pending.
+		if task == nil || !dtw.addInFlight(task.ID) {
+			continue
+		}
+		select {
+		case dtw.queue <- task.ID:
+		case <-ctx.Done():
+			dtw.removeInFlight(task.ID)
+			return
+		}
+	}
+}
+
+func (dtw *DiscoverTaskWorker) runQueuedTasks(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case taskID := <-dtw.queue:
+			if err := dtw.Run(ctx, taskID); err != nil {
+				logger.Errorf("Run discover task failed: id=%s, error=%v", taskID, err)
+			}
+			dtw.removeInFlight(taskID)
+			dtw.dts.RequestDispatch()
+		}
+	}
+}
+
+func (dtw *DiscoverTaskWorker) addInFlight(id string) bool {
+	dtw.mu.Lock()
+	defer dtw.mu.Unlock()
+	if _, exists := dtw.inFlight[id]; exists {
+		return false
+	}
+	dtw.inFlight[id] = struct{}{}
+	return true
+}
+
+func (dtw *DiscoverTaskWorker) removeInFlight(id string) {
+	dtw.mu.Lock()
+	defer dtw.mu.Unlock()
+	delete(dtw.inFlight, id)
+}
+
+// Run executes one discover task selected from the task table.
+func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	logger.Infof("Starting discover task: %s", taskID)
 
 	taskInfo, err := dtw.dts.InternalGetByID(ctx, taskID)

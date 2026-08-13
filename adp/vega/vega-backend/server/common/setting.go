@@ -104,6 +104,7 @@ type CatalogHealthCheckConfig struct {
 // TaskWorkerConfig configures local worker-pool concurrency for database-backed tasks.
 type TaskWorkerConfig struct {
 	SemanticWorkerCount int `mapstructure:"semanticWorkerCount"`
+	DiscoverWorkerCount int `mapstructure:"discoverWorkerCount"`
 }
 
 // AppSetting app配置项

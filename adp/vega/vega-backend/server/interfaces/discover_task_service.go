@@ -7,11 +7,7 @@
 // Package interfaces defines entities, DTOs, and service interfaces.
 package interfaces
 
-import (
-	"context"
-
-	"github.com/hibiken/asynq"
-)
+import "context"
 
 // DiscoverTaskService defines discover task business logic interface.
 //
@@ -36,15 +32,19 @@ type DiscoverTaskService interface {
 	// unless ignoreMissing=true. Duplicate ids in the input are de-duplicated.
 	Delete(ctx context.Context, ids []string, ignoreMissing bool) error
 
-	// DebugTaskQueue returns the in-process discover task queue used in DEBUG_MODE.
-	DebugTaskQueue() <-chan *asynq.Task
-
 	// InternalGetByID retrieves a DiscoverTask by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*DiscoverTask, error)
+	// InternalList returns task summaries for the local database-backed worker.
+	InternalList(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, int64, error)
 	// InternalUpdateStatus updates a DiscoverTask's status for internal workers.
 	InternalUpdateStatus(ctx context.Context, id string, status string, message string, stime int64) error
 	// InternalMarkCancelled 仅取消活动状态的 DiscoverTask。
 	InternalMarkCancelled(ctx context.Context, id string, message string, finishTime int64) (bool, error)
 	// InternalUpdateResult updates a DiscoverTask's result for internal workers.
 	InternalUpdateResult(ctx context.Context, id string, result *DiscoverResult, stime int64) error
+
+	// DispatchSignal exposes task creation and worker-capacity notifications to the local producer.
+	DispatchSignal() <-chan struct{}
+	// RequestDispatch asks the local producer to scan the database for pending tasks.
+	RequestDispatch()
 }
