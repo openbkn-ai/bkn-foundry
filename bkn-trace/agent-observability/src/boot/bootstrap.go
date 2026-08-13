@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknbackendaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
@@ -151,9 +152,7 @@ func NewApp() (*App, error) {
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
-		logsvc.NewNotIntegratedSource("bkn-backend", []string{
-			observabilityvo.CategoryAuditAdmin,
-		}, []string{"domain_knowledge_network"}),
+		bknbackendaudit.New(resolverConfig.BKNBaseURL, &http.Client{Timeout: resolverConfig.Timeout}),
 		logsvc.NewNotIntegratedSource("vega", []string{
 			observabilityvo.CategoryAuditAdmin,
 		}, []string{"data_resource_knowledge_network"}),
