@@ -13,3 +13,9 @@ func TestRegisteredLogEventsRejectUnknownAndCategoryMismatch(t *testing.T) {
 		t.Fatal("unregistered extension event was accepted")
 	}
 }
+
+func TestRegisteredLogEventsIncludeVoluntaryLogout(t *testing.T) {
+	if !IsRegisteredLogEvent(CategoryAccessUser, "logout.succeeded") {
+		t.Fatal("registered voluntary logout event was rejected")
+	}
+}

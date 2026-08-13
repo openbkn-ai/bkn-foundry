@@ -1,4 +1,4 @@
-from app.routers import llm_router, open_api_json, small_model_router, private_route, prompt_router, model_quota_router
+from app.routers import llm_router, open_api_json, small_model_router, private_route, prompt_router, model_quota_router, operation_audit_router
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi import Request
@@ -48,6 +48,12 @@ def router_init(app):
     )
     app.include_router(
         model_quota_router.model_quota_router,
+        prefix=api_version_public_v1,
+        tags=["Factory"],
+        responses={404: {"description": "Not found"}},
+    )
+    app.include_router(
+        operation_audit_router.operation_audit_router,
         prefix=api_version_public_v1,
         tags=["Factory"],
         responses={404: {"description": "Not found"}},

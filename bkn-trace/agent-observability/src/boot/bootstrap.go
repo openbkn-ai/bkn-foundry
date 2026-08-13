@@ -27,7 +27,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknbackendaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaudit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeuseraccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/executionfactoryaudit"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/modelmanageraudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchconversationaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchcoreprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
@@ -35,6 +38,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/otelcolmetrics"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/vegaaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	memorysessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
@@ -146,22 +150,14 @@ func NewApp() (*App, error) {
 	logSources := []logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
 		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
-		logsvc.NewNotIntegratedSource("bkn-safe-access", []string{
-			observabilityvo.CategoryAccessUser,
-		}, []string{"BKN Safe OAuth"}),
+		bknsafeuseraccess.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
 		bknbackendaudit.New(resolverConfig.BKNBaseURL, &http.Client{Timeout: resolverConfig.Timeout}),
-		logsvc.NewNotIntegratedSource("vega", []string{
-			observabilityvo.CategoryAuditAdmin,
-		}, []string{"data_resource_knowledge_network"}),
-		logsvc.NewNotIntegratedSource("execution-factory", []string{
-			observabilityvo.CategoryAuditAdmin,
-		}, []string{"execution_factory"}),
-		logsvc.NewNotIntegratedSource("model-manager", []string{
-			observabilityvo.CategoryAuditAdmin,
-		}, []string{"model_management"}),
+		vegaaudit.New(resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout}),
+		executionfactoryaudit.New(resolverConfig.ExecutionFactoryURL, &http.Client{Timeout: resolverConfig.Timeout}),
+		modelmanageraudit.New(resolverConfig.ModelManagerURL, &http.Client{Timeout: resolverConfig.Timeout}),
 	}
 	if coreConfig.ProjectionEnabled {
 		logSources = append(logSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))

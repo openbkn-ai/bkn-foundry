@@ -13,6 +13,7 @@ from app.routers import router_init
 from app.utils.comment_utils import write_log
 from app.utils.model_monitor import vllm_monitor_task, delete_monitor_data_task, delete_model_quota_data_task
 from app.utils.observability.observability import init_observability, shutdown_observability
+from app.utils.operation_audit import operation_audit_middleware
 
 # 添加APScheduler相关导入
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -134,6 +135,10 @@ def create_app():
     # 添加请求体大小检查中间件
     # app.add_middleware(RequestSizeMiddleware)
     # 添加鉴权中间件
+    # Starlette runs the most recently added middleware first.  Authentication
+    # must therefore wrap audit collection so audit reads the verified actor
+    # injected by auth_middleware after the handler returns.
+    app.add_middleware(BaseHTTPMiddleware, dispatch=operation_audit_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=auth_middleware)
 
     # 初始化日志

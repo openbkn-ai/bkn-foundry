@@ -15,7 +15,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // registerAuth mounts the hydra login/consent/device provider pages. hydra is
@@ -23,11 +25,11 @@ import (
 // pages are server-rendered (no SPA), styled to match the BKN Studio console:
 // device shows the user_code to confirm, consent shows the requesting client +
 // requested scopes with explicit Authorize/Decline.
-func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin) {
+func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessStore *accesslog.Store) {
 	r.GET("/login", showLogin)
-	r.POST("/login", func(c *gin.Context) { doLogin(c, p) })
+	r.POST("/login", func(c *gin.Context) { doLogin(c, p, accessStore) })
 	r.GET("/change-password", showChangePassword)
-	r.POST("/change-password", func(c *gin.Context) { doChangePassword(c, p) })
+	r.POST("/change-password", func(c *gin.Context) { doChangePassword(c, p, accessStore) })
 	r.GET("/consent", func(c *gin.Context) { showConsent(c, p) })
 	r.POST("/consent", func(c *gin.Context) { doConsent(c, p) })
 	r.GET("/device", showDevice)
@@ -177,7 +179,7 @@ func showLogin(c *gin.Context) {
 	renderHTML(c, loginPage, map[string]any{"Challenge": challenge})
 }
 
-func doLogin(c *gin.Context, p *auth.Provider) {
+func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 	challenge := c.PostForm("login_challenge")
 	account := c.PostForm("account")
 	password := c.PostForm("password")
@@ -185,7 +187,7 @@ func doLogin(c *gin.Context, p *auth.Provider) {
 		c.String(http.StatusBadRequest, "missing login_challenge")
 		return
 	}
-	redirectTo, err := p.Login(c.Request.Context(), challenge, account, password, false)
+	redirectTo, user, err := p.Login(c.Request.Context(), challenge, account, password, false)
 	if err != nil {
 		if errors.Is(err, auth.ErrMustChangePassword) {
 			// Credentials are valid but a password change is required first.
@@ -195,6 +197,7 @@ func doLogin(c *gin.Context, p *auth.Provider) {
 			return
 		}
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
+			recordLogin(c, accessStore, nil, account, "failure", loginFailureCode(err))
 			// Re-render the login form with an inline error instead of a bare
 			// error page, keeping the entered account and the same challenge.
 			c.Status(http.StatusUnauthorized)
@@ -216,6 +219,7 @@ func doLogin(c *gin.Context, p *auth.Provider) {
 		c.String(http.StatusInternalServerError, "internal error")
 		return
 	}
+	recordLogin(c, accessStore, user, account, "success", "")
 	c.Redirect(http.StatusFound, redirectTo)
 }
 
@@ -233,7 +237,7 @@ func showChangePassword(c *gin.Context) {
 
 // doChangePassword re-verifies the current password, sets the new one, and
 // completes the hydra login. Validation errors re-render the page with a note.
-func doChangePassword(c *gin.Context, p *auth.Provider) {
+func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 	challenge := c.PostForm("login_challenge")
 	account := c.PostForm("account")
 	oldPw := c.PostForm("old_password")
@@ -254,9 +258,10 @@ func doChangePassword(c *gin.Context, p *auth.Provider) {
 		reRender("新密码不能与当前密码相同")
 		return
 	}
-	redirectTo, err := p.ChangePassword(c.Request.Context(), challenge, account, oldPw, newPw, false)
+	redirectTo, user, err := p.ChangePassword(c.Request.Context(), challenge, account, oldPw, newPw, false)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
+			recordLogin(c, accessStore, nil, account, "failure", loginFailureCode(err))
 			reRender("当前密码错误")
 			return
 		}
@@ -268,7 +273,36 @@ func doChangePassword(c *gin.Context, p *auth.Provider) {
 		c.String(http.StatusInternalServerError, "internal error")
 		return
 	}
+	recordLogin(c, accessStore, user, account, "success", "")
 	c.Redirect(http.StatusFound, redirectTo)
+}
+
+func recordLogin(c *gin.Context, store *accesslog.Store, user *model.User, account, outcome, failureCode string) {
+	if store == nil {
+		return
+	}
+	actorID, actorName := "", strings.TrimSpace(account)
+	if user != nil {
+		actorID = user.ID
+		actorName = strings.TrimSpace(user.Name)
+		if actorName == "" {
+			actorName = strings.TrimSpace(user.Account)
+		}
+	}
+	if err := store.Record(c.Request.Context(), accesslog.Entry{
+		ActorID: actorID, ActorNameSnapshot: actorName, AuthMethod: "password", SourceChannel: "web",
+		Action: "login", Outcome: outcome, FailureCode: failureCode,
+		RequestID: requestIDFromHeader(c), ClientIP: c.ClientIP(),
+	}); err != nil {
+		slog.Error("access login fact write failed", "outcome", outcome, "error", err)
+	}
+}
+
+func loginFailureCode(err error) string {
+	if errors.Is(err, auth.ErrUserDisabled) {
+		return "user_disabled"
+	}
+	return "invalid_credentials"
 }
 
 // firstPartyClients are the platform's own seeded login entry-point clients

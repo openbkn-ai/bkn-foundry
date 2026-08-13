@@ -98,6 +98,10 @@ spec:
               value: {{ .Values.businessResolver.bknBaseURL | quote }}
             - name: BKN_TRACE_VEGA_RESOLVER_URL
               value: {{ .Values.businessResolver.vegaBaseURL | quote }}
+            - name: BKN_TRACE_EXECUTION_FACTORY_URL
+              value: {{ .Values.businessResolver.executionFactoryURL | quote }}
+            - name: BKN_TRACE_MODEL_MANAGER_URL
+              value: {{ .Values.businessResolver.modelManagerURL | quote }}
             - name: BKN_TRACE_RESOLVER_TIMEOUT
               value: {{ .Values.businessResolver.timeout | quote }}
             {{- end }}

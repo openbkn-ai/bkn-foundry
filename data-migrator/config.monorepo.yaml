@@ -49,7 +49,7 @@ services:
     path: migrations/vega-backend
     # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
   agent-operator-integration:
-    path: migrations/agent-operator-integratio
+    path: migrations/agent-operator-integration
     # check_from: "1.0.0"  # 可选，从指定版本开始检测，不配置则检测所有版本
 
   # ---- infra ----

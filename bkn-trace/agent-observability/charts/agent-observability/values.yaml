@@ -72,6 +72,8 @@ businessResolver:
   enabled: true
   bknBaseURL: "http://bkn-backend-svc:13014"
   vegaBaseURL: "http://vega-backend-svc:13014"
+  executionFactoryURL: "http://agent-operator-integration:9000"
+  modelManagerURL: "http://mf-model-manager:9898"
   timeout: 3s
 
 # The Community binary ignores this block. The EE image uses it solely to

@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -32,6 +33,8 @@ type Deps struct {
 	// Audit records admin-API mutations. When nil, the audit middleware and the
 	// audit-log read endpoint are not mounted (auditing off).
 	Audit *audit.Store
+	// AccessLog records login/logout outcomes separately from management audit.
+	AccessLog *accesslog.Store
 	// TokenVerifier validates admin-API bearer tokens. Defaults to Hydra when
 	// nil (production); tests inject a stub.
 	TokenVerifier TokenVerifier
@@ -69,7 +72,7 @@ func New(deps Deps) *gin.Engine {
 
 	// hydra login/consent/device provider pages.
 	if deps.Provider != nil && deps.Hydra != nil {
-		registerAuth(r, deps.Provider, deps.Hydra)
+		registerAuth(r, deps.Provider, deps.Hydra, deps.AccessLog)
 	}
 
 	// Internal user-directory reads (name resolution, batch lookups) — ClusterIP.
@@ -109,6 +112,9 @@ func New(deps Deps) *gin.Engine {
 		if deps.Audit != nil {
 			admin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 			registerAuditReads(admin, deps.Audit, deps.Enforcer)
+		}
+		if deps.AccessLog != nil {
+			registerAccessLogReads(admin, deps.AccessLog)
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
 		registerAdminReads(admin, deps.Directory, deps.Enforcer)
@@ -195,6 +201,9 @@ func New(deps Deps) *gin.Engine {
 			meWrites.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
 		registerMeProfile(meWrites, deps.Users)
+		if deps.AccessLog != nil && deps.Directory != nil {
+			registerLogout(meWrites, deps.AccessLog, deps.Directory)
+		}
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
 			registerMeAPIKeys(meWrites, apiKeys)

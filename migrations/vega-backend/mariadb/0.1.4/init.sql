@@ -523,3 +523,32 @@ CREATE TABLE IF NOT EXISTS t_catalog_health_check_schedule (
     PRIMARY KEY (f_catalog_id),
     INDEX idx_mode_next_run (f_mode, f_next_run)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='Catalog 定时健康检查配置与执行元数据';
+
+-- ==========================================
+-- 12. t_vega_operation_audit 数据资源管理操作审计表
+-- ==========================================
+CREATE TABLE IF NOT EXISTS t_vega_operation_audit (
+    event_id                 VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    event_time               DATETIME(6) NOT NULL,
+    recorded_at              DATETIME(6) NOT NULL,
+    tenant_id                VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    business_domain_id       VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    actor_id                 VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    actor_name               VARCHAR(255) NOT NULL,
+    actor_type               VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    auth_method              VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    request_id               VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    source_channel           VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    method                   VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    action                   VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    target_type              VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    target_id                VARCHAR(1024) NOT NULL,
+    target_name              VARCHAR(1024) NOT NULL,
+    outcome                  VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    failure_code             VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+    failure_message          VARCHAR(512) NOT NULL DEFAULT '',
+    PRIMARY KEY (event_id),
+    INDEX idx_vega_audit_tenant_time (tenant_id, event_time, event_id),
+    INDEX idx_vega_audit_domain_time (business_domain_id, event_time, event_id),
+    INDEX idx_vega_audit_actor_time (actor_id, event_time, event_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='Vega 数据资源管理操作审计事实';
