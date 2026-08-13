@@ -56,14 +56,18 @@ func (source handlerLogSource) Metadata() observabilityvo.SourceStatus {
 	}
 }
 
-func TestLogHandlerReturnsTheR62ListEnvelope(t *testing.T) {
+func TestLogHandlerReturnsOnlyTheOperationAuditContract(t *testing.T) {
 	profile := evidencevo.AccessProfile{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", ActorID: "builder-a", EffectiveSubjectID: "builder-a",
 		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-a"},
 		AccountActive: true, TenantActive: true, Fingerprint: "sha256:profile-a",
 	}
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{{
-		SchemaVersion: "1.0.0", LogID: "log-a", SourceID: "otel", SourceLogID: "source-a",
+		SchemaVersion: "1.0", EventID: "event-a", EventTime: time.Now().UTC(), RecordedAt: time.Now().UTC(),
+		ActorID: "builder-a", ActorNameSnapshot: "Builder A", ActorType: "user", AuthMethod: "session",
+		SourceChannel: "studio", BusinessModule: "domain_knowledge_network", Action: "update",
+		TargetType: "knowledge_network", TargetID: "kn-a", TargetNameSnapshot: "Supply Chain",
+		LogID: "log-a", SourceID: "otel", SourceLogID: "source-a",
 		Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed",
 		EventTimestamp: time.Now().UTC(), ObservedTimestamp: time.Now().UTC(),
 		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "读取需求预测对象",
@@ -71,7 +75,7 @@ func TestLogHandlerReturnsTheR62ListEnvelope(t *testing.T) {
 		EffectiveSubjectID: "other-a", IngressPrincipal: "otel-collector", TrustLevel: "trusted",
 		KnowledgeNetworkIDs: []string{"kn-a"}, TraceID: "4b3d59daeff5bfbb23d46c47a5051ec9",
 	}})
-	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?categories=runtime.business&limit=20", nil)
+	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?business_module=domain_knowledge_network&limit=20", nil)
 	request.Header.Set("x-account-id", "builder-a")
 	request.Header.Set("x-account-type", "user")
 	request.Header.Set("x-tenant-id", "tenant-a")
@@ -89,11 +93,33 @@ func TestLogHandlerReturnsTheR62ListEnvelope(t *testing.T) {
 	}
 	if body["partial"] != false || body["data"] == nil || body["source_status"] == nil || body["count"] == nil ||
 		body["request_trace_context"] == nil {
-		t.Fatalf("missing R6.2 envelope fields: %#v", body)
+		t.Fatalf("missing operation audit envelope fields: %#v", body)
 	}
 	data := body["data"].([]any)
-	if len(data) != 1 || data[0].(map[string]any)["log_id"] != "log-a" {
+	if len(data) != 1 || data[0].(map[string]any)["event_id"] != "event-a" {
 		t.Fatalf("unexpected log projection: %#v", body)
+	}
+	if data[0].(map[string]any)["business_module"] != "domain_knowledge_network" {
+		t.Fatalf("public contract must expose business_module: %#v", data[0])
+	}
+	if data[0].(map[string]any)["log_category"] != observabilityvo.CategoryRuntimeBusiness ||
+		data[0].(map[string]any)["event_name"] != "knowledge.read.completed" {
+		t.Fatalf("public contract must expose the registered event identity: %#v", data[0])
+	}
+	facts, factsOK := data[0].(map[string]any)["facts"].(map[string]any)
+	correlation, correlationOK := data[0].(map[string]any)["correlation"].(map[string]any)
+	if !factsOK || facts["action"] != "update" || facts["target_id"] != "kn-a" ||
+		!correlationOK || correlation["trace_id"] != "4b3d59daeff5bfbb23d46c47a5051ec9" {
+		t.Fatalf("typed facts or correlation were not projected: %#v", data[0])
+	}
+	for _, legacyField := range []string{
+		"log_id", "source_log_id", "severity_number", "severity_text",
+		"safe_summary", "service_name", "deployment_environment", "ingress_principal", "trust_level", "module",
+		"action", "target_type", "target_id", "request_id", "trace_id", "conversation_id",
+	} {
+		if _, exists := data[0].(map[string]any)[legacyField]; exists {
+			t.Fatalf("legacy technical field %q leaked from operation audit response: %#v", legacyField, data[0])
+		}
 	}
 }
 
@@ -131,7 +157,7 @@ func TestLogHandlerReturnsAuthorizedDetailAndHidesUnauthorizedDetail(t *testing.
 	setLogTestIdentity(ownedRequest, "user-a")
 	ownedResponse := httptest.NewRecorder()
 	handler.GetLog(ownedResponse, ownedRequest)
-	if ownedResponse.Code != http.StatusOK || !containsJSONLogID(ownedResponse.Body.Bytes(), "owned") {
+	if ownedResponse.Code != http.StatusOK || !containsJSONEventID(ownedResponse.Body.Bytes(), "owned") {
 		t.Fatalf("expected owned detail, got %d: %s", ownedResponse.Code, ownedResponse.Body.String())
 	}
 
@@ -141,6 +167,23 @@ func TestLogHandlerReturnsAuthorizedDetailAndHidesUnauthorizedDetail(t *testing.
 	handler.GetLog(otherResponse, otherRequest)
 	if otherResponse.Code != http.StatusNotFound || !containsJSONCode(otherResponse.Body.Bytes(), "log_not_disclosed") {
 		t.Fatalf("unauthorized detail must be undisclosed, got %d: %s", otherResponse.Code, otherResponse.Body.String())
+	}
+}
+
+func TestLogHandlerUsesEventIDInDetailValidation(t *testing.T) {
+	profile := evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "admin-a",
+		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
+	}
+	handler := newTestLogHandler(profile, nil)
+	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs/", nil)
+	setLogTestIdentity(request, "admin-a")
+	response := httptest.NewRecorder()
+
+	handler.GetLog(response, request)
+
+	if response.Code != http.StatusBadRequest || !containsJSONCode(response.Body.Bytes(), "invalid_event_id") {
+		t.Fatalf("missing event id must use the formal contract: %d %s", response.Code, response.Body.String())
 	}
 }
 
@@ -161,7 +204,6 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 		call   func(http.ResponseWriter, *http.Request)
 		assert func([]byte) bool
 	}{
-		{name: "facets", path: "/api/observability/v1/log-facets?facet=event_name", call: handler.GetLogFacets, assert: func(body []byte) bool { return containsJSONFacet(body, "service.started", 1) }},
 		{name: "sources", path: "/api/observability/v1/log-sources", call: handler.ListLogSources, assert: func(body []byte) bool { return containsJSONSource(body, "otel") }},
 		{name: "policies", path: "/api/observability/v1/log-policies", call: handler.ListLogPolicies, assert: func(body []byte) bool { return containsJSONPolicy(body, observabilityvo.CategoryRuntimeSystem) }},
 	}
@@ -178,23 +220,6 @@ func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 	}
 }
 
-func TestLogFacetRejectsUnsupportedFacet(t *testing.T) {
-	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "admin-a",
-		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
-	}
-	handler := newTestLogHandler(profile, nil)
-	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/log-facets?facet=tenant_id", nil)
-	setLogTestIdentity(request, "admin-a")
-	response := httptest.NewRecorder()
-
-	handler.GetLogFacets(response, request)
-
-	if response.Code != http.StatusBadRequest || !containsJSONCode(response.Body.Bytes(), "invalid_log_filter") {
-		t.Fatalf("unsupported facet must be rejected, got %d: %s", response.Code, response.Body.String())
-	}
-}
-
 func TestParseLogQueryAcceptsRFC3339TimeRangeAndRejectsReverseRange(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs?time_from=2026-08-01T10:00:00Z&time_to=2026-08-01T11:00:00Z", nil)
 	query, err := parseLogQuery(request)
@@ -208,8 +233,53 @@ func TestParseLogQueryAcceptsRFC3339TimeRangeAndRejectsReverseRange(t *testing.T
 	}
 }
 
+func TestParseLogQueryAcceptsOperationAuditFilters(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet,
+		"/api/observability/v1/logs?business_module=domain_knowledge_network&actor_id=user-a&action=create&target_type=conversation&target_id=conv-a&outcomes=success&outcomes=denied",
+		nil,
+	)
+	query, err := parseLogQuery(request)
+	if err != nil {
+		t.Fatalf("parse operation audit filters: %v", err)
+	}
+	if query.BusinessModule != "domain_knowledge_network" || query.ActorID != "user-a" || query.Action != "create" ||
+		query.TargetType != "conversation" || query.TargetID != "conv-a" ||
+		len(query.Outcomes) != 2 || query.Outcomes[0] != "success" || query.Outcomes[1] != "denied" {
+		t.Fatalf("operation audit filters were not preserved: %+v", query)
+	}
+}
+
+func TestParseLogQueryRejectsUnknownOperationAuditEnums(t *testing.T) {
+	for _, path := range []string{
+		"/api/observability/v1/logs?business_module=unknown_module",
+		"/api/observability/v1/logs?outcomes=partial_success",
+	} {
+		if _, err := parseLogQuery(httptest.NewRequest(http.MethodGet, path, nil)); err == nil {
+			t.Fatalf("invalid operation audit filter was accepted: %s", path)
+		}
+	}
+}
+
+func TestParseLogQueryAcceptsRegisteredAuditCategoryPreset(t *testing.T) {
+	query, err := parseLogQuery(httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs?categories=audit.admin", nil))
+	if err != nil {
+		t.Fatalf("parse audit category preset: %v", err)
+	}
+	if len(query.Categories) != 1 || query.Categories[0] != observabilityvo.CategoryAuditAdmin {
+		t.Fatalf("unexpected categories: %#v", query.Categories)
+	}
+}
+
 func TestParseLogQueryRejectsUnregisteredAndMalformedFilters(t *testing.T) {
 	paths := []string{
+		"/api/observability/v1/logs?module=system_management",
+		"/api/observability/v1/logs?severity_min=9",
+		"/api/observability/v1/logs?services=bkn-safe",
+		"/api/observability/v1/logs?environments=local",
+		"/api/observability/v1/logs?event_names=user.created",
+		"/api/observability/v1/logs?resource_type=user",
+		"/api/observability/v1/logs?resource_id=user-a",
+		"/api/observability/v1/logs?failed_only=true",
 		"/api/observability/v1/logs?categories=plugin.custom",
 		"/api/observability/v1/logs?event_names=plugin.custom.event",
 		"/api/observability/v1/logs?trace_id=trace-a",
@@ -253,7 +323,7 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 		t.Fatalf("invalid cursor contract mismatch: %d %s", invalidResponse.Code, invalidResponse.Body.String())
 	}
 
-	changedFilterRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&failed_only=true&cursor="+firstBody.NextCursor, nil)
+	changedFilterRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2&business_module=system_management&cursor="+firstBody.NextCursor, nil)
 	setLogTestIdentity(changedFilterRequest, "admin-a")
 	changedFilterResponse := httptest.NewRecorder()
 	handler.ListLogs(changedFilterResponse, changedFilterRequest)
@@ -388,26 +458,13 @@ func setLogTestIdentity(request *http.Request, subject string) {
 	request.Header.Set("x-business-domain", "domain-a")
 }
 
-func containsJSONLogID(payload []byte, expected string) bool {
+func containsJSONEventID(payload []byte, expected string) bool {
 	var body struct {
-		Data observabilityvo.LogRecord `json:"data"`
+		Data struct {
+			EventID string `json:"event_id"`
+		} `json:"data"`
 	}
-	return json.Unmarshal(payload, &body) == nil && body.Data.LogID == expected
-}
-
-func containsJSONFacet(payload []byte, expected string, count int64) bool {
-	var body struct {
-		Data []observabilityvo.FacetValue `json:"data"`
-	}
-	if json.Unmarshal(payload, &body) != nil {
-		return false
-	}
-	for _, value := range body.Data {
-		if value.Value == expected && value.Count == count {
-			return true
-		}
-	}
-	return false
+	return json.Unmarshal(payload, &body) == nil && body.Data.EventID == expected
 }
 
 func containsJSONSource(payload []byte, expected string) bool {

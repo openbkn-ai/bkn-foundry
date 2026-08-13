@@ -95,6 +95,29 @@ func TestEnsureConversationRejectsBodyIdentityFields(t *testing.T) {
 	}
 }
 
+func TestEnsureConversationPersistsTrustedCreationRequestContext(t *testing.T) {
+	t.Parallel()
+
+	store := sessionstore.New()
+	handler := httphandler.NewSessionHandler(sessionsvc.New(store, sessionsvc.Options{}))
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current",
+		bytes.NewReader([]byte(`{"external_conversation_key":"cursor-thread-42"}`)))
+	request.Header.Set("X-Request-ID", "req-create-42")
+	setTrustedOwnerHeaders(request)
+	response := httptest.NewRecorder()
+
+	handler.EnsureCurrentConversation(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("ensure conversation: %d %s", response.Code, response.Body.String())
+	}
+	var conversation sessionvo.Conversation
+	decodeLifecycleResponse(t, response, &conversation)
+	if conversation.CreationRequestID != "req-create-42" || conversation.BusinessContext != "managed" {
+		t.Fatalf("trusted creation context was not persisted: %+v", conversation)
+	}
+}
+
 func TestLifecycleRequestWithoutTrustedOwnerIsRejectedWithGuidance(t *testing.T) {
 	t.Parallel()
 

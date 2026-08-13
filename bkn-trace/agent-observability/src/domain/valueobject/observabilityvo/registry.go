@@ -2,8 +2,8 @@ package observabilityvo
 
 import "sort"
 
-// Code generated from OpenBKN 日志事件注册表.json R6.2.
-// Source SHA-256: bc3e5cd7df514130bd102ee505a275c0a5df6417cb1fc1a8fc2661747b8e634a.
+// Code generated from OpenBKN 日志事件注册表.json OpenBKN-0.1.4-R1.
+// Source SHA-256: 695ac993967e3a9ed49dd638d8a014fa34e1ee3d7d3535b163793ad224e12f10.
 // Do not add extension events here without updating the governed registry first.
 var registeredEventCategories = map[string]string{
 	"login.succeeded":             CategoryAccessUser,

@@ -20,6 +20,29 @@ var AllCategories = []string{
 	CategoryRuntimeModel,
 }
 
+var AllBusinessModules = []string{
+	"domain_knowledge_network",
+	"observability",
+	"execution_factory",
+	"data_resource_knowledge_network",
+	"model_management",
+	"system_management",
+}
+
+var AllAuditOutcomes = []string{
+	"success",
+	"failure",
+	"denied",
+	"canceled",
+	"unknown",
+}
+
+func IsBusinessModule(value string) bool { return contains(AllBusinessModules, value) }
+
+func IsAuditOutcome(value string) bool { return contains(AllAuditOutcomes, value) }
+
+func IsLogCategory(value string) bool { return contains(AllCategories, value) }
+
 type AccessCapabilities struct {
 	BusinessProvenanceOwn             bool
 	BusinessProvenanceManagedNetworks bool

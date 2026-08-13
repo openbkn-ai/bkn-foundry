@@ -37,7 +37,7 @@ func (client *Client) ID() string { return sourceID }
 func (client *Client) Metadata() observabilityvo.SourceStatus {
 	return observabilityvo.SourceStatus{
 		SourceID: sourceID, Status: "healthy", Reliability: "best_effort",
-		CollectionMethod: "source_adapter", CoveredModules: []string{"BKN Safe Admin API"},
+		CollectionMethod: "source_adapter", CoveredModules: []string{"system_management"},
 		CountAccuracy: "exact", Categories: []string{observabilityvo.CategoryAuditAdmin},
 	}
 }
@@ -55,11 +55,14 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	if query.ActorID != "" {
 		parameters.Set("actor_id", query.ActorID)
 	}
-	if query.ResourceID != "" {
-		parameters.Set("target_id", query.ResourceID)
+	if query.Action != "" {
+		parameters.Set("action", query.Action)
 	}
-	if query.ResourceType != "" {
-		parameters.Set("resource", query.ResourceType)
+	if query.TargetID != "" {
+		parameters.Set("target_id", query.TargetID)
+	}
+	if query.TargetType != "" {
+		parameters.Set("resource", query.TargetType)
 	}
 	if query.TimeFrom != nil {
 		parameters.Set("from", query.TimeFrom.Format(time.RFC3339Nano))
@@ -71,7 +74,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		parameters.Set("to", query.PageBefore.EventTimestamp.Format(time.RFC3339Nano))
 		parameters.Set("before_id", query.PageBefore.LogID)
 	}
-	if query.FailedOnly {
+	if onlyFailedOutcomes(query.Outcomes) {
 		parameters.Set("failed_only", "true")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.baseURL+"/api/safe/v1/admin/audit-logs?"+parameters.Encode(), nil)
@@ -100,6 +103,18 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		records = append(records, projectAuditLog(entry, query.AuthorizedTenantID))
 	}
 	return observabilityvo.SourcePage{Records: records, Count: payload.Total, CountAccuracy: "exact"}, nil
+}
+
+func onlyFailedOutcomes(outcomes []string) bool {
+	if len(outcomes) == 0 {
+		return false
+	}
+	for _, outcome := range outcomes {
+		if outcome != "failure" && outcome != "denied" {
+			return false
+		}
+	}
+	return true
 }
 
 func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.LogRecord, bool, error) {
@@ -134,41 +149,144 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 }
 
 type auditLog struct {
-	ID         string    `json:"id"`
-	ActorID    string    `json:"actor_id"`
-	Method     string    `json:"method"`
-	Resource   string    `json:"resource"`
-	Action     string    `json:"action"`
-	TargetID   string    `json:"target_id"`
-	TargetName string    `json:"target_name"`
-	Status     int       `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID                string    `json:"id"`
+	ActorID           string    `json:"actor_id"`
+	ActorNameSnapshot string    `json:"actor_name_snapshot"`
+	AuthMethod        string    `json:"auth_method"`
+	CredentialID      string    `json:"credential_id"`
+	RequestID         string    `json:"request_id"`
+	SourceChannel     string    `json:"source_channel"`
+	Method            string    `json:"method"`
+	Resource          string    `json:"resource"`
+	Action            string    `json:"action"`
+	TargetID          string    `json:"target_id"`
+	TargetName        string    `json:"target_name"`
+	Detail            string    `json:"detail"`
+	Status            int       `json:"status"`
+	ClientIP          string    `json:"client_ip"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 func projectAuditLog(entry auditLog, tenantID string) observabilityvo.LogRecord {
 	// BKN Safe is deployed inside one OpenBKN tenant boundary and its legacy audit
 	// table has no tenant column. The forwarded caller token authorizes the source
 	// read; the adapter stamps that deployment tenant onto the safe projection.
-	outcome := "success"
+	outcome := auditOutcome(entry.Status)
 	severityNumber := 9
 	severityText := "INFO"
 	if entry.Status >= http.StatusBadRequest {
-		outcome, severityNumber, severityText = "failure", 17, "ERROR"
+		severityNumber, severityText = 17, "ERROR"
+	}
+	failureCode := ""
+	if entry.Status >= http.StatusBadRequest {
+		failureCode = "http_" + strconv.Itoa(entry.Status)
 	}
 	target := entry.TargetName
 	if target == "" {
 		target = entry.TargetID
 	}
+	actorName := strings.TrimSpace(entry.ActorNameSnapshot)
+	if actorName == "" {
+		actorName = entry.ActorID
+	}
+	authMethod := strings.TrimSpace(entry.AuthMethod)
+	if authMethod == "" {
+		authMethod = "unknown"
+	}
+	sourceChannel := strings.TrimSpace(entry.SourceChannel)
+	if sourceChannel == "" {
+		// This adapter reads only the BKN Safe HTTP management audit table.
+		// Older rows predate the persisted field, but their ingress is still
+		// deterministically the Safe API rather than an inferred UI/CLI client.
+		sourceChannel = "api"
+	}
 	summary := strings.TrimSpace(strings.Join([]string{entry.Method, entry.Resource, target}, " "))
 	return observabilityvo.LogRecord{
-		SchemaVersion: "1.0.0", LogID: entry.ID, SourceID: sourceID, SourceLogID: entry.ID,
+		EventID: entry.ID, EventTime: entry.CreatedAt, RecordedAt: entry.CreatedAt,
+		ActorNameSnapshot: actorName, ActorType: "user",
+		AuthMethod: authMethod, CredentialID: entry.CredentialID, SourceChannel: sourceChannel,
+		BusinessModule: businessModuleForResource(entry.Resource), Action: businessAction(entry),
+		TargetType: entry.Resource, TargetID: entry.TargetID, TargetNameSnapshot: target,
+		FailureCode:   failureCode,
+		SchemaVersion: "1.0", LogID: sourceID + ":" + entry.ID, SourceID: sourceID, SourceLogID: entry.ID,
 		Category: observabilityvo.CategoryAuditAdmin, EventName: auditEventName(entry),
 		EventTimestamp: entry.CreatedAt, ObservedTimestamp: entry.CreatedAt,
 		SeverityNumber: severityNumber, SeverityText: severityText, Outcome: outcome,
 		SafeSummary: summary, ServiceName: "bkn-safe-admin", Environment: "unknown",
-		TenantID: tenantID, ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID,
+		TenantID: tenantID, ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID, RequestID: entry.RequestID,
 		IngressPrincipal: "bkn-safe", TrustLevel: "trusted",
 		ResourceRef: &observabilityvo.ResourceRef{ResourceType: entry.Resource, ResourceID: entry.TargetID},
+		Attributes: map[string]any{
+			"method": entry.Method, "status_code": entry.Status, "client_ip": entry.ClientIP,
+			"detail": safeAuditDetail(entry.Detail),
+		},
+	}
+}
+
+func safeAuditDetail(raw string) map[string]any {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var result map[string]any
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return nil
+	}
+	for key := range result {
+		switch strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", "")) {
+		case "password", "secret", "token", "authorization", "cookie", "apikey", "clientsecret", "privatekey":
+			delete(result, key)
+		}
+	}
+	return result
+}
+
+func businessAction(entry auditLog) string {
+	action := strings.TrimSpace(entry.Action)
+	// Rows written before explicit business actions used the route noun. Only
+	// normalize the two management routes whose HTTP method is unambiguous.
+	if action != entry.Resource {
+		return action
+	}
+	switch entry.Resource {
+	case "role-bindings":
+		if entry.Method == http.MethodDelete {
+			return "unbind_role"
+		}
+		if entry.Method == http.MethodPost {
+			return "bind_role"
+		}
+	case "object-grants":
+		if entry.Method == http.MethodDelete {
+			return "revoke"
+		}
+		if entry.Method == http.MethodPost {
+			return "grant"
+		}
+	}
+	return action
+}
+
+func auditOutcome(status int) string {
+	switch {
+	case status == 0:
+		return "unknown"
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return "denied"
+	case status >= http.StatusBadRequest:
+		return "failure"
+	default:
+		return "success"
+	}
+}
+
+func businessModuleForResource(resource string) string {
+	switch strings.TrimSpace(resource) {
+	case "users", "departments", "members", "organizations", "roles", "permissions",
+		"authorizations", "policies", "role-bindings", "object-grants", "api-keys", "app-keys",
+		"license", "licenses", "clients", "profile":
+		return "system_management"
+	default:
+		return ""
 	}
 }
 
@@ -180,18 +298,6 @@ func auditEventName(entry auditLog) string {
 		}
 	case "roles":
 		return "role.updated"
-	case "models", "model-configs":
-		return "model_config.changed"
-	case "agents":
-		return "agent.config.changed"
-	case "tools":
-		return "tool.config.changed"
-	case "skills":
-		return "skill.config.changed"
-	case "toolboxes":
-		return "toolbox.config.changed"
-	case "mcp":
-		return "mcp.config.changed"
 	}
 	return "resource_config.changed"
 }

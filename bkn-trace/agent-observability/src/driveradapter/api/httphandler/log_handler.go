@@ -96,7 +96,7 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	currentTraceID := optionalString(query.TraceID)
 	relatedTraceIDs := uniqueTraceIDs(result.Records)
 	writeJSON(w, http.StatusOK, rdto.LogListResponse{
-		Data: result.Records, NextCursor: nextCursor, Partial: result.Partial,
+		Data: rdto.NewOperationAuditRecords(result.Records), NextCursor: nextCursor, Partial: result.Partial,
 		Count: rdto.LogCount{Value: &count, Accuracy: accuracy}, SourceStatus: result.SourceStatus,
 		Pagination: rdto.PageMetadata{Page: result.Page, PageSize: result.PageSize},
 		RequestTraceContext: rdto.RequestTraceContext{
@@ -110,13 +110,13 @@ func (handler *LogHandler) GetLog(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	logID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/observability/v1/logs/"))
-	if logID == "" || strings.Contains(logID, "/") {
-		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_id", "log_id is required")
+	eventID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/observability/v1/logs/"))
+	if eventID == "" || strings.Contains(eventID, "/") {
+		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_event_id", "event_id is required")
 		return
 	}
 	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
-	record, err := handler.service.Get(sourceContext, profile, logID)
+	record, err := handler.service.Get(sourceContext, profile, eventID)
 	if err != nil {
 		if errors.Is(err, logsvc.ErrNotDisclosed) {
 			writeObservabilityError(w, r, http.StatusNotFound, "log_not_disclosed", "log was not found in the authorized scope")
@@ -126,39 +126,12 @@ func (handler *LogHandler) GetLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rdto.LogDetailResponse{
-		Data:            record,
-		FieldProjection: rdto.LogFieldProjection{PolicyRevision: "r6.2-default", RedactedFields: []string{}},
+		Data:            rdto.NewOperationAuditRecord(record),
+		FieldProjection: rdto.LogFieldProjection{PolicyRevision: "operation-audit-1.0", RedactedFields: []string{}},
 		RequestTraceContext: rdto.RequestTraceContext{
 			RequestID: optionalString(record.RequestID), CurrentTraceID: optionalString(record.TraceID),
 			RelatedTraceIDs: uniqueTraceIDs([]observabilityvo.LogRecord{record}),
 		},
-	})
-}
-
-func (handler *LogHandler) GetLogFacets(w http.ResponseWriter, r *http.Request) {
-	profile, ok := handler.authorizedProfile(w, r)
-	if !ok {
-		return
-	}
-	query, err := parseLogQuery(r)
-	if err != nil {
-		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", err.Error())
-		return
-	}
-	facet := strings.TrimSpace(r.URL.Query().Get("facet"))
-	if !supportedLogFacet(facet) {
-		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_log_filter", "facet is not supported")
-		return
-	}
-	query.ScopeFingerprint = profile.Fingerprint
-	sourceContext := observabilityvo.WithSourceAuthorization(r.Context(), r.Header.Get("Authorization"))
-	result, err := handler.service.Facets(sourceContext, profile, query, facet)
-	if err != nil {
-		writeLogServiceError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, rdto.LogFacetResponse{
-		Data: result.Values, Partial: result.Partial, SampledRecords: result.SampledRecords, SourceStatus: result.SourceStatus, NextCursor: nil,
 	})
 }
 
@@ -208,15 +181,6 @@ func (handler *LogHandler) authorizedProfile(w http.ResponseWriter, r *http.Requ
 	return *scope.AccessProfile, true
 }
 
-func supportedLogFacet(value string) bool {
-	switch value {
-	case "log_category", "severity_text", "service_name", "deployment_environment", "event_name":
-		return true
-	default:
-		return false
-	}
-}
-
 func writeLogServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, logsvc.ErrCursorInvalid):
@@ -243,6 +207,15 @@ func writeObservabilityError(w http.ResponseWriter, r *http.Request, status int,
 
 func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 	values := r.URL.Query()
+	for _, legacy := range []string{
+		"module",
+		"severity_min", "services", "environments", "event_names",
+		"resource_type", "resource_id", "span_id", "failed_only",
+	} {
+		if _, exists := values[legacy]; exists {
+			return observabilityvo.LogQuery{}, errors.New(legacy + " is not part of the operation audit query contract")
+		}
+	}
 	if len(values.Get("q")) > 512 {
 		return observabilityvo.LogQuery{}, errors.New("q exceeds the supported length")
 	}
@@ -271,47 +244,36 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 			return observabilityvo.LogQuery{}, err
 		}
 	}
-	severity, err := parseBoundedInteger(values.Get("severity_min"), 0, 1, 24, "severity_min")
-	if err != nil {
-		return observabilityvo.LogQuery{}, err
+	businessModule := strings.TrimSpace(values.Get("business_module"))
+	if businessModule != "" && !observabilityvo.IsBusinessModule(businessModule) {
+		return observabilityvo.LogQuery{}, errors.New("business_module is not registered")
 	}
-	failedOnly := false
-	if raw := strings.TrimSpace(values.Get("failed_only")); raw != "" {
-		failedOnly, err = strconv.ParseBool(raw)
-		if err != nil {
-			return observabilityvo.LogQuery{}, errors.New("failed_only must be true or false")
+	outcomes := queryList(values["outcomes"])
+	for _, outcome := range outcomes {
+		if !observabilityvo.IsAuditOutcome(outcome) {
+			return observabilityvo.LogQuery{}, errors.New("outcomes contains an unsupported value")
 		}
 	}
 	categories := queryList(values["categories"])
 	for _, category := range categories {
-		if !containsString(observabilityvo.AllCategories, category) {
-			return observabilityvo.LogQuery{}, errors.New("categories contains an unregistered log category")
+		if !observabilityvo.IsLogCategory(category) {
+			return observabilityvo.LogQuery{}, errors.New("categories contains an unsupported value")
 		}
 	}
-	eventNames := queryList(values["event_names"])
-	for _, eventName := range eventNames {
-		if !observabilityvo.IsRegisteredEventName(eventName) {
-			return observabilityvo.LogQuery{}, errors.New("event_names contains an unregistered event")
-		}
-	}
-	traceID, spanID := strings.TrimSpace(values.Get("trace_id")), strings.TrimSpace(values.Get("span_id"))
+	traceID := strings.TrimSpace(values.Get("trace_id"))
 	if traceID != "" && !traceIDPattern.MatchString(traceID) {
 		return observabilityvo.LogQuery{}, errors.New("trace_id must contain 32 lowercase hexadecimal characters")
 	}
-	if spanID != "" && !spanIDPattern.MatchString(spanID) {
-		return observabilityvo.LogQuery{}, errors.New("span_id must contain 16 lowercase hexadecimal characters")
-	}
 	return observabilityvo.LogQuery{
 		Query: values.Get("q"), TimeFrom: timeFrom, TimeTo: timeTo,
-		Categories: categories, SeverityMinimum: severity,
-		Services: queryList(values["services"]), Environments: queryList(values["environments"]),
-		EventNames: eventNames, BusinessDomain: values.Get("business_domain_id"),
+		BusinessModule: businessModule, Action: strings.TrimSpace(values.Get("action")),
+		TargetType: strings.TrimSpace(values.Get("target_type")), TargetID: strings.TrimSpace(values.Get("target_id")),
+		Outcomes: outcomes, Categories: categories, BusinessDomain: values.Get("business_domain_id"),
 		ActorID: values.Get("actor_id"), ApplicationID: values.Get("application_id"),
-		ResourceType: values.Get("resource_type"), ResourceID: values.Get("resource_id"),
 		ConversationID: values.Get("conversation_id"), InteractionID: values.Get("interaction_id"),
 		OperationID: values.Get("operation_id"), RequestID: values.Get("request_id"),
-		TraceID: traceID, SpanID: spanID, FailedOnly: failedOnly,
-		Limit: limit, Page: page, Cursor: values.Get("cursor"),
+		TraceID: traceID,
+		Limit:   limit, Page: page, Cursor: values.Get("cursor"),
 	}, nil
 }
 
