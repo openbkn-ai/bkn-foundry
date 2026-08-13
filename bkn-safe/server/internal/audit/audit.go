@@ -31,31 +31,43 @@ func New(db *gorm.DB) *Store { return &Store{db: db} }
 // Entry is a single audit record to persist. ID and the timestamp are assigned
 // by Record (the caller supplies only the request facts).
 type Entry struct {
-	ActorID    string
-	Method     string
-	Resource   string
-	Action     string
-	TargetID   string
-	TargetName string
-	Detail     string
-	Status     int
-	ClientIP   string
+	ActorID           string
+	ActorNameSnapshot string
+	ActorType         string
+	AuthMethod        string
+	CredentialID      string
+	RequestID         string
+	SourceChannel     string
+	Method            string
+	Resource          string
+	Action            string
+	TargetID          string
+	TargetName        string
+	Detail            string
+	Status            int
+	ClientIP          string
 }
 
 // Record persists one audit entry. The returned error is for logging only —
 // auditing must never break the request it is recording, so callers swallow it.
 func (s *Store) Record(ctx context.Context, e Entry) error {
 	row := model.AuditLog{
-		ID:         newID(),
-		ActorID:    e.ActorID,
-		Method:     e.Method,
-		Resource:   e.Resource,
-		Action:     e.Action,
-		TargetID:   e.TargetID,
-		TargetName: e.TargetName,
-		Detail:     e.Detail,
-		Status:     e.Status,
-		ClientIP:   e.ClientIP,
+		ID:                NewID(),
+		ActorID:           e.ActorID,
+		ActorNameSnapshot: e.ActorNameSnapshot,
+		ActorType:         e.ActorType,
+		AuthMethod:        e.AuthMethod,
+		CredentialID:      e.CredentialID,
+		RequestID:         e.RequestID,
+		SourceChannel:     e.SourceChannel,
+		Method:            e.Method,
+		Resource:          e.Resource,
+		Action:            e.Action,
+		TargetID:          e.TargetID,
+		TargetName:        e.TargetName,
+		Detail:            e.Detail,
+		Status:            e.Status,
+		ClientIP:          e.ClientIP,
 	}
 	return s.db.WithContext(ctx).Create(&row).Error
 }
@@ -137,9 +149,9 @@ func (s *Store) Get(ctx context.Context, id string) (model.AuditLog, bool, error
 	return entry, true, nil
 }
 
-// newID returns a random 128-bit hex id (same scheme as auth.NewID, duplicated
+// NewID returns a random 128-bit hex id (same scheme as auth.NewID, duplicated
 // here to keep this package free of the auth dependency).
-func newID() string {
+func NewID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)

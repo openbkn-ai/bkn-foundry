@@ -60,7 +60,9 @@ func NewAPIKeyStore(db *gorm.DB) *APIKeyStore { return &APIKeyStore{db: db} }
 // as if the owner presented an OAuth token.
 type VerifiedKey struct {
 	KeyID       string
+	KeyName     string
 	OwnerID     string
+	OwnerName   string
 	AccountType model.AccountType
 }
 
@@ -148,7 +150,10 @@ func (s *APIKeyStore) Verify(ctx context.Context, plaintext string) (*VerifiedKe
 	_ = s.db.WithContext(ctx).Model(&model.APIKey{}).
 		Where("key_id = ?", keyID).Update("last_used_at", now).Error
 
-	return &VerifiedKey{KeyID: keyID, OwnerID: owner.ID, AccountType: owner.AccountType}, nil
+	return &VerifiedKey{
+		KeyID: keyID, KeyName: rec.Name, OwnerID: owner.ID,
+		OwnerName: owner.Name, AccountType: owner.AccountType,
+	}, nil
 }
 
 // ListByOwner returns ownerID's keys (newest first), never including any secret.

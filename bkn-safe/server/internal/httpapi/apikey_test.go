@@ -100,6 +100,50 @@ func TestAPIKeyIssueListRevoke(t *testing.T) {
 	}
 }
 
+func TestAPIKeySelfServiceWritesAreAuditedAsTheVerifiedOwner(t *testing.T) {
+	r, _, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{
+		ID: "u-audit-key", Account: "audit-key", Name: "API Key Owner", Enabled: true,
+	}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+
+	w := tokReq(t, r, http.MethodPost, meKeys, map[string]any{"name": "Cursor key"}, "u-audit-key")
+	if w.Code != http.StatusCreated {
+		t.Fatalf("issue: want 201, got %d (%s)", w.Code, w.Body.String())
+	}
+	var iss issued
+	if err := json.Unmarshal(w.Body.Bytes(), &iss); err != nil {
+		t.Fatal(err)
+	}
+
+	var entry model.AuditLog
+	if err := db.Where("actor_id = ? AND resource = ?", "u-audit-key", "api-keys").First(&entry).Error; err != nil {
+		t.Fatalf("self-service AppKey audit entry missing: %v", err)
+	}
+	if entry.Action != "create" || entry.TargetID != iss.ID || entry.TargetName != "Cursor key" ||
+		entry.ActorNameSnapshot != "API Key Owner" || entry.Status != http.StatusCreated {
+		t.Fatalf("self-service AppKey audit facts are incomplete: %+v", entry)
+	}
+
+	if rotated := tokReq(t, r, http.MethodPost, meKeys+"/"+iss.ID+"/regenerate", nil, "u-audit-key"); rotated.Code != http.StatusOK {
+		t.Fatalf("regenerate: want 200, got %d (%s)", rotated.Code, rotated.Body.String())
+	}
+	if revoked := tokReq(t, r, http.MethodDelete, meKeys+"/"+iss.ID, nil, "u-audit-key"); revoked.Code != http.StatusNoContent {
+		t.Fatalf("revoke: want 204, got %d (%s)", revoked.Code, revoked.Body.String())
+	}
+	for _, action := range []string{"regenerate", "revoke"} {
+		var actionEntry model.AuditLog
+		if err := db.Where("actor_id = ? AND resource = ? AND action = ?", "u-audit-key", "api-keys", action).
+			First(&actionEntry).Error; err != nil {
+			t.Fatalf("%s audit entry missing: %v", action, err)
+		}
+		if actionEntry.TargetID != iss.ID || actionEntry.TargetName != "Cursor key" {
+			t.Fatalf("%s audit target snapshot is incomplete: %+v", action, actionEntry)
+		}
+	}
+}
+
 // TestAPIKeyDuplicateName: issuing a second key with the same name -> 409.
 func TestAPIKeyDuplicateName(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
@@ -204,7 +248,7 @@ func TestAPIKeyOwnershipIsolation(t *testing.T) {
 // resolves owner identity; bogus and revoked keys return active:false.
 func TestAPIKeyIntrospect(t *testing.T) {
 	r, _, db, _ := newAdminServer(t)
-	db.Create(&model.User{ID: "u-intro", Account: "ui", Enabled: true, AccountType: model.AccountTypeOther})
+	db.Create(&model.User{ID: "u-intro", Account: "ui", Name: "供应链管理员", Enabled: true, AccountType: model.AccountTypeOther})
 
 	w := tokReq(t, r, http.MethodPost, meKeys, map[string]any{"name": "ik"}, "u-intro")
 	var iss issued
@@ -213,8 +257,10 @@ func TestAPIKeyIntrospect(t *testing.T) {
 	type introResp struct {
 		Active      bool   `json:"active"`
 		Sub         string `json:"sub"`
+		SubjectName string `json:"subject_name"`
 		AccountType string `json:"account_type"`
 		KeyID       string `json:"key_id"`
+		KeyName     string `json:"key_name"`
 	}
 	post := func(token string) introResp {
 		t.Helper()
@@ -229,7 +275,8 @@ func TestAPIKeyIntrospect(t *testing.T) {
 		return ir
 	}
 
-	if ir := post(iss.Key); !ir.Active || ir.Sub != "u-intro" || ir.AccountType != string(model.AccountTypeOther) || ir.KeyID != iss.KeyID {
+	if ir := post(iss.Key); !ir.Active || ir.Sub != "u-intro" || ir.SubjectName != "供应链管理员" ||
+		ir.AccountType != string(model.AccountTypeOther) || ir.KeyID != iss.KeyID || ir.KeyName != "ik" {
 		t.Errorf("valid introspect = %+v", ir)
 	}
 	if ir := post("bak_dead_beef"); ir.Active {
@@ -332,5 +379,13 @@ func TestAPIKeyAdmin(t *testing.T) {
 	// admin revokes any key
 	if w := adminReq(t, r, http.MethodDelete, adminKeys+"/"+iss.ID, nil); w.Code != http.StatusNoContent {
 		t.Errorf("admin revoke: want 204, got %d", w.Code)
+	}
+	var auditEntry model.AuditLog
+	if err := db.Where("actor_id = ? AND resource = ? AND action = ?", adminSub, "api-keys", "revoke").
+		First(&auditEntry).Error; err != nil {
+		t.Fatalf("admin AppKey revoke audit entry missing: %v", err)
+	}
+	if auditEntry.TargetID != iss.ID || auditEntry.TargetName != "ak" {
+		t.Fatalf("admin AppKey revoke target snapshot is incomplete: %+v", auditEntry)
 	}
 }

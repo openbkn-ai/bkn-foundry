@@ -130,19 +130,25 @@ type Operation struct {
 	Description    string `gorm:"size:1024"`
 }
 
-// AuditLog records a privileged admin-API mutation: who (ActorID, the verified
+// AuditLog records a user or admin management mutation: who (ActorID, the verified
 // token subject), what (Method + Resource + Action + TargetID + Detail), and the
-// outcome (Status). One row per non-GET request that passes RequireAdmin; reads
-// are not audited. Method distinguishes create/update/delete on the same Action
-// (e.g. POST vs PUT vs DELETE on "users").
+// outcome (Status). One row is written for each mutating request on an audited
+// /admin or /me surface; ordinary reads are not audited. Action carries a stable
+// business verb while Method retains the transport fact.
 type AuditLog struct {
-	ID         string `json:"id" gorm:"primaryKey;size:64"`
-	ActorID    string `json:"actor_id" gorm:"size:64;index"`   // token subject that performed the action
-	Method     string `json:"method" gorm:"size:8"`            // POST | PUT | DELETE
-	Resource   string `json:"resource" gorm:"size:64;index"`   // top-level admin noun, e.g. "users"
-	Action     string `json:"action" gorm:"size:128;index"`    // dotted route, e.g. "departments.members"
-	TargetID   string `json:"target_id" gorm:"size:128;index"` // :id path param, "" when the route has none
-	TargetName string `json:"target_name" gorm:"size:255"`     // display-name snapshot for deleted/renamed targets
+	ID                string `json:"id" gorm:"primaryKey;size:64"`
+	ActorID           string `json:"actor_id" gorm:"size:64;index"` // token subject that performed the action
+	ActorNameSnapshot string `json:"actor_name_snapshot" gorm:"size:255"`
+	ActorType         string `json:"actor_type" gorm:"size:32"`
+	AuthMethod        string `json:"auth_method" gorm:"size:32"`
+	CredentialID      string `json:"credential_id" gorm:"size:128"`
+	RequestID         string `json:"request_id" gorm:"size:128;index"`
+	SourceChannel     string `json:"source_channel" gorm:"size:32"`
+	Method            string `json:"method" gorm:"size:8"`            // POST | PUT | DELETE
+	Resource          string `json:"resource" gorm:"size:64;index"`   // top-level admin noun, e.g. "users"
+	Action            string `json:"action" gorm:"size:128;index"`    // dotted route, e.g. "departments.members"
+	TargetID          string `json:"target_id" gorm:"size:128;index"` // :id path param, "" when the route has none
+	TargetName        string `json:"target_name" gorm:"size:255"`     // display-name snapshot for deleted/renamed targets
 	// Detail is a redacted, truncated JSON snapshot of the request body (password
 	// fields masked), so a reader can tell WHAT changed — which users a
 	// department gained, a created node's name, etc. "" when the body is

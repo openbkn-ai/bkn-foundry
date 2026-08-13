@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -46,41 +47,87 @@ var sensitiveBodyKeys = []string{"password", "new_password", "old_password"}
 // itself produces no entries (no feedback loop).
 func auditMiddleware(store *audit.Store, dir *directory.Service, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		requestID := strings.TrimSpace(c.GetHeader("x-request-id"))
+		if requestID == "" {
+			requestID = audit.NewID()
+		}
+		c.Header("x-request-id", requestID)
 		var raw []byte
 		if isMutating(c.Request.Method) && c.Request.Body != nil {
 			// Buffer (bounded) then restore the body so the handler still reads it.
 			raw, _ = io.ReadAll(io.LimitReader(c.Request.Body, maxAuditBody))
 			c.Request.Body = io.NopCloser(bytes.NewReader(raw))
 		}
-		resource, action := auditTarget(c.FullPath())
+		resource, _ := auditTarget(c.FullPath())
+		action := auditAction(c.Request.Method, c.FullPath())
 		targetID := c.Param("id")
 		detail := auditDetail(raw)
+		if targetID == "" {
+			targetID = auditDetailTargetID(resource, detail)
+		}
 		beforeName := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail)
 		c.Next()
 		if !isMutating(c.Request.Method) {
 			return
 		}
+		explicitTargetName := ""
+		if rawOperation, ok := c.Get(ctxAuditOperation); ok {
+			if operation, valid := rawOperation.(auditOperation); valid {
+				if operation.Action != "" {
+					action = operation.Action
+				}
+				if operation.TargetID != "" {
+					targetID = operation.TargetID
+				}
+				explicitTargetName = operation.TargetName
+			}
+		}
 		targetName := beforeName
-		if c.Writer.Status() < http.StatusBadRequest {
+		if explicitTargetName != "" {
+			targetName = explicitTargetName
+		} else if c.Writer.Status() < http.StatusBadRequest {
 			if name := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail); name != "" {
 				targetName = name
 			}
 		}
 		detail = withAuditOutcome(detail, c)
+		actorID := c.GetString(ctxAccessorID)
 		if err := store.Record(c.Request.Context(), audit.Entry{
-			ActorID:    c.GetString(ctxAccessorID),
-			Method:     c.Request.Method,
-			Resource:   resource,
-			Action:     action,
-			TargetID:   targetID,
-			TargetName: targetName,
-			Detail:     detail,
-			Status:     c.Writer.Status(),
-			ClientIP:   c.ClientIP(),
+			ActorID:           actorID,
+			ActorNameSnapshot: auditActorName(c.Request.Context(), dir, actorID),
+			ActorType:         "user",
+			AuthMethod:        "unknown",
+			RequestID:         requestID,
+			SourceChannel:     "api",
+			Method:            c.Request.Method,
+			Resource:          resource,
+			Action:            action,
+			TargetID:          targetID,
+			TargetName:        targetName,
+			Detail:            detail,
+			Status:            c.Writer.Status(),
+			ClientIP:          c.ClientIP(),
 		}); err != nil {
+			slog.Error("failed to persist operation audit record",
+				"request_id", requestID,
+				"resource", resource,
+				"action", action,
+				"error", err,
+			)
 			_ = c.Error(err)
 		}
 	}
+}
+
+func auditActorName(ctx context.Context, dir *directory.Service, actorID string) string {
+	if dir == nil || actorID == "" {
+		return ""
+	}
+	names, err := dir.ResolveUserNames(ctx, []string{actorID})
+	if err != nil || len(names) == 0 {
+		return ""
+	}
+	return names[0].Name
 }
 
 // isMutating reports whether the method is a write the audit trail records.
@@ -123,6 +170,18 @@ func auditDetail(raw []byte) string {
 // facts for the audit trail — things only the handler knows and the request body
 // does not say, e.g. how many grants a revoke actually removed.
 const ctxAuditOutcome = "audit_outcome"
+
+const ctxAuditOperation = "audit_operation"
+
+type auditOperation struct {
+	Action     string
+	TargetID   string
+	TargetName string
+}
+
+func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
+	c.Set(ctxAuditOperation, auditOperation{Action: action, TargetID: targetID, TargetName: targetName})
+}
 
 // setAuditOutcome records outcome facts for the audit Detail of the current
 // request. Safe to call on a request that is not audited (auditing off, or a
@@ -198,6 +257,14 @@ func auditTargetName(
 		if err := db.WithContext(ctx).Select("name").First(&role, "id = ?", targetID).Error; err == nil {
 			return role.Name
 		}
+	case "api-keys":
+		if db == nil {
+			return ""
+		}
+		var key model.APIKey
+		if err := db.WithContext(ctx).Select("name").First(&key, "id = ?", targetID).Error; err == nil {
+			return key.Name
+		}
 	}
 	return ""
 }
@@ -235,6 +302,27 @@ func auditDetailName(
 	return ""
 }
 
+func auditDetailTargetID(resource, detail string) string {
+	if detail == "" {
+		return ""
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(detail), &body); err != nil {
+		return ""
+	}
+	switch resource {
+	case "object-grants":
+		ref, _ := body["resource"].(map[string]any)
+		id, _ := ref["id"].(string)
+		return id
+	case "role-bindings":
+		id, _ := body["accessor_id"].(string)
+		return id
+	default:
+		return ""
+	}
+}
+
 func roleNameByID(ctx context.Context, db *gorm.DB, id string) string {
 	if db == nil || id == "" {
 		return ""
@@ -265,7 +353,16 @@ func accessorNameByID(ctx context.Context, dir *directory.Service, id string) st
 // "departments.members"); "/api/safe/v1/admin/users" -> ("users", "users").
 // Method (carried separately) distinguishes create/update/delete.
 func auditTarget(fullPath string) (resource, action string) {
-	rest := strings.TrimPrefix(fullPath, adminPathPrefix)
+	rest := fullPath
+	for _, prefix := range []string{adminPathPrefix, "/api/safe/v1/me/"} {
+		if strings.HasPrefix(fullPath, prefix) {
+			rest = strings.TrimPrefix(fullPath, prefix)
+			break
+		}
+	}
+	if fullPath == "/api/safe/v1/me" || fullPath == "/api/safe/v1/me/" {
+		return "profile", "profile"
+	}
 	parts := make([]string, 0, 3)
 	for _, seg := range strings.Split(rest, "/") {
 		if seg == "" || strings.HasPrefix(seg, ":") {
@@ -277,6 +374,64 @@ func auditTarget(fullPath string) (resource, action string) {
 		return "", ""
 	}
 	return parts[0], strings.Join(parts, ".")
+}
+
+// auditAction maps the small BKN Safe management surface to stable business
+// verbs. The route template is already the server's authoritative operation
+// boundary; keeping this mapping here prevents Studio from reverse-engineering
+// meaning from HTTP methods while avoiding a new event framework.
+func auditAction(method, fullPath string) string {
+	switch fullPath {
+	case "/api/safe/v1/admin/users/:id/password":
+		return "reset_password"
+	case "/api/safe/v1/admin/departments/:id/members":
+		if method == http.MethodDelete {
+			return "remove_members"
+		}
+		return "add_members"
+	case "/api/safe/v1/admin/role-bindings":
+		if method == http.MethodDelete {
+			return "unbind_role"
+		}
+		return "bind_role"
+	case "/api/safe/v1/admin/object-grants":
+		if method == http.MethodDelete {
+			return "revoke"
+		}
+		return "grant"
+	case "/api/safe/v1/admin/roles/:id/permissions":
+		if method == http.MethodDelete {
+			return "revoke_permission"
+		}
+		return "grant_permission"
+	case "/api/safe/v1/admin/license/import":
+		return "import"
+	case "/api/safe/v1/admin/license/receipt":
+		return "import_receipt"
+	case "/api/safe/v1/admin/license/activate":
+		return "activate"
+	case "/api/safe/v1/admin/license":
+		if method == http.MethodDelete {
+			return "remove"
+		}
+	case "/api/safe/v1/admin/clients/:id/redirect-uris":
+		if method == http.MethodDelete {
+			return "remove_redirect_uri"
+		}
+		return "add_redirect_uri"
+	case "/api/safe/v1/me":
+		return "update_profile"
+	}
+	switch method {
+	case http.MethodPost:
+		return "create"
+	case http.MethodPut, http.MethodPatch:
+		return "update"
+	case http.MethodDelete:
+		return "delete"
+	default:
+		return strings.ToLower(strings.TrimSpace(method))
+	}
 }
 
 // registerAuditReads mounts the audit-log read endpoint under the admin group.

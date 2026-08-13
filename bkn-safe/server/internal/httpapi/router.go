@@ -191,6 +191,9 @@ func New(deps Deps) *gin.Engine {
 		// a revoked/logged-out token cannot edit the profile or mint a long-lived
 		// API key within the read cache's TTL window.
 		meWrites := r.Group("/api/safe/v1/me", RequireUser(verifier))
+		if deps.Audit != nil {
+			meWrites.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
+		}
 		registerMeProfile(meWrites, deps.Users)
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
