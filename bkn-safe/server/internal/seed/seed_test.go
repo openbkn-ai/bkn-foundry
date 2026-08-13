@@ -391,7 +391,7 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 
 	catalogOps := ops("catalog")
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage"} {
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
 		if !catalogOps[op] {
 			t.Errorf("catalog is missing operation %q", op)
 		}

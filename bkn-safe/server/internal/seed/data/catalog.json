@@ -44,7 +44,7 @@
       "id": "catalog",
       "name": "数据目录",
       "_source": "vega",
-      "_note": "create/modify/delete 只针对目录本身;管理目录下的数据表用 resource_manage(#801)",
+      "_note": "create/modify/delete 只针对目录本身;管理目录下的数据表用 resource_manage;query_data 是「目录下的表默认可取数」,它能一次性放开整个目录的数据,界面上不要与 view_detail 捆绑勾选(#800 / #801)",
       "operations": [
         {"id": "view_detail", "name": "查看详情"},
         {"id": "create", "name": "创建目录"},
@@ -52,7 +52,8 @@
         {"id": "delete", "name": "删除目录"},
         {"id": "authorize", "name": "授权"},
         {"id": "task_manage", "name": "任务管理"},
-        {"id": "resource_manage", "name": "管理目录下的数据表"}
+        {"id": "resource_manage", "name": "管理目录下的数据表"},
+        {"id": "query_data", "name": "查询目录下的表数据"}
       ]
     },
     {
