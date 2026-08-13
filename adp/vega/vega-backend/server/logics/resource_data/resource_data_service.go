@@ -21,7 +21,6 @@ import (
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
-	"vega-backend/logics/queryerr"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/model_factory"
 	querylogic "vega-backend/logics/query"
@@ -379,8 +378,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
-			if httpErr, ok := queryerr.AsHTTPError(ctx, err); ok {
-				return nil, 0, httpErr
+			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails(unsupported.Error())
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
@@ -401,8 +401,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := indexConnector.ExecuteQuery(ctx, resource.SourceIdentifier, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
-			if httpErr, ok := queryerr.AsHTTPError(ctx, err); ok {
-				return nil, 0, httpErr
+			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails(unsupported.Error())
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))

@@ -14,9 +14,9 @@ import (
 // 查询通道。同一个算子在不同通道上能力不同：全文与向量算子只有索引通道有实现，
 // 表通道（SQL）没有，也不可能有。
 const (
-	QueryChannelSQL       = "sql"
+	QueryChannelSQL        = "sql"
 	QueryChannelOpenSearch = "opensearch"
-	QueryChannelFileset   = "fileset"
+	QueryChannelFileset    = "fileset"
 )
 
 // UnsupportedOperationError 表示某个过滤算子在当前查询通道上没有实现。
