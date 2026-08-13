@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	testCtx = context.WithValue(context.Background(), rest.XLangKey, rest.DefaultLanguage)
+	testCtx = rest.WithLanguage(context.Background(), rest.DefaultLanguage)
 )
 
 // mockTransport 用于模拟 OpenSearch HTTP 响应

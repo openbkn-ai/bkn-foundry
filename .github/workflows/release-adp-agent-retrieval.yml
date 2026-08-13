@@ -73,7 +73,7 @@ jobs:
           # 二、正向断言。否定断言锁的是「某个符号不在」，而那条判据是外挂约定：
           # 符号改名、实现换成不读环境变量的形式，否定断言都会一路绿灯。这条改为
           # 直接要求发布构型独有的符号必须在，判据便不再依赖那个约定。
-          if ! grep -aqF 'entitlement: licence hub is half-configured' ./agent-retrieval.bin; then
+          if ! grep -aqF 'entitlement: licence hub unusable; running as community' ./agent-retrieval.bin; then
             echo "::error::发布产物里没有发布构型独有的符号，构建配置不符合预期。"
             echo "::error::检查 Dockerfile 与构建参数；判据依据见内部文档。"
             exit 1

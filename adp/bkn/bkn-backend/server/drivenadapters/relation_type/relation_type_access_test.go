@@ -27,7 +27,7 @@ var (
 	testUpdateTime = int64(1735786555379)
 	testTags       = []string{"tag1", "tag2", "tag3"}
 
-	testCtx = context.WithValue(context.Background(), rest.XLangKey, rest.DefaultLanguage)
+	testCtx = rest.WithLanguage(context.Background(), rest.DefaultLanguage)
 
 	testRelationType = &interfaces.RelationType{
 		RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
