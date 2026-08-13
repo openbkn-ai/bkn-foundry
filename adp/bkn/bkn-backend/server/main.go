@@ -29,6 +29,7 @@ import (
 	"bkn-backend/common"
 	"bkn-backend/common/bkntrace"
 	"bkn-backend/common/bkntrace/outbox"
+	"bkn-backend/common/operationaudit"
 	"bkn-backend/drivenadapters/action_schedule"
 	"bkn-backend/drivenadapters/action_type"
 	"bkn-backend/drivenadapters/agent_operator"
@@ -208,7 +209,7 @@ func main() {
 	server := &mgrService{
 		appSetting:     appSetting,
 		otelProviders:  otelProviders,
-		restHandler:    driveradapters.NewRestHandler(appSetting),
+		restHandler:    driveradapters.NewRestHandler(appSetting, operationaudit.NewStore(outboxDB, "")),
 		conceptSyncer:  worker.NewConceptSyncer(appSetting),
 		scheduleWorker: worker.NewScheduleWorker(appSetting),
 		traceOutbox:    traceOutbox,

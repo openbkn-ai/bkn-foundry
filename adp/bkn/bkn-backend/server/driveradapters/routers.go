@@ -20,6 +20,8 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
 	"bkn-backend/common"
+	"bkn-backend/common/bkntrace"
+	"bkn-backend/common/operationaudit"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics/action_schedule"
@@ -40,32 +42,43 @@ type RestHandler interface {
 }
 
 type restHandler struct {
-	appSetting *common.AppSetting
-	as         interfaces.AuthService
-	ass        interfaces.ActionScheduleService
-	ats        interfaces.ActionTypeService
-	cgs        interfaces.ConceptGroupService
-	kns        interfaces.KNService
-	ots        interfaces.ObjectTypeService
-	rts        interfaces.RelationTypeService
-	rtsRisk    interfaces.RiskTypeService
-	ms         interfaces.MetricService
-	bs         interfaces.BKNService
+	appSetting            *common.AppSetting
+	auditRecorder         operationAuditRecorder
+	auditIdentityResolver func(context.Context, string, hydra.Visitor) operationAuditActor
+	as                    interfaces.AuthService
+	ass                   interfaces.ActionScheduleService
+	ats                   interfaces.ActionTypeService
+	cgs                   interfaces.ConceptGroupService
+	kns                   interfaces.KNService
+	ots                   interfaces.ObjectTypeService
+	rts                   interfaces.RelationTypeService
+	rtsRisk               interfaces.RiskTypeService
+	ms                    interfaces.MetricService
+	bs                    interfaces.BKNService
 }
 
-func NewRestHandler(appSetting *common.AppSetting) RestHandler {
+func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
 	r := &restHandler{
-		appSetting: appSetting,
-		as:         auth.NewAuthService(appSetting),
-		ass:        action_schedule.NewActionScheduleService(appSetting),
-		ats:        action_type.NewActionTypeService(appSetting),
-		cgs:        concept_group.NewConceptGroupService(appSetting),
-		kns:        knowledge_network.NewKNService(appSetting),
-		ots:        object_type.NewObjectTypeService(appSetting),
-		rts:        relation_type.NewRelationTypeService(appSetting),
-		rtsRisk:    risk_type.NewRiskTypeService(appSetting),
-		ms:         metriclogics.NewMetricService(appSetting),
-		bs:         bkn.NewBKNService(appSetting),
+		appSetting:    appSetting,
+		auditRecorder: auditStore,
+		auditIdentityResolver: func(ctx context.Context, authorization string, visitor hydra.Visitor) operationAuditActor {
+			actor := basicOperationAuditActor(authorization, visitor)
+			profile, err := bkntrace.ResolveOperationAuditIdentity(ctx, authorization, visitor.ID)
+			if err == nil {
+				actor.ActorName = profile.ActorName
+			}
+			return actor
+		},
+		as:      auth.NewAuthService(appSetting),
+		ass:     action_schedule.NewActionScheduleService(appSetting),
+		ats:     action_type.NewActionTypeService(appSetting),
+		cgs:     concept_group.NewConceptGroupService(appSetting),
+		kns:     knowledge_network.NewKNService(appSetting),
+		ots:     object_type.NewObjectTypeService(appSetting),
+		rts:     relation_type.NewRelationTypeService(appSetting),
+		rtsRisk: risk_type.NewRiskTypeService(appSetting),
+		ms:      metriclogics.NewMetricService(appSetting),
+		bs:      bkn.NewBKNService(appSetting),
 	}
 	return r
 }
@@ -74,6 +87,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.AccessLog())
 	c.Use(middleware.TracingMiddleware())
 	c.Use(r.LanguageMiddleware())
+	c.Use(r.OperationAudit())
 
 	c.GET("/health", r.HealthCheck)
 
@@ -306,6 +320,7 @@ func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Vi
 		rest.ReplyError(c, httpErr)
 		return visitor, err
 	}
+	c.Set(operationAuditVisitorKey, visitor)
 
 	return visitor, nil
 }
