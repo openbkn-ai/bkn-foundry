@@ -89,6 +89,8 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 			"X-BKN-Application-Principal-ID": "client-1",
 			"X-BKN-Effective-Subject-Type":   "user",
 			"X-BKN-Effective-Subject-ID":     "user-1",
+			"X-BKN-Effective-Subject-Name":   "供应链管理员",
+			"X-BKN-Auth-Method":              "api_key",
 		} {
 			if actual := r.Header.Get(name); actual != expected {
 				t.Errorf("%s = %q, want %q", name, actual, expected)
@@ -166,8 +168,8 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		TenantID: "tenant-1", BusinessDomain: "domain-1",
 	})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
-		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
-		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser, AuthMethod: "api_key",
+		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1", VisitorName: "供应链管理员"},
 	})
 	client := NewLifecycleClient(server.URL, server.Client())
 	result, apiErr, err := client.EnsureOperation(ctx, EnsureOperationInput{

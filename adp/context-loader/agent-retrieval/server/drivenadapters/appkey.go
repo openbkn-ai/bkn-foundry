@@ -37,9 +37,11 @@ var (
 // failure, otherwise the resolved owner identity.
 type appKeyIntrospectResp struct {
 	Active      bool   `json:"active"`
-	Sub         string `json:"sub"`          // owner accessor id
+	Sub         string `json:"sub"` // owner accessor id
+	SubjectName string `json:"subject_name"`
 	AccountType string `json:"account_type"` // bkn-safe account_type of the owner
 	KeyID       string `json:"key_id"`
+	KeyName     string `json:"key_name"`
 }
 
 // NewAppKeyVerifier builds the bkn-safe-backed AppKey verifier. Returns nil when
@@ -82,10 +84,13 @@ func (v *appKeyVerifier) Verify(ctx context.Context, key string) (*interfaces.To
 	}
 
 	info := &interfaces.TokenInfo{
-		Active:     true,
-		VisitorID:  introspect.Sub,
-		VisitorTyp: appKeyVisitorType(introspect.AccountType),
-		AccountTyp: appKeyAccountType(introspect.AccountType),
+		Active:         true,
+		VisitorID:      introspect.Sub,
+		VisitorName:    introspect.SubjectName,
+		VisitorTyp:     appKeyVisitorType(introspect.AccountType),
+		AccountTyp:     appKeyAccountType(introspect.AccountType),
+		CredentialID:   introspect.KeyID,
+		CredentialName: introspect.KeyName,
 	}
 	return info, nil
 }

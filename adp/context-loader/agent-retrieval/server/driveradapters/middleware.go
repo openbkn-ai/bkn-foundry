@@ -62,9 +62,11 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		ctx = common.SetLanguageToCtx(ctx, common.GetLanguageInfo(c))
 
 		token := getToken(c)
+		authMethod := "oauth"
 		var tokenInfo *interfaces.TokenInfo
 		var err error
 		if appKeys != nil && strings.HasPrefix(token, interfaces.AppKeyPrefix) {
+			authMethod = "api_key"
 			tokenInfo, err = appKeys.Verify(ctx, token)
 		} else {
 			tokenInfo, err = hydra.Introspect(ctx, token)
@@ -87,6 +89,7 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   tokenInfo.VisitorID,
 			AccountType: tokenInfo.VisitorTyp.ToAccessorType(),
+			AuthMethod:  authMethod,
 			TokenInfo:   tokenInfo,
 		}
 		ctx = common.SetAccountAuthContextToCtx(ctx, authContext)
@@ -115,6 +118,7 @@ func middlewareHeaderAuthContext() gin.HandlerFunc {
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   xAccountID,
 			AccountType: interfaces.AccessorType(xAccountType),
+			AuthMethod:  "service_header",
 			TokenInfo: &interfaces.TokenInfo{
 				VisitorID:  xAccountID,
 				VisitorTyp: interfaces.AccessorType(xAccountType).ToVisitorType(),

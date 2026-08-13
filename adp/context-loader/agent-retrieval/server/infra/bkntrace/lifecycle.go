@@ -527,5 +527,9 @@ func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error 
 	headers.Set("X-BKN-Application-Principal-ID", applicationID)
 	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
 	headers.Set("X-BKN-Effective-Subject-ID", auth.AccountID)
+	if auth.TokenInfo != nil {
+		headers.Set("X-BKN-Effective-Subject-Name", strings.TrimSpace(auth.TokenInfo.VisitorName))
+	}
+	headers.Set("X-BKN-Auth-Method", strings.TrimSpace(auth.AuthMethod))
 	return nil
 }

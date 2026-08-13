@@ -61,14 +61,19 @@ func TestAppKeyVerify(t *testing.T) {
 				Return(200, &appKeyIntrospectResp{
 					Active:      true,
 					Sub:         "owner-1",
+					SubjectName: "供应链管理员",
 					AccountType: "other",
 					KeyID:       "kid-1",
+					KeyName:     "Cursor MCP",
 				}, nil)
 
 			info, err := v.Verify(context.Background(), "bak_x_y")
 			convey.So(err, convey.ShouldBeNil)
 			convey.So(info.Active, convey.ShouldBeTrue)
 			convey.So(info.VisitorID, convey.ShouldEqual, "owner-1")
+			convey.So(info.VisitorName, convey.ShouldEqual, "供应链管理员")
+			convey.So(info.CredentialID, convey.ShouldEqual, "kid-1")
+			convey.So(info.CredentialName, convey.ShouldEqual, "Cursor MCP")
 			convey.So(info.VisitorTyp, convey.ShouldEqual, interfaces.RealName)
 			convey.So(info.VisitorTyp.ToAccessorType(), convey.ShouldEqual, interfaces.AccessorTypeUser)
 		})
