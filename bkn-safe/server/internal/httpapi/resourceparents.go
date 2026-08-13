@@ -197,6 +197,12 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 // checkDeclaredHierarchy refuses a (child type, parent type) pair the seeded
 // catalog did not declare. It is the whole trust story of this tokenless write:
 // membership rows are only as safe as the shape they may claim.
+//
+// A type the seed never registered is refused too, and that is on purpose rather
+// than an oversight: vega owns two local-only types (internal_catalog,
+// internal_resource) that reach nobody but the super-admin wildcard, so
+// inheritance would buy them nothing. A synchroniser must therefore SKIP the
+// types it finds undeclared instead of treating the 400 as an outage.
 func checkDeclaredHierarchy(ctx context.Context, db *gorm.DB, resourceType, parentType string) error {
 	var rt model.ResourceType
 	err := db.WithContext(ctx).First(&rt, "id = ?", resourceType).Error

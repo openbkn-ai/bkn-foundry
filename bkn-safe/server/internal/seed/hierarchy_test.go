@@ -48,11 +48,15 @@ func TestSeedDeclaresResourceUnderCatalog(t *testing.T) {
 	want := map[string]string{
 		"view_detail": "view_detail",
 		"query_data":  "query_data",
-		"create":      "resource_manage",
 		"modify":      "resource_manage",
 		"delete":      "resource_manage",
 		"task_manage": "task_manage",
 		"authorize":   "", // no second-hand granting through the parent
+		// create is judged against the wildcard object resource:* (the table does
+		// not exist yet), and a wildcard id can never have an ownership row, so an
+		// inheritance mapping here would be one that can never fire. Creating a
+		// table is judged at the call site against catalog/resource_manage instead.
+		"create": "",
 	}
 	var ops []model.Operation
 	if err := db.Where("resource_type_id = ?", "resource").Find(&ops).Error; err != nil {
