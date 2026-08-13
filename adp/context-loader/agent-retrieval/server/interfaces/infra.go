@@ -23,8 +23,6 @@ const (
 	KeyIP ContextKey = "ip"
 	// OperationID API operation unique identifier
 	OperationID ContextKey = "operationID"
-	// XLanguageKey Language type
-	XLanguageKey ContextKey = "X-Language"
 	// FileNameKey File name
 	FileNameKey ContextKey = "FileName"
 	// Headers header request parameters
