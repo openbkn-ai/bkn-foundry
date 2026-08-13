@@ -269,14 +269,27 @@ func ptcWorkdir(businessContext map[string]any) string {
 //
 // 生命周期中间件已经校验过它在场且字段合法，这里只负责取值转发给沙箱——沙箱侧的
 // stub 用它挑工作目录，并在回访 MCP 时原样带上，好让脚本内的调用挂在同一次交互下。
+//
+// 不要用 GetRawArguments()：走 JSON-RPC 时它返回的是 json.RawMessage 而不是
+// map[string]any，断言必然落空，于是 bkn_context 变成空——run_code 在沙箱里报
+// conversation_required，run_shell 落进 /workspace/shared。两者都不会在服务端报错，
+// 只在沙箱里表现为「上下文丢了」。RawArguments 兜底是给非 JSON-RPC 传输留的。
 func ptcBusinessContextArg(req mcp.CallToolRequest) map[string]any {
-	raw, ok := req.GetRawArguments().(map[string]any)
+	if arguments := req.GetArguments(); arguments != nil {
+		if value, ok := arguments["bkn_context"].(map[string]any); ok {
+			return value
+		}
+		return map[string]any{}
+	}
+	raw, ok := req.GetRawArguments().(json.RawMessage)
 	if !ok {
 		return map[string]any{}
 	}
-	value, ok := raw["bkn_context"].(map[string]any)
-	if !ok {
+	var decoded struct {
+		BusinessContext map[string]any `json:"bkn_context"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil || decoded.BusinessContext == nil {
 		return map[string]any{}
 	}
-	return value
+	return decoded.BusinessContext
 }

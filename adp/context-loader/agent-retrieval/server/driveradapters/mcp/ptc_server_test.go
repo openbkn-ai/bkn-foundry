@@ -42,6 +42,14 @@ func ptcCallRequest(name string, args map[string]any) mcp.CallToolRequest {
 	req := mcp.CallToolRequest{}
 	req.Params.Name = name
 	req.Params.Arguments = args
+	// 走 JSON-RPC 时 mcp-go 同时填 RawArguments，且 GetRawArguments() 优先返回它
+	// （json.RawMessage，不是 map）。只设 Arguments 的请求真实流量里不存在，照那样
+	// 构造会让「取错字段」这类 bug 全程静默通过——最初就是这么漏掉的。
+	raw, err := json.Marshal(args)
+	if err != nil {
+		panic(err)
+	}
+	req.Params.RawArguments = raw
 	return req
 }
 
