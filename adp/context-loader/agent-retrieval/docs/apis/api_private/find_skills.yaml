@@ -293,7 +293,7 @@ components:
           description: |
             空结果说明信息。仅当 entries 为空且接口返回 200 时出现。
             用于向调用方（Agent）解释当前为什么没有结果，以及下一步建议。
-            entries 非空时不返回此字段。支持多语言（由请求 X-Language 头决定）。
+            entries 非空时不返回此字段。支持多语言（由请求 Accept-Language 头决定）。
 
     SkillItem:
       type: object

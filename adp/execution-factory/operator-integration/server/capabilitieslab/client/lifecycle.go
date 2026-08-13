@@ -219,6 +219,7 @@ func (c *OperatorIntegrationClient) RegisterSkill(
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("x-business-domain", businessDomain)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 

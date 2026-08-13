@@ -102,6 +102,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	// 外部 API (External)
 	apiV1 := c.Group("/api/vega-backend/v1")
+	apiV1.Use(rest.PrivateNoCacheMiddleware())
 	{
 		// Catalog APIs - External
 		catalogs := apiV1.Group("/catalogs")
@@ -198,6 +199,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	// 内部 API (Internal)
 	apiInV1 := c.Group("/api/vega-backend/in/v1")
+	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
 		// Catalog APIs - Internal
 		catalogs := apiInV1.Group("/catalogs")
@@ -309,13 +311,10 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	}
 }
 
-// gin中间件 把 X-Language 头解析结果挂到 request ctx。
+// LanguageMiddleware resolves Accept-Language once and stores it in request context.
 // 注册顺序必须在 TracingMiddleware 之后，这样 language ctx 叠加在 trace ctx 上。
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request = c.Request.WithContext(rest.GetLanguageCtx(c))
-		c.Next()
-	}
+	return rest.LanguageMiddleware()
 }
 
 // TraceContextMiddleware parses OpenBKN phase-one trace context into request context.

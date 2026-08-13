@@ -22,6 +22,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 const (
@@ -471,6 +472,7 @@ func (c *LifecycleClient) do(
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 	if err := setTrustedLifecycleHeaders(ctx, req.Header); err != nil {
 		return &APIError{
 			Code: "permission_denied", Message: err.Error(),

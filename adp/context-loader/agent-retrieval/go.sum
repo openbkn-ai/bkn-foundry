@@ -121,6 +121,8 @@ github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260813101616-bd7f22f1d9cb h
 github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260813101616-bd7f22f1d9cb/go.mod h1:D0d+xRVJAk7DutF2g8I/TsXceE/1Iv3EmNNj8yxu2pA=
 github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260813121341-970e0bb7367d h1:alYnur68nbfTckDh5qp3YtpPz86SwpKjVDhVjPtCzB4=
 github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260813121341-970e0bb7367d/go.mod h1:D0d+xRVJAk7DutF2g8I/TsXceE/1Iv3EmNNj8yxu2pA=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260813155806-b731c9765f03 h1:vk8vJjMUDg81wPYNi0JGbcL0aTm/oONoj4B1zxaEf10=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260813155806-b731c9765f03/go.mod h1:D0d+xRVJAk7DutF2g8I/TsXceE/1Iv3EmNNj8yxu2pA=
 github.com/openbkn-ai/licverify v0.5.0 h1:79aXlMYBDIzSLBXLhbrM3xOIDmMxhgCxG7PtZbPMNnE=
 github.com/openbkn-ai/licverify v0.5.0/go.mod h1:9Cnmt/tl7JN48+EjsGCjQERs1mNjuaBHdM+oVx0gvS4=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=

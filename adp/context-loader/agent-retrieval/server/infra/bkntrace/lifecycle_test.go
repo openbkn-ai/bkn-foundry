@@ -22,6 +22,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestGuardBeginUsesCoreCreatedAtForOperationEvidence(t *testing.T) {
@@ -99,6 +100,9 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		if got := r.Header.Get("X-BKN-Trace-Query-Token"); got != "" {
 			t.Errorf("internal lifecycle request must not carry gateway token, got %q", got)
 		}
+		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
+			t.Errorf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
+		}
 		switch r.URL.Path {
 		case "/api/agent-observability/v1/interactions/int-1":
 			_ = json.NewEncoder(w).Encode(Interaction{
@@ -171,6 +175,7 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser, AuthMethod: "api_key",
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1", VisitorName: "供应链管理员"},
 	})
+	ctx = sharedrest.WithLanguage(ctx, sharedrest.AmericanEnglish)
 	client := NewLifecycleClient(server.URL, server.Client())
 	result, apiErr, err := client.EnsureOperation(ctx, EnsureOperationInput{
 		ConversationID: "conv-1", InteractionID: "int-1", OperationKey: "logical-1",

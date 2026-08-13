@@ -130,6 +130,7 @@ func (c *OperatorIntegrationClient) DownloadSkillMarketPackage(
 	}
 
 	req.Header.Set("Accept", "application/octet-stream")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)

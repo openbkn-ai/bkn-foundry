@@ -98,7 +98,7 @@ func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
 	}
 	// 设置SSE响应头
 	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
+	c.Header("Cache-Control", "private, no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.Header("Access-Control-Allow-Headers", "Cache-Control")

@@ -97,6 +97,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	bknApiV1 := c.Group("/api/bkn-backend/v1")
 	otlApiV1 := c.Group("/api/ontology-manager/v1")
+	bknApiV1.Use(rest.PrivateNoCacheMiddleware())
+	otlApiV1.Use(rest.PrivateNoCacheMiddleware())
 	bknApiV1.GET("/trace/outbox", r.ListTraceOutbox)
 	bknApiV1.GET("/trace/outbox/:outbox_id", r.GetTraceOutbox)
 	bknApiV1.POST("/trace/outbox/:outbox_id/retry", r.verifyJsonContentType(), r.RetryTraceOutbox)
@@ -187,6 +189,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	bknApiInV1 := c.Group("/api/bkn-backend/in/v1")
 	otlApiInV1 := c.Group("/api/ontology-manager/in/v1")
+	bknApiInV1.Use(rest.PrivateNoCacheMiddleware())
+	otlApiInV1.Use(rest.PrivateNoCacheMiddleware())
 
 	for _, apiInV1 := range []*gin.RouterGroup{bknApiInV1, otlApiInV1} {
 		// 业务知识网络
@@ -290,13 +294,10 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	}
 }
 
-// gin中间件 把 X-Language 头解析结果挂到 request ctx。
+// LanguageMiddleware resolves Accept-Language once and stores it in request context.
 // 注册顺序必须在 TracingMiddleware 之后，这样 language ctx 叠加在 trace ctx 上。
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request = c.Request.WithContext(rest.GetLanguageCtx(c))
-		c.Next()
-	}
+	return rest.LanguageMiddleware()
 }
 
 // gin中间件 访问日志

@@ -11,6 +11,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type restPublicHandler struct {
@@ -51,7 +52,7 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 // RegisterPublic 注册公共路由
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, middlewareIntrospectVerify(r.Hydra, r.AppKeys))
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareIntrospectVerify(r.Hydra, r.AppKeys))
 	engine.Use(mws...)
 	// 算子注册相关接口
 	r.OperatorRestHandler.RegisterPublic(engine)

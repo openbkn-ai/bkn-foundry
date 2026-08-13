@@ -19,6 +19,7 @@ import (
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/pkg/errors"
 )
 
@@ -333,6 +334,9 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	for key, value := range common.MergeTraceHeaders(ctx, headers) {
 		httpReq.Header.Set(key, value)
 	}
+	// Internal requests carry the resolved, single-value locale rather than the
+	// caller's original Accept-Language preference list.
+	httpReq.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 
 	// 如果Content-Type未在请求头中设置，但我们有确定的类型，则设置它
 	if contentType != "" && (forceContentType || httpReq.Header.Get("Content-Type") == "") {
@@ -544,7 +548,7 @@ func preprocessResponseHeaders(streamingMode interfaces.StreamingMode, headerWri
 	switch streamingMode {
 	case interfaces.StreamingModeSSE:
 		headerWriter.Header().Set("Content-Type", "text/event-stream")
-		headerWriter.Header().Set("Cache-Control", "no-cache")
+		headerWriter.Header().Set("Cache-Control", privateStreamingCacheControl(headerWriter.Header().Get("Cache-Control")))
 		headerWriter.Header().Set("Connection", "keep-alive")
 		// 移除可能存在的Content-Length头部
 		headerWriter.Header().Del("Content-Length")
@@ -554,4 +558,34 @@ func preprocessResponseHeaders(streamingMode interfaces.StreamingMode, headerWri
 		// 移除可能存在的Content-Length头部
 		headerWriter.Header().Del("Content-Length")
 	}
+}
+
+func privateStreamingCacheControl(value string) string {
+	directives := make([]string, 0)
+	hasNoStore := false
+	for _, directive := range strings.Split(value, ",") {
+		directive = strings.TrimSpace(directive)
+		if directive == "" || strings.EqualFold(directive, "public") || strings.EqualFold(directive, "private") {
+			continue
+		}
+		if strings.EqualFold(directive, "no-store") {
+			hasNoStore = true
+		}
+		directives = append(directives, directive)
+	}
+
+	directives = append(directives, "private")
+	if !hasNoStore && !containsCacheDirective(directives, "no-cache") {
+		directives = append(directives, "no-cache")
+	}
+	return strings.Join(directives, ", ")
+}
+
+func containsCacheDirective(directives []string, name string) bool {
+	for _, directive := range directives {
+		if strings.EqualFold(strings.TrimSpace(strings.SplitN(directive, "=", 2)[0]), name) {
+			return true
+		}
+	}
+	return false
 }

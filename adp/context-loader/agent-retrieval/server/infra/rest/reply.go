@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	errorwrap "github.com/pkg/errors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -51,6 +52,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 			statusCode = http.StatusInternalServerError
 			ctx := c.Request.Context()
 			bodyStr := myErr.DefaultHTTPError(ctx, statusCode, err.Error()).Error()
+			sharedrest.MarkLocalizedResponse(c)
 			c.Writer.Header().Set(ContentTypeKey, ContentTypeJSON)
 			c.String(statusCode, bodyStr)
 			return
@@ -74,10 +76,12 @@ func ReplyError(c *gin.Context, err error) {
 	var httpCode int
 	ctx := c.Request.Context()
 	var body string
+	localized := true
 	switch e := err.(type) {
 	case *ExHTTPError:
 		httpCode = e.HTTPCode
 		body = e.Error()
+		localized = false
 	default:
 		httpError := &myErr.HTTPError{}
 		vErr := make(validator.ValidationErrors, 0)
@@ -98,6 +102,9 @@ func ReplyError(c *gin.Context, err error) {
 			httpCode = http.StatusInternalServerError
 			body = myErr.DefaultHTTPError(ctx, httpCode, err.Error()).Error()
 		}
+	}
+	if localized {
+		sharedrest.MarkLocalizedResponse(c)
 	}
 	c.Writer.Header().Set(ContentTypeKey, ContentTypeJSON)
 	c.String(httpCode, body)

@@ -12,6 +12,7 @@ import (
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/mock/gomock"
@@ -234,5 +235,36 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 			So(readErr, ShouldBeNil)
 			So(string(payload), ShouldEqual, `{"name":"demo"}`)
 		})
+	})
+}
+
+func TestBuildRequestUsesEffectiveLocale(t *testing.T) {
+	Convey("buildRequest forwards the resolved locale instead of caller preferences", t, func() {
+		forwarder := &forwarder{logger: logger.DefaultLogger()}
+		ctx := sharedrest.WithLanguage(context.Background(), sharedrest.AmericanEnglish)
+		httpReq, err := forwarder.buildRequest(ctx, &interfaces.HTTPRequest{
+			HTTPRouter: interfaces.HTTPRouter{Method: http.MethodGet, URL: "http://svc:9000/ping"},
+			HTTPRequestParams: interfaces.HTTPRequestParams{
+				Headers: map[string]any{sharedrest.AcceptLanguageHeader: "zh-CN, en-US;q=0.8"},
+			},
+		})
+
+		So(err, ShouldBeNil)
+		So(httpReq.Header.Get(sharedrest.AcceptLanguageHeader), ShouldEqual, sharedrest.AmericanEnglish)
+	})
+}
+
+func TestPreprocessResponseHeadersPreservesStrictCacheControls(t *testing.T) {
+	Convey("preprocessResponseHeaders keeps stricter upstream cache directives", t, func() {
+		writer := httptest.NewRecorder()
+		writer.Header().Set("Cache-Control", "public, no-store")
+		writer.Header().Set("Content-Language", "en-US")
+		writer.Header().Set("Vary", "Accept-Encoding")
+
+		preprocessResponseHeaders(interfaces.StreamingModeSSE, writer)
+
+		So(writer.Header().Get("Cache-Control"), ShouldEqual, "no-store, private")
+		So(writer.Header().Get("Content-Language"), ShouldEqual, "en-US")
+		So(writer.Header().Get("Vary"), ShouldEqual, "Accept-Encoding")
 	})
 }
