@@ -15,13 +15,17 @@ import (
 )
 
 func TestDefaultHTTPErrorUsesBCP47Locale(t *testing.T) {
-	ctx := common.SetLanguageToCtx(context.Background(), sharedrest.AmericanEnglish)
-	err := DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")
+	for _, locale := range []string{sharedrest.AmericanEnglish, "en-us"} {
+		t.Run(locale, func(t *testing.T) {
+			ctx := common.SetLanguageToCtx(context.Background(), locale)
+			err := DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")
 
-	if err.Description != "Authentication failed" {
-		t.Errorf("Description = %q, want English translation", err.Description)
-	}
-	if err.Solution != "Contact administrator" {
-		t.Errorf("Solution = %q, want English translation", err.Solution)
+			if err.Description != "Authentication failed" {
+				t.Errorf("Description = %q, want English translation", err.Description)
+			}
+			if err.Solution != "Contact administrator" {
+				t.Errorf("Solution = %q, want English translation", err.Solution)
+			}
+		})
 	}
 }

@@ -62,11 +62,21 @@ func NewI18nTranslator(lang string) *I18nTranslator {
 }
 
 func normalizeLanguageKey(lang string) string {
-	lang = strings.ReplaceAll(strings.TrimSpace(lang), "-", "_")
+	lang = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(lang), "-", "_"))
 	if lang == "" {
 		return defaultLang
 	}
-	return lang
+
+	switch lang {
+	case "zh_cn":
+		return "zh_CN"
+	case "zh_tw":
+		return "zh_TW"
+	case "en_us":
+		return "en_US"
+	default:
+		return lang
+	}
 }
 
 // Trans 翻译
