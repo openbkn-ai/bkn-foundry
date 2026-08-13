@@ -7,6 +7,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -91,7 +92,7 @@ func TestBuildTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 		batchQueue:     make(chan string, 2),
 		streamingQueue: make(chan string, 2),
 	}
-	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+	firstList := bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 			assert.Equal(t, 4, params.Limit)
 			assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}, params.Statuses)
@@ -100,16 +101,41 @@ func TestBuildTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 				{ID: "stopping-task", Status: interfaces.BuildTaskStatusStopping},
 			}, 2, nil
 		})
-	bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "running-task",
+	runningUpdate := bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "running-task",
 		interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusFailed).
 			WithErrorMsg("build task interrupted by service restart"),
-		interfaces.BuildTaskStatusRunning).Return(true, nil)
-	bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "stopping-task",
+		interfaces.BuildTaskStatusRunning).Return(true, nil).After(firstList)
+	stoppingUpdate := bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "stopping-task",
 		interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped),
-		interfaces.BuildTaskStatusStopping).Return(true, nil)
+		interfaces.BuildTaskStatusStopping).Return(true, nil).After(runningUpdate)
+	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+		[]*interfaces.BuildTask{}, int64(0), nil).After(stoppingUpdate)
 
-	worker.recoverInterruptedTasks(context.Background())
+	require.NoError(t, worker.recoverInterruptedTasks(context.Background()))
+}
+
+func TestBuildTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	worker := &BuildTaskWorker{
+		bts:            bts,
+		batchQueue:     make(chan string, 1),
+		streamingQueue: make(chan string, 1),
+	}
+	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{{
+		ID: "task-1", Status: interfaces.BuildTaskStatusRunning,
+	}}, int64(1), nil)
+	bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "task-1",
+		interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg("build task interrupted by service restart"),
+		interfaces.BuildTaskStatusRunning).Return(false, errors.New("database unavailable"))
+
+	err := worker.recoverInterruptedTasks(context.Background())
+
+	require.ErrorContains(t, err, "database unavailable")
 }
 
 func TestNewBuildTaskWorkerUsesModeSpecificConcurrency(t *testing.T) {

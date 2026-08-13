@@ -89,7 +89,7 @@ func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	worker := &DiscoverTaskWorker{dts: dts, queueSize: 2}
 
-	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+	firstList := dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 			assert.Equal(t, []string{interfaces.DiscoverTaskStatusRunning}, params.Statuses)
 			assert.Equal(t, 2, params.Limit)
@@ -97,10 +97,27 @@ func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
 		})
-	dts.EXPECT().InternalUpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusFailed,
-		"discover task interrupted by service restart", gomock.Any()).Return(nil)
+	markFailed := dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
+		"discover task interrupted by service restart", gomock.Any()).Return(true, nil).After(firstList)
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+		[]*interfaces.DiscoverTaskSummary{}, int64(0), nil).After(markFailed)
 
-	worker.recoverInterruptedTasks(context.Background())
+	require.NoError(t, worker.recoverInterruptedTasks(context.Background()))
+}
+
+func TestDiscoverTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, queueSize: 1}
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+		[]*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, int64(1), nil)
+	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
+		"discover task interrupted by service restart", gomock.Any()).Return(false, errors.New("database unavailable"))
+
+	err := worker.recoverInterruptedTasks(context.Background())
+
+	require.ErrorContains(t, err, "database unavailable")
 }
 
 func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {

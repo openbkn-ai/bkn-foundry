@@ -9,6 +9,7 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -72,19 +73,17 @@ func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *Semantic
 	}
 }
 
-// Start starts the single-instance database-backed task loop and its local workers.
-func (sutw *SemanticUnderstandingTaskWorker) Start(ctx context.Context) {
-	// 1. Resolve leftover running tasks before starting to avoid duplicate external agent calls.
-	sutw.recoverInterruptedTasks(ctx)
-	// 2. A fixed local worker pool executes tasks instead of creating a goroutine per Task.
+// startLoops starts the local worker pool and database producer after startup recovery succeeds.
+func (sutw *SemanticUnderstandingTaskWorker) startLoops(ctx context.Context) {
+	// A fixed local worker pool executes tasks instead of creating a goroutine per Task.
 	for i := 0; i < sutw.workerCount; i++ {
 		go sutw.runQueuedTasks(ctx)
 	}
-	// 3. The producer listens for creation notifications and fallback ticks to fill the bounded queue.
+	// The producer listens for creation notifications and fallback ticks to fill the bounded queue.
 	go sutw.pollTasks(ctx)
 }
 
-func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context.Context) {
+func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 	const recoveryFailure = "semantic understanding task interrupted by service restart"
 	for {
 		// Always read running tasks from offset zero; the result set shrinks after each failure update.
@@ -97,24 +96,22 @@ func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context
 			Statuses: []string{interfaces.SemanticUnderstandingTaskStatusRunning},
 		})
 		if err != nil {
-			logger.Errorf("List interrupted semantic understanding tasks failed: %v", err)
-			return
+			return fmt.Errorf("list interrupted semantic understanding tasks: %w", err)
 		}
-		updated := 0
+		if len(tasks) == 0 {
+			return nil
+		}
 		for _, task := range tasks {
-			if task != nil {
-				changed, err := sutw.suts.MarkFailed(ctx, task.ID, recoveryFailure)
-				if err != nil {
-					logger.Errorf("Mark interrupted semantic understanding task failed: id=%s, error=%v", task.ID, err)
-					continue
-				}
-				if changed {
-					updated++
-				}
+			if task == nil {
+				return errors.New("list interrupted semantic understanding tasks returned a nil task")
 			}
-		}
-		if len(tasks) < sutw.queueSize || updated == 0 {
-			return
+			changed, err := sutw.suts.MarkFailed(ctx, task.ID, recoveryFailure)
+			if err != nil {
+				return fmt.Errorf("mark interrupted semantic understanding task %s failed: %w", task.ID, err)
+			}
+			if !changed {
+				return fmt.Errorf("interrupted semantic understanding task %s was not recovered", task.ID)
+			}
 		}
 	}
 }

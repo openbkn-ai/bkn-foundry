@@ -71,9 +71,8 @@ func newBuildTaskWorker(appSetting *common.AppSetting, bts interfaces.BuildTaskS
 	return worker
 }
 
-// Start resolves interrupted tasks before starting the local producer and worker pool.
-func (btw *BuildTaskWorker) Start(ctx context.Context) {
-	btw.recoverInterruptedTasks(ctx)
+// startLoops starts the local worker pools and database producer after startup recovery succeeds.
+func (btw *BuildTaskWorker) startLoops(ctx context.Context) {
 	for i := 0; i < btw.batchWorkerCount; i++ {
 		go btw.runBatchTasks(ctx)
 	}
@@ -86,7 +85,7 @@ func (btw *BuildTaskWorker) Start(ctx context.Context) {
 	go btw.pollTasks(ctx)
 }
 
-func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) {
+func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 	pageSize := cap(btw.batchQueue) + cap(btw.streamingQueue)
 	for {
 		tasks, _, err := btw.bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
@@ -101,13 +100,14 @@ func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) {
 			},
 		})
 		if err != nil {
-			logger.Errorf("List interrupted build tasks failed: %v", err)
-			return
+			return fmt.Errorf("list interrupted build tasks: %w", err)
 		}
-		updated := 0
+		if len(tasks) == 0 {
+			return nil
+		}
 		for _, task := range tasks {
 			if task == nil {
-				continue
+				return fmt.Errorf("list interrupted build tasks returned a nil task")
 			}
 			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
 			if task.Status == interfaces.BuildTaskStatusRunning {
@@ -117,15 +117,11 @@ func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) {
 			}
 			changed, err := btw.bts.InternalUpdateStatus(ctx, nil, task.ID, update, task.Status)
 			if err != nil {
-				logger.Errorf("Recover interrupted build task failed: id=%s, error=%v", task.ID, err)
-				continue
+				return fmt.Errorf("recover interrupted build task %s: %w", task.ID, err)
 			}
-			if changed {
-				updated++
+			if !changed {
+				return fmt.Errorf("interrupted build task %s was not recovered", task.ID)
 			}
-		}
-		if len(tasks) < pageSize || updated == 0 {
-			return
 		}
 	}
 }

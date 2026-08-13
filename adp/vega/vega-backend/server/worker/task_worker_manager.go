@@ -8,6 +8,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"vega-backend/common"
@@ -47,9 +48,20 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 	return taskWorkerManger
 }
 
-// Start starts the task worker.
-func (twm *TaskWorkerManger) Start() {
-	twm.sutw.Start(context.Background())
-	twm.dtw.Start(context.Background())
-	twm.btw.Start(context.Background())
+// Start recovers all interrupted tasks before starting any task loop.
+func (twm *TaskWorkerManger) Start(ctx context.Context) error {
+	if err := twm.sutw.recoverInterruptedTasks(ctx); err != nil {
+		return fmt.Errorf("recover semantic understanding tasks: %w", err)
+	}
+	if err := twm.dtw.recoverInterruptedTasks(ctx); err != nil {
+		return fmt.Errorf("recover discover tasks: %w", err)
+	}
+	if err := twm.btw.recoverInterruptedTasks(ctx); err != nil {
+		return fmt.Errorf("recover build tasks: %w", err)
+	}
+
+	twm.sutw.startLoops(ctx)
+	twm.dtw.startLoops(ctx)
+	twm.btw.startLoops(ctx)
+	return nil
 }

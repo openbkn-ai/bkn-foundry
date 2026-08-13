@@ -63,19 +63,17 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 	}
 }
 
-// Start starts the single-instance database-backed task loop and its local workers.
-func (dtw *DiscoverTaskWorker) Start(ctx context.Context) {
-	// 1. Resolve leftover running tasks before starting any new work.
-	dtw.recoverInterruptedTasks(ctx)
-	// 2. Start a fixed worker pool that only consumes the bounded local queue.
+// startLoops starts the local worker pool and database producer after startup recovery succeeds.
+func (dtw *DiscoverTaskWorker) startLoops(ctx context.Context) {
+	// Start a fixed worker pool that only consumes the bounded local queue.
 	for i := 0; i < dtw.workerCount; i++ {
 		go dtw.runQueuedTasks(ctx)
 	}
-	// 3. Start the only producer. It owns the initial scan and all later refills.
+	// Start the only producer. It owns the initial scan and all later refills.
 	go dtw.pollTasks(ctx)
 }
 
-func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) {
+func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 	const recoveryFailure = "discover task interrupted by service restart"
 	for {
 		// Always read from offset zero because each batch is removed from the running result set.
@@ -88,22 +86,22 @@ func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) {
 			Statuses: []string{interfaces.DiscoverTaskStatusRunning},
 		})
 		if err != nil {
-			logger.Errorf("List interrupted discover tasks failed: %v", err)
-			return
+			return fmt.Errorf("list interrupted discover tasks: %w", err)
 		}
-		updated := 0
+		if len(tasks) == 0 {
+			return nil
+		}
 		for _, task := range tasks {
 			if task == nil {
-				continue
+				return fmt.Errorf("list interrupted discover tasks returned a nil task")
 			}
-			if err := dtw.dts.InternalUpdateStatus(ctx, task.ID, interfaces.DiscoverTaskStatusFailed, recoveryFailure, time.Now().UnixMilli()); err != nil {
-				logger.Errorf("Mark interrupted discover task failed: id=%s, error=%v", task.ID, err)
-				continue
+			changed, err := dtw.dts.InternalMarkFailed(ctx, task.ID, recoveryFailure, time.Now().UnixMilli())
+			if err != nil {
+				return fmt.Errorf("mark interrupted discover task %s failed: %w", task.ID, err)
 			}
-			updated++
-		}
-		if len(tasks) < dtw.queueSize || updated == 0 {
-			return
+			if !changed {
+				return fmt.Errorf("interrupted discover task %s was not recovered", task.ID)
+			}
 		}
 	}
 }

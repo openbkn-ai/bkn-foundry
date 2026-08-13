@@ -82,6 +82,39 @@ func TestSemanticUnderstandingTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpt
 	worker.fillQueue(context.Background())
 }
 
+func TestSemanticUnderstandingTaskWorkerRecoversInterruptedTasks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{suts: taskService, queueSize: 2}
+
+	gomock.InOrder(
+		taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+			[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, int64(1), nil),
+		taskService.EXPECT().MarkFailed(gomock.Any(), "task-1",
+			"semantic understanding task interrupted by service restart").Return(true, nil),
+		taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+			[]*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil),
+	)
+
+	require.NoError(t, worker.recoverInterruptedTasks(context.Background()))
+}
+
+func TestSemanticUnderstandingTaskWorkerRecoveryFailsWhenTaskIsNotUpdated(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+	worker := &SemanticUnderstandingTaskWorker{suts: taskService, queueSize: 1}
+	taskService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+		[]*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, int64(1), nil)
+	taskService.EXPECT().MarkFailed(gomock.Any(), "task-1",
+		"semantic understanding task interrupted by service restart").Return(false, nil)
+
+	err := worker.recoverInterruptedTasks(context.Background())
+
+	require.ErrorContains(t, err, "task-1 was not recovered")
+}
+
 func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)

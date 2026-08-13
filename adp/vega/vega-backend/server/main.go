@@ -152,7 +152,9 @@ func main() {
 
 	// 初始化并启动统一的 TaskWorkerManger，处理所有类型的任务
 	taskWorkerMgr := worker.NewTaskWorkerManager(appSetting)
-	taskWorkerMgr.Start()
+	if err := taskWorkerMgr.Start(context.Background()); err != nil {
+		logger.Fatalf("Failed to start task workers: %v", err)
+	}
 	logger.Info("VEGA Manager Init Task Worker Success")
 
 	// 初始化并启动调度器
