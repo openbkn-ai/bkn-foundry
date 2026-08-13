@@ -198,12 +198,42 @@ func (m *mockOntologyQuery) QueryInstanceSubgraph(ctx context.Context, req *inte
 
 // mockRerankClient 模拟 DrivenMFModelAPIClient 接口
 type mockRerankClient struct {
+	mu          sync.Mutex
 	rerankResp  *interfaces.RerankResp
 	rerankError error
+	rerankFunc  func(query string, documents []string, model string) (*interfaces.RerankResp, error)
+	calls       int
+	lastQuery   string
+	lastDocs    []string
+	lastModel   string
 }
 
 func (m *mockRerankClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
-	return m.rerankResp, m.rerankError
+	m.mu.Lock()
+	m.calls++
+	m.lastQuery = query
+	m.lastDocs = append([]string(nil), documents...)
+	m.lastModel = model
+	fn := m.rerankFunc
+	resp, err := m.rerankResp, m.rerankError
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(query, documents, model)
+	}
+	return resp, err
+}
+
+func (m *mockRerankClient) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
+}
+
+func (m *mockRerankClient) documents() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.lastDocs...)
 }
 
 func (m *mockRerankClient) Chat(ctx context.Context, req *interfaces.LLMChatReq) (string, error) {

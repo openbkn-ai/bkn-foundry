@@ -302,6 +302,8 @@ components:
             排序，不要按出现次序判断哪个对象类更相关。每条带 `object_type_id`
             （可直接喂给 `get_object_types` / `query_object_instance`）、`properties`，
             以及 `score`（该实例在其所属对象类内部的相关性分，跨对象类不可比）。
+            部署开启实例精排时，另有 `rerank_score`（精排小模型分）；`instance_rerank_mode=on`
+            下 `score` 即精排分，`shadow` 下 `rerank_score` 只带出不参与排序。
           items:
             type: object
             additionalProperties: true

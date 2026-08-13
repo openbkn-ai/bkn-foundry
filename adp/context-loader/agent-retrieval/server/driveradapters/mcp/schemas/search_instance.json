@@ -72,6 +72,10 @@
             "score": {
               "type": "number",
               "description": "该实例在其所属对象类内部的相关性分。不同对象类之间不可比。"
+            },
+            "rerank_score": {
+              "type": "number",
+              "description": "精排小模型给出的相关性分。仅在部署开启实例精排时出现；未开启时不返回该字段。"
             }
           },
           "additionalProperties": true

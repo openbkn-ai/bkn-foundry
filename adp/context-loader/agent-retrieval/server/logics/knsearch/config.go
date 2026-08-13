@@ -44,6 +44,9 @@ func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstan
 		MaxKnnSubConditionsPerType:        1,
 		EnableRRFFusion:                   boolPtr(true),
 		RRFK:                              60,
+		InstanceRerankMode:                InstanceRerankModeOff,
+		RerankTopN:                        50,
+		RerankFieldCharLimit:              200,
 	}
 }
 
@@ -168,6 +171,18 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	}
 	if user.RRFK > 0 {
 		base.RRFK = user.RRFK
+	}
+	if mode := normalizeRerankMode(user.InstanceRerankMode); mode != "" {
+		base.InstanceRerankMode = mode
+	}
+	if user.InstanceRerankModel != "" {
+		base.InstanceRerankModel = user.InstanceRerankModel
+	}
+	if user.RerankTopN > 0 {
+		base.RerankTopN = user.RerankTopN
+	}
+	if user.RerankFieldCharLimit > 0 {
+		base.RerankFieldCharLimit = user.RerankFieldCharLimit
 	}
 }
 
