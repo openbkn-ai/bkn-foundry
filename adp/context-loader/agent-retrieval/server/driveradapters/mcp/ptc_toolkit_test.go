@@ -166,9 +166,15 @@ func TestPTCStubIsolatesWorkdirPerConversation(t *testing.T) {
 	if strings.Contains(stub, "hashlib") {
 		t.Fatalf("工作目录不应再用哈希命名（浏览器侧算不出来）:\n%s", stub)
 	}
+	// Python 的 isalnum() 认 Unicode（"名".isalnum() 为真），而 Go 侧只认 ASCII。
+	// 用它归一化，中文 conversation_id 会让 run_code 与 run_shell 落进不同目录。
+	// 匹配可执行写法而不是裸词：stub 的注释里正解释着为什么不能用它。
+	if strings.Contains(stub, "c.isalnum() or") {
+		t.Fatalf("工作目录归一化不能用 isalnum（Unicode 语义与 Go 侧不一致）:\n%s", stub)
+	}
 	for _, want := range []string{
 		`conversation_id`,          // 目录名的来源
-		`c.isalnum() or c in "_-"`, // 归一化规则，必须与 TS 侧 ptcWorkdir 一致
+		`c if c in _SAFE else "-"`, // 归一化规则，必须与 Go 侧 ptcWorkdir 一致
 		`[:64]`,                    // 截断长度，同上
 		`"conv-" + safe if safe else "shared"`,
 		`candidate.mkdir(`,

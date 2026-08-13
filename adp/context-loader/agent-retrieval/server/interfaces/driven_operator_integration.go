@@ -87,4 +87,29 @@ type DrivenOperatorIntegration interface {
 	ReadSkillFile(ctx context.Context, req *ReadSkillFileRequest) (*ReadSkillFileResponse, error)
 	// ExecuteSkill 在沙箱内执行技能入口命令
 	ExecuteSkill(ctx context.Context, req *ExecuteSkillRequest) (*ExecuteSkillResponse, error)
+	// ExecuteFunction 在沙箱内执行一段代码（PTC 的 run_code / run_shell）
+	ExecuteFunction(ctx context.Context, req *ExecuteFunctionRequest) (*ExecuteFunctionResponse, error)
+}
+
+// ExecuteFunctionRequest 沙箱代码执行请求。
+type ExecuteFunctionRequest struct {
+	// Code 完整脚本。Language 为 python 时必须导出 handler(event)。
+	Code string `json:"code"`
+	// Language 执行工厂只认 python / javascript / shell；bash 会被沙箱控制面 422 拒掉。
+	Language string `json:"language"`
+	// Event 传给入口函数的事件对象。凭据与会话上下文走这里而不是 env_vars：
+	// 沙箱会话是池化复用的，env 会把上一个调用方的值留在容器里。
+	Event map[string]any `json:"event"`
+	// Timeout 执行超时，单位秒。
+	Timeout int `json:"timeout,omitempty"`
+}
+
+// ExecuteFunctionResponse 沙箱代码执行结果。
+//
+// 代码自身报错也是 HTTP 200，据 ExitCode 与 Stderr 判断，不能只看状态码。
+type ExecuteFunctionResponse struct {
+	Stdout    string `json:"stdout"`
+	Stderr    string `json:"stderr"`
+	ExitCode  int    `json:"exit_code"`
+	SessionID string `json:"session_id"`
 }

@@ -108,6 +108,22 @@ func IsPublicAPIFromCtx(ctx context.Context) bool {
 	return false
 }
 
+// SetRawTokenToCtx 保存调用方的原始 bearer 令牌。
+//
+// TokenInfo 是内省结果，不含原文，而 PTC 的 run_code 必须把调用方本人的令牌带到
+// 下游：沙箱里执行的是调用方提交的任意代码，授权判定要留在执行工厂的公开面
+// （算子类型上的 execute 权限，见 #345）。换成服务端身份去打内部面，等于把这道
+// 检查洗掉，任何能连上 MCP 的账号都拿到了沙箱代码执行能力。
+func SetRawTokenToCtx(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, interfaces.KeyToken, token)
+}
+
+// GetRawTokenFromCtx 取出调用方的原始 bearer 令牌。
+func GetRawTokenFromCtx(ctx context.Context) (string, bool) {
+	token, ok := ctx.Value(interfaces.KeyToken).(string)
+	return token, ok && token != ""
+}
+
 // SetAccountAuthContextToCtx 设置账户认证上下文到context
 func SetAccountAuthContextToCtx(ctx context.Context, authContext *interfaces.AccountAuthContext) context.Context {
 	return context.WithValue(ctx, interfaces.KeyAccountAuthContext, authContext)
@@ -207,6 +223,9 @@ func CopyRequestScopedValues(from, onto context.Context) context.Context {
 		interfaces.KeyAccountAuthContext,
 		interfaces.KeyResponseFormat,
 		interfaces.IsPublic,
+		// PTC 的 run_code 在 MCP 会话上下文里执行，取不到 gin 的请求上下文；
+		// 漏掉这一项，工具侧就拿不到调用方令牌，只能降级成服务端身份。
+		interfaces.KeyToken,
 	} {
 		if value := from.Value(key); value != nil {
 			onto = context.WithValue(onto, key, value)

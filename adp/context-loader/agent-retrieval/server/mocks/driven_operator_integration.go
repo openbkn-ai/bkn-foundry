@@ -56,6 +56,21 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) CallMCPTool(ctx, req any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallMCPTool", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).CallMCPTool), ctx, req)
 }
 
+// ExecuteFunction mocks base method.
+func (m *MockDrivenOperatorIntegration) ExecuteFunction(ctx context.Context, req *interfaces.ExecuteFunctionRequest) (*interfaces.ExecuteFunctionResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteFunction", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ExecuteFunctionResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteFunction indicates an expected call of ExecuteFunction.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ExecuteFunction(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteFunction", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ExecuteFunction), ctx, req)
+}
+
 // ExecuteSkill mocks base method.
 func (m *MockDrivenOperatorIntegration) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillRequest) (*interfaces.ExecuteSkillResponse, error) {
 	m.ctrl.T.Helper()

@@ -29,10 +29,15 @@ import (
 )
 
 type restPublicHandler struct {
-	Hydra                          interfaces.Hydra
-	AppKeys                        interfaces.AppKeyVerifier
-	KnRetrievalHandler             knretrieval.KnRetrievalHandler
-	MCPHandler                     http.Handler
+	Hydra              interfaces.Hydra
+	AppKeys            interfaces.AppKeyVerifier
+	KnRetrievalHandler knretrieval.KnRetrievalHandler
+	MCPHandler         http.Handler
+	// PTCMCPHandler 是 PTC 的独立 MCP 端点（…/mcp/ptc）。与 MCPHandler 分开，
+	// 是因为两者的工具面互斥：客户端同时看到 run_code 与二十个业务工具时，
+	// 模型会挑后者，PTC 就退化成普通工具调用。装配失败时为 nil，该路由报 503，
+	// 不影响主工具面。
+	PTCMCPHandler                  http.Handler
 	KnLogicPropertyResolverHandler knlogicpropertyresolver.KnLogicPropertyResolverHandler
 	KnActionRecallHandler          knactionrecall.KnActionRecallHandler
 	KnQueryObjectInstanceHandler   knqueryobjectinstance.KnQueryObjectInstanceHandler
@@ -55,6 +60,7 @@ func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.
 		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
 		KnRetrievalHandler:             knretrieval.NewKnRetrievalHandler(),
 		MCPHandler:                     mcp.NewMCPHandler(),
+		PTCMCPHandler:                  newPTCMCPHandlerOrNil(logger),
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
 		KnActionRecallHandler:          knactionrecall.NewKnActionRecallHandler(),
 		KnQueryObjectInstanceHandler:   knqueryobjectinstance.NewKnQueryObjectInstanceHandler(),
@@ -135,6 +141,16 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 		r.handlePTCToolkit(c)
 		return
 	}
+	// …/mcp/ptc 是另一套 MCP 工具面（只有 run_code / run_shell 加生命周期），
+	// 服务端代跑代码。mcp-go 按前缀匹配路径，所以要在交给主 MCP Server 之前拦下。
+	if strings.HasPrefix(c.Param("path"), "/ptc") {
+		if r.PTCMCPHandler == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "PTC MCP endpoint is unavailable"})
+			return
+		}
+		r.PTCMCPHandler.ServeHTTP(c.Writer, c.Request)
+		return
+	}
 	if c.Request.Method == http.MethodGet && c.Param("path") == "/info" {
 		info, err := mcp.BuildMCPInfo(mcpEndpointURL(c.Request))
 		if err != nil {
@@ -174,4 +190,19 @@ func requestScheme(req *http.Request) string {
 		scheme = p
 	}
 	return scheme
+}
+
+// newPTCMCPHandlerOrNil 装配 PTC MCP 端点，失败只记日志并返回 nil。
+//
+// PTC 依赖内嵌的工具元数据渲染工具包，读失败时不该把整个服务拖垮——主工具面
+// 与全部 REST 端点与它无关。该路由随后返回 503，故障是可见的。
+func newPTCMCPHandlerOrNil(logger interfaces.Logger) http.Handler {
+	handler, err := mcp.NewPTCMCPHandler()
+	if err != nil {
+		if logger != nil {
+			logger.Errorf("[RestPublicHandler] PTC MCP endpoint unavailable: %v", err)
+		}
+		return nil
+	}
+	return handler
 }

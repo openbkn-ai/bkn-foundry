@@ -128,6 +128,68 @@ paths:
                   error:
                     type: string
 
+  /mcp/ptc:
+    post:
+      tags:
+        - MCP
+      summary: PTC MCP 端点（只有 run_code / run_shell）
+      operationId: postPTCMCP
+      description: |
+        与 `/mcp` 同为 MCP Streamable HTTP，差别只在工具面：这里**只有四个工具**
+
+        - `bkn_start_interaction` / `bkn_finish_interaction` —— 会话生命周期
+        - `run_code` —— 写一段 Python 交沙箱执行
+        - `run_shell` —— 跑一条 shell 命令
+
+        BKN 的全部能力（知识网络、对象类、实例查询、SQL）不在工具面上，而是以
+        Python 函数的形式存在于 `run_code` 的沙箱里，签名清单就是 `run_code` 的工具
+        描述。中间结果留在沙箱，只有 `stdout` 回到调用方的上下文。
+
+        **为什么另开一个端点而不是加到 `/mcp` 上**：两套工具面互斥。客户端同时看到
+        `run_code` 和二十来个业务工具时，模型会挑后者——一行 JSON 就能发，而
+        `run_code` 要构思一段脚本。PTC 于是退化成普通工具调用，省上下文这件事也就
+        不成立了。接入时二选一。
+
+        **执行在服务端**：客户端只发代码，context-loader 带上**调用方本人的令牌**去打
+        执行工厂的公开面，那边照常校验算子类型上的 `execute` 权限。因此任何 MCP
+        客户端（Claude Desktop、Cursor、第三方 Agent）都能直接用，不必自己实现
+        「取工具包 + 拼 handler + 打执行工厂」那一套。想自己实现的走 `GET /mcp/toolkit`。
+
+        `run_code` 与 `run_shell` 共用同一个工作目录（按 `conversation_id` 分），
+        前者写下的文件后者能直接 `wc` / `head` / `grep`。
+
+        调用顺序：先 `bkn_start_interaction` 拿 `conversation_id` 与 `interaction_id`，
+        之后每次调用都带 `bkn_context`，结束时 `bkn_finish_interaction`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: JSON-RPC 2.0 请求（`initialize` / `tools/list` / `tools/call` …）
+      responses:
+        '200':
+          description: JSON-RPC 响应（`Accept` 含 `text/event-stream` 时为 SSE）
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '503':
+          description: PTC 端点装配失败（内嵌工具元数据读取失败）；`/mcp` 与 REST 端点不受影响
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
   /mcp:
     post:
       tags:

@@ -84,6 +84,9 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		tokenInfo.UserAgent = c.GetHeader("User-Agent")
 
 		ctx = common.SetPublicAPIToCtx(ctx, true)
+		// 原始令牌留在上下文里：PTC 的 run_code 要以调用方本人的身份去打执行工厂
+		// 的公开面，好让那边的 execute 权限判定照常生效（见 SetRawTokenToCtx）。
+		ctx = common.SetRawTokenToCtx(ctx, token)
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
 		// 设置认证上下文到context
 		authContext := &interfaces.AccountAuthContext{

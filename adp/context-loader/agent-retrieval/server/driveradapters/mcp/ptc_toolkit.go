@@ -495,8 +495,12 @@ def _configure(event):
     # 不经过本 stub，得在浏览器侧算出同一个路径才能进到同一个目录。而浏览器的
     # crypto.subtle 在非 HTTPS 源下不可用（部署常是裸 HTTP），算不了 sha1。
     # 归一化两边都能实现，且 ls /workspace 时还能直接看出是哪个对话。
+    # 字符集写死成 ASCII 白名单，不用 c.isalnum()：Python 的 isalnum() 认 Unicode，
+    # "名".isalnum() 为真，于是中文 conversation_id 在这里被原样保留，而 Go 侧
+    # （run_shell 走那条路）只认 ASCII，会换成 -。两边就落到不同目录了。
+    _SAFE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
     conversation = str((event.get("bkn") or {}).get("conversation_id") or "").strip()
-    safe = "".join(c if (c.isalnum() or c in "_-") else "-" for c in conversation)[:64]
+    safe = "".join(c if c in _SAFE else "-" for c in conversation)[:64]
     candidate = pathlib.Path("/workspace") / ("conv-" + safe if safe else "shared")
     try:
         candidate.mkdir(parents=True, exist_ok=True)
