@@ -10,10 +10,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-comm-go/rest"
-	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -42,6 +43,23 @@ func TestNewBusinessSystemAccess(t *testing.T) {
 			So(access2, ShouldEqual, access1)
 		})
 	})
+}
+
+func TestBusinessSystemAccessUsesEffectiveLocale(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get(rest.AcceptLanguageHeader); got != rest.AmericanEnglish {
+			t.Errorf("Accept-Language = %q, want %q", got, rest.AmericanEnglish)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	bsa := newTestBusinessSystemAccess(&common.AppSetting{BusinessSystemUrl: server.URL},
+		rest.NewHTTPClientWithRawClient(server.Client()))
+	ctx := rest.WithLanguage(context.Background(), rest.AmericanEnglish)
+	if err := bsa.BindResource(ctx, "business-system-1", "resource-1", "asset"); err != nil {
+		t.Fatalf("BindResource() error = %v", err)
+	}
 }
 
 func Test_businessSystemAccess_BindResource(t *testing.T) {
