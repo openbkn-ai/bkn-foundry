@@ -21,6 +21,7 @@ import (
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/filter_condition"
+	"vega-backend/logics/queryerr"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/model_factory"
 	querylogic "vega-backend/logics/query"
@@ -149,6 +150,13 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	// knn_vector 条件会在字段查找阶段就被判成「字段不存在」。
 	for name, prop := range interfaces.LocalIndexGeneratedFields(resource) {
 		fieldMap[name] = prop
+	}
+
+	// 表资源没建本地索引时，全文检索无处可落，在这里就拒掉并说明原因。
+	if err := validateFulltextConditions(resource, params.FilterCondCfg); err != nil {
+		otellog.LogError(ctx, "Full-text condition rejected", err)
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails(err.Error())
 	}
 
 	// 向量检索的条件带的是查询文本与源字段名，在这里换成向量与物理向量字段。
@@ -371,6 +379,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
+			if httpErr, ok := queryerr.AsHTTPError(ctx, err); ok {
+				return nil, 0, httpErr
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 		}
@@ -390,6 +401,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := indexConnector.ExecuteQuery(ctx, resource.SourceIdentifier, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
+			if httpErr, ok := queryerr.AsHTTPError(ctx, err); ok {
+				return nil, 0, httpErr
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 		}

@@ -148,7 +148,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionWithOpr(condition interfaces
 	case filter_condition.OperationKnnVector:
 		return c.ConvertFilterConditionKnnVector(condition, schemaDefinition)
 	default:
-		return nil, fmt.Errorf("operation %s is not supported", condition.GetOperation())
+		return nil, filter_condition.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelOpenSearch)
 	}
 }
 

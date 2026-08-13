@@ -247,7 +247,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionWithOpr(ctx context.Context,
 	case filter_condition.OperationCurrent:
 		return c.ConvertFilterConditionCurrent(ctx, condition, fieldsMap)
 	default:
-		return nil, fmt.Errorf("operation %s is not supported", condition.GetOperation())
+		return nil, filter_condition.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelSQL)
 	}
 }
 

@@ -364,6 +364,13 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
 	if err != nil {
+		// 下游认定是请求侧问题（4xx）时按原状态码透传，并把它给出的原因带上来。
+		// 一律升成 500 会让「算子不支持」「资源没建索引」这类可自纠的问题看起来
+		// 像服务故障，调用方既无法自纠，人工排查也会被引向错误方向。
+		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
+			return rest.NewHTTPError(ctx, downstream.StatusCode,
+				oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(downstream.Message())
+		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())
 	}

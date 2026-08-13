@@ -24,6 +24,7 @@ import (
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/query"
+	"vega-backend/logics/queryerr"
 	"vega-backend/logics/resource"
 	lvdsl "vega-backend/logics/resource_data/logic_view/dsl"
 	lvsql "vega-backend/logics/resource_data/logic_view/sql"
@@ -543,6 +544,9 @@ func (lvs *logicViewService) executeIndexQuery(ctx context.Context, catalog *int
 	result, err := indexConnector.ExecuteQuery(ctx, resource.Name, resource, params)
 	if err != nil {
 		otellog.LogError(ctx, "Execute query failed", err)
+		if httpErr, ok := queryerr.AsHTTPError(ctx, err); ok {
+			return nil, 0, httpErr
+		}
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 	}
@@ -581,6 +585,9 @@ func (lvs *logicViewService) executeTableQuery(ctx context.Context, catalog *int
 	result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 	if err != nil {
 		otellog.LogError(ctx, "Execute query failed", err)
+		if httpErr, ok := queryerr.AsHTTPError(ctx, err); ok {
+			return nil, 0, httpErr
+		}
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 	}

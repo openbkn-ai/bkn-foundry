@@ -948,6 +948,85 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(len(result.Datas), ShouldEqual, 1)
 			// 不支持的逻辑属性类型不会添加到结果中
 		})
+
+		Convey("vega 返回 4xx 时按原状态码透传，不升级为 500", func() {
+			objectType := interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:        objectTypeID,
+					PrimaryKeys: []string{"id"},
+					DataProperties: []cond.DataProperty{
+						{Name: "prop1", MappedField: cond.Field{Name: "field1"}},
+					},
+					DataSource: &interfaces.ResourceInfo{
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
+					},
+				},
+			}
+
+			query := &interfaces.ObjectQueryBaseOnObjectType{
+				KNID:         knID,
+				Branch:       branch,
+				ObjectTypeID: objectTypeID,
+				PageQuery:    interfaces.PageQuery{Limit: 10},
+			}
+
+			details := "operation match is not supported by the sql query channel; " +
+				"full-text operations need a local index on the resource"
+			service.vba = &vegaStubForOTQuery{
+				err: interfaces.NewVegaDownstreamError(http.StatusBadRequest,
+					`{"error_code":"VegaBackend.Query.InvalidParameter","description":"查询参数错误",`+
+						`"error_details":"`+details+`"}`),
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
+
+			_, err := service.GetObjectsByObjectTypeID(ctx, query)
+			So(err, ShouldNotBeNil)
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			// 参数问题报成 500 会让调用方去查服务健康，而真正该做的是改查询或建索引。
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
+		})
+
+		Convey("vega 返回 5xx 时仍认定为依赖故障", func() {
+			objectType := interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:        objectTypeID,
+					PrimaryKeys: []string{"id"},
+					DataProperties: []cond.DataProperty{
+						{Name: "prop1", MappedField: cond.Field{Name: "field1"}},
+					},
+					DataSource: &interfaces.ResourceInfo{
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
+					},
+				},
+			}
+
+			query := &interfaces.ObjectQueryBaseOnObjectType{
+				KNID:         knID,
+				Branch:       branch,
+				ObjectTypeID: objectTypeID,
+				PageQuery:    interfaces.PageQuery{Limit: 10},
+			}
+
+			service.vba = &vegaStubForOTQuery{
+				err: interfaces.NewVegaDownstreamError(http.StatusInternalServerError,
+					`{"error_code":"VegaBackend.Resource.InternalError","description":"数据资源内部错误"}`),
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
+
+			_, err := service.GetObjectsByObjectTypeID(ctx, query)
+			So(err, ShouldNotBeNil)
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+		})
 	})
 }
 

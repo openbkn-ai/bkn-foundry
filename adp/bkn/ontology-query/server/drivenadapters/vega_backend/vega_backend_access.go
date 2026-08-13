@@ -74,7 +74,7 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 		return nil, fmt.Errorf("QueryResourceData http request failed: %w", err)
 	}
 	if respCode != http.StatusOK {
-		return nil, fmt.Errorf("QueryResourceData failed: %s", respData)
+		return nil, interfaces.NewVegaDownstreamError(respCode, string(respData))
 	}
 	var response interfaces.DatasetQueryResponse
 	if err := json.Unmarshal([]byte(respData), &response); err != nil {
