@@ -191,8 +191,9 @@ paths:
         执行两段：先按 `query` 锁定相关对象类，再在这些对象类上做语义实例召回；
         向量（`knn`）与全文（`match`）两路并发发出后按名次融合，因此两种命中都能进入结果。
 
-        **只回实例**。字段含义走 `search_schema` 或 `get_object_types`，本接口不重复一份
-        Schema。只有 `condition_operations` 含 `match` / `knn` 的属性参与召回，
+        **自足**：除实例行外，还附带读懂它们所需的对象类精简定义（`object_types`，
+        只含真正出了实例的那几个），单次调用就够用，不必再回头查 Schema。
+        只有 `condition_operations` 含 `match` / `knn` 的属性参与召回，
         **没建索引的对象类不会出实例**。
 
         **无命中不是错误**：返回空 `nodes` 加一句 `message`，不返回 5xx。
@@ -282,6 +283,12 @@ components:
           default: 5
           minimum: 1
           description: 每个对象类最多返回几条实例。
+        include_object_types:
+          type: boolean
+          default: true
+          description: |
+            是否附带命中对象类的精简定义。默认附带——不附带的话，要读懂返回的实例
+            还得再调一次 `get_object_types`，而那一趟会把同一个 query 的概念召回重跑一遍。
 
     SearchInstanceResponse:
       type: object
@@ -295,6 +302,14 @@ components:
             排序，不要按出现次序判断哪个对象类更相关。每条带 `object_type_id`
             （可直接喂给 `get_object_types` / `query_object_instance`）、`properties`，
             以及 `score`（该实例在其所属对象类内部的相关性分，跨对象类不可比）。
+          items:
+            type: object
+            additionalProperties: true
+        object_types:
+          type: array
+          description: |
+            读懂 `nodes` 所需的对象类精简定义（属性名与类型），**只含真正出了实例的
+            那些对象类**，不是召回扫过的全部。`include_object_types=false` 时不返回。
           items:
             type: object
             additionalProperties: true

@@ -65,6 +65,18 @@ func TestNormalizeSearchInstanceReq_AppliesDefaults(t *testing.T) {
 	}
 }
 
+// include_object_types 默认开：工具不自足会逼调用方回头再查一次 Schema，
+// 而那一趟会把同一个 query 的概念召回重跑一遍。
+func TestSearchInstanceReq_IncludeObjectTypesDefaultsOn(t *testing.T) {
+	req := &interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"}
+	if _, err := NormalizeSearchInstanceReq(req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req.IncludeObjectTypes == nil || !*req.IncludeObjectTypes {
+		t.Error("include_object_types must default to true")
+	}
+}
+
 // kn_id 走头也算数，两处都没有才报错。
 func TestNormalizeSearchInstanceReq_KnIDFromHeader(t *testing.T) {
 	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{XKnID: " kn-header ", Query: "q"})
@@ -100,29 +112,53 @@ func TestNormalizeSearchInstanceReq_Rejects(t *testing.T) {
 	}
 }
 
-// 响应只留实例：Schema 三件套要字段含义有 search_schema，在这里重复一份是纯体积。
-func TestFilterSearchInstanceResp_DropsSchema(t *testing.T) {
+// 只带回出了实例的那几个对象类；关系类与行动类一律丢弃。
+func TestFilterSearchInstanceResp_KeepsOnlyHitObjectTypes(t *testing.T) {
 	msg := "未检索到符合条件的实例数据"
 	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{
-		ObjectTypes:   []any{map[string]any{"concept_id": "ot1"}},
+		ObjectTypes: []any{
+			map[string]any{"concept_id": "ot1"},
+			map[string]any{"concept_id": "ot2"}, // 概念召回扫到了，但没出实例
+		},
 		RelationTypes: []any{map[string]any{"concept_id": "rt1"}},
 		ActionTypes:   []any{map[string]any{"concept_id": "at1"}},
 		Nodes:         []any{map[string]any{"object_type_id": "ot1", "score": 1.0}},
 		Message:       &msg,
-	})
+	}, true)
 
 	if len(out.Nodes) != 1 {
 		t.Fatalf("expected the instance to survive, got %d", len(out.Nodes))
+	}
+	if len(out.ObjectTypes) != 1 {
+		t.Fatalf("expected only the object type that produced rows, got %d", len(out.ObjectTypes))
+	}
+	if id := out.ObjectTypes[0].(map[string]any)["concept_id"]; id != "ot1" {
+		t.Errorf("expected ot1, got %v", id)
 	}
 	if out.Message != "" {
 		t.Errorf("message belongs to the empty case only, got %q", out.Message)
 	}
 }
 
+// 关掉开关就一条 schema 都不回——省体积是调用方的选择，不是默认。
+func TestFilterSearchInstanceResp_ObjectTypesCanBeTurnedOff(t *testing.T) {
+	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{
+		ObjectTypes: []any{map[string]any{"concept_id": "ot1"}},
+		Nodes:       []any{map[string]any{"object_type_id": "ot1"}},
+	}, false)
+
+	if len(out.ObjectTypes) != 0 {
+		t.Errorf("expected no object types when the switch is off, got %d", len(out.ObjectTypes))
+	}
+	if len(out.Nodes) != 1 {
+		t.Errorf("instances must be unaffected by the switch, got %d", len(out.Nodes))
+	}
+}
+
 // 空结果要带上原因，且不是错误——Agent 拿到「没找到」比拿到 500 更可用。
 func TestFilterSearchInstanceResp_EmptyKeepsMessage(t *testing.T) {
 	msg := "未检索到符合条件的实例数据"
-	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{Nodes: []any{}, Message: &msg})
+	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{Nodes: []any{}, Message: &msg}, true)
 	if len(out.Nodes) != 0 {
 		t.Fatalf("expected no nodes, got %d", len(out.Nodes))
 	}
@@ -131,7 +167,7 @@ func TestFilterSearchInstanceResp_EmptyKeepsMessage(t *testing.T) {
 	}
 
 	// nil 响应也不能 panic，且 nodes 必须是空数组而不是 null——省得调用方分两种情况解析。
-	empty := FilterSearchInstanceResp(nil)
+	empty := FilterSearchInstanceResp(nil, true)
 	if empty.Nodes == nil {
 		t.Error("nodes must serialize as [] rather than null")
 	}

@@ -37,6 +37,11 @@
         "default": 5,
         "minimum": 1,
         "description": "每个对象类最多返回几条实例。"
+      },
+      "include_object_types": {
+        "type": "boolean",
+        "default": true,
+        "description": "是否附带命中对象类的精简定义（属性名与类型），默认附带。关掉只在你已经拿着这些对象类的 Schema 时才划算——否则要读懂返回的实例还得再调一次 get_object_types。"
       }
     },
     "required": [
@@ -69,6 +74,14 @@
               "description": "该实例在其所属对象类内部的相关性分。不同对象类之间不可比。"
             }
           },
+          "additionalProperties": true
+        }
+      },
+      "object_types": {
+        "type": "array",
+        "description": "读懂 nodes 所需的对象类精简定义，**只含真正出了实例的那些对象类**，不是召回扫过的全部。include_object_types=false 时不返回。",
+        "items": {
+          "type": "object",
           "additionalProperties": true
         }
       },

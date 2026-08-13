@@ -34,7 +34,7 @@ func (s *knSearchService) SearchInstance(
 		return nil, err
 	}
 
-	out := FilterSearchInstanceResp(resp)
+	out := FilterSearchInstanceResp(resp, boolValue(req.IncludeObjectTypes))
 	bkntrace.EmitSearchInstanceEvents(ctx, s.Logger, req, out)
 	return out, nil
 }
@@ -97,19 +97,60 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 	}, nil
 }
 
-// FilterSearchInstanceResp 从 KnSearchResp 里只取实例部分。
+// FilterSearchInstanceResp 从 KnSearchResp 里取实例，并按需附上读懂它们所需的对象类定义。
 //
-// Schema 三件套被丢弃：调用方要字段含义有 search_schema / get_object_types，
-// 在这里再塞一份是这套工具面一直在削的体积。
-func FilterSearchInstanceResp(resp *interfaces.KnSearchResp) *interfaces.SearchInstanceResp {
+// 关系类与行动类一律丢弃：它们与「这几行数据怎么读」无关。
+func FilterSearchInstanceResp(resp *interfaces.KnSearchResp, includeObjectTypes bool) *interfaces.SearchInstanceResp {
 	out := &interfaces.SearchInstanceResp{Nodes: []any{}}
 	if resp == nil {
 		return out
 	}
 	out.Nodes = toAnySlice(resp.Nodes)
+	if includeObjectTypes {
+		out.ObjectTypes = objectTypesOfNodes(toAnySlice(resp.ObjectTypes), out.Nodes)
+	}
 	// message 只在没有命中时才有意义：有结果还带一句说明纯属噪音。
 	if len(out.Nodes) == 0 && resp.Message != nil {
 		out.Message = strings.TrimSpace(*resp.Message)
 	}
 	return out
+}
+
+// objectTypesOfNodes 只留真正出了实例的那些对象类。
+//
+// 概念召回扫过的对象类动辄几十个（VM 实测一次 20 个里只有 3 个出实例），
+// 全回等于把 search_schema 的输出复制过来，那正是这个工具不该做的事。
+func objectTypesOfNodes(objectTypes, nodes []any) []any {
+	if len(objectTypes) == 0 || len(nodes) == 0 {
+		return nil
+	}
+	hit := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		nodeMap, ok := node.(map[string]any)
+		if !ok {
+			continue
+		}
+		if id, _ := nodeMap["object_type_id"].(string); strings.TrimSpace(id) != "" {
+			hit[strings.TrimSpace(id)] = struct{}{}
+		}
+	}
+	if len(hit) == 0 {
+		return nil
+	}
+
+	kept := make([]any, 0, len(hit))
+	for _, ot := range objectTypes {
+		otMap, ok := ot.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := otMap["concept_id"].(string)
+		if _, ok := hit[strings.TrimSpace(id)]; ok {
+			kept = append(kept, ot)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
 }
