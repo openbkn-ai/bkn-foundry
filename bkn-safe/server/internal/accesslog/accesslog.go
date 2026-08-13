@@ -88,7 +88,9 @@ func (s *Store) List(ctx context.Context, filter Filter) ([]model.AccessLog, int
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	logs := make([]model.AccessLog, 0, limit)
+	// Do not preallocate from a request-derived page size. GORM grows the result
+	// slice only for rows returned by the bounded SQL query.
+	var logs []model.AccessLog
 	if err := q.Order("created_at DESC").Order("id ASC").Offset(max(filter.Offset, 0)).Limit(limit).Find(&logs).Error; err != nil {
 		return nil, 0, err
 	}

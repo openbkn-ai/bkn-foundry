@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-comm-go/db/sqlx"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 const tableName = "t_execution_factory_operation_audit"

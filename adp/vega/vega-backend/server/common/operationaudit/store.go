@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	libdb "github.com/openbkn-ai/bkn-comm-go/db"
+	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 
 	"vega-backend/common"
 )

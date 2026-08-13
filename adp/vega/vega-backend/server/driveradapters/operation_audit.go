@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/rs/xid"
 
 	"vega-backend/common"

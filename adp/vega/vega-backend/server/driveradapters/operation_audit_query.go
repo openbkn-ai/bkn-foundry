@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/common/operationaudit"
 	"vega-backend/interfaces"
