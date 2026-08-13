@@ -60,14 +60,30 @@ func ResolveLanguage(acceptLanguage string) Language {
 		return DefaultLanguage
 	}
 
-	rejected := make([]languageRange, 0, len(ranges))
-	candidates := make([]languageRange, 0, len(ranges))
+	explicitRanges := make(map[Language]languageRange, len(ranges))
+	var wildcard languageRange
+	hasWildcard := false
 	for _, item := range ranges {
-		if item.quality == 0 {
-			rejected = append(rejected, item)
+		if item.wildcard {
+			wildcard = item
+			hasWildcard = true
 			continue
 		}
-		candidates = append(candidates, item)
+		explicitRanges[item.language] = item
+	}
+
+	candidates := make([]languageRange, 0, len(Languages))
+	for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
+		if item, ok := explicitRanges[lang]; ok {
+			if item.quality > 0 {
+				candidates = append(candidates, item)
+			}
+			continue
+		}
+		if hasWildcard && wildcard.quality > 0 {
+			wildcard.language = lang
+			candidates = append(candidates, wildcard)
+		}
 	}
 
 	sort.SliceStable(candidates, func(i, j int) bool {
@@ -77,18 +93,13 @@ func ResolveLanguage(acceptLanguage string) Language {
 		return candidates[i].quality > candidates[j].quality
 	})
 
-	for _, item := range candidates {
-		if item.wildcard {
-			if lang, ok := defaultAllowedLanguage(rejected); ok {
-				return lang
-			}
-			continue
-		}
-		if !isRejected(item.language, rejected) {
-			return item.language
-		}
+	if len(candidates) > 0 {
+		return candidates[0].language
 	}
 
+	if lang, ok := defaultAllowedLanguage(explicitRanges, wildcard, hasWildcard); ok {
+		return lang
+	}
 	return DefaultLanguage
 }
 
@@ -244,21 +255,19 @@ func validLanguageRange(value string) bool {
 	return true
 }
 
-func isRejected(lang Language, rejected []languageRange) bool {
-	for _, item := range rejected {
-		if item.wildcard || item.language == lang {
-			return true
-		}
+func isRejected(lang Language, explicitRanges map[Language]languageRange, wildcard languageRange, hasWildcard bool) bool {
+	if item, ok := explicitRanges[lang]; ok {
+		return item.quality == 0
 	}
-	return false
+	return hasWildcard && wildcard.quality == 0
 }
 
-func defaultAllowedLanguage(rejected []languageRange) (Language, bool) {
-	if !isRejected(DefaultLanguage, rejected) {
+func defaultAllowedLanguage(explicitRanges map[Language]languageRange, wildcard languageRange, hasWildcard bool) (Language, bool) {
+	if !isRejected(DefaultLanguage, explicitRanges, wildcard, hasWildcard) {
 		return DefaultLanguage, true
 	}
 	for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
-		if !isRejected(lang, rejected) {
+		if !isRejected(lang, explicitRanges, wildcard, hasWildcard) {
 			return lang, true
 		}
 	}
