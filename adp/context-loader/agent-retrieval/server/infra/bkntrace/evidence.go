@@ -1006,12 +1006,26 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 		return eventContext{}, false
 	}
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
-	if schemaReq, ok := req.(*interfaces.SearchSchemaReq); ok && schemaReq != nil {
-		if ec.accountID == "" {
-			ec.accountID = strings.TrimSpace(schemaReq.XAccountID)
+	// 账户身份可能只在请求体/头上，没进 ctx（REST 面就是这样）。缺了它
+	// SubmitEvents 会静默不发事件，所以每个带身份字段的请求类型都要在这里回填。
+	switch typed := req.(type) {
+	case *interfaces.SearchSchemaReq:
+		if typed != nil {
+			if ec.accountID == "" {
+				ec.accountID = strings.TrimSpace(typed.XAccountID)
+			}
+			if ec.accountType == "" {
+				ec.accountType = strings.TrimSpace(typed.XAccountType)
+			}
 		}
-		if ec.accountType == "" {
-			ec.accountType = strings.TrimSpace(schemaReq.XAccountType)
+	case *interfaces.SearchInstanceReq:
+		if typed != nil {
+			if ec.accountID == "" {
+				ec.accountID = strings.TrimSpace(typed.XAccountID)
+			}
+			if ec.accountType == "" {
+				ec.accountType = strings.TrimSpace(typed.XAccountType)
+			}
 		}
 	}
 	ec.interactionID = strings.TrimSpace(traceContext.InteractionID)

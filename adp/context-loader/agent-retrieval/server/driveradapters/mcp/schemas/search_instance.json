@@ -48,7 +48,7 @@
     "properties": {
       "nodes": {
         "type": "array",
-        "description": "命中的实例。按相关性降序，可跨对象类比较。",
+        "description": "命中的实例，按对象类分组返回；组内按相关性降序。跨对象类之间没有全局排序，不要按出现次序判断哪个对象类更相关。",
         "items": {
           "type": "object",
           "properties": {
@@ -66,7 +66,7 @@
             },
             "score": {
               "type": "number",
-              "description": "相关性分，可跨对象类比较；不表达绝对相关性，只表达相对次序。"
+              "description": "该实例在其所属对象类内部的相关性分。不同对象类之间不可比。"
             }
           },
           "additionalProperties": true

@@ -31,9 +31,9 @@ func TestNormalizeSearchInstanceReq_TurnsInstanceRecallOn(t *testing.T) {
 	if knReq.OnlySchema == nil || *knReq.OnlySchema {
 		t.Fatal("only_schema must be false, otherwise instance recall never runs")
 	}
-	cfg, ok := knReq.RetrievalConfig.(*interfaces.RetrievalConfig)
+	cfg, ok := knReq.RetrievalConfig.(*interfaces.KnSearchRetrievalConfig)
 	if !ok {
-		t.Fatalf("expected *RetrievalConfig, got %T", knReq.RetrievalConfig)
+		t.Fatalf("expected *KnSearchRetrievalConfig, got %T", knReq.RetrievalConfig)
 	}
 	if cfg.ConceptRetrieval.TopK != 3 {
 		t.Errorf("max_object_types must drive concept top_k, got %d", cfg.ConceptRetrieval.TopK)
@@ -42,7 +42,7 @@ func TestNormalizeSearchInstanceReq_TurnsInstanceRecallOn(t *testing.T) {
 		t.Errorf("max_instances_per_type must drive per_type_instance_limit, got %d",
 			cfg.SemanticInstanceRetrieval.PerTypeInstanceLimit)
 	}
-	if !cfg.ConceptRetrieval.SchemaBrief {
+	if cfg.ConceptRetrieval.SchemaBrief == nil || !*cfg.ConceptRetrieval.SchemaBrief {
 		t.Error("schema_brief must stay on: the schema is only an intermediate product here")
 	}
 	if got := cfg.ConceptRetrieval.ConceptGroups; len(got) != 2 || got[0] != "g1" || got[1] != "g2" {
@@ -56,7 +56,7 @@ func TestNormalizeSearchInstanceReq_AppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	cfg := knReq.RetrievalConfig.(*interfaces.RetrievalConfig)
+	cfg := knReq.RetrievalConfig.(*interfaces.KnSearchRetrievalConfig)
 	if cfg.ConceptRetrieval.TopK != 10 {
 		t.Errorf("expected default max_object_types=10, got %d", cfg.ConceptRetrieval.TopK)
 	}
@@ -134,5 +134,38 @@ func TestFilterSearchInstanceResp_EmptyKeepsMessage(t *testing.T) {
 	empty := FilterSearchInstanceResp(nil)
 	if empty.Nodes == nil {
 		t.Error("nodes must serialize as [] rather than null")
+	}
+}
+
+// 未设置的开关必须保持「没填」，不能变成显式 false。
+//
+// 走请求面的 RetrievalConfig 会踩这个坑：它的开关是值类型 bool，转换层无条件
+// boolPtr 包一层，于是没填的 enable_global_final_score_ratio_filter 以显式 false
+// 覆盖掉默认的 true，跨对象类的相关性过滤在这条路上永不执行。
+func TestNormalizeSearchInstanceReq_DoesNotClobberDefaultSwitches(t *testing.T) {
+	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	local := KnSearchReqToLocal(&interfaces.KnSearchReq{
+		Query:           knReq.Query,
+		KnID:            knReq.KnID,
+		OnlySchema:      knReq.OnlySchema,
+		RetrievalConfig: knReq.RetrievalConfig,
+	})
+	merged := MergeRetrievalConfig(local.RetrievalConfig)
+
+	if !boolValue(merged.SemanticInstanceRetrieval.EnableGlobalFinalScoreRatioFilter) {
+		t.Error("global score ratio filter must stay enabled; an unset switch became an explicit false")
+	}
+	if !boolValue(merged.ConceptRetrieval.EnableCoarseRecall) {
+		t.Error("coarse recall must stay enabled; an unset switch became an explicit false")
+	}
+	if merged.SemanticInstanceRetrieval.GlobalFinalScoreRatio != 0.25 {
+		t.Errorf("expected the default ratio 0.25, got %v", merged.SemanticInstanceRetrieval.GlobalFinalScoreRatio)
+	}
+	if merged.SemanticInstanceRetrieval.PerTypeInstanceLimit != 5 {
+		t.Errorf("expected per-type limit 5, got %d", merged.SemanticInstanceRetrieval.PerTypeInstanceLimit)
 	}
 }

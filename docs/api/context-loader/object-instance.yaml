@@ -291,11 +291,10 @@ components:
         nodes:
           type: array
           description: |
-            命中的实例，按相关性降序。每条带 `object_type_id`（可直接喂给
-            `get_object_types` / `query_object_instance`）、`properties`、以及两个分数：
-
-            - `score` 是**融合后的名次分**，可跨对象类比较，但不表达绝对相关性；
-            - `recall_score` 是召回阶段的原始索引分，仅在同一对象类同一通道内可比。
+            命中的实例，**按对象类分组返回，组内按相关性降序**；跨对象类之间没有全局
+            排序，不要按出现次序判断哪个对象类更相关。每条带 `object_type_id`
+            （可直接喂给 `get_object_types` / `query_object_instance`）、`properties`，
+            以及 `score`（该实例在其所属对象类内部的相关性分，跨对象类不可比）。
           items:
             type: object
             additionalProperties: true

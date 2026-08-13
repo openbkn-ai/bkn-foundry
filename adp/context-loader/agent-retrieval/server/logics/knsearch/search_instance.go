@@ -69,22 +69,28 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 	}
 
 	onlySchema := false
-	// schema_brief 恒开：概念召回的 Schema 在这条路上只是实例召回的中间产物，
-	// 调用方拿不到它，没有理由为它多付体积与下游查询开销。
-	schemaBrief := true
 	return &interfaces.KnSearchReq{
 		XAccountID:   req.XAccountID,
 		XAccountType: req.XAccountType,
 		Query:        req.Query,
 		KnID:         knID,
 		OnlySchema:   &onlySchema,
-		RetrievalConfig: &interfaces.RetrievalConfig{
-			ConceptRetrieval: &interfaces.ConceptRetrievalConfig{
+		// 这里刻意用**本地**配置结构体（字段是 *bool）而不是请求面的
+		// RetrievalConfig（字段是 bool 值类型）。请求面那条转换路径
+		// （retrievalConfigStructToLocal）会把每个 bool 无条件包成 boolPtr，
+		// 于是「没填」和「填了 false」变成同一件事，未设置的开关会以显式 false
+		// 覆盖掉默认的 true——enable_global_final_score_ratio_filter、
+		// enable_coarse_recall、enable_property_brief 三个默认开启的旋钮都会被静默关掉。
+		// 走本地结构体则未设字段保持 nil，MergeRetrievalConfig 原样保留默认值。
+		RetrievalConfig: &interfaces.KnSearchRetrievalConfig{
+			ConceptRetrieval: &interfaces.KnSearchConceptRetrievalConfig{
 				ConceptGroups: normalizeConceptGroups(req.ConceptGroups),
 				TopK:          *req.MaxObjectTypes,
-				SchemaBrief:   schemaBrief,
+				// schema_brief 恒开：概念召回的 Schema 在这条路上只是实例召回的
+				// 中间产物，调用方拿不到它，没有理由为它多付体积与下游查询开销。
+				SchemaBrief: boolPtr(true),
 			},
-			SemanticInstanceRetrieval: &interfaces.SemanticInstanceRetrievalConfig{
+			SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
 				PerTypeInstanceLimit: *req.MaxInstancesPerType,
 			},
 		},
