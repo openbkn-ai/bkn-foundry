@@ -281,7 +281,7 @@ func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType("user")})
 		c.Status(http.StatusBadRequest)
-		_, _ = c.Writer.Write([]byte(`<script>alert("reflected")</script>`))
+		_, _ = c.Writer.Write([]byte(`{"message":"<script>alert(\"reflected\")</script>"}`))
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
 	request.Header.Set("x-tenant-id", "tenant-a")
@@ -294,6 +294,16 @@ func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 	}
 	if response.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", response.Header().Get("X-Content-Type-Options"))
+	}
+	if strings.Contains(response.Body.String(), "<script>") {
+		t.Fatalf("response contains executable markup: %s", response.Body.String())
+	}
+	var responseJSON map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &responseJSON); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+	if responseJSON["message"] != `<script>alert("reflected")</script>` {
+		t.Fatalf("response semantics changed: %#v", responseJSON)
 	}
 }
 

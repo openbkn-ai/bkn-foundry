@@ -210,17 +210,19 @@ func (w *boundedResponseWriter) WriteHeaderNow() {
 
 func (w *boundedResponseWriter) Write(data []byte) (int, error) {
 	w.ensureNonExecutableJSON()
+	var escaped bytes.Buffer
+	json.HTMLEscape(&escaped, data)
+	safeData := escaped.Bytes()
 	if remaining := w.limit - w.body.Len(); remaining > 0 {
-		if len(data) < remaining {
-			remaining = len(data)
+		if len(safeData) < remaining {
+			remaining = len(safeData)
 		}
-		_, _ = w.body.Write(data[:remaining])
+		_, _ = w.body.Write(safeData[:remaining])
 	}
-	// Registered operation-audit routes are JSON APIs. The wrapper only observes
-	// the already-rendered handler response and preserves it byte-for-byte; the
-	// forced JSON media type plus nosniff prevents browser HTML interpretation.
-	// lgtm[go/reflected-xss]
-	return w.ResponseWriter.Write(data)
+	if _, err := w.ResponseWriter.Write(safeData); err != nil {
+		return 0, err
+	}
+	return len(data), nil
 }
 
 func (w *boundedResponseWriter) WriteString(value string) (int, error) {
