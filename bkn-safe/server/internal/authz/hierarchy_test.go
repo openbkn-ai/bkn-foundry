@@ -1,0 +1,331 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package authz
+
+import (
+	"sort"
+	"testing"
+	"time"
+
+	"gorm.io/gorm"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+)
+
+// declareCatalogHierarchy registers the shipped catalog/resource shape: a data
+// table hangs under a data catalog, its write verbs map to resource_manage, its
+// read verbs map by the same name, and authorize maps to nothing.
+func declareCatalogHierarchy(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	types := []model.ResourceType{
+		{ID: "catalog", Name: "数据目录"},
+		{ID: "resource", Name: "数据资源", ParentTypeID: "catalog"},
+	}
+	if err := db.Create(&types).Error; err != nil {
+		t.Fatalf("seed resource types: %v", err)
+	}
+	ops := []model.Operation{
+		{ResourceTypeID: "catalog", ID: "view_detail"},
+		{ResourceTypeID: "catalog", ID: "modify"},
+		{ResourceTypeID: "catalog", ID: "authorize"},
+		{ResourceTypeID: "catalog", ID: "resource_manage"},
+		{ResourceTypeID: "resource", ID: "view_detail", ParentOperationID: "view_detail"},
+		{ResourceTypeID: "resource", ID: "modify", ParentOperationID: "resource_manage"},
+		{ResourceTypeID: "resource", ID: "delete", ParentOperationID: "resource_manage"},
+		{ResourceTypeID: "resource", ID: "authorize"}, // deliberately no mapping
+	}
+	if err := db.Create(&ops).Error; err != nil {
+		t.Fatalf("seed operations: %v", err)
+	}
+}
+
+func ownedBy(t *testing.T, db *gorm.DB, resourceID, catalogID string) {
+	t.Helper()
+	if err := db.Create(&model.ResourceParent{
+		ResourceTypeID: "resource", ResourceID: resourceID,
+		ParentTypeID: "catalog", ParentID: catalogID,
+	}).Error; err != nil {
+		t.Fatalf("record ownership: %v", err)
+	}
+}
+
+// TestCheckInheritsThroughTheCatalog is the point of #800: a grant on the
+// catalog reaches the tables inside it, and only those — a table with no
+// recorded owner is judged exactly as it was before.
+func TestCheckInheritsThroughTheCatalog(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-in", "cat-1")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+
+	ok, err := e.Check(user, "resource", "res-in", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("a catalog resource_manage grant did not reach a table inside that catalog")
+	}
+
+	// No ownership row: nothing to climb, so the pre-#800 answer stands.
+	ok, err = e.Check(user, "resource", "res-orphan", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("a table with no recorded catalog inherited anyway")
+	}
+}
+
+// TestInheritanceRefusesSameNameFallback is the escalation this design exists to
+// prevent: "modify" on a catalog means rename the catalog. If it fell back by
+// name, whoever may rename a catalog could rewrite every table in it.
+func TestInheritanceRefusesSameNameFallback(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "modify"))
+
+	ok, err := e.Check(user, "resource", "res-1", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("catalog/modify (rename the catalog) was inherited as resource/modify (rewrite the table)")
+	}
+}
+
+// TestUnmappedOperationDoesNotInherit: authorize has no mapping on purpose, so
+// holding it on a catalog must not confer the right to re-grant the tables in it.
+func TestUnmappedOperationDoesNotInherit(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "authorize"))
+
+	ok, err := e.Check(user, "resource", "res-1", "authorize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("catalog/authorize leaked downwards as second-hand granting on the table")
+	}
+}
+
+// TestNoHierarchyDataMeansNoBehaviourChange pins the upgrade promise: with the
+// ownership table empty, every decision is the one the previous release made.
+func TestNoHierarchyDataMeansNoBehaviourChange(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "view_detail"))
+
+	for _, op := range []string{"modify", "view_detail", "delete"} {
+		ok, err := e.Check(user, "resource", "res-1", op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			t.Errorf("resource/%s was allowed with no ownership row recorded", op)
+		}
+	}
+}
+
+// TestAllowedOpsMergesInheritedOps: the detail page's operation set must contain
+// both what was granted on the table and what it inherits from its catalog.
+func TestAllowedOpsMergesInheritedOps(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "authorize"))
+
+	got, err := e.AllowedOps(user, "resource", "res-1", []string{"view_detail", "modify", "delete", "authorize"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(got)
+	want := []string{"delete", "modify", "view_detail"}
+	if len(got) != len(want) {
+		t.Fatalf("AllowedOps = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("AllowedOps = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestFilterResourceOpsSeesInheritance is the reason the list page had to be
+// taught the same walk: a table visible only through its catalog holds no policy
+// row of its own, so without inheritance it does not merely lose operations — it
+// disappears from the page.
+func TestFilterResourceOpsSeesInheritance(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+	ownedBy(t, db, "res-2", "cat-2")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+
+	got, err := e.FilterResourceOps(user,
+		[]ResourceRef{{Type: "resource", ID: "res-1"}, {Type: "resource", ID: "res-2"}},
+		[]string{"view_detail"},
+		[]string{"view_detail", "modify", "authorize"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "res-1" {
+		t.Fatalf("filter = %v, want only res-1 (res-2 sits in an ungranted catalog)", got)
+	}
+	sort.Strings(got[0].Operations)
+	if len(got[0].Operations) != 2 || got[0].Operations[0] != "modify" || got[0].Operations[1] != "view_detail" {
+		t.Errorf("operations = %v, want [modify view_detail]", got[0].Operations)
+	}
+}
+
+// TestFilterResourceOpsMatchesCheckUnderInheritance keeps the batch path and the
+// single-decision path from drifting: the whole risk of two implementations is
+// that a list page and a detail page answer differently for the same grant.
+func TestFilterResourceOpsMatchesCheckUnderInheritance(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+	ownedBy(t, db, "res-2", "cat-1")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-2", "view_detail"))
+
+	ops := []string{"view_detail", "modify", "delete", "authorize"}
+	refs := []ResourceRef{{Type: "resource", ID: "res-1"}, {Type: "resource", ID: "res-2"}}
+	filtered, err := e.FilterResourceOps(user, refs, nil, ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]map[string]bool{}
+	for _, f := range filtered {
+		set := map[string]bool{}
+		for _, op := range f.Operations {
+			set[op] = true
+		}
+		byID[f.ID] = set
+	}
+	for _, r := range refs {
+		for _, op := range ops {
+			want, err := e.Check(user, r.Type, r.ID, op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if byID[r.ID][op] != want {
+				t.Errorf("%s/%s: filter=%v check=%v", r.ID, op, byID[r.ID][op], want)
+			}
+		}
+	}
+}
+
+// TestInheritanceComposesAcrossLevels: the operation is translated at EVERY hop,
+// not once. A three-level chain is what #515 turns the knowledge-network line
+// into, so the walk must not assume the child's spelling survives the climb.
+func TestInheritanceComposesAcrossLevels(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	types := []model.ResourceType{
+		{ID: "top"},
+		{ID: "mid", ParentTypeID: "top"},
+		{ID: "leaf", ParentTypeID: "mid"},
+	}
+	if err := db.Create(&types).Error; err != nil {
+		t.Fatal(err)
+	}
+	ops := []model.Operation{
+		{ResourceTypeID: "top", ID: "manage_all"},
+		{ResourceTypeID: "mid", ID: "manage_children", ParentOperationID: "manage_all"},
+		{ResourceTypeID: "leaf", ID: "modify", ParentOperationID: "manage_children"},
+	}
+	if err := db.Create(&ops).Error; err != nil {
+		t.Fatal(err)
+	}
+	rows := []model.ResourceParent{
+		{ResourceTypeID: "leaf", ResourceID: "l-1", ParentTypeID: "mid", ParentID: "m-1"},
+		{ResourceTypeID: "mid", ResourceID: "m-1", ParentTypeID: "top", ParentID: "t-1"},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "top", "t-1", "manage_all"))
+
+	ok, err := e.Check(user, "leaf", "l-1", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("a grant two levels up did not reach the leaf")
+	}
+
+	// The intermediate spelling must not be accepted at the top: manage_children
+	// is a mid-level verb, and holding it on the top node proves nothing.
+	const other = "u-2"
+	mustNoErr(t, e.GrantObjectPermission(other, "top", "t-1", "manage_children"))
+	ok, err = e.Check(other, "leaf", "l-1", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("the climb accepted an untranslated operation at the top level")
+	}
+}
+
+// TestInheritanceTerminatesOnACycle: ownership rows are pushed by another
+// service, so a loop is a data state the enforcer must survive rather than a
+// case it may assume away. A hang here would take down authorization itself.
+func TestInheritanceTerminatesOnACycle(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	if err := db.Create(&model.ResourceType{ID: "folder", ParentTypeID: "folder"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Operation{
+		ResourceTypeID: "folder", ID: "view_detail", ParentOperationID: "view_detail",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	rows := []model.ResourceParent{
+		{ResourceTypeID: "folder", ResourceID: "f-1", ParentTypeID: "folder", ParentID: "f-2"},
+		{ResourceTypeID: "folder", ResourceID: "f-2", ParentTypeID: "folder", ParentID: "f-1"},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		ok, err := e.Check("u-1", "folder", "f-1", "view_detail")
+		if err != nil {
+			t.Error(err)
+		}
+		done <- ok
+	}()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Error("a cycle produced an allow out of nowhere")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Check did not terminate on a cyclic hierarchy")
+	}
+}

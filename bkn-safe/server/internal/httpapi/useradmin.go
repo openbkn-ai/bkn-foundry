@@ -42,6 +42,11 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		if !bind(c, &req) {
 			return
 		}
+		// A failed create has no persisted resource ID. Keep the submitted account
+		// as the attempted business target so the operation audit remains
+		// diagnosable and satisfies the strict public projection contract. A
+		// successful create replaces it with the authoritative generated ID below.
+		setAuditOperation(c, "create", req.Account, req.Name)
 		ctx := c.Request.Context()
 		// Validate departments BEFORE creating the user, so an unknown id fails
 		// the request without leaving an orphaned user behind.
@@ -82,6 +87,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 				return
 			}
 		}
+		setAuditOperation(c, "create", u.ID, u.Name)
 		resp := gin.H{"id": u.ID}
 		if initialPassword != "" {
 			resp["initial_password"] = initialPassword

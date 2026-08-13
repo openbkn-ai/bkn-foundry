@@ -77,6 +77,14 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	// 同一行的多个文本字段各发一次 knn，召回增益很小，成本却是线性叠加，默认只取
 	// 最靠前的一个字段。
 	MaxKnnSubConditionsPerType int `json:"max_knn_sub_conditions_per_type" default:"1"`
+
+	// EnableRRFFusion 控制实例召回是否把 knn 与 match 拆成两条查询、再按名次做 RRF 融合。
+	// 关掉退回单条 OR 查询的旧路径：那条路上 knn 分（0~1）与 BM25 分（无上界）被
+	// OpenSearch 直接相加，BM25 恒定主导，向量命中连候选集都进不去。仅作逃生门保留。
+	EnableRRFFusion *bool `json:"enable_rrf_fusion" default:"true"`
+	// RRFK RRF 融合常数 k：score = Σ 1/(k + rank)。k 越大越平缓（各通道靠前名次之间
+	// 的差距被压小），60 是文献与工业界的通用取值，跨知识网络不需要重调。
+	RRFK int `json:"rrf_k" default:"60"`
 }
 
 // KnSearchPropertyFilterConfig 实例属性过滤配置
@@ -162,6 +170,9 @@ type KnSearchNode struct {
 	UniqueIdentities map[string]any `json:"unique_identities,omitempty"`
 	Properties       map[string]any `json:"properties,omitempty"`
 	Score            float64        `json:"score,omitempty"`
+	// RecallScore 保留召回阶段的原始 _score（OpenSearch 相关性）。Score 在 RRF 路径上
+	// 会被融合分覆盖，两个量纲不同，排障时需要能同时看见。
+	RecallScore float64 `json:"recall_score,omitempty"`
 }
 
 // ==================== Internal Structures ====================

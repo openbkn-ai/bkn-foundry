@@ -120,6 +120,11 @@ type ResourceType struct {
 	Name        string `gorm:"size:128"`
 	Description string `gorm:"size:1024"`
 	Hidden      bool
+	// ParentTypeID declares that instances of this type sit UNDER an instance of
+	// another type ("resource" under "catalog"). It is the type-level half of the
+	// hierarchy; the instance-level half is ResourceParent. Empty = no parent,
+	// which is every type today except the ones seeded in catalog.json (#800).
+	ParentTypeID string `gorm:"size:64;index"`
 }
 
 // Operation is an action defined on a resource type (e.g. agent/use).
@@ -128,21 +133,51 @@ type Operation struct {
 	ID             string `gorm:"primaryKey;size:64"` // e.g. "use"
 	Name           string `gorm:"size:128"`
 	Description    string `gorm:"size:1024"`
+	// ParentOperationID is the operation to look for ON THE PARENT when this one
+	// is not granted on the instance itself. It is an explicit MAPPING, never the
+	// same name by convention: "modify" on a data table means "edit that table",
+	// while "modify" on its catalog means "rename the catalog" — inheriting by
+	// name would turn the right to rename a catalog into the right to rewrite
+	// every table in it. Empty = the operation does not inherit at all (#800).
+	ParentOperationID string `gorm:"size:64"`
 }
 
-// AuditLog records a privileged admin-API mutation: who (ActorID, the verified
+// ResourceParent records that ONE concrete resource instance sits under one
+// concrete parent instance — the fact bkn-safe has never had, and the reason a
+// grant on a catalog could not previously reach the tables inside it: policies
+// are keyed by "type:id" and nothing said which catalog a given table belongs to.
+//
+// bkn-safe does not discover this itself; the owning module (vega for
+// catalog/resource) pushes it through PUT /authz/resource-parents. A missing row
+// is not an error — it degrades to the pre-#800 judgement, where only grants on
+// the instance itself count.
+type ResourceParent struct {
+	ResourceTypeID string `gorm:"primaryKey;size:64"`
+	ResourceID     string `gorm:"primaryKey;size:128"`
+	ParentTypeID   string `gorm:"size:64;index:idx_resource_parent_parent,priority:1"`
+	ParentID       string `gorm:"size:128;index:idx_resource_parent_parent,priority:2"`
+	UpdatedAt      time.Time
+}
+
+// AuditLog records a user or admin management mutation: who (ActorID, the verified
 // token subject), what (Method + Resource + Action + TargetID + Detail), and the
-// outcome (Status). One row per non-GET request that passes RequireAdmin; reads
-// are not audited. Method distinguishes create/update/delete on the same Action
-// (e.g. POST vs PUT vs DELETE on "users").
+// outcome (Status). One row is written for each mutating request on an audited
+// /admin or /me surface; ordinary reads are not audited. Action carries a stable
+// business verb while Method retains the transport fact.
 type AuditLog struct {
-	ID         string `json:"id" gorm:"primaryKey;size:64"`
-	ActorID    string `json:"actor_id" gorm:"size:64;index"`   // token subject that performed the action
-	Method     string `json:"method" gorm:"size:8"`            // POST | PUT | DELETE
-	Resource   string `json:"resource" gorm:"size:64;index"`   // top-level admin noun, e.g. "users"
-	Action     string `json:"action" gorm:"size:128;index"`    // dotted route, e.g. "departments.members"
-	TargetID   string `json:"target_id" gorm:"size:128;index"` // :id path param, "" when the route has none
-	TargetName string `json:"target_name" gorm:"size:255"`     // display-name snapshot for deleted/renamed targets
+	ID                string `json:"id" gorm:"primaryKey;size:64"`
+	ActorID           string `json:"actor_id" gorm:"size:64;index"` // token subject that performed the action
+	ActorNameSnapshot string `json:"actor_name_snapshot" gorm:"size:255"`
+	ActorType         string `json:"actor_type" gorm:"size:32"`
+	AuthMethod        string `json:"auth_method" gorm:"size:32"`
+	CredentialID      string `json:"credential_id" gorm:"size:128"`
+	RequestID         string `json:"request_id" gorm:"size:128;index"`
+	SourceChannel     string `json:"source_channel" gorm:"size:32"`
+	Method            string `json:"method" gorm:"size:8"`            // POST | PUT | DELETE
+	Resource          string `json:"resource" gorm:"size:64;index"`   // top-level admin noun, e.g. "users"
+	Action            string `json:"action" gorm:"size:128;index"`    // dotted route, e.g. "departments.members"
+	TargetID          string `json:"target_id" gorm:"size:128;index"` // :id path param, "" when the route has none
+	TargetName        string `json:"target_name" gorm:"size:255"`     // display-name snapshot for deleted/renamed targets
 	// Detail is a redacted, truncated JSON snapshot of the request body (password
 	// fields masked), so a reader can tell WHAT changed — which users a
 	// department gained, a created node's name, etc. "" when the body is
@@ -201,6 +236,6 @@ func AllModels() []any {
 	return []any{
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
-		&AuditLog{}, &APIKey{}, &License{},
+		&AuditLog{}, &APIKey{}, &License{}, &ResourceParent{},
 	}
 }

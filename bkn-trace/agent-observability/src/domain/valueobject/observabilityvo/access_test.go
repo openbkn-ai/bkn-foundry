@@ -45,3 +45,34 @@ func TestInactiveAccountHasNoObservabilityCapabilities(t *testing.T) {
 		t.Fatalf("inactive account retained observability access: %+v", capabilities)
 	}
 }
+
+func TestOperationAuditContractUsesSixProductModules(t *testing.T) {
+	want := []string{
+		"domain_knowledge_network",
+		"observability",
+		"execution_factory",
+		"data_resource_knowledge_network",
+		"model_management",
+		"system_management",
+	}
+	if !reflect.DeepEqual(AllBusinessModules, want) {
+		t.Fatalf("business module contract drifted: got=%v want=%v", AllBusinessModules, want)
+	}
+	for _, legacy := range []string{"identity", "authorization", "api_key", "agent_conversation", "skill_management"} {
+		if IsBusinessModule(legacy) {
+			t.Fatalf("legacy object-level module %q must not remain a business module", legacy)
+		}
+	}
+}
+
+func TestOperationAuditContractUsesCanonicalOutcomes(t *testing.T) {
+	want := []string{"success", "failure", "denied", "canceled", "unknown"}
+	if !reflect.DeepEqual(AllAuditOutcomes, want) {
+		t.Fatalf("audit outcome contract drifted: got=%v want=%v", AllAuditOutcomes, want)
+	}
+	for _, legacy := range []string{"accepted", "partial_success", "cancelled"} {
+		if IsAuditOutcome(legacy) {
+			t.Fatalf("legacy outcome %q must not remain accepted", legacy)
+		}
+	}
+}

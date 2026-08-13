@@ -2,8 +2,10 @@ CREATE TABLE IF NOT EXISTS bkn_trace_conversations (
     conversation_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     tenant_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     business_domain_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    application_principal_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+	application_principal_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 	agent_name VARCHAR(128) NOT NULL DEFAULT '',
+    actor_name_snapshot VARCHAR(255) NOT NULL DEFAULT '',
+    creation_auth_method VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'unknown',
     effective_subject_type VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     effective_subject_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     delegation_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
@@ -34,6 +36,12 @@ CREATE TABLE IF NOT EXISTS bkn_trace_conversations (
 
 ALTER TABLE bkn_trace_conversations
 	ADD COLUMN IF NOT EXISTS agent_name VARCHAR(128) NOT NULL DEFAULT '' AFTER application_principal_id;
+
+ALTER TABLE bkn_trace_conversations
+	ADD COLUMN IF NOT EXISTS actor_name_snapshot VARCHAR(255) NOT NULL DEFAULT '' AFTER agent_name;
+
+ALTER TABLE bkn_trace_conversations
+	ADD COLUMN IF NOT EXISTS creation_auth_method VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'unknown' AFTER actor_name_snapshot;
 
 CREATE TABLE IF NOT EXISTS bkn_trace_idempotency_records (
     idempotency_record_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

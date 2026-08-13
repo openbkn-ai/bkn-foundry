@@ -173,6 +173,7 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 	grantRoleOps(t, e, auditRole, "admin-role", "view")
 	grantRoleOps(t, e, auditRole, "admin-authz", "view")
 	grantRoleOps(t, e, auditRole, "admin-audit", "view")
+	grantRoleOps(t, e, adminRole, "admin-audit", "view")
 
 	for _, userID := range []string{adminUser, securityUser, auditUser, "target-user"} {
 		if err := users.CreateLocalUser(ctx, &model.User{ID: userID, Account: userID, Name: userID, Enabled: true}, "pw-init0"); err != nil {
@@ -216,7 +217,7 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 		{"admin creates user", adminUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("admin-created"), http.StatusCreated},
 		{"admin cannot create role", adminUser, http.MethodPost, "/api/safe/v1/admin/roles", createRole("admin-role-created"), http.StatusForbidden},
 		{"admin cannot bind role", adminUser, http.MethodPost, "/api/safe/v1/admin/role-bindings", bindTarget, http.StatusForbidden},
-		{"admin cannot read audit", adminUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusForbidden},
+		{"admin reads audit", adminUser, http.MethodGet, "/api/safe/v1/admin/audit-logs", nil, http.StatusOK},
 		{"security cannot create user", securityUser, http.MethodPost, "/api/safe/v1/admin/users", createUser("security-created-user"), http.StatusForbidden},
 		{"security toggles user", securityUser, http.MethodPut, "/api/safe/v1/admin/users/target-user", gin.H{"enabled": false}, http.StatusNoContent},
 		{"security cannot edit user profile", securityUser, http.MethodPut, "/api/safe/v1/admin/users/target-user", gin.H{"name": "changed"}, http.StatusForbidden},
@@ -820,7 +821,12 @@ func TestDepartmentMembershipWrite(t *testing.T) {
 }
 
 func TestAuditTrail(t *testing.T) {
-	r, _, db, _ := newAdminServer(t)
+	r, _, db, userStore := newAdminServer(t)
+	if err := userStore.CreateLocalUser(t.Context(), &model.User{
+		ID: adminSub, Account: "admin", Name: "Administrator", Enabled: true,
+	}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
 
 	// three mutations: create dept (POST, no :id), rename it (PUT, :id), and
 	// delete a ghost user (DELETE, :id -> 404 but still audited).
@@ -840,14 +846,19 @@ func TestAuditTrail(t *testing.T) {
 	}
 
 	type logRow struct {
-		ID         string `json:"id"`
-		ActorID    string `json:"actor_id"`
-		Method     string `json:"method"`
-		Resource   string `json:"resource"`
-		Action     string `json:"action"`
-		TargetID   string `json:"target_id"`
-		TargetName string `json:"target_name"`
-		Status     int    `json:"status"`
+		ID                string `json:"id"`
+		ActorID           string `json:"actor_id"`
+		ActorNameSnapshot string `json:"actor_name_snapshot"`
+		ActorType         string `json:"actor_type"`
+		AuthMethod        string `json:"auth_method"`
+		RequestID         string `json:"request_id"`
+		SourceChannel     string `json:"source_channel"`
+		Method            string `json:"method"`
+		Resource          string `json:"resource"`
+		Action            string `json:"action"`
+		TargetID          string `json:"target_id"`
+		TargetName        string `json:"target_name"`
+		Status            int    `json:"status"`
 	}
 	type listResp struct {
 		Logs  []logRow `json:"logs"`
@@ -865,9 +876,13 @@ func TestAuditTrail(t *testing.T) {
 		t.Fatalf("resource=users: total=%d len=%d", users.Total, len(users.Logs))
 	}
 	got := users.Logs[0]
-	if got.ActorID != adminSub || got.Method != http.MethodDelete || got.Action != "users" ||
+	if got.ActorID != adminSub || got.Method != http.MethodDelete || got.Action != "delete" ||
 		got.TargetID != "ghost" || got.Status != http.StatusNotFound {
 		t.Errorf("ghost-delete entry = %+v", got)
+	}
+	if got.ActorNameSnapshot != "Administrator" || got.ActorType != "user" || got.AuthMethod != "oauth" ||
+		got.RequestID == "" || got.SourceChannel != "api" {
+		t.Errorf("ghost-delete identity/correlation facts = %+v", got)
 	}
 
 	// Detail lookup uses the same audit permission and returns exactly one source row.
@@ -909,6 +924,33 @@ func TestAuditTrail(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &failed)
 	if failed.Total != 1 || len(failed.Logs) != 1 || failed.Logs[0].Status < http.StatusBadRequest {
 		t.Errorf("failed_only: total=%d logs=%+v", failed.Total, failed.Logs)
+	}
+}
+
+func TestAuditTrailReplacesOversizedRequestID(t *testing.T) {
+	r, _, db, _ := newAdminServer(t)
+	body := bytes.NewBufferString(`{"id":"d-request-id","name":"Request ID"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/admin/departments", body)
+	request.Header.Set("Authorization", "Bearer "+adminSub)
+	request.Header.Set("Content-Type", "application/json")
+	untrustedRequestID := strings.Repeat("x", 129)
+	request.Header.Set("x-request-id", untrustedRequestID)
+	response := httptest.NewRecorder()
+
+	r.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create department: want 201, got %d (%s)", response.Code, response.Body.String())
+	}
+	var record model.AuditLog
+	if err := db.Order("created_at DESC").First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.RequestID == untrustedRequestID || record.RequestID == "" || len(record.RequestID) > 128 {
+		t.Fatalf("unsafe request ID reached audit storage: %q", record.RequestID)
+	}
+	if response.Header().Get("x-request-id") != record.RequestID {
+		t.Fatalf("response and audit request IDs differ: response=%q audit=%q", response.Header().Get("x-request-id"), record.RequestID)
 	}
 }
 
@@ -1013,10 +1055,10 @@ func TestAuditDetailCapture(t *testing.T) {
 		return resp.Logs[0].Detail
 	}
 
-	if d := detailFor("departments"); !strings.Contains(d, "研发部") {
+	if d := detailFor("create"); !strings.Contains(d, "研发部") {
 		t.Errorf("create-dept detail missing name: %q", d)
 	}
-	pw := detailFor("users.password")
+	pw := detailFor("reset_password")
 	if strings.Contains(pw, "s3cr3t-should-not-appear") {
 		t.Fatalf("password leaked into audit detail: %q", pw)
 	}

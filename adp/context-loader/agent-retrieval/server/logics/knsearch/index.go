@@ -49,6 +49,7 @@ func NewLocalSearchService() interfaces.IKnSearchLocalService {
 type KnSearchService interface {
 	KnSearch(ctx context.Context, req *interfaces.KnSearchReq) (resp *interfaces.KnSearchResp, err error)
 	SearchSchema(ctx context.Context, req *interfaces.SearchSchemaReq) (resp *interfaces.SearchSchemaResp, err error)
+	SearchInstance(ctx context.Context, req *interfaces.SearchInstanceReq) (resp *interfaces.SearchInstanceResp, err error)
 }
 
 type knSearchService struct {

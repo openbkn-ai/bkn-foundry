@@ -61,14 +61,45 @@ func (en *Enforcer) FilterResourceOps(accessorID string, resources []ResourceRef
 		union = append(union, op)
 	}
 
-	out := make([]FilteredResource, 0, len(resources))
 	decided := map[ResourceRef]map[string]bool{}
 	for _, r := range resources {
-		allowed, done := decided[r]
-		if !done {
-			allowed = idx.allowed(r, union)
-			decided[r] = allowed
+		if _, done := decided[r]; !done {
+			decided[r] = idx.allowed(r, union)
 		}
+	}
+
+	// Everything not granted on the resource itself gets one batched walk up the
+	// hierarchy — the same walk Check uses, so a list page and a detail page
+	// cannot disagree about an inherited grant. Skipping this would not merely
+	// lose operations: a resource visible only through its catalog would vanish
+	// from the page entirely, which reads as data loss rather than as a denial.
+	stillMissing := map[ResourceRef][]string{}
+	for r, allowed := range decided {
+		var missing []string
+		for _, op := range union {
+			if !allowed[op] {
+				missing = append(missing, op)
+			}
+		}
+		if len(missing) > 0 {
+			stillMissing[r] = missing
+		}
+	}
+	inherited, err := en.climb(func(node ResourceRef, ops []string) (map[string]bool, error) {
+		return idx.allowed(node, ops), nil
+	}, stillMissing)
+	if err != nil {
+		return nil, err
+	}
+	for r, ops := range inherited {
+		for op := range ops {
+			decided[r][op] = true
+		}
+	}
+
+	out := make([]FilteredResource, 0, len(resources))
+	for _, r := range resources {
+		allowed := decided[r]
 		visible := true
 		for _, op := range visibility {
 			if !allowed[op] {

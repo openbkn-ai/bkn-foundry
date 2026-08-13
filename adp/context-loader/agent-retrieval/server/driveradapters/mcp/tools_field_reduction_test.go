@@ -104,6 +104,10 @@ func (s *stubMCPKnSearchService) SearchSchema(_ context.Context, req *interfaces
 	}, nil
 }
 
+func (s *stubMCPKnSearchService) SearchInstance(_ context.Context, _ *interfaces.SearchInstanceReq) (*interfaces.SearchInstanceResp, error) {
+	return &interfaces.SearchInstanceResp{Nodes: []any{}}, nil
+}
+
 // ==================== Helper ====================
 
 func withAuthCtx(ctx context.Context) context.Context {

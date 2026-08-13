@@ -259,6 +259,9 @@ func (h *SessionHandler) CreateNewGeneration(w http.ResponseWriter, r *http.Requ
 	conversation, err := h.service.CreateNewGeneration(r.Context(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: request.ExternalConversationKey,
 		IdempotencyKey: request.IdempotencyKey, OneShot: request.OneShot,
+		CreationRequestID: requestIDFromRequest(r), BusinessContext: "managed",
+		ActorNameSnapshot:  strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-Name")),
+		CreationAuthMethod: strings.TrimSpace(r.Header.Get("X-BKN-Auth-Method")),
 	})
 	h.writeLifecycleResult(w, r, conversation, err, http.StatusCreated)
 }
@@ -281,6 +284,9 @@ func (h *SessionHandler) EnsureCurrentConversation(w http.ResponseWriter, r *htt
 	conversation, err := h.service.EnsureCurrentConversation(r.Context(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: request.ExternalConversationKey,
 		IdempotencyKey: request.IdempotencyKey, OneShot: request.OneShot,
+		CreationRequestID: requestIDFromRequest(r), BusinessContext: "managed",
+		ActorNameSnapshot:  strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-Name")),
+		CreationAuthMethod: strings.TrimSpace(r.Header.Get("X-BKN-Auth-Method")),
 	})
 	if err != nil {
 		writeSessionDomainError(w, r, err)

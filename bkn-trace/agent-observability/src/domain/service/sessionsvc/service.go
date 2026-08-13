@@ -79,6 +79,10 @@ type EnsureConversationCommand struct {
 	ExternalConversationKey string
 	IdempotencyKey          string
 	OneShot                 bool
+	CreationRequestID       string
+	BusinessContext         string
+	ActorNameSnapshot       string
+	CreationAuthMethod      string
 }
 
 type CloseConversationCommand struct {
@@ -186,6 +190,10 @@ func (s *Service) EnsureCurrentConversation(ctx context.Context, command EnsureC
 			ID:                      s.newID("conv"),
 			Owner:                   command.Owner,
 			ExternalConversationKey: command.ExternalConversationKey,
+			CreationRequestID:       command.CreationRequestID,
+			BusinessContext:         normalizedBusinessContext(command.BusinessContext),
+			ActorNameSnapshot:       strings.TrimSpace(command.ActorNameSnapshot),
+			CreationAuthMethod:      normalizedAuthMethod(command.CreationAuthMethod),
 			Generation:              generation,
 			Status:                  sessionvo.ConversationActive,
 			OneShot:                 command.OneShot,
@@ -260,6 +268,10 @@ func (s *Service) CreateNewGeneration(ctx context.Context, command EnsureConvers
 		result = sessionvo.Conversation{
 			ID: s.newID("conv"), Owner: command.Owner,
 			ExternalConversationKey: command.ExternalConversationKey,
+			CreationRequestID:       command.CreationRequestID,
+			BusinessContext:         normalizedBusinessContext(command.BusinessContext),
+			ActorNameSnapshot:       strings.TrimSpace(command.ActorNameSnapshot),
+			CreationAuthMethod:      normalizedAuthMethod(command.CreationAuthMethod),
 			Generation:              generation, Status: sessionvo.ConversationActive,
 			OneShot: command.OneShot, RowVersion: 1, CreatedAt: now, UpdatedAt: now,
 		}
@@ -1892,6 +1904,22 @@ func validateOwner(owner sessionvo.Owner) error {
 		return ErrInvalidOwner
 	}
 	return nil
+}
+
+func normalizedBusinessContext(value string) string {
+	if strings.TrimSpace(value) == "detached" {
+		return "detached"
+	}
+	return "managed"
+}
+
+func normalizedAuthMethod(value string) string {
+	switch strings.TrimSpace(value) {
+	case "api_key", "oauth", "password", "session", "service_header":
+		return strings.TrimSpace(value)
+	default:
+		return "unknown"
+	}
 }
 
 func (s *Service) observeLifecycleError(err error) {

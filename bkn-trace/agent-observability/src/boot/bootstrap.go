@@ -27,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchconversationaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchcoreprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchlogaccess"
@@ -135,12 +136,13 @@ func NewApp() (*App, error) {
 	logOptions := logsvc.Options{
 		CursorKey: observabilityConfig.CursorSigningKey, SourceTimeout: observabilityConfig.SourceTimeout,
 		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
+		OperationAuditOnly:   true,
 	}
 	if coverageStoreSupported && observabilityConfig.SourceCoverageDeploymentID != "" {
 		logOptions.CoverageStore = coverageStore
 		logOptions.CoverageDeploymentID = observabilityConfig.SourceCoverageDeploymentID
 	}
-	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions([]logsvc.Source{
+	logSources := []logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
 		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
 		logsvc.NewNotIntegratedSource("bkn-safe-access", []string{
@@ -149,7 +151,23 @@ func NewApp() (*App, error) {
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
-	}, logOptions), evidenceHandler)
+		logsvc.NewNotIntegratedSource("bkn-backend", []string{
+			observabilityvo.CategoryAuditAdmin,
+		}, []string{"domain_knowledge_network"}),
+		logsvc.NewNotIntegratedSource("vega", []string{
+			observabilityvo.CategoryAuditAdmin,
+		}, []string{"data_resource_knowledge_network"}),
+		logsvc.NewNotIntegratedSource("execution-factory", []string{
+			observabilityvo.CategoryAuditAdmin,
+		}, []string{"execution_factory"}),
+		logsvc.NewNotIntegratedSource("model-manager", []string{
+			observabilityvo.CategoryAuditAdmin,
+		}, []string{"model_management"}),
+	}
+	if coreConfig.ProjectionEnabled {
+		logSources = append(logSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))
+	}
+	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
 		EvidenceCollectionState: func() string {
 			if coreConfig.EvidenceCollectionState == "" {
@@ -427,7 +445,6 @@ func newApp(
 	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs", readAuth(logHandler.ListLogs))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
-	mux.HandleFunc(ObservabilityAPIBasePath+"/log-facets", readAuth(logHandler.GetLogFacets))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
 	var enterpriseReader enterpriseroute.Reader

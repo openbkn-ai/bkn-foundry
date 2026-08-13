@@ -273,6 +273,13 @@ func EmitSearchSchemaEvents(ctx context.Context, logger interfaces.Logger, req *
 	return submitAndReturnFirstEventID(ctx, logger, req, BuildSearchSchemaEvents(ctx, req, resp))
 }
 
+func EmitSearchInstanceEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.SearchInstanceReq, resp *interfaces.SearchInstanceResp) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, req, BuildSearchInstanceEvents(ctx, req, resp))
+}
+
 func EmitQueryObjectInstanceEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) string {
 	if !EvidenceEnabled() {
 		return ""
@@ -334,6 +341,59 @@ func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaRe
 		candidateCount = len(resp.ObjectTypes) + len(resp.RelationTypes) + len(resp.ActionTypes) + len(resp.MetricTypes)
 	}
 	return buildRetrievalEvents(ec, "context.search_schema", HashValue(strings.TrimSpace(req.Query)), candidateCount, false, refs)
+}
+
+// BuildSearchInstanceEvents 记录一次语义实例召回。引用按命中的对象类去重登记——
+// 实例行本身没有受控标识可引，能确证的是「这些对象类被读过」。
+func BuildSearchInstanceEvents(ctx context.Context, req *interfaces.SearchInstanceReq, resp *interfaces.SearchInstanceResp) []Event {
+	ec, ok := contextFromRequest(ctx, req)
+	if !ok {
+		return nil
+	}
+	query := ""
+	knID := ""
+	if req != nil {
+		query = strings.TrimSpace(req.Query)
+		knID = strings.TrimSpace(req.XKnID)
+		if knID == "" {
+			knID = strings.TrimSpace(req.KnID)
+		}
+	}
+	candidateCount := 0
+	var refs []map[string]any
+	if resp != nil {
+		candidateCount = len(resp.Nodes)
+		refs = searchInstanceEvidenceRefs(knID, resp.Nodes)
+	}
+	return buildRetrievalEvents(ec, "context.search_instance", HashValue(query), candidateCount, false, refs)
+}
+
+// searchInstanceEvidenceRefs 把命中的对象类去重成受控引用。
+func searchInstanceEvidenceRefs(knID string, nodes []any) []map[string]any {
+	if knID == "" || len(nodes) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(nodes))
+	refs := make([]map[string]any, 0, len(nodes))
+	for _, node := range nodes {
+		nodeMap, ok := asMap(node)
+		if !ok {
+			continue
+		}
+		objectTypeID, _ := nodeMap["object_type_id"].(string)
+		if objectTypeID = strings.TrimSpace(objectTypeID); objectTypeID == "" {
+			continue
+		}
+		if _, dup := seen[objectTypeID]; dup {
+			continue
+		}
+		seen[objectTypeID] = struct{}{}
+		refs = append(refs, controlledRef("object:"+knID+":"+objectTypeID, "object"))
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	return refs
 }
 
 func BuildQueryObjectInstanceEvents(ctx context.Context, req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) []Event {
@@ -946,12 +1006,26 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 		return eventContext{}, false
 	}
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
-	if schemaReq, ok := req.(*interfaces.SearchSchemaReq); ok && schemaReq != nil {
-		if ec.accountID == "" {
-			ec.accountID = strings.TrimSpace(schemaReq.XAccountID)
+	// 账户身份可能只在请求体/头上，没进 ctx（REST 面就是这样）。缺了它
+	// SubmitEvents 会静默不发事件，所以每个带身份字段的请求类型都要在这里回填。
+	switch typed := req.(type) {
+	case *interfaces.SearchSchemaReq:
+		if typed != nil {
+			if ec.accountID == "" {
+				ec.accountID = strings.TrimSpace(typed.XAccountID)
+			}
+			if ec.accountType == "" {
+				ec.accountType = strings.TrimSpace(typed.XAccountType)
+			}
 		}
-		if ec.accountType == "" {
-			ec.accountType = strings.TrimSpace(schemaReq.XAccountType)
+	case *interfaces.SearchInstanceReq:
+		if typed != nil {
+			if ec.accountID == "" {
+				ec.accountID = strings.TrimSpace(typed.XAccountID)
+			}
+			if ec.accountType == "" {
+				ec.accountType = strings.TrimSpace(typed.XAccountType)
+			}
 		}
 	}
 	ec.interactionID = strings.TrimSpace(traceContext.InteractionID)

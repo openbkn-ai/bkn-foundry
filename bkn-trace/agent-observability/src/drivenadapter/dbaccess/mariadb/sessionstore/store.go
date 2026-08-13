@@ -266,12 +266,14 @@ func (t *transaction) SaveConversation(conversation sessionvo.Conversation) {
 		_, t.err = t.tx.ExecContext(t.ctx, `
 			INSERT INTO bkn_trace_conversations (
 				conversation_id, tenant_id, business_domain_id, application_principal_id,
-				agent_name, effective_subject_type, effective_subject_id, delegation_id,
+				agent_name, actor_name_snapshot, creation_auth_method,
+				effective_subject_type, effective_subject_id, delegation_id,
 				external_conversation_key, generation, status, one_shot, row_version,
 				created_at, updated_at, closed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			conversation.ID, conversation.Owner.TenantID, conversation.Owner.BusinessDomainID,
-			conversation.Owner.ApplicationPrincipalID, conversation.AgentName, conversation.Owner.EffectiveSubjectType,
+			conversation.Owner.ApplicationPrincipalID, conversation.AgentName,
+			conversation.ActorNameSnapshot, conversation.CreationAuthMethod, conversation.Owner.EffectiveSubjectType,
 			conversation.Owner.EffectiveSubjectID, conversation.Owner.DelegationID,
 			conversation.ExternalConversationKey, conversation.Generation, conversation.Status,
 			conversation.OneShot, conversation.RowVersion, conversation.CreatedAt,
@@ -969,7 +971,8 @@ func (t *transaction) SaveAssemblyRevision(revision sessionvo.AssemblyRevision) 
 }
 
 const conversationSelect = `SELECT conversation_id, tenant_id, business_domain_id,
-	application_principal_id, agent_name, effective_subject_type, effective_subject_id,
+	application_principal_id, agent_name, actor_name_snapshot, creation_auth_method,
+	effective_subject_type, effective_subject_id,
 	COALESCE(delegation_id, ''), external_conversation_key, generation, status,
 	one_shot, row_version, created_at, updated_at, closed_at
 	FROM bkn_trace_conversations`
@@ -995,7 +998,8 @@ func scanConversationRows(row rowScanner) (sessionvo.Conversation, error) {
 	var closedAt sql.NullTime
 	err := row.Scan(
 		&value.ID, &value.Owner.TenantID, &value.Owner.BusinessDomainID,
-		&value.Owner.ApplicationPrincipalID, &value.AgentName, &value.Owner.EffectiveSubjectType,
+		&value.Owner.ApplicationPrincipalID, &value.AgentName,
+		&value.ActorNameSnapshot, &value.CreationAuthMethod, &value.Owner.EffectiveSubjectType,
 		&value.Owner.EffectiveSubjectID, &value.Owner.DelegationID,
 		&value.ExternalConversationKey, &value.Generation, &value.Status,
 		&value.OneShot, &value.RowVersion, &value.CreatedAt, &value.UpdatedAt, &closedAt,

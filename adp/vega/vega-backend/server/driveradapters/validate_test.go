@@ -368,6 +368,17 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		}
 	})
 
+	t.Run("validateSchemaProperties rejects self-referencing ref_property", func(t *testing.T) {
+		err := validateSchemaProperties(ctx, []*interfaces.Property{
+			{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+				{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "body", IsNative: true},
+			}},
+		}, true)
+
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "cannot reference itself")
+	})
+
 	t.Run("validateSchemaProperties accepts valid original resource fields", func(t *testing.T) {
 		tests := []struct {
 			name   string
@@ -381,10 +392,10 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 				},
 			},
 			{
-				name: "dataset with native fulltext feature",
+				name: "dataset with native fulltext feature without ref_property",
 				fields: []*interfaces.Property{
 					{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-						{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "body", IsNative: true},
+						{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsNative: true},
 					}},
 				},
 			},

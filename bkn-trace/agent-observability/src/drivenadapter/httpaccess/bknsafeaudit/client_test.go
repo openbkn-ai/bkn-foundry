@@ -23,7 +23,7 @@ func TestSearchForwardsCallerAuthorizationFiltersAtSourceAndDropsDetail(t *testi
 		request = candidate
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader(`{"logs":[{"id":"audit-a","actor_id":"admin-a","method":"DELETE","resource":"users","action":"users","target_id":"user-a","target_name":"User A","detail":"{\"password\":\"must-not-pass\"}","status":404,"client_ip":"10.0.0.1","created_at":"2026-08-01T10:00:00Z"}],"total":1}`)),
+			Body:       io.NopCloser(strings.NewReader(`{"logs":[{"id":"audit-a","actor_id":"admin-a","actor_name_snapshot":"Administrator","actor_type":"user","auth_method":"unknown","request_id":"req-a","source_channel":"api","method":"DELETE","resource":"users","action":"users","target_id":"user-a","target_name":"User A","detail":"{\"password\":\"must-not-pass\"}","status":404,"client_ip":"10.0.0.1","created_at":"2026-08-01T10:00:00Z"}],"total":1}`)),
 			Header:     make(http.Header), Request: candidate,
 		}, nil
 	})}
@@ -31,13 +31,16 @@ func TestSearchForwardsCallerAuthorizationFiltersAtSourceAndDropsDetail(t *testi
 	ctx := observabilityvo.WithSourceAuthorization(context.Background(), "Bearer token-a")
 	from := time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC)
 	page, err := client.Search(ctx, observabilityvo.LogQuery{
-		ActorID: "admin-a", ResourceType: "users", FailedOnly: true, TimeFrom: &from, Limit: 20,
+		ActorID: "admin-a", Action: "users", TargetType: "users", TargetID: "user-a",
+		Outcomes: []string{"failure"}, TimeFrom: &from, Limit: 20,
 		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
 	})
 	if err != nil {
 		t.Fatalf("search audit source: %v", err)
 	}
-	if request.Header.Get("Authorization") != "Bearer token-a" || request.URL.Query().Get("failed_only") != "true" || request.URL.Query().Get("actor_id") != "admin-a" || request.URL.Query().Get("resource") != "users" {
+	if request.Header.Get("Authorization") != "Bearer token-a" || request.URL.Query().Get("failed_only") != "true" ||
+		request.URL.Query().Get("actor_id") != "admin-a" || request.URL.Query().Get("resource") != "users" ||
+		request.URL.Query().Get("action") != "users" || request.URL.Query().Get("target_id") != "user-a" {
 		t.Fatalf("source filters or caller authorization missing: %s headers=%v", request.URL.String(), request.Header)
 	}
 	if len(page.Records) != 1 {
@@ -47,7 +50,18 @@ func TestSearchForwardsCallerAuthorizationFiltersAtSourceAndDropsDetail(t *testi
 	if record.SourceID != "bkn-safe-admin" || record.Category != observabilityvo.CategoryAuditAdmin || record.EventName != "resource_config.changed" || record.Outcome != "failure" {
 		t.Fatalf("unexpected audit projection: %+v", record)
 	}
-	if strings.Contains(record.SafeSummary, "password") || strings.Contains(record.SafeSummary, "must-not-pass") || len(record.Attributes) != 0 {
+	if record.EventID != "audit-a" || record.BusinessModule != "system_management" || record.Action != "users" ||
+		record.TargetType != "users" || record.TargetID != "user-a" || record.TargetNameSnapshot != "User A" ||
+		record.ActorNameSnapshot != "Administrator" || record.ActorType != "user" || record.AuthMethod != "unknown" ||
+		record.RequestID != "req-a" || record.SourceChannel != "api" || !record.EventTime.Equal(record.EventTimestamp) || !record.RecordedAt.Equal(record.ObservedTimestamp) {
+		t.Fatalf("operation audit business projection is incomplete: %+v", record)
+	}
+	if record.Attributes["method"] != "DELETE" || record.Attributes["status_code"] != 404 ||
+		record.Attributes["client_ip"] != "10.0.0.1" {
+		t.Fatalf("management audit facts were not preserved: %+v", record.Attributes)
+	}
+	if strings.Contains(record.SafeSummary, "password") || strings.Contains(record.SafeSummary, "must-not-pass") ||
+		strings.Contains(record.FailureMessage, "must-not-pass") {
 		t.Fatalf("raw BKN Safe detail leaked through projection: %+v", record)
 	}
 }
@@ -109,7 +123,65 @@ func TestGetProjectsOneAuditRecordAndNeverExposesRawDetail(t *testing.T) {
 	if request.URL.Path != "/api/safe/v1/admin/audit-logs/audit-a" || request.Header.Get("Authorization") != "Bearer token-a" {
 		t.Fatalf("unexpected detail request: %s headers=%v", request.URL.String(), request.Header)
 	}
-	if record.LogID != "audit-a" || record.EventName != "role.updated" || strings.Contains(record.SafeSummary, "must-not-pass") {
+	if record.LogID != "bkn-safe-admin:audit-a" || record.EventName != "role.updated" || strings.Contains(record.SafeSummary, "must-not-pass") {
 		t.Fatalf("unexpected safe detail projection: %+v", record)
+	}
+	if record.ActorNameSnapshot != "admin-a" || record.ActorType != "user" || record.AuthMethod != "unknown" || record.SourceChannel != "api" {
+		t.Fatalf("legacy audit facts must use deterministic fallbacks: %+v", record)
+	}
+}
+
+func TestProjectAuditLogUsesStableOperationOutcomes(t *testing.T) {
+	tests := []struct {
+		status int
+		want   string
+	}{
+		{status: http.StatusAccepted, want: "success"},
+		{status: http.StatusMultiStatus, want: "success"},
+		{status: http.StatusForbidden, want: "denied"},
+		{status: http.StatusInternalServerError, want: "failure"},
+		{status: http.StatusNoContent, want: "success"},
+	}
+	for _, test := range tests {
+		record := projectAuditLog(auditLog{ID: "audit-a", Status: test.status}, "tenant-a")
+		if record.Outcome != test.want {
+			t.Errorf("status %d projected as %q, want %q", test.status, record.Outcome, test.want)
+		}
+	}
+}
+
+func TestProjectAuditLogNormalizesOnlyKnownLegacyRouteActions(t *testing.T) {
+	tests := []struct {
+		method, resource, action, want string
+	}{
+		{method: http.MethodPost, resource: "role-bindings", action: "role-bindings", want: "bind_role"},
+		{method: http.MethodDelete, resource: "role-bindings", action: "role-bindings", want: "unbind_role"},
+		{method: http.MethodPost, resource: "object-grants", action: "object-grants", want: "grant"},
+		{method: http.MethodDelete, resource: "object-grants", action: "object-grants", want: "revoke"},
+		{method: http.MethodPost, resource: "object-grants", action: "grant", want: "grant"},
+	}
+	for _, test := range tests {
+		record := projectAuditLog(auditLog{Method: test.method, Resource: test.resource, Action: test.action}, "tenant-a")
+		if record.Action != test.want {
+			t.Errorf("%s %s action %q projected as %q, want %q", test.method, test.resource, test.action, record.Action, test.want)
+		}
+	}
+}
+
+func TestBusinessModuleForManagementResourcesMatchesProductModules(t *testing.T) {
+	tests := map[string]string{
+		"users":         "system_management",
+		"departments":   "system_management",
+		"role-bindings": "system_management",
+		"object-grants": "system_management",
+		"api-keys":      "system_management",
+		"license":       "system_management",
+		"clients":       "system_management",
+		"profile":       "system_management",
+	}
+	for resource, want := range tests {
+		if got := businessModuleForResource(resource); got != want {
+			t.Errorf("resource %q: module=%q, want %q", resource, got, want)
+		}
 	}
 }

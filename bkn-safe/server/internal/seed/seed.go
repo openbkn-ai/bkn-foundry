@@ -68,14 +68,24 @@ type roleSeed struct {
 }
 
 type catalog struct {
-	ResourceTypes []struct {
-		ID         string `json:"id"`
-		Name       string `json:"name"`
-		Operations []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"operations"`
-	} `json:"resource_types"`
+	ResourceTypes []catalogResourceType `json:"resource_types"`
+}
+
+type catalogResourceType struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// ParentType declares the type this one hangs under ("resource" under
+	// "catalog"). Empty for every standalone type (#800).
+	ParentType string             `json:"parent_type"`
+	Operations []catalogOperation `json:"operations"`
+}
+
+type catalogOperation struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// ParentOperation is the operation checked on the parent instance when this
+	// one is not granted on the instance itself. Empty = no inheritance.
+	ParentOperation string `json:"parent_operation"`
 }
 
 type grantsFile struct {
@@ -205,22 +215,86 @@ func seedCatalog(db *gorm.DB) error {
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
 		return err
 	}
+	// The hierarchy is validated BEFORE anything is written: a typo'd parent type
+	// or a parent_operation the parent does not define would otherwise be stored
+	// and then silently deny at enforce time, which reads as "the grant does not
+	// work" rather than "the catalog is wrong".
+	if err := validateHierarchy(c); err != nil {
+		return err
+	}
 	for _, rt := range c.ResourceTypes {
-		rtRow := model.ResourceType{ID: rt.ID, Name: rt.Name}
+		rtRow := model.ResourceType{ID: rt.ID, Name: rt.Name, ParentTypeID: rt.ParentType}
 		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"name"}),
+			DoUpdates: clause.AssignmentColumns([]string{"name", "parent_type_id"}),
 		}).Create(&rtRow).Error; err != nil {
 			return err
 		}
 		for _, op := range rt.Operations {
-			opRow := model.Operation{ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name}
+			opRow := model.Operation{
+				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
+				ParentOperationID: op.ParentOperation,
+			}
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "resource_type_id"}, {Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"name"}),
+				DoUpdates: clause.AssignmentColumns([]string{"name", "parent_operation_id"}),
 			}).Create(&opRow).Error; err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// validateHierarchy checks the type-level hierarchy declared in catalog.json:
+// every parent_type resolves to a declared type, every parent_operation resolves
+// to an operation the parent actually defines, an operation may not inherit from
+// a type with no parent, and the parent chain is acyclic. All four are authoring
+// mistakes in an embedded file, so failing the seed is the right response — the
+// alternative is a grant that quietly never applies.
+func validateHierarchy(c catalog) error {
+	ops := make(map[string]map[string]bool, len(c.ResourceTypes))
+	parent := make(map[string]string, len(c.ResourceTypes))
+	for _, rt := range c.ResourceTypes {
+		set := make(map[string]bool, len(rt.Operations))
+		for _, op := range rt.Operations {
+			set[op.ID] = true
+		}
+		ops[rt.ID] = set
+		parent[rt.ID] = rt.ParentType
+	}
+	for _, rt := range c.ResourceTypes {
+		if rt.ParentType != "" {
+			if _, ok := ops[rt.ParentType]; !ok {
+				return fmt.Errorf("resource type %q declares unknown parent_type %q", rt.ID, rt.ParentType)
+			}
+			if rt.ParentType == rt.ID {
+				return fmt.Errorf("resource type %q is its own parent_type", rt.ID)
+			}
+		}
+		for _, op := range rt.Operations {
+			if op.ParentOperation == "" {
+				continue
+			}
+			if rt.ParentType == "" {
+				return fmt.Errorf("operation %s/%s declares parent_operation %q but %s has no parent_type",
+					rt.ID, op.ID, op.ParentOperation, rt.ID)
+			}
+			if !ops[rt.ParentType][op.ParentOperation] {
+				return fmt.Errorf("operation %s/%s maps to %s/%s, which is not a registered operation",
+					rt.ID, op.ID, rt.ParentType, op.ParentOperation)
+			}
+		}
+	}
+	// Acyclic check: walk each chain with a step budget of the type count. A
+	// cycle would make the enforce-time fallback loop forever.
+	for id := range parent {
+		seen := map[string]bool{id: true}
+		for cur, steps := parent[id], 0; cur != ""; cur, steps = parent[cur], steps+1 {
+			if seen[cur] || steps > len(parent) {
+				return fmt.Errorf("resource type parent chain has a cycle at %q", cur)
+			}
+			seen[cur] = true
 		}
 	}
 	return nil

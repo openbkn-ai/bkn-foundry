@@ -112,6 +112,7 @@ func TestSeededRoleGrants(t *testing.T) {
 		want                    bool
 	}{
 		{"admin manages users", admin, "admin-user", "x", "create", true},
+		{"admin views audit logs", admin, "admin-audit", "x", "view", true},
 		{"admin views role catalog for user management", admin, "admin-role", "x", "view", true},
 		{"admin not role grant", admin, "admin-authz", "x", "grant", false},
 		{"security manages roles", security, "admin-role", "x", "create", true},
@@ -391,7 +392,7 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 
 	catalogOps := ops("catalog")
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage"} {
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"} {
 		if !catalogOps[op] {
 			t.Errorf("catalog is missing operation %q", op)
 		}

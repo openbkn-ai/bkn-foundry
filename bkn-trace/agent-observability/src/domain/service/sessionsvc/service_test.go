@@ -41,6 +41,10 @@ func TestEnsureCurrentConversationIsIdempotent(t *testing.T) {
 		Owner:                   owner,
 		ExternalConversationKey: "cursor-thread-1",
 		IdempotencyKey:          "idem-1",
+		CreationRequestID:       "req-create-1",
+		BusinessContext:         "managed",
+		ActorNameSnapshot:       "供应链管理员",
+		CreationAuthMethod:      "api_key",
 	})
 	if err != nil {
 		t.Fatalf("ensure first conversation: %v", err)
@@ -62,6 +66,10 @@ func TestEnsureCurrentConversationIsIdempotent(t *testing.T) {
 	}
 	if first.Status != sessionvo.ConversationActive {
 		t.Fatalf("expected active conversation, got %q", first.Status)
+	}
+	if first.CreationRequestID != "req-create-1" || first.BusinessContext != "managed" ||
+		first.ActorNameSnapshot != "供应链管理员" || first.CreationAuthMethod != "api_key" {
+		t.Fatalf("conversation creation context was not persisted: %+v", first)
 	}
 }
 

@@ -166,6 +166,10 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
 					WithErrorDetails("ref_property is only supported by original resources")
 			}
+			if f.RefProperty == prop.Name {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
+					WithErrorDetails(fmt.Sprintf("The field feature ref_property '%s' cannot reference itself", f.RefProperty))
+			}
 
 			refProp, exists := propsMap[f.RefProperty]
 			if !exists {

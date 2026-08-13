@@ -12,6 +12,11 @@
     "group_title": "Networks & Schema",
     "description": "Explore schema by natural language. Returns relevant object types, relation types, action types, metric types, condition operations, and data source metadata for downstream query tools. Object types come first: metric_types here is only a hint — the authoritative list of a metric for an object type is related_metrics from get_object_types."
   },
+  "search_instance": {
+    "title": "Instance Semantic Search",
+    "group_title": "Instance Queries",
+    "description": "Recall instances straight from a natural-language question, without knowing object types or field names first. It locates the relevant object types from the query, runs semantic instance recall over them (vector and full-text channels issued in parallel and fused by rank), and returns the instance rows **together with the trimmed definitions of the object types they came from** (only those that actually produced rows) — so one call is enough and no follow-up schema lookup is needed. Use it as the entry point for \"which rows is this sentence about\"; use search_schema when you only want to explore the network's structure without fetching data, and query_object_instance when the object type and filters are already known. Only properties whose condition_operations include match or knn take part, so object types without an index return nothing."
+  },
   "query_object_instance": {
     "title": "Query Instances",
     "group_title": "Instance Queries",

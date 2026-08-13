@@ -14,6 +14,8 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 	required := []string{
 		"bkn_trace_conversations",
 		"agent_name VARCHAR(128)",
+		"actor_name_snapshot VARCHAR(255)",
+		"creation_auth_method VARCHAR(32)",
 		"uq_bkn_trace_conversation_generation",
 		"uq_bkn_trace_conversation_current",
 		"bkn_trace_interactions",

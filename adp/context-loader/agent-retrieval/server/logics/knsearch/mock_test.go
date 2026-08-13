@@ -3,13 +3,29 @@ package knsearch
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// mockLogger 模拟 Logger 接口
+// mockLogger 模拟 Logger 接口。实例召回会并发发出多路查询，两路都会写日志，
+// 所以 logs 必须上锁——否则 -race 下必炸。
 type mockLogger struct {
+	mu   sync.Mutex
 	logs []string
+}
+
+func (m *mockLogger) append(line string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.logs = append(m.logs, line)
+}
+
+// entries 返回日志快照，供断言使用。
+func (m *mockLogger) entries() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.logs...)
 }
 
 func (m *mockLogger) WithContext(ctx context.Context) interfaces.Logger {
@@ -17,35 +33,35 @@ func (m *mockLogger) WithContext(ctx context.Context) interfaces.Logger {
 }
 
 func (m *mockLogger) Info(v ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprint(v...))
+	m.append(fmt.Sprint(v...))
 }
 
 func (m *mockLogger) Debug(v ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprint(v...))
+	m.append(fmt.Sprint(v...))
 }
 
 func (m *mockLogger) Warn(v ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprint(v...))
+	m.append(fmt.Sprint(v...))
 }
 
 func (m *mockLogger) Error(v ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprint(v...))
+	m.append(fmt.Sprint(v...))
 }
 
 func (m *mockLogger) Infof(format string, args ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprintf("[INFO] "+format, args...))
+	m.append(fmt.Sprintf("[INFO] "+format, args...))
 }
 
 func (m *mockLogger) Debugf(format string, args ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprintf("[DEBUG] "+format, args...))
+	m.append(fmt.Sprintf("[DEBUG] "+format, args...))
 }
 
 func (m *mockLogger) Warnf(format string, args ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprintf("[WARN] "+format, args...))
+	m.append(fmt.Sprintf("[WARN] "+format, args...))
 }
 
 func (m *mockLogger) Errorf(format string, args ...interface{}) {
-	m.logs = append(m.logs, fmt.Sprintf("[ERROR] "+format, args...))
+	m.append(fmt.Sprintf("[ERROR] "+format, args...))
 }
 
 // mockBknBackend 模拟 BknBackendAccess 接口
@@ -117,16 +133,38 @@ func (m *mockBknBackend) GetActionTypeDetail(ctx context.Context, knID string, a
 	return nil, nil
 }
 
-// mockOntologyQuery 模拟 DrivenOntologyQuery 接口
+// mockOntologyQuery 模拟 DrivenOntologyQuery 接口。
+//
+// instancesFunc 让用例按请求条件分路应答——实例召回把 knn 与 match 拆成两条查询，
+// 各自的返回不同才测得出融合行为。设了它就走它，否则退回单一的 instancesResp。
 type mockOntologyQuery struct {
+	mu             sync.Mutex
 	instancesResp  *interfaces.QueryObjectInstancesResp
 	instancesError error
+	instancesFunc  func(*interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error)
 	callCount      int
+	conds          []*interfaces.KnCondition
 }
 
 func (m *mockOntologyQuery) QueryObjectInstances(ctx context.Context, req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
+	m.mu.Lock()
 	m.callCount++
-	return m.instancesResp, m.instancesError
+	m.conds = append(m.conds, req.Cond)
+	fn := m.instancesFunc
+	resp, err := m.instancesResp, m.instancesError
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(req)
+	}
+	return resp, err
+}
+
+// calls 返回调用次数快照。
+func (m *mockOntologyQuery) calls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.callCount
 }
 
 func (m *mockOntologyQuery) QueryLogicProperties(ctx context.Context, req *interfaces.QueryLogicPropertiesReq) (*interfaces.QueryLogicPropertiesResp, error) {

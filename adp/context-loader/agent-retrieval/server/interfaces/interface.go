@@ -33,4 +33,6 @@ type IKnSearchService interface {
 	KnSearch(ctx context.Context, req *KnSearchReq) (resp *KnSearchResp, err error)
 	// SearchSchema Unified schema search with normalization and output filtering
 	SearchSchema(ctx context.Context, req *SearchSchemaReq) (resp *SearchSchemaResp, err error)
+	// SearchInstance Natural-language instance recall; returns instances only
+	SearchInstance(ctx context.Context, req *SearchInstanceReq) (resp *SearchInstanceResp, err error)
 }

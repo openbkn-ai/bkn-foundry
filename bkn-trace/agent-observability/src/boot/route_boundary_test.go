@@ -10,6 +10,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
@@ -127,6 +128,32 @@ func TestPublicRawTraceQueryRoutesAreUnavailable(t *testing.T) {
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("%s %s = %d, want 404: %s", test.method, test.path, response.Code, response.Body.String())
 		}
+	}
+}
+
+func TestLegacyLogFacetRouteIsUnavailable(t *testing.T) {
+	evidenceHandler := httphandler.NewEvidenceHandlerWithSecurityConfig(
+		evidencesvc.New(evidencestore.New()),
+		httphandler.EvidenceHandlerSecurityConfig{AllowUnauthenticatedQuery: true},
+	)
+	app := newApp(
+		conf.HTTPServerConfig{}, nil, evidenceHandler,
+		httphandler.NewLogHandler(logsvc.New(nil), evidenceHandler),
+		httphandler.NewSessionHandler(sessionsvc.New(sessionstore.New(), sessionsvc.Options{})),
+		httphandler.NewLedgerHandler(ledgersvc.New(ledgerstore.New()), httphandler.LedgerSecurityConfig{}),
+		nil,
+	)
+	request := httptest.NewRequest(http.MethodGet, ObservabilityAPIBasePath+"/log-facets?facet=event_name", nil)
+	request.Header.Set("x-account-id", "admin-1")
+	request.Header.Set("x-account-type", "user")
+	request.Header.Set("x-tenant-id", "tenant-1")
+	request.Header.Set("x-business-domain", "domain-1")
+	response := httptest.NewRecorder()
+
+	app.server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("legacy log facet route = %d, want 404: %s", response.Code, response.Body.String())
 	}
 }
 

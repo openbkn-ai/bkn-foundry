@@ -81,6 +81,11 @@ func logFilterHash(query observabilityvo.LogQuery) string {
 		Query           string     `json:"q,omitempty"`
 		TimeFrom        *time.Time `json:"time_from,omitempty"`
 		TimeTo          *time.Time `json:"time_to,omitempty"`
+		BusinessModule  string     `json:"module,omitempty"`
+		Action          string     `json:"action,omitempty"`
+		TargetType      string     `json:"target_type,omitempty"`
+		TargetID        string     `json:"target_id,omitempty"`
+		Outcomes        []string   `json:"outcomes,omitempty"`
 		Categories      []string   `json:"categories,omitempty"`
 		SeverityMinimum int        `json:"severity_min,omitempty"`
 		Services        []string   `json:"services,omitempty"`
@@ -101,6 +106,8 @@ func logFilterHash(query observabilityvo.LogQuery) string {
 	}
 	normalized := filter{
 		Query: strings.TrimSpace(query.Query), TimeFrom: query.TimeFrom, TimeTo: query.TimeTo,
+		BusinessModule: query.BusinessModule, Action: query.Action,
+		TargetType: query.TargetType, TargetID: query.TargetID, Outcomes: normalizedStrings(query.Outcomes),
 		Categories: normalizedStrings(query.Categories), SeverityMinimum: query.SeverityMinimum,
 		Services: normalizedStrings(query.Services), Environments: normalizedStrings(query.Environments),
 		EventNames: normalizedStrings(query.EventNames), BusinessDomain: query.BusinessDomain,

@@ -20,6 +20,8 @@ type AccountAuthContext struct {
 	AccountID string `json:"account_id"`
 	// AccountType Account Type
 	AccountType AccessorType `json:"account_type"`
+	// AuthMethod records the trusted credential class used at the public boundary.
+	AuthMethod string `json:"auth_method,omitempty"`
 	// TokenInfo Token information
 	TokenInfo *TokenInfo `json:"token_info"`
 }
@@ -175,14 +177,16 @@ type TokenInfo struct {
 	ClientID   string      // Client ID
 	VisitorTyp VisitorType // Visitor type
 	// Following fields exist only when visitorType=realname (real-name user)
-	LoginIP     string      // Login IP
-	Udid        string      // Device ID
-	AccountTyp  AccountType // Account type
-	ClientTyp   ClientType  // Device type
-	PhoneNumber string      // Phone number for anonymous users
-	VisitorName string      // Nickname for anonymous visitors
-	MAC         string      // MAC address
-	UserAgent   string      // User agent info
+	LoginIP        string      // Login IP
+	Udid           string      // Device ID
+	AccountTyp     AccountType // Account type
+	ClientTyp      ClientType  // Device type
+	PhoneNumber    string      // Phone number for anonymous users
+	VisitorName    string      // Nickname for anonymous visitors
+	CredentialID   string      // Verified credential id when one exists (for example AppKey id)
+	CredentialName string      // Verified credential display name when one exists
+	MAC            string      // MAC address
+	UserAgent      string      // User agent info
 }
 
 // Hydra Authorization service interface

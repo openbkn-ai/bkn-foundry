@@ -35,3 +35,33 @@ func TestListUsesIDAsSameTimestampKeysetTiebreaker(t *testing.T) {
 		t.Fatalf("same-timestamp records were skipped or reordered: %+v", logs)
 	}
 }
+
+func TestRecordPreservesOperationAuditIdentityAndCorrelationFacts(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
+		t.Fatal(err)
+	}
+	store := New(db)
+	entry := Entry{
+		ActorID: "user-a", ActorNameSnapshot: "User A", ActorType: "user",
+		AuthMethod: "unknown", RequestID: "req-a", SourceChannel: "api",
+		Method: "POST", Resource: "api-keys", Action: "create", TargetID: "key-a",
+		TargetName: "Cursor key", Status: 201,
+	}
+	if err := store.Record(context.Background(), entry); err != nil {
+		t.Fatal(err)
+	}
+	var got model.AuditLog
+	if err := db.First(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.ActorID != entry.ActorID || got.ActorNameSnapshot != entry.ActorNameSnapshot ||
+		got.ActorType != entry.ActorType || got.AuthMethod != entry.AuthMethod ||
+		got.RequestID != entry.RequestID || got.SourceChannel != entry.SourceChannel ||
+		got.Action != entry.Action || got.TargetName != entry.TargetName {
+		t.Fatalf("operation audit facts were not preserved: %+v", got)
+	}
+}

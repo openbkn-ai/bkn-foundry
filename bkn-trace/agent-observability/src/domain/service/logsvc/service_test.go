@@ -410,6 +410,22 @@ func TestDetailAndFacetsUseTheSameRecordAuthorization(t *testing.T) {
 	}
 }
 
+func TestOperationAuditDetailUsesTheSameCategoryAuthorizationAsList(t *testing.T) {
+	securityRecord := validTestRecord(observabilityvo.LogRecord{
+		LogID: "security-a", Category: observabilityvo.CategoryAuditSecurity, EventName: "access.denied",
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EventTimestamp: time.Now(),
+		TrustLevel: "trusted", IngressPrincipal: "bkn-safe", ActorID: "admin-a",
+	})
+	service := NewWithOptions([]Source{fakeDetailSource{
+		fakeSource: fakeSource{id: "security-audit", records: []observabilityvo.LogRecord{securityRecord}},
+		record:     securityRecord,
+	}}, Options{OperationAuditOnly: true})
+
+	if _, err := service.Get(context.Background(), activeProfile("admin-a", "admin"), securityRecord.LogID); !errors.Is(err, ErrNotDisclosed) {
+		t.Fatalf("admin detail must not bypass the list category boundary: %v", err)
+	}
+}
+
 func TestSourcesAndPoliciesFollowTheAccessProfile(t *testing.T) {
 	service := New([]Source{fakeDetailSource{fakeSource: fakeSource{id: "otel"}}})
 	admin := activeProfile("admin-a", "admin")
@@ -486,8 +502,8 @@ func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
 	if len(source.query.AuthorizedCategories) != 3 || len(source.query.AuthorizedKnowledgeNetworkIDs) != 2 {
 		t.Fatalf("role and managed-network scope was not pushed down: %+v", source.query)
 	}
-	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.TimeTo.Sub(*source.query.TimeFrom) != 24*time.Hour {
-		t.Fatalf("default 24-hour window was not frozen: %+v", source.query)
+	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.TimeTo.Sub(*source.query.TimeFrom) != 30*24*time.Hour {
+		t.Fatalf("default 30-day window was not frozen: %+v", source.query)
 	}
 	if source.query.ObservedBefore == nil || !source.query.ObservedBefore.Equal(*source.query.TimeTo) {
 		t.Fatalf("query watermark was not pushed to the source: %+v", source.query)
@@ -507,9 +523,9 @@ func TestListUsesSevenDayWindowForAssociatedDrilldown(t *testing.T) {
 	}
 }
 
-func TestListRejectsTimeWindowsLongerThanSevenDays(t *testing.T) {
+func TestListRejectsTimeWindowsLongerThanThirtyDays(t *testing.T) {
 	now := time.Now().UTC()
-	from := now.Add(-8 * 24 * time.Hour)
+	from := now.Add(-31 * 24 * time.Hour)
 	_, err := New([]Source{fakeSource{id: "runtime"}}).List(
 		context.Background(), activeProfile("admin-a", "admin"),
 		observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &now},
@@ -543,6 +559,77 @@ func TestListDoesNotQueryOrDiscloseUnauthorizedSources(t *testing.T) {
 	}
 	if result.Partial || len(result.SourceStatus) != 1 || result.SourceStatus[0].SourceID != "runtime" {
 		t.Fatalf("unauthorized source leaked through status: %+v", result)
+	}
+}
+
+func TestOperationAuditListDoesNotQueryOTLPRuntimeSource(t *testing.T) {
+	runtimeSource := &categorizedSource{
+		id: "otel-runtime", categories: []string{observabilityvo.CategoryRuntimeSystem},
+		err: errors.New("operation audit must not query runtime telemetry"),
+	}
+	auditSource := &categorizedSource{
+		id: "admin-audit", categories: []string{observabilityvo.CategoryAuditAdmin},
+		records: []observabilityvo.LogRecord{{
+			LogID: "audit-a", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
+			TenantID: "tenant-a", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+		}},
+	}
+
+	service := NewWithOptions([]Source{runtimeSource, auditSource}, Options{OperationAuditOnly: true})
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+	if err != nil {
+		t.Fatalf("list operation audit: %v", err)
+	}
+	if runtimeSource.queries != 0 {
+		t.Fatalf("OTLP runtime source was queried %d times", runtimeSource.queries)
+	}
+	if auditSource.queries != 1 || len(result.Records) != 1 || result.Records[0].LogID != "audit-a" {
+		t.Fatalf("operation audit source was not isolated: result=%+v audit_queries=%d", result, auditSource.queries)
+	}
+}
+
+func TestOperationAuditAssociatedDrilldownOnlyDisclosesOwnedConversation(t *testing.T) {
+	now := time.Now().UTC()
+	service := NewWithOptions([]Source{&categorizedSource{
+		id: "bkn-trace-core", categories: []string{observabilityvo.CategoryRuntimeBusiness},
+		records: []observabilityvo.LogRecord{
+			{LogID: "owned", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created", TenantID: "tenant-a", EventTimestamp: now, EffectiveSubjectID: "user-a", ActorID: "user-a", ConversationID: "conv-a", TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core"},
+			{LogID: "other", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created", TenantID: "tenant-a", EventTimestamp: now.Add(-time.Second), EffectiveSubjectID: "user-b", ActorID: "user-b", ConversationID: "conv-a", TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core"},
+		},
+	}}, Options{OperationAuditOnly: true})
+
+	result, err := service.List(context.Background(), activeProfile("user-a", "normal_user"), observabilityvo.LogQuery{ConversationID: "conv-a"})
+	if err != nil {
+		t.Fatalf("list owned conversation audit: %v", err)
+	}
+	if len(result.Records) != 1 || result.Records[0].LogID != "owned" {
+		t.Fatalf("associated audit disclosure was not owner scoped: %+v", result.Records)
+	}
+}
+
+func TestOperationAuditOnlyWhitelistsConversationCreatedWithoutOpeningRuntimeBusiness(t *testing.T) {
+	now := time.Now().UTC()
+	runtimeSource := &categorizedSource{
+		id: "otel-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness},
+		err: errors.New("runtime business source must remain excluded"),
+	}
+	conversationSource := &categorizedSource{
+		id: "bkn-trace-core", categories: []string{observabilityvo.CategoryRuntimeBusiness},
+		records: []observabilityvo.LogRecord{{
+			LogID: "conversation-a", Category: observabilityvo.CategoryRuntimeBusiness,
+			EventName: "conversation.created", TenantID: "tenant-a", EventTimestamp: now,
+			EffectiveSubjectID: "admin-a", ActorID: "admin-a", ConversationID: "conv-a",
+			TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core",
+		}},
+	}
+	service := NewWithOptions([]Source{runtimeSource, conversationSource}, Options{OperationAuditOnly: true})
+
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+	if err != nil {
+		t.Fatalf("list operation audit with conversation event: %v", err)
+	}
+	if runtimeSource.queries != 0 || conversationSource.queries != 1 || len(result.Records) != 1 {
+		t.Fatalf("runtime whitelist escaped its event source: runtime=%d conversation=%d result=%+v", runtimeSource.queries, conversationSource.queries, result)
 	}
 }
 
@@ -713,6 +800,59 @@ func TestMatchesQueryExcludesRecordsObservedAfterTheQueryWatermark(t *testing.T)
 	}
 }
 
+func TestMatchesQueryFiltersOperationAuditBusinessFields(t *testing.T) {
+	record := observabilityvo.LogRecord{
+		BusinessModule: "domain_knowledge_network", Action: "create",
+		TargetType: "conversation", TargetID: "conv-a",
+		ActorID: "user-a", Outcome: "success",
+	}
+	query := observabilityvo.LogQuery{
+		BusinessModule: "domain_knowledge_network", Action: "create",
+		TargetType: "conversation", TargetID: "conv-a",
+		ActorID: "user-a", Outcomes: []string{"success"},
+	}
+	if !matchesQuery(record, query) {
+		t.Fatal("matching operation audit record was filtered out")
+	}
+
+	for name, mutate := range map[string]func(*observabilityvo.LogQuery){
+		"module":  func(value *observabilityvo.LogQuery) { value.BusinessModule = "authorization" },
+		"action":  func(value *observabilityvo.LogQuery) { value.Action = "delete" },
+		"target":  func(value *observabilityvo.LogQuery) { value.TargetID = "conv-b" },
+		"outcome": func(value *observabilityvo.LogQuery) { value.Outcomes = []string{"failure"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			mismatched := query
+			mutate(&mismatched)
+			if matchesQuery(record, mismatched) {
+				t.Fatalf("%s mismatch was accepted", name)
+			}
+		})
+	}
+}
+
+func TestOperationAuditOnlyRejectsIncompletePublicProjection(t *testing.T) {
+	record := validTestRecord(observabilityvo.LogRecord{
+		LogID: "audit-invalid", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
+		TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "source-a",
+		BusinessModule: "legacy_unknown_module",
+	})
+	service := NewWithOptions([]Source{fakeSource{id: "source-a", records: []observabilityvo.LogRecord{record}}}, Options{
+		OperationAuditOnly: true,
+	})
+
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+	if err != nil {
+		t.Fatalf("list operation audit records: %v", err)
+	}
+	if len(result.Records) != 0 {
+		t.Fatalf("incomplete public operation audit projection was disclosed: %+v", result.Records)
+	}
+	if result.Count != 0 || !result.Partial || result.CountExact {
+		t.Fatalf("rejected projections must not remain in the visible exact count: %+v", result)
+	}
+}
+
 func boolInt(value bool) int {
 	if value {
 		return 1
@@ -775,6 +915,35 @@ func validTestRecord(record observabilityvo.LogRecord) observabilityvo.LogRecord
 	}
 	if record.Environment == "" {
 		record.Environment = "test"
+	}
+	if isOperationAuditRecord(record) {
+		if record.BusinessModule == "" {
+			record.BusinessModule = "system_management"
+		}
+		if record.Action == "" {
+			record.Action = "update"
+		}
+		if record.TargetType == "" {
+			record.TargetType = "test_target"
+		}
+		if record.TargetID == "" {
+			record.TargetID = "target-a"
+		}
+		if record.TargetNameSnapshot == "" {
+			record.TargetNameSnapshot = record.TargetID
+		}
+		if record.ActorID == "" {
+			record.ActorID = "admin-a"
+		}
+		if record.ActorNameSnapshot == "" {
+			record.ActorNameSnapshot = record.ActorID
+		}
+		if record.AuthMethod == "" {
+			record.AuthMethod = "unknown"
+		}
+		if record.SourceChannel == "" {
+			record.SourceChannel = "api"
+		}
 	}
 	return record
 }

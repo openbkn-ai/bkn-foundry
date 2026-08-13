@@ -41,6 +41,7 @@ type Service struct {
 	cursorKey            []byte
 	sourceTimeout        time.Duration
 	maxConcurrentSources int
+	operationAuditOnly   bool
 	coverageStore        isourcecoveragestore.Store
 	coverageDeploymentID string
 }
@@ -49,6 +50,7 @@ type Options struct {
 	CursorKey            []byte
 	SourceTimeout        time.Duration
 	MaxConcurrentSources int
+	OperationAuditOnly   bool
 	CoverageStore        isourcecoveragestore.Store
 	CoverageDeploymentID string
 }
@@ -79,7 +81,8 @@ func NewWithOptions(sources []Source, options Options) *Service {
 	return &Service{
 		sources: append([]Source(nil), sources...), cursorKey: append([]byte(nil), options.CursorKey...),
 		sourceTimeout: options.SourceTimeout, maxConcurrentSources: options.MaxConcurrentSources,
-		coverageStore: options.CoverageStore, coverageDeploymentID: options.CoverageDeploymentID,
+		operationAuditOnly: options.OperationAuditOnly,
+		coverageStore:      options.CoverageStore, coverageDeploymentID: options.CoverageDeploymentID,
 	}
 }
 
@@ -166,10 +169,19 @@ func (service *Service) listPage(
 		return observabilityvo.ListResult{}, ErrAccessDenied
 	}
 	effectiveCategories := authorizedCategories(capabilities, query)
+	if service.operationAuditOnly {
+		effectiveCategories = authorizedOperationAuditCategories(profile, capabilities, query)
+		capabilities.AllowedLogCategories = normalizedStrings(append(
+			capabilities.AllowedLogCategories, effectiveCategories...,
+		))
+	}
 	if len(effectiveCategories) == 0 {
 		return observabilityvo.ListResult{}, ErrAccessDenied
 	}
 	visibleSources := service.visibleSources(effectiveCategories)
+	if service.operationAuditOnly {
+		visibleSources = operationAuditSources(visibleSources)
+	}
 	if len(visibleSources) == 0 {
 		return observabilityvo.ListResult{}, ErrSourcesUnavailable
 	}
@@ -246,7 +258,6 @@ func (service *Service) listPage(
 		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 		coveragePartial = coveragePartial || sourceResult.status.Status == "degraded"
 		sourcePageSizes[source.ID()] = len(page.Records)
-		totalCount += page.Count
 		countExact = countExact && normalizedAccuracy(page.CountAccuracy) == "exact"
 		if len(page.Records) > 0 {
 			sourceLastRawPosition[source.ID()] = positionForRecord(page.Records[len(page.Records)-1])
@@ -255,15 +266,33 @@ func (service *Service) listPage(
 			sourceHasMore = true
 		}
 		candidates := make([]logCandidate, 0, len(page.Records))
+		rejectedProjections := 0
 		for _, record := range page.Records {
 			var pageBefore *observabilityvo.SourcePosition
 			if hasPosition {
 				pageBefore = &position
 			}
-			if contains(effectiveCategories, record.Category) && afterSourcePosition(record, pageBefore) &&
+			validProjection := !service.operationAuditOnly ||
+				(isOperationAuditRecord(record) && validOperationAuditProjection(record))
+			if !validProjection {
+				rejectedProjections++
+			}
+			if validProjection &&
+				contains(effectiveCategories, record.Category) && afterSourcePosition(record, pageBefore) &&
 				matchesQuery(record, sourceQuery) && canReadLog(profile, capabilities, record, query.IsAssociatedDrilldown()) {
 				candidates = append(candidates, logCandidate{record: record, adapterSourceID: source.ID()})
 			}
+		}
+		if rejectedProjections > 0 {
+			// Source totals describe its raw result set. Once the public contract
+			// rejects records, retaining that raw total produces an impossible UI
+			// (for example “5 facts” with an empty table). Report the visible lower
+			// bound and mark it partial; later pages may contain more valid records.
+			totalCount += int64(len(candidates))
+			countExact = false
+			coveragePartial = true
+		} else {
+			totalCount += page.Count
 		}
 		sort.SliceStable(candidates, func(left, right int) bool {
 			return candidateBefore(candidates[left], candidates[right])
@@ -437,19 +466,37 @@ func (service *Service) Get(
 ) (observabilityvo.LogRecord, error) {
 	capabilities := observabilityvo.CapabilitiesFor(profile)
 	detailCategories := append([]string(nil), capabilities.AllowedLogCategories...)
-	if !capabilities.GlobalLogSearch {
+	if service.operationAuditOnly {
+		detailCategories = authorizedOperationAuditCategories(profile, capabilities, observabilityvo.LogQuery{})
+		if !capabilities.GlobalLogSearch {
+			detailCategories = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryRuntimeBusiness}
+		}
+		capabilities.AllowedLogCategories = normalizedStrings(append(
+			capabilities.AllowedLogCategories, detailCategories...,
+		))
+	} else if !capabilities.GlobalLogSearch {
 		detailCategories = []string{observabilityvo.CategoryRuntimeBusiness, observabilityvo.CategoryRuntimeModel}
 	}
 	ctx = observabilityvo.WithSourceAccessScope(ctx, observabilityvo.SourceAccessScope{
 		TenantID: profile.TenantID, BusinessDomain: profile.BusinessDomain,
 	})
-	for _, source := range service.visibleSources(detailCategories) {
+	visibleSources := service.visibleSources(detailCategories)
+	if service.operationAuditOnly {
+		visibleSources = operationAuditSources(visibleSources)
+	}
+	for _, source := range visibleSources {
 		detail, ok := source.(detailSource)
 		if !ok {
 			continue
 		}
 		record, found, err := detail.Get(ctx, logID)
 		if err != nil || !found {
+			continue
+		}
+		if service.operationAuditOnly && !isOperationAuditRecord(record) {
+			continue
+		}
+		if service.operationAuditOnly && !validOperationAuditProjection(record) {
 			continue
 		}
 		associated := record.ConversationID != "" || record.InteractionID != "" || record.OperationID != "" ||
@@ -552,6 +599,72 @@ func associatedCategoriesOnly(categories []string) bool {
 	return true
 }
 
+func authorizedOperationAuditCategories(
+	profile evidencevo.AccessProfile,
+	capabilities observabilityvo.AccessCapabilities,
+	query observabilityvo.LogQuery,
+) []string {
+	allowed := make([]string, 0, 3)
+	if hasRole(profile, "network_builder", "admin", "audit", "security", "super_admin") {
+		allowed = append(allowed, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryRuntimeBusiness)
+	}
+	if hasRole(profile, "audit", "security", "super_admin") {
+		allowed = append(allowed, observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditSecurity)
+	}
+	if !capabilities.GlobalLogSearch && query.IsAssociatedDrilldown() {
+		allowed = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryRuntimeBusiness}
+	}
+	allowed = normalizedStrings(allowed)
+	if len(query.Categories) == 0 {
+		return allowed
+	}
+	result := make([]string, 0, len(query.Categories))
+	for _, category := range query.Categories {
+		if contains(allowed, category) {
+			result = append(result, category)
+		}
+	}
+	return normalizedStrings(result)
+}
+
+func isOperationAuditCategory(category string) bool {
+	return category == observabilityvo.CategoryAccessUser ||
+		category == observabilityvo.CategoryAuditAdmin ||
+		category == observabilityvo.CategoryAuditSecurity
+}
+
+func isOperationAuditRecord(record observabilityvo.LogRecord) bool {
+	return isOperationAuditCategory(record.Category) ||
+		(record.Category == observabilityvo.CategoryRuntimeBusiness && record.EventName == "conversation.created")
+}
+
+func validOperationAuditProjection(record observabilityvo.LogRecord) bool {
+	return observabilityvo.IsBusinessModule(record.BusinessModule) && record.Action != "" &&
+		record.TargetType != "" && record.TargetID != "" && record.TargetNameSnapshot != "" &&
+		record.ActorID != "" && record.ActorNameSnapshot != "" && record.AuthMethod != "" &&
+		record.SourceChannel != ""
+}
+
+func operationAuditSources(sources []Source) []Source {
+	result := make([]Source, 0, len(sources))
+	for _, source := range sources {
+		metadata, ok := source.(metadataSource)
+		if !ok {
+			result = append(result, source)
+			continue
+		}
+		categories := metadata.Metadata().Categories
+		if intersects(categories, []string{
+			observabilityvo.CategoryAccessUser,
+			observabilityvo.CategoryAuditAdmin,
+			observabilityvo.CategoryAuditSecurity,
+		}) || source.ID() == "bkn-trace-core" {
+			result = append(result, source)
+		}
+	}
+	return result
+}
+
 func authorizedCategories(
 	capabilities observabilityvo.AccessCapabilities,
 	query observabilityvo.LogQuery,
@@ -652,7 +765,7 @@ func positionID(record observabilityvo.LogRecord) string {
 }
 
 func applyLogTimeWindow(query *observabilityvo.LogQuery, watermark time.Time) error {
-	defaultWindow := 24 * time.Hour
+	defaultWindow := 30 * 24 * time.Hour
 	if query.IsAssociatedDrilldown() {
 		defaultWindow = 7 * 24 * time.Hour
 	}
@@ -667,7 +780,7 @@ func applyLogTimeWindow(query *observabilityvo.LogQuery, watermark time.Time) er
 		to := watermark
 		query.TimeTo = &to
 	}
-	if query.TimeTo.Before(*query.TimeFrom) || query.TimeTo.Sub(*query.TimeFrom) > 7*24*time.Hour {
+	if query.TimeTo.Before(*query.TimeFrom) || query.TimeTo.Sub(*query.TimeFrom) > 30*24*time.Hour {
 		return ErrInvalidQuery
 	}
 	return nil
@@ -689,9 +802,13 @@ func canReadLog(
 	if record.BusinessDomain != "" && profile.BusinessDomain != record.BusinessDomain {
 		return false
 	}
-	if associated && !capabilities.GlobalLogSearch &&
-		record.Category != observabilityvo.CategoryRuntimeBusiness && record.Category != observabilityvo.CategoryRuntimeModel {
-		return false
+	if associated && !capabilities.GlobalLogSearch {
+		if isOperationAuditCategory(record.Category) {
+			return record.ActorID != "" && record.ActorID == profile.EffectiveSubjectID
+		}
+		if record.Category != observabilityvo.CategoryRuntimeBusiness && record.Category != observabilityvo.CategoryRuntimeModel {
+			return false
+		}
 	}
 	if !associated && !capabilities.GlobalLogSearch {
 		return false
@@ -706,6 +823,10 @@ func canReadLog(
 		KnowledgeNetworkIDs: record.KnowledgeNetworkIDs,
 	}
 	switch record.Category {
+	case observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity:
+		return hasRole(profile, "admin", "super_admin") ||
+			(record.ActorID != "" && record.ActorID == profile.EffectiveSubjectID) ||
+			evidencevo.CanReadRecord(profile, recordScope, evidencevo.AccessViewBusiness)
 	case observabilityvo.CategoryRuntimeBusiness, observabilityvo.CategoryRuntimeModel:
 		return evidencevo.CanReadRecord(profile, recordScope, evidencevo.AccessViewBusiness) ||
 			hasRole(profile, "admin", "super_admin")
@@ -732,6 +853,9 @@ func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQue
 		matchesOptional(record.RequestID, query.RequestID) && matchesOptional(record.ConversationID, query.ConversationID) &&
 		matchesOptional(record.InteractionID, query.InteractionID) && matchesOptional(record.OperationID, query.OperationID) &&
 		matchesOptional(record.BusinessDomain, query.BusinessDomain) && matchesOptional(record.ActorID, query.ActorID) &&
+		matchesOptional(record.BusinessModule, query.BusinessModule) && matchesOptional(record.Action, query.Action) &&
+		matchesOptional(record.TargetType, query.TargetType) && matchesOptional(record.TargetID, query.TargetID) &&
+		matchesSet(record.Outcome, query.Outcomes) &&
 		matchesOptional(record.ApplicationID, query.ApplicationID) && matchesSet(record.Category, query.Categories) &&
 		matchesSet(record.ServiceName, query.Services) && matchesSet(record.Environment, query.Environments) &&
 		matchesSet(record.EventName, query.EventNames) && (query.SeverityMinimum <= 0 || record.SeverityNumber >= query.SeverityMinimum) &&

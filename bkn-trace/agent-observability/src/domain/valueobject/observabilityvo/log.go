@@ -9,6 +9,23 @@ type ResourceRef struct {
 }
 
 type LogRecord struct {
+	EventID             string          `json:"event_id,omitempty"`
+	EventTime           time.Time       `json:"event_time,omitempty"`
+	RecordedAt          time.Time       `json:"recorded_at,omitempty"`
+	ActorNameSnapshot   string          `json:"actor_name_snapshot,omitempty"`
+	ActorType           string          `json:"actor_type,omitempty"`
+	AuthMethod          string          `json:"auth_method,omitempty"`
+	CredentialID        string          `json:"credential_id,omitempty"`
+	CredentialName      string          `json:"credential_name,omitempty"`
+	SourceChannel       string          `json:"source_channel,omitempty"`
+	BusinessModule      string          `json:"module,omitempty"`
+	Action              string          `json:"action,omitempty"`
+	TargetType          string          `json:"target_type,omitempty"`
+	TargetID            string          `json:"target_id,omitempty"`
+	TargetNameSnapshot  string          `json:"target_name_snapshot,omitempty"`
+	FailureCode         string          `json:"failure_code,omitempty"`
+	FailureMessage      string          `json:"failure_message,omitempty"`
+	TaskID              string          `json:"task_id,omitempty"`
 	SchemaVersion       string          `json:"schema_version"`
 	LogID               string          `json:"log_id"`
 	SourceID            string          `json:"source_id"`
@@ -48,6 +65,11 @@ type LogQuery struct {
 	Query            string
 	TimeFrom         *time.Time
 	TimeTo           *time.Time
+	BusinessModule   string
+	Action           string
+	TargetType       string
+	TargetID         string
+	Outcomes         []string
 	Categories       []string
 	SeverityMinimum  int
 	Services         []string

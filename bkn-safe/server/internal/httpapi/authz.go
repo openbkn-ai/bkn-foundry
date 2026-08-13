@@ -220,6 +220,14 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
+		// The hierarchy row goes with the policies: every caller that deletes a
+		// resource already calls this, so the table stays tidy without a second
+		// round trip from any module. A failure here is logged, not returned —
+		// the policies are gone, which is what the caller asked for.
+		if err := dropResourceParent(c.Request.Context(), db, req.Resource.Type, req.Resource.ID); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to drop the resource hierarchy row on policy teardown",
+				"resource_type", req.Resource.Type, "resource_id", req.Resource.ID, "error", err)
+		}
 		c.Status(http.StatusNoContent)
 	})
 
@@ -271,6 +279,11 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, gin.H{"entries": entries})
 	})
 
+	// Instance-level hierarchy (which catalog a table belongs to). Same tokenless
+	// service face; see resourceparents.go for why the shape check is the guard.
+	if db != nil {
+		registerResourceParents(g, db)
+	}
 }
 
 // registerRoleBindings mounts the accessor↔role binding endpoints (bind / list /

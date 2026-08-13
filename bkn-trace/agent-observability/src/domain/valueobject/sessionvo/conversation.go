@@ -41,6 +41,10 @@ type Conversation struct {
 	AgentName               string             `json:"agent_name,omitempty"`
 	Owner                   Owner              `json:"owner" binding:"required"`
 	ExternalConversationKey string             `json:"external_conversation_key" binding:"required"`
+	CreationRequestID       string             `json:"creation_request_id,omitempty"`
+	BusinessContext         string             `json:"business_context,omitempty"`
+	ActorNameSnapshot       string             `json:"actor_name_snapshot,omitempty"`
+	CreationAuthMethod      string             `json:"creation_auth_method,omitempty"`
 	Generation              uint64             `json:"generation" binding:"required"`
 	Status                  ConversationStatus `json:"status" binding:"required"`
 	OneShot                 bool               `json:"one_shot" binding:"required"`

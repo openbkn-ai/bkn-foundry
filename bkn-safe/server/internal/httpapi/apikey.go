@@ -31,6 +31,7 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 	// expires_at: RFC3339; omitted -> default 1y; never_expire:true -> no expiry.
 	// Returns the plaintext key ONCE: { id, key_id, name, key, expires_at, created_at }.
 	g.POST("/api-keys", func(c *gin.Context) {
+		setAuditOperation(c, "create", "", "")
 		owner := c.GetString(ctxAccessorID)
 		var req struct {
 			Name        string  `json:"name" binding:"required"`
@@ -54,6 +55,7 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "create", rec.ID, rec.Name)
 		body := apiKeyJSON(*rec, false)
 		body["key"] = plaintext // shown exactly once
 		c.JSON(http.StatusCreated, body)
@@ -72,6 +74,7 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 
 	// DELETE /me/api-keys/:id — revoke one of the caller's own keys.
 	g.DELETE("/api-keys/:id", func(c *gin.Context) {
+		setAuditOperation(c, "revoke", c.Param("id"), "")
 		owner := c.GetString(ctxAccessorID)
 		err := keys.DeleteOwned(c.Request.Context(), owner, c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -89,6 +92,7 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 	// key (lost it / suspected leak). Old plaintext stops working immediately;
 	// the new plaintext is returned ONCE. Same id/name/expiry.
 	g.POST("/api-keys/:id/regenerate", func(c *gin.Context) {
+		setAuditOperation(c, "regenerate", c.Param("id"), "")
 		owner := c.GetString(ctxAccessorID)
 		plaintext, rec, err := keys.Regenerate(c.Request.Context(), owner, c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -121,6 +125,7 @@ func registerAdminAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore, e *authz.E
 
 	// DELETE /admin/api-keys/:id — revoke any key by id.
 	g.DELETE("/api-keys/:id", RequirePermission(e, "admin-apikey", "manage"), func(c *gin.Context) {
+		setAuditOperation(c, "revoke", c.Param("id"), "")
 		err := keys.Delete(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
@@ -138,7 +143,7 @@ func registerAdminAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore, e *authz.E
 // tokenless, ClusterIP-internal (same trust face as /authz and /directory). The
 // MCP/REST gateway calls it to resolve an AppKey to its owner identity. Response
 // mirrors OAuth2 introspection: 200 { active:false } on any failure (no leak of
-// why), 200 { active:true, sub, account_type, key_id } on success.
+// why), or the verified owner and credential display snapshots on success.
 func registerAPIKeyVerify(r gin.IRoutes, keys *auth.APIKeyStore) {
 	r.POST("/api/safe/v1/api-keys/introspect", func(c *gin.Context) {
 		var req struct {
@@ -156,8 +161,10 @@ func registerAPIKeyVerify(r gin.IRoutes, keys *auth.APIKeyStore) {
 		c.JSON(http.StatusOK, gin.H{
 			"active":       true,
 			"sub":          v.OwnerID,
+			"subject_name": v.OwnerName,
 			"account_type": v.AccountType,
 			"key_id":       v.KeyID,
+			"key_name":     v.KeyName,
 		})
 	})
 }
