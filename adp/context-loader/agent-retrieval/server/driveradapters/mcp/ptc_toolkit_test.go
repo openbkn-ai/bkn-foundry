@@ -146,6 +146,44 @@ func TestPTCStubIsSelfContained(t *testing.T) {
 	}
 }
 
+// /workspace 是所有调用方共用的一个目录——执行接口不收 session_id，池子实测恒命中
+// 同一个会话。stub 必须按 conversation 切出子目录并 chdir 进去，否则两个对话写同名
+// 文件会互相覆盖，读回来的可能是别人的数据。
+func TestPTCStubIsolatesWorkdirPerConversation(t *testing.T) {
+	stub := renderPTCStub(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}))
+
+	for _, want := range []string{
+		`conversation_id`,  // 目录名的来源
+		`hashlib.sha1`,     // 不拿 conversation_id 直接做目录名
+		`candidate.mkdir(`, //
+		`os.chdir(candidate)`,
+	} {
+		if !strings.Contains(stub, want) {
+			t.Fatalf("stub 缺少工作目录隔离逻辑 %q:\n%s", want, stub)
+		}
+	}
+	// 拿不到 conversation_id 或目录建不出来时要退回可用状态，不能让整段脚本失败。
+	if !strings.Contains(stub, `"shared"`) || !strings.Contains(stub, "except OSError:") {
+		t.Fatalf("stub 的工作目录缺少兜底分支:\n%s", stub)
+	}
+}
+
+// 目录既然已经切好，digest 就不能再教模型写 /workspace 绝对路径——那正好绕开隔离。
+func TestPTCDigestTeachesRelativePaths(t *testing.T) {
+	digest := ptcTestDigest()
+
+	if strings.Contains(digest, `"/workspace/`) || strings.Contains(digest, "Path(\"/workspace") {
+		t.Fatalf("digest 不应示范 /workspace 绝对路径:\n%s", digest)
+	}
+	if !strings.Contains(digest, "WORKDIR") {
+		t.Fatalf("digest 未说明工作目录:\n%s", digest)
+	}
+	// 用户反复问「有没有 run shell」，说明埋在别的小节里的一句话没被看见。
+	if !strings.Contains(digest, "## 执行 shell 命令") || !strings.Contains(digest, "subprocess.run(") {
+		t.Fatalf("digest 缺少 shell 小节:\n%s", digest)
+	}
+}
+
 // Version 是内容哈希，客户端据此缓存；渲染必须可重复，否则每次都像工具面变了。
 func TestPTCRenderIsDeterministic(t *testing.T) {
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})

@@ -297,29 +297,50 @@ print(top)
 沙箱是完整的 Python 3.11：pandas、numpy、scipy、requests、httpx、sqlite3 与全部
 标准库都在，分组、连接、统计交给它们，不要为此多跑一轮。
 
-需要执行命令时用 ` + "`subprocess.run(cmd, shell=True, capture_output=True, text=True)`" + `，
-沙箱是一台完整的 Linux，无需另找工具。
+不确定的地方用代码兜住而不是回到对话：取值一律 ` + "`.get()`" + `，可能失败的分支用
+try/except 包住并 print 出关键中间信息，让一次执行既拿到答案、又带回排查线索。
 
-## 大结果写文件，只 print 摘要
+## 执行 shell 命令
 
-回到你面前的只有 stdout，因此**不要把大结果打印出来**：写进 ` + "`/workspace`" + ` 下的文件，
-再打印头部若干行、行数、字段名这类足以判断下一步的信息。需要细看时读取文件的某一段，
-而不是整份倒出来。
+没有单独的 shell 工具，也不需要——沙箱是一台完整的 Linux，用 ` + "`subprocess`" + ` 即可，
+和取数、聚合写在同一段脚本里：
+
+` + "```python" + `
+import subprocess
+r = subprocess.run("wc -l rows.jsonl && head -c 300 rows.jsonl",
+                   shell=True, capture_output=True, text=True)
+print(r.stdout or r.stderr)          # 非零退出时诊断在 stderr 里
+` + "```" + `
+
+` + "`curl`" + `、` + "`jq`" + `、` + "`awk`" + `、` + "`sort`" + ` 这类都在。但凡 Python 能直接做的（读文件、
+统计、JSON 处理）就别绕 shell，省一层引号转义。
+
+## 工作目录与大结果
+
+回到你面前的只有 stdout，因此**不要把大结果打印出来**：写进文件，再打印行数、字段名、
+头部若干行这类足以判断下一步的信息。需要细看时读取文件的某一段，而不是整份倒出来。
+
+脚本启动时当前目录已经切到本次会话专属的工作目录（` + "`WORKDIR`" + ` 变量指向它），
+**直接用相对路径读写**。不要写 ` + "`/workspace/xxx`" + ` 的绝对路径：那是所有会话共用的
+根目录，会和别人撞名。
 
 ` + "```python" + `
 import json, pathlib
 rows = query_object_instance(kn_id=kn, ot_id=ot_id, limit=5000).get("datas", [])
-path = pathlib.Path("/workspace/rows.json")
-path.write_text(json.dumps(rows, ensure_ascii=False))
-print(f"{len(rows)} 行已写入 {path}，字段：{sorted(rows[0])[:12] if rows else []}")
+pathlib.Path("rows.json").write_text(json.dumps(rows, ensure_ascii=False))
+print(f"{len(rows)} 行已落盘，字段：{sorted(rows[0])[:12] if rows else []}")
 print(json.dumps(rows[:3], ensure_ascii=False)[:600])   # 只看头部三行
 ` + "```" + `
 
-` + "`/workspace`" + ` 里的文件在同一沙箱会话内跨次调用通常仍在，但会话是池化复用的、
-不保证命中同一个，所以再次使用前先 ` + "`Path(...).exists()`" + ` 判断，不存在就重算。
+文件在同一对话的多次执行之间是保留的，下一段脚本可以直接接着用，不必重新取数：
 
-不确定的地方用代码兜住而不是回到对话：取值一律 ` + "`.get()`" + `，可能失败的分支用
-try/except 包住并 print 出关键中间信息，让一次执行既拿到答案、又带回排查线索。
+` + "```python" + `
+import json, pathlib
+p = pathlib.Path("rows.json")
+rows = json.loads(p.read_text()) if p.exists() else query_object_instance(...)["datas"]
+` + "```" + `
+
+` + "`exists()`" + ` 判断还是要写：换了对话、或者上一段脚本在落盘前就失败了，文件就不在。
 
 ## 参数写不准时
 
@@ -361,11 +382,20 @@ const ptcStubPreamble = `"""BKN 能力的沙箱侧 stub —— 由 context-loade
 凭据与会话上下文经 _configure(event) 注入，由调用方在发起执行时下发。
 """
 
+import hashlib
 import json
+import os
+import pathlib
 import urllib.request
 
 _CFG = {}
 _SESSION = {}
+
+# 本次会话的工作目录。沙箱 /workspace 是所有调用方共用的一个目录（执行接口不接受
+# session_id，池子实测恒命中同一个会话），直接在根上写 rows.json 这类名字，既会被
+# 别的会话覆盖，也可能读到别人的数据。这里按 conversation 切出独立子目录并 chdir
+# 进去，脚本用相对路径即可，无需关心隔离。
+WORKDIR = pathlib.Path("/workspace")
 
 # 显式不走代理：MCP 端点是集群内地址，任何继承来的代理配置都只会让请求发不出去。
 # 且 urllib 一旦认定要走代理就改发 absolute-form 请求行（POST http://host/path），
@@ -378,9 +408,23 @@ class ToolError(RuntimeError):
 
 
 def _configure(event):
-    """由执行入口调用，注入 MCP 端点、凭据与生命周期上下文。"""
+    """由执行入口调用，注入 MCP 端点、凭据与生命周期上下文，并准备工作目录。"""
+    global WORKDIR
     _CFG.update(event)
     _SESSION.clear()
+
+    # conversation_id 直接做目录名不安全（可能含 / 或过长），取哈希前缀；缺失时
+    # 退到一个共用目录，行为与切分前一致，不会因为拿不到上下文就执行失败。
+    conversation = str((event.get("bkn") or {}).get("conversation_id") or "").strip()
+    name = "conv-" + hashlib.sha1(conversation.encode()).hexdigest()[:16] if conversation else "shared"
+    candidate = pathlib.Path("/workspace") / name
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        os.chdir(candidate)
+        WORKDIR = candidate
+    except OSError:
+        # 沙箱换了镜像、/workspace 只读之类的情况下不要连累整段脚本，退回当前目录。
+        WORKDIR = pathlib.Path(os.getcwd())
 
 
 def _rpc(method, params=None, notify=False):
