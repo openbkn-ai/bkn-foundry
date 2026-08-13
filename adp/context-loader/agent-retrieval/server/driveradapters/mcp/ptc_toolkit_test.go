@@ -57,6 +57,15 @@ func ptcTestDigest() string {
 	return renderPTCDigest(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}))
 }
 
+func ptcTestToolkit(t *testing.T) *PTCToolkit {
+	t.Helper()
+	toolkit, err := buildPTCToolkitFrom(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}), 30779)
+	if err != nil {
+		t.Fatalf("构建工具包失败: %v", err)
+	}
+	return toolkit
+}
+
 func TestPTCDigestRendersSignatures(t *testing.T) {
 	digest := ptcTestDigest()
 
@@ -152,10 +161,17 @@ func TestPTCStubIsSelfContained(t *testing.T) {
 func TestPTCStubIsolatesWorkdirPerConversation(t *testing.T) {
 	stub := renderPTCStub(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}))
 
+	// 目录名是归一化而非哈希：run_shell 走 language=shell 不经过 stub，要在浏览器侧
+	// 算出同一个路径，而 crypto.subtle 在非 HTTPS 源下不可用。两边必须是同一套规则。
+	if strings.Contains(stub, "hashlib") {
+		t.Fatalf("工作目录不应再用哈希命名（浏览器侧算不出来）:\n%s", stub)
+	}
 	for _, want := range []string{
-		`conversation_id`,  // 目录名的来源
-		`hashlib.sha1`,     // 不拿 conversation_id 直接做目录名
-		`candidate.mkdir(`, //
+		`conversation_id`,          // 目录名的来源
+		`c.isalnum() or c in "_-"`, // 归一化规则，必须与 TS 侧 ptcWorkdir 一致
+		`[:64]`,                    // 截断长度，同上
+		`"conv-" + safe if safe else "shared"`,
+		`candidate.mkdir(`,
 		`os.chdir(candidate)`,
 	} {
 		if !strings.Contains(stub, want) {
@@ -182,6 +198,89 @@ func TestPTCDigestTeachesRelativePaths(t *testing.T) {
 	if !strings.Contains(digest, "## 执行 shell 命令") || !strings.Contains(digest, "subprocess.run(") {
 		t.Fatalf("digest 缺少 shell 小节:\n%s", digest)
 	}
+}
+
+// 客户端应当遍历 tools 建工具，不按名字硬编码——加工具才能是纯服务端改动。
+func TestPTCToolkitExposesToolTable(t *testing.T) {
+	toolkit := ptcTestToolkit(t)
+
+	byName := map[string]PTCTool{}
+	for _, tool := range toolkit.Tools {
+		byName[tool.Name] = tool
+	}
+	if len(byName) != len(toolkit.Tools) {
+		t.Fatalf("工具名重复: %+v", toolkit.Tools)
+	}
+
+	runCode, ok := byName["run_code"]
+	if !ok {
+		t.Fatalf("缺少 run_code: %+v", toolkit.Tools)
+	}
+	if runCode.Language != "python" || runCode.Wrap != ptcWrapHandler {
+		t.Fatalf("run_code 组装方式不对: %+v", runCode)
+	}
+	// Digest 顶层字段保留只为兼容老客户端，内容必须与工具表一致，否则两边会漂。
+	if runCode.Description != toolkit.Digest {
+		t.Fatal("run_code 描述与顶层 digest 不一致")
+	}
+
+	runShell, ok := byName["run_shell"]
+	if !ok {
+		t.Fatalf("缺少 run_shell: %+v", toolkit.Tools)
+	}
+	// 沙箱控制面只认 python / javascript / shell；bash 实测被 422 拒掉。
+	if runShell.Language != "shell" || runShell.Wrap != ptcWrapCdWorkdir {
+		t.Fatalf("run_shell 组装方式不对: %+v", runShell)
+	}
+	// 不划边界模型就会用 curl 手搓 MCP 调用，把一段脚本拆成很多轮。
+	if !strings.Contains(runShell.Description, "不要用它取 BKN 数据") {
+		t.Fatalf("run_shell 描述缺少边界说明:\n%s", runShell.Description)
+	}
+
+	for _, tool := range toolkit.Tools {
+		var schema map[string]any
+		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+			t.Fatalf("%s 的 input_schema 不是合法 JSON: %v", tool.Name, err)
+		}
+		if schema["type"] != "object" {
+			t.Fatalf("%s 的 input_schema 顶层应为 object: %v", tool.Name, schema)
+		}
+	}
+}
+
+// Version 是客户端的缓存键，必须覆盖工具全表：只哈希 digest+stub 的话，新增工具
+// 或改描述都不会变版本号，客户端会一直用着旧的工具面。
+func TestPTCToolkitVersionCoversToolTable(t *testing.T) {
+	toolkit := ptcTestToolkit(t)
+	baseline := toolkit.Version
+
+	original := ptcRunShellDescription
+	if !strings.Contains(original, "run_code") {
+		t.Fatal("前置条件变了：run_shell 描述里不再提到 run_code")
+	}
+	// 描述改了而 digest/stub 没变时，版本号必须跟着变。
+	mutated := *toolkit
+	mutated.Tools = append([]PTCTool(nil), toolkit.Tools...)
+	for i := range mutated.Tools {
+		if mutated.Tools[i].Name == "run_shell" {
+			mutated.Tools[i].Description += " (changed)"
+		}
+	}
+	if fingerprintPTCTools(t, mutated.Tools) == fingerprintPTCTools(t, toolkit.Tools) {
+		t.Fatal("工具表变化未反映到指纹里")
+	}
+	if baseline == "" {
+		t.Fatal("版本号为空")
+	}
+}
+
+func fingerprintPTCTools(t *testing.T, tools []PTCTool) string {
+	t.Helper()
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		t.Fatalf("序列化工具表失败: %v", err)
+	}
+	return string(encoded)
 }
 
 // Version 是内容哈希，客户端据此缓存；渲染必须可重复，否则每次都像工具面变了。

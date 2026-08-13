@@ -38,7 +38,81 @@ type PTCToolkit struct {
 	// SandboxMCPURL 是沙箱回访本服务的地址。沙箱在集群内，用不了浏览器侧的
 	// 网关地址；而集群内地址只有服务端知道，让浏览器去配置只会配错。
 	SandboxMCPURL string `json:"sandbox_mcp_url"`
+	// Tools 是要暴露给模型的工具全表。客户端应当遍历它建工具，不要按名字硬编码：
+	// 这样以后加工具是纯服务端改动。Digest/Stub 是 run_code 那一项的展开，保留
+	// 为顶层字段只为兼容先于本字段上线的客户端。
+	Tools []PTCTool `json:"tools"`
 }
+
+// PTCTool 一个要暴露给模型的工具。客户端据此建工具、组装执行请求。
+type PTCTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"input_schema"`
+	// Language 直接填进执行工厂 /function/execute 的 language 字段。
+	// 沙箱控制面只认 python / javascript / shell，bash 会被 422 拒掉。
+	Language string `json:"language"`
+	// Wrap 说明客户端该如何把模型的入参组装成 code：
+	//   handler    —— 取 stub，拼上 "def handler(event):"，模型代码缩进进函数体，
+	//                 凭据与 bkn_context 走 event 下发（沿用既有 run_code 逻辑）。
+	//   cd_workdir —— 在模型给的命令前面拼一行 cd 到本次对话的工作目录。
+	// 新增取值必须同步客户端，故取值集合刻意保持极小。
+	Wrap string `json:"wrap"`
+}
+
+const (
+	// ptcWrapHandler 见 PTCTool.Wrap。
+	ptcWrapHandler = "handler"
+	// ptcWrapCdWorkdir 见 PTCTool.Wrap。
+	ptcWrapCdWorkdir = "cd_workdir"
+)
+
+// ptcRunCodeSchema run_code 的入参。
+const ptcRunCodeSchema = `{
+  "type": "object",
+  "properties": {
+    "code": {"type": "string", "description": "要执行的 Python 代码。只有 print 的内容会返回。"},
+    "timeout": {"type": "integer", "default": 60, "description": "执行超时秒数"}
+  },
+  "required": ["code"]
+}`
+
+// ptcRunShellSchema run_shell 的入参。
+const ptcRunShellSchema = `{
+  "type": "object",
+  "properties": {
+    "command": {"type": "string", "description": "要执行的 shell 命令，交给 sh -c 执行，可以用管道和 &&。"},
+    "timeout": {"type": "integer", "default": 60, "description": "执行超时秒数"}
+  },
+  "required": ["command"]
+}`
+
+// ptcRunShellDescription run_shell 的工具描述。
+//
+// 刻意把边界写死：run_shell 一行就能发，run_code 要构思一段脚本，模型天然偏向
+// 前者。不划清楚，它会用 curl 手搓 MCP 调用，把「一段脚本解决整个问题」重新拆成
+// 一轮一次调用——那正是 PTC 要消灭的东西。
+const ptcRunShellDescription = `在沙箱里执行一条 shell 命令，返回 stdout 与 stderr。
+
+工作目录与 ` + "`run_code`" + ` 相同，两个工具看到的是同一批文件：` + "`run_code`" + ` 写下的
+结果这里能直接 ` + "`wc`" + `、` + "`head`" + `、` + "`grep`" + `。
+
+**只用于查看环境与文件**：看目录、查行数、抽取片段、看磁盘占用、确认某个命令存在。
+
+**不要用它取 BKN 数据。** 知识网络、对象类、实例、SQL 一律走 ` + "`run_code`" + `——那边有
+现成的函数，这里没有凭据，用 ` + "`curl`" + ` 手搓 MCP 调用会把一次任务拆成很多轮，
+既慢又容易错。
+
+沙箱是完整的 Linux：coreutils、` + "`grep`" + `、` + "`awk`" + `、` + "`sed`" + `、` + "`jq`" + `、` + "`curl`" + `、
+` + "`python3`" + ` 都在。
+
+示例：
+` + "```" + `
+ls -la && wc -l *.json
+head -c 400 rows.json
+du -sh . && df -h /workspace
+` + "```" + `
+`
 
 // 生命周期工具由调用方按轮次接管，沙箱沿用同一个 interaction，不自行开关——
 // 否则一次任务会分裂成两条互不关联的证据链。
@@ -302,8 +376,11 @@ try/except 包住并 print 出关键中间信息，让一次执行既拿到答�
 
 ## 执行 shell 命令
 
-没有单独的 shell 工具，也不需要——沙箱是一台完整的 Linux，用 ` + "`subprocess`" + ` 即可，
-和取数、聚合写在同一段脚本里：
+另有一个 ` + "`run_shell`" + ` 工具，和这里共用工作目录，用来单独看一眼环境或文件
+（` + "`ls`" + `、` + "`wc`" + `、` + "`head`" + `）。
+
+但**只要 shell 是解题过程的一环，就写在这段脚本里**，用 ` + "`subprocess`" + ` 调，
+不要为它单开一轮——那就退回一次调用一轮了：
 
 ` + "```python" + `
 import subprocess
@@ -341,6 +418,8 @@ rows = json.loads(p.read_text()) if p.exists() else query_object_instance(...)["
 ` + "```" + `
 
 ` + "`exists()`" + ` 判断还是要写：换了对话、或者上一段脚本在落盘前就失败了，文件就不在。
+
+` + "`run_shell`" + ` 落在同一个目录里，两个工具看到的是同一批文件。
 
 ## 参数写不准时
 
@@ -382,7 +461,6 @@ const ptcStubPreamble = `"""BKN 能力的沙箱侧 stub —— 由 context-loade
 凭据与会话上下文经 _configure(event) 注入，由调用方在发起执行时下发。
 """
 
-import hashlib
 import json
 import os
 import pathlib
@@ -413,11 +491,13 @@ def _configure(event):
     _CFG.update(event)
     _SESSION.clear()
 
-    # conversation_id 直接做目录名不安全（可能含 / 或过长），取哈希前缀；缺失时
-    # 退到一个共用目录，行为与切分前一致，不会因为拿不到上下文就执行失败。
+    # 目录名由 conversation_id 归一化而来，不做哈希：run_shell 走 language=shell，
+    # 不经过本 stub，得在浏览器侧算出同一个路径才能进到同一个目录。而浏览器的
+    # crypto.subtle 在非 HTTPS 源下不可用（部署常是裸 HTTP），算不了 sha1。
+    # 归一化两边都能实现，且 ls /workspace 时还能直接看出是哪个对话。
     conversation = str((event.get("bkn") or {}).get("conversation_id") or "").strip()
-    name = "conv-" + hashlib.sha1(conversation.encode()).hexdigest()[:16] if conversation else "shared"
-    candidate = pathlib.Path("/workspace") / name
+    safe = "".join(c if (c.isalnum() or c in "_-") else "-" for c in conversation)[:64]
+    candidate = pathlib.Path("/workspace") / ("conv-" + safe if safe else "shared")
     try:
         candidate.mkdir(parents=True, exist_ok=True)
         os.chdir(candidate)
@@ -524,14 +604,42 @@ func BuildPTCToolkit(endpoint string, port int) (*PTCToolkit, error) {
 	if err != nil {
 		return nil, err
 	}
-	tools := ptcUsableTools(info)
+	return buildPTCToolkitFrom(ptcUsableTools(info), port)
+}
+
+// buildPTCToolkitFrom 从已筛好的工具目录渲染工具包。与 BuildPTCToolkit 分开，
+// 是为了让测试不必起一个真实端点就能覆盖工具表与版本号。
+func buildPTCToolkitFrom(tools []MCPToolInfo, port int) (*PTCToolkit, error) {
 	digest := renderPTCDigest(tools)
 	stub := renderPTCStub(tools)
-	sum := sha256.Sum256([]byte(digest + "\x00" + stub))
+	exposed := []PTCTool{
+		{
+			Name:        "run_code",
+			Description: digest,
+			InputSchema: json.RawMessage(ptcRunCodeSchema),
+			Language:    "python",
+			Wrap:        ptcWrapHandler,
+		},
+		{
+			Name:        "run_shell",
+			Description: ptcRunShellDescription,
+			InputSchema: json.RawMessage(ptcRunShellSchema),
+			Language:    "shell",
+			Wrap:        ptcWrapCdWorkdir,
+		},
+	}
+	// Version 覆盖工具全表：客户端按它缓存，只要模型看到的工具面变了就得失效，
+	// 光哈希 digest+stub 会让新增工具、改描述这类改动悄悄用着旧缓存。
+	fingerprint, err := json.Marshal(exposed)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(append(append([]byte(digest), 0), append([]byte(stub), fingerprint...)...))
 	return &PTCToolkit{
 		Version:       "sha256:" + hex.EncodeToString(sum[:]),
 		Digest:        digest,
 		Stub:          stub,
 		SandboxMCPURL: sandboxMCPURL(port),
+		Tools:         exposed,
 	}, nil
 }
