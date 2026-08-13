@@ -172,6 +172,14 @@ func main() {
 	}
 	logger.Info("VEGA Manager Init Catalog Health Check Worker Success")
 
+	// 资源归属同步：把「表属于哪个目录」推给 bkn-safe，目录上的授权才能到达
+	// 目录下的表（#800）。BKN_SAFE_URL 未配置时自动不启用。
+	osw := worker.NewOwnershipSyncWorker()
+	if err := osw.Start(); err != nil {
+		logger.Fatalf("Failed to start ownership sync worker: %v", err)
+	}
+	logger.Info("VEGA Manager Init Ownership Sync Worker Success")
+
 	// 创建并启动服务
 	server := &mgrService{
 		appSetting:    appSetting,
