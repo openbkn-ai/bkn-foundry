@@ -8,7 +8,7 @@
 package errors
 
 import (
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"ontology-query/locale"
 )

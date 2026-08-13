@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"strings"
 
-	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "bkn-backend/common/condition"
 	berrors "bkn-backend/errors"

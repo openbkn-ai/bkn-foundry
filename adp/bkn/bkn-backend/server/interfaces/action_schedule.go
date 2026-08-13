@@ -6,7 +6,7 @@
 
 package interfaces
 
-import "github.com/openbkn-ai/bkn-comm-go/audit"
+import "github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 
 // Schedule status constants
 const (

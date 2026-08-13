@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 func GenerateUniqueKey(id string, label map[string]string) string {

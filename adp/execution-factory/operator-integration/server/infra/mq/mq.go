@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	msqclient "github.com/openbkn-ai/bkn-comm-go/mq"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	msqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	mqclient "github.com/openbkn-ai/bkn-comm-go/mq"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

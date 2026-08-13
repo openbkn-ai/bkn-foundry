@@ -9,7 +9,7 @@ package version
 import (
 	"runtime"
 
-	"github.com/openbkn-ai/bkn-comm-go/audit"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 )
 
 var (

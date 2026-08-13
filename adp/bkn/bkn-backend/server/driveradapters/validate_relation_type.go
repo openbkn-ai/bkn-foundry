@@ -13,8 +13,8 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
-	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"

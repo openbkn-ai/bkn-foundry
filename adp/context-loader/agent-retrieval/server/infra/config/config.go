@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 
 	"github.com/creasty/defaults"
-	bknotel "github.com/openbkn-ai/bkn-comm-go/otel"
+	bknotel "github.com/openbkn-ai/bkn-foundry/comm-go/otel"
 	"github.com/spf13/viper"
 	yaml "gopkg.in/yaml.v3"
 

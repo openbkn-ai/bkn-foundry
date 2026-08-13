@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
 	"ontology-query/interfaces"
 )

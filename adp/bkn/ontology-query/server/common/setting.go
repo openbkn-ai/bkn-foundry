@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	libdb "github.com/openbkn-ai/bkn-comm-go/db"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/spf13/viper"
 
 	"ontology-query/version"

@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-comm-go/audit"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
+	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/smartystreets/goconvey/convey"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"

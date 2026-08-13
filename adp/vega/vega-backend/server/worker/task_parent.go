@@ -9,7 +9,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // isNotFoundError 区分父对象已删除和临时服务错误。

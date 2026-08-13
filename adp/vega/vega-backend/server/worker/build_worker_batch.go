@@ -12,7 +12,7 @@ import (
 	"sort"
 
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"

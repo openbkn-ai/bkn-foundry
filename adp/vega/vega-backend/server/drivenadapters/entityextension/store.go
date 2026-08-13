@@ -16,7 +16,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	libdb "github.com/openbkn-ai/bkn-comm-go/db"
+	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 
 	"vega-backend/common"
 )

@@ -8,8 +8,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"

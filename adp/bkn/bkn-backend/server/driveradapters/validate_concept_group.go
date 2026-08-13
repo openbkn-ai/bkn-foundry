@@ -10,7 +10,7 @@ import (
 	"context"
 	"strings"
 
-	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
+	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 
 	"bkn-backend/interfaces"
 )

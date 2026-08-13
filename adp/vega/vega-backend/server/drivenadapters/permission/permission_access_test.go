@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
-	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

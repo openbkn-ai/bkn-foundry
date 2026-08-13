@@ -120,8 +120,11 @@ func GetLanguageCtx(c *gin.Context) context.Context {
 
 // WithLanguage attaches a supported language to a context.
 func WithLanguage(ctx context.Context, lang Language) context.Context {
-	if _, ok := Languages[lang]; !ok {
+	canonical, ok := normalizeLanguage(lang)
+	if !ok {
 		lang = DefaultLanguage
+	} else {
+		lang = canonical
 	}
 	return context.WithValue(ctx, LanguageKey, lang)
 }

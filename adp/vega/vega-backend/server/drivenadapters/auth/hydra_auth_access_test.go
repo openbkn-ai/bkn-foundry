@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	hmock "github.com/openbkn-ai/bkn-comm-go/hydra/mock"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	hmock "github.com/openbkn-ai/bkn-foundry/comm-go/hydra/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

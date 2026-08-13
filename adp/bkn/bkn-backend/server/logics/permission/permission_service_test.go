@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	mqclient "github.com/openbkn-ai/bkn-comm-go/mq"
+	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
