@@ -500,3 +500,33 @@ func TestAccessibleResourcesAcrossLevels(t *testing.T) {
 		t.Errorf("ids = %v, want only l-1 (l-2 hangs under an ungranted top)", got)
 	}
 }
+
+// TestAccessibleResourcesSeesPubliclyGrantedAncestor closes the gap a review
+// found: Check's climb goes through Enforce, whose matcher honours the
+// "granted to everyone" subject, while the enumeration walks
+// GetImplicitPermissionsForUser, which does not. A catalog granted to everyone
+// would then allow its tables on the detail page and hide them from the list.
+func TestAccessibleResourcesSeesPubliclyGrantedAncestor(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-public")
+	ownedBy(t, db, "res-2", "cat-private")
+
+	mustNoErr(t, e.GrantObjectPermission(PublicAccessorID, "catalog", "cat-public", "resource_manage"))
+
+	const user = "u-nobody" // holds nothing of its own
+	ok, err := e.Check(user, "resource", "res-1", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("Check did not honour the public grant on the catalog")
+	}
+	ids, err := e.AccessibleResources(user, "resource", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != "res-1" {
+		t.Errorf("ids = %v, want [res-1] — enumeration must agree with Check", ids)
+	}
+}
