@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/segmentio/kafka-go"
 
@@ -63,15 +62,8 @@ func NewEmbeddingBuildWorker(appSetting *common.AppSetting) *embeddingWorker {
 	}
 }
 
-// HandleTask handles an embedding task from the queue.
-func (ew *embeddingWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.EmbeddingBuildTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal task message: %v", err)
-		return err
-	}
-
-	taskID := msg.TaskID
+// Run executes the embedding phase for one persisted build task.
+func (ew *embeddingWorker) Run(ctx context.Context, taskID string) error {
 	buildTaskInfo, err := ew.bts.InternalGetByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("get build task failed: %w", err)
@@ -126,10 +118,9 @@ func (ew *embeddingWorker) HandleTask(ctx context.Context, task *asynq.Task) err
 	embed_err := ew.executeEmbedding(ctx, resource, buildTaskInfo)
 	logger.Infof("executeEmbedding completed")
 	if embed_err != nil {
-		update := interfaces.NewBuildTaskUpdate().WithErrorMsg(embed_err.Error())
-		if isAsynqFinalRetry(ctx) {
-			update = update.WithStatus(interfaces.BuildTaskStatusFailed)
-		}
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg(embed_err.Error())
 		_, err = ew.bts.InternalUpdateStatus(ctx, nil, taskID, update)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
@@ -181,8 +172,8 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 	}
 	lastUpdateTime := time.Now()
 	updateInterval := 30 * time.Second // embedding速度慢，至少每30秒更新一次
-	consecutiveReadErrs := 0           // 连续非超时读错误计数，达到上限放弃本轮交给 asynq 重试
-	consecutiveCommitErrs := 0         // 连续位点提交失败计数，达到上限放弃本轮交给 asynq 重试
+	consecutiveReadErrs := 0           // Consecutive read errors are bounded before the local worker fails the task.
+	consecutiveCommitErrs := 0         // Consecutive commit errors are bounded before the local worker fails the task.
 	lastMessageTime := time.Now()
 	for {
 		// Check task status before each iteration
@@ -219,8 +210,7 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 			// 最后一次更新任务状态
 			update := interfaces.NewBuildTaskUpdate().WithVectorizedCount(totalProcessed)
 			_, _ = ew.bts.InternalUpdateStatus(context.Background(), nil, buildTaskInfo.ID, update)
-			// 必须返回错误：返回 nil 会让 asynq 把任务标记成功，重启后不再投递，
-			// 任务状态永久停在 running（界面"构建中"冻结），只能人工 stop→start 救活
+			// Return the cancellation so the local worker does not treat an interrupted phase as successful.
 			return ctx.Err()
 		default:
 			// 创建带超时的上下文，避免ReadMessage一直阻塞
@@ -250,7 +240,7 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 				} else {
 					logger.Errorf("Embedding task Failed to read message from Kafka: %v", err)
 					// 消费组协调连接死亡（broker 重启/rebalance）后读取永远失败，
-					// 原地重试只会让任务永久冻结：放弃本轮，交给 asynq 重试重建
+					// Repeated read failures indicate that this local execution can no longer make progress.
 					// reader 与消费组会话，从已提交位点续读
 					consecutiveReadErrs++
 					if consecutiveReadErrs >= embeddingKafkaMaxConsecutiveErrors {
@@ -324,7 +314,7 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 					}
 				}
 
-				// 索引名落账持久失败则不提交哨兵，整个任务交给 asynq 重试：
+				// Do not commit the sentinel when persisting the index name fails.
 				// 重启后从最后提交位点续读，哨兵会重新投递
 				if err := updateResourceIndexName(ctx, resource, ew.rs, indexName); err != nil {
 					logger.Errorf("Failed to update resource index name: %v", err)
@@ -401,7 +391,7 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 			// Commit the message to avoid reprocessing
 			if err := ew.commitMessages(reader, msg); err != nil {
 				logger.Errorf("Failed to commit message: %v", err)
-				// 会话死亡后提交永远失败，位点不再推进：放弃本轮交给 asynq 重建会话，
+				// A dead consumer session cannot advance offsets; fail this local execution.
 				// 已处理未提交的文档重放时由 per-doc 去重计数兜底
 				consecutiveCommitErrs++
 				if consecutiveCommitErrs >= embeddingKafkaMaxConsecutiveErrors {
@@ -451,12 +441,12 @@ func (ew *embeddingWorker) vectorizeDocWithRetry(ctx context.Context, indexName,
 	return vErr
 }
 
-// 连续非超时读错误/提交失败达到该次数即放弃本轮执行：消费组协调连接一旦死亡，
-// 旧 reader 上的读写永远失败，必须由 asynq 重试重建会话
+// A dead reader cannot recover in place. Bound consecutive read and commit failures
+// so the local execution terminates instead of freezing permanently.
 const embeddingKafkaMaxConsecutiveErrors = 3
 
-// 位点提交的有界超时：asynq 任务 ctx 无截止时间，消费组会话死亡后 kafka-go 的
-// CommitMessages 会在无界 ctx 上永久阻塞，消费循环静默冻结且不响应 stop
+// Offset commits use a bounded timeout because kafka-go may otherwise block after
+// the consumer-group session dies and prevent the loop from responding to stop.
 const embeddingCommitTimeout = 30 * time.Second
 
 // 批量任务连续读不到任何消息的重建阈值（见循环内看门狗注释）

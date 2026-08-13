@@ -192,7 +192,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 				assert.True(t, *params.Applied)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
-				assert.Equal(t, "create_time", params.Sort)
+				assert.Equal(t, interfaces.SemanticUnderstandingTaskSortCreateTime, params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 				return []*interfaces.SemanticUnderstandingTaskSummary{
 					{
@@ -227,7 +227,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 					interfaces.SemanticUnderstandingTaskStatusPending,
 					interfaces.SemanticUnderstandingTaskStatusRunning,
 				}, params.Statuses)
-				assert.Equal(t, "create_time", params.Sort)
+				assert.Equal(t, interfaces.SemanticUnderstandingTaskSortCreateTime, params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil
 			})

@@ -348,7 +348,7 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 		return nil
 	}
 
-	// Create discover task：这里会创建一个task然后发送到redis mq里面去
+	// Create a pending discover task; the local database-backed worker will pick it up.
 	_, err = dss.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
 		CatalogID:   schedule.CatalogID,
 		TriggerType: interfaces.DiscoverTaskTriggerScheduled,

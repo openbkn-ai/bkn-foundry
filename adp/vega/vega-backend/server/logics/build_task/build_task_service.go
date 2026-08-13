@@ -12,15 +12,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
@@ -43,11 +40,10 @@ var (
 	btService     interfaces.BuildTaskService
 )
 
-const debugQueueSize = 100
+const buildTaskDispatchBuffer = 1
 
 type buildTaskService struct {
 	appSetting *common.AppSetting
-	client     *asynq.Client
 	bta        interfaces.BuildTaskAccess
 	cs         interfaces.CatalogService
 	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
@@ -55,7 +51,7 @@ type buildTaskService struct {
 	rs         interfaces.ResourceService
 	ums        interfaces.UserMgmtService
 
-	debugTaskQueue chan *asynq.Task
+	dispatchCh chan struct{}
 }
 
 var activeBuildTaskStatuses = []string{
@@ -67,13 +63,8 @@ var activeBuildTaskStatuses = []string{
 // NewBuildTaskService creates a new BuildTaskService.
 func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceService) interfaces.BuildTaskService {
 	btServiceOnce.Do(func() {
-		var client *asynq.Client
-		if !common.GetDebugMode() && logics.AQA != nil {
-			client = logics.AQA.CreateClient()
-		}
 		btService = &buildTaskService{
 			appSetting: appSetting,
-			client:     client,
 			bta:        logics.BTA,
 			cs:         catalog.NewCatalogService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
@@ -81,25 +72,21 @@ func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceSe
 			rs:         rs,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
-			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
+			dispatchCh: make(chan struct{}, buildTaskDispatchBuffer),
 		}
 	})
 	return btService
 }
 
-// DebugTaskQueue returns the in-process build task queue used in DEBUG_MODE.
-func (bts *buildTaskService) DebugTaskQueue() <-chan *asynq.Task {
-	return bts.debugTaskQueue
+func (bts *buildTaskService) DispatchSignal() <-chan struct{} {
+	return bts.dispatchCh
 }
 
-// EnqueueDebugTask enqueues a build task to the singleton in-process queue used in DEBUG_MODE.
-func EnqueueDebugTask(task *asynq.Task) bool {
-	service, ok := btService.(*buildTaskService)
-	if !ok {
-		return false
+func (bts *buildTaskService) RequestDispatch() {
+	select {
+	case bts.dispatchCh <- struct{}{}:
+	default:
 	}
-	service.debugTaskQueue <- task
-	return true
 }
 
 // Create creates a new build task. resource_id is taken from req.
@@ -171,11 +158,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 			WithErrorDetails(err.Error())
 	}
 
-	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 pending（界面"排队中"）。
-	// 入队失败仅记日志，任务保持 pending，由 Build Task reconciler 自动重新入队。
-	if err := bts.enqueueTask(ctx, buildTask, false); err != nil {
-		otellog.LogError(ctx, "Enqueue build task failed", err)
-	}
+	bts.RequestDispatch()
 
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
@@ -396,45 +379,6 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 			WithErrorDetails(err.Error())
 	}
 	return embeddingModel, modelDimensions, nil
-}
-
-// enqueueTask 按任务模式投递到 asynq 队列。
-func (bts *buildTaskService) enqueueTask(_ context.Context, buildTask *interfaces.BuildTask, reset bool) error {
-	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
-		TaskID: buildTask.ID,
-		Reset:  reset,
-	})
-	if err != nil {
-		return err
-	}
-
-	typename := interfaces.BuildTaskTypeBatch
-	if buildTask.Mode == interfaces.BuildTaskModeStreaming {
-		typename = interfaces.BuildTaskTypeStreaming
-	}
-	asynqTask := asynq.NewTask(typename, payload)
-	if common.GetDebugMode() || bts.client == nil {
-		bts.debugTaskQueue <- asynqTask
-		logger.Infof("Build task %s enqueued for debug execution", buildTask.ID)
-		return nil
-	}
-
-	if _, err := bts.client.Enqueue(asynqTask,
-		asynq.Queue(interfaces.DefaultQueue),
-		asynq.TaskID(buildTask.ID),
-		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
-		asynq.Timeout(math.MaxInt64),
-		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
-	); err != nil {
-		if errors.Is(err, asynq.ErrTaskIDConflict) {
-			logger.Infof("Build task %s is already enqueued", buildTask.ID)
-			return nil
-		}
-		return err
-	}
-
-	logger.Infof("Build task %s enqueued for execution", buildTask.ID)
-	return nil
 }
 
 // GetByID retrieves a build task by ID.
@@ -718,7 +662,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	return buildTasks, total, nil
 }
 
-// Start transitions a stopped or failed task to pending before enqueueing it.
+// Start transitions a stopped or failed task to pending before signaling the local worker.
 // The worker persists running only after it claims the queued task.
 func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Start build task")
@@ -771,10 +715,18 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return err
 	}
 
-	// 入队前先置回 pending：worker 出队时会跳过 stopped/stopping 的任务
-	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
-	// running 仍由 worker 实际执行时落账。
+	// Persist pending before signaling the worker. This prevents a stopped task
+	// from being skipped and keeps the running transition owned by execution.
 	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusPending)
+	if reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeFull {
+		update = update.
+			WithTotalCount(0).
+			WithSyncedCount(0).
+			WithVectorizedCount(0).
+			WithSyncedMark("").
+			WithErrorMsg("").
+			WithFailureDetail("")
+	}
 	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
@@ -787,9 +739,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 			WithErrorDetails("build task status changed while starting; retry with the latest task state")
 	}
 
-	if err := bts.enqueueTask(ctx, buildTask, reset); err != nil {
-		otellog.LogError(ctx, "Enqueue build task failed", err)
-	}
+	bts.RequestDispatch()
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -816,11 +766,13 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	}
 
 	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
-		ResourceID:            buildTask.ResourceID,
-		Statuses:              []string{interfaces.BuildTaskStatusCompleted},
-		OrderBy:               interfaces.BuildTaskOrderByCreatedAt,
-		Order:                 interfaces.DESC_DIRECTION,
+		PaginationQueryParams: interfaces.PaginationQueryParams{
+			Limit:     1,
+			Sort:      interfaces.BuildTaskSortCreateTime,
+			Direction: interfaces.DESC_DIRECTION,
+		},
+		ResourceID: buildTask.ResourceID,
+		Statuses:   []string{interfaces.BuildTaskStatusCompleted},
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Check latest completed build task failed", err)

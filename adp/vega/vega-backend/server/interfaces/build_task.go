@@ -17,16 +17,11 @@ const (
 	BuildTaskStatusFailed    string = "failed"
 	BuildTaskStatusCancelled string = "cancelled"
 
-	BuildTaskTypeBatch     string = "batch:execute"
-	BuildTaskTypeStreaming string = "streaming:execute"
-	BuildTaskTypeEmbedding string = "embedding:execute"
-
 	BuildTaskModeStreaming string = "streaming" // 流式
 	BuildTaskModeBatch     string = "batch"     // 批量
 
-	// build-task 列表排序维度(query: order_by)
-	BuildTaskOrderByCreatedAt string = "created_at" // 按创建时间
-	BuildTaskOrderByUpdatedAt string = "updated_at" // 按更新时间
+	BuildTaskSortCreateTime string = "create_time"
+	BuildTaskSortUpdateTime string = "update_time"
 
 	BuildTaskExecuteTypeIncremental string = "incremental" // 增量
 	BuildTaskExecuteTypeFull        string = "full"        // 全量
@@ -38,11 +33,16 @@ const (
 	BUILD_PREFIX = "vega-build"
 )
 
-// BUILD_TASK_SORT is a whitelist of supported order_by values. Values are unused;
+// BUILD_TASK_SORT is a whitelist of supported sort values. Values are unused;
 // the data access layer owns the mapping from API fields to database columns.
 var BUILD_TASK_SORT = map[string]string{
-	BuildTaskOrderByCreatedAt: "",
-	BuildTaskOrderByUpdatedAt: "",
+	BuildTaskSortCreateTime: "",
+	BuildTaskSortUpdateTime: "",
+}
+
+var ConnectorClassMapping = map[string]string{
+	ConnectorTypeMySQL:      "io.debezium.connector.mysql.MySqlConnector",
+	ConnectorTypePostgreSQL: "io.debezium.connector.postgresql.PostgresConnector",
 }
 
 // BuildTask represents a build task entity.
@@ -197,8 +197,6 @@ type BuildTasksQueryParams struct {
 	CatalogID  string
 	Statuses   []string // 多值状态过滤(IN);空为不过滤
 	Mode       string
-	OrderBy    string // created_at|updated_at；缺省 created_at
-	Order      string // asc|desc；缺省 desc
 }
 
 type KeyValue struct {

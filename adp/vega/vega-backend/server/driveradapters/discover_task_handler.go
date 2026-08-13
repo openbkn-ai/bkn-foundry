@@ -34,7 +34,7 @@ func parseDiscoverTaskListParams(ctx context.Context, c *gin.Context) (interface
 
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "create_time")
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.DiscoverTaskSortCreateTime)
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx,

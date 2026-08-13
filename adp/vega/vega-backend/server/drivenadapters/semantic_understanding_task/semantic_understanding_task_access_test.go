@@ -130,7 +130,7 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		task := sampleSemanticUnderstandingTask()
 
 		params := interfaces.SemanticUnderstandingTaskQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: "create_time", Direction: interfaces.ASC_DIRECTION},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: interfaces.SemanticUnderstandingTaskSortCreateTime, Direction: interfaces.ASC_DIRECTION},
 			Scope:                 interfaces.SemanticUnderstandingTaskScopeResource,
 			CatalogID:             "catalog-1",
 			ResourceID:            "resource-1",

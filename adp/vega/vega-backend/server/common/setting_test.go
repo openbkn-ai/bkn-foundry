@@ -99,24 +99,6 @@ func TestSetServiceSettings(t *testing.T) {
 				"user":     "os-user",
 				"password": "os-pass",
 			},
-			redisServiceName: {
-				"connecttype": "sentinel",
-				"connectinfo": map[string]any{
-					"username":         "redis-user",
-					"password":         "redis-pass",
-					"sentinelhost":     "sentinel",
-					"sentinelport":     26379,
-					"sentinelusername": "sentinel-user",
-					"sentinelpassword": "sentinel-pass",
-					"mastergroupname":  "mymaster",
-					"host":             "redis",
-					"port":             6379,
-					"masterhost":       "master",
-					"masterport":       6379,
-					"slavehost":        "slave",
-					"slaveport":        6380,
-				},
-			},
 			hydraAdminServiceName: {
 				"protocol": "http",
 				"host":     "hydra",
@@ -156,7 +138,6 @@ func TestSetServiceSettings(t *testing.T) {
 		SetHydraAdminSetting()
 		SetPermissionSetting()
 		SetUserMgmtSetting()
-		SetRedisSetting()
 		SetKafkaConnectSetting()
 		SetMfModelManagerSetting()
 		SetMfModelApiSetting()
@@ -186,13 +167,6 @@ func TestSetServiceSettings(t *testing.T) {
 		assert.Equal(t, 4445, appSetting.HydraAdminSetting.HydraAdminPort)
 		assert.Equal(t, "http://permission:8080/api/authorization/v1", appSetting.PermissionUrl)
 		assert.Equal(t, "https://users:8443", appSetting.UserMgmtUrl)
-
-		assert.Equal(t, "sentinel", appSetting.RedisSetting.ConnectType)
-		assert.Equal(t, "redis-user", appSetting.RedisSetting.Username)
-		assert.Equal(t, "sentinel", appSetting.RedisSetting.SentinelHost)
-		assert.Equal(t, "mymaster", appSetting.RedisSetting.MasterGroupName)
-		assert.Equal(t, "redis", appSetting.RedisSetting.Host)
-		assert.Equal(t, 6380, appSetting.RedisSetting.SlavePort)
 
 		assert.Equal(t, "connect", appSetting.KafkaConnectSetting.Host)
 		assert.Equal(t, 8083, appSetting.KafkaConnectSetting.Port)

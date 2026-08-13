@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
@@ -42,8 +41,7 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 					ID: "t1", ResourceID: "r1", Status: status,
 				}, nil)
 
-				task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-				require.NoError(t, ew.HandleTask(context.Background(), task))
+				require.NoError(t, ew.Run(context.Background(), "t1"))
 			})
 		}
 	})
@@ -73,8 +71,7 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 			interfaces.BuildTaskStatusRunning).
 			Return(true, nil)
 
-		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, ew.HandleTask(context.Background(), task))
+		require.NoError(t, ew.Run(context.Background(), "t1"))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
 	})
@@ -99,8 +96,7 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 				WithErrorMsg("catalog is disabled")).
 			Return(true, nil)
 
-		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, ew.HandleTask(context.Background(), task))
+		require.NoError(t, ew.Run(context.Background(), "t1"))
 	})
 
 	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
@@ -124,13 +120,12 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 			interfaces.BuildTaskStatusRunning).
 			Return(true, nil)
 
-		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, ew.HandleTask(context.Background(), task))
+		require.NoError(t, ew.Run(context.Background(), "t1"))
 	})
 }
 
 func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
-	t.Run("stops without retry when batch task becomes failed", func(t *testing.T) {
+	t.Run("stops when batch task becomes failed", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 
@@ -144,7 +139,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
 	})
 
-	t.Run("ctx canceled returns error for requeue", func(t *testing.T) {
+	t.Run("ctx canceled returns an execution error", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 
@@ -161,7 +156,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
-	t.Run("persistent commit error gives up for retry", func(t *testing.T) {
+	t.Run("persistent commit error fails the local execution", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
@@ -191,7 +186,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		assert.Contains(t, err.Error(), "commit")
 	})
 
-	t.Run("persistent read error gives up for retry", func(t *testing.T) {
+	t.Run("persistent read error fails the local execution", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 		deadConn := errors.New("committing message: use of closed network connection")

@@ -132,8 +132,8 @@ func TestParseBuildTaskListParams(t *testing.T) {
 			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
 				assert.Equal(t, 0, got.Offset)
 				assert.Equal(t, 20, got.Limit)
-				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
-				assert.Equal(t, interfaces.DESC_DIRECTION, got.Order)
+				assert.Equal(t, interfaces.BuildTaskSortCreateTime, got.Sort)
+				assert.Equal(t, interfaces.DESC_DIRECTION, got.Direction)
 				assert.Empty(t, got.Statuses)
 			},
 		},
@@ -152,15 +152,15 @@ func TestParseBuildTaskListParams(t *testing.T) {
 			},
 		},
 		{
-			name:  "order by and order honored",
-			query: "order_by=created_at&order=asc",
+			name:  "sort and direction honored",
+			query: "sort=create_time&direction=asc",
 			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
-				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
-				assert.Equal(t, interfaces.ASC_DIRECTION, got.Order)
+				assert.Equal(t, interfaces.BuildTaskSortCreateTime, got.Sort)
+				assert.Equal(t, interfaces.ASC_DIRECTION, got.Direction)
 			},
 		},
-		{name: "invalid order by returns error", query: "order_by=bogus", wantErr: true},
-		{name: "invalid order returns error", query: "order=sideways", wantErr: true},
+		{name: "invalid sort returns error", query: "sort=bogus", wantErr: true},
+		{name: "invalid direction returns error", query: "direction=sideways", wantErr: true},
 		{name: "invalid status returns error", query: "status=running&status=nope", wantErr: true},
 		{name: "comma-separated status returns error", query: "status=running,pending", wantErr: true},
 		{name: "invalid mode returns error", query: "mode=nope", wantErr: true},
@@ -218,9 +218,9 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	}{
 		{name: "invalid offset", query: "?offset=-1", wantBody: "VegaBackend.InvalidParameter.Offset"},
 		{name: "invalid limit", query: "?limit=99999999", wantBody: "VegaBackend.InvalidParameter.Limit"},
-		{name: "invalid order_by", query: "?order_by=unknown_field", wantBody: "VegaBackend.InvalidParameter.Sort"},
-		{name: "removed default order_by", query: "?order_by=default", wantBody: "VegaBackend.InvalidParameter.Sort"},
-		{name: "invalid order", query: "?order=foo", wantBody: "VegaBackend.InvalidParameter.Direction"},
+		{name: "invalid sort", query: "?sort=unknown_field", wantBody: "VegaBackend.InvalidParameter.Sort"},
+		{name: "removed default sort", query: "?sort=default", wantBody: "VegaBackend.InvalidParameter.Sort"},
+		{name: "invalid direction", query: "?direction=foo", wantBody: "VegaBackend.InvalidParameter.Direction"},
 		{name: "invalid status", query: "?status=foo", wantBody: "VegaBackend.BuildTask.InvalidStatus"},
 		{name: "invalid mode", query: "?mode=foo", wantBody: "VegaBackend.BuildTask.InvalidParameter.Mode"},
 	}
@@ -244,8 +244,8 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, params.OrderBy)
-				assert.Equal(t, interfaces.DESC_DIRECTION, params.Order)
+				assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
+				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 
@@ -267,12 +267,12 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 				assert.Equal(t, interfaces.BuildTaskModeBatch, params.Mode)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
-				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, params.OrderBy)
-				assert.Equal(t, interfaces.ASC_DIRECTION, params.Order)
+				assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
+				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, url+"?resource_id=res-1&catalog_id=cat-1&status=completed&mode=batch&offset=5&limit=10&order_by=created_at&order=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, url+"?resource_id=res-1&catalog_id=cat-1&status=completed&mode=batch&offset=5&limit=10&sort=create_time&direction=asc", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

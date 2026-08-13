@@ -360,11 +360,11 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 func buildOrderByClause(sort, direction string) string {
 	column := "f_create_time"
 	switch sort {
-	case "start_time":
+	case interfaces.DiscoverTaskSortStartTime:
 		column = "f_start_time"
-	case "finish_time":
+	case interfaces.DiscoverTaskSortFinishTime:
 		column = "f_finish_time"
-	case "create_time", "":
+	case interfaces.DiscoverTaskSortCreateTime, "":
 		column = "f_create_time"
 	}
 

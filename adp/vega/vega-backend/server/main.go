@@ -23,7 +23,6 @@ import (
 	_ "go.uber.org/automaxprocs"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/asynq"
 	"vega-backend/drivenadapters/auth"
 	"vega-backend/drivenadapters/bkn_agent"
 	"vega-backend/drivenadapters/build_task"
@@ -135,7 +134,6 @@ func main() {
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	}
 
-	logics.SetAsynqAccess(asynq.NewAsynqAccess(appSetting))
 	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))
 	logics.SetCatalogAccess(catalog.NewCatalogAccess(appSetting))
 	logics.SetCatalogHealthCheckScheduleAccess(catalog_health_check_schedule.NewCatalogHealthCheckScheduleAccess(appSetting))

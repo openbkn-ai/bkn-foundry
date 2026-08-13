@@ -60,7 +60,7 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		defer cleanup()
 
 		params := interfaces.DiscoverTaskQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: "create_time", Direction: "ASC"},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: interfaces.DiscoverTaskSortCreateTime, Direction: "ASC"},
 			CatalogID:             "catalog-1",
 			Statuses:              []string{interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskStatusPending},
 			Strategy:              interfaces.DiscoverStrategyFullSync,

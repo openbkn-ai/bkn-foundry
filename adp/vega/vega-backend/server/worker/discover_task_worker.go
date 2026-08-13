@@ -82,7 +82,7 @@ func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) {
 		tasks, _, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{
 				Limit:     dtw.queueSize,
-				Sort:      "create_time",
+				Sort:      interfaces.DiscoverTaskSortCreateTime,
 				Direction: interfaces.ASC_DIRECTION,
 			},
 			Statuses: []string{interfaces.DiscoverTaskStatusRunning},
@@ -134,8 +134,12 @@ func (dtw *DiscoverTaskWorker) fillQueue(ctx context.Context) {
 	}
 	limit := cap(dtw.queue)
 	tasks, _, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: limit, Sort: "create_time", Direction: interfaces.ASC_DIRECTION},
-		Statuses:              []string{interfaces.DiscoverTaskStatusPending},
+		PaginationQueryParams: interfaces.PaginationQueryParams{
+			Limit:     limit,
+			Sort:      interfaces.DiscoverTaskSortCreateTime,
+			Direction: interfaces.ASC_DIRECTION,
+		},
+		Statuses: []string{interfaces.DiscoverTaskStatusPending},
 	})
 	if err != nil {
 		logger.Errorf("List pending discover tasks failed: %v", err)

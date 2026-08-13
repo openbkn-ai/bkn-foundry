@@ -45,24 +45,6 @@ type CryptoSetting struct {
 	PublicKeyPath  string `mapstructure:"publicKeyPath"`  // RSA 公钥文件路径
 }
 
-// RedisSetting Redis 配置项
-type RedisSetting struct {
-	ConnectType      string
-	Username         string
-	Password         string
-	Host             string
-	Port             int
-	MasterHost       string
-	MasterPort       int
-	SlaveHost        string
-	SlavePort        int
-	SentinelHost     string
-	SentinelPort     int
-	SentinelUsername string
-	SentinelPassword string
-	MasterGroupName  string
-}
-
 // KafkaConnectSetting Kafka Connect 配置项
 type KafkaConnectSetting struct {
 	Host     string
@@ -103,8 +85,10 @@ type CatalogHealthCheckConfig struct {
 
 // TaskWorkerConfig configures local worker-pool concurrency for database-backed tasks.
 type TaskWorkerConfig struct {
-	SemanticWorkerCount int `mapstructure:"semanticWorkerCount"`
-	DiscoverWorkerCount int `mapstructure:"discoverWorkerCount"`
+	SemanticWorkerCount  int `mapstructure:"semanticWorkerCount"`
+	DiscoverWorkerCount  int `mapstructure:"discoverWorkerCount"`
+	BatchWorkerCount     int `mapstructure:"batchWorkerCount"`
+	StreamingWorkerCount int `mapstructure:"streamingWorkerCount"`
 }
 
 // AppSetting app配置项
@@ -123,7 +107,6 @@ type AppSetting struct {
 	MQSetting           libmq.MQSetting
 	OpenSearchSetting   rest.OpenSearchClientConfig
 	HydraAdminSetting   hydra.HydraAdminSetting
-	RedisSetting        RedisSetting
 	KafkaConnectSetting KafkaConnectSetting
 
 	PermissionUrl     string
@@ -142,7 +125,6 @@ const (
 	rdsServiceName            string = "rds"
 	mqServiceName             string = "mq"
 	opensearchServiceName     string = "opensearch"
-	redisServiceName          string = "redis"
 	permissionServiceName     string = "authorization-private"
 	userMgmtServiceName       string = "user-management"
 	hydraAdminServiceName     string = "hydra-admin"
@@ -238,8 +220,6 @@ func loadSetting(vp *viper.Viper) {
 	SetMQSetting()
 
 	SetOpenSearchSetting()
-
-	SetRedisSetting()
 
 	SetKafkaConnectSetting()
 
@@ -405,37 +385,6 @@ func SetUserMgmtSetting() {
 	port := setting["port"].(int)
 
 	appSetting.UserMgmtUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
-}
-
-// SetRedisSetting 设置 Redis 配置
-func SetRedisSetting() {
-	setting, ok := appSetting.DepServices[redisServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", redisServiceName)
-	}
-
-	connectInfo, ok := setting["connectinfo"].(map[string]any)
-	if !ok {
-		logger.Fatalf("service %s connectInfo not found in depServices", redisServiceName)
-	}
-
-	appSetting.RedisSetting = RedisSetting{
-		ConnectType:      setting["connecttype"].(string),
-		Username:         connectInfo["username"].(string),
-		Password:         connectInfo["password"].(string),
-		SentinelHost:     connectInfo["sentinelhost"].(string),
-		SentinelPort:     connectInfo["sentinelport"].(int),
-		SentinelUsername: connectInfo["sentinelusername"].(string),
-		SentinelPassword: connectInfo["sentinelpassword"].(string),
-		MasterGroupName:  connectInfo["mastergroupname"].(string),
-
-		Host:       connectInfo["host"].(string),
-		Port:       connectInfo["port"].(int),
-		MasterHost: connectInfo["masterhost"].(string),
-		MasterPort: connectInfo["masterport"].(int),
-		SlaveHost:  connectInfo["slavehost"].(string),
-		SlavePort:  connectInfo["slaveport"].(int),
-	}
 }
 
 // loadCryptoKeys 从文件加载 RSA 密钥

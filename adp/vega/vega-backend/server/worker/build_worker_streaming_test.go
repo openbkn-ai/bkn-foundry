@@ -9,7 +9,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -19,7 +18,7 @@ import (
 	vmock "vega-backend/interfaces/mock"
 )
 
-func TestStreamingBuildWorkerHandleTask(t *testing.T) {
+func TestStreamingBuildWorkerRun(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bts := vmock.NewMockBuildTaskService(ctrl)
@@ -48,8 +47,7 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 				return nil, errors.New("forbidden")
 			})
 
-		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
-		err := sh.HandleTask(context.Background(), task)
+		err := sh.Run(context.Background(), "t1")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "get catalog failed")
@@ -72,8 +70,7 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 			interfaces.BuildTaskStatusPending).
 			Return(false, nil)
 
-		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, sh.HandleTask(context.Background(), task))
+		require.NoError(t, sh.Run(context.Background(), "t1"))
 	})
 
 	t.Run("cancels task when resource was deleted", func(t *testing.T) {
@@ -93,8 +90,7 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
 			interfaces.BuildTaskStatusRunning).Return(true, nil)
 
-		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, worker.HandleTask(context.Background(), task))
+		require.NoError(t, worker.Run(context.Background(), "t1"))
 	})
 
 	t.Run("marks task failed for invalid streaming connector configuration", func(t *testing.T) {
@@ -126,8 +122,7 @@ func TestStreamingBuildWorkerHandleTask(t *testing.T) {
 				WithErrorMsg("PostgreSQL streaming build requires connector_config.database")).
 			Return(true, nil)
 
-		task := asynq.NewTask("build:streaming", workerBuildTaskPayload(t, interfaces.StreamingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, sh.HandleTask(context.Background(), task))
+		require.NoError(t, sh.Run(context.Background(), "t1"))
 	})
 }
 

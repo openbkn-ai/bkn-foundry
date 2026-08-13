@@ -18,7 +18,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 
 	"vega-backend/common"
@@ -92,7 +91,7 @@ func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context
 		tasks, _, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{
 				Limit:     sutw.queueSize,
-				Sort:      "create_time",
+				Sort:      interfaces.SemanticUnderstandingTaskSortCreateTime,
 				Direction: interfaces.ASC_DIRECTION,
 			},
 			Statuses: []string{interfaces.SemanticUnderstandingTaskStatusRunning},
@@ -149,7 +148,7 @@ func (sutw *SemanticUnderstandingTaskWorker) fillQueue(ctx context.Context) {
 	tasks, _, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{
 			Limit:     limit,
-			Sort:      "create_time",
+			Sort:      interfaces.SemanticUnderstandingTaskSortCreateTime,
 			Direction: interfaces.ASC_DIRECTION,
 		},
 		Statuses: []string{interfaces.SemanticUnderstandingTaskStatusPending},
@@ -205,17 +204,6 @@ func (sutw *SemanticUnderstandingTaskWorker) removeInFlight(id string) {
 	sutw.mu.Lock()
 	defer sutw.mu.Unlock()
 	delete(sutw.inFlight, id)
-}
-
-// HandleTask runs a semantic-understanding task through bkn-agent and persists the result.
-func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.SemanticUnderstandingTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal semantic understanding task message: %v", err)
-		return err
-	}
-
-	return sutw.Run(ctx, msg.TaskID)
 }
 
 // Run executes a semantic-understanding task selected from the task table.

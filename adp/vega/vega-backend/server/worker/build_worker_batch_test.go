@@ -11,8 +11,6 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,11 +26,12 @@ func TestBatchBuildExecuteType(t *testing.T) {
 		ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 	}
 
-	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(incrementalTask, false))
-	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(incrementalTask, true))
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(incrementalTask))
 	fullTask := &interfaces.BuildTask{Mode: interfaces.BuildTaskModeBatch, ExecuteType: interfaces.BuildTaskExecuteTypeFull}
-	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(fullTask, false))
-	assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, batchBuildExecuteType(fullTask, true))
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, batchBuildExecuteType(fullTask))
+	fullTask.SyncedMark = `{"id":100}`
+	fullTask.SyncedCount = 100
+	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(fullTask))
 }
 
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
@@ -66,8 +65,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 				return nil, errors.New("forbidden")
 			})
 
-		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bbw.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.Run(context.Background(), "t1"))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
 	})
@@ -91,8 +89,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			interfaces.BuildTaskStatusPending).
 			Return(false, nil)
 
-		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bbw.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.Run(context.Background(), "t1"))
 	})
 
 	t.Run("cancels task when resource was deleted", func(t *testing.T) {
@@ -112,8 +109,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
 			interfaces.BuildTaskStatusRunning).Return(true, nil)
 
-		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bbw.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.Run(context.Background(), "t1"))
 	})
 
 	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
@@ -140,8 +136,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("catalog deleted"),
 			interfaces.BuildTaskStatusRunning).Return(true, nil)
 
-		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bbw.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.Run(context.Background(), "t1"))
 	})
 
 	t.Run("does not switch local index when build fails", func(t *testing.T) {
@@ -179,8 +174,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 				WithErrorMsg("get catalog failed: catalog down")).
 			Return(true, nil)
 
-		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, bbw.HandleTask(context.Background(), task))
+		require.NoError(t, bbw.Run(context.Background(), "t1"))
 		assert.Equal(t, interfaces.BuildIndexName("r1", "old-task"), resource.LocalIndexName)
 	})
 }
@@ -191,7 +185,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		enqueueCalled := false
 		patches := gomonkey.ApplyFunc(sendEmbeddingTask,
-			func(*asynq.Client, string) error {
+			func(context.Context, chan<- string, string) error {
 				enqueueCalled = true
 				return nil
 			})
@@ -513,12 +507,4 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 func workerAccountFromCtx(ctx context.Context) (interfaces.AccountInfo, bool) {
 	ai, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	return ai, ok
-}
-
-func workerBuildTaskPayload(t *testing.T, msg any) []byte {
-	t.Helper()
-
-	payload, err := sonic.Marshal(msg)
-	require.NoError(t, err)
-	return payload
 }

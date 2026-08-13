@@ -10,19 +10,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/mohae/deepcopy"
 	"github.com/segmentio/kafka-go"
 
-	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
-	"vega-backend/logics/build_task"
 	resourcelogic "vega-backend/logics/resource"
 )
 
@@ -117,28 +113,12 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 }
 
 func claimBuildTaskExecution(ctx context.Context, bts interfaces.BuildTaskService, taskID string) (bool, error) {
-	allowedStatuses := []string{interfaces.BuildTaskStatusPending}
-	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
-		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
-	}
 	return bts.InternalUpdateStatus(ctx, nil, taskID,
 		interfaces.NewBuildTaskUpdate().
 			WithStatus(interfaces.BuildTaskStatusRunning).
 			WithErrorMsg(""),
-		allowedStatuses...,
+		interfaces.BuildTaskStatusPending,
 	)
-}
-
-func isAsynqFinalRetry(ctx context.Context) bool {
-	retryCount, ok := asynq.GetRetryCount(ctx)
-	if !ok {
-		return false
-	}
-	maxRetry, ok := asynq.GetMaxRetry(ctx)
-	if !ok {
-		return false
-	}
-	return retryCount >= maxRetry
 }
 
 // isBuildTaskTerminal reports statuses that background workers must never revive.
@@ -385,36 +365,17 @@ func indexFeatureFieldName(prop *interfaces.Property, feature interfaces.Propert
 	return prop.Name
 }
 
-// sendEmbeddingTask sends a embedding task to the queue
-func sendEmbeddingTask(client *asynq.Client, taskID string) error {
-	embeddingTaskMsg := interfaces.EmbeddingBuildTaskMessage{
-		TaskID: taskID,
+// sendEmbeddingTask hands an internal build phase to the bounded local queue.
+func sendEmbeddingTask(ctx context.Context, queue chan<- string, taskID string) error {
+	if queue == nil {
+		return errors.New("embedding task queue is not initialized")
 	}
-	payload, err := sonic.Marshal(embeddingTaskMsg)
-	if err != nil {
-		return err
-	} else {
-		embeddingTask := asynq.NewTask(interfaces.BuildTaskTypeEmbedding, payload)
-		if common.GetDebugMode() || client == nil {
-			if !build_task.EnqueueDebugTask(embeddingTask) {
-				return fmt.Errorf("debug build task queue is not initialized")
-			}
-			return nil
-		}
-		_, err = client.Enqueue(embeddingTask,
-			asynq.Queue(interfaces.DefaultQueue),
-			asynq.TaskID(fmt.Sprintf("%s-%s", interfaces.BuildTaskTypeEmbedding, taskID)),
-			asynq.MaxRetry(interfaces.TaskMaxRetryCount),
-			asynq.Timeout(math.MaxInt64),                                                  // 永不超时
-			asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)), // 永不过期
-		)
-		if err != nil {
-			if !errors.Is(err, asynq.ErrTaskIDConflict) {
-				return err
-			}
-		}
+	select {
+	case queue <- taskID:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return nil
 }
 
 // sendEmbeddingMessage sends a document ID to Kafka for embedding

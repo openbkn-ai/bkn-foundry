@@ -74,7 +74,7 @@ func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 			assert.Equal(t, []string{interfaces.DiscoverTaskStatusRunning}, params.Statuses)
 			assert.Equal(t, 2, params.Limit)
-			assert.Equal(t, "create_time", params.Sort)
+			assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
 		})
@@ -97,7 +97,7 @@ func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
 		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 			assert.Equal(t, 2, params.Limit)
 			assert.Equal(t, []string{interfaces.DiscoverTaskStatusPending}, params.Statuses)
-			assert.Equal(t, "create_time", params.Sort)
+			assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, 1, nil
 		})

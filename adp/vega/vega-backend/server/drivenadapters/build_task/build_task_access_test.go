@@ -268,14 +268,13 @@ func TestBuildTaskAccessList(t *testing.T) {
 			PaginationQueryParams: interfaces.PaginationQueryParams{
 				Offset:    5,
 				Limit:     10,
+				Sort:      interfaces.BuildTaskSortCreateTime,
 				Direction: interfaces.ASC_DIRECTION,
 			},
 			ResourceID: task.ResourceID,
 			CatalogID:  task.CatalogID,
 			Statuses:   []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending},
 			Mode:       interfaces.BuildTaskModeBatch,
-			OrderBy:    interfaces.BuildTaskOrderByCreatedAt,
-			Order:      interfaces.ASC_DIRECTION,
 		}
 
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_build_task WHERE f_resource_id = ? AND f_catalog_id = ? AND f_status IN (?,?) AND f_mode = ?")).
@@ -383,22 +382,22 @@ func TestBuildTaskAccessDelete(t *testing.T) {
 }
 
 func TestBuildOrderByClause(t *testing.T) {
-	t.Run("empty order_by defaults to created_at desc", func(t *testing.T) {
+	t.Run("empty sort defaults to create_time desc", func(t *testing.T) {
 		assert.Equal(t, "f_create_time DESC", buildOrderByClause("", "asc"))
 	})
 
-	t.Run("unknown order_by falls back to created_at desc", func(t *testing.T) {
+	t.Run("unknown sort falls back to create_time desc", func(t *testing.T) {
 		assert.Equal(t, "f_create_time DESC", buildOrderByClause("bogus", "asc"))
 	})
 
-	t.Run("created_at follows order direction without tie breaker", func(t *testing.T) {
-		assert.Equal(t, "f_create_time ASC", buildOrderByClause(interfaces.BuildTaskOrderByCreatedAt, "asc"))
-		assert.Equal(t, "f_create_time DESC", buildOrderByClause(interfaces.BuildTaskOrderByCreatedAt, "desc"))
+	t.Run("create_time follows direction", func(t *testing.T) {
+		assert.Equal(t, "f_create_time ASC", buildOrderByClause(interfaces.BuildTaskSortCreateTime, "asc"))
+		assert.Equal(t, "f_create_time DESC", buildOrderByClause(interfaces.BuildTaskSortCreateTime, "desc"))
 	})
 
-	t.Run("updated_at follows order direction without tie breaker", func(t *testing.T) {
-		assert.Equal(t, "f_update_time ASC", buildOrderByClause(interfaces.BuildTaskOrderByUpdatedAt, "asc"))
-		assert.Equal(t, "f_update_time DESC", buildOrderByClause(interfaces.BuildTaskOrderByUpdatedAt, "desc"))
+	t.Run("update_time follows direction", func(t *testing.T) {
+		assert.Equal(t, "f_update_time ASC", buildOrderByClause(interfaces.BuildTaskSortUpdateTime, "asc"))
+		assert.Equal(t, "f_update_time DESC", buildOrderByClause(interfaces.BuildTaskSortUpdateTime, "desc"))
 	})
 
 }

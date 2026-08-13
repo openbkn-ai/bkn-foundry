@@ -12,7 +12,6 @@ import (
 	"sort"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/segmentio/kafka-go"
 
@@ -30,25 +29,21 @@ import (
 // batchBuildWorker handles build tasks.
 type batchBuildWorker struct {
 	appSetting  *common.AppSetting
-	client      *asynq.Client
 	bts         interfaces.BuildTaskService
 	cf          interfaces.ConnectorFactory
 	cs          interfaces.CatalogService
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
 	rs          interfaces.ResourceService
+
+	embeddingQueue chan<- string
 }
 
 // NewBatchBuildWorker creates a new build worker.
 func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
-	var client *asynq.Client
-	if !common.GetDebugMode() && logics.AQA != nil {
-		client = logics.AQA.CreateClient()
-	}
 	rs := resource.NewResourceService(appSetting)
 	return &batchBuildWorker{
 		appSetting:  appSetting,
-		client:      client,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
 		cf:          factory.GetFactory(appSetting),
 		rs:          rs,
@@ -58,15 +53,8 @@ func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	}
 }
 
-// HandleTask handles a build task from the queue.
-func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.BatchBuildTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal task message: %v", err)
-		return err
-	}
-
-	taskID := msg.TaskID
+// Run executes one persisted batch build task.
+func (bbw *batchBuildWorker) Run(ctx context.Context, taskID string) error {
 	logger.Infof("Starting batch build task: %s", taskID)
 
 	buildTaskInfo, err := bbw.bts.InternalGetByID(ctx, taskID)
@@ -135,9 +123,7 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 		err = fmt.Errorf("catalog is disabled")
 	}
 
-	// Execute type belongs to the persisted task. reset is only a one-off
-	// override for this run, forcing a full rebuild.
-	executeType := batchBuildExecuteType(buildTaskInfo, msg.Reset)
+	executeType := batchBuildExecuteType(buildTaskInfo)
 	if err == nil {
 		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo, executeType)
 	}
@@ -158,15 +144,15 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 	return nil
 }
 
-func batchBuildExecuteType(buildTask *interfaces.BuildTask, reset bool) string {
+func batchBuildExecuteType(buildTask *interfaces.BuildTask) string {
 	// Incremental tasks keep using their existing index and checkpoint. They
-	// cannot be reset into a full rebuild because that index is not disposable.
+	// cannot become full rebuilds because that index is not disposable.
 	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		return interfaces.BuildTaskExecuteTypeIncremental
 	}
-	// A full task normally resumes from its checkpoint after a failure. reset is
-	// meaningful only for it and starts the same task from the beginning.
-	if reset {
+	// A full task starts from the beginning only when its persisted progress is
+	// empty. Restart with reset clears that progress before dispatching the task.
+	if buildTask.SyncedMark == "" && buildTask.SyncedCount == 0 {
 		return interfaces.BuildTaskExecuteTypeFull
 	}
 	return interfaces.BuildTaskExecuteTypeIncremental
@@ -274,12 +260,10 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 		defer bbw.kafkaAccess.CloseWriter(writer)
 	}
-	// 索引、数据源连接与 Kafka writer/topic 均是 embedding 的前置条件。
-	// 只有全部准备成功后才投递子任务，避免主任务早期失败时已启动的 worker
-	// 覆写 failed 状态或持续重试。投递使用确定性 TaskID 去重，stop→start
-	// 重启时仍可安全补发。
+	// Start the embedding phase only after all batch prerequisites are ready,
+	// so an early batch failure cannot leave a competing phase running.
 	if hasEmbedding {
-		if err := sendEmbeddingTask(bbw.client, buildTaskInfo.ID); err != nil {
+		if err := sendEmbeddingTask(ctx, bbw.embeddingQueue, buildTaskInfo.ID); err != nil {
 			return fmt.Errorf("send embedding task failed: %w", err)
 		}
 		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
@@ -295,6 +279,12 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 		if taskStatus == interfaces.BuildTaskStatusCancelled {
 			logger.Infof("Task %s is cancelled, exiting...", buildTaskInfo.ID)
+			return nil
+		}
+		if taskStatus == interfaces.BuildTaskStatusFailed ||
+			taskStatus == interfaces.BuildTaskStatusStopped ||
+			taskStatus == interfaces.BuildTaskStatusCompleted {
+			logger.Infof("Task %s is %s, stop batch build", buildTaskInfo.ID, taskStatus)
 			return nil
 		}
 

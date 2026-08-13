@@ -17,7 +17,6 @@ func TestDrivenAccessSetters(t *testing.T) {
 
 		db := &sql.DB{}
 		authAccess := mock_interfaces.NewMockAuthAccess(ctrl)
-		asynqAccess := mock_interfaces.NewMockAsynqAccess(ctrl)
 		buildTaskAccess := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		catalogAccess := mock_interfaces.NewMockCatalogAccess(ctrl)
 		catalogHealthCheckScheduleAccess := mock_interfaces.NewMockCatalogHealthCheckScheduleAccess(ctrl)
@@ -34,7 +33,6 @@ func TestDrivenAccessSetters(t *testing.T) {
 
 		SetDB(db)
 		SetAuthAccess(authAccess)
-		SetAsynqAccess(asynqAccess)
 		SetBuildTaskAccess(buildTaskAccess)
 		SetCatalogAccess(catalogAccess)
 		SetCatalogHealthCheckScheduleAccess(catalogHealthCheckScheduleAccess)
@@ -51,7 +49,6 @@ func TestDrivenAccessSetters(t *testing.T) {
 
 		assert.Same(t, db, DB)
 		assert.Same(t, authAccess, AA)
-		assert.Same(t, asynqAccess, AQA)
 		assert.Same(t, buildTaskAccess, BTA)
 		assert.Same(t, catalogAccess, CA)
 		assert.Same(t, catalogHealthCheckScheduleAccess, CHCSA)

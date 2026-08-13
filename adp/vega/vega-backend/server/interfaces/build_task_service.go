@@ -9,8 +9,6 @@ package interfaces
 import (
 	"context"
 	"database/sql"
-
-	"github.com/hibiken/asynq"
 )
 
 //go:generate mockgen -source ../interfaces/build_task_service.go -destination ../interfaces/mock/mock_build_task_service.go
@@ -33,9 +31,6 @@ type BuildTaskService interface {
 	// Pre-validates: any missing id returns 404 unless ignoreMissing=true; any running/stopping id returns 409 (cannot be skipped).
 	Delete(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error
 
-	// DebugTaskQueue returns the in-process build task queue used in DEBUG_MODE.
-	DebugTaskQueue() <-chan *asynq.Task
-
 	// InternalGetByID retrieves a build task by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*BuildTask, error)
 	// InternalGetByCatalogID retrieves build tasks by catalog ID for internal workers.
@@ -46,4 +41,9 @@ type BuildTaskService interface {
 	InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update BuildTaskUpdate, allowedStatuses ...string) (bool, error)
 	// InternalGetStatus retrieves the status of a build task for internal workers.
 	InternalGetStatus(ctx context.Context, id string) (string, error)
+
+	// DispatchSignal exposes task creation and worker-capacity notifications to the local producer.
+	DispatchSignal() <-chan struct{}
+	// RequestDispatch asks the local producer to scan the database for pending tasks.
+	RequestDispatch()
 }

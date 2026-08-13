@@ -79,7 +79,7 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, "create_time", params.Sort)
+				assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.DiscoverTaskSummary{}, int64(0), nil
 			})
@@ -103,7 +103,7 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 				assert.Equal(t, interfaces.DiscoverTaskTriggerScheduled, params.TriggerType)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
-				assert.Equal(t, "start_time", params.Sort)
+				assert.Equal(t, interfaces.DiscoverTaskSortStartTime, params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 				return []*interfaces.DiscoverTaskSummary{}, int64(0), nil
 			})

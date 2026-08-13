@@ -196,4 +196,3 @@ CREATE TABLE scheduled_discover_tasks (
 ## 依赖
 
 - github.com/robfig/cron/v3 - Cron调度库
-- asynq - 异步任务队列

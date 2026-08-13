@@ -454,7 +454,7 @@ func (bta *buildTaskAccess) InternalList(ctx context.Context, params interfaces.
 		return nil, 0, err
 	}
 
-	builder = builder.OrderBy(buildOrderByClause(params.OrderBy, params.Order))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
@@ -521,7 +521,7 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 	if err := bta.db.QueryRowContext(ctx, countSQL, countVals...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	builder = builder.OrderBy(buildOrderByClause(params.OrderBy, params.Order))
+	builder = builder.OrderBy(buildOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
 		builder = builder.Limit(uint64(params.Limit)).Offset(uint64(params.Offset))
 	}
@@ -548,17 +548,17 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 	return tasks, total, nil
 }
 
-// buildOrderByClause 把 order_by/order 翻译成 ORDER BY 子句。列表缺省和未知排序
-// 均按创建时间倒序；其他维度跟随 order，并以 f_create_time DESC 兜底平手。
-func buildOrderByClause(orderBy, order string) string {
+// buildOrderByClause translates sort/direction into an ORDER BY clause.
+// Empty or unknown sort values fall back to creation time descending.
+func buildOrderByClause(sort, direction string) string {
 	dir := "DESC"
-	if strings.EqualFold(order, interfaces.ASC_DIRECTION) {
+	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
 		dir = "ASC"
 	}
-	switch orderBy {
-	case interfaces.BuildTaskOrderByCreatedAt:
+	switch sort {
+	case interfaces.BuildTaskSortCreateTime:
 		return "f_create_time " + dir
-	case interfaces.BuildTaskOrderByUpdatedAt:
+	case interfaces.BuildTaskSortUpdateTime:
 		return "f_update_time " + dir
 	default:
 		return "f_create_time DESC"

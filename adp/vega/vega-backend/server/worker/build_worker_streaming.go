@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/openbkn-ai/bkn-comm-go/logger"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/segmentio/kafka-go"
@@ -49,24 +48,20 @@ func getServerName(hostname string) string {
 type streamingBuildWorker struct {
 	appSetting  *common.AppSetting
 	bts         interfaces.BuildTaskService
-	client      *asynq.Client
 	cs          interfaces.CatalogService
 	httpClient  rest.HTTPClient
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
 	rs          interfaces.ResourceService
+
+	embeddingQueue chan<- string
 }
 
 // NewStreamingBuildWorker creates a new build worker.
 func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorker {
-	var client *asynq.Client
-	if !common.GetDebugMode() && logics.AQA != nil {
-		client = logics.AQA.CreateClient()
-	}
 	rs := resource.NewResourceService(appSetting)
 	return &streamingBuildWorker{
 		appSetting:  appSetting,
-		client:      client,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
 		cs:          catalog.NewCatalogService(appSetting),
 		httpClient:  common.NewHTTPClient(),
@@ -76,15 +71,8 @@ func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorke
 	}
 }
 
-// HandleTask handles a build task from the queue.
-func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.StreamingBuildTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal task message: %v", err)
-		return err
-	}
-
-	taskID := msg.TaskID
+// Run executes one persisted streaming build task.
+func (sbw *streamingBuildWorker) Run(ctx context.Context, taskID string) error {
 	logger.Infof("Starting streaming build task: %s", taskID)
 
 	buildTaskInfo, err := sbw.bts.InternalGetByID(ctx, taskID)
@@ -192,7 +180,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		return fmt.Errorf("create local index failed: %w", err)
 	}
 	if buildTaskHasEmbedding(buildTaskInfo) {
-		err = sendEmbeddingTask(sbw.client, taskID)
+		err = sendEmbeddingTask(ctx, sbw.embeddingQueue, taskID)
 		if err != nil {
 			return fmt.Errorf("send embedding task failed: %w", err)
 		}
@@ -202,10 +190,9 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	// Execute build
 	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceIdentifier)
 	if err != nil {
-		update := interfaces.NewBuildTaskUpdate().WithErrorMsg(err.Error())
-		if isAsynqFinalRetry(ctx) {
-			update = update.WithStatus(interfaces.BuildTaskStatusFailed)
-		}
+		update := interfaces.NewBuildTaskUpdate().
+			WithStatus(interfaces.BuildTaskStatusFailed).
+			WithErrorMsg(err.Error())
 		_, _ = sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
 		return err
 	}
@@ -273,6 +260,12 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			time.Sleep(retryInterval)
 			continue
 		}
+		if taskStatus == interfaces.BuildTaskStatusFailed ||
+			taskStatus == interfaces.BuildTaskStatusStopped ||
+			taskStatus == interfaces.BuildTaskStatusCompleted {
+			logger.Infof("Task %s is %s, stop streaming", buildTaskInfo.ID, taskStatus)
+			return nil
+		}
 
 		// A streaming connector is shared by the catalog. Before a stopped or
 		// cancelled task exits, stop it only when no running task still uses it.
@@ -314,16 +307,17 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 		case <-ctx.Done():
 			logger.Infof("Kafka subscription context canceled, exiting")
 			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-			_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = sbw.bts.InternalUpdateStatus(context.Background(), nil, buildTaskInfo.ID, update)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
+			return ctx.Err()
 		default:
 			// Read message from Kafka
 			// 创建带超时的上下文，避免ReadMessage一直阻塞
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), retryInterval)
-			defer cancel()
+			timeoutCtx, cancel := context.WithTimeout(ctx, retryInterval)
 			msg, err := sbw.kafkaAccess.ReadMessage(timeoutCtx, reader)
+			cancel()
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					// 超时，检查是否需要更新任务状态

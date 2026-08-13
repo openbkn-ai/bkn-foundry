@@ -581,13 +581,9 @@ func (suta *semanticUnderstandingTaskAccess) updateWithTx(ctx context.Context, t
 func buildOrderByClause(sort, direction string) string {
 	column := "f_create_time"
 	switch sort {
-	case "update_time":
+	case interfaces.SemanticUnderstandingTaskSortUpdateTime:
 		column = "f_update_time"
-	case "status":
-		column = "f_status"
-	case "scope":
-		column = "f_scope"
-	case "create_time", "":
+	case interfaces.SemanticUnderstandingTaskSortCreateTime, "":
 		column = "f_create_time"
 	default:
 		column = "f_create_time"
