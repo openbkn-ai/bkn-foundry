@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestCreateToolFailureMessageUsesErrorMsgDescription(t *testing.T) {
@@ -44,6 +46,9 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 		if got := r.Header.Get("x-business-domain"); got != "bd_public" {
 			t.Fatalf("x-business-domain = %q", got)
 		}
+		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
+			t.Fatalf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
+		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode payload: %v", err)
 		}
@@ -58,7 +63,7 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 	}
 
 	_, err := client.ExecuteFunction(
-		context.Background(),
+		sharedrest.WithLanguage(context.Background(), sharedrest.AmericanEnglish),
 		"bd_public",
 		"user_001",
 		ExecuteFunctionRequest{

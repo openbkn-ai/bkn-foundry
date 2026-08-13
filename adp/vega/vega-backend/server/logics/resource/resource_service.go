@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
@@ -1032,7 +1032,7 @@ func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx,
 }
 
 func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {
-	tasks, _, err := rs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+	tasks, err := rs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
 		ResourceID:            resource.ID,
 		Statuses:              activeResourceBuildTaskStatuses,

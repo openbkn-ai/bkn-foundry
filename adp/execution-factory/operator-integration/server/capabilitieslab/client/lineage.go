@@ -45,6 +45,7 @@ func (c *OperatorIntegrationClient) GetToolSourceLineage(
 	}
 
 	req.Header.Set("Accept", "application/json")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)

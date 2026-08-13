@@ -19,10 +19,11 @@ const (
 	SemanticUnderstandingApplyModeFillEmpty string = "fill_empty"
 	SemanticUnderstandingApplyModeForce     string = "force"
 
+	SemanticUnderstandingTaskSortCreateTime string = "create_time"
+	SemanticUnderstandingTaskSortUpdateTime string = "update_time"
+
 	SemanticUnderstandingResourceAgentID string = "resource-semantic-understanding"
 	SemanticUnderstandingCatalogAgentID  string = "catalog-semantic-understanding"
-
-	SemanticUnderstandingTaskType string = "semantic-understanding:execute"
 
 	DefaultSemanticUnderstandingLanguage            string  = "zh-CN"
 	DefaultSemanticUnderstandingConfidenceThreshold float64 = 0.75
@@ -38,8 +39,8 @@ var (
 	}
 
 	SEMANTIC_UNDERSTANDING_TASK_SORT = map[string]string{
-		"create_time": "",
-		"update_time": "",
+		SemanticUnderstandingTaskSortCreateTime: "",
+		SemanticUnderstandingTaskSortUpdateTime: "",
 	}
 )
 
@@ -217,10 +218,6 @@ type SemanticUnderstandingTaskQueryParams struct {
 	Statuses   []string
 	ApplyMode  string
 	Applied    *bool
-}
-
-type SemanticUnderstandingTaskMessage struct {
-	TaskID string `json:"task_id"`
 }
 
 type SemanticUnderstandingApplyResult struct {

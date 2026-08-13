@@ -431,7 +431,19 @@ func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) erro
 // IDs are returned verbatim (bkn-safe is opaque to any caller-side id encoding,
 // e.g. "dagID:subtype"), de-duplicated, in first-appearance order. Mirrors ISF
 // resource-list for one (accessor, type, op).
+//
+// Instances reached only through an ancestor are included too (#800). Without
+// that, this read would silently under-report the moment inheritance carries a
+// grant: an inherited resource holds no policy row of its own, so a list page
+// built on this endpoint would lose rows that Check allows — and every caller
+// keeps working unchanged instead of having to learn about the hierarchy.
 func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]string, error) {
+	return en.accessibleResources(accessorID, resourceType, op, map[string]bool{})
+}
+
+// accessibleResources is AccessibleResources plus the visited-type set that
+// keeps the ancestor recursion finite.
+func (en *Enforcer) accessibleResources(accessorID, resourceType, op string, visitedTypes map[string]bool) ([]string, error) {
 	perms, err := en.e.GetImplicitPermissionsForUser(accessorID)
 	if err != nil {
 		return nil, err
@@ -452,6 +464,17 @@ func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]
 		}
 		id := o[len(prefix):] // split on first ":" only; id may itself contain ":"
 		if id == "*" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	inherited, err := en.inheritedResources(accessorID, resourceType, op, visitedTypes)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range inherited {
+		if seen[id] {
 			continue
 		}
 		seen[id] = true

@@ -16,14 +16,13 @@ import (
 	_ "unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	libdb "github.com/openbkn-ai/bkn-comm-go/db"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/asynq"
 	"vega-backend/drivenadapters/auth"
 	"vega-backend/drivenadapters/bkn_agent"
 	"vega-backend/drivenadapters/build_task"
@@ -135,7 +134,6 @@ func main() {
 		logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(appSetting))
 	}
 
-	logics.SetAsynqAccess(asynq.NewAsynqAccess(appSetting))
 	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))
 	logics.SetCatalogAccess(catalog.NewCatalogAccess(appSetting))
 	logics.SetCatalogHealthCheckScheduleAccess(catalog_health_check_schedule.NewCatalogHealthCheckScheduleAccess(appSetting))
@@ -154,7 +152,9 @@ func main() {
 
 	// 初始化并启动统一的 TaskWorkerManger，处理所有类型的任务
 	taskWorkerMgr := worker.NewTaskWorkerManager(appSetting)
-	taskWorkerMgr.Start()
+	if err := taskWorkerMgr.Start(context.Background()); err != nil {
+		logger.Fatalf("Failed to start task workers: %v", err)
+	}
 	logger.Info("VEGA Manager Init Task Worker Success")
 
 	// 初始化并启动调度器

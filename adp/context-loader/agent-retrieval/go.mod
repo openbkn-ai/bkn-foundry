@@ -10,7 +10,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mark3labs/mcp-go v0.57.0
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
-	github.com/openbkn-ai/bkn-comm-go v0.0.4
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260813155806-b731c9765f03
 	github.com/openbkn-ai/licverify v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/smartystreets/goconvey v1.8.1
@@ -22,8 +22,6 @@ require (
 	golang.org/x/text v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-require github.com/openbkn-ai/bkn-foundry/comm-go v0.1.1-0.20260731091058-c598a3e6d616
 
 require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
@@ -79,7 +77,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.20.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 // indirect
-	go.opentelemetry.io/otel/log v0.20.0 // indirect
+	go.opentelemetry.io/otel/log v0.20.0
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk/log v0.20.0 // indirect

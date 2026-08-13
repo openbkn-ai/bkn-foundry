@@ -8,11 +8,6 @@ package driveradapters
 
 import "vega-backend/interfaces"
 
-func isValidBuildTaskOrderBy(o string) bool {
-	_, ok := interfaces.BUILD_TASK_SORT[o]
-	return ok
-}
-
 func isValidBuildTaskStatus(s string) bool {
 	switch s {
 	case interfaces.BuildTaskStatusPending,

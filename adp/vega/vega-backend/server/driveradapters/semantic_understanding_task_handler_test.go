@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -192,7 +192,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 				assert.True(t, *params.Applied)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
-				assert.Equal(t, "create_time", params.Sort)
+				assert.Equal(t, interfaces.SemanticUnderstandingTaskSortCreateTime, params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
 				return []*interfaces.SemanticUnderstandingTaskSummary{
 					{
@@ -227,7 +227,7 @@ func Test_SemanticUnderstandingTaskRestHandler_ListTasks(t *testing.T) {
 					interfaces.SemanticUnderstandingTaskStatusPending,
 					interfaces.SemanticUnderstandingTaskStatusRunning,
 				}, params.Statuses)
-				assert.Equal(t, "create_time", params.Sort)
+				assert.Equal(t, interfaces.SemanticUnderstandingTaskSortCreateTime, params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.SemanticUnderstandingTaskSummary{}, int64(0), nil
 			})
@@ -317,7 +317,7 @@ func Test_SemanticUnderstandingTaskRestHandler_DeleteTasks(t *testing.T) {
 
 	t.Run("deletes tasks", func(t *testing.T) {
 		engine, suts := setupSemanticUnderstandingTaskHandlerTest(t)
-		suts.EXPECT().Delete(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
+		suts.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}, true).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskURL+"/task-1,task-2?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
@@ -331,7 +331,7 @@ func Test_SemanticUnderstandingTaskRestHandler_DeleteTasks(t *testing.T) {
 		engine, as, suts := setupSemanticUnderstandingTaskExternalHandlerTest(t)
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).
 			Return(hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User}, nil)
-		suts.EXPECT().Delete(gomock.Any(), []string{"task-1"}, false).Return(nil)
+		suts.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1"}, false).Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, semanticUnderstandingTaskExternalURL+"/task-1", nil)
 		w := httptest.NewRecorder()

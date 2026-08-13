@@ -16,7 +16,7 @@ import (
 
 	"github.com/dlclark/regexp2"
 	"github.com/mitchellh/mapstructure"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "bkn-backend/common/condition"
 	berrors "bkn-backend/errors"

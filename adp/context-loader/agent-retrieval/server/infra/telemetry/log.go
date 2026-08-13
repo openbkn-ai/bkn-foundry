@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	otellogapi "go.opentelemetry.io/otel/log"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"

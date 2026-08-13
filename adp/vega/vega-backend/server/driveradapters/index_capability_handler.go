@@ -9,8 +9,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"

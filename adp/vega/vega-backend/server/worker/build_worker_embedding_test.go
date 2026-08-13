@@ -14,8 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hibiken/asynq"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +25,20 @@ import (
 )
 
 func TestEmbeddingWorkerHandleTask(t *testing.T) {
+	t.Run("marks task failed when task lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		ew := &embeddingWorker{bts: bts}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(nil, errors.New("database unavailable"))
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "get build task failed: database unavailable").
+			Return(true, nil)
+
+		err := ew.Run(context.Background(), "t1")
+
+		require.EqualError(t, err, "get build task failed: database unavailable")
+	})
+
 	t.Run("skips terminal task without reviving it", func(t *testing.T) {
 		for _, status := range []string{
 			interfaces.BuildTaskStatusFailed,
@@ -42,8 +55,7 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 					ID: "t1", ResourceID: "r1", Status: status,
 				}, nil)
 
-				task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-				require.NoError(t, ew.HandleTask(context.Background(), task))
+				require.NoError(t, ew.Run(context.Background(), "t1"))
 			})
 		}
 	})
@@ -66,17 +78,30 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 				gotAccount, hasAccount = workerAccountFromCtx(ctx)
 				return nil, nil
 			})
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusCancelled).
-				WithErrorMsg("resource deleted"),
-			interfaces.BuildTaskStatusRunning).
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "resource deleted").
 			Return(true, nil)
 
-		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, ew.HandleTask(context.Background(), task))
+		require.NoError(t, ew.Run(context.Background(), "t1"))
 		require.True(t, hasAccount)
 		assert.Equal(t, creator, gotAccount)
+	})
+
+	t.Run("marks task failed when resource lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		ew := &embeddingWorker{bts: bts, rs: rs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
+		}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, errors.New("resource database unavailable"))
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "resource database unavailable").
+			Return(true, nil)
+
+		err := ew.Run(context.Background(), "t1")
+
+		require.ErrorContains(t, err, "resource database unavailable")
 	})
 
 	t.Run("marks task failed when catalog is disabled", func(t *testing.T) {
@@ -93,14 +118,10 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", false).
 			Return(&interfaces.Catalog{ID: "c1", Enabled: false}, nil)
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusFailed).
-				WithErrorMsg("catalog is disabled")).
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "catalog is disabled").
 			Return(true, nil)
 
-		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, ew.HandleTask(context.Background(), task))
+		require.NoError(t, ew.Run(context.Background(), "t1"))
 	})
 
 	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
@@ -117,20 +138,15 @@ func TestEmbeddingWorkerHandleTask(t *testing.T) {
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", false).
 			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
-		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
-			interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusCancelled).
-				WithErrorMsg("catalog deleted"),
-			interfaces.BuildTaskStatusRunning).
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "catalog deleted").
 			Return(true, nil)
 
-		task := asynq.NewTask("build:embedding", workerBuildTaskPayload(t, interfaces.EmbeddingBuildTaskMessage{TaskID: "t1"}))
-		require.NoError(t, ew.HandleTask(context.Background(), task))
+		require.NoError(t, ew.Run(context.Background(), "t1"))
 	})
 }
 
 func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
-	t.Run("stops without retry when batch task becomes failed", func(t *testing.T) {
+	t.Run("stops when batch task becomes failed", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 
@@ -144,7 +160,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
 	})
 
-	t.Run("ctx canceled returns error for requeue", func(t *testing.T) {
+	t.Run("ctx canceled returns an execution error", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 
@@ -161,7 +177,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 	})
 
-	t.Run("persistent commit error gives up for retry", func(t *testing.T) {
+	t.Run("persistent commit error fails the local execution", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
@@ -183,7 +199,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 			Return(map[string]any{"team_name": ""}, nil).Times(3)
 		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(deadCommit).Times(embeddingKafkaMaxConsecutiveErrors)
-		ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
+		ts.EXPECT().InternalSetProgress(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
 
 		err := ew.executeEmbedding(context.Background(), resource, task)
 
@@ -191,7 +207,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		assert.Contains(t, err.Error(), "commit")
 	})
 
-	t.Run("persistent read error gives up for retry", func(t *testing.T) {
+	t.Run("persistent read error fails the local execution", func(t *testing.T) {
 		ew, ts, ka := newEmbeddingLoopWorker(t)
 		resource, task := embeddingLoopFixtures()
 		deadConn := errors.New("committing message: use of closed network connection")
@@ -232,18 +248,17 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 			})
 		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", SyncedCount: 1330, TotalCount: 50000}, nil)
-		ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
-				require.NotNil(t, update.Status)
+		ts.EXPECT().InternalSetProgress(gomock.Any(), nil, "t1", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskProgress) (bool, error) {
 				require.NotNil(t, update.SyncedCount)
 				require.NotNil(t, update.VectorizedCount)
 				require.NotNil(t, update.FailureDetail)
-				assert.Equal(t, interfaces.BuildTaskStatusCompleted, *update.Status)
 				assert.Equal(t, int64(50000), *update.SyncedCount)
 				assert.Equal(t, int64(50000), *update.VectorizedCount)
 				assert.Equal(t, "", *update.FailureDetail)
 				return true, nil
 			})
+		ts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, "t1").Return(true, nil)
 
 		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
 		assert.Equal(t, wantIndexName, resource.LocalIndexName)
@@ -266,15 +281,38 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 			Times(embeddingDrainEmptyPolls)
 		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).Return(nil)
 		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(nil, errors.New("database unavailable"))
-		ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
-				require.NotNil(t, update.Status)
+		ts.EXPECT().InternalSetProgress(gomock.Any(), nil, "t1", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskProgress) (bool, error) {
 				require.Nil(t, update.SyncedCount)
 				require.NotNil(t, update.VectorizedCount)
-				assert.Equal(t, interfaces.BuildTaskStatusCompleted, *update.Status)
 				assert.Equal(t, int64(7), *update.VectorizedCount)
 				return true, nil
 			})
+		ts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, "t1").Return(true, nil)
+
+		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
+	})
+
+	t.Run("end sentinel finishes concurrent stop request", func(t *testing.T) {
+		ew, ts, ka := newEmbeddingLoopWorker(t)
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ew.rs = rs
+		resource, task := embeddingLoopFixtures()
+
+		expectEmbeddingKafkaSession(ka)
+		ts.EXPECT().InternalGetStatus(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
+			Return(kafka.Message{Value: []byte(`{"document_id":"` + interfaces.EmptyDocumentID + `"}`)}, nil)
+		ka.EXPECT().CommitMessages(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
+			Return(kafka.Message{}, context.DeadlineExceeded).
+			Times(embeddingDrainEmptyPolls)
+		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).Return(nil)
+		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(task, nil)
+		ts.EXPECT().InternalSetProgress(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil)
+		ts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, "t1").Return(false, nil)
+		ts.EXPECT().InternalMarkStopped(gomock.Any(), "t1").Return(true, nil)
 
 		require.NoError(t, ew.executeEmbedding(context.Background(), resource, task))
 	})
@@ -449,8 +487,8 @@ func expectEmbeddingKafkaSession(ka *vmock.MockKafkaAccess) {
 }
 
 func expectEmbeddingCountFlush(ts *vmock.MockBuildTaskService, count int64) *gomock.Call {
-	return ts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskUpdate{})).
-		DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskUpdate, _ ...string) (bool, error) {
+	return ts.EXPECT().InternalSetProgress(gomock.Any(), nil, "t1", gomock.AssignableToTypeOf(interfaces.BuildTaskProgress{})).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskProgress) (bool, error) {
 			if update.VectorizedCount == nil || *update.VectorizedCount != count {
 				return false, errors.New("vectorizedCount not flushed")
 			}

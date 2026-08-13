@@ -16,7 +16,6 @@ import (
 var (
 	DB    *sql.DB
 	AA    interfaces.AuthAccess
-	AQA   interfaces.AsynqAccess
 	BAA   interfaces.BknAgentAccess
 	BTA   interfaces.BuildTaskAccess
 	CA    interfaces.CatalogAccess
@@ -38,10 +37,6 @@ func SetDB(db *sql.DB) {
 
 func SetAuthAccess(aa interfaces.AuthAccess) {
 	AA = aa
-}
-
-func SetAsynqAccess(aqa interfaces.AsynqAccess) {
-	AQA = aqa
 }
 
 func SetBuildTaskAccess(bta interfaces.BuildTaskAccess) {

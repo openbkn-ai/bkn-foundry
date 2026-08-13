@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
-	kwcrypto "github.com/openbkn-ai/bkn-comm-go/crypto"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	kwcrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/rs/xid"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -898,7 +898,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 	var pendingBuild, buildExecuting, scheduleTotal, pendingDiscover, runningDiscover int64
 	healthCheckScheduleTotal := int64(0)
 	if catalog.Type == interfaces.CatalogTypePhysical {
-		_, pendingBuild, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		_, pendingBuild, err = cs.bta.List(ctx, interfaces.BuildTasksQueryParams{
 			PaginationQueryParams: page,
 			CatalogID:             id,
 			Statuses:              []string{interfaces.BuildTaskStatusPending},
@@ -906,7 +906,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*in
 		if err != nil {
 			return nil, err
 		}
-		_, buildExecuting, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		_, buildExecuting, err = cs.bta.List(ctx, interfaces.BuildTasksQueryParams{
 			PaginationQueryParams: page,
 			CatalogID:             id,
 			Statuses: []string{
@@ -1040,14 +1040,6 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 			WithErrorDetails(impact)
 	}
 
-	// Task rows are audit records and must be retained.
-	buildTasks, _, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{CatalogID: id})
-	if err != nil {
-		span.SetStatus(codes.Error, "List build tasks failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
-			WithErrorDetails("failed to inspect catalog build tasks")
-	}
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
@@ -1059,20 +1051,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UnixMilli()
-	cancelled := interfaces.BuildTaskStatusCancelled
-	errorMessage := catalogDeletedTaskMessage
-	for _, task := range buildTasks {
-		if task.Status != interfaces.BuildTaskStatusPending {
-			continue
-		}
-		_, err = cs.bta.UpdateStatus(ctx, tx, task.ID, interfaces.BuildTaskUpdate{
-			Status:   &cancelled,
-			ErrorMsg: &errorMessage,
-		}, now, interfaces.BuildTaskStatusPending)
-		if err != nil {
-			break
-		}
-	}
+	err = cs.bta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
 	if err == nil {
 		err = cs.dta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
 	}

@@ -3,12 +3,13 @@ package operator
 import (
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // OperatorCategoryList 算子分类列表
@@ -19,6 +20,7 @@ func (op *operatorHandle) OperatorCategoryList(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	sharedrest.MarkLocalizedCacheableResponse(c)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 

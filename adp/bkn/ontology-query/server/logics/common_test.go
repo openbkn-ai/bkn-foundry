@@ -15,7 +15,7 @@ import (
 	"ontology-query/interfaces"
 	dtype "ontology-query/interfaces/data_type"
 
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

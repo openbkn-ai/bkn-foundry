@@ -9,8 +9,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	libdb "github.com/openbkn-ai/bkn-comm-go/db"
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver"
+	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
 )
 
 // OpenProducerOutboxDB uses parseTime because the Outbox lease and retry

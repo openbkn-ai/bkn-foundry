@@ -6,6 +6,7 @@ package authz
 
 import (
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -327,5 +328,205 @@ func TestInheritanceTerminatesOnACycle(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Check did not terminate on a cyclic hierarchy")
+	}
+}
+
+// --- enumeration side (GET /authz/resources) -------------------------------
+
+// TestAccessibleResourcesIncludesInherited: the enumeration read must agree with
+// Check, or a list page loses rows the detail page allows. It walks DOWN from
+// the granted catalogs, the inverse of Check's climb.
+func TestAccessibleResourcesIncludesInherited(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+	ownedBy(t, db, "res-2", "cat-1")
+	ownedBy(t, db, "res-3", "cat-2")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-9", "modify"))
+
+	got, err := e.AccessibleResources(user, "resource", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(got)
+	want := []string{"res-1", "res-2", "res-9"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("ids = %v, want %v (res-3 sits in an ungranted catalog)", got, want)
+	}
+}
+
+// TestAccessibleResourcesTypeWideParentGrant covers the case the recursion
+// cannot answer on its own: AccessibleResources reports concrete instances only,
+// so a "every catalog" grant would enumerate no parents at all and silently
+// return nothing.
+func TestAccessibleResourcesTypeWideParentGrant(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+	ownedBy(t, db, "res-2", "cat-2")
+
+	const user, role = "u-1", "role-1"
+	mustNoErr(t, e.GrantRolePermission(role, "catalog", "*", "resource_manage"))
+	mustNoErr(t, e.AssignRole(user, role))
+
+	got, err := e.AccessibleResources(user, "resource", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(got)
+	if strings.Join(got, ",") != "res-1,res-2" {
+		t.Errorf("ids = %v, want every table that has a catalog", got)
+	}
+}
+
+// TestAccessibleResourcesUnmappedOpDoesNotInherit: authorize maps to nothing, so
+// enumeration must not leak the catalog's tables into it either.
+func TestAccessibleResourcesUnmappedOpDoesNotInherit(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-1")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "authorize"))
+
+	got, err := e.AccessibleResources(user, "resource", "authorize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("ids = %v, want none", got)
+	}
+}
+
+// TestAccessibleResourcesUnchangedWithoutHierarchy is the upgrade guarantee for
+// this read: with no ownership rows, it returns exactly what it returned before.
+func TestAccessibleResourcesUnchangedWithoutHierarchy(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-9", "modify"))
+
+	got, err := e.AccessibleResources(user, "resource", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "res-9" {
+		t.Errorf("ids = %v, want only the directly granted res-9", got)
+	}
+}
+
+// TestAccessibleResourcesAgreesWithCheck pins the two reads together across the
+// whole population: anything enumerated must pass Check, and anything Check
+// allows must be enumerated. Drift here is the failure this slice exists to
+// prevent — a row present on the detail page and missing from the list.
+func TestAccessibleResourcesAgreesWithCheck(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	all := []string{"res-1", "res-2", "res-3", "res-4"}
+	ownedBy(t, db, "res-1", "cat-1")
+	ownedBy(t, db, "res-2", "cat-1")
+	ownedBy(t, db, "res-3", "cat-2")
+	// res-4 has no catalog at all.
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-4", "modify"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-3", "view_detail"))
+
+	for _, op := range []string{"modify", "view_detail", "delete", "authorize"} {
+		ids, err := e.AccessibleResources(user, "resource", op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := map[string]bool{}
+		for _, id := range ids {
+			listed[id] = true
+		}
+		for _, id := range all {
+			ok, err := e.Check(user, "resource", id, op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok != listed[id] {
+				t.Errorf("%s/%s: check=%v enumerated=%v", id, op, ok, listed[id])
+			}
+		}
+	}
+}
+
+// TestAccessibleResourcesAcrossLevels: a grant two levels up must enumerate the
+// leaves, which only works if the recursion carries the translated operation.
+func TestAccessibleResourcesAcrossLevels(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	types := []model.ResourceType{
+		{ID: "top"},
+		{ID: "mid", ParentTypeID: "top"},
+		{ID: "leaf", ParentTypeID: "mid"},
+	}
+	if err := db.Create(&types).Error; err != nil {
+		t.Fatal(err)
+	}
+	ops := []model.Operation{
+		{ResourceTypeID: "top", ID: "manage_all"},
+		{ResourceTypeID: "mid", ID: "manage_children", ParentOperationID: "manage_all"},
+		{ResourceTypeID: "leaf", ID: "modify", ParentOperationID: "manage_children"},
+	}
+	if err := db.Create(&ops).Error; err != nil {
+		t.Fatal(err)
+	}
+	rows := []model.ResourceParent{
+		{ResourceTypeID: "leaf", ResourceID: "l-1", ParentTypeID: "mid", ParentID: "m-1"},
+		{ResourceTypeID: "leaf", ResourceID: "l-2", ParentTypeID: "mid", ParentID: "m-2"},
+		{ResourceTypeID: "mid", ResourceID: "m-1", ParentTypeID: "top", ParentID: "t-1"},
+		{ResourceTypeID: "mid", ResourceID: "m-2", ParentTypeID: "top", ParentID: "t-2"},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "top", "t-1", "manage_all"))
+
+	got, err := e.AccessibleResources(user, "leaf", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "l-1" {
+		t.Errorf("ids = %v, want only l-1 (l-2 hangs under an ungranted top)", got)
+	}
+}
+
+// TestAccessibleResourcesSeesPubliclyGrantedAncestor closes the gap a review
+// found: Check's climb goes through Enforce, whose matcher honours the
+// "granted to everyone" subject, while the enumeration walks
+// GetImplicitPermissionsForUser, which does not. A catalog granted to everyone
+// would then allow its tables on the detail page and hide them from the list.
+func TestAccessibleResourcesSeesPubliclyGrantedAncestor(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-public")
+	ownedBy(t, db, "res-2", "cat-private")
+
+	mustNoErr(t, e.GrantObjectPermission(PublicAccessorID, "catalog", "cat-public", "resource_manage"))
+
+	const user = "u-nobody" // holds nothing of its own
+	ok, err := e.Check(user, "resource", "res-1", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("Check did not honour the public grant on the catalog")
+	}
+	ids, err := e.AccessibleResources(user, "resource", "modify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != "res-1" {
+		t.Errorf("ids = %v, want [res-1] — enumeration must agree with Check", ids)
 	}
 }

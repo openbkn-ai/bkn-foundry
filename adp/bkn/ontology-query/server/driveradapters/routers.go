@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/middleware"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"ontology-query/common"
 	oerrors "ontology-query/errors"
@@ -70,6 +70,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.GET("/health", r.HealthCheck)
 
 	apiV1 := c.Group("/api/ontology-query/v1")
+	apiV1.Use(rest.PrivateNoCacheMiddleware())
 	{
 		apiV1.GET("/trace/outbox", r.ListTraceOutbox)
 		apiV1.GET("/trace/outbox/:outbox_id", r.GetTraceOutbox)
@@ -96,6 +97,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	}
 
 	apiInV1 := c.Group("/api/ontology-query/in/v1")
+	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
 		// 业务知识网络
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.GetObjectsInObjectTypeByIn)
@@ -149,13 +151,10 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	}
 }
 
-// gin中间件 把 X-Language 头解析结果挂到 request ctx。
+// LanguageMiddleware resolves Accept-Language once and stores it in request context.
 // 注册顺序必须在 TracingMiddleware 之后，这样 language ctx 叠加在 trace ctx 上。
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request = c.Request.WithContext(rest.GetLanguageCtx(c))
-		c.Next()
-	}
+	return rest.LanguageMiddleware()
 }
 
 // TraceContextMiddleware parses OpenBKN phase-one trace context into request context.

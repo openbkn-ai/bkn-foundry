@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/attribute"
 )
 

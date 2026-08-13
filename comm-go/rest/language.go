@@ -120,8 +120,11 @@ func GetLanguageCtx(c *gin.Context) context.Context {
 
 // WithLanguage attaches a supported language to a context.
 func WithLanguage(ctx context.Context, lang Language) context.Context {
-	if _, ok := Languages[lang]; !ok {
+	canonical, ok := normalizeLanguage(lang)
+	if !ok {
 		lang = DefaultLanguage
+	} else {
+		lang = canonical
 	}
 	return context.WithValue(ctx, LanguageKey, lang)
 }
@@ -233,7 +236,10 @@ func parseQValue(value string) (float64, bool) {
 }
 
 func normalizeLanguage(value string) (Language, bool) {
-	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "zh_cn" {
+		normalized = "zh-cn"
+	}
 	if !validLanguageRange(normalized) {
 		return "", false
 	}

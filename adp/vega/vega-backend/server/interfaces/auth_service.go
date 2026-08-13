@@ -10,7 +10,7 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 )
 
 //go:generate mockgen -source ../interfaces/auth_service.go -destination ../interfaces/mock/mock_auth_service.go

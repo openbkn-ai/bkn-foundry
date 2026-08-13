@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	lib_common "github.com/openbkn-ai/bkn-comm-go/common"
+	lib_common "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 )
 
 // string 转 []string

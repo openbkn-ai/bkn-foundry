@@ -10,7 +10,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"

@@ -12,7 +12,7 @@ import (
 	"path"
 	"runtime"
 
-	"github.com/openbkn-ai/bkn-comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 var (

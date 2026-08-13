@@ -8,8 +8,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
@@ -29,7 +29,7 @@ func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess
 	// Limit=0 → 不分页，取全部命中任务（含历史任务，连同其孤儿索引一并清）
 	filter.Limit = 0
 	filter.Offset = 0
-	tasks, _, err := bta.InternalList(ctx, filter)
+	tasks, err := bta.InternalList(ctx, filter)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
@@ -47,16 +47,26 @@ func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess
 			WithErrorDetails(map[string]any{"running_ids": running})
 	}
 
-	// 逐任务：drop 索引（尽力）+ 删任务行
+	// Drop indexes on a best-effort basis, then delete all task rows together.
+	ids := make([]string, 0, len(tasks))
 	for _, t := range tasks {
 		idx := interfaces.BuildIndexName(t.ResourceID, t.ID)
 		if err := lim.DeleteIndex(ctx, idx); err != nil {
 			logger.Errorf("cascade delete: drop index %s failed: %v", idx, err)
 		}
-		if err := bta.Delete(ctx, t.ID); err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
-				WithErrorDetails(err.Error())
-		}
+		ids = append(ids, t.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	deleted, err := bta.DeleteByIDs(ctx, ids)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
+			WithErrorDetails(err.Error())
+	}
+	if deleted != int64(len(ids)) {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
+			WithErrorDetails(map[string]any{"expected": len(ids), "deleted": deleted})
 	}
 	return nil
 }

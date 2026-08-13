@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // bkn-safe authz adapter + cutover switch for exec-factory.
@@ -216,6 +217,7 @@ func (s *safeAuthorization) get(ctx context.Context, path string, query url.Valu
 	if err != nil {
 		return err
 	}
+	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return err
@@ -241,6 +243,7 @@ func (s *safeAuthorization) do(ctx context.Context, method, path string, body, o
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return err

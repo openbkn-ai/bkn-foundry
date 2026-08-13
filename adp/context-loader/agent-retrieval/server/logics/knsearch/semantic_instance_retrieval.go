@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -105,6 +105,10 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		s.logger.WithContext(ctx).Debugf("[SemanticInstanceRetrieval] After global score filter (threshold=%.4f): %d nodes",
 			threshold, len(allNodes))
 	}
+
+	// 精排级（默认 off）。放在属性过滤**之前**：filterNodeProperties 会砍属性数并截断值，
+	// 截完再送模型就是拿残文本判相关性。
+	allNodes = s.rerankInstances(ctx, req.Query, allNodes, instanceConfig)
 
 	// 属性过滤
 	if boolValue(propertyConfig.EnablePropertyFilter) {

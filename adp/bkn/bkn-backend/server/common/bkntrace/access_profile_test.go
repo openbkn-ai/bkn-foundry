@@ -61,3 +61,45 @@ func TestResolveAccessProfileRejectsDisabledIdentity(t *testing.T) {
 		t.Fatalf("ResolveAccessProfile() error = %v, want ErrAccessProfileDenied", err)
 	}
 }
+
+func TestResolveOperationAuditProfileIncludesReadableIdentityAndDirectNetworkGrants(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/safe/v1/me":
+			_, _ = w.Write([]byte(`{"id":"user-1","account":"alice","name":"Alice Zhang","enabled":true,"roles":["network_builder","custom"]}`))
+		case "/api/safe/v1/me/knowledge-network-grants":
+			_, _ = w.Write([]byte(`{"grants":[{"knowledge_network_id":"kn-b","operations":["query"]},{"knowledge_network_id":"kn-a","operations":["modify"]},{"knowledge_network_id":"*","operations":["modify"]}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("BKN_SAFE_BASE_URL", server.URL)
+	t.Setenv("BKN_SAFE_URL", "")
+
+	profile, err := ResolveOperationAuditProfile(context.Background(), "Bearer test-token", "user-1")
+	if err != nil {
+		t.Fatalf("ResolveOperationAuditProfile() error = %v", err)
+	}
+	if profile.ActorName != "Alice Zhang" || profile.Account != "alice" || len(profile.ManagedKnowledgeNetworkIDs) != 1 || profile.ManagedKnowledgeNetworkIDs[0] != "kn-a" {
+		t.Fatalf("profile = %#v", profile)
+	}
+}
+
+func TestResolveOperationAuditIdentityDoesNotDependOnGrantLookup(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/safe/v1/me" {
+			_, _ = w.Write([]byte(`{"id":"user-1","account":"alice","name":"Alice Zhang","enabled":true,"roles":["network_builder"]}`))
+			return
+		}
+		http.Error(w, "grant service unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	t.Setenv("BKN_SAFE_BASE_URL", server.URL)
+	t.Setenv("BKN_SAFE_URL", "")
+
+	profile, err := ResolveOperationAuditIdentity(context.Background(), "Bearer test-token", "user-1")
+	if err != nil || profile.ActorName != "Alice Zhang" {
+		t.Fatalf("profile = %#v, error = %v", profile, err)
+	}
+}

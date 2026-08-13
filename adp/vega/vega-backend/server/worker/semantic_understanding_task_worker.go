@@ -9,16 +9,17 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
@@ -31,6 +32,11 @@ import (
 
 var semanticUnderstandingSourceIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+const (
+	semanticTaskPollInterval   = 30 * time.Second
+	defaultSemanticWorkerCount = 1
+)
+
 // SemanticUnderstandingTaskWorker handles semantic-understanding execution tasks.
 type SemanticUnderstandingTaskWorker struct {
 	appSetting *common.AppSetting
@@ -38,28 +44,180 @@ type SemanticUnderstandingTaskWorker struct {
 	bas        interfaces.BknAgentService
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
+
+	workerCount int
+	queueSize   int
+	queue       chan string
+	mu          sync.Mutex
+	inFlight    map[string]struct{}
 }
 
 // NewSemanticUnderstandingTaskWorker creates a semantic-understanding task worker.
 func NewSemanticUnderstandingTaskWorker(appSetting *common.AppSetting) *SemanticUnderstandingTaskWorker {
+	workerCount := defaultSemanticWorkerCount
+	if appSetting != nil && appSetting.TaskWorker.SemanticWorkerCount > 0 {
+		workerCount = appSetting.TaskWorker.SemanticWorkerCount
+	}
+	queueSize := workerCount * taskQueueSizeMultiplier
 	return &SemanticUnderstandingTaskWorker{
 		appSetting: appSetting,
 		suts:       semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting),
 		bas:        bkn_agent.NewBknAgentService(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
 		rs:         resource.NewResourceService(appSetting),
+
+		workerCount: workerCount,
+		queueSize:   queueSize,
+		queue:       make(chan string, queueSize),
+		inFlight:    make(map[string]struct{}),
 	}
 }
 
-// HandleTask runs a semantic-understanding task through bkn-agent and persists the result.
-func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.SemanticUnderstandingTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal semantic understanding task message: %v", err)
-		return err
+// startLoops starts the local worker pool and database producer after startup recovery succeeds.
+func (sutw *SemanticUnderstandingTaskWorker) startLoops(ctx context.Context) {
+	// A fixed local worker pool executes tasks instead of creating a goroutine per Task.
+	for i := 0; i < sutw.workerCount; i++ {
+		go sutw.runQueuedTasks(ctx)
+	}
+	// The producer listens for creation notifications and fallback ticks to fill the bounded queue.
+	go sutw.pollTasks(ctx)
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
+	const recoveryFailure = "semantic understanding task interrupted by service restart"
+	for {
+		// Always read running tasks from offset zero; the result set shrinks after each failure update.
+		tasks, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{
+				Limit:     sutw.queueSize,
+				Sort:      interfaces.SemanticUnderstandingTaskSortCreateTime,
+				Direction: interfaces.ASC_DIRECTION,
+			},
+			Statuses: []string{interfaces.SemanticUnderstandingTaskStatusRunning},
+		})
+		if err != nil {
+			return fmt.Errorf("list interrupted semantic understanding tasks: %w", err)
+		}
+		if len(tasks) == 0 {
+			return nil
+		}
+		for _, task := range tasks {
+			if task == nil {
+				return errors.New("list interrupted semantic understanding tasks returned a nil task")
+			}
+			changed, err := sutw.suts.InternalMarkFailed(ctx, task.ID, recoveryFailure)
+			if err != nil {
+				return fmt.Errorf("mark interrupted semantic understanding task %s failed: %w", task.ID, err)
+			}
+			if !changed {
+				return fmt.Errorf("interrupted semantic understanding task %s was not recovered", task.ID)
+			}
+		}
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) pollTasks(ctx context.Context) {
+	// The producer performs an initial pending-task scan before waiting for signals.
+	sutw.fillQueue(ctx)
+
+	ticker := time.NewTicker(semanticTaskPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		// The 30-second poll is only a fallback for missed notifications and restart recovery.
+		case <-ticker.C:
+		// The service notifies after the create request has durably persisted the task.
+		case <-sutw.suts.DispatchSignal():
+		}
+		sutw.fillQueue(ctx)
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) fillQueue(ctx context.Context) {
+	// Refill in batches only after workers have drained the local waiting queue.
+	if len(sutw.queue) != 0 {
+		return
+	}
+	limit := cap(sutw.queue)
+	// Normal execution prioritizes pending tasks in stable create_time, id order.
+	tasks, err := sutw.suts.InternalList(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{
+			Limit:     limit,
+			Sort:      interfaces.SemanticUnderstandingTaskSortCreateTime,
+			Direction: interfaces.ASC_DIRECTION,
+		},
+		Statuses: []string{interfaces.SemanticUnderstandingTaskStatusPending},
+	})
+	if err != nil {
+		logger.Errorf("List pending semantic understanding tasks failed: %v", err)
+		return
 	}
 
-	taskID := msg.TaskID
+	for _, task := range tasks {
+		// The database still shows pending between local enqueue and the running write.
+		// inFlight prevents this process from enqueueing the same task twice in that window.
+		if task == nil || !sutw.addInFlight(task.ID) {
+			continue
+		}
+		select {
+		case sutw.queue <- task.ID:
+		case <-ctx.Done():
+			sutw.removeInFlight(task.ID)
+			return
+		}
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) runQueuedTasks(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case taskID := <-sutw.queue:
+			sutw.runSafely(ctx, taskID)
+			sutw.removeInFlight(taskID)
+			// Wake the single producer after releasing a worker slot.
+			sutw.suts.RequestDispatch()
+		}
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) runSafely(ctx context.Context, taskID string) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			detail := fmt.Sprintf("semantic understanding task panicked: %v", recovered)
+			logger.Errorf("Run semantic understanding task panicked: id=%s, error=%v", taskID, recovered)
+			if _, err := sutw.suts.InternalMarkFailed(ctx, taskID, detail); err != nil {
+				logger.Errorf("Mark semantic understanding task failed after panic: id=%s, error=%v", taskID, err)
+			}
+		}
+	}()
+	// Run reloads the task and lets the existing state guards decide whether to execute it.
+	if err := sutw.Run(ctx, taskID); err != nil {
+		logger.Errorf("Run semantic understanding task failed: id=%s, error=%v", taskID, err)
+	}
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) addInFlight(id string) bool {
+	sutw.mu.Lock()
+	defer sutw.mu.Unlock()
+	if _, ok := sutw.inFlight[id]; ok {
+		return false
+	}
+	sutw.inFlight[id] = struct{}{}
+	return true
+}
+
+func (sutw *SemanticUnderstandingTaskWorker) removeInFlight(id string) {
+	sutw.mu.Lock()
+	defer sutw.mu.Unlock()
+	delete(sutw.inFlight, id)
+}
+
+// Run executes a semantic-understanding task selected from the task table.
+func (sutw *SemanticUnderstandingTaskWorker) Run(ctx context.Context, taskID string) error {
 	logger.Infof("Starting semantic understanding task: %s", taskID)
 
 	taskInfo, err := sutw.suts.InternalGetByID(ctx, taskID)
@@ -81,16 +239,31 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 		logger.Infof("Semantic understanding task already applied: id=%s", taskInfo.ID)
 		return nil
 	}
+	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
+		// Claim before execution-time parent lookups. A failed conditional update
+		// leaves the task pending so a later database poll can retry it.
+		claimed, err := sutw.suts.InternalMarkRunning(ctx, taskInfo.ID)
+		if err != nil {
+			return fmt.Errorf("mark semantic understanding task running: %w", err)
+		}
+		if !claimed {
+			logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)
+			return nil
+		}
+	}
 	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending ||
 		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusRunning ||
 		taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusCompleted {
 		parentExists, err := sutw.taskParentExists(ctx, taskInfo)
 		if err != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				logger.Errorf("Mark semantic understanding task failed after parent lookup error: id=%s, error=%v", taskInfo.ID, updateErr)
+			}
 			return err
 		}
 		if !parentExists {
 			if taskInfo.Status != interfaces.SemanticUnderstandingTaskStatusCompleted {
-				if _, err := sutw.suts.MarkCancelled(ctx, taskInfo.ID, "catalog or resource deleted"); err != nil {
+				if _, err := sutw.suts.InternalMarkCancelled(ctx, taskInfo.ID, "catalog or resource deleted"); err != nil {
 					return fmt.Errorf("cancel semantic understanding task after parent deletion: %w", err)
 				}
 			}
@@ -103,24 +276,20 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 	}
 
 	agentTaskID := taskInfo.AgentTaskID
-	if taskInfo.Status == interfaces.SemanticUnderstandingTaskStatusPending {
-		claimed, err := sutw.suts.ClaimRunning(ctx, taskInfo.ID)
-		if err != nil {
-			return err
-		}
-		if !claimed {
-			logger.Infof("Semantic understanding task was not claimed for running: id=%s", taskInfo.ID)
-			return nil
-		}
-	}
 	if agentTaskID == "" {
 		agentTaskID, err = sutw.bas.Run(ctx, taskInfo)
 		if err != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				logger.Errorf("Mark semantic understanding task failed after agent start error: id=%s, error=%v", taskInfo.ID, updateErr)
+			}
 			return err
 		}
 
-		running, err := sutw.suts.SetAgentTaskID(ctx, taskInfo.ID, agentTaskID)
+		running, err := sutw.suts.InternalSetAgentTaskID(ctx, taskInfo.ID, agentTaskID)
 		if err != nil {
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				logger.Errorf("Mark semantic understanding task failed after agent task update error: id=%s, error=%v", taskInfo.ID, updateErr)
+			}
 			return err
 		}
 		if !running {
@@ -131,16 +300,23 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 
 	agentTask, err := sutw.bas.WaitResult(ctx, agentTaskID)
 	if err != nil {
+		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			logger.Errorf("Mark semantic understanding task failed after agent wait error: id=%s, error=%v", taskInfo.ID, updateErr)
+		}
 		return err
 	}
 	if agentTask.Status == interfaces.BknAgentTaskStatusFailed {
-		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask))
+		if _, err := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, bknAgentFailureDetail(agentTask)); err != nil {
+			return fmt.Errorf("mark semantic understanding task failed after agent failure: %w", err)
+		}
 		return nil
 	}
 
 	resultJSON, confidence, confidenceDetailJSON, err := parseBknAgentResult(agentTask)
 	if err != nil {
-		_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			return fmt.Errorf("mark semantic understanding task failed after result parsing error: %w", updateErr)
+		}
 		return nil
 	}
 	if taskInfo.Scope == interfaces.SemanticUnderstandingTaskScopeResource {
@@ -148,13 +324,18 @@ func (sutw *SemanticUnderstandingTaskWorker) HandleTask(ctx context.Context, tas
 			resultJSON, taskInfo.Input, confidenceDetailJSON, confidence,
 		)
 		if err != nil {
-			_, _ = sutw.suts.MarkFailed(ctx, taskInfo.ID, err.Error())
+			if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+				return fmt.Errorf("mark semantic understanding task failed after quality assessment error: %w", updateErr)
+			}
 			return nil
 		}
 	}
 
-	completed, err := sutw.suts.MarkCompleted(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
+	completed, err := sutw.suts.InternalMarkCompleted(ctx, taskInfo.ID, resultJSON, confidence, confidenceDetailJSON)
 	if err != nil {
+		if _, updateErr := sutw.suts.InternalMarkFailed(ctx, taskInfo.ID, err.Error()); updateErr != nil {
+			logger.Errorf("Mark semantic understanding task failed after completion error: id=%s, error=%v", taskInfo.ID, updateErr)
+		}
 		return err
 	}
 	if !completed {
@@ -200,7 +381,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, t
 		if err != nil {
 			return err
 		}
-		_, err = sutw.suts.MarkApplied(ctx, task.ID, applyResult.Applied, applyResult.DetailJSON)
+		_, err = sutw.suts.InternalSetApplied(ctx, nil, task.ID, applyResult.Applied, applyResult.DetailJSON)
 		return err
 	}
 
@@ -219,7 +400,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, t
 	if err != nil {
 		return err
 	}
-	if _, err := sutw.suts.InternalMarkApplied(ctx, tx, task.ID, applyResult.Applied, applyResult.DetailJSON); err != nil {
+	if _, err := sutw.suts.InternalSetApplied(ctx, tx, task.ID, applyResult.Applied, applyResult.DetailJSON); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

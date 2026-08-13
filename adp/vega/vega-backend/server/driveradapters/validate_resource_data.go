@@ -12,7 +12,7 @@ import (
 	"net/http"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"

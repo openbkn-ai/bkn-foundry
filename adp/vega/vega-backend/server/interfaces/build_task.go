@@ -17,16 +17,11 @@ const (
 	BuildTaskStatusFailed    string = "failed"
 	BuildTaskStatusCancelled string = "cancelled"
 
-	BuildTaskTypeBatch     string = "batch:execute"
-	BuildTaskTypeStreaming string = "streaming:execute"
-	BuildTaskTypeEmbedding string = "embedding:execute"
-
 	BuildTaskModeStreaming string = "streaming" // 流式
 	BuildTaskModeBatch     string = "batch"     // 批量
 
-	// build-task 列表排序维度(query: order_by)
-	BuildTaskOrderByCreatedAt string = "created_at" // 按创建时间
-	BuildTaskOrderByUpdatedAt string = "updated_at" // 按更新时间
+	BuildTaskSortCreateTime string = "create_time"
+	BuildTaskSortUpdateTime string = "update_time"
 
 	BuildTaskExecuteTypeIncremental string = "incremental" // 增量
 	BuildTaskExecuteTypeFull        string = "full"        // 全量
@@ -38,11 +33,16 @@ const (
 	BUILD_PREFIX = "vega-build"
 )
 
-// BUILD_TASK_SORT is a whitelist of supported order_by values. Values are unused;
+// BUILD_TASK_SORT is a whitelist of supported sort values. Values are unused;
 // the data access layer owns the mapping from API fields to database columns.
 var BUILD_TASK_SORT = map[string]string{
-	BuildTaskOrderByCreatedAt: "",
-	BuildTaskOrderByUpdatedAt: "",
+	BuildTaskSortCreateTime: "",
+	BuildTaskSortUpdateTime: "",
+}
+
+var ConnectorClassMapping = map[string]string{
+	ConnectorTypeMySQL:      "io.debezium.connector.mysql.MySqlConnector",
+	ConnectorTypePostgreSQL: "io.debezium.connector.postgresql.PostgresConnector",
 }
 
 // BuildTask represents a build task entity.
@@ -98,54 +98,13 @@ type BuildTaskSummary struct {
 	IndexConfig *BuildTaskIndexConfig `json:"-"`
 }
 
-// BuildTaskUpdate describes a partial build task update. Nil fields are left unchanged.
-type BuildTaskUpdate struct {
-	Status          *string
+// BuildTaskProgress describes persisted execution progress without changing task status.
+type BuildTaskProgress struct {
 	TotalCount      *int64
 	SyncedCount     *int64
 	VectorizedCount *int64
 	SyncedMark      *string
-	ErrorMsg        *string
 	FailureDetail   *string
-}
-
-func NewBuildTaskUpdate() BuildTaskUpdate {
-	return BuildTaskUpdate{}
-}
-
-func (u BuildTaskUpdate) WithStatus(status string) BuildTaskUpdate {
-	u.Status = &status
-	return u
-}
-
-func (u BuildTaskUpdate) WithTotalCount(totalCount int64) BuildTaskUpdate {
-	u.TotalCount = &totalCount
-	return u
-}
-
-func (u BuildTaskUpdate) WithSyncedCount(syncedCount int64) BuildTaskUpdate {
-	u.SyncedCount = &syncedCount
-	return u
-}
-
-func (u BuildTaskUpdate) WithVectorizedCount(vectorizedCount int64) BuildTaskUpdate {
-	u.VectorizedCount = &vectorizedCount
-	return u
-}
-
-func (u BuildTaskUpdate) WithSyncedMark(syncedMark string) BuildTaskUpdate {
-	u.SyncedMark = &syncedMark
-	return u
-}
-
-func (u BuildTaskUpdate) WithErrorMsg(errorMsg string) BuildTaskUpdate {
-	u.ErrorMsg = &errorMsg
-	return u
-}
-
-func (u BuildTaskUpdate) WithFailureDetail(failureDetail string) BuildTaskUpdate {
-	u.FailureDetail = &failureDetail
-	return u
 }
 
 type BuildTaskIndexConfig struct {
@@ -197,8 +156,6 @@ type BuildTasksQueryParams struct {
 	CatalogID  string
 	Statuses   []string // 多值状态过滤(IN);空为不过滤
 	Mode       string
-	OrderBy    string // created_at|updated_at；缺省 created_at
-	Order      string // asc|desc；缺省 desc
 }
 
 type KeyValue struct {

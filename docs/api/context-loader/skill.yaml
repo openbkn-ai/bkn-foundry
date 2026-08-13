@@ -55,6 +55,7 @@ paths:
         **空结果是 200 不是错误**：没有匹配时返回 `entries: []`，并可能带一个
         `message` 说明为什么为空（如该对象类未绑定任何 Skill）以及下一步建议。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
         required: true
@@ -111,6 +112,9 @@ paths:
           description: |
             参数错误：缺少 `kn_id` / `object_type_id`，或 `skills` 对象类的数据属性
             契约不完整（缺 `skill_id` / `name`）
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -131,24 +135,36 @@ paths:
                     link: 无
         '401':
           description: 凭据缺失或无效
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '404':
           description: 指定对象类不存在，或当前知识网络中缺少 `skills` 对象类
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '502':
           description: 上游服务不可用（BKN 或 ontology-query 异常）
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '500':
           description: 服务内部错误
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -173,6 +189,7 @@ paths:
 
         **空结果是 200 不是错误**：无匹配时 `entries: []` 并带 `message` 说明。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
         required: false
@@ -218,6 +235,9 @@ paths:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '502':
           description: 上游 execution-factory 不可用
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -237,6 +257,7 @@ paths:
 
         正文超过 40000 字符会截断，此时 `truncated=true` 并带 `message` 说明。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
         required: true
@@ -260,24 +281,36 @@ paths:
                 type: string
         '400':
           description: 缺少 `skill_id`
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '401':
           description: 凭据缺失或无效
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '403':
           description: 当前账户对该 Skill 无执行 / 查看 / 公开访问权限
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '404':
           description: Skill 不存在或未发布
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -298,6 +331,7 @@ paths:
 
         正文超过 40000 字符会截断（`truncated=true`）；单文件超过 5 MiB 返回 413。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
         required: true
@@ -322,24 +356,36 @@ paths:
                 type: string
         '400':
           description: 缺少 `skill_id` / `rel_path`，或路径越出技能包
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '403':
           description: 当前账户对该 Skill 无执行 / 查看 / 公开访问权限
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '404':
           description: Skill 或该路径的文件不存在
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '413':
           description: 文件超过 5 MiB 上限，改用技能包下载接口
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -367,6 +413,8 @@ paths:
         路由，同名 MCP 工具也才出现在 `tools/list` 与 `GET /mcp/info`。默认关闭，
         此时这条路径返回 404——「这个部署没有技能执行能力」在路由表上成立。
         （旧名 `MCP_EXECUTE_SKILL_ENABLED` 仍被识别，用于兼容已按旧名配置的部署。）
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
         required: true
         content:
@@ -390,24 +438,36 @@ paths:
                 $ref: '#/components/schemas/ExecuteSkillResponse'
         '400':
           description: 缺少 `skill_id` / `entry_shell`
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '403':
           description: 当前账户对该 Skill 无执行权限
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '404':
           description: Skill 不存在或未发布
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '502':
           description: 沙箱或上游 execution-factory 不可用
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -421,6 +481,13 @@ components:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
 
   parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      schema:
+        type: string
+      description: 可选的 RFC 9110 语言偏好。服务从支持的 `zh-CN`、`en-US` 中选择响应错误文本语言。
     ResponseFormat:
       name: response_format
       in: query
@@ -432,6 +499,16 @@ components:
           - toon
         default: json
       description: 响应格式。`toon` 返回 `application/toon`，同构数组压成表格，省 token。
+
+  headers:
+    ContentLanguage:
+      description: 仅当响应包含本地化人类可读文本时返回，值为实际使用的语言。
+      schema:
+        type: string
+    VaryAcceptLanguage:
+      description: 仅当可缓存表示随请求语言变化时返回，值包含 `Accept-Language`。
+      schema:
+        type: string
 
   schemas:
     FindSkillsRequest:
@@ -498,7 +575,7 @@ components:
           type: string
           description: |
             空结果说明。仅当 `entries` 为空且返回 200 时出现，用于告诉调用方为什么
-            没有结果与下一步建议；`entries` 非空时不返回。文案随请求的 `X-Language`
+            没有结果与下一步建议；`entries` 非空时不返回。文案随请求的 `Accept-Language`
             头本地化。
 
     SkillItem:

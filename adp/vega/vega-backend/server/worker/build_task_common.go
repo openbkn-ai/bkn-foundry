@@ -8,21 +8,18 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
 	"github.com/mohae/deepcopy"
 	"github.com/segmentio/kafka-go"
 
-	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
-	"vega-backend/logics/build_task"
 	resourcelogic "vega-backend/logics/resource"
 )
 
@@ -102,10 +99,23 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 		}
 	}
 
-	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCompleted)
-	if _, err := bts.InternalUpdateStatus(ctx, tx, taskID, update); err != nil {
+	completed, err := bts.InternalMarkCompleted(ctx, tx, taskID)
+	if err != nil {
 		resource.LocalIndexName = oldIndexName
 		return fmt.Errorf("update build task status: %w", err)
+	}
+	if !completed {
+		resource.LocalIndexName = oldIndexName
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			return fmt.Errorf("rollback completion after build task state changed: %w", err)
+		}
+		committed = true
+		// A stop request may win the race with completion. The resource update
+		// has been rolled back, so finish the stopping -> stopped transition.
+		if _, err := bts.InternalMarkStopped(ctx, taskID); err != nil {
+			return fmt.Errorf("mark build task stopped: %w", err)
+		}
+		return nil
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -114,31 +124,6 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 	}
 	committed = true
 	return nil
-}
-
-func claimBuildTaskExecution(ctx context.Context, bts interfaces.BuildTaskService, taskID string) (bool, error) {
-	allowedStatuses := []string{interfaces.BuildTaskStatusPending}
-	if retryCount, ok := asynq.GetRetryCount(ctx); ok && retryCount > 0 {
-		allowedStatuses = append(allowedStatuses, interfaces.BuildTaskStatusRunning)
-	}
-	return bts.InternalUpdateStatus(ctx, nil, taskID,
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusRunning).
-			WithErrorMsg(""),
-		allowedStatuses...,
-	)
-}
-
-func isAsynqFinalRetry(ctx context.Context) bool {
-	retryCount, ok := asynq.GetRetryCount(ctx)
-	if !ok {
-		return false
-	}
-	maxRetry, ok := asynq.GetMaxRetry(ctx)
-	if !ok {
-		return false
-	}
-	return retryCount >= maxRetry
 }
 
 // isBuildTaskTerminal reports statuses that background workers must never revive.
@@ -150,12 +135,7 @@ func isBuildTaskTerminal(status string) bool {
 }
 
 func cancelBuildTaskForDeletedParent(ctx context.Context, bts interfaces.BuildTaskService, taskID, detail string) error {
-	_, err := bts.InternalUpdateStatus(ctx, nil, taskID,
-		interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusCancelled).
-			WithErrorMsg(detail),
-		interfaces.BuildTaskStatusRunning,
-	)
+	_, err := bts.InternalMarkCancelled(ctx, taskID, detail)
 	return err
 }
 
@@ -385,36 +365,17 @@ func indexFeatureFieldName(prop *interfaces.Property, feature interfaces.Propert
 	return prop.Name
 }
 
-// sendEmbeddingTask sends a embedding task to the queue
-func sendEmbeddingTask(client *asynq.Client, taskID string) error {
-	embeddingTaskMsg := interfaces.EmbeddingBuildTaskMessage{
-		TaskID: taskID,
+// sendEmbeddingTask hands an internal build phase to the bounded local queue.
+func sendEmbeddingTask(ctx context.Context, queue chan<- string, taskID string) error {
+	if queue == nil {
+		return errors.New("embedding task queue is not initialized")
 	}
-	payload, err := sonic.Marshal(embeddingTaskMsg)
-	if err != nil {
-		return err
-	} else {
-		embeddingTask := asynq.NewTask(interfaces.BuildTaskTypeEmbedding, payload)
-		if common.GetDebugMode() || client == nil {
-			if !build_task.EnqueueDebugTask(embeddingTask) {
-				return fmt.Errorf("debug build task queue is not initialized")
-			}
-			return nil
-		}
-		_, err = client.Enqueue(embeddingTask,
-			asynq.Queue(interfaces.DefaultQueue),
-			asynq.TaskID(fmt.Sprintf("%s-%s", interfaces.BuildTaskTypeEmbedding, taskID)),
-			asynq.MaxRetry(interfaces.TaskMaxRetryCount),
-			asynq.Timeout(math.MaxInt64),                                                  // 永不超时
-			asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)), // 永不过期
-		)
-		if err != nil {
-			if !errors.Is(err, asynq.ErrTaskIDConflict) {
-				return err
-			}
-		}
+	select {
+	case queue <- taskID:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return nil
 }
 
 // sendEmbeddingMessage sends a document ID to Kafka for embedding

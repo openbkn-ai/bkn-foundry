@@ -14,7 +14,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"

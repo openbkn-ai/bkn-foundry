@@ -19,20 +19,30 @@ const (
 	DiscoverTaskTriggerManual    string = "manual"    // 手动/立即执行
 	DiscoverTaskTriggerScheduled string = "scheduled" // 定时驱动
 
-	// DiscoverTaskType is the task type for discover tasks.
-	DiscoverTaskType = "discover:execute"
-
-	// KafkaTopic is the topic for discover task messages.
-	DiscoverTaskTopic = "adp-vega-discover-task"
+	DiscoverTaskSortCreateTime string = "create_time"
+	DiscoverTaskSortStartTime  string = "start_time"
+	DiscoverTaskSortFinishTime string = "finish_time"
 )
 
 var (
 	DISCOVER_TASK_SORT = map[string]string{
-		"create_time": "",
-		"start_time":  "",
-		"finish_time": "",
+		DiscoverTaskSortCreateTime: "",
+		DiscoverTaskSortStartTime:  "",
+		DiscoverTaskSortFinishTime: "",
 	}
 )
+
+// DiscoverResult represents the result of a discover operation.
+type DiscoverResult struct {
+	CatalogID      string `json:"catalog_id"`
+	NewCount       int    `json:"new_count"`
+	StaleCount     int    `json:"stale_count"`
+	UnchangedCount int    `json:"unchanged_count"`
+	UpdatedCount   int    `json:"updated_count"`
+	RestoredCount  int    `json:"restored_count"`
+	FailedCount    int    `json:"failed_count"`
+	Message        string `json:"message"`
+}
 
 // DiscoverTask represents a discover task entity.
 type DiscoverTask struct {
@@ -97,11 +107,6 @@ type DiscoverTaskQueryParams struct {
 	Statuses    []string `form:"status" json:"status"`
 	Strategy    string   `form:"strategy" json:"strategy"`
 	TriggerType string   `form:"trigger_type" json:"trigger_type"`
-}
-
-// DiscoverTaskMessage represents the Kafka message for discover task.
-type DiscoverTaskMessage struct {
-	TaskID string `json:"task_id"`
 }
 
 type CreateDiscoverTaskRequest struct {

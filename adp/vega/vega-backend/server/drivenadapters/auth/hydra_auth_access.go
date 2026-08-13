@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"

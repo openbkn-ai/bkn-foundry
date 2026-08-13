@@ -11,6 +11,7 @@ package driveradapters
 
 import (
 	"github.com/gin-gonic/gin"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knactionrecall"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knfindskills"
@@ -63,7 +64,7 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 // RegisterRouter 注册路由
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareHeaderAuthContext(), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContext(), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
 	engine.Use(mws...)
 
 	engine.POST("/kn/semantic-search", r.KnRetrievalHandler.SemanticSearch)

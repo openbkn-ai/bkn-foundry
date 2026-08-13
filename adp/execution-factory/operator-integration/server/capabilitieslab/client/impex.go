@@ -31,6 +31,7 @@ func (c *OperatorIntegrationClient) ExportImpex(
 	}
 
 	req.Header.Set("Accept", "application/json")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)
@@ -92,6 +93,7 @@ func (c *OperatorIntegrationClient) ImportImpex(
 	}
 
 	req.Header.Set("Accept", "application/json")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {

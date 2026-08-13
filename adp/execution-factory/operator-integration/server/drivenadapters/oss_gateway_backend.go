@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // OSSGatewayBackendClient OSS 网关后端客户端
@@ -376,6 +377,7 @@ func (c *ossGatewayBackendClient) doSignedRequestRaw(ctx context.Context, method
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
+	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err

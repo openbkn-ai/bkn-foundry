@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	rmock "github.com/openbkn-ai/bkn-comm-go/rest/mock"
+	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

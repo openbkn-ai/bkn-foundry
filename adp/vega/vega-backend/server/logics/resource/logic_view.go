@@ -16,8 +16,8 @@ import (
 
 	"github.com/dlclark/regexp2"
 	"github.com/mitchellh/mapstructure"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	verrors "vega-backend/errors"

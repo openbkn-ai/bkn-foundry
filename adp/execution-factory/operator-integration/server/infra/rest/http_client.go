@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // httpClient HTTP客户端结构
@@ -255,6 +256,7 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod, url string,
 			req.Header.Add(k, v)
 		}
 	}
+	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 	return
 }
 
@@ -287,6 +289,7 @@ func (c *httpClient) PostStream(ctx context.Context, url string, headers map[str
 		for k, v := range headers {
 			req.Header.Add(k, v)
 		}
+		req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 		// 设置流式请求头
 		req.Header.Set("Accept", "text/event-stream")
 		req.Header.Set("Cache-Control", "no-cache")

@@ -10,6 +10,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type restPrivateHandler struct {
@@ -44,7 +45,7 @@ func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 // RegisterRouter 内部接口注册路由
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, middlewareHeaderAuthContext(r.Hydra))
+	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContext(r.Hydra))
 	engine.Use(mws...)
 	// 算子接口
 	r.OperatorRestHandler.RegisterPrivate(engine)

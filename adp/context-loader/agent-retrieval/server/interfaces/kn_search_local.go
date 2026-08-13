@@ -85,6 +85,23 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	// RRFK RRF 融合常数 k：score = Σ 1/(k + rank)。k 越大越平缓（各通道靠前名次之间
 	// 的差距被压小），60 是文献与工业界的通用取值，跨知识网络不需要重调。
 	RRFK int `json:"rrf_k" default:"60"`
+
+	// InstanceRerankMode 精排级开关：off / shadow / on。
+	//
+	// 第一级的 RRF 只调和名次，判不出「欠款」与「还款」这类语义差异，而且名次分表达
+	// 不了绝对相关性——第一名恒为 1.0，哪怕它毫不相关。cross-encoder 把 query 与文档
+	// 拼进同一条序列做 attention，正是补这一格。
+	//
+	// 默认 off：多一次模型调用、延迟涨 100~400ms，且 reranker 未注册在客户环境是常态。
+	// shadow 照常返回融合序，但额外调一次模型并记录两个序列的差异，用于翻默认前取证。
+	InstanceRerankMode string `json:"instance_rerank_mode" default:"off"`
+	// InstanceRerankModel 覆盖精排小模型名；留空由下游解析部署级默认。
+	InstanceRerankModel string `json:"instance_rerank_model,omitempty"`
+	// RerankTopN 进入精排的候选数。精排是 O(N) 次前向，必须有上界。
+	RerankTopN int `json:"rerank_top_n" default:"50"`
+	// RerankFieldCharLimit 单个字段进入精排文本的截断长度。
+	// mf-model-api 会把单文档静默截到 4000 字符，长字段不设限的话尾部字段等于没参与打分。
+	RerankFieldCharLimit int `json:"rerank_field_char_limit" default:"200"`
 }
 
 // KnSearchPropertyFilterConfig 实例属性过滤配置
@@ -169,10 +186,15 @@ type KnSearchNode struct {
 	InstanceName     string         `json:"instance_name,omitempty"`
 	UniqueIdentities map[string]any `json:"unique_identities,omitempty"`
 	Properties       map[string]any `json:"properties,omitempty"`
-	Score            float64        `json:"score,omitempty"`
+	// Score 相关性分。**不带 omitempty**：0 分是有意义的取值（本地兜底打分给不出重叠
+	// 时就是 0），省略字段会让调用方分不清「没这个字段」与「分是 0」。
+	Score float64 `json:"score"`
 	// RecallScore 保留召回阶段的原始 _score（OpenSearch 相关性）。Score 在 RRF 路径上
 	// 会被融合分覆盖，两个量纲不同，排障时需要能同时看见。
 	RecallScore float64 `json:"recall_score,omitempty"`
+	// RerankScore cross-encoder 给出的相关性分。mode=on 时 Score 就是它；
+	// mode=shadow 时 Score 仍是融合分，这个字段单独带出来供对比。
+	RerankScore float64 `json:"rerank_score,omitempty"`
 }
 
 // ==================== Internal Structures ====================

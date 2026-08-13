@@ -12,19 +12,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
@@ -43,11 +40,10 @@ var (
 	btService     interfaces.BuildTaskService
 )
 
-const debugQueueSize = 100
+const buildTaskDispatchBuffer = 1
 
 type buildTaskService struct {
 	appSetting *common.AppSetting
-	client     *asynq.Client
 	bta        interfaces.BuildTaskAccess
 	cs         interfaces.CatalogService
 	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
@@ -55,7 +51,7 @@ type buildTaskService struct {
 	rs         interfaces.ResourceService
 	ums        interfaces.UserMgmtService
 
-	debugTaskQueue chan *asynq.Task
+	dispatchCh chan struct{}
 }
 
 var activeBuildTaskStatuses = []string{
@@ -67,13 +63,8 @@ var activeBuildTaskStatuses = []string{
 // NewBuildTaskService creates a new BuildTaskService.
 func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceService) interfaces.BuildTaskService {
 	btServiceOnce.Do(func() {
-		var client *asynq.Client
-		if !common.GetDebugMode() && logics.AQA != nil {
-			client = logics.AQA.CreateClient()
-		}
 		btService = &buildTaskService{
 			appSetting: appSetting,
-			client:     client,
 			bta:        logics.BTA,
 			cs:         catalog.NewCatalogService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
@@ -81,25 +72,21 @@ func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceSe
 			rs:         rs,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
-			debugTaskQueue: make(chan *asynq.Task, debugQueueSize),
+			dispatchCh: make(chan struct{}, buildTaskDispatchBuffer),
 		}
 	})
 	return btService
 }
 
-// DebugTaskQueue returns the in-process build task queue used in DEBUG_MODE.
-func (bts *buildTaskService) DebugTaskQueue() <-chan *asynq.Task {
-	return bts.debugTaskQueue
+func (bts *buildTaskService) DispatchSignal() <-chan struct{} {
+	return bts.dispatchCh
 }
 
-// EnqueueDebugTask enqueues a build task to the singleton in-process queue used in DEBUG_MODE.
-func EnqueueDebugTask(task *asynq.Task) bool {
-	service, ok := btService.(*buildTaskService)
-	if !ok {
-		return false
+func (bts *buildTaskService) RequestDispatch() {
+	select {
+	case bts.dispatchCh <- struct{}{}:
+	default:
 	}
-	service.debugTaskQueue <- task
-	return true
 }
 
 // Create creates a new build task. resource_id is taken from req.
@@ -171,11 +158,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 			WithErrorDetails(err.Error())
 	}
 
-	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 pending（界面"排队中"）。
-	// 入队失败仅记日志，任务保持 pending，由 Build Task reconciler 自动重新入队。
-	if err := bts.enqueueTask(ctx, buildTask, false); err != nil {
-		otellog.LogError(ctx, "Enqueue build task failed", err)
-	}
+	bts.RequestDispatch()
 
 	span.SetStatus(codes.Ok, "")
 	return buildTask.ID, nil
@@ -237,7 +220,7 @@ func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.Cr
 }
 
 func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID string, excludeTaskID string) error {
-	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+	tasks, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 2},
 		ResourceID:            resourceID,
 		Statuses:              activeBuildTaskStatuses,
@@ -398,45 +381,6 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 	return embeddingModel, modelDimensions, nil
 }
 
-// enqueueTask 按任务模式投递到 asynq 队列。
-func (bts *buildTaskService) enqueueTask(_ context.Context, buildTask *interfaces.BuildTask, reset bool) error {
-	payload, err := sonic.Marshal(&interfaces.BatchBuildTaskMessage{
-		TaskID: buildTask.ID,
-		Reset:  reset,
-	})
-	if err != nil {
-		return err
-	}
-
-	typename := interfaces.BuildTaskTypeBatch
-	if buildTask.Mode == interfaces.BuildTaskModeStreaming {
-		typename = interfaces.BuildTaskTypeStreaming
-	}
-	asynqTask := asynq.NewTask(typename, payload)
-	if common.GetDebugMode() || bts.client == nil {
-		bts.debugTaskQueue <- asynqTask
-		logger.Infof("Build task %s enqueued for debug execution", buildTask.ID)
-		return nil
-	}
-
-	if _, err := bts.client.Enqueue(asynqTask,
-		asynq.Queue(interfaces.DefaultQueue),
-		asynq.TaskID(buildTask.ID),
-		asynq.MaxRetry(interfaces.TaskMaxRetryCount),
-		asynq.Timeout(math.MaxInt64),
-		asynq.Deadline(time.Unix(math.MaxInt64/1000000000, math.MaxInt64%1000000000)),
-	); err != nil {
-		if errors.Is(err, asynq.ErrTaskIDConflict) {
-			logger.Infof("Build task %s is already enqueued", buildTask.ID)
-			return nil
-		}
-		return err
-	}
-
-	logger.Infof("Build task %s enqueued for execution", buildTask.ID)
-	return nil
-}
-
 // GetByID retrieves a build task by ID.
 func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task")
@@ -482,18 +426,55 @@ func (bts *buildTaskService) InternalGetByCatalogID(ctx context.Context, catalog
 	return bts.bta.GetByCatalogID(ctx, catalogID)
 }
 
-func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalList")
 	defer span.End()
 
 	return bts.bta.InternalList(ctx, params)
 }
 
-func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalUpdateStatus")
+func (bts *buildTaskService) InternalSetProgress(
+	ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress,
+) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalSetProgress")
 	defer span.End()
 
-	return bts.bta.UpdateStatus(ctx, tx, id, update, time.Now().UnixMilli(), allowedStatuses...)
+	return bts.bta.SetProgress(ctx, tx, id, progress, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkRunning")
+	defer span.End()
+
+	return bts.bta.MarkRunning(ctx, id, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, id, detail string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkFailed")
+	defer span.End()
+
+	return bts.bta.MarkFailed(ctx, id, detail, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkCancelled(ctx context.Context, id, detail string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkCancelled")
+	defer span.End()
+
+	return bts.bta.MarkCancelled(ctx, id, detail, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkStopped(ctx context.Context, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkStopped")
+	defer span.End()
+
+	return bts.bta.MarkStopped(ctx, id, time.Now().UnixMilli())
+}
+
+func (bts *buildTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkCompleted")
+	defer span.End()
+
+	return bts.bta.MarkCompleted(ctx, tx, id, time.Now().UnixMilli())
 }
 
 // populateBuildTaskReferences 批量补齐任务关联的资源与目录展示字段。它只查询当前
@@ -658,31 +639,6 @@ func hasFulltextIndexConfig(bt *interfaces.BuildTask) bool {
 	return false
 }
 
-// GetByResourceID retrieves a build task by resource ID.
-func (bts *buildTaskService) GetByResourceID(ctx context.Context, resourceID string) (*interfaces.BuildTask, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task by resource ID")
-	defer span.End()
-
-	buildTask, err := bts.bta.GetByResourceID(ctx, resourceID)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get build task failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	if buildTask != nil {
-		accountInfos := []*interfaces.AccountInfo{&buildTask.Creator}
-		if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
-			span.RecordError(err)
-			logger.Warnf("Failed to populate build task account names: %v", err)
-		}
-		buildTask.IndexHealth = computeIndexHealth(buildTask)
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return buildTask, nil
-}
-
 // List retrieves build tasks with filters and pagination.
 func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
@@ -718,7 +674,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	return buildTasks, total, nil
 }
 
-// Start transitions a stopped or failed task to pending before enqueueing it.
+// Start transitions a stopped or failed task to pending before signaling the local worker.
 // The worker persists running only after it claims the queued task.
 func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Start build task")
@@ -771,11 +727,10 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return err
 	}
 
-	// 入队前先置回 pending：worker 出队时会跳过 stopped/stopping 的任务
-	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
-	// running 仍由 worker 实际执行时落账。
-	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusPending)
-	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	// Persist pending before signaling the worker. This prevents a stopped task
+	// from being skipped and keeps the running transition owned by execution.
+	resetProgress := reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeFull
+	updated, err := bts.bta.MarkPending(ctx, taskID, resetProgress, time.Now().UnixMilli())
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
@@ -787,9 +742,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 			WithErrorDetails("build task status changed while starting; retry with the latest task state")
 	}
 
-	if err := bts.enqueueTask(ctx, buildTask, reset); err != nil {
-		otellog.LogError(ctx, "Enqueue build task failed", err)
-	}
+	bts.RequestDispatch()
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -815,12 +768,14 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 			WithErrorDetails("resource index config has changed; create a new build task instead")
 	}
 
-	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
-		ResourceID:            buildTask.ResourceID,
-		Statuses:              []string{interfaces.BuildTaskStatusCompleted},
-		OrderBy:               interfaces.BuildTaskOrderByCreatedAt,
-		Order:                 interfaces.DESC_DIRECTION,
+	tasks, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{
+			Limit:     1,
+			Sort:      interfaces.BuildTaskSortCreateTime,
+			Direction: interfaces.DESC_DIRECTION,
+		},
+		ResourceID: buildTask.ResourceID,
+		Statuses:   []string{interfaces.BuildTaskStatusCompleted},
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Check latest completed build task failed", err)
@@ -859,12 +814,12 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	// running → stopping：通知 worker 在批间检查点退出。
 	// pending → stopped：排队中尚无 worker 观察 stopping，直接落停；
 	// 出队时 worker 检查到 stopped 即跳过，不会复活执行。
-	targetStatus := interfaces.BuildTaskStatusStopping
+	var updated bool
 	if buildTask.Status == interfaces.BuildTaskStatusPending {
-		targetStatus = interfaces.BuildTaskStatusStopped
+		updated, err = bts.bta.MarkStopped(ctx, taskID, time.Now().UnixMilli())
+	} else {
+		updated, err = bts.bta.MarkStopping(ctx, taskID, time.Now().UnixMilli())
 	}
-	update := interfaces.NewBuildTaskUpdate().WithStatus(targetStatus)
-	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
@@ -880,27 +835,38 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	return nil
 }
 
-// Delete atomically deletes build tasks by IDs after pre-validating existence and status.
+// DeleteByIDs atomically deletes build tasks by IDs after pre-validating existence and status.
 //
 // Behavior:
+//   - Input IDs are de-duplicated while preserving their first-seen order.
 //   - Loads each id; if any missing, returns 404 BuildTask.NotFound with {missing_ids: [...]}
 //     unless ignoreMissing=true (then missing ids are dropped from the delete set).
 //   - If any task is in running/stopping status, returns 409 HasRunningExecution with {running_ids: [...]}.
 //     This check cannot be bypassed.
 //   - If any task owns the resource's current LocalIndexName, returns 409 ActiveIndexInUse
 //     unless deleteActiveIndex=true. When deleteActiveIndex=true, clears LocalIndexName before deleting.
-//   - Deletes pass-through tasks one-by-one. Mid-loop errors return 500 (rare, bounded by pre-validation).
-func (bts *buildTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete build tasks")
+//   - Deletes all validated task rows in one database statement after dropping their indexes.
+func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.DeleteByIDs")
 	defer span.End()
 
-	toDelete := make([]*interfaces.BuildTask, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	uniqueIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+
+	toDelete := make([]*interfaces.BuildTask, 0, len(uniqueIDs))
 	missingIDs := make([]string, 0)
 	runningIDs := make([]string, 0)
 	activeIndexes := make([]map[string]string, 0)
 	activeResources := make(map[string]*interfaces.Resource)
 
-	for _, id := range ids {
+	for _, id := range uniqueIDs {
 		buildTask, err := bts.bta.GetByID(ctx, id)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get build task failed")
@@ -965,6 +931,7 @@ func (bts *buildTaskService) Delete(ctx context.Context, ids []string, ignoreMis
 		}
 	}
 
+	deleteIDs := make([]string, 0, len(toDelete))
 	for _, bt := range toDelete {
 		// 先 drop 索引（尽力，失败仅记日志），再删任务行——与删资源/删 catalog 的级联
 		// 语义一致，避免 UI 单任务删除留下孤儿索引（#66 只覆盖了资源/目录两条路径）。
@@ -972,11 +939,23 @@ func (bts *buildTaskService) Delete(ctx context.Context, ids []string, ignoreMis
 		if err := bts.lim.DeleteIndex(ctx, idx); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Drop index %s for build task %s failed", idx, bt.ID), err)
 		}
-		if err := bts.bta.Delete(ctx, bt.ID); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Delete build task %s failed", bt.ID), err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
-				WithErrorDetails(err.Error())
-		}
+		deleteIDs = append(deleteIDs, bt.ID)
+	}
+	if len(deleteIDs) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
+	deleted, err := bts.bta.DeleteByIDs(ctx, deleteIDs)
+	if err != nil {
+		otellog.LogError(ctx, "Delete build tasks failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
+			WithErrorDetails(err.Error())
+	}
+	if deleted != int64(len(deleteIDs)) {
+		err = fmt.Errorf("expected to delete %d build tasks, deleted %d", len(deleteIDs), deleted)
+		otellog.LogError(ctx, "Delete build tasks affected unexpected rows", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_DeleteFailed).
+			WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")

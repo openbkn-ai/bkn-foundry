@@ -13,7 +13,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/connector/local/table"

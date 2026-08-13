@@ -14,8 +14,6 @@ bknSafe:
   directoryProvider: ""
   url: ""
 
-replicaCount: 1
-
 # 节点选择器
 nodeSelector: {}
 
@@ -71,22 +69,6 @@ depServices:
     protocol: http
     user: admin
     password: ""
-  redis:
-    connectInfo:
-      username: root
-      password: ''
-      sentinelHost: proton-redis-proton-redis-sentinel.resource.svc.cluster.local
-      sentinelPort: 26379
-      sentinelUsername: root
-      sentinelPassword: ''
-      masterGroupName: mymaster
-      host: ""
-      port: 0
-      masterHost: ""
-      masterPort: 0
-      slaveHost: ""
-      slavePort: 0
-    connectType: sentinel
   authorization-private:
     host: authorization-private
     port: 30920
@@ -154,6 +136,12 @@ config:
     workerEnabled: true
     timeout: 30s
     cronExpr: "0 * * * *"
+  taskWorker:
+    # Local worker counts for the single-instance database task loops.
+    semanticWorkerCount: 1
+    discoverWorkerCount: 1
+    batchWorkerCount: 1
+    streamingWorkerCount: 1
   # RSA 公钥配置
   crypto:
     enabled: false

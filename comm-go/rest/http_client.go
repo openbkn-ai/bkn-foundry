@@ -265,8 +265,7 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod string, url str
 			req.Header.Add(k, v)
 		}
 	}
-	if req.Header.Get(AcceptLanguageHeader) == "" {
-		req.Header.Set(AcceptLanguageHeader, GetLanguageByCtx(ctx))
-	}
+	// Service-to-service calls use the resolved locale, not the original range.
+	req.Header.Set(AcceptLanguageHeader, GetLanguageByCtx(ctx))
 	return
 }

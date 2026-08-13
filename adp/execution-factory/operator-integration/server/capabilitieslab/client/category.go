@@ -68,6 +68,7 @@ func (c *OperatorIntegrationClient) DownloadSkillPackage(
 		return nil, "", err
 	}
 	req.Header.Set("Accept", "application/octet-stream")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("x-business-domain", businessDomain)
 
 	res, err := c.HTTP.Do(req)
@@ -155,6 +156,7 @@ func (c *OperatorIntegrationClient) UpdateSkillPackage(
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("x-business-domain", businessDomain)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	libmq "github.com/openbkn-ai/bkn-comm-go/mq"
+	libmq "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/plain"
 	"github.com/stretchr/testify/assert"

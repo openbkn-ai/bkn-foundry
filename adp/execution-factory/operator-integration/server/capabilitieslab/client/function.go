@@ -61,6 +61,7 @@ func (c *OperatorIntegrationClient) ExecuteFunction(
 	}
 
 	httpReq.Header.Set("Accept", "application/json")
+	applyLanguageHeader(ctx, httpReq.Header)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {

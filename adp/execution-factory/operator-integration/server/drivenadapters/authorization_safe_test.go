@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -65,8 +67,8 @@ func TestSafeAuthorizationResourceList(t *testing.T) {
 
 	t.Run("single operation returns accessible IDs", func(t *testing.T) {
 		res, err := s.ResourceList(ctx, &interfaces.ResourceListRequest{
-			Accessor: &interfaces.AuthAccessor{ID: "u1"},
-			Resource: &interfaces.AuthResource{Type: "skill"},
+			Accessor:  &interfaces.AuthAccessor{ID: "u1"},
+			Resource:  &interfaces.AuthResource{Type: "skill"},
 			Operation: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
 		})
 		if err != nil {
@@ -96,8 +98,8 @@ func TestSafeAuthorizationResourceList(t *testing.T) {
 
 	t.Run("type-wide grant returns ResourceIDAll", func(t *testing.T) {
 		res, err := s.ResourceList(ctx, &interfaces.ResourceListRequest{
-			Accessor: &interfaces.AuthAccessor{ID: "admin"},
-			Resource: &interfaces.AuthResource{Type: "skill"},
+			Accessor:  &interfaces.AuthAccessor{ID: "admin"},
+			Resource:  &interfaces.AuthResource{Type: "skill"},
 			Operation: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
 		})
 		if err != nil {
@@ -120,6 +122,27 @@ func TestSafeAuthorizationResourceList(t *testing.T) {
 			t.Fatalf("ResourceList = %+v, want []", res)
 		}
 	})
+}
+
+func TestSafeAuthorizationUsesEffectiveLocale(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
+			t.Errorf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"allowed": true})
+	}))
+	defer server.Close()
+
+	safe := newSafeAuthorization(server.URL, testLogger{})
+	ctx := sharedrest.WithLanguage(context.Background(), sharedrest.AmericanEnglish)
+	result, err := safe.OperationCheck(ctx, &interfaces.AuthOperationCheckRequest{
+		Accessor:  &interfaces.AuthAccessor{ID: "user-1"},
+		Resource:  &interfaces.AuthResource{Type: "skill", ID: "skill-1"},
+		Operation: []interfaces.AuthOperationType{interfaces.AuthOperationTypeView},
+	})
+	if err != nil || !result.Result {
+		t.Fatalf("OperationCheck() = %#v, %v", result, err)
+	}
 }
 
 func TestIntersectStringSlices(t *testing.T) {

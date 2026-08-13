@@ -10,10 +10,9 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
-	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -30,10 +29,7 @@ func TestDiscoverTaskWorkerSkipsCancelledTask(t *testing.T) {
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", Status: interfaces.DiscoverTaskStatusCancelled,
 	}, nil)
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
-	require.NoError(t, err)
-
-	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
 }
 
 func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
@@ -45,13 +41,12 @@ func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
 	}, nil)
+	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").Return(true, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
-	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted", gomock.Any()).Return(true, nil)
+	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted").Return(true, nil)
 
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
-	require.NoError(t, err)
-	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
 }
 
 func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
@@ -63,14 +58,188 @@ func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
 	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
 	}, nil)
+	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").Return(true, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
-	dts.EXPECT().InternalUpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusFailed,
-		"catalog is disabled", gomock.Any()).Return(nil)
+	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "catalog is disabled").Return(true, nil)
 
-	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
-	require.NoError(t, err)
-	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
+}
+
+func TestDiscoverTaskWorkerMarksTaskFailedWhenCatalogLookupFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	gomock.InOrder(
+		dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+			ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+		}, nil),
+		dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").Return(true, nil),
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(nil, errors.New("temporary database error")),
+		dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", "temporary database error").
+			Return(true, nil),
+	)
+
+	err := worker.Run(context.Background(), "task-1")
+
+	require.ErrorContains(t, err, "temporary database error")
+}
+
+func TestDiscoverTaskWorkerStopsWhenRunningTransitionMisses(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").
+		Return(false, nil)
+
+	require.NoError(t, worker.Run(context.Background(), "task-1"))
+}
+
+func TestDiscoverTaskWorkerKeepsPendingTaskWhenClaimFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").
+		Return(false, errors.New("temporary database error"))
+
+	err := worker.Run(context.Background(), "task-1")
+
+	require.ErrorContains(t, err, "temporary database error")
+}
+
+func TestDiscoverTaskWorkerRecoversInterruptedTasks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, queueSize: 2}
+
+	firstList := dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
+			assert.Equal(t, []string{interfaces.DiscoverTaskStatusRunning}, params.Statuses)
+			assert.Equal(t, 2, params.Limit)
+			assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
+			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil
+		})
+	markFailed := dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
+		"discover task interrupted by service restart").Return(true, nil).After(firstList)
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+		[]*interfaces.DiscoverTaskSummary{}, nil).After(markFailed)
+
+	require.NoError(t, worker.recoverInterruptedTasks(context.Background()))
+}
+
+func TestDiscoverTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, queueSize: 1}
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
+		[]*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil)
+	dts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
+		"discover task interrupted by service restart").Return(false, errors.New("database unavailable"))
+
+	err := worker.recoverInterruptedTasks(context.Background())
+
+	require.ErrorContains(t, err, "database unavailable")
+}
+
+func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{
+		dts:      dts,
+		queue:    make(chan string, 2),
+		inFlight: make(map[string]struct{}),
+	}
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
+			assert.Equal(t, 2, params.Limit)
+			assert.Equal(t, []string{interfaces.DiscoverTaskStatusPending}, params.Statuses)
+			assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
+			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil
+		})
+
+	worker.fillQueue(context.Background())
+
+	assert.Len(t, worker.queue, 1)
+	assert.False(t, worker.addInFlight("task-1"))
+}
+
+func TestDiscoverTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{
+		dts:      dts,
+		queue:    make(chan string, 2),
+		inFlight: make(map[string]struct{}),
+	}
+	worker.queue <- "already-queued"
+
+	worker.fillQueue(context.Background())
+}
+
+func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	taskService := vmock.NewMockDiscoverTaskService(ctrl)
+	ctx, cancel := context.WithCancel(context.Background())
+	worker := &DiscoverTaskWorker{
+		dts: taskService,
+		queue: func() chan string {
+			queue := make(chan string, 2)
+			queue <- "task-1"
+			queue <- "task-2"
+			return queue
+		}(),
+		inFlight: map[string]struct{}{"task-1": {}, "task-2": {}},
+	}
+	taskService.EXPECT().InternalGetByID(gomock.Any(), "task-1").DoAndReturn(
+		func(context.Context, string) (*interfaces.DiscoverTask, error) {
+			panic("unexpected connector panic")
+		},
+	)
+	taskService.EXPECT().
+		InternalMarkFailed(gomock.Any(), "task-1", "discover task panicked: unexpected connector panic").
+		Return(true, nil)
+	taskService.EXPECT().InternalGetByID(gomock.Any(), "task-2").Return(&interfaces.DiscoverTask{
+		ID: "task-2", Status: interfaces.DiscoverTaskStatusFailed,
+	}, nil)
+	dispatchCount := 0
+	taskService.EXPECT().RequestDispatch().Times(2).Do(func() {
+		dispatchCount++
+		if dispatchCount == 2 {
+			cancel()
+		}
+	})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		worker.runQueuedTasks(ctx)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("discover task worker did not continue after panic")
+	}
+	assert.True(t, worker.addInFlight("task-1"), "panic must not leak the in-flight task ID")
+	assert.True(t, worker.addInFlight("task-2"), "worker must continue and release the next task ID")
 }
 
 func TestReconcileTableResources(t *testing.T) {

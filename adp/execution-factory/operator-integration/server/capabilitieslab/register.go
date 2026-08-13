@@ -17,6 +17,7 @@ package capabilitieslab
 
 import (
 	"github.com/gin-gonic/gin"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/config"
@@ -41,6 +42,8 @@ func RegisterRouter(group *gin.RouterGroup) {
 	}
 
 	group.Use(
+		sharedrest.LanguageMiddleware(),
+		sharedrest.PrivateNoCacheMiddleware(),
 		handler.RequestIDMiddleware(),
 		handler.AuthMiddleware(cfg.DefaultUserID),
 		handler.MetricsMiddleware(metrics),

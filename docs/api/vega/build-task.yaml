@@ -81,16 +81,16 @@ paths:
             type: integer
             format: int64
             default: 20
-        - name: order_by
+        - name: sort
           description: 排序字段，默认按创建时间排序
           in: query
           schema:
             type: string
             enum:
-              - created_at
-              - updated_at
-            default: created_at
-        - name: order
+              - create_time
+              - update_time
+            default: create_time
+        - name: direction
           description: 排序方向，默认 desc
           in: query
           schema:

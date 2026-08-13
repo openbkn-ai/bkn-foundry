@@ -14,12 +14,12 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/audit"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/common"
 	"vega-backend/common/visitor"
@@ -34,7 +34,7 @@ func parseDiscoverTaskListParams(ctx context.Context, c *gin.Context) (interface
 
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "create_time")
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.DiscoverTaskSortCreateTime)
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx,
@@ -212,7 +212,7 @@ func (r *restHandler) deleteDiscoverTasks(c *gin.Context, visitor hydra.Visitor)
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 
-	if err := r.dts.Delete(ctx, ids, ignoreMissing); err != nil {
+	if err := r.dts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

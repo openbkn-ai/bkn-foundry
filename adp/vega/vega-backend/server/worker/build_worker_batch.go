@@ -12,8 +12,7 @@ import (
 	"sort"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"
@@ -30,25 +29,21 @@ import (
 // batchBuildWorker handles build tasks.
 type batchBuildWorker struct {
 	appSetting  *common.AppSetting
-	client      *asynq.Client
 	bts         interfaces.BuildTaskService
 	cf          interfaces.ConnectorFactory
 	cs          interfaces.CatalogService
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
 	rs          interfaces.ResourceService
+
+	embeddingQueue chan<- string
 }
 
 // NewBatchBuildWorker creates a new build worker.
 func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
-	var client *asynq.Client
-	if !common.GetDebugMode() && logics.AQA != nil {
-		client = logics.AQA.CreateClient()
-	}
 	rs := resource.NewResourceService(appSetting)
 	return &batchBuildWorker{
 		appSetting:  appSetting,
-		client:      client,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
 		cf:          factory.GetFactory(appSetting),
 		rs:          rs,
@@ -58,25 +53,13 @@ func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	}
 }
 
-// HandleTask handles a build task from the queue.
-func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.BatchBuildTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal task message: %v", err)
-		return err
-	}
-
-	taskID := msg.TaskID
-	logger.Infof("Starting batch build task: %s", taskID)
-
-	buildTaskInfo, err := bbw.bts.InternalGetByID(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("get build task failed: %w", err)
-	}
+// Run executes one persisted batch build task already claimed by the database producer.
+func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.BuildTask) error {
 	if buildTaskInfo == nil {
-		// Task not found, return nil
 		return nil
 	}
+	taskID := buildTaskInfo.ID
+	logger.Infof("Starting batch build task: %s", taskID)
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
@@ -87,19 +70,10 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
-			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			if _, err := bbw.bts.InternalUpdateStatus(ctx, nil, taskID, update); err != nil {
+			if _, err := bbw.bts.InternalMarkStopped(ctx, taskID); err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
-		return nil
-	}
-	claimed, err := claimBuildTaskExecution(ctx, bbw.bts, taskID)
-	if err != nil {
-		return fmt.Errorf("claim build task execution failed: %w", err)
-	}
-	if !claimed {
-		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
 		return nil
 	}
 	resourceID := buildTaskInfo.ResourceID
@@ -135,19 +109,13 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 		err = fmt.Errorf("catalog is disabled")
 	}
 
-	// Execute type belongs to the persisted task. reset is only a one-off
-	// override for this run, forcing a full rebuild.
-	executeType := batchBuildExecuteType(buildTaskInfo, msg.Reset)
+	executeType := batchBuildExecuteType(buildTaskInfo)
 	if err == nil {
 		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo, executeType)
 	}
 	if err != nil {
-		// Update task status to failed
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg(err.Error())
-		_, err = bbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
+		_, err = bbw.bts.InternalMarkFailed(ctx, taskID, err.Error())
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -158,15 +126,15 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 	return nil
 }
 
-func batchBuildExecuteType(buildTask *interfaces.BuildTask, reset bool) string {
+func batchBuildExecuteType(buildTask *interfaces.BuildTask) string {
 	// Incremental tasks keep using their existing index and checkpoint. They
-	// cannot be reset into a full rebuild because that index is not disposable.
+	// cannot become full rebuilds because that index is not disposable.
 	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		return interfaces.BuildTaskExecuteTypeIncremental
 	}
-	// A full task normally resumes from its checkpoint after a failure. reset is
-	// meaningful only for it and starts the same task from the beginning.
-	if reset {
+	// A full task starts from the beginning only when its persisted progress is
+	// empty. Restart with reset clears that progress before dispatching the task.
+	if buildTask.SyncedMark == "" && buildTask.SyncedCount == 0 {
 		return interfaces.BuildTaskExecuteTypeFull
 	}
 	return interfaces.BuildTaskExecuteTypeIncremental
@@ -204,11 +172,14 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		// 否则跨运行累计出 synced > total 的显示
 		buildTaskInfo.SyncedCount = 0
 		buildTaskInfo.VectorizedCount = 0
-		update := interfaces.NewBuildTaskUpdate().
-			WithSyncedCount(0).
-			WithVectorizedCount(0).
-			WithSyncedMark("")
-		if _, err := bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update); err != nil {
+		zero := int64(0)
+		emptyMark := ""
+		progress := interfaces.BuildTaskProgress{
+			SyncedCount:     &zero,
+			VectorizedCount: &zero,
+			SyncedMark:      &emptyMark,
+		}
+		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 	}
@@ -274,12 +245,10 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 		defer bbw.kafkaAccess.CloseWriter(writer)
 	}
-	// 索引、数据源连接与 Kafka writer/topic 均是 embedding 的前置条件。
-	// 只有全部准备成功后才投递子任务，避免主任务早期失败时已启动的 worker
-	// 覆写 failed 状态或持续重试。投递使用确定性 TaskID 去重，stop→start
-	// 重启时仍可安全补发。
+	// Start the embedding phase only after all batch prerequisites are ready,
+	// so an early batch failure cannot leave a competing phase running.
 	if hasEmbedding {
-		if err := sendEmbeddingTask(bbw.client, buildTaskInfo.ID); err != nil {
+		if err := sendEmbeddingTask(ctx, bbw.embeddingQueue, buildTaskInfo.ID); err != nil {
 			return fmt.Errorf("send embedding task failed: %w", err)
 		}
 		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
@@ -297,14 +266,19 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			logger.Infof("Task %s is cancelled, exiting...", buildTaskInfo.ID)
 			return nil
 		}
+		if taskStatus == interfaces.BuildTaskStatusFailed ||
+			taskStatus == interfaces.BuildTaskStatusStopped ||
+			taskStatus == interfaces.BuildTaskStatusCompleted {
+			logger.Infof("Task %s is %s, stop batch build", buildTaskInfo.ID, taskStatus)
+			return nil
+		}
 
 		// Handle stopping status
 		if taskStatus == interfaces.BuildTaskStatusStopping {
 			// Task is stopping, exit the loop
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
 			// Update task status to stopped
-			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			_, err = bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = bbw.bts.InternalMarkStopped(ctx, buildTaskInfo.ID)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -381,20 +355,21 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 			syncedCount += int64(readRows)
 			// Set firstQuery to false after the first query
-			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
+			progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
 			if firstQuery {
 				firstQuery = false
-				update = update.WithTotalCount(int64(totalRows))
+				totalCount := int64(totalRows)
+				progress.TotalCount = &totalCount
 			}
 			if len(newSyncedMark) > 0 {
 				syncedMarkStr, err := sonic.MarshalString(newSyncedMark)
 				if err != nil {
 					return fmt.Errorf("failed to marshal synced mark: %w", err)
 				} else {
-					update = update.WithSyncedMark(syncedMarkStr)
+					progress.SyncedMark = &syncedMarkStr
 				}
 			}
-			_, err = bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			_, err = bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}

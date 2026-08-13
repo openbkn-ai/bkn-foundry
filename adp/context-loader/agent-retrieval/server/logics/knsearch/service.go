@@ -11,7 +11,7 @@ package knsearch
 import (
 	"context"
 
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -26,7 +26,7 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 		req.KnID, req.Query, req.OnlySchema)
 
 	// 1. 合并配置
-	mergedConfig := MergeRetrievalConfig(req.RetrievalConfig)
+	mergedConfig := MergeRetrievalConfigWithBase(s.deploymentRetrievalConfig(), req.RetrievalConfig)
 	s.logger.WithContext(ctx).Debugf("[KnSearchLocal] Merged config: concept_top_k=%d, schema_brief=%v, enable_coarse_recall=%v",
 		mergedConfig.ConceptRetrieval.TopK,
 		boolValue(mergedConfig.ConceptRetrieval.SchemaBrief),

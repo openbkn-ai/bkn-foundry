@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 // CE 条件表达式函数（泛型版本）

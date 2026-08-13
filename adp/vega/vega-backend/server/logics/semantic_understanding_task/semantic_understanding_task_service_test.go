@@ -13,11 +13,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -127,11 +125,7 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		service := &semanticUnderstandingTaskService{
-			suta:           taskAccess,
-			rs:             resourceService,
-			debugTaskQueue: make(chan *asynq.Task, 1),
-		}
+		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: resourceService}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
 		var createdTask *interfaces.SemanticUnderstandingTask
 		var findHash string
@@ -167,50 +161,6 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		assert.NotEmpty(t, got.InputHash)
 		assert.Equal(t, got.InputHash, findHash)
 
-		select {
-		case queuedTask := <-service.DebugTaskQueue():
-			assert.Equal(t, interfaces.SemanticUnderstandingTaskType, queuedTask.Type())
-		case <-time.After(time.Second):
-			t.Fatal("semantic understanding task was not enqueued")
-		}
-	})
-
-	t.Run("marks task failed when enqueue fails", func(t *testing.T) {
-		t.Setenv("DEBUG_MODE", "false")
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-
-		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		client := asynq.NewClient(asynq.RedisClientOpt{
-			Addr:        "127.0.0.1:0",
-			DialTimeout: time.Millisecond,
-		})
-		t.Cleanup(func() { _ = client.Close() })
-		service := &semanticUnderstandingTaskService{
-			client: client,
-			suta:   taskAccess,
-		}
-
-		taskAccess.EXPECT().
-			FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, "input-hash").
-			Return(nil, nil)
-		taskAccess.EXPECT().
-			Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.SemanticUnderstandingTask{})).
-			Return(nil)
-		taskAccess.EXPECT().
-			MarkFailed(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, failureDetail string, _ int64) (bool, error) {
-				assert.Contains(t, failureDetail, "failed to enqueue task")
-				return true, nil
-			})
-
-		got, err := service.createTask(context.Background(), &interfaces.SemanticUnderstandingTask{
-			Scope:     interfaces.SemanticUnderstandingTaskScopeResource,
-			InputHash: "input-hash",
-		})
-
-		require.Error(t, err)
-		assert.Nil(t, got)
 	})
 
 	t.Run("reuses active task with same input hash", func(t *testing.T) {
@@ -322,7 +272,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
 		assertTaskCreatedWithoutSamples(t, service, resource.ID)
 	})
 
@@ -339,7 +289,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
 		assertTaskCreatedWithoutSamples(t, service, resource.ID)
 	})
 
@@ -355,7 +305,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
 		assertTaskCreatedWithoutSamples(t, service, resource.ID)
 	})
 
@@ -399,7 +349,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 				return nil
 			})
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, debugTaskQueue: make(chan *asynq.Task, 1)}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
 		req := &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
@@ -480,10 +430,10 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	service := &semanticUnderstandingTaskService{suta: taskAccess}
 
 	taskAccess.EXPECT().
-		MarkRunning(gomock.Any(), "semantic-task-1", "agent-task-1", gomock.Any()).
+		MarkRunning(gomock.Any(), "semantic-task-1", gomock.Any()).
 		Return(true, nil)
 
-	running, err := service.MarkRunning(context.Background(), "semantic-task-1", "agent-task-1")
+	running, err := service.InternalMarkRunning(context.Background(), "semantic-task-1")
 	require.NoError(t, err)
 	assert.True(t, running)
 
@@ -491,7 +441,7 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 		MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`, gomock.Any()).
 		Return(true, nil)
 
-	completed, err := service.MarkCompleted(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
+	completed, err := service.InternalMarkCompleted(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
 	require.NoError(t, err)
 	assert.True(t, completed)
 }
@@ -616,7 +566,7 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 	})
 }
 
-func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
+func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 	t.Run("deletes completed tasks and ignores missing ids", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -633,7 +583,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 			DeleteByIDs(gomock.Any(), []string{"task-1", "task-2"}).
 			Return(int64(2), nil)
 
-		err := service.Delete(context.Background(), []string{"task-1", "task-1", "missing", "task-2"}, true)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1", "task-1", "missing", "task-2"}, true)
 
 		require.NoError(t, err)
 	})
@@ -651,7 +601,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 				{ID: "task-2", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
-		err := service.Delete(context.Background(), []string{"task-1", "task-2"}, false)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1", "task-2"}, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "HasRunningExecution")
@@ -669,7 +619,7 @@ func TestSemanticUnderstandingTaskServiceDelete(t *testing.T) {
 				{ID: "task-1", Status: interfaces.SemanticUnderstandingTaskStatusCompleted},
 			}, nil)
 
-		err := service.Delete(context.Background(), []string{"task-1", "missing"}, false)
+		err := service.DeleteByIDs(context.Background(), []string{"task-1", "missing"}, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "NotFound")

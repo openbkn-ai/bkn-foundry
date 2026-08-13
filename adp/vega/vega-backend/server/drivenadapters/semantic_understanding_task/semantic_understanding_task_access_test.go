@@ -130,7 +130,7 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		task := sampleSemanticUnderstandingTask()
 
 		params := interfaces.SemanticUnderstandingTaskQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: "create_time", Direction: interfaces.ASC_DIRECTION},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 5, Limit: 10, Sort: interfaces.SemanticUnderstandingTaskSortCreateTime, Direction: interfaces.ASC_DIRECTION},
 			Scope:                 interfaces.SemanticUnderstandingTaskScopeResource,
 			CatalogID:             "catalog-1",
 			ResourceID:            "resource-1",
@@ -180,6 +180,27 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		assert.NotContains(t, string(payload), `"failure_detail"`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("internal list skips count query", func(t *testing.T) {
+		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		task := sampleSemanticUnderstandingTask()
+		params := interfaces.SemanticUnderstandingTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+			Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusPending},
+		}
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinSemanticUnderstandingTaskListColumns() + " FROM t_semantic_understanding_task WHERE f_status IN (?) ORDER BY f_create_time DESC LIMIT 1 OFFSET 0")).
+			WithArgs(interfaces.SemanticUnderstandingTaskStatusPending).
+			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskListColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
+
+		got, err := access.InternalList(context.Background(), params)
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, task.ID, got[0].ID)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func boolPtr(value bool) *bool {
@@ -187,63 +208,50 @@ func boolPtr(value bool) *bool {
 }
 
 func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {
-	t.Run("claims pending task", func(t *testing.T) {
+	t.Run("marks pending task running", func(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_agent_task_id = ?, f_failure_detail = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs("agent-task-1", "", interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.MarkRunning(context.Background(), "semantic-task-1", "agent-task-1", 123)
+		updated, err := access.MarkRunning(context.Background(), "semantic-task-1", 123)
 
 		require.NoError(t, err)
-		assert.True(t, claimed)
+		assert.True(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("returns false when status does not match", func(t *testing.T) {
+	t.Run("reports status mismatch", func(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_agent_task_id = ?, f_failure_detail = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?)")).
-			WithArgs("agent-task-1", "", interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		claimed, err := access.MarkRunning(context.Background(), "semantic-task-1", "agent-task-1", 123)
+		updated, err := access.MarkRunning(context.Background(), "semantic-task-1", 123)
 
 		require.NoError(t, err)
-		assert.False(t, claimed)
+		assert.False(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
 
-func TestSemanticUnderstandingTaskAccessDelete(t *testing.T) {
-	t.Run("deletes task", func(t *testing.T) {
-		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
-		defer func() { _ = db.Close() }()
+func TestSemanticUnderstandingTaskAccessSetApplied(t *testing.T) {
+	db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
+	defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_semantic_understanding_task WHERE f_id = ?")).
-			WithArgs("semantic-task-1").
-			WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_applied = ?, f_applied_time = ?, f_apply_detail_json = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
+		WithArgs(true, int64(123), `{"resource_updated":true}`, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusCompleted).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Delete(context.Background(), "semantic-task-1"))
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
+	updated, err := access.SetApplied(context.Background(), nil, "semantic-task-1", true, 123, `{"resource_updated":true}`)
 
-	t.Run("returns sql err no rows when not found", func(t *testing.T) {
-		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
-		defer func() { _ = db.Close() }()
-
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_semantic_understanding_task WHERE f_id = ?")).
-			WithArgs("missing").
-			WillReturnResult(sqlmock.NewResult(0, 0))
-
-		err := access.Delete(context.Background(), "missing")
-
-		require.ErrorIs(t, err, sql.ErrNoRows)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
+	require.NoError(t, err)
+	assert.True(t, updated)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestSemanticUnderstandingTaskAccessDeleteByIDs(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type KnnCond struct {

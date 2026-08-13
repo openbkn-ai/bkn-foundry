@@ -17,6 +17,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // bkn-safe user-directory adapter + cutover switch for exec-factory.
@@ -147,6 +148,7 @@ func (s *safeUserManagement) post(ctx context.Context, path string, body, out an
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return err

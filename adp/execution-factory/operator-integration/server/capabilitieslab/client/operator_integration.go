@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type contextKey string
@@ -38,6 +40,10 @@ func WithForwardedAuth(ctx context.Context, authorization string, cookie string)
 	return ctx
 }
 
+func applyLanguageHeader(ctx context.Context, header http.Header) {
+	header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+}
+
 func NewOperatorIntegrationClient(baseURL string) *OperatorIntegrationClient {
 	return &OperatorIntegrationClient{
 		BaseURL: strings.TrimRight(baseURL, "/"),
@@ -52,6 +58,7 @@ func (c *OperatorIntegrationClient) Ping(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	applyLanguageHeader(ctx, req.Header)
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
@@ -481,6 +488,7 @@ func (c *OperatorIntegrationClient) doJSONWithUser(
 	}
 
 	req.Header.Set("Accept", "application/json")
+	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)

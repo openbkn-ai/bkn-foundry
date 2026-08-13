@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	mqclient "github.com/openbkn-ai/bkn-comm-go/mq"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/common"
 	verrors "vega-backend/errors"

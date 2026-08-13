@@ -13,13 +13,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	libCommon "github.com/openbkn-ai/bkn-comm-go/common"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/middleware"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"bkn-backend/common"
+	"bkn-backend/common/bkntrace"
+	"bkn-backend/common/operationaudit"
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 	"bkn-backend/logics/action_schedule"
@@ -40,32 +42,47 @@ type RestHandler interface {
 }
 
 type restHandler struct {
-	appSetting *common.AppSetting
-	as         interfaces.AuthService
-	ass        interfaces.ActionScheduleService
-	ats        interfaces.ActionTypeService
-	cgs        interfaces.ConceptGroupService
-	kns        interfaces.KNService
-	ots        interfaces.ObjectTypeService
-	rts        interfaces.RelationTypeService
-	rtsRisk    interfaces.RiskTypeService
-	ms         interfaces.MetricService
-	bs         interfaces.BKNService
+	appSetting            *common.AppSetting
+	auditRecorder         operationAuditRecorder
+	auditQueryStore       operationAuditQueryStore
+	auditIdentityResolver func(context.Context, string, hydra.Visitor) operationAuditActor
+	auditAccessResolver   func(context.Context, string, string) (bkntrace.OperationAuditProfile, error)
+	as                    interfaces.AuthService
+	ass                   interfaces.ActionScheduleService
+	ats                   interfaces.ActionTypeService
+	cgs                   interfaces.ConceptGroupService
+	kns                   interfaces.KNService
+	ots                   interfaces.ObjectTypeService
+	rts                   interfaces.RelationTypeService
+	rtsRisk               interfaces.RiskTypeService
+	ms                    interfaces.MetricService
+	bs                    interfaces.BKNService
 }
 
-func NewRestHandler(appSetting *common.AppSetting) RestHandler {
+func NewRestHandler(appSetting *common.AppSetting, auditStore *operationaudit.Store) RestHandler {
 	r := &restHandler{
-		appSetting: appSetting,
-		as:         auth.NewAuthService(appSetting),
-		ass:        action_schedule.NewActionScheduleService(appSetting),
-		ats:        action_type.NewActionTypeService(appSetting),
-		cgs:        concept_group.NewConceptGroupService(appSetting),
-		kns:        knowledge_network.NewKNService(appSetting),
-		ots:        object_type.NewObjectTypeService(appSetting),
-		rts:        relation_type.NewRelationTypeService(appSetting),
-		rtsRisk:    risk_type.NewRiskTypeService(appSetting),
-		ms:         metriclogics.NewMetricService(appSetting),
-		bs:         bkn.NewBKNService(appSetting),
+		appSetting:          appSetting,
+		auditRecorder:       auditStore,
+		auditQueryStore:     auditStore,
+		auditAccessResolver: bkntrace.ResolveOperationAuditProfile,
+		auditIdentityResolver: func(ctx context.Context, authorization string, visitor hydra.Visitor) operationAuditActor {
+			actor := basicOperationAuditActor(authorization, visitor)
+			profile, err := bkntrace.ResolveOperationAuditIdentity(ctx, authorization, visitor.ID)
+			if err == nil {
+				actor.ActorName = profile.ActorName
+			}
+			return actor
+		},
+		as:      auth.NewAuthService(appSetting),
+		ass:     action_schedule.NewActionScheduleService(appSetting),
+		ats:     action_type.NewActionTypeService(appSetting),
+		cgs:     concept_group.NewConceptGroupService(appSetting),
+		kns:     knowledge_network.NewKNService(appSetting),
+		ots:     object_type.NewObjectTypeService(appSetting),
+		rts:     relation_type.NewRelationTypeService(appSetting),
+		rtsRisk: risk_type.NewRiskTypeService(appSetting),
+		ms:      metriclogics.NewMetricService(appSetting),
+		bs:      bkn.NewBKNService(appSetting),
 	}
 	return r
 }
@@ -74,15 +91,20 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.AccessLog())
 	c.Use(middleware.TracingMiddleware())
 	c.Use(r.LanguageMiddleware())
+	c.Use(r.OperationAudit())
 
 	c.GET("/health", r.HealthCheck)
 
 	bknApiV1 := c.Group("/api/bkn-backend/v1")
 	otlApiV1 := c.Group("/api/ontology-manager/v1")
+	bknApiV1.Use(rest.PrivateNoCacheMiddleware())
+	otlApiV1.Use(rest.PrivateNoCacheMiddleware())
 	bknApiV1.GET("/trace/outbox", r.ListTraceOutbox)
 	bknApiV1.GET("/trace/outbox/:outbox_id", r.GetTraceOutbox)
 	bknApiV1.POST("/trace/outbox/:outbox_id/retry", r.verifyJsonContentType(), r.RetryTraceOutbox)
 	bknApiV1.POST("/trace/outbox/:outbox_id/abandon", r.verifyJsonContentType(), r.AbandonTraceOutbox)
+	bknApiV1.GET("/operation-audits", r.ListOperationAudits)
+	bknApiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
 
 	for _, apiV1 := range []*gin.RouterGroup{bknApiV1, otlApiV1} {
 		// 业务知识网络
@@ -167,6 +189,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	bknApiInV1 := c.Group("/api/bkn-backend/in/v1")
 	otlApiInV1 := c.Group("/api/ontology-manager/in/v1")
+	bknApiInV1.Use(rest.PrivateNoCacheMiddleware())
+	otlApiInV1.Use(rest.PrivateNoCacheMiddleware())
 
 	for _, apiInV1 := range []*gin.RouterGroup{bknApiInV1, otlApiInV1} {
 		// 业务知识网络
@@ -270,13 +294,10 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	}
 }
 
-// gin中间件 把 X-Language 头解析结果挂到 request ctx。
+// LanguageMiddleware resolves Accept-Language once and stores it in request context.
 // 注册顺序必须在 TracingMiddleware 之后，这样 language ctx 叠加在 trace ctx 上。
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request = c.Request.WithContext(rest.GetLanguageCtx(c))
-		c.Next()
-	}
+	return rest.LanguageMiddleware()
 }
 
 // gin中间件 访问日志
@@ -306,6 +327,7 @@ func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Vi
 		rest.ReplyError(c, httpErr)
 		return visitor, err
 	}
+	c.Set(operationAuditVisitorKey, visitor)
 
 	return visitor, nil
 }

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver"
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
 )
 
 func TestMariaDBRepositoryIntegration(t *testing.T) {

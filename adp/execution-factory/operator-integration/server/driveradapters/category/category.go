@@ -9,6 +9,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // CategoryList 算子分类列表
@@ -18,6 +19,7 @@ func (h *categoryHandler) CategoryList(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	sharedrest.MarkLocalizedCacheableResponse(c)
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 

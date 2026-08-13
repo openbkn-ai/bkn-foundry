@@ -11,7 +11,7 @@ import (
 	cond "ontology-query/common/condition"
 
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 type ViewQuery struct {

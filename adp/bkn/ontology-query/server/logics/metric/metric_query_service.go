@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"ontology-query/common"
 	cond "ontology-query/common/condition"

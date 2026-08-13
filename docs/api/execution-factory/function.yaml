@@ -59,6 +59,8 @@ paths:
         **响应永远是 200**：代码自身抛异常不算接口失败，异常栈在 `stderr` 里，
         `exit_code` 非 0，`result` 为 `null`。只有参数不合法、无权限、沙箱不可用
         才返回 4xx/5xx——**判断执行成败看 `exit_code`，不要看 HTTP 状态码**。
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
         required: true
         content:
@@ -146,6 +148,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: 当前账户没有算子的 execute 权限
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -169,6 +174,8 @@ paths:
         真正的 4xx/5xx 只在参数不合法、无权限、沙箱不可用时出现。
 
         **这会真的执行你的代码**，因此与 `/function/execute` 用同一套 execute 授权。
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
         required: true
         content:
@@ -218,6 +225,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: 当前账户没有算子的 execute 权限
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -237,6 +247,8 @@ paths:
         装包检查）。
 
         本接口会从池里取一个会话来查询，响应里的 `session_id` 就是被查询的那个会话。
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       responses:
         '200':
           description: 依赖库列表
@@ -248,6 +260,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           description: 沙箱不可用或取不到会话
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -265,6 +280,7 @@ paths:
 
         `python_version` 用于过滤与该 Python 版本兼容的发行版。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - name: package_name
           in: path
           required: true
@@ -308,6 +324,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           description: PyPI 源不可达或返回异常
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -321,10 +340,11 @@ paths:
       operationId: getFunctionTemplate
       description: |
         返回可直接填空的入口函数骨架，说明 `event` 怎么进、返回值怎么出。
-        模板文案随请求语言本地化（`X-Language` 头）。
+        模板文案随请求语言本地化（`Accept-Language` 头）。
 
         目前只支持 `python`。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - name: template_type
           in: path
           required: true
@@ -376,6 +396,9 @@ paths:
                           return result
         '400':
           description: 不支持的模板类型
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -404,6 +427,7 @@ paths:
 
         用的是系统默认大模型，不在本接口指定模型名。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - name: type
           in: path
           required: true
@@ -456,6 +480,9 @@ paths:
           description: |
             参数错误。常见：`type=python_function_generator` 缺 `query`，
             或 `type=metadata_param_generator` 缺 `code`
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -468,6 +495,9 @@ paths:
 
             注意：模型侧的鉴权失败**不会**表现为 403——mf-model-api 与模型厂商
             之间的 401/403/404 一律收敛成 502，避免被误读成调用方凭据失效。
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -477,6 +507,8 @@ paths:
             大模型上游限流。响应体为 OpenAI 形态，`error.type` 为
             `rate_limit_exceeded`；带 `Retry-After` 头时按其退避重试。
           headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
             Retry-After:
               description: 建议的重试等待秒数。
               schema:
@@ -487,6 +519,9 @@ paths:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorOpenAI'
         '500':
           description: 算子服务自身内部错误（大模型调用失败见 429 / 502 / 503）
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -497,6 +532,9 @@ paths:
             `error.type` 为 `api_connection_error` / `authentication_error` /
             `permission_error` / `not_found_error`。属运维侧问题（供应商 key、
             模型地址），与调用方凭据无关。
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -505,6 +543,9 @@ paths:
           description: |
             大模型上游暂时不可用（供应商繁忙、5xx）。响应体为 OpenAI 形态，
             `error.type` 为 `service_unavailable_error`，稍后重试即可。
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -520,6 +561,7 @@ paths:
         返回 `/ai_generate/function/{type}` 内部使用的提示词模板（system prompt 与
         user prompt 模板）。用于排查生成效果不佳的原因，或在外部复现同一套生成逻辑。
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - name: type
           in: path
           required: true
@@ -538,6 +580,9 @@ paths:
                 $ref: '#/components/schemas/PromptTemplate'
         '400':
           description: 不支持的模板类型
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -546,6 +591,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: 当前账户没有算子的 create 权限
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
           content:
             application/json:
               schema:
@@ -561,22 +609,50 @@ components:
   responses:
     BadRequest:
       description: 参数错误
+      headers:
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
     Unauthorized:
       description: 凭据缺失或无效
+      headers:
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
     InternalError:
       description: 服务内部错误，或沙箱不可用
+      headers:
+        Content-Language:
+          $ref: '#/components/headers/ContentLanguage'
       content:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      schema:
+        type: string
+      description: 可选的 RFC 9110 语言偏好。服务从支持的 `zh-CN`、`en-US` 中选择响应错误文本语言。
+
+  headers:
+    ContentLanguage:
+      description: 仅当响应包含本地化人类可读文本时返回，值为实际使用的语言。
+      schema:
+        type: string
+    VaryAcceptLanguage:
+      description: 仅当可缓存表示随请求语言变化时返回，值包含 `Accept-Language`。
+      schema:
+        type: string
 
   schemas:
     FunctionExecuteRequest:

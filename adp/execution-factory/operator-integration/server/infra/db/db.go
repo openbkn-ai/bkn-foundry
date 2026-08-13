@@ -12,8 +12,8 @@ import (
 	"github.com/qustavo/sqlhooks/v2"
 
 	// _ 注册openbkn-rds驱动
-	openbknRDS "github.com/openbkn-ai/bkn-comm-go/db/driver"
-	"github.com/openbkn-ai/bkn-comm-go/db/sqlx"
+	openbknRDS "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 const (

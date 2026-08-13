@@ -17,9 +17,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/hibiken/asynq"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"
@@ -49,24 +48,20 @@ func getServerName(hostname string) string {
 type streamingBuildWorker struct {
 	appSetting  *common.AppSetting
 	bts         interfaces.BuildTaskService
-	client      *asynq.Client
 	cs          interfaces.CatalogService
 	httpClient  rest.HTTPClient
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
 	rs          interfaces.ResourceService
+
+	embeddingQueue chan<- string
 }
 
 // NewStreamingBuildWorker creates a new build worker.
 func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorker {
-	var client *asynq.Client
-	if !common.GetDebugMode() && logics.AQA != nil {
-		client = logics.AQA.CreateClient()
-	}
 	rs := resource.NewResourceService(appSetting)
 	return &streamingBuildWorker{
 		appSetting:  appSetting,
-		client:      client,
 		bts:         build_task.NewBuildTaskService(appSetting, rs),
 		cs:          catalog.NewCatalogService(appSetting),
 		httpClient:  common.NewHTTPClient(),
@@ -76,25 +71,13 @@ func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorke
 	}
 }
 
-// HandleTask handles a build task from the queue.
-func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) error {
-	var msg interfaces.StreamingBuildTaskMessage
-	if err := sonic.Unmarshal(task.Payload(), &msg); err != nil {
-		logger.Errorf("Failed to unmarshal task message: %v", err)
-		return err
-	}
-
-	taskID := msg.TaskID
-	logger.Infof("Starting streaming build task: %s", taskID)
-
-	buildTaskInfo, err := sbw.bts.InternalGetByID(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("get build task failed: %w", err)
-	}
+// Run executes one persisted streaming build task already claimed by the database producer.
+func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.BuildTask) error {
 	if buildTaskInfo == nil {
-		// Task not found, return nil
 		return nil
 	}
+	taskID := buildTaskInfo.ID
+	logger.Infof("Starting streaming build task: %s", taskID)
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
@@ -105,19 +88,10 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
-			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
-			if _, err := sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update); err != nil {
+			if _, err := sbw.bts.InternalMarkStopped(ctx, taskID); err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 		}
-		return nil
-	}
-	claimed, err := claimBuildTaskExecution(ctx, sbw.bts, taskID)
-	if err != nil {
-		return fmt.Errorf("claim build task execution failed: %w", err)
-	}
-	if !claimed {
-		logger.Infof("Task %s is already claimed or not executable, skip execution", taskID)
 		return nil
 	}
 	resourceID := buildTaskInfo.ResourceID
@@ -151,10 +125,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 	if !catalog.Enabled {
 		logger.Errorf("Catalog is disabled for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("catalog is disabled")
-		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.bts.InternalMarkFailed(ctx, buildTaskInfo.ID, "catalog is disabled")
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -162,10 +133,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	}
 	if catalog.ConnectorType != interfaces.ConnectorTypeMySQL && catalog.ConnectorType != interfaces.ConnectorTypePostgreSQL {
 		logger.Errorf("Streaming build only supports MySQL and PostgreSQL connectors. Unsupported connector type: %s", catalog.ConnectorType)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("unsupported connector type")
-		_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+		_, err = sbw.bts.InternalMarkFailed(ctx, buildTaskInfo.ID, "unsupported connector type")
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -177,10 +145,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	database, err := streamingDatabase(catalog)
 	if err != nil {
 		logger.Errorf("Invalid streaming connector configuration for task %s: %v", taskID, err)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg(err.Error())
-		if _, updateErr := sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update); updateErr != nil {
+		if _, updateErr := sbw.bts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			return fmt.Errorf("update build task status failed: %w", updateErr)
 		}
 		return nil
@@ -192,7 +157,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 		return fmt.Errorf("create local index failed: %w", err)
 	}
 	if buildTaskHasEmbedding(buildTaskInfo) {
-		err = sendEmbeddingTask(sbw.client, taskID)
+		err = sendEmbeddingTask(ctx, sbw.embeddingQueue, taskID)
 		if err != nil {
 			return fmt.Errorf("send embedding task failed: %w", err)
 		}
@@ -202,11 +167,7 @@ func (sbw *streamingBuildWorker) HandleTask(ctx context.Context, task *asynq.Tas
 	// Execute build
 	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceIdentifier)
 	if err != nil {
-		update := interfaces.NewBuildTaskUpdate().WithErrorMsg(err.Error())
-		if isAsynqFinalRetry(ctx) {
-			update = update.WithStatus(interfaces.BuildTaskStatusFailed)
-		}
-		_, _ = sbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
+		_, _ = sbw.bts.InternalMarkFailed(ctx, taskID, err.Error())
 		return err
 	}
 
@@ -273,6 +234,12 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			time.Sleep(retryInterval)
 			continue
 		}
+		if taskStatus == interfaces.BuildTaskStatusFailed ||
+			taskStatus == interfaces.BuildTaskStatusStopped ||
+			taskStatus == interfaces.BuildTaskStatusCompleted {
+			logger.Infof("Task %s is %s, stop streaming", buildTaskInfo.ID, taskStatus)
+			return nil
+		}
 
 		// A streaming connector is shared by the catalog. Before a stopped or
 		// cancelled task exits, stop it only when no running task still uses it.
@@ -299,10 +266,11 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				return nil
 			}
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
-			update := interfaces.NewBuildTaskUpdate().
-				WithStatus(interfaces.BuildTaskStatusStopped).
-				WithSyncedCount(syncedCount)
-			_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
+			if _, err = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
+				return fmt.Errorf("update build task progress failed: %w", err)
+			}
+			_, err = sbw.bts.InternalMarkStopped(ctx, buildTaskInfo.ID)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -313,23 +281,24 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 		select {
 		case <-ctx.Done():
 			logger.Infof("Kafka subscription context canceled, exiting")
-			update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-			_, err = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+			progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
+			_, err = sbw.bts.InternalSetProgress(context.Background(), nil, buildTaskInfo.ID, progress)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
+			return ctx.Err()
 		default:
 			// Read message from Kafka
 			// 创建带超时的上下文，避免ReadMessage一直阻塞
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), retryInterval)
-			defer cancel()
+			timeoutCtx, cancel := context.WithTimeout(ctx, retryInterval)
 			msg, err := sbw.kafkaAccess.ReadMessage(timeoutCtx, reader)
+			cancel()
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					// 超时，检查是否需要更新任务状态
 					if syncedCount > buildTaskInfo.SyncedCount && time.Since(lastUpdateTime) > retryInterval {
-						update := interfaces.NewBuildTaskUpdate().WithSyncedCount(syncedCount)
-						_, _ = sbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
+						progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
+						_, _ = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
 						buildTaskInfo.SyncedCount = syncedCount
 						lastUpdateTime = time.Now()
 					}

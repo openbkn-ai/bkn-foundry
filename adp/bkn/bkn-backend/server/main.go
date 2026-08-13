@@ -19,16 +19,17 @@ import (
 	_ "unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/audit"
-	libdb "github.com/openbkn-ai/bkn-comm-go/db"
-	"github.com/openbkn-ai/bkn-comm-go/logger"
-	"github.com/openbkn-ai/bkn-comm-go/otel"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
+	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
 	"bkn-backend/common"
 	"bkn-backend/common/bkntrace"
 	"bkn-backend/common/bkntrace/outbox"
+	"bkn-backend/common/operationaudit"
 	"bkn-backend/drivenadapters/action_schedule"
 	"bkn-backend/drivenadapters/action_type"
 	"bkn-backend/drivenadapters/agent_operator"
@@ -208,7 +209,7 @@ func main() {
 	server := &mgrService{
 		appSetting:     appSetting,
 		otelProviders:  otelProviders,
-		restHandler:    driveradapters.NewRestHandler(appSetting),
+		restHandler:    driveradapters.NewRestHandler(appSetting, operationaudit.NewStore(outboxDB, "")),
 		conceptSyncer:  worker.NewConceptSyncer(appSetting),
 		scheduleWorker: worker.NewScheduleWorker(appSetting),
 		traceOutbox:    traceOutbox,

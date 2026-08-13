@@ -5,9 +5,12 @@
 package authz
 
 import (
+	"errors"
 	"log/slog"
 	"sort"
 	"strings"
+
+	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -208,6 +211,169 @@ func (en *Enforcer) parentOpMap(resourceType string) (map[string]string, error) 
 		out[row.ID] = row.ParentOperationID
 	}
 	return out, nil
+}
+
+// childIDChunk bounds the size of one "children of these parents" IN clause.
+// An accessor holding many catalogs would otherwise produce a single statement
+// with thousands of bind parameters.
+const childIDChunk = 500
+
+// inheritedResources lists the instances of resourceType the accessor reaches
+// only through an ancestor — the enumeration counterpart of the climb that
+// Check performs. Where Check walks UP from one resource, this walks DOWN from
+// the ancestors the accessor can act on, because the question is inverted:
+// "which tables may I touch" rather than "may I touch this table".
+//
+// visitedTypes keeps the recursion finite. The type graph is validated acyclic
+// when the catalog is seeded, so this is a second belt rather than the only one.
+func (en *Enforcer) inheritedResources(accessorID, resourceType, op string, visitedTypes map[string]bool) ([]string, error) {
+	if en.db == nil || visitedTypes[resourceType] {
+		return nil, nil
+	}
+	visitedTypes[resourceType] = true
+
+	mapping, err := en.parentOpMap(resourceType)
+	if err != nil {
+		return nil, err
+	}
+	parentOp, inherits := mapping[op]
+	if !inherits {
+		return nil, nil
+	}
+	parentType, err := en.parentTypeOf(resourceType)
+	if err != nil || parentType == "" {
+		return nil, err
+	}
+
+	// A type-wide grant on the parent ("every catalog") reaches every instance
+	// that has a parent at all. It has to be handled separately because
+	// AccessibleResources deliberately reports concrete instances only, so the
+	// recursive call below would return nothing for it.
+	//
+	// The result set is as large as the number of owned instances, and this
+	// endpoint has never paginated. That is tolerable today because callers
+	// probe the type-wide case FIRST (vega's resolveOps and the operator
+	// integration both check obj="<type>:*" and skip enumeration when it holds),
+	// so this branch is only reached by an accessor holding the wildcard on the
+	// PARENT type but not on the type itself — which no seeded role is. #513
+	// creates exactly that state if it revokes normal_user's resource:* while
+	// leaving catalog:*, and the size question has to be answered there rather
+	// than by quietly truncating here: a short list would read as "these are the
+	// tables you may see".
+	wide, err := en.e.Enforce(accessorID, obj(parentType, "*"), parentOp)
+	if err != nil {
+		return nil, err
+	}
+	if wide {
+		return en.childrenOf(resourceType, parentType, nil)
+	}
+
+	parents, err := en.accessibleResources(accessorID, parentType, parentOp, visitedTypes)
+	if err != nil {
+		return nil, err
+	}
+	// accessibleResources reads GetImplicitPermissionsForUser, which covers the
+	// matcher's g() half but NOT its "granted to everyone" half. Check's climb
+	// goes through Enforce and sees both, so leaving it out here would make a
+	// publicly granted catalog allow a table on the detail page and hide it from
+	// the list — the exact divergence this slice exists to close.
+	//
+	// The union is applied to the ANCESTOR lookup only. accessibleResources is
+	// blind to public grants for directly granted instances too, but that is
+	// how this endpoint has always answered; widening it would change what
+	// today's callers get for resource types that have nothing to do with the
+	// hierarchy (the execution factory grants built-in toolboxes to everyone).
+	public, err := en.publicInstances(parentType, parentOp)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(parents))
+	for _, id := range parents {
+		seen[id] = true
+	}
+	for _, id := range public {
+		if !seen[id] {
+			seen[id] = true
+			parents = append(parents, id)
+		}
+	}
+	if len(parents) == 0 {
+		return nil, nil
+	}
+	return en.childrenOf(resourceType, parentType, parents)
+}
+
+// publicInstances lists the concrete instances of a type on which the "granted
+// to everyone" accessor holds op. These are real policy rows with a fixed
+// subject rather than role-derived ones, so casbin's implicit-permission read
+// does not report them (filter.go's grantIndex reads them the same way).
+func (en *Enforcer) publicInstances(resourceType, op string) ([]string, error) {
+	rows, err := en.e.GetFilteredPolicy(0, PublicAccessorID)
+	if err != nil {
+		return nil, err
+	}
+	prefix := resourceType + ":"
+	seen := map[string]bool{}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 3 {
+			continue
+		}
+		o, act := row[1], row[2]
+		if act != op && act != ActAll {
+			continue
+		}
+		if len(o) <= len(prefix) || o[:len(prefix)] != prefix {
+			continue
+		}
+		id := o[len(prefix):]
+		if id == "*" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// childrenOf lists the ids of resourceType sitting under the given parents. A
+// nil parent list means "under any parent of that type".
+func (en *Enforcer) childrenOf(resourceType, parentType string, parentIDs []string) ([]string, error) {
+	q := en.db.Model(&model.ResourceParent{}).
+		Where("resource_type_id = ? AND parent_type_id = ?", resourceType, parentType)
+	if parentIDs == nil {
+		var ids []string
+		if err := q.Pluck("resource_id", &ids).Error; err != nil {
+			return nil, err
+		}
+		return ids, nil
+	}
+	out := make([]string, 0, len(parentIDs))
+	for start := 0; start < len(parentIDs); start += childIDChunk {
+		end := min(start+childIDChunk, len(parentIDs))
+		var ids []string
+		if err := en.db.Model(&model.ResourceParent{}).
+			Where("resource_type_id = ? AND parent_type_id = ? AND parent_id IN ?",
+				resourceType, parentType, parentIDs[start:end]).
+			Pluck("resource_id", &ids).Error; err != nil {
+			return nil, err
+		}
+		out = append(out, ids...)
+	}
+	return out, nil
+}
+
+// parentTypeOf returns the type this one hangs under, or "" when it is a root.
+func (en *Enforcer) parentTypeOf(resourceType string) (string, error) {
+	var rt model.ResourceType
+	err := en.db.First(&rt, "id = ?", resourceType).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return rt.ParentTypeID, nil
 }
 
 // distinctSorted returns the map's distinct values in a stable order, so the

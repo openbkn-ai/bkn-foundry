@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 	interfaces "vega-backend/interfaces"
 
-	asynq "github.com/hibiken/asynq"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,21 +41,6 @@ func (m *MockDiscoverTaskService) EXPECT() *MockDiscoverTaskServiceMockRecorder 
 	return m.recorder
 }
 
-// CheckExistByStatuses mocks base method.
-func (m *MockDiscoverTaskService) CheckExistByStatuses(ctx context.Context, catalogID string, statuses []string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckExistByStatuses", ctx, catalogID, statuses)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CheckExistByStatuses indicates an expected call of CheckExistByStatuses.
-func (mr *MockDiscoverTaskServiceMockRecorder) CheckExistByStatuses(ctx, catalogID, statuses any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByStatuses", reflect.TypeOf((*MockDiscoverTaskService)(nil).CheckExistByStatuses), ctx, catalogID, statuses)
-}
-
 // Create mocks base method.
 func (m *MockDiscoverTaskService) Create(ctx context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
 	m.ctrl.T.Helper()
@@ -72,32 +56,32 @@ func (mr *MockDiscoverTaskServiceMockRecorder) Create(ctx, req any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDiscoverTaskService)(nil).Create), ctx, req)
 }
 
-// DebugTaskQueue mocks base method.
-func (m *MockDiscoverTaskService) DebugTaskQueue() <-chan *asynq.Task {
+// DeleteByIDs mocks base method.
+func (m *MockDiscoverTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DebugTaskQueue")
-	ret0, _ := ret[0].(<-chan *asynq.Task)
-	return ret0
-}
-
-// DebugTaskQueue indicates an expected call of DebugTaskQueue.
-func (mr *MockDiscoverTaskServiceMockRecorder) DebugTaskQueue() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DebugTaskQueue", reflect.TypeOf((*MockDiscoverTaskService)(nil).DebugTaskQueue))
-}
-
-// Delete mocks base method.
-func (m *MockDiscoverTaskService) Delete(ctx context.Context, ids []string, ignoreMissing bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, ids, ignoreMissing)
+	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids, ignoreMissing)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Delete indicates an expected call of Delete.
-func (mr *MockDiscoverTaskServiceMockRecorder) Delete(ctx, ids, ignoreMissing any) *gomock.Call {
+// DeleteByIDs indicates an expected call of DeleteByIDs.
+func (mr *MockDiscoverTaskServiceMockRecorder) DeleteByIDs(ctx, ids, ignoreMissing any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDiscoverTaskService)(nil).Delete), ctx, ids, ignoreMissing)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockDiscoverTaskService)(nil).DeleteByIDs), ctx, ids, ignoreMissing)
+}
+
+// DispatchSignal mocks base method.
+func (m *MockDiscoverTaskService) DispatchSignal() <-chan struct{} {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DispatchSignal")
+	ret0, _ := ret[0].(<-chan struct{})
+	return ret0
+}
+
+// DispatchSignal indicates an expected call of DispatchSignal.
+func (mr *MockDiscoverTaskServiceMockRecorder) DispatchSignal() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DispatchSignal", reflect.TypeOf((*MockDiscoverTaskService)(nil).DispatchSignal))
 }
 
 // GetByID mocks base method.
@@ -130,47 +114,79 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalGetByID(ctx, id any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalGetByID), ctx, id)
 }
 
-// InternalMarkCancelled mocks base method.
-func (m *MockDiscoverTaskService) InternalMarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error) {
+// InternalList mocks base method.
+func (m *MockDiscoverTaskService) InternalList(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalMarkCancelled", ctx, id, message, finishTime)
+	ret := m.ctrl.Call(m, "InternalList", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.DiscoverTaskSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalList indicates an expected call of InternalList.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalList(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalList), ctx, params)
+}
+
+// InternalMarkCancelled mocks base method.
+func (m *MockDiscoverTaskService) InternalMarkCancelled(ctx context.Context, id, message string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalMarkCancelled", ctx, id, message)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalMarkCancelled indicates an expected call of InternalMarkCancelled.
-func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkCancelled(ctx, id, message, finishTime any) *gomock.Call {
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkCancelled(ctx, id, message any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCancelled", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkCancelled), ctx, id, message, finishTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCancelled", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkCancelled), ctx, id, message)
 }
 
-// InternalUpdateResult mocks base method.
-func (m *MockDiscoverTaskService) InternalUpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
+// InternalMarkCompleted mocks base method.
+func (m *MockDiscoverTaskService) InternalMarkCompleted(ctx context.Context, id string, result *interfaces.DiscoverResult) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalUpdateResult", ctx, id, result, stime)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "InternalMarkCompleted", ctx, id, result)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// InternalUpdateResult indicates an expected call of InternalUpdateResult.
-func (mr *MockDiscoverTaskServiceMockRecorder) InternalUpdateResult(ctx, id, result, stime any) *gomock.Call {
+// InternalMarkCompleted indicates an expected call of InternalMarkCompleted.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkCompleted(ctx, id, result any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateResult", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalUpdateResult), ctx, id, result, stime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCompleted", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkCompleted), ctx, id, result)
 }
 
-// InternalUpdateStatus mocks base method.
-func (m *MockDiscoverTaskService) InternalUpdateStatus(ctx context.Context, id, status, message string, stime int64) error {
+// InternalMarkFailed mocks base method.
+func (m *MockDiscoverTaskService) InternalMarkFailed(ctx context.Context, id, message string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalUpdateStatus", ctx, id, status, message, stime)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "InternalMarkFailed", ctx, id, message)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// InternalUpdateStatus indicates an expected call of InternalUpdateStatus.
-func (mr *MockDiscoverTaskServiceMockRecorder) InternalUpdateStatus(ctx, id, status, message, stime any) *gomock.Call {
+// InternalMarkFailed indicates an expected call of InternalMarkFailed.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkFailed(ctx, id, message any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateStatus", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalUpdateStatus), ctx, id, status, message, stime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkFailed", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkFailed), ctx, id, message)
+}
+
+// InternalMarkRunning mocks base method.
+func (m *MockDiscoverTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalMarkRunning", ctx, id)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalMarkRunning indicates an expected call of InternalMarkRunning.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkRunning(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkRunning", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkRunning), ctx, id)
 }
 
 // List mocks base method.
@@ -189,30 +205,14 @@ func (mr *MockDiscoverTaskServiceMockRecorder) List(ctx, params any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockDiscoverTaskService)(nil).List), ctx, params)
 }
 
-// UpdateResult mocks base method.
-func (m *MockDiscoverTaskService) UpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
+// RequestDispatch mocks base method.
+func (m *MockDiscoverTaskService) RequestDispatch() {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateResult", ctx, id, result, stime)
-	ret0, _ := ret[0].(error)
-	return ret0
+	m.ctrl.Call(m, "RequestDispatch")
 }
 
-// UpdateResult indicates an expected call of UpdateResult.
-func (mr *MockDiscoverTaskServiceMockRecorder) UpdateResult(ctx, id, result, stime any) *gomock.Call {
+// RequestDispatch indicates an expected call of RequestDispatch.
+func (mr *MockDiscoverTaskServiceMockRecorder) RequestDispatch() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateResult", reflect.TypeOf((*MockDiscoverTaskService)(nil).UpdateResult), ctx, id, result, stime)
-}
-
-// UpdateStatus mocks base method.
-func (m *MockDiscoverTaskService) UpdateStatus(ctx context.Context, id, status, message string, stime int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatus", ctx, id, status, message, stime)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateStatus indicates an expected call of UpdateStatus.
-func (mr *MockDiscoverTaskServiceMockRecorder) UpdateStatus(ctx, id, status, message, stime any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockDiscoverTaskService)(nil).UpdateStatus), ctx, id, status, message, stime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestDispatch", reflect.TypeOf((*MockDiscoverTaskService)(nil).RequestDispatch))
 }

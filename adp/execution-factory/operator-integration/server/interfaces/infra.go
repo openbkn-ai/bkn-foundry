@@ -20,8 +20,6 @@ const (
 	KeyIP ContextKey = "ip"
 	// OperationID API操作唯一标识
 	OperationID ContextKey = "operationID"
-	// XLanguageKey 语言类型
-	XLanguageKey ContextKey = "X-Language"
 	// FileNameKey 文件名
 	FileNameKey ContextKey = "FileName"
 	// Headers header 请求参数

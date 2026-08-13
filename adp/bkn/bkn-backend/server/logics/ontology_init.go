@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/openbkn-ai/bkn-comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"bkn-backend/common"
 	"bkn-backend/interfaces"

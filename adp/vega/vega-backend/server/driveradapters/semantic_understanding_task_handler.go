@@ -13,10 +13,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-comm-go/hydra"
-	"github.com/openbkn-ai/bkn-comm-go/otel/otellog"
-	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/common"
 	"vega-backend/common/visitor"
@@ -236,7 +236,7 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
-	if err := r.suts.Delete(ctx, ids, ignoreMissing); err != nil {
+	if err := r.suts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -252,7 +252,7 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "create_time")
+	sort := common.GetQueryOrDefault(c, "sort", interfaces.SemanticUnderstandingTaskSortCreateTime)
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx, offset, limit, sort, direction, interfaces.SEMANTIC_UNDERSTANDING_TASK_SORT)
