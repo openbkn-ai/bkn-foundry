@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	dtype "ontology-query/interfaces/data_type"
 )
 
 type KnnCond struct {
@@ -133,34 +132,17 @@ func (cond *KnnCond) Convert2SQL(ctx context.Context) (string, error) {
 func rewriteKnnCond(ctx context.Context, cfg *CondCfg,
 	vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField.Name == "" {
 		return nil, fmt.Errorf("向量过滤[knn]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
 	}
 
-	// 转为视图的 knn_vector 的查询，则要求字段是 vector 字段，且小模型不为空
-	if cfg.NameField.Type != dtype.DATATYPE_VECTOR {
-		return nil, fmt.Errorf("condition [knn] left field is not a vector field: %s:%s", cfg.NameField.Name, cfg.NameField.Type)
-	}
-
-	// knn能支持的场景: 字段类型是 vector 或者字段配置了向量索引的构建
-	if cfg.NameField.IndexConfig == nil || cfg.NameField.IndexConfig.VectorConfig.ModelID == "" {
-		return nil, fmt.Errorf("condition [knn] left field field: %s need config a small model, current small model is empty", cfg.NameField.Name)
-	}
-
-	// value 是向量化后的内容
-	v := fmt.Sprintf("%v", cfg.Value)
-
-	vector, err := vectorizer(ctx, cfg.NameField, v)
-	if err != nil {
-		return nil, fmt.Errorf("condition [knn]: vectorizer [%s] failed, error: %s", v, err.Error())
-	}
-
+	// 资源字段的向量能力由 Vega Resource schema/features 与构建状态决定。
+	// ontology-query 只负责把对象属性名改写为资源字段名，查询词或向量值原样下传。
 	return &CondCfg{
 		Name:      cfg.NameField.MappedField.Name,
-		Operation: OperationKNNVector, // 操作符为 knn_vector
+		Operation: OperationKNNVector,
 		ValueOptCfg: ValueOptCfg{
-			Value: vector[0].Vector, // 值用向量化后的内容
+			Value: cfg.Value,
 		},
 		RemainCfg: cfg.RemainCfg,
 	}, nil

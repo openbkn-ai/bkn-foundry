@@ -442,10 +442,8 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 	}
 
 	if dataProperty.IndexConfig != nil {
-		err = ValidateIndexConfig(ctx, *dataProperty.IndexConfig, strictMode)
-		if err != nil {
-			return err
-		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("数据属性[%s]不再支持 index_config；请在 Vega Resource 上配置索引能力", dataProperty.Name))
 	}
 
 	return nil

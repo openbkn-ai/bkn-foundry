@@ -40,6 +40,8 @@ func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstan
 		EnableGlobalFinalScoreRatioFilter: boolPtr(true),
 		GlobalFinalScoreRatio:             0.25,
 		ExactNameMatchScore:               0.85,
+		EnableKnnInstanceRetrieval:        boolPtr(true),
+		MaxKnnSubConditionsPerType:        1,
 	}
 }
 
@@ -143,6 +145,12 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	}
 	if user.MinDirectRelevance > 0 {
 		base.MinDirectRelevance = user.MinDirectRelevance
+	}
+	if user.EnableKnnInstanceRetrieval != nil {
+		base.EnableKnnInstanceRetrieval = user.EnableKnnInstanceRetrieval
+	}
+	if user.MaxKnnSubConditionsPerType > 0 {
+		base.MaxKnnSubConditionsPerType = user.MaxKnnSubConditionsPerType
 	}
 	if user.EnableGlobalFinalScoreRatioFilter != nil {
 		base.EnableGlobalFinalScoreRatioFilter = user.EnableGlobalFinalScoreRatioFilter

@@ -198,10 +198,10 @@ func (mr *MockBuildTaskServiceMockRecorder) InternalUpdateStatus(ctx, tx, id, up
 }
 
 // List mocks base method.
-func (m *MockBuildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+func (m *MockBuildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.BuildTask)
+	ret0, _ := ret[0].([]*interfaces.BuildTaskSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

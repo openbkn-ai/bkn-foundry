@@ -130,10 +130,10 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 #    Registers an LLM + embedding (skips when already there), patches the BKN ConfigMap
 #    only when the default actually changes, and on a full (bkn-safe) install creates the business
 #    user `test`, assigns every role from `openbkn admin role list`, switches `openbkn` to
-#    that user, and imports the Context Loader toolset.
+#    that user.
 sudo bash ./onboard.sh        # interactive
 sudo bash ./onboard.sh -y     # non-interactive (uses defaults)
-sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, --skip-context-loader, …)
+sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, …)
 ```
 
 > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `bkn` auth token to `$HOME/.bkn`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash ./dev/mac.sh onboard`) does **not** need `sudo`. The script also prints this hint at startup; silence with `ONBOARD_SUDO_HINT_DISABLED=1`.

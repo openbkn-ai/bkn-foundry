@@ -358,16 +358,29 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	if err := ValidateResourceRequest(ctx, &req); err != nil {
+	// Check if id exists and use the persisted category as the update authority.
+	resource, err := r.rs.GetByID(ctx, id)
+	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	// Check if id exists
-	resource, err := r.rs.GetByID(ctx, id)
-	if err != nil {
+	if req.Category == "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails("category is required")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if req.Category != resource.Category {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails("category cannot be updated")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if err := ValidateResourceRequest(ctx, &req); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

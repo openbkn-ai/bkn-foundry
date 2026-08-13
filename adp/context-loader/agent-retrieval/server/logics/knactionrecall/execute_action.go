@@ -60,9 +60,12 @@ func (s *knActionRecallServiceImpl) GetActionExecution(ctx context.Context, req 
 }
 
 // actionExecutionKeepKeys 是单次执行详情中对 Agent 有用、需保留的顶层字段。
+// execution_mode/target_count 必须留：once 模式下 total_count 是工具调用次数（恒为 1），
+// 没有这两个字段，Agent 会把「30 个实例合并成 1 次调用」误读成「只处理了 1 个对象」。
 var actionExecutionKeepKeys = []string{
 	"id", "kn_id", "action_type_id", "action_type_name",
-	"status", "trigger_type", "total_count", "success_count", "failed_count",
+	"status", "trigger_type", "execution_mode", "target_count",
+	"total_count", "success_count", "failed_count",
 	"start_time", "end_time", "duration_ms", "dynamic_params", "results",
 }
 
@@ -86,10 +89,19 @@ func slimActionExecution(full map[string]any) map[string]any {
 }
 
 // actionResultKeepKeys 是逐对象结果中需保留的字段。
+// targets 只在 once 模式出现，装着这一次调用覆盖的实例，是 Agent 判断
+// 「这条聚合结果对应哪些对象」的唯一依据。
 var actionResultKeepKeys = []string{
-	"_instance_id", "_instance_identity", "_display",
+	"_instance_id", "_instance_identity", "_display", "targets",
 	"status", "parameters", "duration_ms", "error_message", "result",
 }
+
+// maxSlimTargets 是单条结果里 targets 的返回上限。
+// once 模式下 results 恒为 1 条，results_limit 只裁结果条数、裁不到条内的 targets，
+// 而一次不带 _instance_identities 的扫描最多可命中 ACTION_EXECUTION_MAX_OBJECTS
+// （默认 10000）个实例。不设上限，一次查询就能把 MB 级实例明细灌进 Agent 上下文，
+// 与这一层压 token 的目的相反。覆盖总数看 target_count，这里只给样本。
+const maxSlimTargets = 20
 
 func slimActionResults(results []any) []any {
 	slim := make([]any, 0, len(results))
@@ -104,6 +116,11 @@ func slimActionResults(results []any) []any {
 			if v, ok := r[k]; ok {
 				out[k] = v
 			}
+		}
+		if targets, ok := out["targets"].([]any); ok && len(targets) > maxSlimTargets {
+			out["targets"] = targets[:maxSlimTargets]
+			out["targets_total"] = len(targets)
+			out["targets_truncated"] = true
 		}
 		slim = append(slim, out)
 	}
@@ -127,12 +144,15 @@ func (s *knActionRecallServiceImpl) ListActionExecutions(ctx context.Context, re
 		s.logger.WithContext(ctx).Errorf("[KnActionRecall#ListActionExecutions] ListActionExecutions failed, err: %v", err)
 		return nil, err
 	}
-	// 列表每条同样剔除重货（action_type_snapshot 等），仅保留概览字段
+	// 列表每条同样剔除重货（action_type_snapshot 等），仅保留概览字段。
+	// results 不进列表：逐实例明细只在 get_action_execution 里给，列表拿的是任务摘要。
 	if entries, ok := resp["entries"].([]any); ok {
 		slimmed := make([]any, 0, len(entries))
 		for _, e := range entries {
 			if m, ok := e.(map[string]any); ok {
-				slimmed = append(slimmed, slimActionExecution(m))
+				summary := slimActionExecution(m)
+				delete(summary, "results")
+				slimmed = append(slimmed, summary)
 			} else {
 				slimmed = append(slimmed, e)
 			}

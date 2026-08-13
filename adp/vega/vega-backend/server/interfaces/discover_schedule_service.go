@@ -26,10 +26,8 @@ type DiscoverScheduleService interface {
 	Enable(ctx context.Context, id string) error
 	// Disable disables a discover schedule.
 	Disable(ctx context.Context, id string) error
-	// GetEnabledSchedules retrieves all enabled discover schedules.
-	GetEnabledSchedules(ctx context.Context) ([]*DiscoverSchedule, error)
-	// UpdateLastRun updates the last run time and calculates next run time.
-	UpdateLastRun(ctx context.Context, id string, lastRun int64) error
+	// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
+	UpdateRunMetadata(ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64) error
 	// ExecuteSchedule executes a discover schedule.
 	ExecuteSchedule(ctx context.Context, schedule *DiscoverSchedule) error
 }

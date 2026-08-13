@@ -18,6 +18,10 @@ def _headers():
         "x-business-domain": "domain-supply-chain",
         "x-account-id": "account-9",
         "x-account-type": "user",
+        "x-bkn-application-principal-id": "openbkn-studio",
+        "x-bkn-effective-subject-type": "user",
+        "x-bkn-effective-subject-id": "account-9",
+        "x-bkn-delegation-id": "delegation-1",
     }
 
 
@@ -128,6 +132,95 @@ def test_authenticated_identity_is_propagated_to_model_evidence_producer():
 
     assert headers["x-account-id"] == "account-9"
     assert headers["x-account-type"] == "user"
+
+
+def test_trusted_owner_identity_is_preserved_for_trace_ledger_ingest(monkeypatch):
+    monkeypatch.setattr(
+        evidence.config,
+        "BKN_TRACE_EVIDENCE_INGEST_TOKEN",
+        "producer-token",
+        raising=False,
+    )
+    ctx = observability.build_context(_headers())
+
+    assert ctx.application_principal_id == "openbkn-studio"
+    assert ctx.effective_subject_type == "user"
+    assert ctx.effective_subject_id == "account-9"
+    assert ctx.delegation_id == "delegation-1"
+
+    headers = evidence._ingest_headers(ctx)
+    assert headers == {
+        "X-BKN-Trace-Ingest-Token": "producer-token",
+        "X-BKN-Tenant-ID": "tenant-supply-chain",
+        "X-Business-Domain-ID": "domain-supply-chain",
+        "X-BKN-Application-Principal-ID": "openbkn-studio",
+        "X-BKN-Effective-Subject-Type": "user",
+        "X-BKN-Effective-Subject-ID": "account-9",
+        "X-BKN-Delegation-ID": "delegation-1",
+    }
+
+
+def test_agent_evidence_is_converted_to_trace_3_single_events(monkeypatch):
+    monkeypatch.setattr(
+        evidence.config,
+        "BKN_TRACE_EVIDENCE_INGEST_TOKEN",
+        "producer-token",
+        raising=False,
+    )
+    ctx = observability.build_context(_headers())
+    token = observability.set_context(ctx)
+    interaction = evidence.begin_interaction(
+        "intent", "task", "business_provenance_optimizer", "bkn.agent.task",
+        conversation_id="conv-1", interaction_id="int-1",
+    )
+    try:
+        operation_id, cause = evidence.new_operation()
+        called = evidence._event(
+            "tool.called", "schema.search", {"input_hash": evidence.hash_value("x")},
+            operation_id=operation_id, causation_event_id=cause,
+        )
+        observed = evidence._event(
+            "tool.result", "schema.search", {"result_count": 1},
+            operation_id=operation_id, causation_event_id=called["event_id"],
+        )
+        batch = evidence.build_batch(
+            [evidence.interaction_started_event(), called, observed], "account-9", "user"
+        )
+        ledger_events = evidence.build_ledger_events(batch)
+    finally:
+        evidence.end_interaction(interaction)
+        observability.reset_context(token)
+
+    assert len(ledger_events) == 3
+    assert all(item["bkn.trace.schema.version"] == "3.0.0" for item in ledger_events)
+    assert all(item["conversation_id"] == "conv-1" for item in ledger_events)
+    assert all(item["interaction_id"] == "int-1" for item in ledger_events)
+    assert ledger_events[0]["envelope"]["payload"]["agent_id"] == "business_provenance_optimizer"
+    assert ledger_events[0]["producer_id"] == "bkn-agent"
+    assert ledger_events[1]["producer_stream_id"] != ledger_events[2]["producer_stream_id"]
+    assert ledger_events[1]["payload_hash"] == evidence.canonical_payload_hash(
+        ledger_events[1]["envelope"]
+    )
+
+
+def test_trace_3_payload_hash_matches_go_ledger_contract_fixtures():
+    fixtures = [
+        (
+            {"b": 2, "a": 1},
+            "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777",
+        ),
+        (
+            {"items": [3, 2, 1], "nested": {"z": 2, "a": 1}},
+            "7f1b2afcbb4cec480f8e65ea7fb85338ce2571b5b10251c83f24bb03318d86a4",
+        ),
+        (
+            {"number": 1.5, "message": "你好"},
+            "b20ba0633e4f6cfc766715ff6e8d996f19602c268eac402951be732f26a9956a",
+        ),
+    ]
+
+    for payload, expected in fixtures:
+        assert evidence.canonical_payload_hash(payload) == expected
 
 
 def test_restart_replay_reuses_recoverable_observed_at_envelope():

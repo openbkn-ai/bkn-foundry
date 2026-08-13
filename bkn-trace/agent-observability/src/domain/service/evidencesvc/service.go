@@ -179,6 +179,9 @@ var twoPointTwoPayloadFields = func() map[string]map[string]struct{} {
 	payloadFields["agent.interaction.started"]["question_artifact_ref"] = struct{}{}
 	payloadFields["data.query.observed"]["query_artifact_ref"] = struct{}{}
 	payloadFields["data.query.observed"]["result_artifact_ref"] = struct{}{}
+	for _, field := range []string{"status", "error_stage", "error_code", "safe_error_summary"} {
+		payloadFields["data.query.observed"][field] = struct{}{}
+	}
 	payloadFields["claim.created"]["result_artifact_ref"] = struct{}{}
 	payloadFields["action.recommended"]["reason_artifact_ref"] = struct{}{}
 	payloadFields["action.recommended"]["input_artifact_ref"] = struct{}{}
@@ -346,6 +349,33 @@ func (s *Service) GetArtifact(ctx context.Context, artifactID string, scope evid
 		return evidencevo.EvidenceArtifact{}, found, err
 	}
 	return artifact, true, nil
+}
+
+// GetArtifactForInteraction resolves an artifact through an Interaction that has
+// already been selected by the caller. The projection source performs the
+// Interaction-level access decision before any artifact content is returned.
+func (s *Service) GetArtifactForInteraction(
+	ctx context.Context,
+	artifactID string,
+	interactionID string,
+	scope evidencevo.QueryScope,
+) (evidencevo.EvidenceArtifact, bool, error) {
+	artifact, found, err := s.GetArtifact(ctx, artifactID, scope)
+	if err != nil || found || interactionID == "" || s.projectionSource == nil {
+		return artifact, found, err
+	}
+	result, err := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
+		Scope: scope, InteractionID: interactionID, Limit: MaxEvidenceQueryLimit,
+	})
+	if err != nil {
+		return evidencevo.EvidenceArtifact{}, false, err
+	}
+	for _, candidate := range result.Artifacts {
+		if candidate.ArtifactID == artifactID {
+			return candidate, true, nil
+		}
+	}
+	return evidencevo.EvidenceArtifact{}, false, nil
 }
 
 func artifactMatchesTrace(artifact evidencevo.EvidenceArtifact, trace evidencevo.NormalizedTrace) bool {
@@ -606,13 +636,13 @@ func buildEvidenceChain(traces []evidencevo.NormalizedTrace, truncated bool) evi
 			switch event.EventType {
 			case "claim.created":
 				claimSourceEventIDs = append(claimSourceEventIDs, stringArrayField(event.Payload, "source_event_ids")...)
-				if visible(event.Payload) {
-					response.Data.Claims = append(response.Data.Claims, cloneMap(event.Payload))
-				} else {
-					countVisibility(event.Payload, &response.VisibilitySummary)
-				}
 				if claimID, ok := stringField(event.Payload, "claim_id"); ok && claimID != "" {
 					knownClaims[claimID] = struct{}{}
+					if visible(event.Payload) {
+						response.Data.Claims = append(response.Data.Claims, cloneMap(event.Payload))
+					} else {
+						countVisibility(event.Payload, &response.VisibilitySummary)
+					}
 				}
 			case "evidence.refs.created":
 				claimID, _ := stringField(event.Payload, "claim_id")
@@ -1234,6 +1264,11 @@ func conclusionScope(traces []evidencevo.NormalizedTrace, knownClaims map[string
 	}
 	for _, trace := range traces {
 		for _, event := range trace.Events {
+			if event.EventType == "claim.created" && event.InteractionID != "" {
+				if claimID, _ := stringField(event.Payload, "claim_id"); claimID == "" {
+					return "interaction"
+				}
+			}
 			if isExecutionFact(event.EventType) && event.InteractionID != "" && event.OperationID != "" {
 				return "interaction"
 			}

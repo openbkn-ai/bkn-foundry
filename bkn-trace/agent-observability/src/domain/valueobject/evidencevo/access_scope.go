@@ -43,10 +43,11 @@ func CanReadRecord(profile AccessProfile, record RecordScope, view AccessView) b
 
 	switch view {
 	case AccessViewBusiness:
-		return ownsRecord(profile, record) || managesEveryRecordNetwork(profile, record)
+		return ownsRecord(profile, record) || managesRecordNetwork(profile, record) ||
+			HasTenantWideTraceAccess(profile)
 	case AccessViewTechnical:
-		return ownsRecord(profile, record) || managesEveryRecordNetwork(profile, record) ||
-			hasAnyRole(profile, "admin", "super_admin")
+		return ownsRecord(profile, record) || managesRecordNetwork(profile, record) ||
+			HasTenantWideTraceAccess(profile)
 	case AccessViewSecurity:
 		return hasAnyRole(profile, "security", "super_admin")
 	case AccessViewAudit:
@@ -54,6 +55,12 @@ func CanReadRecord(profile AccessProfile, record RecordScope, view AccessView) b
 	default:
 		return false
 	}
+}
+
+// HasTenantWideTraceAccess is the only role-based bypass for a complete Trace
+// record. It never bypasses account, tenant, or business-domain boundaries.
+func HasTenantWideTraceAccess(profile AccessProfile) bool {
+	return profile.AccountActive && profile.TenantActive && hasAnyRole(profile, "admin", "super_admin")
 }
 
 // NeedsCrossAccountCandidates allows stores to widen only the candidate query;
@@ -65,9 +72,10 @@ func NeedsCrossAccountCandidates(scope QueryScope) bool {
 	profile := *scope.AccessProfile
 	switch defaultAccessView(scope.View) {
 	case AccessViewBusiness:
-		return hasAnyRole(profile, "network_builder") && len(profile.ManagedKnowledgeNetworkIDs) > 0
+		return HasTenantWideTraceAccess(profile) ||
+			hasAnyRole(profile, "network_builder") && len(profile.ManagedKnowledgeNetworkIDs) > 0
 	case AccessViewTechnical:
-		return hasAnyRole(profile, "admin", "super_admin")
+		return HasTenantWideTraceAccess(profile)
 	case AccessViewSecurity:
 		return hasAnyRole(profile, "security", "super_admin")
 	case AccessViewAudit:
@@ -105,14 +113,9 @@ func ownsRecord(profile AccessProfile, record RecordScope) bool {
 		profile.ApplicationPrincipalID == record.ApplicationPrincipalID
 }
 
-func managesEveryRecordNetwork(profile AccessProfile, record RecordScope) bool {
+func managesRecordNetwork(profile AccessProfile, record RecordScope) bool {
 	if !hasAnyRole(profile, "network_builder") || len(record.KnowledgeNetworkIDs) == 0 {
 		return false
-	}
-	for _, networkID := range record.KnowledgeNetworkIDs {
-		if networkID == "" {
-			return false
-		}
 	}
 	managed := make(map[string]struct{}, len(profile.ManagedKnowledgeNetworkIDs))
 	for _, networkID := range profile.ManagedKnowledgeNetworkIDs {
@@ -121,11 +124,11 @@ func managesEveryRecordNetwork(profile AccessProfile, record RecordScope) bool {
 		}
 	}
 	for _, networkID := range record.KnowledgeNetworkIDs {
-		if _, ok := managed[networkID]; !ok {
-			return false
+		if _, ok := managed[networkID]; ok {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func hasAnyRole(profile AccessProfile, expected ...string) bool {

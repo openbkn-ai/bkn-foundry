@@ -27,6 +27,10 @@ type SearchSchemaReq struct {
 	// (mapped_field) to the response, for writing run_sql against the resource.
 	// Off by default to keep the response compact.
 	IncludeColumns *bool `json:"include_columns,omitempty" default:"false"`
+	// IndexOpsOnly 让响应里的 condition_operations 只保留索引带来的算子。由 MCP 层设置，
+	// 不进请求契约：比较算子按属性 type 可推导，逐个下发对 Agent 是纯噪音；而 REST
+	// 调用方（以及 Studio 这类直连 BKN 的消费者）仍拿全量。
+	IndexOpsOnly bool `json:"-"`
 }
 
 // SearchSchemaScope search_schema scope controls

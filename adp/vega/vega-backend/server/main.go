@@ -160,12 +160,11 @@ func main() {
 	// 初始化并启动调度器
 	dts := logicsDiscoverTask.NewDiscoverTaskService(appSetting)
 	dss := logicsDiscoverSchedule.NewDiscoverScheduleService(appSetting, dts)
-	sw := worker.NewScheduleWorker(appSetting, dss)
-	if err := sw.Start(); err != nil {
+	dsw := worker.NewDiscoverScheduleWorker(appSetting, dss)
+	if err := dsw.Start(); err != nil {
 		logger.Fatalf("Failed to start scheduler: %v", err)
 	}
 	logger.Info("VEGA Manager Init Scheduler Success")
-	defer sw.Stop()
 
 	chcw := worker.NewCatalogHealthCheckWorker(appSetting)
 	if err := chcw.Start(); err != nil {
@@ -177,7 +176,7 @@ func main() {
 	server := &mgrService{
 		appSetting:    appSetting,
 		otelProviders: otelProviders,
-		restHandler:   driveradapters.NewRestHandler(appSetting, sw),
+		restHandler:   driveradapters.NewRestHandler(appSetting),
 	}
 	server.start()
 }

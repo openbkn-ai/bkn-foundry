@@ -35,7 +35,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/bootstrap"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -119,7 +118,6 @@ func (a *App) Run() error {
 	}
 	defer s.config.Logger.Info("stop agent-retrieval server")
 	s.Start()
-	go bootstrap.NewToolDependencySync().Start(context.Background())
 	select {}
 }
 

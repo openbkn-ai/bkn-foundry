@@ -11,8 +11,9 @@ const (
 
 	SemanticUnderstandingTaskStatusPending   string = "pending"
 	SemanticUnderstandingTaskStatusRunning   string = "running"
-	SemanticUnderstandingTaskStatusSucceeded string = "succeeded"
+	SemanticUnderstandingTaskStatusCompleted string = "completed"
 	SemanticUnderstandingTaskStatusFailed    string = "failed"
+	SemanticUnderstandingTaskStatusCancelled string = "cancelled"
 
 	SemanticUnderstandingApplyModeDryRun    string = "dry_run"
 	SemanticUnderstandingApplyModeFillEmpty string = "fill_empty"
@@ -37,7 +38,6 @@ var (
 	}
 
 	SEMANTIC_UNDERSTANDING_TASK_SORT = map[string]string{
-		"default":     "",
 		"create_time": "",
 		"update_time": "",
 	}
@@ -69,6 +69,28 @@ type SemanticUnderstandingTask struct {
 	Creator              AccountInfo `json:"creator"`
 	CreateTime           int64       `json:"create_time"`
 	UpdateTime           int64       `json:"update_time"`
+}
+
+// SemanticUnderstandingTaskSummary is the lightweight representation returned
+// by list APIs. Task input and execution details are available from GetByID.
+type SemanticUnderstandingTaskSummary struct {
+	ID                  string      `json:"id"`
+	Scope               string      `json:"scope"`
+	CatalogID           string      `json:"catalog_id"`
+	CatalogName         string      `json:"catalog_name,omitempty"`
+	ResourceID          string      `json:"resource_id,omitempty"`
+	ResourceName        string      `json:"resource_name,omitempty"`
+	AgentTaskID         string      `json:"agent_task_id,omitempty"`
+	AgentID             string      `json:"agent_id"`
+	Status              string      `json:"status"`
+	ApplyMode           string      `json:"apply_mode"`
+	ConfidenceThreshold float64     `json:"confidence_threshold"`
+	Confidence          float64     `json:"confidence"`
+	Applied             bool        `json:"applied"`
+	AppliedTime         int64       `json:"applied_time,omitempty"`
+	Creator             AccountInfo `json:"creator"`
+	CreateTime          int64       `json:"create_time"`
+	UpdateTime          int64       `json:"update_time"`
 }
 
 type SemanticUnderstandingSamplePolicy struct {

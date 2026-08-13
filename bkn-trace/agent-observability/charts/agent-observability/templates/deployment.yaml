@@ -77,11 +77,13 @@ spec:
             {{- end }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_INGEST
               value: {{ ternary "true" "false" .Values.evidence.ingestAuth.allowUnauthenticated | quote }}
-            - name: BKN_TRACE_ALLOW_RAW_TRACE_QUERY
-              value: {{ ternary "true" "false" .Values.evidence.rawTraceQuery.enabled | quote }}
             - name: BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY
               value: {{ ternary "true" "false" .Values.evidence.queryAuth.allowUnauthenticated | quote }}
             - name: BKN_SAFE_BASE_URL
+              value: {{ required "bknSafe.baseURL is required" .Values.bknSafe.baseURL | quote }}
+            # The EE entitlement gate verifies the deployment licence through
+            # the same in-cluster BKN Safe endpoint as Trace access scope.
+            - name: BKN_SAFE_URL
               value: {{ required "bknSafe.baseURL is required" .Values.bknSafe.baseURL | quote }}
             - name: BKN_SAFE_ACCESS_TIMEOUT
               value: {{ .Values.bknSafe.accessTimeout | quote }}
@@ -99,13 +101,27 @@ spec:
             - name: BKN_TRACE_RESOLVER_TIMEOUT
               value: {{ .Values.businessResolver.timeout | quote }}
             {{- end }}
+            {{- if .Values.enterpriseBusinessProvenance.enabled }}
+            - name: BKN_TRACE_PROVENANCE_AGENT_URL
+              value: {{ required "enterpriseBusinessProvenance.agentURL is required when enabled" .Values.enterpriseBusinessProvenance.agentURL | quote }}
+            - name: BKN_TRACE_PROVENANCE_AGENT_ID
+              value: {{ required "enterpriseBusinessProvenance.agentID is required when enabled" .Values.enterpriseBusinessProvenance.agentID | quote }}
+            - name: BKN_TRACE_PROVENANCE_AGENT_NAME
+              value: {{ required "enterpriseBusinessProvenance.agentName is required when enabled" .Values.enterpriseBusinessProvenance.agentName | quote }}
+            {{- end }}
             - name: OPENSEARCH_AUTH_ENABLED
               value: {{ ternary "true" "false" .Values.opensearch.auth.enabled | quote }}
             {{- if .Values.opensearch.auth.enabled }}
             - name: OPENSEARCH_AUTH_USERNAME
-              value: {{ .Values.opensearch.auth.username | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "opensearch.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearch.auth.existingSecret | quote }}
+                  key: {{ .Values.opensearch.auth.usernameKey | quote }}
             - name: OPENSEARCH_AUTH_PASSWORD
-              value: {{ .Values.opensearch.auth.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "opensearch.auth.existingSecret is required when OpenSearch auth is enabled" .Values.opensearch.auth.existingSecret | quote }}
+                  key: {{ .Values.opensearch.auth.passwordKey | quote }}
             {{- end }}
             {{- if .Values.evidence.ingestAuth.existingSecret }}
             - name: BKN_TRACE_EVIDENCE_INGEST_TOKEN
@@ -125,6 +141,16 @@ spec:
               value: {{ .Values.observability.sourceTimeout | quote }}
             - name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
               value: {{ .Values.observability.maxConcurrentSources | quote }}
+            {{- if .Values.observability.sourceCoverage.enabled }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT
+              value: {{ required "observability.sourceCoverage.metricsEndpoint is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.metricsEndpoint | quote }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_SOURCE_ID
+              value: {{ required "observability.sourceCoverage.sourceID is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.sourceID | quote }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_DEPLOYMENT_ID
+              value: {{ required "observability.sourceCoverage.deploymentID is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.deploymentID | quote }}
+            - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_INTERVAL
+              value: {{ .Values.observability.sourceCoverage.interval | quote }}
+            {{- end }}
           livenessProbe:
             tcpSocket:
               port: http

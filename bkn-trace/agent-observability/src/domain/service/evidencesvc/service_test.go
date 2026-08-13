@@ -395,6 +395,25 @@ func TestDirectKnowledgeReadExposesBusinessRefsWithoutFabricatingClaim(t *testin
 	}
 }
 
+func TestInteractionResultLinkDoesNotRequireClaimVersionStatus(t *testing.T) {
+	trace := evidencevo.NormalizedTrace{
+		TraceID: "trace_interaction_result", RequestID: "req_interaction_result",
+		Events: []evidencevo.EvidenceEvent{{
+			EventID: "event_interaction_result", EventType: "claim.created",
+			InteractionID: "interaction_result", Payload: map[string]any{
+				"result_artifact_ref": "artifact:result_interaction_result",
+			},
+		}},
+	}
+
+	chain := buildEvidenceChain([]evidencevo.NormalizedTrace{trace}, false)
+
+	if chain.ConclusionScope != "interaction" || chain.Partial ||
+		contains(chain.PartialReasons, "version_status_missing") {
+		t.Fatalf("an interaction result link is not a structured claim: %+v", chain)
+	}
+}
+
 func TestClaimedTraceOwnsItsConclusion(t *testing.T) {
 	trace := queryTrace("trace_claim_scope", "req_claim_scope")
 	service := New(&fakeStore{traces: []evidencevo.NormalizedTrace{trace}})

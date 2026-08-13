@@ -105,11 +105,11 @@ server/
 
 ### Docker
 
-需在 **仓库根目录**（context-loader）下构建，以便 Dockerfile 能复制 agent-retrieval 目录：
+需在 **agent-retrieval 目录**下构建，与 CI 使用的上下文一致，使 `go.mod` 和 `server/` 位于构建根目录：
 
 ```bash
-# 在 context-loader 根目录执行
-docker build -t agent-retrieval:latest -f agent-retrieval/docker/Dockerfile .
+# 在 context-loader/agent-retrieval 目录执行
+docker build -t agent-retrieval:latest -f docker/Dockerfile .
 ```
 
 运行：

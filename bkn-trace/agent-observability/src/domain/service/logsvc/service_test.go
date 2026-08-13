@@ -100,6 +100,66 @@ func (source fakeSource) Search(
 	return observabilityvo.SourcePage{Records: validTestRecords(source.records), Count: int64(len(source.records)), CountAccuracy: "exact"}, nil
 }
 
+func TestListDisclosesDurableDegradedCoverageAfterSuccessfulSourceQuery(t *testing.T) {
+	coverageStore := &coverageStore{coverage: observabilityvo.SourceCoverage{
+		SourceID: "runtime", DeploymentID: "local", State: observabilityvo.SourceCoverageDegraded,
+		Reason: "telemetry_dropped", DroppedRecords: 4,
+	}}
+	service := NewWithOptions([]Source{fakeSource{id: "runtime", records: []observabilityvo.LogRecord{{
+		LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a",
+		EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+	}}}}, Options{
+		CursorKey: []byte("coverage-test"), CoverageStore: coverageStore, CoverageDeploymentID: "local",
+	})
+
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !result.Partial || len(result.SourceStatus) != 1 {
+		t.Fatalf("expected partial result with one source status: %+v", result)
+	}
+	status := result.SourceStatus[0]
+	if status.Status != "degraded" || status.Reason != "telemetry_dropped" || status.DroppedRecords == nil || *status.DroppedRecords != 4 {
+		t.Fatalf("durable coverage degradation was hidden: %+v", status)
+	}
+}
+
+func TestListReturnsLogsButMarksCoveragePartialWhenStateCannotBeRead(t *testing.T) {
+	coverageStore := &coverageStore{err: errors.New("coverage database unavailable")}
+	service := NewWithOptions([]Source{fakeSource{id: "runtime", records: []observabilityvo.LogRecord{{
+		LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a",
+		EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+	}}}}, Options{
+		CursorKey: []byte("coverage-error-test"), CoverageStore: coverageStore, CoverageDeploymentID: "local",
+	})
+
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 10})
+	if err != nil || !result.Partial || len(result.SourceStatus) != 1 {
+		t.Fatalf("expected available partial log result, got result=%+v err=%v", result, err)
+	}
+	if result.SourceStatus[0].Status != "degraded" || result.SourceStatus[0].Reason != "source_status_probe_failed" {
+		t.Fatalf("coverage uncertainty was not disclosed: %+v", result.SourceStatus[0])
+	}
+}
+
+type coverageStore struct {
+	coverage observabilityvo.SourceCoverage
+	err      error
+}
+
+func (store *coverageStore) Get(context.Context, string, string) (observabilityvo.SourceCoverage, bool, error) {
+	return store.coverage, store.coverage.SourceID != "", store.err
+}
+
+func (store *coverageStore) UpsertDegraded(context.Context, observabilityvo.SourceCoverage) error {
+	return nil
+}
+
+func (store *coverageStore) MarkHealthyAfterCatchUp(context.Context, string, string, uint64) error {
+	return nil
+}
+
 type categorizedSource struct {
 	id         string
 	categories []string
@@ -172,7 +232,7 @@ func TestListRejectsGlobalSearchForNormalUserButAllowsOwnedTraceDrilldown(t *tes
 	}
 }
 
-func TestListEnforcesManagedNetworkAllOf(t *testing.T) {
+func TestListReturnsCompleteRecordsMatchingAnyManagedNetwork(t *testing.T) {
 	service := New([]Source{fakeSource{id: "otel", records: []observabilityvo.LogRecord{
 		managedBusinessLog("log-a", []string{"kn-a"}),
 		managedBusinessLog("log-ab", []string{"kn-a", "kn-b"}),
@@ -184,8 +244,8 @@ func TestListEnforcesManagedNetworkAllOf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("builder search failed: %v", err)
 	}
-	if len(result.Records) != 1 || result.Records[0].LogID != "log-a" {
-		t.Fatalf("all-of scope was not enforced: %+v", result.Records)
+	if len(result.Records) != 2 {
+		t.Fatalf("records sharing a managed network must remain complete: %+v", result.Records)
 	}
 }
 

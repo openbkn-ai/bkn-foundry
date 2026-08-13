@@ -103,6 +103,24 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Exact producing service",
+                        "name": "service",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exact root tool",
+                        "name": "tool",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Case-insensitive error text",
+                        "name": "error_keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Business domain",
                         "name": "business_domain",
                         "in": "query"
@@ -141,6 +159,77 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/evidence-nodes/{node_id}": {
+            "get": {
+                "description": "Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "business-provenance"
+                ],
+                "summary": "Get evidence node details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Evidence node ID, for example claim:claim_001",
+                        "name": "node_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trace ID scope",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "BKN request ID scope",
+                        "name": "request_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.EvidenceNodeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }
@@ -478,6 +567,183 @@ const docTemplate = `{
                 }
             }
         },
+        "/business-provenance/requests/{request_id}/business-graph": {
+            "get": {
+                "description": "Returns claim and business semantic nodes/edges derived from business.refs.resolved events.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get business semantic graph by BKN request ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.BusinessGraphResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/requests/{request_id}/evidence-chain": {
+            "get": {
+                "description": "Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a request.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get evidence chain by BKN request ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/requests/{request_id}/snapshot-preview": {
+            "get": {
+                "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get evidence snapshot preview by BKN request ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "BKN request ID",
+                        "name": "request_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.SnapshotPreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/business-provenance/requests/{request_id}/traces": {
             "get": {
                 "description": "Supports one business request to multiple distributed traces and returns request_id on every trace.",
@@ -536,6 +802,183 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/traces/{trace_id}/business-graph": {
+            "get": {
+                "description": "Returns claim and business semantic nodes/edges derived from business.refs.resolved events.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get business semantic graph by trace ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "trace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.BusinessGraphResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/traces/{trace_id}/evidence-chain": {
+            "get": {
+                "description": "Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a trace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get evidence chain by trace ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "trace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/business-provenance/traces/{trace_id}/snapshot-preview": {
+            "get": {
+                "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "evidence"
+                ],
+                "summary": "Get evidence snapshot preview by trace ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "trace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum evidence trace batches to read, 1..1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.SnapshotPreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }
@@ -1137,77 +1580,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/evidence-nodes/{node_id}": {
-            "get": {
-                "description": "Returns one visible claim, evidence ref, or business ref node scoped by trace_id or request_id.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Get evidence node details",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Evidence node ID, for example claim:claim_001",
-                        "name": "node_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Trace ID scope",
-                        "name": "trace_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "BKN request ID scope",
-                        "name": "request_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.EvidenceNodeResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/evidence/artifacts": {
             "post": {
                 "description": "Stores authorized business content separately from evidence events. Inline content and snapshot_ref are mutually exclusive.",
@@ -1274,7 +1646,7 @@ const docTemplate = `{
         },
         "/evidence/artifacts/{artifact_id}": {
             "get": {
-                "description": "Returns artifact content only when all persisted ownership dimensions match the trusted query identity.",
+                "description": "Returns an artifact through its own record scope, or through an authorized Interaction when interaction_id is supplied.",
                 "produces": [
                     "application/json"
                 ],
@@ -1289,6 +1661,12 @@ const docTemplate = `{
                         "name": "artifact_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Authorized Interaction ID",
+                        "name": "interaction_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1312,70 +1690,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/evidence/by-trace": {
-            "get": {
-                "description": "Backward-compatible endpoint for SDK/Studio callers. Returns the normalized evidence-chain response for trace_id or request_id.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Query evidence chain by trace ID or BKN request ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trace ID",
-                        "name": "trace_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "BKN request ID",
-                        "name": "request_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }
@@ -1963,6 +2277,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/interactions/{interaction_id}/operations": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "List raw Operation call facts for one Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.operationCallFactsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/operations/{operation_id}": {
             "get": {
                 "produces": [
@@ -2078,6 +2444,71 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/operations/{operation_id}/attempts/{attempt}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Get one authorized Operation attempt call fact",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operation ID",
+                        "name": "operation_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Attempt number",
+                        "name": "attempt",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.OperationCallFact"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
@@ -2412,7 +2843,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/trace-executions": {
+        "/traces": {
             "get": {
                 "description": "Returns stable trace summaries with reverse request links, generated from authorized trace evidence.",
                 "produces": [
@@ -2518,478 +2949,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/traces/_search": {
-            "post": {
-                "description": "Proxy raw OpenSearch DSL to the configured trace index and return the original OpenSearch response body.",
-                "consumes": [
-                    "application/json"
-                ],
+        "/traces/{trace_id}": {
+            "get": {
+                "description": "Returns the authorized trace summary, Span graph, and ordered raw Operation call facts. Operation facts remain visible without Span data; Span nodes remain visible without Operation facts.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "traces"
                 ],
-                "summary": "Search traces with raw OpenSearch DSL",
-                "parameters": [
-                    {
-                        "description": "OpenSearch DSL JSON body",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Raw OpenSearch search response",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "504": {
-                        "description": "Gateway Timeout",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/by-conversation": {
-            "get": {
-                "description": "Build a term filter automatically using attributes.gen_ai.conversation.id.keyword and return the original OpenSearch response body.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "traces"
-                ],
-                "summary": "Search traces by conversation ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Conversation ID",
-                        "name": "conversation_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Raw OpenSearch search response",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "504": {
-                        "description": "Gateway Timeout",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/by-request": {
-            "get": {
-                "description": "Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a request.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Get evidence chain by BKN request ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "BKN request ID",
-                        "name": "request_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/by-request/business-graph": {
-            "get": {
-                "description": "Returns claim and business semantic nodes/edges derived from business.refs.resolved events.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Get business semantic graph by BKN request ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "BKN request ID",
-                        "name": "request_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.BusinessGraphResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/by-request/snapshot-preview": {
-            "get": {
-                "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Get evidence snapshot preview by BKN request ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "BKN request ID",
-                        "name": "request_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.SnapshotPreviewResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/{trace_id}/business-graph": {
-            "get": {
-                "description": "Returns claim and business semantic nodes/edges derived from business.refs.resolved events.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Get business semantic graph by trace ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trace ID",
-                        "name": "trace_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.BusinessGraphResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/{trace_id}/evidence-chain": {
-            "get": {
-                "description": "Returns normalized claim, evidence refs, business refs, pagination, partial reasons, and visibility summary for a trace.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Get evidence chain by trace ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trace ID",
-                        "name": "trace_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.EvidenceChainResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/{trace_id}/snapshot-preview": {
-            "get": {
-                "description": "Returns a metadata-only governed snapshot manifest preview without creating or exposing object storage locations.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "evidence"
-                ],
-                "summary": "Get evidence snapshot preview by trace ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Trace ID",
-                        "name": "trace_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum evidence trace batches to read, 1..1000",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/evidencevo.SnapshotPreviewResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/traces/{trace_id}/trace-graph": {
-            "get": {
-                "description": "Returns normalized trace tree nodes, parent-child edges, status, duration, and partial reasons for a trace.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "traces"
-                ],
-                "summary": "Get trace graph by trace ID",
+                "summary": "Get one typed technical trace",
                 "parameters": [
                     {
                         "type": "string",
@@ -3003,24 +2972,17 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/tracesvc.TechnicalTraceDetail"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/rdto.ErrorResponse"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
                         "schema": {
                             "$ref": "#/definitions/rdto.ErrorResponse"
                         }
@@ -3895,6 +3857,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "question_artifact_ref": {
+                    "type": "string"
+                },
                 "question_preview": {
                     "type": "string"
                 },
@@ -3903,6 +3868,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/evidencevo.RequestSummary"
                     }
+                },
+                "result_artifact_ref": {
+                    "type": "string"
                 },
                 "result_preview": {
                     "type": "string"
@@ -4215,10 +4183,19 @@ const docTemplate = `{
                 "interaction_id": {
                     "type": "string"
                 },
+                "question_preview": {
+                    "type": "string"
+                },
                 "request_id": {
                     "type": "string"
                 },
+                "result_preview": {
+                    "type": "string"
+                },
                 "root_operation": {
+                    "type": "string"
+                },
+                "root_service": {
                     "type": "string"
                 },
                 "span_count": {
@@ -4335,10 +4312,12 @@ const docTemplate = `{
         "httphandler.ensureOperationRequest": {
             "type": "object",
             "required": [
+                "input",
                 "lease_epoch",
                 "lease_token",
-                "normalized_input_hash",
                 "operation_key",
+                "protocol",
+                "source_module",
                 "tool_name"
             ],
             "properties": {
@@ -4348,13 +4327,13 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "input": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
                 "lease_epoch": {
                     "type": "integer"
                 },
                 "lease_token": {
-                    "type": "string"
-                },
-                "normalized_input_hash": {
                     "type": "string"
                 },
                 "operation_key": {
@@ -4363,8 +4342,14 @@ const docTemplate = `{
                 "parent_operation_id": {
                     "type": "string"
                 },
+                "protocol": {
+                    "$ref": "#/definitions/sessionvo.OperationProtocol"
+                },
                 "required": {
                     "type": "boolean"
+                },
+                "source_module": {
+                    "type": "string"
                 },
                 "tool_name": {
                     "type": "string"
@@ -4522,7 +4507,6 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "evidence_durability",
-                "payload_hash",
                 "receipt_id",
                 "request_id",
                 "trace_id"
@@ -4540,6 +4524,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/sessionvo.BusinessRef"
                     }
                 },
+                "error": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
                 "evidence_durability": {
                     "$ref": "#/definitions/sessionvo.EvidenceDurability"
                 },
@@ -4549,14 +4536,14 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "output": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
                 "partial_reasons": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
-                },
-                "payload_hash": {
-                    "type": "string"
                 },
                 "receipt_id": {
                     "type": "string"
@@ -4566,6 +4553,9 @@ const docTemplate = `{
                 },
                 "retryable": {
                     "type": "boolean"
+                },
+                "span_id": {
+                    "type": "string"
                 },
                 "trace_id": {
                     "type": "string"
@@ -4699,6 +4689,20 @@ const docTemplate = `{
                 },
                 "reason": {
                     "type": "string"
+                }
+            }
+        },
+        "httphandler.operationCallFactsResponse": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/sessionvo.OperationCallFact"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
@@ -4839,6 +4843,118 @@ const docTemplate = `{
                 },
                 "replayed": {
                     "type": "boolean"
+                }
+            }
+        },
+        "oteltracevo.TraceGraphData": {
+            "type": "object",
+            "properties": {
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/oteltracevo.TraceGraphEdge"
+                    }
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/oteltracevo.TraceGraphNode"
+                    }
+                }
+            }
+        },
+        "oteltracevo.TraceGraphEdge": {
+            "type": "object",
+            "properties": {
+                "child_span_id": {
+                    "type": "string"
+                },
+                "edge_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "parent_span_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "oteltracevo.TraceGraphNode": {
+            "type": "object",
+            "properties": {
+                "duration_nano": {
+                    "type": "integer"
+                },
+                "end_nano": {
+                    "type": "integer"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parent_span_id": {
+                    "type": "string"
+                },
+                "service_name": {
+                    "type": "string"
+                },
+                "span_id": {
+                    "type": "string"
+                },
+                "start_nano": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "oteltracevo.TraceGraphPage": {
+            "type": "object",
+            "properties": {
+                "edge_count": {
+                    "type": "integer"
+                },
+                "node_count": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "oteltracevo.TraceGraphResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/oteltracevo.TraceGraphData"
+                },
+                "duration_nano": {
+                    "type": "integer"
+                },
+                "page": {
+                    "$ref": "#/definitions/oteltracevo.TraceGraphPage"
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reason": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
                 }
             }
         },
@@ -5456,7 +5572,6 @@ const docTemplate = `{
                 "conversation_id",
                 "created_at",
                 "interaction_id",
-                "normalized_input_hash",
                 "operation_id",
                 "operation_key",
                 "retryable",
@@ -5484,9 +5599,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "interaction_id": {
-                    "type": "string"
-                },
-                "normalized_input_hash": {
                     "type": "string"
                 },
                 "operation_id": {
@@ -5560,6 +5672,81 @@ const docTemplate = `{
                 "OperationRoleExecute"
             ]
         },
+        "sessionvo.OperationCallFact": {
+            "type": "object",
+            "properties": {
+                "attempt": {
+                    "type": "integer"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "error": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "input": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
+                "interaction_id": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "output": {
+                    "$ref": "#/definitions/sessionvo.PayloadEnvelope"
+                },
+                "parent_operation_id": {
+                    "type": "string"
+                },
+                "protocol": {
+                    "$ref": "#/definitions/sessionvo.OperationProtocol"
+                },
+                "receipt_id": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "retryable": {
+                    "type": "boolean"
+                },
+                "source_module": {
+                    "type": "string"
+                },
+                "span_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/sessionvo.AttemptStatus"
+                },
+                "tool_name": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.OperationProtocol": {
+            "type": "string",
+            "enum": [
+                "mcp",
+                "sdk",
+                "internal"
+            ],
+            "x-enum-varnames": [
+                "ProtocolMCP",
+                "ProtocolSDK",
+                "ProtocolInternal"
+            ]
+        },
         "sessionvo.Owner": {
             "type": "object",
             "required": [
@@ -5590,6 +5777,45 @@ const docTemplate = `{
                 }
             }
         },
+        "sessionvo.PayloadEnvelope": {
+            "type": "object",
+            "properties": {
+                "byte_length": {
+                    "type": "integer"
+                },
+                "inline": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "media_type": {
+                    "type": "string"
+                },
+                "mode": {
+                    "$ref": "#/definitions/sessionvo.PayloadMode"
+                },
+                "omitted_reason": {
+                    "type": "string"
+                },
+                "ref": {
+                    "type": "string"
+                }
+            }
+        },
+        "sessionvo.PayloadMode": {
+            "type": "string",
+            "enum": [
+                "inline",
+                "referenced",
+                "omitted"
+            ],
+            "x-enum-varnames": [
+                "PayloadInline",
+                "PayloadReferenced",
+                "PayloadOmitted"
+            ]
+        },
         "sessionvo.Receipt": {
             "type": "object",
             "required": [
@@ -5601,13 +5827,11 @@ const docTemplate = `{
                 "evidence_durability",
                 "interaction_id",
                 "issued_at",
-                "normalized_input_hash",
                 "observed_evidence_refs",
                 "operation_id",
                 "operation_key",
                 "owner",
                 "partial_reasons",
-                "payload_hash",
                 "receipt_id",
                 "receipt_status",
                 "request_id",
@@ -5651,9 +5875,6 @@ const docTemplate = `{
                 "issued_at": {
                     "type": "string"
                 },
-                "normalized_input_hash": {
-                    "type": "string"
-                },
                 "observed_evidence_refs": {
                     "type": "array",
                     "items": {
@@ -5674,9 +5895,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                },
-                "payload_hash": {
-                    "type": "string"
                 },
                 "receipt_id": {
                     "type": "string"
@@ -5785,6 +6003,52 @@ const docTemplate = `{
                 "SupportArtifactFragment",
                 "SupportOperationOutput"
             ]
+        },
+        "tracesvc.TechnicalOperation": {
+            "type": "object",
+            "properties": {
+                "fact": {
+                    "$ref": "#/definitions/sessionvo.OperationCallFact"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "receipt": {
+                    "$ref": "#/definitions/sessionvo.Receipt"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "tracesvc.TechnicalTraceDetail": {
+            "type": "object",
+            "properties": {
+                "graph": {
+                    "$ref": "#/definitions/oteltracevo.TraceGraphResponse"
+                },
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tracesvc.TechnicalOperation"
+                    }
+                },
+                "partial": {
+                    "type": "boolean"
+                },
+                "partial_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "summary": {
+                    "$ref": "#/definitions/evidencevo.TraceSummary"
+                }
+            }
         }
     }
 }`

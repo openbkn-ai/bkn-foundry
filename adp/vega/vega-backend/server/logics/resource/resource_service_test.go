@@ -79,6 +79,19 @@ func expectResourceServiceTransaction(t *testing.T, rs *resourceService, commit 
 	})
 }
 
+func TestValidateSingleFeatureTypePerPropertyRejectsKeywordDuplicates(t *testing.T) {
+	err := validateSingleFeatureTypePerProperty(context.Background(), []*interfaces.Property{{
+		Name: "code",
+		Features: []interfaces.PropertyFeature{
+			{FeatureType: interfaces.PropertyFeatureType_Keyword},
+			{FeatureType: interfaces.PropertyFeatureType_Keyword},
+		},
+	}})
+
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "code" has more than one "keyword" feature`)
+}
+
 func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
 	schema := []*interfaces.Property{{Name: "id"}, {Name: "updated_at"}}
 
@@ -412,6 +425,88 @@ func TestResourceServiceList(t *testing.T) {
 	})
 }
 
+func TestValidateIndexConfigAnalyzers(t *testing.T) {
+	schema := []*interfaces.Property{
+		{Name: "title", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}}},
+		{Name: "summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "english"}}}},
+	}
+
+	t.Run("accepts defaults and field overrides in the capability snapshot", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects an unavailable analyzer with affected fields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(false, nil)
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_Analyzer)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "english")
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "summary")
+	})
+
+	t.Run("returns capability unavailable when the startup probe failed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(false, &interfaces.IndexCapabilitiesUnavailableError{Cause: errors.New("connection refused")})
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_IndexCapability_InternalError_Unavailable)
+		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
+	})
+
+	t.Run("returns an internal error for other analyzer validation failures", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(false, errors.New("unexpected validation failure"))
+		rs := &resourceService{lim: lim}
+
+		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "unexpected validation failure")
+	})
+
+	t.Run("validates each configured fulltext feature without collection", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "standard").Return(true, nil)
+		lim.EXPECT().ValidateAnalyzer(gomock.Any(), "english").Return(true, nil)
+		rs := &resourceService{lim: lim}
+		multiFeatureSchema := []*interfaces.Property{{
+			Name: "title",
+			Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}},
+				{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "english"}},
+			},
+		}}
+
+		require.NoError(t, rs.validateIndexConfigAnalyzers(context.Background(), multiFeatureSchema, nil))
+	})
+}
+
+func requireResourceHTTPError(t *testing.T, err error, wantCode string) *rest.HTTPError {
+	t.Helper()
+	require.Error(t, err)
+	httpErr, ok := err.(*rest.HTTPError)
+	require.Truef(t, ok, "expected HTTPError, got %T", err)
+	assert.Equal(t, wantCode, httpErr.BaseError.ErrorCode)
+	return httpErr
+}
+
 func TestResourceServiceCreate(t *testing.T) {
 	t.Run("rolls back resource and extensions when extension replacement fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
@@ -659,7 +754,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 		// 级联：无构建任务时 List 返回空，不再走 GetByResourceID 拦截
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{}, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTask{}, int64(0), nil)
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -676,7 +771,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
 		// 一个已完成任务 t1 → 期望 drop 其索引并删任务行
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "completed"}}, int64(1), nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		mockBTA.EXPECT().Delete(gomock.Any(), "t1").Return(nil)
@@ -693,7 +788,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTask{{ID: "t1", ResourceID: "r1", Status: "running"}}, int64(1), nil)
 		// 不应调用 DeleteByIDs / bta.Delete / ds.Delete
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
@@ -801,6 +896,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category:  interfaces.ResourceCategoryTable,
 		}, &interfaces.ResourceRequest{
 			CatalogID:  "catalog-1",
+			Category:   interfaces.ResourceCategoryTable,
 			Name:       "resource",
 			Extensions: &extensionValues,
 		})
@@ -828,8 +924,9 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", Name: "updated"}, &interfaces.ResourceRequest{
-			Name: "updated",
+		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+			Name:     "updated",
+			Category: interfaces.ResourceCategoryTable,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -838,7 +935,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 	t.Run("update rejects build relevant change when active build task exists", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "r1" {
 					t.Fatalf("expected resource r1, got %q", params.ResourceID)
@@ -859,6 +956,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{{
@@ -906,6 +1004,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			Description:      "new",
 			SourceIdentifier: "public.orders",
@@ -919,7 +1018,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "r1" {
 					t.Fatalf("expected resource r1, got %q", params.ResourceID)
@@ -948,6 +1047,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{{
@@ -966,7 +1066,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 	t.Run("update rejects index config change when active build task exists", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
 				if params.ResourceID != "r1" {
 					t.Fatalf("expected resource r1, got %q", params.ResourceID)
@@ -989,6 +1089,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
@@ -1011,7 +1112,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
@@ -1037,6 +1138,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
@@ -1055,7 +1157,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockMFS.EXPECT().GetModelByName(gomock.Any(), "missing-model").Return(nil, fmt.Errorf("model not found"))
 
 		err := rs.Update(context.Background(), &interfaces.Resource{
@@ -1074,6 +1176,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
@@ -1099,7 +1202,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockBTA.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
 
@@ -1119,6 +1222,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
@@ -1155,6 +1259,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{{
@@ -1181,8 +1286,45 @@ func TestResourceServiceUpdate(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.customers",
+		})
+
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			t.Fatalf("expected HTTPError, got %T", err)
+		}
+		if httpErr.HTTPCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+		}
+	})
+	t.Run("update requires category", func(t *testing.T) {
+		rs, _, mockPS, _, _, _, _ := newTestService(t)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		err := rs.Update(context.Background(), &interfaces.Resource{
+			ID:       "r1",
+			Category: interfaces.ResourceCategoryDataset,
+		}, &interfaces.ResourceRequest{})
+
+		httpErr, ok := err.(*rest.HTTPError)
+		if !ok {
+			t.Fatalf("expected HTTPError, got %T", err)
+		}
+		if httpErr.HTTPCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+		}
+	})
+	t.Run("update rejects category change", func(t *testing.T) {
+		rs, _, mockPS, _, _, _, _ := newTestService(t)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		err := rs.Update(context.Background(), &interfaces.Resource{
+			ID:       "r1",
+			Category: interfaces.ResourceCategoryDataset,
+		}, &interfaces.ResourceRequest{
+			Category: interfaces.ResourceCategoryTable,
 		})
 
 		httpErr, ok := err.(*rest.HTTPError)
@@ -1206,6 +1348,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{
@@ -1220,6 +1363,45 @@ func TestResourceServiceUpdate(t *testing.T) {
 		}
 		if httpErr.HTTPCode != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
+		}
+	})
+	t.Run("dataset update allows adding properties", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+				if got.LocalIndexName != "" {
+					t.Fatalf("expected LocalIndexName to be cleared, got %q", got.LocalIndexName)
+				}
+				if len(got.SchemaDefinition) != 2 || got.SchemaDefinition[1].Name != "title" {
+					t.Fatalf("expected added dataset property, got %#v", got.SchemaDefinition)
+				}
+				return nil
+			})
+
+		err := rs.Update(context.Background(), &interfaces.Resource{
+			ID:               "r1",
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryDataset,
+			Name:             "dataset",
+			LocalIndexName:   "vega-build-r1-task-1",
+			SourceIdentifier: "dataset-r1",
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		}, &interfaces.ResourceRequest{
+			CatalogID:        "cat1",
+			Category:         interfaces.ResourceCategoryDataset,
+			Name:             "dataset",
+			SourceIdentifier: "dataset-r1",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_String},
+				{Name: "title", Type: interfaces.DataType_Text},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }

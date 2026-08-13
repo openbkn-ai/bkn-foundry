@@ -72,6 +72,7 @@ func TestSkillIndexSync(t *testing.T) {
 				for _, feature := range property.Features {
 					_, ok := feature.Config[embeddingModelConfigKey]
 					So(ok, ShouldBeFalse)
+					So(feature.RefProperty, ShouldBeEmpty)
 				}
 			}
 			So(len(createdResource.SchemaDefinition), ShouldEqual, 10)

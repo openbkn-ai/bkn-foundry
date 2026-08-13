@@ -1920,18 +1920,19 @@ func (mr *MockIndexConnectorMockRecorder) UpsertDocuments(ctx, name, updateReque
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertDocuments", reflect.TypeOf((*MockIndexConnector)(nil).UpsertDocuments), ctx, name, updateRequests)
 }
 
-// ValidateAnalyzers mocks base method.
-func (m *MockIndexConnector) ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error {
+// ValidateAnalyzer mocks base method.
+func (m *MockIndexConnector) ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateAnalyzers", ctx, analyzers)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "ValidateAnalyzer", ctx, analyzer)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// ValidateAnalyzers indicates an expected call of ValidateAnalyzers.
-func (mr *MockIndexConnectorMockRecorder) ValidateAnalyzers(ctx, analyzers any) *gomock.Call {
+// ValidateAnalyzer indicates an expected call of ValidateAnalyzer.
+func (mr *MockIndexConnectorMockRecorder) ValidateAnalyzer(ctx, analyzer any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateAnalyzers", reflect.TypeOf((*MockIndexConnector)(nil).ValidateAnalyzers), ctx, analyzers)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateAnalyzer", reflect.TypeOf((*MockIndexConnector)(nil).ValidateAnalyzer), ctx, analyzer)
 }
 
 // MockAPIConnector is a mock of APIConnector interface.

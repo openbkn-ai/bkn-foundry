@@ -195,7 +195,7 @@ resource — see [VEGA Engine](vega.md).
 
 `create-from-csv` still exists in the CLI, but its CSV loading depends on the retired
 dataflow path and does not work on current deployments — load the files with the `mysql`
-client first, then use `create-from-catalog` (see `examples/02-csv-to-kn`).
+client first, then use `create-from-catalog`.
 
 ---
 

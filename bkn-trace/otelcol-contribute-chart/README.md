@@ -88,12 +88,12 @@ exporters:
     bulk_action: create
     sending_queue:
       enabled: true
-      num_consumers: 2
-      queue_size: 2048
+      num_consumers: 4
+      queue_size: 512
     retry_on_failure:
       enabled: true
       initial_interval: 1s
-      max_interval: 30s
+      max_interval: 10s
       max_elapsed_time: 5m
     mapping:
       mode: ss4o
@@ -105,15 +105,21 @@ exporters:
 
 ### 4C8G 最小部署基线
 
-默认单副本 Collector 限制为 `500m CPU / 512MiB`，适配 OpenBKN `4C8G` 最小环境：
+默认单副本 Collector 限制为 `500m CPU / 768MiB`，适配 OpenBKN `4C8G` 最小环境：
 
-- `memory_limiter`：`384MiB` 上限、`96MiB` 突发余量，位于 `batch` 之前；
-- `batch`：512 条目标批次、1024 条硬上限、5 秒刷新；
-- OpenSearch 发送队列：2048 批、2 个消费者；
-- OpenSearch 失败重试：指数退避，最长 5 分钟；
+- `memory_limiter`：`512MiB` 上限、`128MiB` 突发余量，位于 `batch` 之前；容器保留 `256MiB` 余量，避免硬限与 cgroup 上限重合；
+- `batch`：512 条目标批次、1024 条硬上限、1 秒刷新；
+- OpenSearch 发送队列：512 批、4 个消费者；
+- OpenSearch 失败重试：指数退避，最大单次间隔 10 秒、最长 5 分钟；
 - 健康端点：`:13133/`；Collector 指标：`:8888/metrics`。
 
+容器内存上限高于 `memory_limiter`，为 Go 运行时和非堆内存保留余量，避免 cgroup OOM 在 Collector 拒收遥测前终止进程。
+
+已有部署若通过 `helm upgrade --reuse-values` 升级，需显式更新上述参数；Helm 会保留旧的覆盖值，不会以新的 Chart 默认值替换它们。
+
 `monitoring.prometheusRule.enabled=true` 时渲染队列接近容量、日志导出失败和遥测拒绝告警。`networkPolicy.enabled=true` 时只允许带 `openbkn.ai/otel-producer=true` 标签的同命名空间 Pod 写入 OTLP，并允许指定监控命名空间抓取指标。两项默认关闭，启用前必须核对目标集群的 CRD、命名空间和工作负载标签。
+
+使用 `scripts/run_otlp_capacity_probe.sh` 做本地 Collector 验收。脚本默认只发送 5 条无敏感内容的 OTLP 日志；显式设置 `RATE_PER_SECOND=100 DURATION_SECONDS=300` 可执行稳态门，设置为 `300 / 300` 可执行突发门。脚本按 Collector 指标校验接收、导出、拒收和失败计数，并在结束时清理临时端口转发。
 
 ---
 
@@ -199,13 +205,23 @@ helm upgrade --install otelcol-contrib charts/otelcol-contrib \
 开启 Basic Auth 示例：
 
 ```bash
+printf '%s' 'your-username' > /path/to/opensearch-username
+printf '%s' 'your-password' > /path/to/opensearch-password
+
+kubectl create secret generic bkn-trace-opensearch \
+  -n observability \
+  --from-file=username=/path/to/opensearch-username \
+  --from-file=password=/path/to/opensearch-password
+
 helm upgrade --install otelcol-contrib charts/otelcol-contrib \
   -n observability \
   --create-namespace \
   --set opensearchExporter.auth.enabled=true \
-  --set opensearchExporter.auth.username=admin \
-  --set opensearchExporter.auth.password=admin
+  --set opensearchExporter.auth.existingSecret=bkn-trace-opensearch
 ```
+
+不要通过 Helm `--set` 传递 OpenSearch 用户名或密码。Chart 只接受已有 Secret 的名称；用户名与密码键默认为 `username`、`password`，可用 `opensearchExporter.auth.usernameKey` 与 `passwordKey` 覆盖。
+创建凭据文件时使用 `printf`，避免 `echo` 在文件末尾写入换行。
 
 ## 7. 使用 telemetrygen 生成测试 Trace
 

@@ -221,12 +221,12 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 }
 
 func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
-	t.Run("always updates last run and advances next run only when schedule update time matches", func(t *testing.T) {
+	t.Run("updates metadata when schedule update time matches", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = CASE WHEN f_update_time = ? THEN ? ELSE f_next_run END WHERE f_catalog_id = ?")).
-			WithArgs(int64(100), int64(50), int64(200), "catalog-1").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
+			WithArgs(int64(100), int64(200), "catalog-1", int64(50)).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		require.NoError(t, access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200))
@@ -238,8 +238,8 @@ func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
 		defer cleanup()
 
 		updateErr := sql.ErrConnDone
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = CASE WHEN f_update_time = ? THEN ? ELSE f_next_run END WHERE f_catalog_id = ?")).
-			WithArgs(int64(100), int64(50), int64(200), "catalog-1").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
+			WithArgs(int64(100), int64(200), "catalog-1", int64(50)).
 			WillReturnError(updateErr)
 
 		err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200)
@@ -247,24 +247,30 @@ func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
 		require.ErrorIs(t, err, updateErr)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
-}
 
-func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
-	t.Run("deletes schedules", func(t *testing.T) {
+	t.Run("returns not found when schedule changed or was deleted", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id IN (?,?)")).
-			WithArgs("catalog-1", "catalog-2").WillReturnResult(sqlmock.NewResult(0, 2))
 
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1", "catalog-2"}))
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
+			WithArgs(int64(100), int64(200), "catalog-1", int64(50)).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200)
+
+		require.ErrorIs(t, err, sql.ErrNoRows)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
 
-	t.Run("skips empty catalog IDs", func(t *testing.T) {
+func TestCatalogHealthCheckScheduleAccessDeleteByCatalogID(t *testing.T) {
+	t.Run("deletes schedule", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id = ?")).
+			WithArgs("catalog-1").WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.DeleteByCatalogIDs(context.Background(), nil, nil))
+		require.NoError(t, access.DeleteByCatalogID(context.Background(), nil, "catalog-1"))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -272,10 +278,10 @@ func TestCatalogHealthCheckScheduleAccessDeleteByCatalogIDs(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 		deleteErr := sql.ErrConnDone
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id IN (?)")).
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_catalog_health_check_schedule WHERE f_catalog_id = ?")).
 			WithArgs("catalog-1").WillReturnError(deleteErr)
 
-		err := access.DeleteByCatalogIDs(context.Background(), nil, []string{"catalog-1"})
+		err := access.DeleteByCatalogID(context.Background(), nil, "catalog-1")
 
 		require.ErrorIs(t, err, deleteErr)
 		require.NoError(t, mock.ExpectationsWereMet())

@@ -1,327 +1,175 @@
-# Ontology Engine
+# BKN Engine
 
 [中文](README.zh.md) | English
 
-## Project Overview
+`adp/bkn` contains the BKN Engine backend services for Business Knowledge Network
+modeling and query. It is part of BKN Foundry and is not a standalone product UI.
 
-The Ontology Engine is a distributed business knowledge network management system developed in Go, providing ontology modeling, data management, and intelligent query capabilities. The system adopts a microservices architecture, divided into ontology management and ontology query modules, supporting the construction, storage, and querying of large-scale knowledge networks.
+The subsystem currently consists of two Go services:
 
-As a core component of the OpenBKN platform, the Ontology Engine focuses on building enterprise-level business knowledge networks, enabling business knowledge modeling, storage, querying, and application. The system follows clean architecture principles and SOLID design, offering excellent scalability and maintainability.
+| Service | Path | Default port | Responsibility |
+| --- | --- | --- | --- |
+| BKN Backend | `bkn-backend/` | `13014` | Knowledge network modeling, validation, import/export, concept indexing, metrics, risk types, and action schedules |
+| Ontology Query | `ontology-query/` | `13018` | Object data query, property query, subgraph query, action execution, action logs, and metric data query |
 
-### Core Features
+## Capability Scope
 
-#### Ontology Modeling & Management
-- **Multi-dimensional Ontology Definition**: Supports complete definition and management of object types, relation types, and action types
-- **Branch Management**: Supports branch development and merging of ontology models
-- **Visual Configuration**: Provides intuitive visual configuration interface for ontology models
+Implemented and actively maintained capabilities:
 
-#### Knowledge Network Construction
-- **Multi-domain Knowledge Networks**: Supports building cross-domain complex knowledge networks
-- **Semantic Relationship Management**: Supports defining and managing complex semantic relationships
-- **Topology Analysis**: Provides topology structure analysis and optimization for knowledge networks
-- **Auto-sync**: Supports automatic synchronization between ontology models and data sources
+- Knowledge network CRUD and validation.
+- Object type, relation type, action type, concept group, metric, risk type, and action schedule management.
+- BKN package import/export through the public API.
+- Concept indexing and search through OpenSearch plus the configured embedding model.
+- Object instance, object property, subgraph, and object-started subgraph queries.
+- Action execution with asynchronous execution records, status query, logs, and cancellation.
+- Metric query and dry-run execution through Ontology Query and VEGA resource data.
+- Trace outbox inspection and manual retry/abandon operations for BKN Trace integration.
 
-#### Intelligent Query Engine
-- **Complex Relationship Queries**: Supports multi-hop relationship path queries and subgraph queries
-- **Semantic Search**: Intelligent semantic search based on vector similarity
-- **Pattern Matching**: Supports intelligent pattern matching queries for graphs
-- **Performance Optimization**: High-performance query engine based on OpenSearch
+Known boundaries:
 
-#### Data Integration & Application
-- **VEGA Virtualization**: Integrates multiple data sources through the VEGA virtualization engine
-- **Data Sync**: Supports real-time synchronization between ontology data and business data
-- **Job Scheduling**: Supports complex background job scheduling and execution
-- **Permission Management**: Role-based fine-grained permission control
+- Branch is supported as a model/query dimension, but this directory does not expose a complete branch lifecycle API such as create, merge, publish, or rollback.
+- Fine-grained permission integration is not fully enforced in `bkn-backend`; some permission hooks are still disabled in the service layer.
+- Natural-language planning and high-level context retrieval are handled by `adp/context-loader`, not by `adp/bkn` directly.
+- Query execution depends on BKN metadata, VEGA resource data, OpenSearch indexes, and model-factory embedding configuration.
+- Some advanced metric fields are only partially available end to end; use the OpenAPI notes and integration tests as the source of truth.
 
-#### System Features
-- **Microservices Architecture**: Microservices-based design supporting horizontal scaling
-- **High Availability**: Supports distributed deployment and fault recovery
-- **Monitoring Integration**: Integrated with OpenTelemetry for full-link monitoring
-- **Internationalization Support**: Multi-language support and localization configuration
-
-## System Architecture
-
-### Module Structure
+## Repository Layout
 
 ```text
-adp/
-└── bkn/
-    ├── bkn-backend/     # Ontology Management Module
-    ├── ontology-query/       # Ontology Query Module
-    ├── README.md             # Project documentation
-    └── README.zh.md          # Chinese documentation
+adp/bkn/
+  bkn-backend/       # Modeling and management service
+  ontology-query/    # Query and action execution service
+  AGENTS.md          # Agent collaboration rules for this subsystem
+  README.md          # This file
+  README.zh.md       # Chinese overview
 ```
 
-### BKN Manager Module (bkn-backend)
+Both services follow the same broad layout:
 
-Responsible for creating, editing, and managing bkn models. Main features include:
+```text
+server/
+  common/            # Shared helpers, settings, and condition handling
+  config/            # Local configuration files
+  drivenadapters/    # Database, OpenSearch, model-factory, VEGA, and downstream clients
+  driveradapters/    # HTTP handlers and routers
+  errors/            # Service error definitions
+  interfaces/        # DTOs and service interfaces
+  locale/            # i18n resources
+  logics/            # Business logic
+  main.go            # Service entrypoint
+```
 
-- **Knowledge Network Management**: Build and manage business knowledge networks
-- **Object Type Management**: Define and manage object types in knowledge networks
-- **Relation Type Management**: Define and manage relation types in knowledge networks
-- **Action Type Management**: Define executable operations and actions
-- **Job Scheduling**: Background task and job management
+`bkn-backend` also contains `worker/` for background indexing and job execution,
+and `server/bkn-specification/` for BKN package parsing/import-export support.
 
-### Ontology Query Module (ontology-query)
+## API Documentation
 
-Provides efficient knowledge graph query services. Main features include:
+The canonical API documentation lives at the repository root:
 
-- **Model Query**: Query and browse ontology models
-- **Graph Query**: Complex relationship path queries
-- **Semantic Search**: Semantic-based intelligent search
-- **Data Retrieval**: Multi-dimensional data filtering and retrieval
+| Service | OpenAPI source |
+| --- | --- |
+| BKN Backend | `docs/api/bkn/*.yaml` |
+| Ontology Query | `docs/api/ontology-query/ontology-query.yaml` |
 
-## Quick Start
-
-### Prerequisites
-
-- **Go**: 1.24.0 or higher
-- **Database**: MariaDB 11.4+ or DM8 (for data storage)
-- **Search Engine**: OpenSearch 2.x (for search and indexing)
-- **Dependency Services**: Requires other BKN Foundry services
-- **Docker**: Optional, for containerized deployment
-- **Kubernetes**: Optional, for cluster deployment
-
-### Local Development
-
-#### 1. Clone the repository
+Generate or lint docs from the repository root:
 
 ```bash
-git clone https://github.com/kweaver-ai/adp.git
-cd adp/ontology
+npm install
+make api-docs-lint
+make api-docs-html
 ```
 
-#### 2. Configure environment
+Public API prefixes:
 
-Each module has its own configuration file that needs to be configured according to the actual environment:
-
-```yaml
-# BKN Manager configuration
-bkn-backend/server/config/bkn-backend-config.yaml
-
-# Ontology Query configuration
-ontology-query/server/config/ontology-query-config.yaml
+```text
+/api/bkn-backend/v1
+/api/ontology-query/v1
 ```
 
-**Key configuration items**:
-- Database connection information (host, port, user, password)
-- OpenSearch connection information
-- Dependency service addresses (user-management, data-model, etc.)
-- Service port configuration
+Internal API prefixes:
 
-#### 3. Initialize database
+```text
+/api/bkn-backend/in/v1
+/api/ontology-query/in/v1
+```
+
+## Local Development
+
+Prerequisites:
+
+- Go 1.24+
+- MariaDB 11.4+ or DM8
+- OpenSearch 2.x
+- Running dependencies configured in each service's `server/config/*.yaml`
+
+Run BKN Backend:
 
 ```bash
-# Execute database initialization scripts
-# MariaDB
-mysql -u root -p < bkn-backend/migrations/mariadb/6.0.0/pre/init.sql
-
-# DM8
-disql SYSDBA/SYSDBA@localhost:5236 < bkn-backend/migrations/dm8/6.0.0/pre/init.sql
-```
-
-#### 4. Run the BKN Manager module
-
-```bash
-cd bkn-backend/server
+cd adp/bkn/bkn-backend/server
 go mod download
 go run main.go
 ```
 
-The service will start at `http://localhost:13014`
+Run Ontology Query:
 
-**Health Check**:
+```bash
+cd adp/bkn/ontology-query/server
+go mod download
+go run main.go
+```
+
+Health checks:
+
 ```bash
 curl http://localhost:13014/health
-```
-
-#### 5. Run the Ontology Query module
-
-```bash
-cd ../ontology-query/server
-go mod download
-go run main.go
-```
-
-The service will start at `http://localhost:13018`
-
-**Health Check**:
-```bash
 curl http://localhost:13018/health
 ```
 
-### Docker Deployment
+## Testing
 
-#### Build images
+Each service exposes a Makefile as its standard local entrypoint.
 
 ```bash
-# Build BKN Manager module
-cd bkn-backend
+cd adp/bkn/bkn-backend
+make test
+make test-cover
+make lint
+make ci
+
+cd ../ontology-query
+make test
+make test-cover
+make lint
+make ci
+```
+
+Unit tests require `I18N_MODE_UT=true`; the Makefile sets it automatically.
+
+## Deployment
+
+The normal deployment path is through the repository-level installer and release
+manifests under `deploy/`.
+
+For service-level image/chart work:
+
+```bash
+cd adp/bkn/bkn-backend
 docker build -t bkn-backend:latest -f docker/Dockerfile .
 
-# Build Ontology Query module  
 cd ../ontology-query
 docker build -t ontology-query:latest -f docker/Dockerfile .
 ```
 
-#### Run containers
-
-```bash
-# Run BKN Manager module
-docker run -d -p 13014:13014 --name bkn-backend bkn-backend:latest
-
-# Run Ontology Query module
-docker run -d -p 13018:13018 --name ontology-query ontology-query:latest
-```
-
-### Kubernetes Deployment
-
-The project provides Helm charts for Kubernetes deployment:
-
-```bash
-# Deploy BKN Manager module
-helm3 install bkn-backend bkn-backend/helm/bkn-backend/
-
-# Deploy Ontology Query module
-helm3 install ontology-query ontology-query/helm/ontology-query/
-```
-
-## API Documentation
-
-The system provides complete RESTful API documentation supporting OpenAPI 3.0 specification:
-
-### Ontology Manager APIs
-
-- **Knowledge Network API**: [Knowledge Network API](bkn-backend/api_doc/bkn-backend-network.html)
-  - Supports creation, query, update, and deletion of knowledge networks
-
-- **Object Type API**: [Object Type API](bkn-backend/api_doc/bkn-backend-object-type.html)
-  - Supports definition and management of object types
-
-- **Relation Type API**: [Relation Type API](bkn-backend/api_doc/bkn-backend-relation-type.html)
-  - Supports definition and management of relation types
-  - Provides directionality and multiplicity configuration
-
-- **Action Type API**: [Action Type API](bkn-backend/api_doc/bkn-backend-action-type.html)
-  - Supports definition and management of action types
-
-- **Job Management API**: [Job Management API](bkn-backend/api_doc/bkn-backend-job-api.html)
-  - Supports creation and scheduling of background jobs
-
-### Ontology Query APIs
-
-- **Query Service API**: [Query Service API](ontology-query/api_doc/ontology-query.html)
-  - Supports complex relationship path queries
-  - Provides semantic search and pattern matching
-  - Supports multi-dimensional data filtering and retrieval
-  - Provides high-performance pagination queries
-
-### API Access Methods
-
-**Local Development Environment**:
-```
-# BKN Manager API
-http://localhost:13014/api/bkn-backend/v1/
-
-# Ontology Query API
-http://localhost:13018/api/ontology-query/v1/
-```
-
-**Production Environment**:
-```
-# BKN Manager API
-https://your-domain.com/api/bkn-backend/v1/
-
-# Ontology Query API
-https://your-domain.com/api/ontology-query/v1/
-```
-
-## Database Support
-
-The system supports multiple databases:
-
-- **MariaDB**: Primary data storage
-- **DM8**: DM8 database support
-- **OpenSearch**: Search engine and data analysis
-
-Database migration scripts are located at:
-
-- `bkn-backend/migrations/`
-- `ontology-query/migrations/`
-
-## Monitoring & Logging
-
-- **Logging System**: Integrated structured logging with multi-level log recording
-- **Distributed Tracing**: OpenTelemetry-based distributed tracing
-- **Health Checks**: Health check endpoints provided
-
-## Development Guide
-
-### Code Structure
-
-The project follows clean architecture principles and SOLID design, with a clear and maintainable code structure:
+Helm charts are kept next to each service:
 
 ```text
-server/
-├── common/              # Common configuration, utility functions, and constants
-├── config/              # Configuration files and configuration loading
-├── drivenadapters/      # Data access layer (driven adapters)
-├── driveradapters/      # Interface adapter layer (driver adapters)
-├── errors/              # Error definitions and handling mechanisms
-├── interfaces/          # Interface definitions and abstractions
-├── locale/              # Internationalization support and multi-language configuration
-├── logics/              # Business logic layer
-├── main.go              # Application entry point and startup logic
-├── version/             # Version information and build details
-└── worker/              # Background tasks and job executors
+adp/bkn/bkn-backend/helm/bkn-backend/
+adp/bkn/ontology-query/helm/ontology-query/
 ```
 
-### Development Standards
+## Notes for Maintainers
 
-1. **Clean Architecture**: Follow clean architecture principles, separating concerns
-2. **Interface Isolation**: Clearly define interfaces and implementations, depend on abstractions rather than concrete implementations
-3. **Error Handling**: Unified error handling mechanism using custom error types
-4. **Logging Standards**: Structured logging using Zap logging library
-5. **Test Coverage**: Unit tests and integration tests, aiming for high test coverage
-6. **Code Style**: Follow Go official code style, format code with go fmt
-7. **Comment Standards**: Clear comments including function comments and complex logic explanations
-8. **Version Control**: Follow Git Flow workflow, use semantic versioning
-
-### Testing Guide
-
-```bash
-# Run unit tests
-cd bkn-backend/server
-go test ./... -v
-
-# Run integration tests
-cd bkn-backend/server
-go test ./... -v -tags=integration
-
-# Generate test coverage report
-cd bkn-backend/server
-go test ./... -coverprofile=coverage.out
-go tool cover -html=coverage.out
-```
-
-### Contributing
-
-Refer to the BKN Foundry project content
-
-## Version History
-
-- **v0.1.0**: Current version, based on Go 1.24
-
-## License
-
-This project is licensed under the Apache License 2.0. See the [LICENSE](../../LICENSE.txt) file for details.
-
-## Support & Contact
-
-- **Technical Support**: AISHU ADP R&D Team
-- **Documentation Updates**: Continuously updated
-- **Issue Reporting**: Submit through internal system
-
----
-
-**Note**: This is an enterprise-level internal project. Code and documentation may contain specific business logic and configurations. Please adjust according to your actual environment.
+- Keep this README aligned with the actual routers and root OpenAPI files.
+- Do not reintroduce links to legacy `api_doc/*.html` outputs.
+- If a capability is implemented by another subsystem, name that subsystem instead
+  of describing it as native to `adp/bkn`.

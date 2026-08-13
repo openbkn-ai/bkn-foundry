@@ -166,41 +166,22 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	if objectType.DataSource != nil {
 		dataSourceType = objectType.DataSource.Type
 	}
-	useIndex := !query.IgnoringStore && objectType.Status != nil && objectType.Status.IndexAvailable &&
-		dataSourceType != interfaces.DATA_SOURCE_TYPE_RESOURCE
+	if objectType.DataSource == nil || objectType.DataSource.ID == "" {
+		return resps, logics.MissingObjectTypeDataSourceError(ctx, objectType.OTID)
+	}
+	if dataSourceType != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		return resps, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, dataSourceType)
+	}
 
-	if useIndex {
-		// 2. 构造排序字段
-		if query.Sort == nil {
-			// 给默认值, 默认按 _score desc，主键 asc
-			query.Sort = logics.BuildIndexSort(objectType, propMap)
-		}
-
-		// 持久化查询,转成dsl,直接查 opensearch
-		err = ots.getObjectsFromObjectIndex(ctx, query, objectType, &resps, indexPropMap)
-		if err != nil {
-			return resps, err
-		}
-		// 在response里显示走的是持久化查询
-		resps.SearchFromIndex = true
-	} else {
-		// 2. 构造排序字段
-		if query.Sort == nil {
-			// 给默认值, 默认按 _score desc，主键 asc
-			query.Sort = logics.BuildViewSort(objectType)
-		}
-		// 3. 请求 vega Resource 获取数据
-		if objectType.DataSource == nil || objectType.DataSource.ID == "" {
-			return resps, logics.MissingObjectTypeDataSourceError(ctx, objectType.OTID)
-		}
-		if objectType.DataSource.Type == interfaces.DATA_SOURCE_TYPE_RESOURCE {
-			err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
-		} else {
-			return resps, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
-		}
-		if err != nil {
-			return resps, err
-		}
+	// 2. 构造排序字段
+	if query.Sort == nil {
+		// 给默认值, 默认按 _score desc，主键 asc
+		query.Sort = logics.BuildViewSort(objectType)
+	}
+	// 3. 请求 vega Resource 获取数据
+	err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
+	if err != nil {
+		return resps, err
 	}
 
 	// 4. 组装逻辑属性
@@ -349,9 +330,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	if query.ActualCondition != nil {
 		rewriteCondition, err := cond.RewriteCondition(ctx, query.ActualCondition,
 			logics.TransferPropsToPropMap(objectType.DataProperties),
-			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
+			logics.MemoizeVectorizer(func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
 				return ots.handlerVector(ctx, property, word)
-			})
+			}))
 		if err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_InvalidParameter_Condition).
@@ -439,9 +420,10 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 		}
 
 		// 转换到dsl
-		conditionDslStr, err = condtion.Convert(ctx, func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
-			return ots.handlerVector(ctx, property, word)
-		})
+		conditionDslStr, err = condtion.Convert(ctx, logics.MemoizeVectorizer(
+			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
+				return ots.handlerVector(ctx, property, word)
+			}))
 		if err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_InvalidParameter_Condition).

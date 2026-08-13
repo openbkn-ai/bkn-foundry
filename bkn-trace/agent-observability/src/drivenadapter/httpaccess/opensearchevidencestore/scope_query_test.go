@@ -92,6 +92,28 @@ func TestScopeCandidateMustAllowsExplicitTechnicalCrossAccountScanInsideTenantDo
 	}
 }
 
+func TestScopeCandidateMustAllowsAdminBusinessScanInsideTenantDomain(t *testing.T) {
+	profile := &evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "admin-a",
+		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
+	}
+	must := scopeCandidateMust(evidencevo.QueryScope{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountID: "admin-a", AccountType: "user",
+		View: evidencevo.AccessViewBusiness, AccessProfile: profile,
+	})
+
+	rendered := mustJSON(t, must)
+	if strings.Contains(rendered, "bkn.account.id") || strings.Contains(rendered, "effective_subject_id") ||
+		strings.Contains(rendered, "knowledge_network_ids") {
+		t.Fatalf("admin business candidates must not be narrowed by owner or managed-network filters: %s", rendered)
+	}
+	for _, expected := range []string{"bkn.tenant.id", "business_domain"} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("admin candidates must remain tenant/domain bounded: %s", rendered)
+		}
+	}
+}
+
 func mustJSON(t *testing.T, value any) string {
 	t.Helper()
 	body, err := json.Marshal(value)

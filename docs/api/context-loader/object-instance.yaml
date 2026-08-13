@@ -51,10 +51,18 @@ paths:
         两者同传时 `condition` 优先，`filters` 被忽略。
 
         **算子白名单以对象类为准**：可用算子看 `get_object_types` 返回的
-        `condition_operations`，不要照抄本文档的枚举全集。这份声明是建网时由客户端
-        写入并原样落库的，未经服务端校验——标了 `knn` 的字段未必真有向量映射。真正
-        的判定在下游：字段不支持时 ontology-query 返回 400，错误详情会原样透传出来
-        （如 `OntologyQuery.InvalidParameter.Condition: left field is not a vector field`）。
+        `condition_operations`，不要照抄本文档的枚举全集。对绑定 Vega 资源的对象类，
+        这份清单由 BKN 按资源上**真实建成的索引**派生：字段建了全文索引才出现
+        `match` / `multi_match`，建了向量索引且 embedding 模型可解析才出现 `knn`。
+        没建索引的字段只保留按属性类型推导的比较算子。
+
+        **文本检索选哪个**：`match` 走全文索引，按分析器分词后词法命中；`knn` 走向量
+        索引，能召回字面不重合的表述（换个说法、跨语言）。两者是独立算子，没有隐式
+        融合；要同时用就放进 `or` 的 `sub_conditions`。`knn` 另需 `limit_key: k` 与
+        `limit_value: <近邻数>`。
+
+        条件里用了字段不支持的算子时，ontology-query 返回 400 并原样透传错误详情
+        （如 `OntologyQuery.InvalidParameter.Condition`）。
 
         **`_score` 的取舍**：纯结构化过滤在底层落成常量打分查询，每条命中分数相同，
         没有相关度语义，因此响应里的 `_score` 会被剥掉，避免调用方误以为结果按相关度

@@ -91,6 +91,11 @@ var (
 		condition.OperationMultiMatch,
 	}
 
+	// DSL_VECTOR_OPS 是字段建了向量索引后额外放开的算子。
+	DSL_VECTOR_OPS = []string{
+		condition.OperationKNN,
+	}
+
 	DSL_TEXT_OPS_MAP = map[string]string{
 		condition.OperationMatch:      condition.OperationMatch,
 		condition.OperationMultiMatch: condition.OperationMultiMatch,

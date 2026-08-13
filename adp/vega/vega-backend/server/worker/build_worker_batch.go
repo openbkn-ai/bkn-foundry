@@ -83,7 +83,8 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
 	// stopping 出队说明原 worker 已不在，兜底落停。
 	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
-		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
+		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping ||
+		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
 		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
 		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
 			update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusStopped)
@@ -112,21 +113,34 @@ func (bbw *batchBuildWorker) HandleTask(ctx context.Context, task *asynq.Task) e
 	}
 	if resource == nil {
 		logger.Errorf("Resource not found for task %s, resourceID: %s", taskID, resourceID)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("resource not found")
-		_, err = bbw.bts.InternalUpdateStatus(ctx, nil, taskID, update)
-		if err != nil {
+		if err := cancelBuildTaskForDeletedParent(ctx, bbw.bts, taskID, "resource deleted"); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 		// Resource not found, return nil to stop the task
 		return nil
 	}
 
+	// executeBuild 创建索引和连接数据源前先确认 Catalog；若排队期间 Catalog
+	// 已被删除，则直接取消任务。
+	catalog, err := bbw.cs.InternalGetByID(ctx, resource.CatalogID, true)
+	if err != nil {
+		if isNotFoundError(err) {
+			if updateErr := cancelBuildTaskForDeletedParent(ctx, bbw.bts, taskID, "catalog deleted"); updateErr != nil {
+				return fmt.Errorf("update build task status failed: %w", updateErr)
+			}
+			return nil
+		}
+		err = fmt.Errorf("get catalog failed: %w", err)
+	} else if !catalog.Enabled {
+		err = fmt.Errorf("catalog is disabled")
+	}
+
 	// Execute type belongs to the persisted task. reset is only a one-off
 	// override for this run, forcing a full rebuild.
 	executeType := batchBuildExecuteType(buildTaskInfo, msg.Reset)
-	err = bbw.executeBuild(ctx, resource, buildTaskInfo, executeType)
+	if err == nil {
+		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo, executeType)
+	}
 	if err != nil {
 		// Update task status to failed
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
@@ -175,7 +189,8 @@ func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[str
 }
 
 // executeBuild executes the build logic
-func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
+func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog,
+	resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
 	err := createManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
 	if err != nil {
@@ -215,35 +230,6 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 				Value: syncedMark[key],
 			})
 		}
-	}
-
-	// Get catalog for MySQL connection
-	catalog, err := bbw.cs.InternalGetByID(ctx, resource.CatalogID, true)
-	if err != nil {
-		return fmt.Errorf("get catalog failed: %w", err)
-	}
-	if catalog == nil {
-		logger.Errorf("Catalog not found for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("catalog not found")
-		_, err = bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
-		if err != nil {
-			return fmt.Errorf("update build task status failed: %w", err)
-		}
-		// Catalog not found, return nil to stop the task
-		return nil
-	}
-	if !catalog.Enabled {
-		logger.Errorf("Catalog is disabled for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
-		update := interfaces.NewBuildTaskUpdate().
-			WithStatus(interfaces.BuildTaskStatusFailed).
-			WithErrorMsg("catalog is disabled")
-		_, err = bbw.bts.InternalUpdateStatus(ctx, nil, buildTaskInfo.ID, update)
-		if err != nil {
-			return fmt.Errorf("update build task status failed: %w", err)
-		}
-		return nil
 	}
 
 	// Batch read data from MySQL and write to dataset
@@ -305,6 +291,11 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, resource *interfa
 		taskStatus, err := bbw.bts.InternalGetStatus(ctx, buildTaskInfo.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get task status: %w", err)
+		}
+
+		if taskStatus == interfaces.BuildTaskStatusCancelled {
+			logger.Infof("Task %s is cancelled, exiting...", buildTaskInfo.ID)
+			return nil
 		}
 
 		// Handle stopping status

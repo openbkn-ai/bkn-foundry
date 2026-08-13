@@ -23,6 +23,11 @@ Description = "Catalog ID is required"
 Solution = "Please provide a valid catalog ID"
 ErrorLink = "None"
 
+[VegaBackend.Resource.InvalidParameter.Analyzer]
+Description = "Configured full-text analyzer is unavailable"
+Solution = "Choose an analyzer supported by the current index capability snapshot"
+ErrorLink = "None"
+
 [VegaBackend.Resource.LengthExceeded.Name]
 Description = "Resource name length exceeded"
 Solution = "Please shorten the name"

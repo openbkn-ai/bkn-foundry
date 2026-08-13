@@ -36,7 +36,7 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, dts
 	}
@@ -52,7 +52,10 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 		{name: "invalid offset", query: "?offset=-1", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Offset"},
 		{name: "invalid limit", query: "?limit=99999999", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Limit"},
 		{name: "invalid sort field", query: "?sort=unknown_field", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Sort"},
+		{name: "removed default sort", query: "?sort=default", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Sort"},
 		{name: "invalid direction", query: "?direction=foo", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.InvalidParameter.Direction"},
+		{name: "invalid status in list", query: "?status=pending&status=unknown", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.DiscoverTask.InvalidStatus"},
+		{name: "comma-separated status in list", query: "?status=pending,running", wantStatus: http.StatusBadRequest, wantBody: "VegaBackend.DiscoverTask.InvalidStatus"},
 		{name: "invalid strategy", query: "?strategy=foo", wantStatus: http.StatusBadRequest, wantBody: "invalid strategy"},
 		{name: "invalid trigger type", query: "?trigger_type=foo", wantStatus: http.StatusBadRequest, wantBody: "invalid trigger_type"},
 	}
@@ -73,12 +76,12 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 	t.Run("success with default pagination", func(t *testing.T) {
 		engine, dts := setup(t)
 		dts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, "default", params.Sort)
+				assert.Equal(t, "create_time", params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
-				return []*interfaces.DiscoverTask{}, int64(0), nil
+				return []*interfaces.DiscoverTaskSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url, nil)
@@ -92,20 +95,20 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 	t.Run("success with explicit query params", func(t *testing.T) {
 		engine, dts := setup(t)
 		dts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 				assert.Equal(t, "cat-1", params.CatalogID)
 				assert.Equal(t, "sch-1", params.ScheduleID)
-				assert.Equal(t, interfaces.DiscoverTaskStatusCompleted, params.Status)
+				assert.Equal(t, []string{interfaces.DiscoverTaskStatusCompleted, interfaces.DiscoverTaskStatusFailed}, params.Statuses)
 				assert.Equal(t, interfaces.DiscoverStrategyFullSync, params.Strategy)
 				assert.Equal(t, interfaces.DiscoverTaskTriggerScheduled, params.TriggerType)
 				assert.Equal(t, 5, params.Offset)
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, "start_time", params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-				return []*interfaces.DiscoverTask{}, int64(0), nil
+				return []*interfaces.DiscoverTaskSummary{}, int64(0), nil
 			})
 
-		req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&schedule_id=sch-1&status=completed&strategy=full_sync&trigger_type=scheduled&offset=5&limit=10&sort=start_time&direction=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&schedule_id=sch-1&status=completed&status=failed&strategy=full_sync&trigger_type=scheduled&offset=5&limit=10&sort=start_time&direction=asc", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
@@ -128,7 +131,7 @@ func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, dts
 	}
@@ -176,7 +179,7 @@ func Test_DiscoverTaskRestHandler_DeleteDiscoverTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		dts := vmock.NewMockDiscoverTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, nil, nil, nil, dts, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, dts
 	}

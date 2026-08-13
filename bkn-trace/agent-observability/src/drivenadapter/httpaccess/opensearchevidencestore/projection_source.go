@@ -143,7 +143,7 @@ func (s *Store) listArtifactProjection(ctx context.Context, query iprojectionsou
 	}
 	artifacts := make([]evidencevo.EvidenceArtifact, 0, len(allHits))
 	for _, hit := range allHits {
-		if evidencevo.MatchesArtifactScope(hit.Source, query.Scope) && matchesProjectionArtifact(hit.Source, query) {
+		if artifactMatchesProjectionScope(hit.Source, query) && matchesProjectionArtifact(hit.Source, query) {
 			artifacts = append(artifacts, hit.Source)
 		}
 	}
@@ -208,7 +208,12 @@ type artifactProjectionHit struct {
 }
 
 func (s *Store) listArtifactProjectionPage(ctx context.Context, query iprojectionsource.Query, searchAfter []any, size int) ([]artifactProjectionHit, error) {
-	must := appendProjectionIdentityFilters(ownershipMust(query.Scope), query)
+	must := ownershipMust(query.Scope)
+	if len(query.AuthorizedInteractionIDs) > 0 {
+		must = scopeBoundaryMust(query.Scope)
+		must = append(must, map[string]any{"terms": map[string]any{"interaction_id": query.AuthorizedInteractionIDs}})
+	}
+	must = appendProjectionIdentityFilters(must, query)
 	if query.InteractionID != "" {
 		must = append(must, map[string]any{"bool": exactTermQuery("interaction_id", query.InteractionID)})
 	}
@@ -261,6 +266,15 @@ func (s *Store) listArtifactProjectionPage(ctx context.Context, query iprojectio
 		hits = append(hits, artifactProjectionHit{Source: artifact, Sort: hit.Sort})
 	}
 	return hits, nil
+}
+
+func artifactMatchesProjectionScope(artifact evidencevo.EvidenceArtifact, query iprojectionsource.Query) bool {
+	for _, interactionID := range query.AuthorizedInteractionIDs {
+		if artifact.InteractionID == interactionID {
+			return true
+		}
+	}
+	return evidencevo.MatchesArtifactScope(artifact, query.Scope)
 }
 
 func projectionPageSize(limit, loaded int) int {

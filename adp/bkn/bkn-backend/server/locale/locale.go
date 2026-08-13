@@ -33,6 +33,14 @@ func Register() {
 	} else {
 		abPath, _ = os.Getwd()
 		abPath += localeDir
+		if _, err := os.Stat(abPath); err != nil {
+			_, filename, _, ok := runtime.Caller(0)
+			if ok {
+				abPath = path.Dir(filename)
+			} else {
+				log.Fatal("failed to get absolute path")
+			}
+		}
 	}
 	i18n.RegisterI18n(abPath)
 }

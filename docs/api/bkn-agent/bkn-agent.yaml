@@ -809,10 +809,12 @@ components:
             - $ref: '#/components/schemas/McpToolRef'
             - $ref: '#/components/schemas/ToolboxToolRef'
             - $ref: '#/components/schemas/AgentToolRef'
+            - $ref: '#/components/schemas/ContextLoaderToolRef'
             discriminator:
               propertyName: type
               mapping:
                 agent: '#/components/schemas/AgentToolRef'
+                context_loader: '#/components/schemas/ContextLoaderToolRef'
                 mcp: '#/components/schemas/McpToolRef'
                 toolbox: '#/components/schemas/ToolboxToolRef'
           type: array
@@ -905,6 +907,44 @@ components:
       - agent_id
       - message
       title: ChatRequest
+    ContextLoaderToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          const: context_loader
+          title: Type
+        allowed_tools:
+          anyOf:
+          - items:
+              type: string
+            type: array
+            maxItems: 100
+          - type: 'null'
+          title: Allowed Tools
+          description: 可装载的 Context Loader MCP 工具名白名单；未声明表示不限制。
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      title: ContextLoaderToolRef
+      description: 'Context Loader 的知识网络检索工具，经其 MCP 面装载。
+
+
+        刻意不带 url：端点来自 CONTEXT_LOADER_MCP_URL，agent 定义因此可以跨环境
+
+        导入导出而不带环境地址（type=mcp 写死 url 就不行）。'
     EffectivePromptOut:
       properties:
         source:

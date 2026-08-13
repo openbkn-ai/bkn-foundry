@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/mail"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -154,6 +155,36 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 			"permissions": grantsJSON(grants),
 		})
 	})
+
+	// GET /knowledge-network-grants exposes only the caller's direct grants on
+	// concrete knowledge-network instances. It deliberately does not include
+	// inherited role grants or type-wide wildcards: consumers that need a set of
+	// managed network IDs must not turn a role capability into data scope.
+	g.GET("/knowledge-network-grants", func(c *gin.Context) {
+		grants, err := e.ListObjectGrants(c.GetString(ctxAccessorID), "knowledge_network", "")
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		result := make([]knowledgeNetworkGrantJSON, 0, len(grants))
+		for _, grant := range grants {
+			operations := append([]string(nil), grant.Operations...)
+			sort.Strings(operations)
+			result = append(result, knowledgeNetworkGrantJSON{
+				KnowledgeNetworkID: grant.ResourceID,
+				Operations:         operations,
+			})
+		}
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].KnowledgeNetworkID < result[j].KnowledgeNetworkID
+		})
+		c.JSON(http.StatusOK, gin.H{"grants": result})
+	})
+}
+
+type knowledgeNetworkGrantJSON struct {
+	KnowledgeNetworkID string   `json:"knowledge_network_id"`
+	Operations         []string `json:"operations"`
 }
 
 // registerMeProfile mounts the MUTATING self-service profile endpoint (PUT "")

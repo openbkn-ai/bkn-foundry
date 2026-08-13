@@ -188,42 +188,13 @@ install_mariadb_helm() {
 
     local ns="${MARIADB_NAMESPACE}"
     local fresh_install="true"
+    local reuse_existing_values="false"
 
     # Check if MariaDB is already installed
     if helm status mariadb -n "${ns}" >/dev/null 2>&1; then
         fresh_install="false"
-        log_info "MariaDB is already installed (Helm release exists). Skipping installation."
-        # Even if MariaDB is already installed, regenerate config.yaml if password is missing
-        local existing_pass
-        existing_pass=$(grep -A 20 "^  rds:" "${CONFIG_YAML_PATH}" 2>/dev/null | grep "password:" | head -1 | awk '{print $2}' | tr -d "'\"")
-        if [[ -z "${existing_pass}" ]] && [[ "${AUTO_GENERATE_CONFIG}" == "true" ]]; then
-            log_info "MariaDB password is missing in config.yaml, regenerating..."
-            generate_config_yaml
-            update_rds_type_to_internal
-        fi
-        # Reapply grants + ensure DB seed even when chart is already deployed.
-        # First-time installs grant bkn ALL on *.* via setup_mariadb_databases
-        # below; without this re-entry, a re-run on an existing cluster (typical
-        # for verification or recovery flows) would skip grants entirely, and
-        # data-migrator would fail with 'Access denied for bkn to deploy'.
-        # Read credentials from the rds: block in config.yaml. The cluster's
-        # recorded values win over env defaults here — this path re-applies
-        # grants on an EXISTING install, so config.yaml reflects reality.
-        local existing_root_pass existing_user existing_db existing_user_pass
-        existing_root_pass=$(config_yaml_dep_field rds root_password)
-        existing_user_pass=$(config_yaml_dep_field rds password)
-        existing_user=$(config_yaml_dep_field rds user)
-        existing_db=$(config_yaml_dep_field rds database)
-        if [[ -n "${existing_root_pass}" ]]; then
-            MARIADB_ROOT_PASSWORD="${existing_root_pass}"
-            MARIADB_PASSWORD="${MARIADB_PASSWORD:-${existing_user_pass}}"
-            MARIADB_USER="${existing_user:-${MARIADB_USER:-bkn}}"
-            MARIADB_DATABASE="${existing_db:-${MARIADB_DATABASE:-bkn}}"
-            setup_mariadb_databases || log_warn "MariaDB re-entry setup returned non-zero (continuing)"
-        else
-            log_warn "MariaDB root password unavailable; skipping grant re-apply on existing install"
-        fi
-        return 0
+        reuse_existing_values="true"
+        log_info "MariaDB is already installed (Helm release exists). Reconciling chart values."
     fi
 
     # MariaDB password handling
@@ -231,6 +202,9 @@ install_mariadb_helm() {
     if [[ -n "${existing_pass}" ]]; then
         MARIADB_PASSWORD="${existing_pass}"
         log_info "Using existing MariaDB password from config.yaml"
+    elif [[ "${reuse_existing_values}" == "true" ]]; then
+        log_error "MariaDB password is missing from config.yaml; refusing to upgrade an existing release."
+        return 1
     else
         MARIADB_PASSWORD=$(generate_random_password 10)
         log_info "Generated random 10-character MariaDB password"
@@ -240,9 +214,20 @@ install_mariadb_helm() {
     if [[ -n "${existing_root_pass}" ]]; then
         MARIADB_ROOT_PASSWORD="${existing_root_pass}"
         log_info "Using existing MariaDB root password from config.yaml"
+    elif [[ "${reuse_existing_values}" == "true" ]]; then
+        log_error "MariaDB root password is missing from config.yaml; refusing to upgrade an existing release."
+        return 1
     else
         MARIADB_ROOT_PASSWORD=$(generate_random_password 10)
         log_info "Generated random 10-character MariaDB root password"
+    fi
+
+    if [[ "${reuse_existing_values}" == "true" ]]; then
+        local existing_user existing_db
+        existing_user=$(config_yaml_dep_field rds user)
+        existing_db=$(config_yaml_dep_field rds database)
+        [[ -n "${existing_user}" ]] && MARIADB_USER="${existing_user}"
+        [[ -n "${existing_db}" ]] && MARIADB_DATABASE="${existing_db}"
     fi
 
     _mariadb_resolve_image_defaults
@@ -289,6 +274,10 @@ install_mariadb_helm() {
         --set mariadb.persistence.enabled="${persistence_enabled}"
     )
 
+    if [[ "${reuse_existing_values}" == "true" ]]; then
+        helm_args+=(--reuse-values)
+    fi
+
     if [[ "${persistence_enabled}" == "true" ]]; then
         helm_args+=(--set mariadb.persistence.size="${MARIADB_STORAGE_SIZE}")
         if [[ -n "${MARIADB_STORAGE_CLASS}" ]]; then
@@ -296,19 +285,26 @@ install_mariadb_helm() {
         fi
     fi
 
-    # Container resources: empty means chart defaults (req 250m/256Mi, lim 375m/384Mi).
+    # Container resources: empty means requests only; limits are opt-in.
     if [[ -n "${MARIADB_MEMORY_REQUEST}" ]]; then
         helm_args+=(--set resources.requests.memory="${MARIADB_MEMORY_REQUEST}")
     fi
     if [[ -n "${MARIADB_CPU_REQUEST}" ]]; then
         helm_args+=(--set resources.requests.cpu="${MARIADB_CPU_REQUEST}")
     fi
-    if [[ -n "${MARIADB_MEMORY_LIMIT}" ]]; then
-        helm_args+=(--set resources.limits.memory="${MARIADB_MEMORY_LIMIT}")
+    local resource_limits_json="null"
+    if [[ -n "${MARIADB_CPU_LIMIT}" || -n "${MARIADB_MEMORY_LIMIT}" ]]; then
+        resource_limits_json="{"
+        if [[ -n "${MARIADB_CPU_LIMIT}" ]]; then
+            resource_limits_json+="\"cpu\":\"${MARIADB_CPU_LIMIT}\""
+        fi
+        if [[ -n "${MARIADB_MEMORY_LIMIT}" ]]; then
+            [[ "${resource_limits_json}" != "{" ]] && resource_limits_json+=","
+            resource_limits_json+="\"memory\":\"${MARIADB_MEMORY_LIMIT}\""
+        fi
+        resource_limits_json+="}"
     fi
-    if [[ -n "${MARIADB_CPU_LIMIT}" ]]; then
-        helm_args+=(--set resources.limits.cpu="${MARIADB_CPU_LIMIT}")
-    fi
+    helm_args+=(--set-json "resources.limits=${resource_limits_json}")
 
     helm_args+=(--wait --timeout=600s)
 

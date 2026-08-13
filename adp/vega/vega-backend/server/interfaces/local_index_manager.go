@@ -6,7 +6,24 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
+
+type AnalyzerCapability struct {
+	ID string `json:"id"`
+}
+type IndexCapabilities struct {
+	FulltextAnalyzers []AnalyzerCapability `json:"fulltext_analyzers"`
+	CheckedAt         int64                `json:"checked_at"`
+}
+type IndexCapabilitiesUnavailableError struct{ Cause error }
+
+func (e *IndexCapabilitiesUnavailableError) Error() string {
+	return fmt.Sprintf("index capabilities unavailable: %v", e.Cause)
+}
+func (e *IndexCapabilitiesUnavailableError) Unwrap() error { return e.Cause }
 
 // LocalIndexManager manages local index storage backed by the local search engine.
 //
@@ -16,7 +33,8 @@ type LocalIndexManager interface {
 	UpdateIndex(ctx context.Context, indexName string, schema []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error
 	CheckExist(ctx context.Context, indexName string) (bool, error)
-	ValidateAnalyzers(ctx context.Context, analyzers map[string]string) error
+	ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error)
+	GetIndexCapabilities(ctx context.Context) (*IndexCapabilities, error)
 
 	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)

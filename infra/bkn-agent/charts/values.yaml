@@ -38,6 +38,9 @@ runtime:
   mfModelApiPrivateBase: "http://mf-model-api:9898/api/private/mf-model-api/v1"
   # 工具面与技能面统一走这里（#322）
   operatorIntegrationBase: "http://agent-operator-integration:9000/api/agent-operator-integration"
+  # Context Loader 的 MCP 面（ToolRef type=context_loader 由此装载）。这是公开面：
+  # 它挂 introspect，只认真实令牌，不吃 /in 的头部身份。
+  contextLoaderMcpUrl: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
   defaultModel: ""
   checkpointerBackend: "mysql"
   # 建表统一归 migrations/bkn-agent/（core-data-migrator）。
@@ -51,6 +54,8 @@ observability:
   bknTraceEvidenceIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
   bknTraceArtifactIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
   bknTraceEvidenceTimeoutS: "3"
+  # 接入受保护的 agent-observability evidence/artifact 写入端点时必须配置为
+  # 该服务使用的既有 Secret 名称；留空只适用于未部署 Trace 的环境。
   bknTraceEvidenceIngestTokenSecretName: ""
   bknTraceEvidenceIngestTokenSecretKey: "ingest-token"
 

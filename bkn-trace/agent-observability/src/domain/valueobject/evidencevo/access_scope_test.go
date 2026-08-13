@@ -71,7 +71,7 @@ func TestAccessProfileCanReadOwnApplicationBusinessRecord(t *testing.T) {
 	}
 }
 
-func TestNetworkBuilderMustManageEveryKnowledgeNetwork(t *testing.T) {
+func TestNetworkBuilderCanReadCompleteRecordForManagedKnowledgeNetwork(t *testing.T) {
 	record := RecordScope{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "other-user",
 		KnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
@@ -89,8 +89,8 @@ func TestNetworkBuilderMustManageEveryKnowledgeNetwork(t *testing.T) {
 
 	partial := base
 	partial.ManagedKnowledgeNetworkIDs = []string{"kn-a"}
-	if CanReadRecord(partial, record, AccessViewBusiness) {
-		t.Fatal("network_builder managing only part of a multi-network record must be denied")
+	if !CanReadRecord(partial, record, AccessViewBusiness) {
+		t.Fatal("a managed knowledge network match must authorize the complete Trace record")
 	}
 
 	if CanReadRecord(base, record, AccessViewBusiness) {
@@ -126,18 +126,26 @@ func TestNetworkBuilderTypeWideGrantDoesNotImplyBusinessContentAccess(t *testing
 	}
 }
 
-func TestPlatformRolesDoNotGrantBusinessContent(t *testing.T) {
+func TestAdminReadsAllTraceRecordsWithoutGrantingAuditRolesBusinessContent(t *testing.T) {
 	record := RecordScope{
 		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "user-a",
 		KnowledgeNetworkIDs: []string{"kn-a"},
 	}
-	for _, role := range []string{"admin", "security", "audit", "super_admin"} {
+	for _, test := range []struct {
+		role    string
+		allowed bool
+	}{
+		{role: "admin", allowed: true},
+		{role: "super_admin", allowed: true},
+		{role: "security", allowed: false},
+		{role: "audit", allowed: false},
+	} {
 		profile := AccessProfile{
 			TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
-			EffectiveSubjectID: role + "-account", Roles: []string{role},
+			EffectiveSubjectID: test.role + "-account", Roles: []string{test.role},
 		}
-		if CanReadRecord(profile, record, AccessViewBusiness) {
-			t.Fatalf("platform role %q must not imply access to another subject's business content", role)
+		if got := CanReadRecord(profile, record, AccessViewBusiness); got != test.allowed {
+			t.Fatalf("role %q business Trace access = %v, want %v", test.role, got, test.allowed)
 		}
 	}
 }
@@ -181,9 +189,9 @@ func TestCrossAccountCandidatesRequireAnExplicitAuthorizedView(t *testing.T) {
 	if NeedsCrossAccountCandidates(QueryScope{AccessProfile: typeWideBuilder, View: AccessViewBusiness}) {
 		t.Fatal("type-wide network management must not widen business provenance candidates")
 	}
-	admin := &AccessProfile{Roles: []string{"admin"}}
-	if NeedsCrossAccountCandidates(QueryScope{AccessProfile: admin, View: AccessViewBusiness}) {
-		t.Fatal("admin business lookup must remain owner-scoped")
+	admin := &AccessProfile{Roles: []string{"admin"}, AccountActive: true, TenantActive: true}
+	if !NeedsCrossAccountCandidates(QueryScope{AccessProfile: admin, View: AccessViewBusiness}) {
+		t.Fatal("admin business lookup must include all Trace candidates before record filtering")
 	}
 	if !NeedsCrossAccountCandidates(QueryScope{AccessProfile: admin, View: AccessViewTechnical}) {
 		t.Fatal("admin technical lookup needs platform technical candidates")
@@ -232,12 +240,12 @@ func TestMatchesScopeUsesRecordAccessProfile(t *testing.T) {
 		t.Fatal("trace matching must use the shared record access decision")
 	}
 	scope.AccessProfile.ManagedKnowledgeNetworkIDs = []string{"kn-a"}
-	if MatchesScope(trace, scope) {
-		t.Fatal("trace matching must reject partial knowledge network management")
+	if !MatchesScope(trace, scope) {
+		t.Fatal("one managed knowledge network match must authorize the complete Trace record")
 	}
 }
 
-func TestMatchesArtifactScopeDoesNotTreatPlatformRoleAsBusinessAccess(t *testing.T) {
+func TestMatchesArtifactScopeAllowsAdminToReadBusinessTrace(t *testing.T) {
 	artifact := EvidenceArtifact{
 		ArtifactID: "artifact-a", RequestID: "request-a",
 		TenantID: "tenant-a", BusinessDomain: "domain-a",
@@ -251,8 +259,8 @@ func TestMatchesArtifactScopeDoesNotTreatPlatformRoleAsBusinessAccess(t *testing
 			EffectiveSubjectID: "admin-a", Roles: []string{"super_admin"},
 		},
 	}
-	if MatchesArtifactScope(artifact, scope) {
-		t.Fatal("platform role alone must not expose another subject's evidence artifact")
+	if !MatchesArtifactScope(artifact, scope) {
+		t.Fatal("admin must read the complete evidence artifact for an authorized Trace")
 	}
 }
 

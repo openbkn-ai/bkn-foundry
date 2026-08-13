@@ -23,11 +23,11 @@ type BuildTaskService interface {
 	GetByID(ctx context.Context, id string) (*BuildTask, error)
 	// GetByResourceID retrieves a build task by resource ID.
 	GetByResourceID(ctx context.Context, resourceID string) (*BuildTask, error)
-	// List retrieves build tasks with filters and pagination.
-	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTask, int64, error)
-	// Start transitions a task from {init, stopped} to running (asynchronous; status persisted by worker).
+	// List retrieves build task summaries with filters and pagination.
+	List(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTaskSummary, int64, error)
+	// Start transitions a stopped or failed task to pending; the worker later persists running.
 	Start(ctx context.Context, taskID string, reset bool) error
-	// Stop transitions a task from running to stopping (asynchronous; status persisted by worker).
+	// Stop transitions pending to stopped, or running to stopping (then asynchronously stopped by the worker).
 	Stop(ctx context.Context, taskID string) error
 	// Delete atomically deletes build tasks by IDs.
 	// Pre-validates: any missing id returns 404 unless ignoreMissing=true; any running/stopping id returns 409 (cannot be skipped).

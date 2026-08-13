@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -314,15 +315,16 @@ func TestFinishInteractionRetryReusesCommittedResultArtifact(t *testing.T) {
 
 func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	type finishAttemptBody struct {
-		ReceiptID   string `json:"receipt_id"`
-		PayloadHash string `json:"payload_hash"`
-		RequestID   string `json:"request_id"`
-		TraceID     string `json:"trace_id"`
-		Retryable   bool   `json:"retryable"`
+		ReceiptID string                   `json:"receipt_id"`
+		Error     bkntrace.PayloadEnvelope `json:"error"`
+		RequestID string                   `json:"request_id"`
+		TraceID   string                   `json:"trace_id"`
+		Retryable bool                     `json:"retryable"`
 	}
 	var mu sync.Mutex
 	failPaths := []string{}
 	finishBodies := []finishAttemptBody{}
+	ensureInputs := []bkntrace.PayloadEnvelope{}
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/agent-observability/v1/interactions/int-1":
@@ -331,6 +333,20 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 				ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1,
 			})
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			var body struct {
+				Protocol     string                   `json:"protocol"`
+				SourceModule string                   `json:"source_module"`
+				Input        bkntrace.PayloadEnvelope `json:"input"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode ensure body: %v", err)
+				http.Error(w, "invalid ensure body", http.StatusBadRequest)
+				return
+			}
+			if body.Protocol != "mcp" || body.SourceModule != "context-loader" {
+				t.Errorf("MCP ensure lost producer identity: %#v", body)
+			}
+			ensureInputs = append(ensureInputs, body.Input)
 			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
 				Created: true,
 				Execute: true,
@@ -373,23 +389,38 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	tests := []struct {
 		name          string
 		wantRetryable bool
+		wantCode      string
+		wantMessage   string
+		toolName      string
+		input         map[string]any
 		next          func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error)
 	}{
 		{
-			name: "MCP IsError",
+			name: "validation failure", wantCode: "tool_error", wantMessage: "kn_id and ot_id are required",
+			toolName: "query_object_instance", input: map[string]any{"kn_id": "supplychain_hd0202", "condition": map[string]any{"operation": "and"}},
 			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-				result := mcpsdk.NewToolResultError("invalid business input")
+				result := mcpsdk.NewToolResultError("kn_id and ot_id are required")
 				return result, nil
 			},
 		},
 		{
-			name: "Go error", wantRetryable: true,
+			name: "policy rejection", wantCode: "tool_error", wantMessage: "run_sql is read-only",
+			toolName: "run_sql", input: map[string]any{"sql": "DELETE FROM {{.purchase_order_resource}} WHERE status = 'closed'"},
+			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+				return mcpsdk.NewToolResultError("run_sql is read-only"), nil
+			},
+		},
+		{
+			name: "downstream failure", wantRetryable: true,
+			wantCode: "downstream_error", wantMessage: "downstream unavailable",
+			toolName: "search_schema", input: map[string]any{"kn_id": "supplychain_hd0202", "query": "采购订单"},
 			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 				return nil, errors.New("downstream unavailable")
 			},
 		},
 		{
-			name: "panic",
+			name: "panic", wantCode: "handler_panic", wantMessage: "deterministic business defect",
+			toolName: "run_sql", input: map[string]any{"sql": "SELECT * FROM {{.purchase_order_resource}} LIMIT 1"},
 			next: func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 				panic("deterministic business defect")
 			},
@@ -398,7 +429,17 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			handler := lifecycleToolMiddleware(client)(test.next)
-			result, err := handler(ctx, businessToolRequest("ignored-session", "conv-1", "int-1", test.name))
+			request := businessToolRequest("ignored-session", "conv-1", "int-1", test.name)
+			request.Params.Name = test.toolName
+			arguments := make(map[string]any, len(test.input)+1)
+			for key, value := range test.input {
+				arguments[key] = value
+			}
+			arguments["bkn_context"] = map[string]any{
+				"conversation_id": "conv-1", "interaction_id": "int-1", "operation_key": test.name,
+			}
+			request.Params.Arguments = arguments
+			result, err := handler(ctx, request)
 			if err != nil {
 				t.Fatalf("failure escaped as protocol error: %v", err)
 			}
@@ -415,15 +456,33 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	if len(failPaths) != len(tests) {
 		t.Fatalf("expected %d Core fail attempts, got %d: %#v", len(tests), len(failPaths), failPaths)
 	}
+	if len(ensureInputs) != len(tests) {
+		t.Fatalf("expected %d captured failure inputs, got %d", len(tests), len(ensureInputs))
+	}
 	for index, body := range finishBodies {
+		gotInputJSON := ensureInputs[index].Inline
+		wantInputJSON, _ := json.Marshal(tests[index].input)
+		if ensureInputs[index].Mode != "inline" || !bytes.Equal(gotInputJSON, wantInputJSON) {
+			t.Fatalf("%s input=%s, want %s", tests[index].name, gotInputJSON, wantInputJSON)
+		}
 		if body.RequestID != "req_lifecycle_adapter_0001" {
 			t.Fatalf("finish request_id mismatch: %#v", body)
 		}
 		if len(body.TraceID) != 32 || body.TraceID == strings.Repeat("0", 32) {
 			t.Fatalf("finish trace_id must be generated when the caller has no OTel span: %#v", body)
 		}
-		if body.ReceiptID != "receipt-1" || body.PayloadHash == "" {
+		if body.ReceiptID != "receipt-1" || body.Error.Mode != "inline" || len(body.Error.Inline) == 0 {
 			t.Fatalf("finish receipt contract mismatch: %#v", body)
+		}
+		var failure struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Stage   string `json:"stage"`
+		}
+		if err := json.Unmarshal(body.Error.Inline, &failure); err != nil ||
+			failure.Code != tests[index].wantCode || failure.Message != tests[index].wantMessage ||
+			failure.Stage != "tool_execution" {
+			t.Fatalf("%s error fact=%#v err=%v", tests[index].name, failure, err)
 		}
 		if body.Retryable != tests[index].wantRetryable {
 			t.Fatalf("%s retryable=%t, want %t", tests[index].name, body.Retryable, tests[index].wantRetryable)
@@ -431,7 +490,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	}
 }
 
-func TestNormalizedInputHashIncludesCanonicalCausationMetadata(t *testing.T) {
+func TestNormalizedBusinessInputPreservesOnlyRealToolArguments(t *testing.T) {
 	base := map[string]any{
 		"query": "select *",
 		"bkn_context": map[string]any{
@@ -442,29 +501,239 @@ func TestNormalizedInputHashIncludesCanonicalCausationMetadata(t *testing.T) {
 			"causation_event_ids": []any{"event-b", "event-a"},
 		},
 	}
-	reordered := map[string]any{
-		"bkn_context": map[string]any{
-			"operation_key":       "different-key",
-			"interaction_id":      "different-interaction",
-			"conversation_id":     "different-conversation",
-			"parent_operation_id": "parent-1",
-			"causation_event_ids": []any{"event-a", "event-b"},
-		},
-		"query": "select *",
+	var got map[string]any
+	if err := json.Unmarshal(normalizedBusinessInput(base), &got); err != nil {
+		t.Fatal(err)
 	}
-	changedParent := map[string]any{
-		"query": "select *",
-		"bkn_context": map[string]any{
-			"parent_operation_id": "parent-2",
-			"causation_event_ids": []any{"event-a", "event-b"},
+	if !reflect.DeepEqual(got, map[string]any{"query": "select *"}) {
+		t.Fatalf("stored MCP input=%#v, want only actual tool arguments", got)
+	}
+}
+
+func TestManagedCommunityToolsSubmitRealInputAndTerminalPayload(t *testing.T) {
+	ensureCalls := 0
+	finishCalls := 0
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/interactions/int-1"):
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1,
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			var body struct {
+				ToolName string         `json:"tool_name"`
+				Input    map[string]any `json:"input"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			inline, _ := body.Input["inline"].(map[string]any)
+			if body.Input["mode"] != "inline" || inline["probe"] != body.ToolName {
+				t.Errorf("%s input=%#v, want original tool arguments", body.ToolName, body.Input)
+			}
+			ensureCalls++
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Created: true, Execute: true,
+				Operation: bkntrace.Operation{
+					OperationID: "op-1", ConversationID: "conv-1", InteractionID: "int-1",
+					ToolName: body.ToolName, Attempt: 1, AttemptStatus: "pending",
+				},
+				Receipt: bkntrace.Receipt{ReceiptID: "receipt-1", ReceiptStatus: "pending"},
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attempts/1:complete"):
+			var body struct {
+				Output bkntrace.PayloadEnvelope `json:"output"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.Output.Mode != "inline" || len(body.Output.Inline) == 0 {
+				t.Error("completed tool call omitted the real MCP result")
+			}
+			finishCalls++
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Operation: bkntrace.Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-1", ReceiptStatus: "completed"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer core.Close()
+
+	ctx := trustedMCPIntegrationContext(context.Background(), 77)
+	handler := lifecycleToolMiddleware(bkntrace.NewLifecycleClient(core.URL, core.Client()))(
+		func(_ context.Context, request mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return mcpsdk.NewToolResultStructured(
+				map[string]any{"tool": request.Params.Name, "ok": true}, `{"ok":true}`,
+			), nil
+		},
+	)
+	wantCalls := 0
+	for _, toolName := range communityTools {
+		if _, lifecycle := lifecycleToolNames[toolName]; lifecycle {
+			continue
+		}
+		wantCalls++
+		request := businessToolRequest("session-1", "conv-1", "int-1", "call-"+toolName)
+		request.Params.Name = toolName
+		request.Params.Arguments.(map[string]any)["probe"] = toolName
+		result, err := handler(ctx, request)
+		if err != nil || result == nil || result.IsError {
+			t.Fatalf("%s lifecycle failed: result=%#v err=%v", toolName, result, err)
+		}
+	}
+	if ensureCalls != wantCalls || finishCalls != wantCalls {
+		t.Fatalf("managed tool coverage: ensure=%d finish=%d want=%d", ensureCalls, finishCalls, wantCalls)
+	}
+}
+
+func TestManagedBusinessToolsPreservePreciseArgumentsAndResults(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  map[string]any
+		output map[string]any
+	}{
+		{
+			name: "search_schema",
+			input: map[string]any{
+				"kn_id": "supplychain_hd0202", "query": "采购订单 供应商",
+				"search_scope": map[string]any{
+					"concept_groups":       []any{"procurement"},
+					"include_object_types": true, "include_relation_types": true,
+					"include_action_types": false, "include_metric_types": false,
+				},
+				"max_concepts": 8, "schema_brief": false, "include_columns": true,
+			},
+			output: map[string]any{
+				"object_types":   []any{map[string]any{"id": "purchase_order"}},
+				"relation_types": []any{map[string]any{"id": "ordered_from_supplier"}},
+				"action_types":   []any{}, "metric_types": []any{},
+			},
+		},
+		{
+			name: "query_object_instance",
+			input: map[string]any{
+				"kn_id": "supplychain_hd0202", "ot_id": "purchase_order",
+				"condition": map[string]any{
+					"operation": "and",
+					"sub_conditions": []any{
+						map[string]any{"field": "material_number", "operation": "==", "value_from": "const", "value": "101-000015"},
+						map[string]any{"field": "status", "operation": "in", "value_from": "const", "value": []any{"open", "released"}},
+					},
+				},
+				"properties": []any{"purchase_order_number", "supplier_name"}, "limit": 20,
+			},
+			output: map[string]any{
+				"datas":       []any{map[string]any{"purchase_order_number": "PO-240801", "supplier_name": "华东供应商"}},
+				"total_count": 1,
+			},
+		},
+		{
+			name: "run_sql",
+			input: map[string]any{
+				"sql":           "SELECT purchase_order_number, supplier_name FROM {{.purchase_order_resource}} WHERE material_number = '101-000015' ORDER BY created_at DESC LIMIT 20",
+				"query_timeout": 60,
+			},
+			output: map[string]any{
+				"columns":     []any{map[string]any{"name": "purchase_order_number", "type": "string"}, map[string]any{"name": "supplier_name", "type": "string"}},
+				"entries":     []any{map[string]any{"purchase_order_number": "PO-240801", "supplier_name": "华东供应商"}},
+				"total_count": 1,
+			},
 		},
 	}
 
-	if normalizedBusinessInputHash(base) != normalizedBusinessInputHash(reordered) {
-		t.Fatal("hash must sort causation_event_ids and ignore lifecycle identity keys")
+	var inputs []bkntrace.PayloadEnvelope
+	var outputs []bkntrace.PayloadEnvelope
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/interactions/int-1"):
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{
+				InteractionID: "int-1", ConversationID: "conv-1",
+				ExecutionStatus: "active", LeaseToken: "lease-1", LeaseEpoch: 1,
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			var body struct {
+				ToolName string                   `json:"tool_name"`
+				Input    bkntrace.PayloadEnvelope `json:"input"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode ensure: %v", err)
+			}
+			inputs = append(inputs, body.Input)
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Created: true, Execute: true,
+				Operation: bkntrace.Operation{
+					OperationID: "op-1", ConversationID: "conv-1", InteractionID: "int-1",
+					ToolName: body.ToolName, Attempt: 1, AttemptStatus: "pending",
+				},
+				Receipt: bkntrace.Receipt{ReceiptID: "receipt-1", ReceiptStatus: "pending"},
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/attempts/1:complete"):
+			var body struct {
+				Output bkntrace.PayloadEnvelope `json:"output"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode completion: %v", err)
+			}
+			outputs = append(outputs, body.Output)
+			_ = json.NewEncoder(w).Encode(bkntrace.OperationResult{
+				Operation: bkntrace.Operation{OperationID: "op-1", Attempt: 1, AttemptStatus: "completed"},
+				Receipt:   bkntrace.Receipt{ReceiptID: "receipt-1", ReceiptStatus: "completed"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer core.Close()
+
+	results := make(map[string]*mcpsdk.CallToolResult, len(tests))
+	wantOutputs := make(map[string][]byte, len(tests))
+	for _, test := range tests {
+		results[test.name] = mcpsdk.NewToolResultStructured(test.output, `{"ok":true}`)
+		wantOutputs[test.name], _ = json.Marshal(results[test.name])
 	}
-	if normalizedBusinessInputHash(base) == normalizedBusinessInputHash(changedParent) {
-		t.Fatal("hash must change when parent_operation_id changes")
+	handler := lifecycleToolMiddleware(bkntrace.NewLifecycleClient(core.URL, core.Client()))(
+		func(_ context.Context, request mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return results[request.Params.Name], nil
+		},
+	)
+	for index, test := range tests {
+		request := businessToolRequest("session-1", "conv-1", "int-1", "precise-"+test.name)
+		request.Params.Name = test.name
+		args := make(map[string]any, len(test.input)+1)
+		for key, value := range test.input {
+			args[key] = value
+		}
+		args["bkn_context"] = map[string]any{
+			"conversation_id": "conv-1", "interaction_id": "int-1", "operation_key": "precise-" + test.name,
+		}
+		request.Params.Arguments = args
+		result, err := handler(trustedMCPIntegrationContext(context.Background(), uint64(index+100)), request)
+		if err != nil || result == nil || result.IsError {
+			t.Fatalf("%s lifecycle failed: result=%#v err=%v", test.name, result, err)
+		}
+	}
+	if len(inputs) != len(tests) || len(outputs) != len(tests) {
+		t.Fatalf("captured inputs=%d outputs=%d, want %d", len(inputs), len(outputs), len(tests))
+	}
+	for index, test := range tests {
+		if inputs[index].Mode != "inline" {
+			t.Fatalf("%s input mode=%q", test.name, inputs[index].Mode)
+		}
+		var gotInput map[string]any
+		if err := json.Unmarshal(inputs[index].Inline, &gotInput); err != nil {
+			t.Fatalf("%s input decode failed: %v", test.name, err)
+		}
+		gotInputJSON, _ := json.Marshal(gotInput)
+		wantInputJSON, _ := json.Marshal(test.input)
+		if !bytes.Equal(gotInputJSON, wantInputJSON) {
+			t.Fatalf("%s input=%s, want %s", test.name, gotInputJSON, wantInputJSON)
+		}
+		wantOutput := wantOutputs[test.name]
+		var gotOutputValue, wantOutputValue any
+		gotErr := json.Unmarshal(outputs[index].Inline, &gotOutputValue)
+		wantErr := json.Unmarshal(wantOutput, &wantOutputValue)
+		if outputs[index].Mode != "inline" || gotErr != nil || wantErr != nil || !reflect.DeepEqual(gotOutputValue, wantOutputValue) {
+			t.Fatalf("%s output=%s, want %s; gotErr=%v wantErr=%v", test.name, outputs[index].Inline, wantOutput, gotErr, wantErr)
+		}
 	}
 }
 

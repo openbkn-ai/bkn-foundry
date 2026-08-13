@@ -21,6 +21,12 @@ func TestEnsureReadOnlySQL_Allowed(t *testing.T) {
 		`SELECT * FROM {{.delete_logs}}`,
 		`SELECT * FROM {{.update_history}}`,
 		`SELECT * FROM {{.res1}} WHERE note = 'please delete later'`,
+		`SELECT COUNT(*) FROM {{.res_audit}} WHERE op = "delete" GROUP BY user_id`,
+		`SELECT * FROM {{.res_logs}} WHERE note = 'it\'s fine' AND op = 'delete'`,
+		`SELECT * FROM {{.res_logs}} WHERE note = "he said \"hi\"; ok"`,
+		"SELECT * FROM {{.res_logs}} WHERE note = 'it''s fine' AND op = 'delete'",
+		"SELECT `delete` FROM {{.res_logs}}",
+		`SELECT * FROM {{.res-001}}`,
 	}
 	for _, sql := range cases {
 		if err := EnsureReadOnlySQL(sql); err != nil {
@@ -44,7 +50,10 @@ func TestEnsureReadOnlySQL_Rejected(t *testing.T) {
 		`SELECT * FROM {{.res1}}; DROP TABLE {{.res1}}`,
 		`SELECT 1; SELECT 2`,
 		`SELECT * FROM {{.res1}} -- harmless
-		 ; DELETE FROM {{.res1}}`,
+			 ; DELETE FROM {{.res1}}`,
+		`SELECT * FROM {{.res1}} WHERE a = 1--2; DROP TABLE t`,
+		"SELECT `a\\` , x FROM {{.res1}}; DROP TABLE t",
+		`SELECT "a\"" FROM {{.res1}}; DROP TABLE t`,
 		`SELECT * INTO OUTFILE '/tmp/x' FROM {{.res1}}`,
 		`SHOW TABLES`,
 		`CALL some_proc()`,
@@ -64,5 +73,11 @@ func TestExtractResourceIDs(t *testing.T) {
 	}
 	if ids := ExtractResourceIDs(`SELECT 1`); len(ids) != 0 {
 		t.Errorf("expected no ids, got %v", ids)
+	}
+	if ids := ExtractResourceIDs(`SELECT * FROM {{.res-001}}`); !reflect.DeepEqual(ids, []string{"res-001"}) {
+		t.Errorf("expected hyphenated resource id, got %v", ids)
+	}
+	if ids := ExtractResourceIDs(`SELECT * FROM {{.RES-001}}`); len(ids) != 0 {
+		t.Errorf("expected uppercase resource id to be rejected, got %v", ids)
 	}
 }

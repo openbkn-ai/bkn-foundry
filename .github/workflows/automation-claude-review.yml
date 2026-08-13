@@ -76,33 +76,32 @@ concurrency:
   group: claude-review-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}-${{ (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && !(github.event.sender.login != 'github-actions[bot]' && (contains(github.event.comment.body, '/review') || contains(github.event.comment.body, '@claude')) && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) && format('comment-{0}', github.event.comment.id) || 'review' }}
   cancel-in-progress: true
 
-# 评审分四段跑：plan 算分片 → review 按分片并行 → verify 复核阻塞项 → verdict 汇总表态。
+# 评审分四段跑：plan 定范围 → review 出结论 → verify 复核阻塞项 → verdict 落表态。
 #
-# 起因：#662（adp/bkn 5 文件 + adp/context-loader 4 文件）由单个 agent 通吃，连撞两次
-# error_max_turns（num_turns 61），整轮零产出、额度全烧。单 agent 的轮数随 PR 规模线性
-# 涨，抬上限只是把撞墙点后移。
+# 曾经是分片并行的（一个模块一片 + 一片专看跨模块契约），起因是 #662 撞 60 轮上限、
+# 连烧两次 $5、零产出。分片消掉了那个失败模式，但代价在 #709 里被认定不划算：
+#   - 最近十个 PR 里七个的代码文件数不超过 12，一个 agent 就审得完，却在付六片的钱；
+#   - 六片各自独立找问题，按单片 20% 阻断率算，至少一片阻断的概率是 1 − 0.8⁶ ≈ 74%，
+#     #685 连续五轮 CHANGES_REQUESTED 不收敛，这是原因之一；
+#   - 逼出分片的那个约束也变了：上限 80、prompt 有轮次预算、文档与测试走浅审、
+#     深挖条件触发。
+# 现在是单 agent，--max-turns 200。矩阵仍在（只有一条），周边机器沿用不变。
 #
-# 分片解决两件事：
-#   1. 墙钟从 Σ(各模块) 变成 max(各模块)，且单片轮数远低于上限；
-#   2. verdict 挂 if: always()，任一分片撞墙或失败时照样落表态并写明「该片未覆盖」——
-#      「跑挂了什么都没有」这个失败模式在结构上被消掉。
+# 三条不变量（改这个文件必须守住）：
+#   - **责任范围不等于可读范围**。清单圈定「为哪些文件出结论」，核查可以读全仓——
+#     改动在一处、调用方在另一个模块，是本仓最贵的一类缺陷。
+#   - **表态只能有一次，且由 verdict 落**。评审 agent 不给 `gh pr review`，也不给
+#     `Bash(gh api:*)`（全方法通配能 POST /pulls/N/reviews 绕过去）。汇总用确定性
+#     脚本而非再起一个模型：拼接已有结论不需要判断力，也不该有编造空间。
+#   - **阻塞项必须过 verify 独立复核才进 PR**。发现者自评把握挡不住误报——同一段
+#     上下文里模型对自己刚推出来的结论天然高估。verify 换一份干净上下文、默认立场
+#     是驳回，照 evidence 去原地验。误报的代价不对称：放过一个待确认项作者自己会
+#     看到，报一个假阻塞项则挂住 PR、逼作者证伪一个不存在的问题。
 #
-# 代价是成本上升：每片各自重读一遍共享上下文，总额约等于片数 × 单片。这是拿钱换时间。
-#
-# 三条不变量，改这个 workflow 时必须守住：
-#   - **分片切的是责任范围，不是可读范围**。每片都拿全仓 checkout，只是「为哪些文件出
-#     结论」不同。改动在 adp/bkn、调用方在 adp/context-loader 是本仓最贵的一类缺陷，
-#     限制可读范围会直接把它切瞎。
-#   - **跨模块契约必须有一片拿全量 diff**。REST 路由 / MCP 工具定义 / .adp / SDK / CLI
-#     的多处声明对齐、配置与部署面、数据面，这三个面按模块切开就废了，固定由 contract
-#     片统一看。
-#   - **表态只能有一次**。分片只贴 inline comment、只写 findings JSON，一律不许调
-#     `gh pr review`；N 片各自表态会在 PR 上挂出 N 条评审状态，作者不知道该解哪个。
-#     汇总用确定性脚本而非再起一个模型：拼接已有结论不需要判断力，也不该有编造空间。
-#   - **阻塞项必须过独立复核才能进 PR**。发现者自评把握挡不住误报——同一段上下文里
-#     模型对自己刚推出来的结论天然高估。verify 换一份干净上下文、默认立场是驳回，
-#     照 evidence 去原地验。误报的代价不对称：放过一个待确认项作者自己会看到，
-#     报一个假阻塞项则挂住 PR、逼作者证伪一个不存在的问题，几次之后没人再信这个评审。
+# 静默是最坏的结果：跑挂了 PR 上什么都没有，与「压根没触发」无法区分（#671 首轮就是
+# 这样被当成没触发的）。verdict 挂 if: always()，回填占位保证「跑了但没产出」可见，
+# 没有结论时也要贴一条通告说明本轮空转。
+
 
 jobs:
   plan:
@@ -144,6 +143,8 @@ jobs:
       pr_number: ${{ steps.meta.outputs.pr_number }}
       shards: ${{ steps.plan.outputs.shards }}
       has_shards: ${{ steps.plan.outputs.has_shards }}
+      skip_round: ${{ steps.plan.outputs.skip_round }}
+      prior_rounds: ${{ steps.plan.outputs.prior_rounds }}
       file_total: ${{ steps.plan.outputs.file_total }}
       file_listed: ${{ steps.plan.outputs.file_listed }}
     env:
@@ -175,19 +176,38 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import collections, json, os, subprocess
+          import collections, json, os, pathlib, subprocess
 
           pr = os.environ["PR_NUMBER"]
-          out = subprocess.run(
-              ["gh", "pr", "view", pr, "--json", "files,changedFiles",
-               "--jq", '.changedFiles, (.files[].path)'],
+          repo = os.environ["GH_REPO"]
+          # `gh pr view --json files` 一次最多返回 100 个文件，超出部分静默丢掉，那些文件
+          # 就永远不进任何分片、也永远不被评审——比漏审更糟的是没人知道漏了。改走 REST
+          # /pulls/{n}/files 自己翻页：每页 100，取到 FILE_CAP 为止。
+          #
+          # 不用 --paginate 是给超大 PR 兜底——那种 PR 翻十几页也只会用到前 FILE_CAP 个，
+          # 多出来的页是白花的 API 调用。上限本身仍然存在（单 agent 的上下文吃不下无限
+          # 文件），差额照旧由 verdict 在结论里点明。
+          FILE_CAP = 150
+          PER_PAGE = 100
+          paths = []
+          page = 1
+          while len(paths) < FILE_CAP:
+              batch = subprocess.run(
+                  ["gh", "api",
+                   "repos/%s/pulls/%s/files?per_page=%d&page=%d" % (repo, pr, PER_PAGE, page),
+                   "--jq", ".[].filename"],
+                  capture_output=True, text=True, check=True,
+              ).stdout.splitlines()
+              batch = [p for p in batch if p.strip()]
+              paths += batch
+              if len(batch) < PER_PAGE:
+                  break
+              page += 1
+          paths = paths[:FILE_CAP]
+          total = int(subprocess.run(
+              ["gh", "pr", "view", pr, "--json", "changedFiles", "--jq", ".changedFiles"],
               capture_output=True, text=True, check=True,
-          ).stdout.splitlines()
-          # `gh pr view --json files` 一次最多返回 100 个文件。超出部分会被静默丢掉，
-          # 那些文件就永远不进任何分片、也永远不被评审——比漏审更糟的是没人知道漏了。
-          # 这里把总数单独取出来对账，差额由 verdict 在结论里点明。
-          total = int(out[0].strip())
-          paths = [p for p in out[1:] if p.strip()]
+          ).stdout.strip())
 
           # adp/ 与 infra/ 下一层才是服务边界（adp/bkn、infra/bkn-agent）；其余仓根目录
           # 本身就是一个服务。归不进这两类的（docs/、examples/、根文件）落 misc，
@@ -195,8 +215,32 @@ jobs:
           TWO_LEVEL = {"adp", "infra"}
           TOP_LEVEL = {"bkn-safe", "comm-go", "deploy", "data-migrator", "migrations"}
 
-          groups = collections.OrderedDict()
+          # 实测最近 10 个 PR 的 222 个改动文件里只有 44% 是代码：测试 25%、文档 15%、
+          # 配置与生成物 12%。此前它们与代码同规格评审——文档也在被追引用点、被做触发式
+          # 深挖，一片就是 5 分钟和几十轮。按类分流：
+          #   deep    代码，全套
+          #   shallow 测试，跟着所属模块走但不追引用点（测试的调用方就是它自己）
+          #   低风险  文档/示例/生成物，单独一片浅审
+          # 迁移、helm、values 不在此列——它们是本仓最高频的事故来源，永远走 deep。
+          def klass(path):
+              risky = ("migrations/" in path or "/helm/" in path
+                       or path.endswith("values.yaml"))
+              if risky:
+                  return "deep"
+              if ("_test." in path or "/tests/" in path
+                      or path.endswith("_test.go")):
+                  return "shallow"
+              if (path.startswith(("docs/", "examples/")) or path.endswith(".md")
+                      or path.endswith((".lock", ".sum"))):
+                  return "lowrisk"
+              return "deep"
+
+          groups, lowrisk = collections.OrderedDict(), []
           for p in paths:
+              k = klass(p)
+              if k == "lowrisk":
+                  lowrisk.append(p)
+                  continue
               parts = p.split("/")
               if parts[0] in TWO_LEVEL and len(parts) > 2:
                   key = "/".join(parts[:2])
@@ -206,45 +250,107 @@ jobs:
                   key = "misc"
               groups.setdefault(key, []).append(p)
 
-          # 片数上限。超过就把文件最少的几片并进 misc：并行度再高也换不来收益，
-          # 而每片都是一份完整上下文的开销。
-          MAX_MODULE_SHARDS = 6
-          modules = [(k, v) for k, v in groups.items() if k != "misc"]
-          if len(modules) > MAX_MODULE_SHARDS:
-              modules.sort(key=lambda kv: len(kv[1]), reverse=True)
-              for k, v in modules[MAX_MODULE_SHARDS:]:
-                  groups.setdefault("misc", []).extend(v)
-                  del groups[k]
+          # 一片，一个 agent 看全部。
+          #
+          # 分片曾解决过一个真问题：#662 撞 60 轮上限、连烧两次 $5、零产出，改造前 189
+          # 次运行里 12 次失败全是 error_max_turns。但它被无条件用在了每个 PR 上，而
+          # 最近十个 PR 里有七个的代码文件数不超过 12——一个 agent 审得完，却在付六片的
+          # 钱、等九分钟。
+          #
+          # 更要命的是阻断概率被放大：六片各自独立找问题，按单片 20% 的阻断率算，至少
+          # 一片阻断的概率是 1 − 0.8⁶ ≈ 74%。#685 连续五轮 CHANGES_REQUESTED、始终不
+          # 收敛，这是原因之一。「审得更全」和「更难通过」是同一件事的两面。
+          #
+          # 当初逼出分片的那个 60 轮上限，前提也已经变了：上限抬到 80、prompt 里有轮次
+          # 预算、文档与测试走浅审、深挖改成条件触发。同一个 PR，现在单 agent 的活比
+          # #662 时少得多，把上限放到 200 就够。
+          #
+          # 保留的是文件类分流——deep / shallow / lowrisk 的区分省的是真活，与分片无关。
+          # 不再需要 contract 片：一个 agent 本来就看得见全量 diff，跨模块一致性自然在
+          # 视野里。
+          deep_files = sorted(f for g in groups.values() for f in g if klass(f) == "deep")
+          shallow_files = sorted(f for g in groups.values() for f in g if klass(f) == "shallow")
 
-          shards = []
-          for key, files in groups.items():
-              shards.append({
-                  "key": key.replace("/", "-"),
-                  "label": key,
-                  "kind": "misc" if key == "misc" else "module",
-                  "files": "\n".join("- " + f for f in sorted(files)),
-              })
-
-          # contract 片固定存在（只要 PR 有改动）：跨模块契约、配置与部署面、数据面
-          # 这三个面切开就废了，必须有人拿全量 diff 统一看。
-          if paths:
-              shards.append({
-                  "key": "contract",
-                  "label": "cross-module contracts / config & deployment / data plane",
-                  "kind": "contract",
-                  "files": "",
-              })
+          shards = [{
+              "key": "review",
+              "label": "全量",
+              "kind": "single",
+              "files": "\n".join("- " + f for f in deep_files) or "（本轮没有代码改动）",
+              "files_shallow": "\n".join("- " + f for f in (shallow_files + sorted(lowrisk))),
+          }] if paths else []
 
           print("shards=" + json.dumps(shards, ensure_ascii=False))
           print("has_shards=" + ("true" if shards else "false"))
+          # 已有过几轮结论。分片与 verdict 共用这一个数来收紧配额，免得各自从评论历史
+          # 里推断「这是第几轮」还推出不同结果。
+          # 历史结论：轮数用来收紧配额，最后一轮的表态用来决定这次要不要跑。
+          prior = subprocess.run(
+              ["gh", "api", "repos/%s/pulls/%s/reviews" % (os.environ["GH_REPO"], pr),
+               "--paginate", "--jq", '[.[] | select((.body // "") != "") | .state] | @json'],
+              capture_output=True, text=True)
+          states = []
+          if prior.returncode == 0:
+              for chunk in prior.stdout.splitlines():
+                  try:
+                      states += json.loads(chunk)
+                  except ValueError:
+                      pass
+          print("prior_rounds=%d" % len(states))
+
+          # 已经 approve 过之后，作者多半在打磨（补测试、改注释、rebase）。本周实测：
+          # 首次 approve 之后的重复 approve 占全部结论轮的 18%，#683 与 #695 各浪费四五轮，
+          # 每轮都在重复确认同一个结论。这些轮次不自动跑，作者要复评回一句 /review 即可
+          # ——上一轮 approve 的正文里就写着这句。
+          #
+          # 例外：新提交碰了高危面照跑。这几类是「改一行毁一个环境」的地方，而 main 的
+          # ruleset 是 dismiss_stale_reviews_on_push: false——approve 不会因为推送而失效，
+          # 所以这里跳过就等于门也不拦、人也不看。
+          #
+          # CHANGES_REQUESTED 之后不受影响：那时作者在修问题，正是最该盯的阶段。
+          RISKY = ("migrations/", "/helm/", "bkn-safe/")
+          risky = [p_ for p_ in paths
+                   if any(m in p_ for m in RISKY) or p_.endswith("values.yaml")]
+          # 文件清单被 FILE_CAP 截断时不跳过：截掉的那部分里可能正有 migrations
+          # 或 helm 改动，按「未触及高危面」放过就是拿看不见的东西赌。
+          truncated = total > len(paths)
+          skip = (os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+                  and states and states[-1] == "APPROVED"
+                  and not risky and not truncated)
+          # 这个块的 stdout 整个重定向进 $GITHUB_OUTPUT，任何不含 = 的行都会让 runner
+          # 以 Invalid format 报错、plan 步骤失败——所以 ::notice:: 不能从这里打，
+          # 落成文件由下面的 shell 发出。
+          if skip:
+              pathlib.Path("skip-notice.txt").write_text(
+                  "PR #%s 上一轮已放行，且本次改动未触及高危面，跳过自动复评。"
+                  "需要复评请回复 /review。" % pr, encoding="utf-8")
+          print("skip_round=%s" % ("true" if skip else "false"))
           print("file_total=%d" % total)
           print("file_listed=%d" % len(paths))
           PY
+          # 跳过提示在这里发：上面的 stdout 是 $GITHUB_OUTPUT，发不了 workflow command。
+          if [ -f skip-notice.txt ]; then
+            echo "::notice::$(cat skip-notice.txt)"
+          fi
+
+      # 跳过这一轮时 verdict 不跑，进度评论的清理也就不跑——上一轮被 concurrency 取消
+      # 后残留的那条会永久停在「评审进行中」，与它自己写的「结论落地后这条会自动消失」
+      # 直接矛盾。所以跳过路径也要清一次。
+      - name: Remove stale progress comment when skipping
+        if: steps.plan.outputs.skip_round == 'true'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          MARKER='<!-- claude-review-progress -->'
+          gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.body | contains(\"$MARKER\")) | .id] | .[]" \
+          | while read -r id; do
+              gh api -X DELETE "repos/${GH_REPO}/issues/comments/${id}" >/dev/null
+            done
 
       # 同一条评论反复复用（靠 body 里的 HTML 标记定位），复评不会越堆越多。
       # 失败不阻断评审：进度提示挂了没关系，评审本身要继续。
       - name: Post progress comment
-        if: steps.plan.outputs.has_shards == 'true'
+        if: steps.plan.outputs.has_shards == 'true' && steps.plan.outputs.skip_round != 'true'
         continue-on-error: true
         env:
           SHARDS: ${{ steps.plan.outputs.shards }}
@@ -262,16 +368,15 @@ jobs:
           import json, os
           shards = json.loads(os.environ["SHARDS"])
           lines = ["<!-- claude-review-progress -->",
-                   '### <img src="%s" width="16" height="16" /> Review in progress'
+                   '### <img src="%s" width="16" height="16" /> 评审进行中'
                    % os.environ["SPINNER"],
                    "",
-                   "Running %d shards in parallel; a single verdict lands once "
-                   "they all report." % len(shards),
+                   "评审完成后统一给出一次结论。",
                    ""]
           # 复选框由各分片跑完后回来打勾（review job 的 Tick progress 步骤）。
           lines += ["- [ ] `%s`" % s["label"] for s in shards]
-          lines += ["", "[View run](%s)" % os.environ["RUN_URL"],
-                    "", "_This comment disappears once the verdict is posted._"]
+          lines += ["", "[查看运行日志](%s)" % os.environ["RUN_URL"],
+                    "", "_结论落地后这条会自动消失。_"]
           print("\n".join(lines))
           PY
           )
@@ -285,7 +390,7 @@ jobs:
 
   review:
     needs: plan
-    if: needs.plan.outputs.has_shards == 'true'
+    if: needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
     name: review (${{ matrix.shard.label }})
     runs-on: ubuntu-latest
     # agent 卡住时不能让 job 一路跑到 runner 的 6 小时上限：verdict 在 needs 上等着，
@@ -369,8 +474,14 @@ jobs:
             echo ',"review_comments":'
             fetch "pulls/${PR_NUMBER}/comments" \
               '{path, line, user: .user.login, created_at, body}' || echo '[]'
+            # 上一轮的结论正文在 /pulls/N/reviews，与 inline 评论是两个端点。待确认项
+            # 只存在于正文里，不取就等于每轮从零开始——实测 #683 连续三轮各报十条互不
+            # 重叠的待确认项，正是因为看不见自己上一轮说过什么。
+            echo ',"prior_verdicts":'
+            fetch "pulls/${PR_NUMBER}/reviews" \
+              '{user: .user.login, state, submitted_at, body}' || echo '[]'
             echo '}'
-          } > prior-comments.json || echo '{"issue_comments":[],"review_comments":[]}' \
+          } > prior-comments.json || echo '{"issue_comments":[],"review_comments":[],"prior_verdicts":[]}' \
             > prior-comments.json
 
       - name: Claude review
@@ -385,33 +496,33 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ env.PR_NUMBER }}
 
-            这次评审按模块分片并行，你负责其中一片。
+            对这个 PR 做一次代码评审。整轮只有你一个评审者，PR 的全部改动都归你。
 
-            分片：${{ matrix.shard.label }}
-            类型：${{ matrix.shard.kind }}
             产出文件：${{ github.workspace }}/findings/${{ matrix.shard.key }}.json
 
             仓库是 openbkn 单体仓，包含 Go / Python 微服务、Helm chart 与部署脚本。
             协作规范见 rules/CONTRIBUTING.zh.md。
 
-            ## 你这一片的范围
+            ## 范围
 
-            ${{ matrix.shard.kind == 'contract' && '你拿的是全量 diff，但**只看跨模块一致性，不重复别人已经在做的模块内逻辑审查**。三个面：一、跨模块契约——同一能力在 REST 路由、MCP 工具定义、.adp 描述、SDK、CLI 等多处各有一份声明，必须同步改，只改其中一处就是线上不一致。二、配置与部署面——Helm values、configmap、环境变量、chart 默认值的改动，分别核存量环境升级（沿用旧值会不会失效、缺省值会不会被覆盖）与全新安装。三、数据面——落库字段、索引结构、消息体格式的变化，确认存量数据仍能被新代码正确读出；滚动升级期间新旧版本并存，两边必须互相兼容。' || '你负责为下面这些文件出结论：' }}
+            你负责这个 PR 的**全部**改动，下面是需要出结论的文件：
 
             ${{ matrix.shard.files }}
 
-            **责任范围不等于可读范围。** 上面的清单只圈定「你为哪些文件出结论」，
-            核查时可以读全仓任意文件——改动在你这片、调用方在别的模块，是本仓最贵的
-            一类缺陷，绝不能因为分片而不去追。
+            ${{ matrix.shard.files_shallow != '' && '下面这些测试文件**浅审**：只看它们是否验证了真实行为、有没有把断言写成永真。不追引用点、不做触发式深挖——测试的调用方就是它自己。' || '' }}
+
+            ${{ matrix.shard.files_shallow }}
+
+            **责任范围不等于可读范围。** 上面的清单圈定「你要为哪些文件出结论」，
+            核查时可以读全仓任意文件——改动在一处、调用方在另一个模块，是本仓最贵的
+            一类缺陷。
 
             ## 轮次预算（先读这一节）
 
-            这个任务有轮次上限。撞上限意味着你这片零产出，比漏掉一条意见糟得多。因此：
+            这个任务有轮次上限。撞上限意味着整轮零产出，比漏掉一条意见糟得多。因此：
 
             - 互不依赖的 Read / Grep / Glob / git 调用放在同一条消息里并发发出，不要
               一轮发一条。逐条串行是耗尽轮次的首要原因。
-            - 你只负责一片，不要去审别片的文件；跨片的问题写进 findings 的 notes，
-              由 verdict 汇总。
             - 用掉大约三分之二轮次时停止深挖，用已经核实的内容收敛出结论。
             - 最后一步必须写出 `${{ github.workspace }}/findings/${{ matrix.shard.key }}.json`
               （**必须用这个绝对路径**，工具不接受相对路径）。宁可给一份范围有限、在
@@ -427,12 +538,29 @@ jobs:
                变更是否会让存量环境升级失败。这是本仓的高频事故来源。
             4. **测试** — 新增逻辑是否有覆盖，测试是否验证了真实行为。
 
-            评审的对象是**改动带来的整体影响**，不是这份 diff 的文本。每一处改动都要
-            先回答：谁在依赖它、它原本承诺了什么、改完之后这些承诺是否仍然成立。改动
-            的函数、接口、字段，用 `git grep` 找出引用点核对新语义是否仍然成立；跨服务
-            调用要把另一侧的实现一起读，别只看本服务这一半。
+            这是**优先级**，不是清单。三行改动不需要逐条走一遍——只看这次改动实际
+            能触到的那几条。兼容性只在碰了迁移、接口、Helm values 时才成立；测试只在
+            新增了逻辑时才成立。
 
-            ## 触发式深挖（diff 命中才做，没命中直接跳过）
+            ## 审到哪里为止
+
+            **只审这次改动引入或改变的行为。** 既有代码里的问题不归这个 PR 负责——
+            除非这次改动让它变得可达、更频繁、或后果更严重；那种情况要在意见里说清
+            「是这次改动使它成为问题」，否则不提。
+
+            **走出 diff 只为回答一个问题：这次改动有没有破坏别处的假设。** 不是为了
+            通读子系统，也不是为了对这块代码形成完整认识。问题答完就回来。
+
+            具体到动作：改动的函数、接口、字段**语义变了**才 `git grep` 追引用点；
+            纯内部实现改写、签名与语义都没变的，不追。跨服务调用只在这次改动可能影响
+            另一侧时才去读那一侧。
+
+            **不要为了展示覆盖面而写「我还核了 X，没问题」。** 没问题就不写。
+
+            审得多不等于审得好。一份把三行改动铺成子系统巡检的意见，作者读完不知道
+            该改什么。
+
+            ## 触发式深挖（diff 命中才做，没命中直接跳过；命中了也只查命中的那一类）
 
             这几类改动只读 diff 必然看不出问题（本仓已因「只读 diff」连续三轮漏过一个
             阻断项），命中时必须走出 diff 核源码：
@@ -459,11 +587,18 @@ jobs:
             - 先读回上一轮的评论：已经预取到 `${{ github.workspace }}/prior-comments.json`（绝对
               路径），直接读文件，不要自己去调 API。里面两个来源都有：`issue_comments`
               是顶层评论——作者的处理说明（哪条采纳、哪条不采纳）多半发在这里，
-              `review_comments` 是 inline 评论及其回复。inline 那部分只看落在你这片
-              文件上的；顶层那部分全看。
+              `review_comments` 是 inline 评论及其回复，`prior_verdicts` 是此前每一轮
+              的结论正文——**待确认项只出现在那里**，不读就会把上一轮说过的话换个说法
+              再说一遍。三个来源全看。
             - **作者明确表示不采纳的建议，记一次就够，本轮不要再列**——包括写进
               unconfirmed。他已经做过判断，再列一遍只是在告诉他你没读他的回复。只有
               出现新证据推翻他的理由时才重提，并在 what 里说清新证据是什么。
+            - **待确认项必须收敛。** 只要 `prior_verdicts` 非空（即此前已有过结论），
+              这一轮的 unconfirmed **至多 1 条，且只能是本轮新增提交引入的问题**。
+              此前任何一轮结论正文里出现过的，无论作者有没有处理，都不再提。
+              「换个角度再说一遍同一个文件」也算重提。
+              评审的目标是让 PR 能走，不是每轮都证明自己还能找出东西——一份挑不完
+              毛病的清单，作者第三轮就不看了。
             - 已经提过的问题，作者改了、或给出对得上疑点的解释，就算过。不必追求措辞
               完美，更不要凭「可能」把同一条追问第二遍。
             - 上面的触发式深挖只在首轮做；复评的范围限定在上一轮之后新增的提交与文件。
@@ -485,35 +620,83 @@ jobs:
 
             两件事，缺一不可：
 
-            **一律用英文**写 inline comment 与 findings JSON 里的所有文字，不论 PR
-            本身是什么语言——本仓的 PR 标题、正文与评审输出统一用英文。代码标识符、
-            错误信息、命令、路径保持原样。
+            **一律用中文**写 inline comment 与 findings JSON 里的所有文字。代码标识符、
+            错误信息、命令、路径保持原样，不翻译。
+
+            **inline comment 的配额**：此前已有 ${{ needs.plan.outputs.prior_rounds }}
+            轮结论。为 0 时最多贴 3 条；不为 0 时最多 1 条，且只针对本轮新增提交。
+            每条 inline 都是一次通知和一个要人去关掉的会话，堆在 Files 视图里不会自己
+            消失——实测出现过 31 个文件的 PR 一轮贴 15 条、1 个文件的 PR 贴 5 条。
+            同一个问题**不要既贴 inline 又写进 unconfirmed**：位置明确、作者照着改就行
+            的贴 inline；需要他判断的写 unconfirmed。
 
             **一、先写 `${{ github.workspace }}/findings/${{ matrix.shard.key }}.json`**
-            （绝对路径）。**这一步排在最前面是有意的**：它是你这片唯一会进入最终结论的
-            产出，inline comment 不进。实测出过分片贴完 inline 就收尾、没写这个文件的
-            情况，结果是整轮评审在 PR 上零反馈——比漏一条意见糟得多。所以：先落文件，
+            （绝对路径）。**这一步排在最前面是有意的**：它是唯一会进入最终结论的
+            产出，inline comment 不进。实测出过贴完 inline 就收尾、没写这个文件的情况，
+            结果是整轮评审在 PR 上零反馈——比漏一条意见糟得多。所以：先落文件，
             后贴 inline；结论有更新就重写一遍文件。严格用下面的结构：
 
             ```json
             {
               "shard": "${{ matrix.shard.label }}",
               "status": "completed",
-              "summary": "一到三句话的整体判断",
-              "impact": "这片改动波及哪些服务、接口、存量数据",
+              "summary": "整体判断，最多两句",
+              "impact": "这次改动可能波及什么，一句话；没什么可说就填空串",
               "blockers": [
                 {"file": "adp/bkn/x.go", "line": 42, "what": "问题是什么",
                  "scenario": "什么输入、什么状态、坏成什么样",
                  "evidence": ["comm-go/x/y.go:88-95 这几行里读到的、支撑这条结论的事实"]}
               ],
-              "unconfirmed": [{"file": "...", "what": "待确认项，不阻断放行"}],
-              "not_covered": "本轮没来得及核的面，没有就写空串"
+              "unconfirmed": [{"file": "...", "what": "待确认项，一到两句，不阻断放行"}],
+              "not_covered": "本轮没核到的面，一句话；全核到了就填空串"
             }
             ```
 
             **blockers 的门槛**：你已经读过源码核实，能说清具体的失效场景，并且自评
             把握 ≥ 90 分。说不清、或失效场景里有任何一环没在代码里核实过，都不算阻塞
             项——降级进 unconfirmed，或者直接丢掉。
+
+            ## 怎么写一条意见
+
+            固定形状，两句话：**哪里坏了** + **什么情况下坏**。位置放 `file`/`line`，
+            证据放 `evidence`，都不要写进正文。
+
+            > `factory.go:179` 删除分支后 map 项不再清理。连接器被删又同名注册时会命中
+            > 旧实例，直到进程重启。
+
+            不要写的东西，一条都不要：
+
+            - 铺垫与转折（「值得注意的是」「这不是假设」「问题出在另一半」）
+            - 你的推理过程、排除了哪些可能、这条有多难查
+            - 复述 PR 描述或 diff 内容
+            - 自评可信度的旁白（门槛不到就不该提，提了就别再解释自己多确信）
+            - 与行为无关的事：格式、命名、结尾换行、注释措辞、文件放在哪一层
+            - 在 not_covered 里论证「这个面在本 PR 上不适用所以不算漏审」——
+              没这个面就填空串
+
+            读的人是在改代码的间隙看这条，不是在读你的工作报告。
+
+            ## 范围
+
+            **作者划的范围就是本轮范围。** 评论里写了「只看这个提交」「这轮只改了 X」，
+            就照办，不要因为顺手看见别处可疑而扩进来——那属于下一轮，或者作者自己会问。
+
+            **但覆盖不能缩。** 责任清单里的每个文件都要过一遍。下面的条数与长度上限
+            **只作用于你写出来多少，不作用于你审了多少**：审满，然后挑最值得说的写。
+            清单太长跑不完，就在 not_covered 里写明「X 之后未覆盖」，不要默默略过——
+            漏审而不说，比漏审本身糟。
+
+            **正文长度是有代价的。** 你的输出会原样成为那条评审结论，作者要一次读完；
+            一份没人读完的评审等于没评。所以：
+
+            - `summary` 最多两句；`impact` 一句，说「可能坏成什么样」而不是列举清单，
+              没有实质影响就填空串；`not_covered` 一句，全核到了就填空串。
+            - `unconfirmed` **最多 2 条**，每条一到两句，只给结论和位置，不复述推理过程。
+              超过 3 条说明你在凑数——留下最值得作者看的那几条。
+            - 上一轮已经提过、这一轮没有新证据的，**不要再列一遍做状态标注**。作者已经
+              看过了，重复列出只会让每一轮的结论比上一轮更长。
+            - 与行为无关的意见一律不提：格式、命名、结尾换行、注释措辞、文件放在哪一层。
+              这些既不阻断也不值得作者花时间读。
 
             `evidence` 必填且必须是你**这一轮真读过的** file:line。写不出具体位置，
             说明这条是从 diff 表面推出来的，不是核实出来的——那它就不是阻塞项。
@@ -525,8 +708,8 @@ jobs:
             全是误报，未经复核就贴到行上，作者要为假问题付出真时间。不复述 diff，不为
             凑数提格式化/命名类琐碎意见。
 
-            **你不要调用 `gh pr review`。** 表态由 verdict 环节统一落一次；N 个分片各自
-            表态会在 PR 上挂出 N 条互相打架的评审状态。你的 JSON 就是你的表态。
+            **你不要调用 `gh pr review`。** 表态由 verdict 环节根据复核结果统一落一次——
+            阻塞项要先过独立复核才算数，你自己表态会绕开它。你的 JSON 就是你的表态。
 
             不要把 CI 当放行条件。CI 全绿是 Branch Protection 的独立闸门，合并时自然会
             拦住，评审只判代码本身。
@@ -541,10 +724,15 @@ jobs:
           #
           # 轮次上限 80：#662 曾在 60 触顶零产出。分片后单片实际轮数远低于此，这个值
           # 是余量而非目标，跑不满不计费。
+          # 只有一个 agent，没必要在 effort 上省——它要独自承担整轮判断。轮次上限从 80
+          # 抬到 200：这是当初逼出分片的那个约束，放开它才是单 agent 方案成立的前提。
+          # 旧注释保留如下：effort 与轮次按片分档；contract 片要在全仓比对多处声明，
+          # 保持 xhigh；模块片做的是「读 diff 找问题」，high 足够，而 xhigh 每轮多生成的
+          # 思考 token 是实打实的成本。低风险片只做一致性核对，25 轮绰绰有余。
           claude_args: |
             --model claude-opus-5
             --effort xhigh
-            --max-turns 80
+            --max-turns 200
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
 
       # if: always()——分片撞上限时 action 以失败退出，但它此前可能已经写了 JSON；
@@ -562,7 +750,7 @@ jobs:
           f="findings/${SHARD_KEY}.json"
           if [ ! -s "$f" ]; then
             echo "::warning::分片 ${SHARD_KEY} 未写出 findings，回填占位。"
-            printf '{"shard":"%s","status":"no_output","summary":"","impact":"","blockers":[],"unconfirmed":[],"not_covered":"Shard finished without writing a conclusion; its files were not reviewed."}\n' \
+            printf '{"shard":"%s","status":"no_output","summary":"","impact":"","blockers":[],"unconfirmed":[],"not_covered":"本片跑完但没落下结论，这些文件未经评审。"}\n' \
               "${SHARD_KEY}" > "$f"
           fi
 
@@ -605,7 +793,7 @@ jobs:
 
           done = "- [x] `%s`" % label
           if not reviewed:
-              done += " — no conclusion produced; these files were not reviewed"
+              done += " —— 未产出结论，本片文件未经评审"
           todo = "- [ ] `%s`" % label
 
           def gh(*args):
@@ -636,12 +824,34 @@ jobs:
                   time.sleep(2)
           PY
 
+      # 逐轮的工具调用在 Actions 日志里看不到（track_progress: false 不流式输出），
+      # 于是「轮数花在哪」只能靠猜，后续调优也就没有依据。这里把 action 写的完整执行
+      # 记录留成 artifact，离线就能统计每轮在 Read / Grep / Bash / 思考上的分布。
+      - name: Upload transcript
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p transcript
+          f="${RUNNER_TEMP}/claude-execution-output.json"
+          [ -f "$f" ] && cp "$f" "transcript/${SHARD_KEY}.json" || true
+
       - name: Upload findings
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: findings-${{ matrix.shard.key }}
           path: findings/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Store transcript artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcript-${{ matrix.shard.key }}
+          path: transcript/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -665,7 +875,7 @@ jobs:
   verify:
     timeout-minutes: 20
     needs: [plan, review]
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true'
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -757,7 +967,7 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ env.PR_NUMBER }}
 
-            上一环节的评审分片报了若干**阻塞项**，全部列在
+            上一环节的评审报了若干**阻塞项**，全部列在
             `${{ github.workspace }}/blockers.json`（**必须用这个绝对路径读**，工具不接受相对路径）。你的
             工作是逐条**尝试驳回**它们，只让站得住的那些进 PR。
 
@@ -798,7 +1008,7 @@ jobs:
             {
               "verdicts": [
                 {"id": "adp-bkn#0", "refuted": true,
-                 "reason": "why it was refuted or confirmed, naming the file and lines you read"}
+                 "reason": "驳回或确认的理由，指明你读了哪个文件的哪几行"}
               ],
               "notes": "复核过程中顺带发现的、但不属于本次阻塞项的事情，可以为空串"
             }
@@ -807,8 +1017,8 @@ jobs:
             `reason` 里必须出现你**这一轮真读过的** file:line。这是复核结论本身的
             evidence，写不出来的结论和它要驳回的东西是同一种毛病。
 
-            `reason` **一律用英文**。它会原样进 verdict 正文，夹在英文骨架
-            （`Refuted because:` 与折叠区标题）之间，写中文就又成了一份混排文档。
+            `reason` **一律用中文**。它会原样进 verdict 正文，与骨架和评审给的文字
+            并排显示，语言不一致会读成两份东西。
           claude_args: |
             --model claude-opus-5
             --effort xhigh
@@ -830,7 +1040,7 @@ jobs:
     # always()：任一分片撞上限、超时或崩掉，都要照样表态并写明哪片没覆盖。
     # 「跑挂了 PR 上什么都没有」正是分片要消掉的失败模式，这里是它的落点。
     needs: [plan, review, verify]
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true'
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -838,6 +1048,7 @@ jobs:
     env:
       PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
       SHARDS: ${{ needs.plan.outputs.shards }}
+      PRIOR_ROUNDS: ${{ needs.plan.outputs.prior_rounds }}
       FILE_TOTAL: ${{ needs.plan.outputs.file_total }}
       FILE_LISTED: ${{ needs.plan.outputs.file_listed }}
       GH_TOKEN: ${{ github.token }}
@@ -872,8 +1083,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json, os, pathlib
+          import collections, json, os, pathlib, subprocess
 
+          repo, pr = os.environ["GH_REPO"], os.environ["PR_NUMBER"]
           shards = json.loads(os.environ["SHARDS"])
           root = pathlib.Path("findings")
 
@@ -932,23 +1144,40 @@ jobs:
               except (ValueError, OSError):
                   verdicts = {}
 
-          # 所有面向 PR 的文字一律英文（PR 标题/正文/评审输出的既定口径）。此前这里
-          # 按分片投票在 zh/en 之间切换，结果是英文 PR 上仍会混进中文骨架与中文分片名。
-          T = {"block": "Blockers",
-               "verified": "Each item below survived an independent verification pass (refuted by default; kept only when confirmed against the source).",
-               "unrev": " (**unverified** — the verification stage produced no result)",
-               "scen": "Failure scenario: ",
-               "dropped": "%d item(s) dropped by verification", "why": "Refuted because: ",
-               "byshard": "Per-shard findings", "impact": "Blast radius: ", "notcov": "Not covered: ",
-               "unconf": "Open questions (non-blocking)", "missing": "Shards with no result",
-               "missing_body": "These shards produced no findings — **their files were not reviewed this round**:",
-               "reason_no_output": "ran, but wrote no conclusion (most likely the turn limit, or it wrapped up early)",
-               "reason_absent": "never ran, or died partway through",
-               "reason_malformed": "wrote a conclusion file that could not be parsed",
-               "trunc": "File list truncated",
-               "trunc_body": "This PR changes %s files but only %s reached the planner (`gh pr view --json files` caps at 100) — **the remaining %d were not assigned to any shard and were not reviewed**.",
-               "footer": "Push a new commit when addressed, or reply `/review` for another round.",
-               "footer_ok": "Disagree, or want another pass? Reply `/review` — a plain comment does not trigger one, and the replier must be an OWNER/MEMBER/COLLABORATOR of this repo."}
+          # 机器人贴到 PR 上的文字一律中文：结论骨架、分片名、进度评论、空转通告、
+          # 回填占位、verify 的驳回理由，全部同一种语言。曾按分片投票在 zh/en 之间切换，
+          # 结果是骨架跟着投票走、分片名等仍写死中文，拿到的是混排文档——所以不做切换，
+          # 定死一种。注意这与「我们自己写的 PR 标题与正文用英文」是两回事，别混淆。
+          T = {"block": "阻塞项",
+               "verified": "以下每一条都经过一轮独立复核（默认驳回，核实通过才保留）。",
+               "unrev": "（**未复核**，复核环节未产出结论）",
+               "scen": "失效场景：",
+               "dropped": "复核未通过、已丢弃的 %d 条", "why": "驳回理由：",
+               "byshard": "各分片结论", "impact": "影响范围：", "notcov": "未覆盖：",
+               "clean": "_（无问题）_", "counts": "_（阻塞 %d，待确认 %d）_",
+               "detail": "各分片的影响范围与未覆盖面",
+               "more_unconf": "另有 %d 条待确认项已省略，以免正文过长；详见各分片日志。",
+               "unconf": "待确认项（不阻断放行）", "missing": "未产出结论的分片",
+               "missing_body": "下面这些分片没有产出结论，**这些文件本轮未经评审**：",
+               "reason_no_output": "跑完了但没落下结论（多半是撞轮次上限或提前收尾）",
+               "reason_absent": "整个分片没跑起来或中途挂了",
+               "reason_malformed": "写出的结论文件解析不了",
+               "trunc": "文件清单被截断",
+               "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（评审的文件清单上限 150），**其余 %d 个未进入任何分片、本轮未经评审**。",
+               "footer": "改完请推新提交，或回复 `/review` 要一轮复评。",
+               "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评，且回帖人需为本仓 OWNER/MEMBER/COLLABORATOR。"}
+
+          # 模型不一定听话，长度要有确定性兜底——与「模型输出是不可信输入」同一思路。
+          # 只有一个评审者时，每行挂 [标签] 前缀、外加一个只有一行的「各分片结论」
+          # 小节，都是纯噪声。多片形态随时可能回来，所以按片数分支而不是删掉。
+          multi = len(done) > 1
+
+          def tag(label):
+              return "[%s] " % label if multi else ""
+
+          def clip(x, n):
+              x = " ".join(str(x).split())
+              return x if len(x) <= n else x[:n - 1].rstrip() + "…"
 
           survived, refuted, unreviewed = [], [], []
           for s_, b in blockers:
@@ -971,39 +1200,83 @@ jobs:
                   if b.get("line"):
                       loc += ":%s" % b["line"]
                   mark = "" if verdicts.get(b["id"]) else T["unrev"]
-                  lines.append("- **[%s] %s** — %s%s"
-                               % (s_["label"], loc, b.get("what", ""), mark))
+                  lines.append("- **%s%s** — %s%s"
+                               % (tag(s_["label"]), loc, clip(b.get("what", ""), 300), mark))
                   if b.get("scenario"):
-                      lines.append("  %s%s" % (T["scen"], b["scenario"]))
+                      lines.append("  %s%s" % (T["scen"], clip(b["scenario"], 300)))
               lines.append("")
 
           if refuted:
               lines.append("<details><summary>" + (T["dropped"] % len(refuted)) + "</summary>\n")
               for s_, b, v in refuted:
-                  lines.append("- **[%s] %s** — %s" % (s_["label"], b.get("file", ""),
-                                                       b.get("what", "")))
-                  lines.append("  %s%s" % (T["why"], v.get("reason", "")))
+                  lines.append("- **%s%s** — %s" % (tag(s_["label"]), b.get("file", ""),
+                                                    clip(b.get("what", ""), 200)))
+                  lines.append("  %s%s" % (T["why"], clip(v.get("reason", ""), 200)))
               lines.append("\n</details>\n")
 
           # 标量字段同样是不可信输入：这里用 + 拼接（而非 %s 格式化）要求 str，
           # 模型把 impact 写成数组就抛 TypeError，失败形态与上面挡掉的畸形元素一致
           # ——Assemble 非零退出后既无表态也无告警。一律套 str()。
-          lines.append("## %s\n" % T["byshard"])
-          for s, data in done:
-              lines.append("### %s" % s["label"])
-              if data.get("summary"):
-                  lines.append(str(data["summary"]))
-              if data.get("impact"):
-                  lines.append(T["impact"] + str(data["impact"]))
-              if data.get("not_covered"):
-                  lines.append(T["notcov"] + str(data["not_covered"]))
-              lines.append("")
+          # 每片一行，详情折叠。改造前影响范围是整个 PR 写一次，分片后变成每片各写一段，
+          # 实测把结论正文撑到了改造前的 3 倍——阻塞项被埋在中间没人看得见。
+          if not multi:
+              only = done[0][1]
+              if only.get("summary"):
+                  lines.append(clip(only["summary"], 400) + "\n")
+          else:
+              lines.append("## %s\n" % T["byshard"])
+              for s, data in done:
+                  n_b = len([b for _, b in blockers if _ is s])
+                  n_u = len([u for ss, u in unconfirmed if ss is s])
+                  # 不叫 tag：那是上面的前缀函数，同名会把它遮蔽掉，
+                  # 后面待确认项再调用就成了 str is not callable。
+                  counts = T["clean"] if not (n_b or n_u) else T["counts"] % (n_b, n_u)
+                  lines.append("- **%s** — %s %s"
+                               % (s["label"], clip(data.get("summary") or "", 240), counts))
+          lines.append("")
 
+          detail = []
+          for s, data in done:
+              extra = [(T["impact"], data.get("impact")), (T["notcov"], data.get("not_covered"))]
+              extra = [(k, v) for k, v in extra if str(v or "").strip()]
+              if not extra:
+                  continue
+              detail.append("**%s**" % s["label"])
+              detail += ["- %s%s" % (k, clip(v, 200)) for k, v in extra]
+              detail.append("")
+          if detail:
+              lines.append("<details><summary>%s</summary>\n" % T["detail"])
+              lines += detail
+              lines.append("</details>\n")
+
+          # 复评轮的配额要衰减。待确认项不阻断、成本低，模型每轮都会把配额填满，于是
+          # 「每轮十条互不重叠的新问题」可以无限持续——实测 #683 连续三轮如此，而后两轮
+          # 本身已经是 approve。收敛规则写进了 prompt，但那靠自觉，这里再挡一道。
+          # 轮次由 plan 一次算好传下来，分片与这里共用同一个数，避免两处各查一次、
+          # 也避免它们对「这是第几轮」得出不同结论。
+          prior_rounds = int(os.environ.get("PRIOR_ROUNDS") or 0)
+          per_shard_cap, total_cap = (1, 2) if prior_rounds else (2, 6)
+
+          # 首轮每片至多 2 条、总共 6 条；复评轮收到 1 条 / 2 条。
           if unconfirmed:
               lines.append("## %s\n" % T["unconf"])
+              # 轮转取：分片时代 contract 片排在最后会被挤掉，才有了这个写法。现在只有
+              # 一片，它退化成按顺序取，保留是因为多片形态随时可能再需要。
+              by_shard = collections.OrderedDict()
               for s, u in unconfirmed:
-                  lines.append("- **[%s] %s** — %s"
-                               % (s["label"], u.get("file", ""), u.get("what", "")))
+                  by_shard.setdefault(s["key"], []).append((s, u))
+              shown = 0
+              for rnd in range(per_shard_cap):
+                  for k, items in by_shard.items():
+                      if len(items) <= rnd or shown >= total_cap:
+                          continue
+                      s, u = items[rnd]
+                      shown += 1
+                      lines.append("- **%s%s** — %s"
+                                   % (tag(s["label"]), u.get("file", ""), clip(u.get("what", ""), 220)))
+              dropped_u = len(unconfirmed) - shown
+              if dropped_u > 0:
+                  lines.append("- _%s_" % (T["more_unconf"] % dropped_u))
               lines.append("")
 
           if missing:
@@ -1035,8 +1308,26 @@ jobs:
       # 一条 CHANGES_REQUESTED）。merge 已不可逆，此时表态纯属噪声，还会让人误以为
       # 合进去的东西有阻塞项。job if 里的 state == 'open' 是在事件到达时求值的，拦不住
       # 跑到一半才发生的合并，只能在落地前再查一次。
+      # 组织策略禁止 GitHub Actions 批准 PR，而 main 的 ruleset 要求 1 个 approval——
+      # 两条撞在一起，github-actions[bot] 发的 approve 会被 GraphQL 拒，评审就过不了
+      # 合并门。禁令只针对 github-actions[bot]，GitHub App 身份不受限（分片前由
+      # claude-code-action 以 claude[bot] 身份表态，正是靠这一点过门的）。
+      #
+      # 配了 REVIEW_APP_ID / REVIEW_APP_PRIVATE_KEY 就用 App 身份表态；没配则退回
+      # github.token，approve 失败时由下面的兜底改贴评论。两条路都不会让结论丢掉。
+      - name: Mint reviewer token
+        id: apptoken
+        if: vars.REVIEW_APP_ID != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.REVIEW_APP_ID }}
+          private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
+
       - name: Post review
         id: post
+        env:
+          GH_TOKEN: ${{ steps.apptoken.outputs.token || github.token }}
         if: steps.assemble.outputs.action != 'none'
         run: |
           set -euo pipefail
@@ -1048,8 +1339,16 @@ jobs:
           fi
           if [ "${{ steps.assemble.outputs.action }}" = "request-changes" ]; then
             gh pr review "$PR_NUMBER" --request-changes --body-file verdict.md
-          else
-            gh pr review "$PR_NUMBER" --approve --body-file verdict.md
+          elif ! gh pr review "$PR_NUMBER" --approve --body-file verdict.md; then
+            # 仓库若关闭「Allow GitHub Actions to create and approve pull requests」，
+            # approve 会被 GraphQL 拒（request-changes 不受限，因为那不算批准）。
+            # 结论不能因此丢掉——改贴普通评论，并说清为什么没有评审状态。
+            echo "::warning::approve 被拒，改以评论形式给出结论。"
+            {
+              cat verdict.md
+              printf '\n\n---\n\n_本轮没有阻塞项。仓库当前禁止 GitHub Actions 批准 PR，因此以评论形式给出结论，没有 APPROVED 状态。需要自动批准的话，在 Settings → Actions → General 打开「Allow GitHub Actions to create and approve pull requests」。_\n'
+            } > verdict-comment.md
+            gh pr comment "$PR_NUMBER" --body-file verdict-comment.md
           fi
 
       # always()：不管有没有落表态（PR 中途被合并也会跳过表态），这条过程态评论都要
@@ -1067,7 +1366,13 @@ jobs:
             done
 
       # 静默是最坏的结果：PR 上什么都没有，与「压根没触发」无法区分——#671 首轮就是
-      # 这样被当成没触发的。这里不落评审状态（没审过就不该 request-changes，也不该
+      # 这样被当成没触发的。
+      #
+      # 一个反复出现且最难自查的原因：claude-code-action 校验运行时的 workflow 文件与
+      # 默认分支上的副本是否逐字一致，不一致就把自己整步跳过（日志里是
+      # "Workflow validation failed"）。于是任何在途的评审，只要这期间有人把 workflow
+      # 改动合进 main，就会静默 no-op——#693 就是这么空转的。改这个文件的当天尤其常见，
+      # 所以通告文案把它列在第一条。这里不落评审状态（没审过就不该 request-changes，也不该
       # approve），但必须留一条普通评论说明这轮空转了。
       # 这一轮真落了表态，就把上一轮的空转通告删掉——否则作者会在第 4 轮的结论旁边
       # 读到第 3 轮的「本轮评审空转」。
@@ -1097,7 +1402,7 @@ jobs:
           state=$(gh pr view "$PR_NUMBER" --json state --jq .state)
           [ "$state" = "OPEN" ] || exit 0
           MARKER='<!-- claude-review-empty -->'
-          body=$(printf '%s\n### Review round produced nothing\n\nNo shard produced a conclusion, so **these changes were not reviewed this round**. No verdict was recorded because there is nothing to vote on — neither `request-changes` nor `approve` would be honest.\n\nUsual causes: a shard hit the turn limit, the model never wrote its conclusion file, the assembly step failed, or the credential is missing. [View run](%s)\n\nReply `/review` to ask for another round. This notice disappears as soon as a round lands a verdict.' "$MARKER" "$RUN_URL")
+          body=$(printf '%s\n### 本轮评审没有产出结论\n\n没有分片落下结论，**这些改动本轮未经评审**。没有表态是因为无从表态——既不该 request-changes，也不该 approve。\n\n常见原因：本轮运行期间 workflow 文件被合进默认分支（claude-code-action 要求两者逐字一致，不一致会整步跳过）、分片撞轮次上限、模型未写出结论文件、汇总步骤失败、凭据缺失。[查看运行日志](%s)\n\n回复 `/review` 可以再要一轮。下一轮真出了结论，这条会自动消失。' "$MARKER" "$RUN_URL")
           # 复用同一条：synchronize 每次推送跑一轮，凭据缺失这类持续故障否则会在 PR 上
           # 堆出一串一模一样的通告，正是进度评论当初特意避开的噪声。
           existing=$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \

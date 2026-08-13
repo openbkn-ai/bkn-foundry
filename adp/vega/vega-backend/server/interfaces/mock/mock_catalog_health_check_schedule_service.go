@@ -57,18 +57,18 @@ func (mr *MockCatalogHealthCheckScheduleServiceMockRecorder) Create(ctx, tx, cat
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogHealthCheckScheduleService)(nil).Create), ctx, tx, catalog, req)
 }
 
-// DeleteByCatalogIDs mocks base method.
-func (m *MockCatalogHealthCheckScheduleService) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
+// DeleteByCatalogID mocks base method.
+func (m *MockCatalogHealthCheckScheduleService) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByCatalogIDs", ctx, tx, catalogIDs)
+	ret := m.ctrl.Call(m, "DeleteByCatalogID", ctx, tx, catalogID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteByCatalogIDs indicates an expected call of DeleteByCatalogIDs.
-func (mr *MockCatalogHealthCheckScheduleServiceMockRecorder) DeleteByCatalogIDs(ctx, tx, catalogIDs any) *gomock.Call {
+// DeleteByCatalogID indicates an expected call of DeleteByCatalogID.
+func (mr *MockCatalogHealthCheckScheduleServiceMockRecorder) DeleteByCatalogID(ctx, tx, catalogID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogIDs", reflect.TypeOf((*MockCatalogHealthCheckScheduleService)(nil).DeleteByCatalogIDs), ctx, tx, catalogIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogID", reflect.TypeOf((*MockCatalogHealthCheckScheduleService)(nil).DeleteByCatalogID), ctx, tx, catalogID)
 }
 
 // GetByCatalogID mocks base method.

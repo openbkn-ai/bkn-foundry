@@ -47,12 +47,12 @@ func (s *TraceQueryService) CountSpansByTraceIDs(ctx context.Context, traceIDs [
 	}
 	query, err := json.Marshal(map[string]any{
 		"size":  0,
-		"query": map[string]any{"terms": map[string]any{"traceId": unique}},
+		"query": map[string]any{"terms": map[string]any{"traceId.keyword": unique}},
 		"aggs": map[string]any{
 			"by_trace": map[string]any{
-				"terms": map[string]any{"field": "traceId", "size": len(unique)},
+				"terms": map[string]any{"field": "traceId.keyword", "size": len(unique)},
 				"aggs": map[string]any{"span_count": map[string]any{
-					"cardinality": map[string]any{"field": "spanId"},
+					"cardinality": map[string]any{"field": "spanId.keyword"},
 				}},
 			},
 		},

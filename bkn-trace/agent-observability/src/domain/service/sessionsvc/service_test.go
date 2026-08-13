@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
@@ -208,7 +211,7 @@ func TestOperationAndReceiptUseIndependentVersionedProjectionDocuments(t *testin
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: "query", ToolName: "ontology-query",
-			NormalizedInputHash: "sha256:input", Required: true,
+			Input: operationInput("input"), Required: true,
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	)
@@ -349,7 +352,7 @@ func TestCrossConversationResourceReferencesAreNotDisclosed(t *testing.T) {
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: secondConversation.ID, InteractionID: secondInteraction.ID,
 			OperationKey: "second-operation", ToolName: "ontology-query",
-			NormalizedInputHash: "sha256:second", Required: true,
+			Input: operationInput("second"), Required: true,
 			LeaseToken: secondInteraction.LeaseToken, LeaseEpoch: secondInteraction.LeaseEpoch,
 		},
 	)
@@ -367,8 +370,8 @@ func TestCrossConversationResourceReferencesAreNotDisclosed(t *testing.T) {
 				_, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 					Owner: owner, ConversationID: firstConversation.ID, InteractionID: secondInteraction.ID,
 					OperationKey: "foreign-interaction", ToolName: "ontology-query",
-					NormalizedInputHash: "sha256:foreign-interaction",
-					LeaseToken:          secondInteraction.LeaseToken, LeaseEpoch: secondInteraction.LeaseEpoch,
+					Input:      operationInput("foreign-interaction"),
+					LeaseToken: secondInteraction.LeaseToken, LeaseEpoch: secondInteraction.LeaseEpoch,
 				})
 				return err
 			},
@@ -379,7 +382,7 @@ func TestCrossConversationResourceReferencesAreNotDisclosed(t *testing.T) {
 				_, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 					Owner: owner, ConversationID: firstConversation.ID, InteractionID: firstInteraction.ID,
 					OperationKey: "foreign-parent", ToolName: "ontology-query",
-					NormalizedInputHash: "sha256:foreign-parent", ParentOperationID: secondOperation.ID,
+					Input: operationInput("foreign-parent"), ParentOperationID: secondOperation.ID,
 					LeaseToken: firstInteraction.LeaseToken, LeaseEpoch: firstInteraction.LeaseEpoch,
 				})
 				return err
@@ -390,7 +393,7 @@ func TestCrossConversationResourceReferencesAreNotDisclosed(t *testing.T) {
 			call: func() error {
 				_, _, err := service.FailOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 					Owner: owner, OperationID: firstOperation.ID, Attempt: firstOperation.Attempt,
-					ReceiptID: secondReceipt.ID, PayloadHash: "sha256:foreign-receipt",
+					ReceiptID: secondReceipt.ID, Error: operationError("foreign-receipt"),
 					RequestID: "req-foreign-receipt", TraceID: validTraceIDOne,
 				})
 				return err
@@ -759,7 +762,7 @@ func TestConversationPersistsThreeSequentialInteractionRounds(t *testing.T) {
 	}
 }
 
-func TestEnsureOperationUsesStableLogicalKeyAndInputHash(t *testing.T) {
+func TestEnsureOperationUsesStableLogicalKeyAndCanonicalInput(t *testing.T) {
 	t.Parallel()
 
 	service := newTestService()
@@ -774,7 +777,7 @@ func TestEnsureOperationUsesStableLogicalKeyAndInputHash(t *testing.T) {
 	first, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "query-sales-orders", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:input-a", Required: true,
+		Input: operationInput("input-a"), CausationEventIDs: []string{"event-b", "event-a", "event-a"}, Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -787,7 +790,7 @@ func TestEnsureOperationUsesStableLogicalKeyAndInputHash(t *testing.T) {
 	replayed, replayedReceipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "query-sales-orders", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:input-a", Required: true,
+		Input: operationInput("input-a"), CausationEventIDs: []string{"event-a", "event-b"}, Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -796,18 +799,46 @@ func TestEnsureOperationUsesStableLogicalKeyAndInputHash(t *testing.T) {
 	if first.ID != replayed.ID || receipt.ID != replayedReceipt.ID || first.Attempt != 1 {
 		t.Fatalf("expected the same operation and receipt, got %#v / %#v", replayed, replayedReceipt)
 	}
+	if !slices.Equal(first.CausationEventIDs, []string{"event-a", "event-b"}) {
+		t.Fatalf("causation IDs were not canonicalized as a set: %#v", first.CausationEventIDs)
+	}
 	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "query-sales-orders", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:input-b", Required: true,
+		Input: operationInput("input-b"), CausationEventIDs: []string{"event-a", "event-b"}, Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeIdempotencyConflict) {
 		t.Fatalf("expected idempotency_conflict, got %v", err)
 	}
+	for name, mutate := range map[string]func(*sessionsvc.EnsureOperationCommand){
+		"parent operation": func(command *sessionsvc.EnsureOperationCommand) {
+			command.ParentOperationID = first.ID
+		},
+		"causation events": func(command *sessionsvc.EnsureOperationCommand) {
+			command.CausationEventIDs = []string{"event-different"}
+		},
+		"required flag": func(command *sessionsvc.EnsureOperationCommand) {
+			command.Required = false
+		},
+	} {
+		name, mutate := name, mutate
+		t.Run(name, func(t *testing.T) {
+			command := sessionsvc.EnsureOperationCommand{
+				Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+				OperationKey: "query-sales-orders", ToolName: "ontology-query",
+				Input: operationInput("input-a"), CausationEventIDs: []string{"event-a", "event-b"}, Required: true,
+				LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+			}
+			mutate(&command)
+			if _, _, err := service.EnsureOperation(context.Background(), command); !sessionsvc.IsCode(err, sessionsvc.CodeIdempotencyConflict) {
+				t.Fatalf("changed %s must conflict, got %v", name, err)
+			}
+		})
+	}
 	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "child-with-unknown-parent", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:child", Required: true,
+		Input: operationInput("child"), Required: true,
 		ParentOperationID: "op-from-another-interaction",
 		LeaseToken:        interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeResourceNotDisclosed) {
@@ -830,7 +861,7 @@ func TestEnsureOperationReportsCreatedDisposition(t *testing.T) {
 	command := sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "logical-call", ToolName: "context-loader",
-		NormalizedInputHash: "sha256:input", Required: true,
+		Input: operationInput("input"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}
 	first, err := service.EnsureOperationWithDisposition(context.Background(), command)
@@ -847,6 +878,133 @@ func TestEnsureOperationReportsCreatedDisposition(t *testing.T) {
 	if replayed.Created || replayed.Execute || replayed.Operation.ID != first.Operation.ID ||
 		replayed.Receipt.ID != first.Receipt.ID {
 		t.Fatalf("replay must report created=false and reuse resources: %#v", replayed)
+	}
+}
+
+func TestOversizedOperationInputIsOmittedAndMakesInteractionPartial(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "oversized-input")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "oversized-input-start",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	input, err := sessionvo.InlineJSONPayload(
+		json.RawMessage(`{"value":"` + strings.Repeat("a", sessionvo.MaxInlinePayloadBytes) + `"}`),
+	)
+	if err != nil {
+		t.Fatalf("build oversized input envelope: %v", err)
+	}
+	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "oversized-input-call", ToolName: "run_sql", Input: input, Required: true,
+		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	})
+	if err != nil {
+		t.Fatalf("ensure operation: %v", err)
+	}
+	if _, receipt, err = service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt, ReceiptID: receipt.ID,
+		Output: operationOutput("ok"), EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID: "req-oversized-input", TraceID: validTraceIDOne,
+	}); err != nil {
+		t.Fatalf("complete operation: %v", err)
+	}
+	if len(receipt.PartialReasons) != 1 ||
+		receipt.PartialReasons[0] != sessionvo.PayloadOmittedReasonTooLarge {
+		t.Fatalf("oversized input must make receipt partial: %#v", receipt.PartialReasons)
+	}
+	facts, err := service.ListOperationCallFacts(context.Background(), owner, interaction.ID)
+	if err != nil {
+		t.Fatalf("list operation call facts: %v", err)
+	}
+	if len(facts) != 1 || facts[0].Input.Mode != sessionvo.PayloadOmitted ||
+		facts[0].Input.OmittedReason != sessionvo.PayloadOmittedReasonTooLarge ||
+		facts[0].Input.Inline != nil {
+		t.Fatalf("oversized input fact = %#v", facts)
+	}
+	completed, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "oversized-input-terminal",
+		LeaseToken:             interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Manifest: sessionvo.ClosureManifest{
+			Version: "1", CompletionReason: "answer_returned",
+			ExpectedOperations: []sessionvo.ExpectedOperation{{OperationID: operation.ID, Required: true}},
+			ExpectedReceipts:   []sessionvo.ExpectedReceipt{{ReceiptID: receipt.ID, Required: true}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("terminate interaction: %v", err)
+	}
+	if completed.EvidenceStatus != sessionvo.EvidencePartial {
+		t.Fatalf("EvidenceStatus = %q, want %q", completed.EvidenceStatus, sessionvo.EvidencePartial)
+	}
+}
+
+func TestOversizedOperationOutputIsOmittedAndMakesReceiptPartial(t *testing.T) {
+	t.Parallel()
+
+	service, owner, _, interaction, operation, receipt := mustCreateOperation(t)
+	output := mustPayloadEnvelope(
+		t, json.RawMessage(`{"rows":"`+strings.Repeat("a", sessionvo.MaxInlinePayloadBytes)+`"}`),
+	)
+	_, completedReceipt, err := service.CompleteOperationAttempt(
+		context.Background(),
+		sessionsvc.FinishAttemptCommand{
+			Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt,
+			ReceiptID: receipt.ID, Output: output,
+			EvidenceDurability: sessionvo.DurabilityDurable,
+			RequestID:          "req-oversized-output", TraceID: validTraceIDOne,
+		},
+	)
+	if err != nil {
+		t.Fatalf("complete operation: %v", err)
+	}
+	if len(completedReceipt.PartialReasons) != 1 ||
+		completedReceipt.PartialReasons[0] != sessionvo.PayloadOmittedReasonTooLarge {
+		t.Fatalf("oversized output must make receipt partial: %#v", completedReceipt.PartialReasons)
+	}
+	facts, err := service.ListOperationCallFacts(context.Background(), owner, interaction.ID)
+	if err != nil {
+		t.Fatalf("list operation call facts: %v", err)
+	}
+	if len(facts) != 1 || facts[0].Output == nil ||
+		facts[0].Output.Mode != sessionvo.PayloadOmitted ||
+		facts[0].Output.OmittedReason != sessionvo.PayloadOmittedReasonTooLarge ||
+		facts[0].Output.Inline != nil {
+		t.Fatalf("oversized output fact = %#v", facts)
+	}
+}
+
+func TestOmittedInputCannotBeClaimedAsIdempotentReplay(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService()
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "omitted-replay")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "omitted-replay-start",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	command := sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "omitted-replay-call", ToolName: "run_sql",
+		Input: mustPayloadEnvelope(
+			t, json.RawMessage(`{"value":"`+strings.Repeat("a", sessionvo.MaxInlinePayloadBytes)+`"}`),
+		),
+		Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	}
+	if _, err := service.EnsureOperationWithDisposition(context.Background(), command); err != nil {
+		t.Fatalf("first ensure: %v", err)
+	}
+	if _, err := service.EnsureOperationWithDisposition(context.Background(), command); !sessionsvc.IsCode(err, sessionsvc.CodeIdempotencyConflict) {
+		t.Fatalf("omitted input replay must fail closed, got %v", err)
 	}
 }
 
@@ -867,7 +1025,7 @@ func TestEnsureOperationCreatedDispositionDoesNotLeakAcrossTransactionRetry(t *t
 	result, err := service.EnsureOperationWithDisposition(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "retry-visible-operation", ToolName: "execute_action",
-		NormalizedInputHash: "sha256:retry-visible", Required: true,
+		Input: operationInput("retry-visible"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -931,7 +1089,7 @@ func TestOperationIntentRequiresCurrentInteractionLeaseAndRenewsIt(t *testing.T)
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID,
 			InteractionID: interaction.ID, OperationKey: "query",
-			ToolName: "ontology-query", NormalizedInputHash: "sha256:query",
+			ToolName: "ontology-query", Input: operationInput("query"),
 			LeaseToken: "stale-token", LeaseEpoch: interaction.LeaseEpoch,
 		},
 	); !sessionsvc.IsCode(err, sessionsvc.CodeTerminalConflict) {
@@ -944,7 +1102,7 @@ func TestOperationIntentRequiresCurrentInteractionLeaseAndRenewsIt(t *testing.T)
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID,
 			InteractionID: interaction.ID, OperationKey: "query",
-			ToolName: "ontology-query", NormalizedInputHash: "sha256:query",
+			ToolName: "ontology-query", Input: operationInput("query"),
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	); err != nil {
@@ -972,7 +1130,7 @@ func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 	}
 	if _, _, err := service.FailOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: 1,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:failed", Retryable: true,
+		ReceiptID: receipt.ID, Error: operationError("failed"), Retryable: true,
 		RequestID: "req-retry", TraceID: validTraceIDOne,
 	}); err != nil {
 		t.Fatalf("fail operation attempt: %v", err)
@@ -994,12 +1152,24 @@ func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 		context.Background(),
 		sessionsvc.FinishAttemptCommand{
 			Owner: owner, OperationID: retry.ID, Attempt: retry.Attempt,
-			ReceiptID: retryReceipt.ID, PayloadHash: "sha256:not-executed",
+			ReceiptID: retryReceipt.ID, Output: operationOutput("not-executed"),
 			EvidenceDurability: sessionvo.DurabilityDurable,
 			RequestID:          "req-not-executed", TraceID: validTraceIDOne,
 		},
 	); !sessionsvc.IsCode(err, sessionsvc.CodeReceiptPending) {
 		t.Fatalf("unclaimed retry attempt was allowed to finalize: %v", err)
+	}
+	if _, err := service.EnsureOperationWithDisposition(
+		context.Background(),
+		sessionsvc.EnsureOperationCommand{
+			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+			OperationKey: operation.OperationKey, ToolName: operation.ToolName,
+			Protocol: sessionvo.ProtocolSDK, SourceModule: "different-producer",
+			Input: operationInput("different-input"), Required: true,
+			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		},
+	); !sessionsvc.IsCode(err, sessionsvc.CodeIdempotencyConflict) {
+		t.Fatalf("retry changed producer and input without conflict: %v", err)
 	}
 
 	claimed, err := service.EnsureOperationWithDisposition(
@@ -1007,7 +1177,7 @@ func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: operation.OperationKey, ToolName: operation.ToolName,
-			NormalizedInputHash: operation.NormalizedInputHash, Required: true,
+			Input: operationInput("input"), Required: true,
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	)
@@ -1024,7 +1194,7 @@ func TestRetryAttemptRequiresRetryableFailure(t *testing.T) {
 		sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: operation.OperationKey, ToolName: operation.ToolName,
-			NormalizedInputHash: operation.NormalizedInputHash, Required: true,
+			Input: operationInput("input"), Required: true,
 			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		},
 	)
@@ -1044,7 +1214,7 @@ func TestCompleteOperationAttemptDefaultsEvidenceDurabilityToPending(t *testing.
 		context.Background(),
 		sessionsvc.FinishAttemptCommand{
 			Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt,
-			ReceiptID: receipt.ID, PayloadHash: "sha256:completed-without-durable-ack",
+			ReceiptID: receipt.ID, Output: operationOutput("completed-without-durable-ack"),
 			RequestID: "req-pending-default", TraceID: validTraceIDOne,
 		},
 	)
@@ -1071,7 +1241,7 @@ func TestTrustedAdapterCanMarkAnyFailedOperationRetryable(t *testing.T) {
 	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "unregistered-side-effect", ToolName: "unregistered-destructive-tool",
-		NormalizedInputHash: "sha256:unregistered", Required: true,
+		Input: operationInput("unregistered"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -1079,7 +1249,7 @@ func TestTrustedAdapterCanMarkAnyFailedOperationRetryable(t *testing.T) {
 	}
 	failed, failedReceipt, err := service.FailOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:malicious-true", Retryable: true,
+		ReceiptID: receipt.ID, Error: operationError("malicious-true"), Retryable: true,
 		RequestID: "req-malicious-true", TraceID: validTraceIDOne,
 	})
 	if err != nil {
@@ -1106,7 +1276,7 @@ func TestFinishAttemptRejectsInvalidTraceID(t *testing.T) {
 	service, owner, _, _, operation, receipt := mustCreateOperation(t)
 	_, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:complete",
+		ReceiptID: receipt.ID, Output: operationOutput("complete"),
 		RequestID: "req-invalid-trace", TraceID: "not-a-valid-trace-id",
 	})
 	if !sessionsvc.IsCode(err, sessionsvc.CodeOperationRequired) {
@@ -1163,7 +1333,7 @@ func TestExpiredAssemblerDeadlineFreezesPartialRevision(t *testing.T) {
 	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "pending", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:pending", Required: true,
+		Input: operationInput("pending"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -1204,7 +1374,7 @@ func TestAssemblerFreezesPendingInteractionWhenDeadlineLaterExpires(t *testing.T
 	})
 	operation, receipt, _ := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
-		OperationKey: "future", ToolName: "query", NormalizedInputHash: "sha256:future", Required: true,
+		OperationKey: "future", ToolName: "query", Input: operationInput("future"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	deadline := now.Add(time.Minute)
@@ -1240,7 +1410,7 @@ func TestLateDurableReceiptCreatesNewImmutableAssemblyRevision(t *testing.T) {
 	})
 	operation, receipt, _ := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
-		OperationKey: "late", ToolName: "query", NormalizedInputHash: "sha256:late", Required: true,
+		OperationKey: "late", ToolName: "query", Input: operationInput("late"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	deadline := now.Add(-time.Second)
@@ -1260,7 +1430,7 @@ func TestLateDurableReceiptCreatesNewImmutableAssemblyRevision(t *testing.T) {
 
 	_, _, err = service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:late-result",
+		ReceiptID: receipt.ID, Output: operationOutput("late-result"),
 		EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID:          "req-late", TraceID: validTraceIDOne,
 		ObservedEvidenceRefs: []string{"evt-late-evidence"},
@@ -1301,7 +1471,7 @@ func TestPendingReceiptCompletedBeforeDeadlineCreatesFirstAssemblyRevision(t *te
 
 	_, _, err = service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:before-deadline",
+		ReceiptID: receipt.ID, Output: operationOutput("before-deadline"),
 		EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID:          "req-before-deadline", TraceID: validTraceIDOne,
 	})
@@ -1327,7 +1497,7 @@ func TestDurableReceiptMakesCompletedInteractionEvidenceComplete(t *testing.T) {
 	service, owner, _, interaction, operation, receipt := mustCreateOperation(t)
 	_, durableReceipt, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: 1,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:complete",
+		ReceiptID: receipt.ID, Output: operationOutput("complete"),
 		EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID:          "req-complete", TraceID: validTraceIDOne,
 	})
@@ -1373,7 +1543,7 @@ func TestDurableReceiptFreezesEvidenceBusinessAndArtifactReferences(t *testing.T
 		context.Background(),
 		sessionsvc.FinishAttemptCommand{
 			Owner: owner, OperationID: operation.ID, Attempt: 1,
-			ReceiptID: receipt.ID, PayloadHash: "sha256:complete-with-evidence",
+			ReceiptID: receipt.ID, Output: operationOutput("complete-with-evidence"),
 			EvidenceDurability:   sessionvo.DurabilityDurable,
 			RequestID:            "req-complete-with-evidence",
 			TraceID:              validTraceIDOne,
@@ -1425,7 +1595,7 @@ func TestDurableReceiptFreezesEvidenceBusinessAndArtifactReferences(t *testing.T
 		context.Background(),
 		sessionsvc.FinishAttemptCommand{
 			Owner: owner, OperationID: operation.ID, Attempt: 1,
-			ReceiptID: receipt.ID, PayloadHash: "sha256:complete-with-evidence",
+			ReceiptID: receipt.ID, Output: operationOutput("complete-with-evidence"),
 			EvidenceDurability:   sessionvo.DurabilityDurable,
 			RequestID:            "req-complete-with-evidence",
 			TraceID:              validTraceIDOne,
@@ -1465,7 +1635,7 @@ func TestOperationReceiptRejectsInvalidTypedBusinessReference(t *testing.T) {
 			}
 			_, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 				Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
-				ReceiptID: receipt.ID, PayloadHash: "sha256:invalid-business-ref",
+				ReceiptID: receipt.ID, Output: operationOutput("invalid-business-ref"),
 				EvidenceDurability: sessionvo.DurabilityDurable,
 				RequestID:          "req-invalid-business-ref", TraceID: validTraceIDOne,
 				BusinessRefs: []sessionvo.BusinessRef{businessRef},
@@ -1483,7 +1653,7 @@ func TestOperationReceiptReplaysLegacyTerminalBusinessReferenceIdempotently(t *t
 	store, service, owner, _, _, operation, receipt := mustCreateOperationWithStore(t)
 	command := sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:legacy-business-ref",
+		ReceiptID: receipt.ID, Output: operationOutput("legacy-business-ref"),
 		EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID:          "req-legacy-business-ref", TraceID: validTraceIDOne,
 		BusinessRefs: []sessionvo.BusinessRef{{
@@ -1515,6 +1685,52 @@ func TestOperationReceiptReplaysLegacyTerminalBusinessReferenceIdempotently(t *t
 	}
 }
 
+func TestOperationReceiptReplaysAutoLinkedReferencedOutputIdempotently(t *testing.T) {
+	t.Parallel()
+
+	service, owner, _, _, operation, receipt := mustCreateOperation(t)
+	command := sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+		ReceiptID: receipt.ID,
+		Output: sessionvo.PayloadEnvelope{
+			Mode: sessionvo.PayloadReferenced, MediaType: "application/json",
+			ByteLength: sessionvo.MaxInlinePayloadBytes + 1, Ref: "artifact:operation-output-1",
+		},
+		EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID:          "req-referenced-output", TraceID: validTraceIDOne,
+	}
+	if _, completed, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("complete referenced output: %v", err)
+	} else if !slices.Contains(completed.ArtifactRefs, command.Output.Ref) {
+		t.Fatalf("referenced output was not auto-linked: %#v", completed.ArtifactRefs)
+	}
+
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("same referenced terminal output must replay idempotently: %v", err)
+	}
+}
+
+func TestOperationReceiptReplaysAutoDerivedDurabilityReasonIdempotently(t *testing.T) {
+	t.Parallel()
+
+	service, owner, _, _, operation, receipt := mustCreateOperation(t)
+	command := sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
+		ReceiptID: receipt.ID, Error: operationError("retryable failure"),
+		EvidenceDurability: sessionvo.DurabilityFailed, Retryable: true,
+		RequestID: "req-durability-failed", TraceID: validTraceIDOne,
+	}
+	if _, failed, err := service.FailOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("fail operation: %v", err)
+	} else if !slices.Contains(failed.PartialReasons, "evidence_durability_failed") {
+		t.Fatalf("durability reason was not derived: %#v", failed.PartialReasons)
+	}
+
+	if _, _, err := service.FailOperationAttempt(context.Background(), command); err != nil {
+		t.Fatalf("same derived durability reason must replay idempotently: %v", err)
+	}
+}
+
 func TestOperationReceiptComparesBusinessReferenceAsOfByValue(t *testing.T) {
 	t.Parallel()
 
@@ -1522,7 +1738,7 @@ func TestOperationReceiptComparesBusinessReferenceAsOfByValue(t *testing.T) {
 	firstAsOf := time.Date(2026, 7, 1, 0, 0, 0, 123, time.UTC)
 	command := sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
-		ReceiptID: receipt.ID, PayloadHash: "sha256:business-ref-as-of",
+		ReceiptID: receipt.ID, Output: operationOutput("business-ref-as-of"),
 		EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID:          "req-business-ref-as-of", TraceID: validTraceIDOne,
 		BusinessRefs: []sessionvo.BusinessRef{{
@@ -1580,7 +1796,7 @@ func TestManagedTerminationAssignsDeadlineOnlyForRequiredPendingReceipt(t *testi
 	}
 	_, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
-		OperationKey: "schema", ToolName: "get_object_types", NormalizedInputHash: "sha256:schema",
+		OperationKey: "schema", ToolName: "get_object_types", Input: operationInput("schema"),
 		Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -1604,6 +1820,48 @@ func TestManagedTerminationAssignsDeadlineOnlyForRequiredPendingReceipt(t *testi
 	}
 	if len(completed.ClosureManifest.ExpectedReceipts) != 1 || completed.ClosureManifest.ExpectedReceipts[0].ReceiptID != receipt.ID {
 		t.Fatalf("expected authoritative pending receipt in manifest: %#v", completed.ClosureManifest)
+	}
+}
+
+func TestExplicitTerminationAssignsDeadlineForRequiredPendingReceipt(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
+	store := sessionstore.NewWithClock(func() time.Time { return now })
+	service := sessionsvc.New(store, sessionsvc.Options{AssemblyTimeout: 90 * time.Second})
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "explicit-assembly-timeout")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "explicit-timeout-start",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "schema", ToolName: "get_object_types", Input: operationInput("schema"),
+		Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	})
+	if err != nil {
+		t.Fatalf("ensure operation: %v", err)
+	}
+
+	completed, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "explicit-timeout-finish",
+		LeaseToken:             interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Manifest: sessionvo.ClosureManifest{
+			Version: "3.0.0", CompletionReason: "answer_returned",
+			ExpectedOperations: []sessionvo.ExpectedOperation{{OperationID: operation.ID, Required: true}},
+			ExpectedReceipts:   []sessionvo.ExpectedReceipt{{ReceiptID: receipt.ID, Required: true}},
+		},
+	})
+	if err != nil || completed.EvidenceStatus != sessionvo.EvidenceAssembling || completed.ClosureManifest == nil {
+		t.Fatalf("expected assembling interaction with closure manifest, got %#v, %v", completed, err)
+	}
+	deadline := completed.ClosureManifest.AssemblerDeadline
+	if deadline == nil || !deadline.Equal(now.Add(90*time.Second)) {
+		t.Fatalf("assembler deadline = %v, want %s", deadline, now.Add(90*time.Second))
 	}
 }
 
@@ -1685,7 +1943,7 @@ func TestAbandonExpiredInteractionPreservesDurableOperationEvidence(t *testing.T
 	}
 	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
-		OperationKey: "inventory", ToolName: "query_object_instance", NormalizedInputHash: "sha256:inventory",
+		OperationKey: "inventory", ToolName: "query_object_instance", Input: operationInput("inventory"),
 		Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -1693,7 +1951,7 @@ func TestAbandonExpiredInteractionPreservesDurableOperationEvidence(t *testing.T
 	}
 	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt, ReceiptID: receipt.ID,
-		PayloadHash: "sha256:inventory-result", EvidenceDurability: sessionvo.DurabilityDurable,
+		Output: operationOutput("inventory-result"), EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID: "req-inventory", TraceID: validTraceIDOne,
 		ObservedEvidenceRefs: []string{"evt-inventory"},
 	}); err != nil {
@@ -1826,7 +2084,7 @@ func TestExpiredLeaseCannotTerminateOrCreateOperationBeforeReaper(t *testing.T) 
 	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "expired-op", ToolName: "query",
-		NormalizedInputHash: "sha256:expired", Required: true,
+		Input: operationInput("expired"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeInteractionTerminal) {
 		t.Fatalf("expected expired lease to reject operation, got %v", err)
@@ -1846,7 +2104,7 @@ func TestRequestProjectionHasRequestRatherThanReceiptCardinality(t *testing.T) {
 	service, owner, conversation, interaction, operation, receipt := mustCreateOperation(t)
 	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: 1, ReceiptID: receipt.ID,
-		PayloadHash: "sha256:request-result", EvidenceDurability: sessionvo.DurabilityDurable,
+		Output: operationOutput("request-result"), EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID: "req-shared", TraceID: validTraceIDOne,
 	}); err != nil {
 		t.Fatalf("complete first operation: %v", err)
@@ -1854,7 +2112,7 @@ func TestRequestProjectionHasRequestRatherThanReceiptCardinality(t *testing.T) {
 	secondOperation, secondReceipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "logical-call-2", ToolName: "metric-query",
-		NormalizedInputHash: "sha256:input-2", Required: true,
+		Input: operationInput("input-2"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -1862,7 +2120,7 @@ func TestRequestProjectionHasRequestRatherThanReceiptCardinality(t *testing.T) {
 	}
 	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: secondOperation.ID, Attempt: 1, ReceiptID: secondReceipt.ID,
-		PayloadHash: "sha256:request-result-2", EvidenceDurability: sessionvo.DurabilityDurable,
+		Output: operationOutput("request-result-2"), EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID: "req-shared", TraceID: validTraceIDTwo,
 	}); err != nil {
 		t.Fatalf("complete second operation: %v", err)
@@ -1894,8 +2152,8 @@ func TestInteractionRejectsOperationBeyondCapacityLimit(t *testing.T) {
 		if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: fmt.Sprintf("operation-%03d", index), ToolName: "query",
-			NormalizedInputHash: fmt.Sprintf("sha256:%03d", index),
-			LeaseToken:          interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+			Input:      operationInput(fmt.Sprintf("%03d", index)),
+			LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		}); err != nil {
 			t.Fatalf("ensure operation %d: %v", index, err)
 		}
@@ -1903,8 +2161,8 @@ func TestInteractionRejectsOperationBeyondCapacityLimit(t *testing.T) {
 	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "operation-over-limit", ToolName: "query",
-		NormalizedInputHash: "sha256:over-limit",
-		LeaseToken:          interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Input:      operationInput("over-limit"),
+		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeOperationRequired) {
 		t.Fatalf("expected operation capacity rejection, got %v", err)
 	}
@@ -1948,11 +2206,40 @@ func TestReceiptRejectsEvidenceReferencesBeyondCapacityLimit(t *testing.T) {
 	}
 	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 		Owner: owner, OperationID: operation.ID, Attempt: 1, ReceiptID: receipt.ID,
-		PayloadHash: "sha256:too-many-evidence-refs", EvidenceDurability: sessionvo.DurabilityDurable,
+		Output: operationOutput("too-many-evidence-refs"), EvidenceDurability: sessionvo.DurabilityDurable,
 		RequestID: "req-capacity", TraceID: validTraceIDOne, ObservedEvidenceRefs: references,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeOperationRequired) {
 		t.Fatalf("expected evidence reference capacity rejection, got %v", err)
 	}
+}
+
+func operationInput(value string) sessionvo.PayloadEnvelope {
+	payload, _ := json.Marshal(map[string]string{"test_input": value})
+	result, _ := sessionvo.InlineJSONPayload(payload)
+	return result
+}
+
+func mustPayloadEnvelope(t *testing.T, payload json.RawMessage) sessionvo.PayloadEnvelope {
+	t.Helper()
+	result, err := sessionvo.InlineJSONPayload(payload)
+	if err != nil {
+		t.Fatalf("build payload envelope: %v", err)
+	}
+	return result
+}
+
+func operationOutput(value string) sessionvo.PayloadEnvelope {
+	payload, _ := json.Marshal(map[string]string{"result": value})
+	result, _ := sessionvo.InlineJSONPayload(payload)
+	return result
+}
+
+func operationError(value string) sessionvo.PayloadEnvelope {
+	payload, _ := json.Marshal(map[string]any{
+		"code": "TEST_FAILURE", "message": value, "stage": "backend", "retryable": true,
+	})
+	result, _ := sessionvo.InlineJSONPayload(payload)
+	return result
 }
 
 func newTestService() *sessionsvc.Service {
@@ -2026,7 +2313,7 @@ func mustCreateOperationWithStore(t *testing.T) (*sessionstore.Store, *sessionsv
 	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "logical-call", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:input", Required: true,
+		Input: operationInput("input"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -2049,7 +2336,7 @@ func mustCreateOptionalOperation(t *testing.T) (*sessionsvc.Service, sessionvo.O
 	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "optional-call", ToolName: "optional-query",
-		NormalizedInputHash: "sha256:optional-input", Required: false,
+		Input: operationInput("optional-input"), Required: false,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
@@ -2078,11 +2365,11 @@ func TestOperationLimitDoesNotKeepAFullInteractionAlive(t *testing.T) {
 	for index := range 128 {
 		if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
-			OperationKey:        fmt.Sprintf("op-%d", index),
-			ToolName:            "ontology-query",
-			NormalizedInputHash: fmt.Sprintf("sha256:input-%d", index),
-			Required:            true,
-			LeaseToken:          interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+			OperationKey: fmt.Sprintf("op-%d", index),
+			ToolName:     "ontology-query",
+			Input:        operationInput(fmt.Sprintf("input-%d", index)),
+			Required:     true,
+			LeaseToken:   interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 		}); err != nil {
 			t.Fatalf("ensure operation %d: %v", index, err)
 		}
@@ -2095,7 +2382,7 @@ func TestOperationLimitDoesNotKeepAFullInteractionAlive(t *testing.T) {
 	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "op-over-limit", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:over-limit", Required: true,
+		Input: operationInput("over-limit"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeOperationRequired) {
 		t.Fatalf("expected the 128 operation limit to reject, got %v", err)
@@ -2123,9 +2410,115 @@ func TestOperationLimitDoesNotKeepAFullInteractionAlive(t *testing.T) {
 	if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 		OperationKey: "op-0", ToolName: "ontology-query",
-		NormalizedInputHash: "sha256:input-0", Required: true,
+		Input: operationInput("input-0"), Required: true,
 		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	}); err != nil {
 		t.Fatalf("replaying an existing operation on a full interaction must still work: %v", err)
+	}
+}
+
+func TestListOperationExecutionsByTraceIDReturnsAuthorizedAttemptsInTimeOrder(t *testing.T) {
+	t.Parallel()
+
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{})
+	owner := testOwner()
+	otherOwner := owner
+	otherOwner.EffectiveSubjectID = "user-2"
+	otherOwner.ApplicationPrincipalID = "app-2"
+	started := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
+
+	seedTraceExecution := func(
+		conversationID, interactionID, operationID, receiptID string,
+		traceID string, factStarted time.Time, recordOwner sessionvo.Owner,
+	) {
+		t.Helper()
+		if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+			tx.SaveConversation(sessionvo.Conversation{
+				ID: conversationID, Owner: recordOwner, ExternalConversationKey: conversationID,
+				Generation: 1, Status: sessionvo.ConversationActive, RowVersion: 1,
+				CreatedAt: factStarted, UpdatedAt: factStarted,
+			})
+			tx.SaveInteraction(sessionvo.Interaction{
+				ID: interactionID, ConversationID: conversationID, Ordinal: 1,
+				ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete,
+				RowVersion: 1, CreatedAt: factStarted, UpdatedAt: factStarted,
+			})
+			tx.SaveOperation(sessionvo.Operation{
+				ID: operationID, ConversationID: conversationID, InteractionID: interactionID,
+				OperationKey: operationID, ToolName: "run_sql", Attempt: 1,
+				AttemptStatus: sessionvo.AttemptCompleted, RowVersion: 1,
+				CreatedAt: factStarted, UpdatedAt: factStarted,
+			})
+			tx.SaveReceipt(sessionvo.Receipt{
+				ID: receiptID, SchemaVersion: "3.0.0", Owner: recordOwner,
+				ConversationID: conversationID, InteractionID: interactionID,
+				OperationID: operationID, Attempt: 1, OperationKey: operationID,
+				ToolName: "run_sql", Status: sessionvo.ReceiptCompleted,
+				EvidenceDurability: sessionvo.DurabilityDurable, Required: true,
+				TraceID: traceID, RowVersion: 1, IssuedAt: factStarted,
+			})
+			tx.SaveOperationCallFact(sessionvo.OperationCallFact{
+				OperationID: operationID, Attempt: 1, ConversationID: conversationID,
+				InteractionID: interactionID, ReceiptID: receiptID, ToolName: "run_sql",
+				Protocol: sessionvo.ProtocolMCP, SourceModule: "context-loader",
+				Input: sessionvo.PayloadEnvelope{
+					Mode: sessionvo.PayloadInline, MediaType: "application/json",
+					ByteLength: 2, Inline: json.RawMessage(`{}`),
+				},
+				TraceID: traceID, StartedAt: factStarted, Status: sessionvo.AttemptCompleted,
+			})
+			return nil
+		}); err != nil {
+			t.Fatalf("seed trace execution: %v", err)
+		}
+	}
+
+	seedTraceExecution("conv-late", "int-late", "op-late", "rcpt-late", validTraceIDOne, started.Add(time.Second), owner)
+	seedTraceExecution("conv-early", "int-early", "op-early", "rcpt-early", validTraceIDOne, started, owner)
+	seedTraceExecution("conv-other", "int-other", "op-other", "rcpt-other", validTraceIDOne, started.Add(-time.Second), otherOwner)
+	seedTraceExecution("conv-trace-2", "int-trace-2", "op-trace-2", "rcpt-trace-2", validTraceIDTwo, started, owner)
+
+	executions, err := service.ListOperationExecutionsByTraceID(context.Background(), owner, validTraceIDOne)
+	if err != nil {
+		t.Fatalf("list operation executions: %v", err)
+	}
+	if len(executions) != 2 || executions[0].Fact.OperationID != "op-early" || executions[1].Fact.OperationID != "op-late" {
+		t.Fatalf("expected two authorized attempts in time order, got %+v", executions)
+	}
+	if executions[0].InteractionStatus != sessionvo.InteractionCompleted || executions[0].Receipt.ID != "rcpt-early" {
+		t.Fatalf("expected joined interaction and receipt state, got %+v", executions[0])
+	}
+
+	profile := evidencevo.AccessProfile{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
+		AccountActive: true, TenantActive: true,
+	}
+	scoped, err := service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+	}, validTraceIDOne)
+	if err != nil || len(scoped) != 2 {
+		t.Fatalf("owner technical scope must return only owned attempts: executions=%+v err=%v", scoped, err)
+	}
+	profile.Roles = []string{"admin"}
+	scoped, err = service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+	}, validTraceIDOne)
+	if err != nil || len(scoped) != 3 {
+		t.Fatalf("tenant admin technical scope must include the other owner: executions=%+v err=%v", scoped, err)
+	}
+
+	interactionScoped, err := service.ListOperationExecutionsByInteractionIDScoped(context.Background(), evidencevo.QueryScope{
+		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+	}, "int-early")
+	if err != nil || len(interactionScoped) != 1 || interactionScoped[0].Fact.OperationID != "op-early" {
+		t.Fatalf("scoped interaction must return its one authorized attempt: executions=%+v err=%v", interactionScoped, err)
 	}
 }

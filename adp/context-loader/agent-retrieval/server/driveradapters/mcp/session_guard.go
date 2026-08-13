@@ -161,26 +161,33 @@ func guardBusinessToolCallWithCompletion(
 			traceContext.Attempt = attempt
 			ctx = common.SetTraceContextToCtx(ctx, traceContext)
 		}
-		result, err := callBusinessTool(ctx, req, next)
+		result, err, failure := callBusinessTool(ctx, req, next)
 		if err != nil {
+			failure = &operationFailure{
+				Code: "downstream_error", Message: err.Error(), Stage: "tool_execution",
+			}
 			result = mcpsdk.NewToolResultError(err.Error())
 			ctx = context.WithValue(ctx, downstreamRetryableKey{}, true)
 			err = nil
+		}
+		if failure != nil {
+			ctx = context.WithValue(ctx, operationFailureKey{}, *failure)
 		}
 		if result == nil || complete == nil {
 			return result, err
 		}
 		completed, lifecycleErr, err := complete(ctx, ensured, result)
 		if err != nil {
-			return lifecycleToolError(lifecycleAvailabilityError(err)), nil
+			logger.DefaultLogger().WithContext(ctx).Errorf(
+				"[BKN Trace] failed to finalize MCP tool %q: %v", req.Params.Name, err,
+			)
+			return result, nil
 		}
 		if lifecycleErr != nil {
-			if completed != nil && lifecycleErr.Code == "receipt_pending" {
-				return lifecycleToolErrorWithDetails(
-					*lifecycleErr, map[string]any{"receipt": completed.Receipt},
-				), nil
-			}
-			return lifecycleToolError(*lifecycleErr), nil
+			logger.DefaultLogger().WithContext(ctx).Errorf(
+				"[BKN Trace] failed to finalize MCP tool %q: %s", req.Params.Name, lifecycleErr.Code,
+			)
+			return result, nil
 		}
 		if completed != nil {
 			if structured, ok := result.StructuredContent.(map[string]any); ok {
@@ -241,7 +248,7 @@ func callBusinessTool(
 	ctx context.Context,
 	req mcpsdk.CallToolRequest,
 	next func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error),
-) (result *mcpsdk.CallToolResult, err error) {
+) (result *mcpsdk.CallToolResult, err error, failure *operationFailure) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.DefaultLogger().WithContext(ctx).Errorf(
@@ -250,10 +257,22 @@ func callBusinessTool(
 			)
 			result = mcpsdk.NewToolResultError("business tool execution failed")
 			err = nil
+			failure = &operationFailure{
+				Code: "handler_panic", Message: fmt.Sprint(recovered), Stage: "tool_execution",
+			}
 		}
 	}()
 	result, err = next(ctx, req)
-	return result, err
+	return result, err, failure
+}
+
+type operationFailureKey struct{}
+
+type operationFailure struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Stage   string `json:"stage"`
+	Result  any    `json:"result,omitempty"`
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {

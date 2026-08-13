@@ -28,6 +28,21 @@ class Config:
     # （#322 把技能面从 capabilities-lab 收敛过来）
     OPERATOR_INTEGRATION_BASE = _env("OPERATOR_INTEGRATION_BASE", "http://agent-operator-integration:9000/api/agent-operator-integration")
 
+    # Context Loader MCP 面。ToolRef type=context_loader 由此装载，不需要在 agent
+    # 定义里写死 URL（写死会让定义不能跨环境搬）。
+    #
+    # 这是 Context Loader 的**公开面**：它挂 middlewareIntrospectVerify，只认真实
+    # 令牌（OAuth access token 或 bak_ AppKey），不吃 /in 那套 x-account-id 头部身份。
+    # 所以调用方必须透传最终用户的令牌，这条路才成立。
+    CONTEXT_LOADER_MCP_URL = _env(
+        "CONTEXT_LOADER_MCP_URL",
+        "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/",
+    )
+    # 凭据只走调用方透传的令牌（见 auth.caller_token）。刻意不设服务凭据兜底：
+    # 用服务 AppKey 顶上去会让 Context Loader 看到签发人而非真实调用者，
+    # per-user 授权当场塌缩。没令牌就不挂 CL 工具。
+    CONTEXT_LOADER_MCP_TIMEOUT_S = float(_env("CONTEXT_LOADER_MCP_TIMEOUT_S", "30"))
+
     # BKN Trace phase-two evidence ingestion. Empty URL = construct evidence facts
     # locally but do not submit them, so bkn-agent can deploy before bkn-trace.
     BKN_TRACE_EVIDENCE_INGEST_URL = _env("BKN_TRACE_EVIDENCE_INGEST_URL", "")

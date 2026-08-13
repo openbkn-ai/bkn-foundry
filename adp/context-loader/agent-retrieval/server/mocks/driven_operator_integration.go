@@ -145,17 +145,3 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) ReadSkillFile(ctx, req any)
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadSkillFile", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ReadSkillFile), ctx, req)
 }
-
-// SyncToolDependencyPackage mocks base method.
-func (m *MockDrivenOperatorIntegration) SyncToolDependencyPackage(ctx context.Context, req *interfaces.SyncToolDependencyPackageRequest) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SyncToolDependencyPackage", ctx, req)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SyncToolDependencyPackage indicates an expected call of SyncToolDependencyPackage.
-func (mr *MockDrivenOperatorIntegrationMockRecorder) SyncToolDependencyPackage(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncToolDependencyPackage", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).SyncToolDependencyPackage), ctx, req)
-}

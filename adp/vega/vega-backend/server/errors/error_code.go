@@ -108,4 +108,5 @@ func init() {
 	rest.Register(DiscoverScheduleErrCodeList)
 	rest.Register(ExtensionsErrCodeList)
 	rest.Register(SemanticUnderstandingTaskErrCodeList)
+	rest.Register(IndexCapabilityErrCodeList)
 }

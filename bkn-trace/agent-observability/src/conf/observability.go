@@ -9,9 +9,13 @@ import (
 )
 
 type ObservabilityConfig struct {
-	CursorSigningKey     []byte
-	SourceTimeout        time.Duration
-	MaxConcurrentSources int
+	CursorSigningKey              []byte
+	SourceTimeout                 time.Duration
+	MaxConcurrentSources          int
+	SourceCoverageMetricsEndpoint string
+	SourceCoverageSourceID        string
+	SourceCoverageDeploymentID    string
+	SourceCoverageInterval        time.Duration
 }
 
 func NewObservabilityConfig() ObservabilityConfig {
@@ -33,9 +37,22 @@ func NewObservabilityConfig() ObservabilityConfig {
 			maxConcurrentSources = configured
 		}
 	}
+	coverageInterval := 30 * time.Second
+	if value := strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_INTERVAL")); value != "" {
+		configured, err := time.ParseDuration(value)
+		if err != nil || configured <= 0 {
+			slog.Warn("invalid source coverage interval; using default", "value", value, "default", coverageInterval)
+		} else {
+			coverageInterval = configured
+		}
+	}
 	return ObservabilityConfig{
-		CursorSigningKey:     []byte(os.Getenv("BKN_OBSERVABILITY_CURSOR_SIGNING_KEY")),
-		SourceTimeout:        sourceTimeout,
-		MaxConcurrentSources: maxConcurrentSources,
+		CursorSigningKey:              []byte(os.Getenv("BKN_OBSERVABILITY_CURSOR_SIGNING_KEY")),
+		SourceTimeout:                 sourceTimeout,
+		MaxConcurrentSources:          maxConcurrentSources,
+		SourceCoverageMetricsEndpoint: strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT")),
+		SourceCoverageSourceID:        strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_SOURCE_ID")),
+		SourceCoverageDeploymentID:    strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_DEPLOYMENT_ID")),
+		SourceCoverageInterval:        coverageInterval,
 	}
 }

@@ -130,6 +130,21 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalGetByID(ctx, id any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalGetByID), ctx, id)
 }
 
+// InternalMarkCancelled mocks base method.
+func (m *MockDiscoverTaskService) InternalMarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalMarkCancelled", ctx, id, message, finishTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalMarkCancelled indicates an expected call of InternalMarkCancelled.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkCancelled(ctx, id, message, finishTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCancelled", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkCancelled), ctx, id, message, finishTime)
+}
+
 // InternalUpdateResult mocks base method.
 func (m *MockDiscoverTaskService) InternalUpdateResult(ctx context.Context, id string, result *interfaces.DiscoverResult, stime int64) error {
 	m.ctrl.T.Helper()
@@ -159,10 +174,10 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalUpdateStatus(ctx, id, sta
 }
 
 // List mocks base method.
-func (m *MockDiscoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+func (m *MockDiscoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.DiscoverTask)
+	ret0, _ := ret[0].([]*interfaces.DiscoverTaskSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

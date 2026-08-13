@@ -1251,7 +1251,7 @@ MARIADB_USER="${MARIADB_USER:-openbkn}"
 MARIADB_PASSWORD="${MARIADB_PASSWORD:-}"
 MARIADB_STORAGE_SIZE="${MARIADB_STORAGE_SIZE:-10Gi}"
 MARIADB_MAX_CONNECTIONS="${MARIADB_MAX_CONNECTIONS:-5000}"
-# Container resources: empty means the mariadb chart defaults (req 250m/256Mi, lim 375m/384Mi).
+# Container resources: empty means requests only; limits are added only when explicitly configured.
 MARIADB_MEMORY_REQUEST="${MARIADB_MEMORY_REQUEST:-}"
 MARIADB_MEMORY_LIMIT="${MARIADB_MEMORY_LIMIT:-}"
 MARIADB_CPU_REQUEST="${MARIADB_CPU_REQUEST:-}"

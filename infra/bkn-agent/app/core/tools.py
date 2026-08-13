@@ -7,11 +7,29 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app import evidence, observability
 from app.config import config
+from app.core import context_loader
 from app.core.skills import normalize_skill_id
 from app.core.toolbox import _safe_name, load_toolbox_tools
 from app.errors import bad_request
 
 logger = logging.getLogger("bkn-agent.tools")
+
+
+def _context_loader_allowed_tools(tool_refs: list[dict]) -> set[str] | None:
+    """合并 Context Loader 引用的白名单。
+
+    旧 agent 未声明 allowed_tools 时保持全量装载；全部引用都显式声明时取并集。
+    这样新增只读 agent 能精确收窄，而不会改变现有 agent 的运行语义。
+    """
+    allow_list: set[str] = set()
+    for ref in tool_refs:
+        if ref.get("type") != "context_loader":
+            continue
+        allowed = ref.get("allowed_tools")
+        if allowed is None:
+            return None
+        allow_list.update(str(name) for name in allowed)
+    return allow_list
 
 
 async def _trace_mcp_call(request, handler):
@@ -36,8 +54,10 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
                 "url": url,
                 "headers": headers,
             }
-        elif kind in ("agent", "toolbox"):
-            continue  # agent-as-tool 见 _agent_tool；toolbox 见 _toolbox_tools
+        elif kind in ("agent", "toolbox", "context_loader"):
+            # agent-as-tool 见 _agent_tool；toolbox 见 _toolbox_tools；
+            # context_loader 见 app/core/context_loader.py（端点来自配置，且要先握手）
+            continue
         else:
             raise bad_request("ToolRef", "未知工具类型", str(ref))
     return conns
@@ -182,6 +202,21 @@ async def load_tools(
     skill_ids: list[str] | None = None,
 ) -> list[Any]:
     tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
+    if context_loader.wanted(tool_refs):
+        # 只用调用方（runner / graph）已经开好的会话，这里绝不自己开。
+        #
+        # 原先这里是 `current_session() or await open_session()`，想兜住直接调
+        # load_tools 的场景。实测证明那是个泄漏源：主路握手失败时它会再开一个
+        # 交互，而 graph 的 finally 只关自己持有的 cl_session（此时是 None），
+        # 兜底开的那个永远关不掉。服务端一个 conversation 只允许一个 active
+        # 交互，于是每轮泄一个、下一轮必被 interaction_in_progress 挡掉，
+        # 一条 thread 从第二轮起就再也拿不到工具。
+        #
+        # 没开出会话就没有工具——open_session 已经打过 warning，失败留在看得见
+        # 的地方，比静默开一个关不掉的交互好。
+        session = context_loader.current_session()
+        if session is not None:
+            tools.extend(session.tools(_context_loader_allowed_tools(tool_refs)))
     conns = _mcp_connections(tool_refs, account_id, account_type)
     if conns:
         client = MultiServerMCPClient(conns, tool_interceptors=[_trace_mcp_call])

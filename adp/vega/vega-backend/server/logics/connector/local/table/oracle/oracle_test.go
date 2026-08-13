@@ -52,6 +52,38 @@ func TestOracleConnectorBuildPagedSQL(t *testing.T) {
 	)
 }
 
+func TestOracleConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
+	connector, mock, cleanup := newOracleConnectorMock(t, nil)
+	defer cleanup()
+	connector.connected = true
+
+	mock.ExpectQuery("FROM ALL_OBJECTS O").
+		WithArgs("APP", "DELETED_ORDERS").
+		WillReturnError(sql.ErrNoRows)
+
+	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Database: "app", Name: "deleted_orders"})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "table metadata not found or inaccessible: app.deleted_orders")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOracleConnectorFetchTableStatusSupportsViews(t *testing.T) {
+	connector, mock, cleanup := newOracleConnectorMock(t, nil)
+	defer cleanup()
+
+	mock.ExpectQuery("FROM ALL_OBJECTS O").
+		WithArgs("APP", "ACTIVE_ORDERS").
+		WillReturnRows(sqlmock.NewRows([]string{"OBJECT_TYPE", "NUM_ROWS", "COMMENTS", "LAST_ANALYZED"}).
+			AddRow("VIEW", nil, "active orders", nil))
+
+	table := &interfaces.TableMeta{Database: "app", Name: "active_orders"}
+	require.NoError(t, connector.fetchTableStatus(context.Background(), table))
+	assert.Equal(t, "view", table.TableType)
+	assert.Equal(t, "active orders", table.Description)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestOracleConnectorValidateSchemas(t *testing.T) {
 	t.Run("success case insensitive", func(t *testing.T) {
 		connector, mock, cleanup := newOracleConnectorMock(t, []string{"app"})
@@ -100,17 +132,20 @@ func TestOracleConnectorListTables(t *testing.T) {
 		connector.connected = true
 		lastAnalyzed := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
 
-		mock.ExpectQuery("SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE 1=1  AND OWNER IN \\('APP'\\)").
+		mock.ExpectQuery("SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE OBJECT_TYPE IN \\('TABLE', 'VIEW', 'MATERIALIZED VIEW'\\) AND OWNER IN \\('APP'\\)").
 			WillReturnRows(sqlmock.NewRows([]string{"OWNER", "TABLE_NAME", "TABLE_TYPE", "LAST_ANALYZED"}).
-				AddRow("APP", "ORDERS", "TABLE", sql.NullTime{Time: lastAnalyzed, Valid: true}))
+				AddRow("APP", "ORDERS", "TABLE", sql.NullTime{Time: lastAnalyzed, Valid: true}).
+				AddRow("APP", "ACTIVE_ORDERS", "VIEW", sql.NullTime{}))
 
 		got, err := connector.ListTables(context.Background())
 
 		require.NoError(t, err)
-		require.Len(t, got, 1)
+		require.Len(t, got, 2)
 		assert.Equal(t, "ORDERS", got[0].Name)
+		assert.Equal(t, "table", got[0].TableType)
 		assert.Equal(t, "APP", got[0].Database)
 		assert.Equal(t, lastAnalyzed.UnixMilli(), got[0].Properties["last_analyzed"])
+		assert.Equal(t, "view", got[1].TableType)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -119,7 +154,7 @@ func TestOracleConnectorListTables(t *testing.T) {
 		defer cleanup()
 		connector.connected = true
 
-		mock.ExpectQuery("SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE 1=1 ").
+		mock.ExpectQuery("SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE OBJECT_TYPE IN \\('TABLE', 'VIEW', 'MATERIALIZED VIEW'\\)").
 			WillReturnError(errors.New("db down"))
 
 		got, err := connector.ListTables(context.Background())

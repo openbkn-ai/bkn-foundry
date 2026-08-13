@@ -514,15 +514,34 @@ components:
             - manual
             - scheduled
           description: 触发方式。
+        execution_mode:
+          type: string
+          enum:
+            - once
+            - per_instance
+          description: |
+            执行粒度，由行动类的参数来源推导。参数中存在 `value_from=property` 的项时
+            为 `per_instance`，每个命中实例各调用一次工具；否则所有命中实例解析出的
+            参数完全相同，为 `once`，只调用一次工具。
+        target_count:
+          type: integer
+          description: |
+            命中的目标实例数。`per_instance` 下与 `total_count` 相等；`once` 下可远大于
+            `total_count`——**读这个字段判断这次行动覆盖了多少对象，不要读 total_count**。
+
+            本特性上线前落库的历史记录没有这个字段，也没有 `execution_mode`：那些记录
+            一律是逐实例执行，`total_count` 就是对象数。**判定方法**：`execution_mode`
+            缺失时按 `per_instance` 处理，覆盖范围读 `total_count`。
         total_count:
           type: integer
-          description: 目标对象总数。
+          description: |
+            本次执行的工具调用次数。`per_instance` 下等于命中实例数；`once` 下恒为 1。
         success_count:
           type: integer
-          description: 成功对象数。
+          description: 成功的工具调用次数。
         failed_count:
           type: integer
-          description: 失败对象数。
+          description: 失败的工具调用次数。
         start_time:
           type: integer
           format: int64
@@ -543,19 +562,113 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ActionExecutionResult'
-          description: 逐对象执行结果。
+          description: 逐对象执行结果。仅单次查询返回，列表不含此字段。
+
+    ActionExecutionSummary:
+      type: object
+      description: |
+        列表里的执行记录摘要。字段与 `ActionExecution` 相同，只是不含 `results`——
+        要逐对象明细请用 `get_action_execution` 按 `id` 单查。
+      properties:
+        id:
+          type: string
+          description: 执行 ID。
+        kn_id:
+          type: string
+          description: 知识网络 ID。
+        action_type_id:
+          type: string
+          description: 行动类 ID。
+        action_type_name:
+          type: string
+          description: 行动类名称。
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+            - cancelled
+          description: 执行状态。
+        trigger_type:
+          type: string
+          enum:
+            - manual
+            - scheduled
+          description: 触发方式。
+        execution_mode:
+          type: string
+          enum:
+            - once
+            - per_instance
+          description: |
+            执行粒度，由行动类的参数来源推导。参数中存在 `value_from=property` 的项时
+            为 `per_instance`，每个命中实例各调用一次工具；否则所有命中实例解析出的
+            参数完全相同，为 `once`，只调用一次工具。
+        target_count:
+          type: integer
+          description: |
+            命中的目标实例数。`per_instance` 下与 `total_count` 相等；`once` 下可远大于
+            `total_count`——**读这个字段判断这次行动覆盖了多少对象，不要读 total_count**。
+
+            本特性上线前落库的历史记录没有这个字段，也没有 `execution_mode`：那些记录
+            一律是逐实例执行，`total_count` 就是对象数。**判定方法**：`execution_mode`
+            缺失时按 `per_instance` 处理，覆盖范围读 `total_count`。
+        total_count:
+          type: integer
+          description: |
+            本次执行的工具调用次数。`per_instance` 下等于命中实例数；`once` 下恒为 1。
+        success_count:
+          type: integer
+          description: 成功的工具调用次数。
+        failed_count:
+          type: integer
+          description: 失败的工具调用次数。
+        start_time:
+          type: integer
+          format: int64
+          description: 开始时间（Unix 毫秒）。
+        end_time:
+          type: integer
+          format: int64
+          description: 结束时间（Unix 毫秒）。
+        duration_ms:
+          type: integer
+          format: int64
+          description: 总耗时（毫秒）。
+        dynamic_params:
+          type: object
+          additionalProperties: true
+          description: 本次执行使用的动态参数。
 
     ActionExecutionResult:
       type: object
-      description: 单个对象的执行结果（同样是裁剪后的投影）。
+      description: |
+        单次工具调用的执行结果（同样是裁剪后的投影）。`per_instance` 模式下一条对应一个
+        实例；`once` 模式下整次执行只有一条，它覆盖的实例在 `targets` 里。
       properties:
         _instance_id:
           type: string
-          description: 对象唯一标识。
+          description: 对象唯一标识。`once` 模式下为空。
         _instance_identity:
           $ref: '#/components/schemas/InstanceIdentity'
         _display:
-          description: 对象的显示值。
+          description: 对象的显示值。`once` 模式下是「N 个目标实例合并为 1 次调用」。
+        targets:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: |
+            本次调用覆盖的目标实例，仅 `once` 模式返回，**最多 20 条**。命中实例可能上万，
+            全量返回会撑爆上下文，所以这里只是样本；覆盖总数看外层的 `target_count`。
+        targets_total:
+          type: integer
+          description: 被截断前的 targets 总数，仅截断时返回。
+        targets_truncated:
+          type: boolean
+          description: targets 是否被截断。为 true 时说明实际覆盖实例多于返回的条数。
         status:
           type: string
           description: 该对象的执行结果状态（如 `success` / `failed`）。
@@ -582,8 +695,11 @@ components:
         entries:
           type: array
           items:
-            $ref: '#/components/schemas/ActionExecution'
-          description: 执行记录列表，每条与单次查询同样做过裁剪。
+            $ref: '#/components/schemas/ActionExecutionSummary'
+          description: |
+            执行记录列表，每条与单次查询同样做过裁剪，且**不含 `results`**——
+            逐对象明细只在 `get_action_execution` 里给，避免列表被历史任务的
+            实例明细撑爆。
         total_count:
           type: integer
           description: 命中总数。

@@ -1,0 +1,4 @@
+[VegaBackend.IndexCapability.InternalError.Unavailable]
+Description = "全文分词器能力不可用"
+Solution = "请恢复 OpenSearch 连接后重启 Vega"
+ErrorLink = "暂无"

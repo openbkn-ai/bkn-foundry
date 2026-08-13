@@ -97,7 +97,11 @@ func projectionItem(
 	aggregateVersion uint64,
 	value any,
 ) (iprojectionoutbox.Item, error) {
-	payload, err := json.Marshal(value)
+	projectionValue := value
+	if receipt, ok := value.(sessionvo.Receipt); ok {
+		projectionValue = sessionvo.NewReceiptProjectionDocument(receipt)
+	}
+	payload, err := json.Marshal(projectionValue)
 	if err != nil {
 		return iprojectionoutbox.Item{}, err
 	}

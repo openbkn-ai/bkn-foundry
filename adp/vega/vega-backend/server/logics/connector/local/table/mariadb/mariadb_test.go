@@ -8,6 +8,7 @@ package mariadb
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -188,6 +189,22 @@ func TestMariaDBConnectorPing(t *testing.T) {
 		assert.Less(t, time.Since(startedAt), 500*time.Millisecond)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestMariaDBConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
+	connector, mock, cleanup := newMariaDBConnectorMock(t, nil)
+	defer cleanup()
+	connector.connected = true
+
+	mock.ExpectQuery("SELECT TABLE_TYPE").
+		WithArgs("app", "deleted_orders").
+		WillReturnError(sql.ErrNoRows)
+
+	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Database: "app", Name: "deleted_orders"})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "table metadata not found or inaccessible: app.deleted_orders")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func validMariaDBConfig(port int) interfaces.ConnectorConfig {

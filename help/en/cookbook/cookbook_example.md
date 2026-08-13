@@ -52,8 +52,7 @@ openbkn bkn create-from-csv <catalog_id> \
 ```
 
 > **This command does not currently work**: its CSV loading depends on the retired dataflow path.
-> Use the two-step route below (mysql client → re-discover → `create-from-catalog`);
-> `examples/02-csv-to-kn` is a runnable version.
+> Use the two-step route below (mysql client → re-discover → `create-from-catalog`).
 
 Quick parameter reference:
 
@@ -133,4 +132,3 @@ A non-empty `concepts` list from `bkn search` indicates the retrieval pipeline i
 ## 6. See also
 
 - References: [BKN Engine](../manual/bkn.md) · [Data Source Management](../manual/datasource.md) · [Quick start](../quick-start.md)
-- End-to-end sample project: [`examples/02-csv-to-kn/`](../../../examples/02-csv-to-kn/) in the repo

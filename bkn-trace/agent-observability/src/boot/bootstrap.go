@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectorsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
@@ -31,10 +32,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchlogaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/otelcolmetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	memorysessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/extension/enterpriseroute"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/coremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/server/httpserver"
@@ -46,6 +49,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionrebuild"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isourcecoveragestore"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
@@ -80,7 +84,6 @@ func NewApp() (*App, error) {
 	)
 	traceDetailClient := opensearchtraceaccess.New(openSearchClient, openSearchConfig.TraceIndex)
 	traceQueryService := tracesvc.New(traceDetailClient)
-	traceHandler := httphandler.NewTraceHandler(traceQueryService)
 	var evidenceStore ievidencestore.EvidenceStorePort = evidencestore.New()
 	if strings.EqualFold(evidenceConfig.Store, "opensearch") {
 		evidenceStore = opensearchevidencestore.New(openSearchClient, openSearchConfig.EvidenceIndex)
@@ -94,6 +97,14 @@ func NewApp() (*App, error) {
 	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
 	if err != nil {
 		return nil, err
+	}
+	coverageStore, coverageStoreSupported := sessionStore.(isourcecoveragestore.Store)
+	coverageMonitorEnabled := observabilityConfig.SourceCoverageMetricsEndpoint != ""
+	if coverageMonitorEnabled && (!coverageStoreSupported || observabilityConfig.SourceCoverageSourceID == "" || observabilityConfig.SourceCoverageDeploymentID == "") {
+		if closeDatabase != nil {
+			_ = closeDatabase()
+		}
+		return nil, errors.New("configured source coverage monitor requires MariaDB Core store, source ID, and deployment ID")
 	}
 	var summaryProjection iprojectionsource.ProjectionSourcePort
 	if legacyProjection, ok := evidenceStore.(iprojectionsource.ProjectionSourcePort); ok {
@@ -121,6 +132,14 @@ func NewApp() (*App, error) {
 		&http.Client{Timeout: accessScopeConfig.Timeout},
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
+	logOptions := logsvc.Options{
+		CursorKey: observabilityConfig.CursorSigningKey, SourceTimeout: observabilityConfig.SourceTimeout,
+		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
+	}
+	if coverageStoreSupported && observabilityConfig.SourceCoverageDeploymentID != "" {
+		logOptions.CoverageStore = coverageStore
+		logOptions.CoverageDeploymentID = observabilityConfig.SourceCoverageDeploymentID
+	}
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions([]logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
 		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
@@ -130,11 +149,7 @@ func NewApp() (*App, error) {
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
-	}, logsvc.Options{
-		CursorKey:            observabilityConfig.CursorSigningKey,
-		SourceTimeout:        observabilityConfig.SourceTimeout,
-		MaxConcurrentSources: observabilityConfig.MaxConcurrentSources,
-	}), evidenceHandler)
+	}, logOptions), evidenceHandler)
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
 		EvidenceCollectionState: func() string {
 			if coreConfig.EvidenceCollectionState == "" {
@@ -144,13 +159,20 @@ func NewApp() (*App, error) {
 		},
 		Metrics: metrics,
 	})
+	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
+		traceQueryService, evidenceService, sessionService,
+	)
 	sessionHandler := httphandler.NewSessionHandlerWithAssembly(
 		sessionService,
 		assemblysvc.NewQueryServiceWithBusinessResolver(sessionStore, ledgerStore, resolver),
 	)
 	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
 
-	app := newApp(httpServerConfig, traceHandler, evidenceHandler, logHandler, sessionHandler, ledgerHandler, metrics)
+	enterpriseReader := httphandler.NewEnterpriseInteractionFactsReader(evidenceService, sessionService)
+	app := newApp(
+		httpServerConfig, traceHandler, evidenceHandler, logHandler,
+		sessionHandler, ledgerHandler, metrics, enterpriseReader,
+	)
 	app.closeDatabase = closeDatabase
 	workerContext, stopWorkers := context.WithCancel(context.Background())
 	app.stopWorkers = stopWorkers
@@ -164,6 +186,20 @@ func NewApp() (*App, error) {
 			sessionService,
 		)
 	}()
+	if coverageMonitorEnabled {
+		coverageMonitor := sourcecoveragesvc.New(
+			coverageStore,
+			otelcolmetrics.New(observabilityConfig.SourceCoverageMetricsEndpoint, &http.Client{Timeout: 3 * time.Second}),
+			sourcecoveragesvc.Options{
+				SourceID: observabilityConfig.SourceCoverageSourceID, DeploymentID: observabilityConfig.SourceCoverageDeploymentID,
+			},
+		)
+		app.workers.Add(1)
+		go func() {
+			defer app.workers.Done()
+			runSourceCoverageMonitor(workerContext, observabilityConfig.SourceCoverageInterval, coverageMonitor)
+		}()
+	}
 	if coreConfig.ProjectionEnabled {
 		outboxStore, supported := sessionStore.(iprojectionoutbox.Store)
 		if !supported {
@@ -266,6 +302,25 @@ func runLeaseReaper(
 	}
 }
 
+func runSourceCoverageMonitor(ctx context.Context, interval time.Duration, service *sourcecoveragesvc.Service) {
+	observe := func() {
+		if err := service.Observe(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("BKN Trace source coverage monitor failed: %v", err)
+		}
+	}
+	observe()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			observe()
+		}
+	}
+}
+
 func runProjectionWorker(
 	ctx context.Context,
 	interval time.Duration,
@@ -330,6 +385,7 @@ func newApp(
 	sessionHandler *httphandler.SessionHandler,
 	ledgerHandler *httphandler.LedgerHandler,
 	metrics http.Handler,
+	enterpriseReaders ...enterpriseroute.Reader,
 ) *App {
 	mux := http.NewServeMux()
 	if metrics != nil {
@@ -343,33 +399,44 @@ func newApp(
 		return evidenceHandler.RequireTrustedQueryIdentity(h)
 	}
 
-	mux.HandleFunc(APIBasePath+"/traces/_search", readAuth(traceHandler.SearchTraces))
-	mux.HandleFunc(APIBasePath+"/traces/by-conversation", readAuth(traceHandler.SearchTracesByConversationID))
-	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", readAuth(evidenceHandler.GetBusinessGraphByRequestID))
-	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", readAuth(evidenceHandler.GetSnapshotPreviewByRequestID))
-	mux.HandleFunc(APIBasePath+"/traces/by-request", readAuth(evidenceHandler.GetEvidenceChainByRequestID))
-	mux.HandleFunc(APIBasePath+"/traces/", readAuth(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/trace-graph") && !evidenceHandler.AuthorizeTechnicalTraceQuery(w, r) {
-			return
-		}
+	// These pre-0.1.4 raw query contracts are intentionally unavailable. Keep
+	// exact tombstones ahead of the typed /traces/{trace_id} dispatch so callers
+	// receive 404 instead of treating a removed route name as a Trace ID.
+	mux.HandleFunc(APIBasePath+"/traces/_search", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-conversation", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-request", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", http.NotFound)
+	mux.HandleFunc(APIBasePath+"/traces", readAuth(evidenceHandler.ListTraceExecutions))
+	typedTraceDetail := readAuth(func(w http.ResponseWriter, r *http.Request) {
 		if traceHandler.GetTraceSubresource(w, r) {
 			return
 		}
-		evidenceHandler.GetTraceSubresource(w, r)
-	}))
-	mux.HandleFunc(APIBasePath+"/evidence-nodes/", readAuth(evidenceHandler.GetEvidenceNode))
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc(APIBasePath+"/traces/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(strings.TrimSuffix(r.URL.Path, "/"), "/trace-graph") {
+			http.NotFound(w, r)
+			return
+		}
+		typedTraceDetail(w, r)
+	})
 	mux.HandleFunc(APIBasePath+"/evidence/events", ledgerHandler.Ingest)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
-	mux.HandleFunc(APIBasePath+"/evidence/by-trace", readAuth(evidenceHandler.SearchEvidenceByTrace))
-	httphandler.RegisterBusinessProvenanceRoutes(mux, APIBasePath, evidenceHandler, readAuth)
-	mux.HandleFunc(APIBasePath+"/trace-executions", readAuth(evidenceHandler.ListTraceExecutions))
 	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs", readAuth(logHandler.ListLogs))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-facets", readAuth(logHandler.GetLogFacets))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
+	var enterpriseReader enterpriseroute.Reader
+	if len(enterpriseReaders) > 0 {
+		enterpriseReader = enterpriseReaders[0]
+	}
+	enterpriseroute.Mount(mux, enterpriseReader, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(readAuth(next.ServeHTTP))
+	})
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))

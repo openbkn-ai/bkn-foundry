@@ -17,6 +17,7 @@ import (
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
+	"ontology-query/logics"
 )
 
 func filtersToCondition(filters []interfaces.Filter) *cond.CondCfg {
@@ -108,7 +109,7 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 	step string,
 ) (interfaces.MetricData, error) {
 
-	_, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, otID)
+	objectType, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, otID)
 	if err != nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
@@ -117,6 +118,12 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 	if !exists {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+	}
+	if objectType.DataSource == nil || objectType.DataSource.ID == "" {
+		return interfaces.MetricData{}, logics.MissingObjectTypeDataSourceError(ctx, otID)
+	}
+	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+		return interfaces.MetricData{}, logics.UnsupportedObjectTypeDataSourceError(ctx, otID, objectType.DataSource.Type)
 	}
 
 	def, ok, err := ots.omAccess.GetMetricDefinition(ctx, knID, branch, logicProp.DataSource.ID)

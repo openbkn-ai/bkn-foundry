@@ -46,17 +46,39 @@ func (c *safeClient) checkOne(ctx context.Context, accessorID, rtype, rid, op st
 	return out.Allowed, err
 }
 
-// allowedOps returns the subset of candidate ops the accessor may perform.
-func (c *safeClient) allowedOps(ctx context.Context, accessorID, rtype, rid string, cands []string) ([]string, error) {
-	out := make([]string, 0, len(cands))
-	for _, op := range cands {
-		ok, err := c.checkOne(ctx, accessorID, rtype, rid, op)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			out = append(out, op)
-		}
+// safeResource is one { type, id } pair in the batch filter request.
+type safeResource struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+// filterResources runs one batched decision for a whole page: visibility decides
+// which resources come back, candidates decide which operations each carries.
+// One round trip regardless of resource or operation count — the per-resource,
+// per-operation loop it replaces made list pages scale as N x M (#357).
+func (c *safeClient) filterResources(ctx context.Context, accessorID string,
+	resources []safeResource, visibility, candidates []string) (map[string][]string, error) {
+
+	out := map[string][]string{}
+	if len(resources) == 0 {
+		return out, nil
+	}
+	var resp struct {
+		Resources []struct {
+			ResourceID string   `json:"resource_id"`
+			Operations []string `json:"operations"`
+		} `json:"resources"`
+	}
+	if err := c.do(ctx, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
+		"accessor_id":           accessorID,
+		"resources":             resources,
+		"visibility_operations": visibility,
+		"candidate_operations":  candidates,
+	}, &resp); err != nil {
+		return nil, err
+	}
+	for _, r := range resp.Resources {
+		out[r.ResourceID] = r.Operations
 	}
 	return out, nil
 }
@@ -125,30 +147,42 @@ func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interf
 	return s.safe.allowedAll(ctx, check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations)
 }
 
-func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	out := map[string]interfaces.PermissionResourceOps{}
+// filterBatch is the shared body of FilterResources and GetResourcesOperations:
+// both project the candidate operations onto a set of resources; they differ
+// only in whether the visibility operations filter the result.
+func (s *safePermissionAccess) filterBatch(ctx context.Context,
+	filter interfaces.PermissionResourcesFilter, visibility []string) (map[string]interfaces.PermissionResourceOps, error) {
+
+	resources := make([]safeResource, 0, len(filter.Resources))
 	for _, r := range filter.Resources {
-		ops, err := s.safe.allowedOps(ctx, filter.Accessor.ID, r.Type, r.ID, filter.Operations)
-		if err != nil {
-			return nil, err
-		}
-		if len(ops) > 0 {
-			out[r.ID] = interfaces.PermissionResourceOps{ResourceID: r.ID, Operations: ops}
-		}
+		resources = append(resources, safeResource{Type: r.Type, ID: r.ID})
+	}
+	// Callers that only pass a visibility list keep the old behaviour: the
+	// operations they asked about are also the ones projected back.
+	candidates := filter.CandidateOperations
+	if len(candidates) == 0 {
+		candidates = filter.Operations
+	}
+	ops, err := s.safe.filterResources(ctx, filter.Accessor.ID, resources, visibility, candidates)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]interfaces.PermissionResourceOps, len(ops))
+	for id, allowed := range ops {
+		out[id] = interfaces.PermissionResourceOps{ResourceID: id, Operations: allowed}
 	}
 	return out, nil
 }
 
+func (s *safePermissionAccess) FilterResources(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
+	return s.filterBatch(ctx, filter, filter.Operations)
+}
+
+// GetResourcesOperations answers "what may I do on each of these", so no
+// visibility filter — every requested resource comes back, possibly with an
+// empty operation set.
 func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
-	out := map[string]interfaces.PermissionResourceOps{}
-	for _, r := range filter.Resources {
-		ops, err := s.safe.allowedOps(ctx, filter.Accessor.ID, r.Type, r.ID, filter.Operations)
-		if err != nil {
-			return nil, err
-		}
-		out[r.ID] = interfaces.PermissionResourceOps{ResourceID: r.ID, Operations: ops}
-	}
-	return out, nil
+	return s.filterBatch(ctx, filter, nil)
 }
 
 func (s *safePermissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {

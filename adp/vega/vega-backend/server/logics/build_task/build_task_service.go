@@ -59,7 +59,7 @@ type buildTaskService struct {
 }
 
 var activeBuildTaskStatuses = []string{
-	interfaces.BuildTaskStatusInit,
+	interfaces.BuildTaskStatusPending,
 	interfaces.BuildTaskStatusRunning,
 	interfaces.BuildTaskStatusStopping,
 }
@@ -171,8 +171,8 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 			WithErrorDetails(err.Error())
 	}
 
-	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 init（界面"排队中"）。
-	// 入队失败仅记日志，任务保持 init，可由 /start 重新触发
+	// 创建即入队执行：客户端创建后不会再调 /start，不入队任务会永远停在 pending（界面"排队中"）。
+	// 入队失败仅记日志，任务保持 pending，由 Build Task reconciler 自动重新入队。
 	if err := bts.enqueueTask(ctx, buildTask, false); err != nil {
 		otellog.LogError(ctx, "Enqueue build task failed", err)
 	}
@@ -185,26 +185,27 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	if indexManager == nil {
 		return nil
 	}
-	analyzers := map[string]string{}
 	if buildTask == nil || buildTask.IndexConfig == nil {
 		return nil
 	}
 	for field, feature := range buildTask.IndexConfig.Features {
-		if feature.Fulltext != nil && strings.TrimSpace(feature.Fulltext.Analyzer) != "" {
-			analyzers[field] = feature.Fulltext.Analyzer
+		if feature.Fulltext == nil || strings.TrimSpace(feature.Fulltext.Analyzer) == "" {
+			continue
 		}
-	}
-	if len(analyzers) == 0 {
-		return nil
-	}
-	if err := indexManager.ValidateAnalyzers(ctx, analyzers); err != nil {
-		var unavailableErr *interfaces.AnalyzerUnavailableError
-		if errors.As(err, &unavailableErr) {
+		available, err := indexManager.ValidateAnalyzer(ctx, feature.Fulltext.Analyzer)
+		if err != nil {
+			var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
+			if errors.As(err, &unavailableErr) {
+				return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+					WithErrorDetails(err.Error())
+			}
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed).
+				WithErrorDetails(err.Error())
+		}
+		if !available {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer).
-				WithErrorDetails(unavailableErr.Error())
+				WithErrorDetails(fmt.Sprintf("analyzer %q for field %q is unavailable", feature.Fulltext.Analyzer, field))
 		}
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed).
-			WithErrorDetails(err.Error())
 	}
 	return nil
 }
@@ -236,7 +237,7 @@ func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.Cr
 }
 
 func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID string, excludeTaskID string) error {
-	tasks, _, err := bts.bta.List(ctx, interfaces.BuildTasksQueryParams{
+	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 2},
 		ResourceID:            resourceID,
 		Statuses:              activeBuildTaskStatuses,
@@ -267,7 +268,7 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 		ID:          xid.New().String(),
 		ResourceID:  resource.ID,
 		CatalogID:   resource.CatalogID,
-		Status:      interfaces.BuildTaskStatusInit,
+		Status:      interfaces.BuildTaskStatusPending,
 		Mode:        req.Mode,
 		ExecuteType: req.ExecuteType,
 		Creator:     accountInfo,
@@ -283,6 +284,22 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 }
 
 func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, resource *interfaces.Resource, buildTask *interfaces.BuildTask) error {
+	for _, property := range resource.SchemaDefinition {
+		if property == nil {
+			continue
+		}
+		seenFeatureTypes := make(map[string]struct{}, len(property.Features))
+		for _, feature := range property.Features {
+			if feature.FeatureType == "" {
+				continue
+			}
+			if _, exists := seenFeatureTypes[feature.FeatureType]; exists {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
+			}
+			seenFeatureTypes[feature.FeatureType] = struct{}{}
+		}
+	}
 	defaultEmbeddingModel := ""
 	defaultFulltextAnalyzer := ""
 	buildTask.IndexConfig = &interfaces.BuildTaskIndexConfig{
@@ -469,14 +486,14 @@ func (bts *buildTaskService) InternalList(ctx context.Context, params interfaces
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalList")
 	defer span.End()
 
-	return bts.bta.List(ctx, params)
+	return bts.bta.InternalList(ctx, params)
 }
 
 func (bts *buildTaskService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id string, update interfaces.BuildTaskUpdate, allowedStatuses ...string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalUpdateStatus")
 	defer span.End()
 
-	return bts.bta.UpdateStatus(ctx, tx, id, update, allowedStatuses...)
+	return bts.bta.UpdateStatus(ctx, tx, id, update, time.Now().UnixMilli(), allowedStatuses...)
 }
 
 // populateBuildTaskReferences 批量补齐任务关联的资源与目录展示字段。它只查询当前
@@ -537,6 +554,52 @@ func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, bu
 	return errors.Join(referenceErrors...)
 }
 
+func (bts *buildTaskService) populateBuildTaskSummaryReferences(ctx context.Context, tasks []*interfaces.BuildTaskSummary) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	resourceIDs := make([]string, 0, len(tasks))
+	resourceIDSet := make(map[string]struct{}, len(tasks))
+	catalogIDs := make([]string, 0, len(tasks))
+	catalogIDSet := make(map[string]struct{}, len(tasks))
+	for _, task := range tasks {
+		if _, ok := resourceIDSet[task.ResourceID]; !ok && task.ResourceID != "" {
+			resourceIDSet[task.ResourceID] = struct{}{}
+			resourceIDs = append(resourceIDs, task.ResourceID)
+		}
+		if _, ok := catalogIDSet[task.CatalogID]; !ok && task.CatalogID != "" {
+			catalogIDSet[task.CatalogID] = struct{}{}
+			catalogIDs = append(catalogIDs, task.CatalogID)
+		}
+	}
+	var referenceErrors []error
+	resources, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
+	if err != nil {
+		referenceErrors = append(referenceErrors, err)
+	}
+	resourceByID := make(map[string]*interfaces.Resource, len(resources))
+	for _, resource := range resources {
+		resourceByID[resource.ID] = resource
+	}
+	catalogs, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		referenceErrors = append(referenceErrors, err)
+	}
+	catalogByID := make(map[string]*interfaces.Catalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogByID[catalog.ID] = catalog
+	}
+	for _, task := range tasks {
+		if resource := resourceByID[task.ResourceID]; resource != nil {
+			task.ResourceName = resource.Name
+		}
+		if catalog := catalogByID[task.CatalogID]; catalog != nil {
+			task.CatalogName = catalog.Name
+		}
+	}
+	return errors.Join(referenceErrors...)
+}
+
 func (bts *buildTaskService) InternalGetStatus(ctx context.Context, id string) (string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalGetStatus")
 	defer span.End()
@@ -555,7 +618,7 @@ func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
 	switch {
 	case !hasEmbeddingIndexConfig(bt):
 		h.Embedding = "none"
-	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusInit:
+	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusPending:
 		h.Embedding = "building"
 	case bt.SyncedCount == 0:
 		// 无数据可向量化，空索引视为可用
@@ -621,7 +684,7 @@ func (bts *buildTaskService) GetByResourceID(ctx context.Context, resourceID str
 }
 
 // List retrieves build tasks with filters and pagination.
-func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
 	defer span.End()
 
@@ -631,7 +694,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	if err := bts.populateBuildTaskReferences(ctx, buildTasks); err != nil {
+	if err := bts.populateBuildTaskSummaryReferences(ctx, buildTasks); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate build task references: %v", err)
 	}
@@ -639,7 +702,12 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks))
 	for _, bt := range buildTasks {
 		accountInfos = append(accountInfos, &bt.Creator)
-		bt.IndexHealth = computeIndexHealth(bt)
+		bt.IndexHealth = computeIndexHealth(&interfaces.BuildTask{
+			Status:          bt.Status,
+			SyncedCount:     bt.SyncedCount,
+			VectorizedCount: bt.VectorizedCount,
+			IndexConfig:     bt.IndexConfig,
+		})
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
 		span.RecordError(err)
@@ -650,8 +718,8 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	return buildTasks, total, nil
 }
 
-// Start transitions a task from {init/stopped/completed, failed task auto retry} to running.
-// Note: persisted status remains init/stopped/completed until the worker picks it up — clients should poll.
+// Start transitions a stopped or failed task to pending before enqueueing it.
+// The worker persists running only after it claims the queued task.
 func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Start build task")
 	defer span.End()
@@ -667,9 +735,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	// failed 也允许重启：否则失败任务成死胡同，只能删除重建
-	if buildTask.Status != interfaces.BuildTaskStatusInit &&
-		buildTask.Status != interfaces.BuildTaskStatusStopped &&
-		buildTask.Status != interfaces.BuildTaskStatusCompleted &&
+	if buildTask.Status != interfaces.BuildTaskStatusStopped &&
 		buildTask.Status != interfaces.BuildTaskStatusFailed {
 		span.SetStatus(codes.Error, "Invalid state transition for start")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
@@ -705,16 +771,20 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return err
 	}
 
-	// 入队前先置回 init：worker 出队时会跳过 stopped/stopping 的任务
+	// 入队前先置回 pending：worker 出队时会跳过 stopped/stopping 的任务
 	// （防止排队中被停止的任务复活），stopped 状态直接入队会被误跳过。
 	// running 仍由 worker 实际执行时落账。
-	if buildTask.Status != interfaces.BuildTaskStatusInit {
-		update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusInit)
-		if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
-			otellog.LogError(ctx, "Update build task status failed", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
-				WithErrorDetails(err.Error())
-		}
+	update := interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusPending)
+	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	if err != nil {
+		otellog.LogError(ctx, "Update build task status failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
+			WithErrorDetails(err.Error())
+	}
+	if !updated {
+		span.SetStatus(codes.Error, "Build task status changed while starting")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("build task status changed while starting; retry with the latest task state")
 	}
 
 	if err := bts.enqueueTask(ctx, buildTask, reset); err != nil {
@@ -745,7 +815,7 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 			WithErrorDetails("resource index config has changed; create a new build task instead")
 	}
 
-	tasks, _, err := bts.bta.List(ctx, interfaces.BuildTasksQueryParams{
+	tasks, _, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
 		ResourceID:            buildTask.ResourceID,
 		Statuses:              []string{interfaces.BuildTaskStatusCompleted},
@@ -764,8 +834,7 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	return nil
 }
 
-// Stop transitions a task from running to stopping.
-// Note: persisted status remains running until the worker advances it — clients should poll.
+// Stop transitions a queued task directly to stopped, or a running task to stopping.
 func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Stop build task")
 	defer span.End()
@@ -781,28 +850,30 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
 	if buildTask.Status != interfaces.BuildTaskStatusRunning &&
-		buildTask.Status != interfaces.BuildTaskStatusStopping &&
-		buildTask.Status != interfaces.BuildTaskStatusInit {
+		buildTask.Status != interfaces.BuildTaskStatusPending {
 		span.SetStatus(codes.Error, "Invalid state transition for stop")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot stop task in status: %s", buildTask.Status))
 	}
 
 	// running → stopping：通知 worker 在批间检查点退出。
-	// stopping → stopped：兜底强制落停。worker 已不在（asynq 任务耗尽重试/服务重启）
-	// 时 stopping 永远不会被推进，任务卡死无法删除，二次 stop 即强制完结。
-	// init → stopped：排队中尚无 worker 观察 stopping，直接落停；
+	// pending → stopped：排队中尚无 worker 观察 stopping，直接落停；
 	// 出队时 worker 检查到 stopped 即跳过，不会复活执行。
 	targetStatus := interfaces.BuildTaskStatusStopping
-	if buildTask.Status == interfaces.BuildTaskStatusStopping ||
-		buildTask.Status == interfaces.BuildTaskStatusInit {
+	if buildTask.Status == interfaces.BuildTaskStatusPending {
 		targetStatus = interfaces.BuildTaskStatusStopped
 	}
 	update := interfaces.NewBuildTaskUpdate().WithStatus(targetStatus)
-	if _, err := bts.bta.UpdateStatus(ctx, nil, taskID, update); err != nil {
+	updated, err := bts.bta.UpdateStatus(ctx, nil, taskID, update, time.Now().UnixMilli(), buildTask.Status)
+	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
+	}
+	if !updated {
+		span.SetStatus(codes.Error, "Build task status changed while stopping")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
+			WithErrorDetails("build task status changed while stopping; retry with the latest task state")
 	}
 
 	span.SetStatus(codes.Ok, "")

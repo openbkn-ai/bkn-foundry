@@ -8,8 +8,12 @@ package worker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/bytedance/sonic"
+	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -17,6 +21,57 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
+
+func TestDiscoverTaskWorkerSkipsCancelledTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", Status: interfaces.DiscoverTaskStatusCancelled,
+	}, nil)
+	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
+	require.NoError(t, err)
+
+	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+}
+
+func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+		Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted", gomock.Any()).Return(true, nil)
+
+	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
+	require.NoError(t, err)
+	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+}
+
+func TestDiscoverTaskWorkerFailsTaskWhenCatalogIsDisabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &DiscoverTaskWorker{dts: dts, cs: cs}
+	dts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusPending,
+	}, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+	dts.EXPECT().InternalUpdateStatus(gomock.Any(), "task-1", interfaces.DiscoverTaskStatusFailed,
+		"catalog is disabled", gomock.Any()).Return(nil)
+
+	payload, err := sonic.Marshal(&interfaces.DiscoverTaskMessage{TaskID: "task-1"})
+	require.NoError(t, err)
+	require.NoError(t, worker.HandleTask(context.Background(), asynq.NewTask(interfaces.DiscoverTaskType, payload)))
+}
 
 func TestReconcileTableResources(t *testing.T) {
 	t.Run("marks new table resource", func(t *testing.T) {
@@ -159,6 +214,7 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 			ID:                 "r2",
 			SourceIdentifier:   "public.erp_material",
 			LastDiscoverStatus: interfaces.DiscoverStatusNew,
+			StatusMessage:      "discover metadata failed: table metadata not found or inaccessible: public.erp_material",
 			SourceMetadata:     map[string]any{"original_name": "public.erp_material"},
 		}
 		connector := vmock.NewMockTableConnector(ctrl)
@@ -184,6 +240,7 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 				assert.Equal(t, "r2", resource.ID)
 				require.Len(t, resource.SchemaDefinition, 1)
 				assert.Equal(t, "id", resource.SchemaDefinition[0].Name)
+				assert.Empty(t, resource.StatusMessage)
 				return nil
 			})
 
@@ -196,6 +253,74 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 1, result.FailedCount)
 	})
+}
+
+func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	dh := &DiscoverTaskWorker{rs: rs}
+	resource := &interfaces.Resource{
+		ID:               "r1",
+		SourceIdentifier: "public.departments",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name:                "department_id",
+				DisplayName:         "部门ID",
+				Description:         "部门的唯一标识",
+				Type:                "integer",
+				OriginalDescription: "旧源端注释",
+				Features: []interfaces.PropertyFeature{{
+					FeatureName: "fulltext",
+					FeatureType: interfaces.PropertyFeatureType_Fulltext,
+				}},
+			},
+			{Name: "obsolete_column", DisplayName: "已删除字段", Type: interfaces.DataType_String},
+		},
+	}
+	connector := vmock.NewMockTableConnector(ctrl)
+	connector.EXPECT().
+		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}).
+		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+			table.Columns = []interfaces.TableColumnMeta{
+				{Name: "department_id", Type: "varchar", Description: "源端最新部门编号注释"},
+				{Name: "department_name", Type: "varchar", Description: "部门名称"},
+			}
+			return nil
+		})
+	connector.EXPECT().MapType("varchar").Return(interfaces.DataType_String).Times(2)
+	rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
+		DoAndReturn(func(_ context.Context, updated *interfaces.Resource) error {
+			require.Len(t, updated.SchemaDefinition, 2)
+
+			existing := updated.SchemaDefinition[0]
+			assert.Equal(t, "department_id", existing.Name)
+			assert.Equal(t, "部门ID", existing.DisplayName)
+			assert.Equal(t, "部门的唯一标识", existing.Description)
+			assert.Equal(t, interfaces.DataType_String, existing.Type)
+			assert.Equal(t, "varchar", existing.OriginalType)
+			assert.Equal(t, "源端最新部门编号注释", existing.OriginalDescription)
+			assert.Equal(t, []interfaces.PropertyFeature{{
+				FeatureName: "fulltext",
+				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}}, existing.Features)
+
+			added := updated.SchemaDefinition[1]
+			assert.Equal(t, "department_name", added.Name)
+			assert.Equal(t, "department_name", added.DisplayName)
+			assert.Equal(t, "部门名称", added.Description)
+			assert.Equal(t, "部门名称", added.OriginalDescription)
+			assert.Equal(t, []string{"department_id", "department_name"}, []string{existing.Name, added.Name})
+			return nil
+		})
+
+	err := dh.enrichTableMetadata(context.Background(), connector, []tableDiscoverItem{{
+		resource: resource,
+		tableMeta: &interfaces.TableMeta{
+			Name: "departments", Schema: "public",
+		},
+	}}, &interfaces.DiscoverResult{})
+
+	require.NoError(t, err)
 }
 
 func TestSourceSnapshotHashIgnoresDerivedAndUserEditableFields(t *testing.T) {

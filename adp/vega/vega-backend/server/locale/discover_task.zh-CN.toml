@@ -5,7 +5,7 @@ ErrorLink = "暂无"
 
 [VegaBackend.DiscoverTask.InvalidStatus]
 Description = "采集任务状态无效"
-Solution = "status 必须为 pending / running / completed / failed 之一"
+Solution = "status 必须为 pending / running / completed / failed / cancelled 之一"
 ErrorLink = "暂无"
 
 [VegaBackend.DiscoverTask.HasRunningExecution]

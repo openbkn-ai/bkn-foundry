@@ -49,8 +49,7 @@ server/
 │   ├── agent_operator/  # AIAgent数据访问
 │   ├── model_factory/   # 模型工厂数据访问
 │   ├── ontology_manager/ # 本体管理数据访问
-│   ├── opensearch/      # OpenSearch数据访问
-│   └── uniquery/        # VEGA统一查询数据访问
+│   └── opensearch/      # OpenSearch数据访问
 ├── driveradapters/      # 接口适配层
 ├── errors/              # 错误定义
 ├── interfaces/          # 接口定义

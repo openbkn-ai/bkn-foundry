@@ -60,6 +60,9 @@ func TestStoreEvidenceIndexesNormalizedTrace(t *testing.T) {
 		t.Fatalf("expected deterministic aggregate document id, got %v", paths)
 	}
 	mappingBytes, _ := json.Marshal(indexMapping)
+	if !strings.Contains(string(mappingBytes), `"index.refresh_interval":"5s"`) {
+		t.Fatalf("new evidence indexes must retain the 5s refresh interval: %s", string(mappingBytes))
+	}
 	if !strings.Contains(string(mappingBytes), `"events":{"enabled":false,"type":"object"}`) {
 		t.Fatalf("events must not create dynamic mappings: %s", string(mappingBytes))
 	}

@@ -28,6 +28,7 @@
       "log_policy_read"
     ],
     "access_scope_fingerprint_owner": "observability-gateway",
+    "managed_knowledge_network_scope_source": "BKN Safe GET /api/safe/v1/me/knowledge-network-grants (current-subject direct instance grants only)",
     "access_scope_inputs": [
       "account_status",
       "tenant_membership",

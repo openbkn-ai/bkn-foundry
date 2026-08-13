@@ -953,9 +953,10 @@ func (ms *metricService) validateMetricAgainstResolvedOT(ctx context.Context, me
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("metric[%s]'s object type data_source resource id is required", metric.ID))
 	}
-	dsType := ds.Type
+	dsType := strings.TrimSpace(ds.Type)
 	if dsType == "" {
-		dsType = interfaces.DATA_SOURCE_TYPE_DATA_VIEW
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("metric[%s]'s object type data_source.type is required", metric.ID))
 	}
 	if dsType != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).

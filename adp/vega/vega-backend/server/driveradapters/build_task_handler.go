@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-comm-go/rest"
 
+	"vega-backend/common"
 	"vega-backend/common/visitor"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
@@ -120,6 +122,65 @@ func (r *restHandler) getBuildTask(c *gin.Context, visitor hydra.Visitor) {
 }
 
 // =========================== GET /build-tasks ===========================
+
+// parseBuildTaskListParams 解析并校验 GET /build-tasks 的全部 query:
+// 分页(offset/limit)、排序(order_by/order)、过滤(status 多值 / mode)。
+// 排序与过滤均下沉服务端,排序全局先于分页(见 build_task_access.List);
+// total_count 始终为过滤后全量条数。
+func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.BuildTasksQueryParams, error) {
+	params := interfaces.BuildTasksQueryParams{}
+
+	// 分页:offset / limit(沿用既有规则,limit=-1 表示不分页)
+	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
+	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
+	off, err := strconv.Atoi(offset)
+	if err != nil || off < interfaces.MIN_OFFSET {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+			WithErrorDetails(fmt.Sprintf("invalid offset: %s", offset))
+	}
+	lim, err := strconv.Atoi(limit)
+	if err != nil || (limit != interfaces.NO_LIMIT && (lim < interfaces.MIN_LIMIT || lim > interfaces.MAX_LIMIT)) {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+			WithErrorDetails(fmt.Sprintf("invalid limit: %s", limit))
+	}
+	params.Offset = off
+	params.Limit = lim
+
+	// 排序:order_by / order
+	orderBy := common.GetQueryOrDefault(c, "order_by", interfaces.BuildTaskOrderByCreatedAt)
+	if !isValidBuildTaskOrderBy(orderBy) {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Sort).
+			WithErrorDetails(fmt.Sprintf("invalid order_by: %s", orderBy))
+	}
+	order := common.GetQueryOrDefault(c, "order", interfaces.DESC_DIRECTION)
+	if order != interfaces.ASC_DIRECTION && order != interfaces.DESC_DIRECTION {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
+			WithErrorDetails(fmt.Sprintf("invalid order: %s", order))
+	}
+	params.OrderBy = orderBy
+	params.Order = order
+
+	// 过滤:读取重复传递的 status 参数。
+	if raw := c.QueryArray("status"); len(raw) > 0 {
+		statuses, err := parseTaskStatuses(ctx, raw, isValidBuildTaskStatus, verrors.VegaBackend_BuildTask_InvalidStatus)
+		if err != nil {
+			return params, err
+		}
+		params.Statuses = statuses
+	}
+
+	// 过滤:mode
+	mode := c.Query("mode")
+	if mode != "" && !isValidBuildTaskMode(mode) {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Mode).
+			WithErrorDetails(fmt.Sprintf("invalid mode: %s", mode))
+	}
+
+	params.ResourceID = c.Query("resource_id")
+	params.CatalogID = c.Query("catalog_id")
+	params.Mode = mode
+	return params, nil
+}
 
 func (r *restHandler) ListBuildTasksByEx(c *gin.Context) {
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)

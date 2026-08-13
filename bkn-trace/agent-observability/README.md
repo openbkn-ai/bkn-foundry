@@ -3,15 +3,14 @@
 基于参考项目 `agent-factory` 的六边形架构实现的 Agent Trace 查询服务。
 
 当前提供：
-- Trace 原始 DSL 查询接口：`POST /api/agent-observability/v1/traces/_search`
-- Conversation 维度包装查询接口：`GET /api/agent-observability/v1/traces/by-conversation?conversation_id=...`
-- Trace Graph 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/trace-graph`
+- 类型化 Trace 列表接口：`GET /api/agent-observability/v1/traces`
+- 单 Trace 技术详情接口：`GET /api/agent-observability/v1/traces/{trace_id}`
 - Evidence 事件接收接口：`POST /api/agent-observability/v1/evidence/events`
-- Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/evidence-chain`
-- Request 维度 Evidence Chain 查询接口：`GET /api/agent-observability/v1/traces/by-request?request_id=...`
-- Business Graph 查询接口：`GET /api/agent-observability/v1/traces/{trace_id}/business-graph`
-- Request 维度 Business Graph 查询接口：`GET /api/agent-observability/v1/traces/by-request/business-graph?request_id=...`
-- Evidence Node 查询接口：`GET /api/agent-observability/v1/evidence-nodes/{node_id}?trace_id=...`
+- 企业 Evidence Chain 查询接口：`GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain`
+- 企业 Request Evidence Chain 查询接口：`GET /api/agent-observability/v1/business-provenance/requests/{request_id}/evidence-chain`
+- 企业 Business Graph 查询接口：`GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/business-graph`
+- 企业 Request Business Graph 查询接口：`GET /api/agent-observability/v1/business-provenance/requests/{request_id}/business-graph`
+- Evidence Node 查询接口（企业业务溯源）：`GET /api/agent-observability/v1/business-provenance/evidence-nodes/{node_id}?trace_id=...`
 - OpenSearch 查询客户端
 - 阶段二 Evidence ingestion 校验、归一化和可替换存储接口，支持内存 store 与 OpenSearch evidence index store
 - Swagger 文档生成
@@ -125,71 +124,44 @@ BKN_TRACE_EVIDENCE_STORE=opensearch
 OPENSEARCH_EVIDENCE_INDEX=bkn-trace-evidence-v1
 ```
 
-默认部署不自动创建 index，不要求服务账号具备 OpenSearch index-management 权限；部署方需要提前创建 `OPENSEARCH_EVIDENCE_INDEX`。
-
-如果部署环境允许 Helm pre-install/pre-upgrade hook 创建 OpenSearch index，可以显式启用最小 index setup：
-
-```bash
-helm upgrade --install agent-observability charts/agent-observability \
-  --set evidence.store=opensearch \
-  --set evidence.index=bkn-trace-evidence-v1 \
-  --set evidence.indexManagement.enabled=true \
-  --set evidence.indexManagement.createJob.enabled=true \
-  --set opensearch.endpoint=http://opensearch-cluster-master:9200 \
-  -n observability --create-namespace
-```
-
-启用后 Chart 会渲染 evidence index mapping ConfigMap，并在 index 不存在时由 hook Job 创建 index。最小 mapping 将 `trace_id`、`bkn.request.id`、`document_id` 等查询字段设为 `keyword`，将 `ingested_at` 设为 `date`，并把 `events` 保留在 `_source` 中但不展开索引，避免 event payload 动态字段膨胀。retention/ILM、细粒度权限、迁移脚本仍属于后续部署治理能力。
+Evidence 与 Artifact 存储在首次读写时由运行时 `EnsureIndex` 创建或更新 mapping；Chart 不再渲染独立的索引初始化 Hook。启用 OpenSearch Evidence Store 的服务身份须具备目标索引的创建及 mapping 更新权限。
 
 Evidence Chain 与 Business Graph 查询支持可选 `limit` 参数，限制本次读取的 evidence trace 批次数：
 
 ```http
-GET /api/agent-observability/v1/traces/{trace_id}/evidence-chain?limit=100
-GET /api/agent-observability/v1/traces/by-request/business-graph?request_id=req_x&limit=100
+GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain?limit=100
+GET /api/agent-observability/v1/business-provenance/requests/{request_id}/business-graph?limit=100
 ```
 
 `limit` 取值范围为 `1..1000`，默认 `1000`。命中上限时响应会返回 `partial=true`、`partial_reason=["evidence_query_truncated"]`，并设置 `page.truncated=true`，调用方不得把该结果展示为完整证据链。
 
-Trace Graph 查询把 OTel spans 归一化为 trace tree：
+单 Trace 技术详情包含归一化 OTel Span 图与 Operation 调用事实：
 
 ```http
-GET /api/agent-observability/v1/traces/{trace_id}/trace-graph
+GET /api/agent-observability/v1/traces/{trace_id}
 ```
 
 ```json
 {
-  "trace_id": "9c0d...",
-  "status": "error",
-  "duration_nano": 110,
-  "partial": false,
-  "partial_reason": [],
-  "page": {
-    "node_count": 3,
-    "edge_count": 2,
-    "truncated": false
+  "summary": {
+    "trace_id": "9c0d...",
+    "request_id": "req_...",
+    "status": "error"
   },
-  "data": {
-    "nodes": [
-      {
+  "graph": {
+    "trace_id": "9c0d...",
+    "status": "error",
+    "data": {
+      "nodes": [{
         "span_id": "root",
         "name": "POST /chat",
-        "kind": "SERVER",
-        "service_name": "bkn-agent",
-        "status": "ok",
-        "start_nano": 100,
-        "end_nano": 210,
-        "duration_nano": 110
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge:1",
-        "parent_span_id": "root",
-        "child_span_id": "child",
-        "edge_type": "parent_child"
-      }
-    ]
-  }
+        "service_name": "bkn-agent"
+      }],
+      "edges": []
+    }
+  },
+  "operations": [],
+  "partial": false
 }
 ```
 
@@ -201,7 +173,7 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 该 NetworkPolicy 依赖 Kubernetes 1.23 或更高版本。离线执行 `helm template` 时应显式传入 `--kube-version 1.23.0` 或实际目标集群版本；连接集群的 `helm install/upgrade` 会按目标集群能力校验。
 
-Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器在 release 循环前创建或验证该 Secret，并将同一 token 注入 Agent Observability 与 Context Loader，因此不依赖两者的安装顺序；单独安装任一 Chart 时，应预先创建 Secret。若要禁用 Evidence 写入，必须同时清空 Context Loader 的 `observability.evidence.ingest_url`，不能只省略 token Secret。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
+Chart 默认不创建或接管 `bkn-trace-evidence-ingest` Secret。OpenBKN 整体安装器在 release 循环前创建或验证该 Secret，并将同一 token 注入 Agent Observability、Context Loader、Vega、BKN Backend、Ontology Query、BKN Agent 与行动执行服务；BKN Backend 和 Ontology Query 同时启用其持久 Evidence outbox worker 与既有清理任务（已投递记录保留 30 天，放弃记录保留 180 天）。单独安装任一 Chart 时，应预先创建并显式引用该 Secret。对无 outbox 的生产者，禁用 Evidence 写入须同时清空 ingest URL 与 token Secret；对启用了 producer outbox 的 BKN Backend 和 Ontology Query，须同时关闭 outbox 与 worker，不能只清空 URL。`evidence.ingestAuth.createSecret=true` 只适用于 Helm 直接执行的首次安装，不适用于 `helm template | kubectl apply`，也不能用于接管已有的外部 Secret。
 
 ```bash
 printf '%s' '<user>:<password>@tcp(<host>:3306)/<database>?parseTime=true' | \
@@ -239,8 +211,6 @@ Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须�
 查询仍依据事件生产方或 resolver 声明的 `visibility` 做节点级响应过滤，并区分 `redacted`、`hidden`、`omitted`、`unresolved`、`unauthorized` 统计。`unauthorized` 引用只进入汇总和 `partial_reason[]`，不会展开 `ref_id`、`policy_decision_ref` 或其他节点详情。更细粒度的对象/属性级实时策略裁决仍属于后续阶段。
 
 当前查询侧尚未接入受权 Resolver/display 服务，业务图节点因此只投影注册引用字段，不信任或返回事件中的 `label` 等显示信息；存在可见业务引用时返回 `partial=true` 与 `resolver_unresolved`。受权业务名称和详情补全由后续独立任务实现。
-
-原始 OpenSearch DSL 与 conversation 全局 Trace 查询无法基于当前 span 索引可靠完成租户过滤，生产默认关闭。只有隔离的开发环境可设置 `BKN_TRACE_ALLOW_RAW_TRACE_QUERY=true`；Studio 正式功能不得依赖该开关。
 
 Evidence Chain 查询返回稳定 envelope：
 
@@ -328,8 +298,8 @@ Business Graph 只消费已进入 BKN Trace 的 `business_refs`，并复用当�
 Evidence Node 查询用于打开单个可见节点详情：
 
 ```http
-GET /api/agent-observability/v1/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d...
-GET /api/agent-observability/v1/evidence-nodes/business_ref%3Aobject%3Acustomer?request_id=req_handler_002
+GET /api/agent-observability/v1/business-provenance/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d...
+GET /api/agent-observability/v1/business-provenance/evidence-nodes/business_ref%3Aobject%3Acustomer?request_id=req_handler_002
 ```
 
 首版 node id 格式：
@@ -346,11 +316,11 @@ Evidence ingestion 默认写入 `2.1.0`，读取兼容 `2.0.0`。2.1 事件执�
 
 OpenSearch 当前仍使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 tenant/business domain/account 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；`2.0` 兼容仅指已有归属事件的语义读取。缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
 
-持久化 evidence 可通过以下接口回查：
+持久化 evidence 可通过企业业务溯源接口回查：
 
 ```text
-GET /api/agent-observability/v1/evidence/by-trace?trace_id=<trace_id>
-GET /api/agent-observability/v1/evidence/by-trace?request_id=<bkn.request.id>
+GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain
+GET /api/agent-observability/v1/business-provenance/requests/{request_id}/evidence-chain
 ```
 
 生成 Swagger 文档：
@@ -428,15 +398,31 @@ helm upgrade --install agent-observability charts/agent-observability \
 启用 OpenSearch Basic Auth：
 
 ```bash
+printf '%s' 'your-username' > /path/to/opensearch-username
+printf '%s' 'your-password' > /path/to/opensearch-password
+
+kubectl create secret generic bkn-trace-opensearch \
+  -n observability \
+  --from-file=username=/path/to/opensearch-username \
+  --from-file=password=/path/to/opensearch-password
+
 helm upgrade --install agent-observability charts/agent-observability \
   --set image.repository=swr.cn-east-3.myhuaweicloud.com/kweaver-ai/agent-observability \
   --set image.tag=0.1.1 \
   --set opensearch.endpoint=http://opensearch-cluster-master:9200 \
   --set opensearch.auth.enabled=true \
-  --set opensearch.auth.username=your-username \
-  --set opensearch.auth.password=your-password \
+  --set opensearch.auth.existingSecret=bkn-trace-opensearch \
   -n observability --create-namespace
 ```
+
+不要通过 Helm `--set` 传递 OpenSearch 用户名或密码。Chart 只接受已有 Secret 的名称；用户名与密码键默认为 `username`、`password`，可用 `opensearch.auth.usernameKey` 与 `passwordKey` 覆盖。
+创建凭据文件时使用 `printf`，避免 `echo` 在文件末尾写入换行。
+
+## 本地 Trace 数据一次性清理
+
+`scripts/cleanup_legacy_bkn_trace_data.sh` 仅用于 0.1.4 验证前清空明确指定的 BKN Trace 服务库表及 Trace、Evidence、Projection 索引，不会清理日志索引或 MCP、SDK、BKN、Vega 业务数据。脚本默认只预览数量；核对目标后，才可显式增加 `--confirm`。MariaDB 密码可通过 `MYSQL_PWD` 提供，OpenSearch Basic Auth 可通过 `OPENSEARCH_USERNAME` 与 `OPENSEARCH_PASSWORD` 成对提供。
+
+必须显式设置：`BKN_TRACE_CLEANUP_DB_HOST`、`BKN_TRACE_CLEANUP_DB_NAME`、`BKN_TRACE_CLEANUP_DB_USER`、`OPENSEARCH_ENDPOINT`、`OPENSEARCH_TRACE_INDEX`、`OPENSEARCH_EVIDENCE_INDEX`、`BKN_TRACE_PROJECTION_INDEX`。脚本拒绝空值、未展开表达式、通配符、系统库及系统索引，并在清理后回读确认所有指定目标均为零。升级前版本尚不存在的明确允许表会报告 `status=absent` 并跳过，不会扩大清理范围。
 
 ## CI/CD
 

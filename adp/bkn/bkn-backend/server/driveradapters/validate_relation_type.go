@@ -83,12 +83,11 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 
 	// 校验type字段
 	if relationType.Type != "" {
-		if relationType.Type != interfaces.RELATION_TYPE_DIRECT && relationType.Type != interfaces.RELATION_TYPE_DATA_VIEW &&
+		if relationType.Type != interfaces.RELATION_TYPE_DIRECT &&
 			relationType.Type != interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("关系类类型只支持 %s、%s 和 %s，当前类型为: %s",
-					interfaces.RELATION_TYPE_DIRECT, interfaces.RELATION_TYPE_DATA_VIEW,
-					interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN, relationType.Type))
+				WithErrorDetails(fmt.Sprintf("关系类类型只支持 %s 和 %s，当前类型为: %s",
+					interfaces.RELATION_TYPE_DIRECT, interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN, relationType.Type))
 		}
 	}
 
@@ -134,12 +133,10 @@ func validateMappingRules(ctx context.Context, relationType string, mappingRules
 	switch relationType {
 	case interfaces.RELATION_TYPE_DIRECT:
 		return validateDirectMappingRules(ctx, mappingRules, strictMode)
-	case interfaces.RELATION_TYPE_DATA_VIEW:
-		return validateInDirectMappingRules(ctx, mappingRules, strictMode)
 	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 		return validateFilteredCrossJoinMappingRules(ctx, mappingRules, strictMode)
 	default:
-		// 如果type不是direct或data_view，返回错误
+		// 如果type不是direct或filtered_cross_join，返回错误
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("关系类的关系类型 %s 不支持", relationType))
 	}

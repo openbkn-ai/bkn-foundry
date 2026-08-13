@@ -1136,15 +1136,13 @@ components:
           description: 关系类型
           enum:
             - direct
-            - data_view
             - filtered_cross_join
           type: string
         mapping_rules:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
-            - $ref: "#/components/schemas/DataViewMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`data_view` 时为 DataViewMappingRule；`filtered_cross_join`（FCJ）时为 FilteredCrossJoinMappingRule。
+          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`filtered_cross_join`（FCJ）时为 FilteredCrossJoinMappingRule。
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
@@ -1162,27 +1160,6 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/Mapping"
-    DataViewMappingRule:
-      description: 关系类型为 data_view 时的匹配规则
-      required:
-        - backing_data_source
-        - source_mapping_rules
-        - target_mapping_rules
-      type: object
-      properties:
-        backing_data_source:
-          $ref: "#/components/schemas/DataSource"
-          description: 数据来源视图
-        source_mapping_rules:
-          description: 起点对象类与数据集的匹配规则
-          type: array
-          items:
-            $ref: "#/components/schemas/Mapping"
-        target_mapping_rules:
-          description: 终点对象类与数据集匹配规则
-          type: array
-          items:
-            $ref: "#/components/schemas/Mapping"
     FilteredCrossJoinMappingRule:
       description: |
         关系类型为 `filtered_cross_join`（分侧过滤全连接，FCJ）时的匹配规则。无数据视图与键映射；

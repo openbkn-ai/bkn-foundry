@@ -6,42 +6,15 @@
 
 package driveradapters
 
-import (
-	"context"
-	"fmt"
-	"net/http"
-
-	"github.com/openbkn-ai/bkn-comm-go/rest"
-
-	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
-)
-
-func ValidateDiscoverTaskQueryParams(ctx context.Context, params interfaces.DiscoverTaskQueryParams) error {
-	if params.Status != "" && !isValidDiscoverTaskStatus(params.Status) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverTask_InvalidStatus).
-			WithErrorDetails(fmt.Sprintf("invalid status: %s", params.Status))
-	}
-
-	if params.Strategy != "" && !interfaces.IsValidDiscoverStrategy(params.Strategy) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(fmt.Sprintf("invalid strategy: %s", params.Strategy))
-	}
-
-	if params.TriggerType != "" && !isValidDiscoverTaskTriggerType(params.TriggerType) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(fmt.Sprintf("invalid trigger_type: %s", params.TriggerType))
-	}
-
-	return nil
-}
+import "vega-backend/interfaces"
 
 func isValidDiscoverTaskStatus(s string) bool {
 	switch s {
 	case interfaces.DiscoverTaskStatusPending,
 		interfaces.DiscoverTaskStatusRunning,
 		interfaces.DiscoverTaskStatusCompleted,
-		interfaces.DiscoverTaskStatusFailed:
+		interfaces.DiscoverTaskStatusFailed,
+		interfaces.DiscoverTaskStatusCancelled:
 		return true
 	}
 	return false

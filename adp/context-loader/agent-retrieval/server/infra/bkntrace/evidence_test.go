@@ -252,7 +252,7 @@ func TestBuildSchemaDefinitionEventsUsesKnowledgeNetworkAndSchemaRefs(t *testing
 	}
 }
 
-func TestBuildRunSQLEventsRecordsBusinessDataSourcesWithoutLeakingSQLOrRows(t *testing.T) {
+func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T) {
 	ctx := withDeclaredBusinessRefs(testTraceContext(), []BusinessRef{{
 		RefType: "object_type", RefID: "object:supplychain_hd0202:bkn_supply_forecast",
 		BusinessDomainID: "domain-1", Version: "schema-v3",
@@ -268,23 +268,26 @@ func TestBuildRunSQLEventsRecordsBusinessDataSourcesWithoutLeakingSQLOrRows(t *t
 			}},
 		},
 	)
-	if len(events) != 1 || events[0]["event_type"] != "retrieval.completed" {
+	if len(events) != 1 || events[0]["event_type"] != "data.query.observed" {
 		t.Fatalf("unexpected run_sql events: %#v", events)
 	}
+	if events[0]["bkn.trace.schema.version"] != "2.2.0" {
+		t.Fatalf("schema version=%v, want artifact-linked 2.2.0 fact", events[0]["bkn.trace.schema.version"])
+	}
 	payload := events[0]["payload"].(map[string]any)
-	if payload["candidate_count"] != 1 || payload["query_hash"] == "" {
+	if payload["row_count"] != 1 || payload["query_type"] != "sql" || payload["query_hash"] == "" {
 		t.Fatalf("missing query facts: %#v", payload)
+	}
+	if _, duplicated := payload["query_artifact_ref"]; duplicated {
+		t.Fatalf("aggregate event must not refer to deleted duplicate query artifact: %#v", payload)
+	}
+	if _, duplicated := payload["result_artifact_ref"]; duplicated {
+		t.Fatalf("aggregate event must not refer to deleted duplicate result artifact: %#v", payload)
 	}
 	raw, _ := json.Marshal(events)
 	text := string(raw)
 	if !strings.Contains(text, `"ref_id":"resource:forecast_resource"`) {
 		t.Fatalf("missing resource reference: %s", text)
-	}
-	if !strings.Contains(text, `"ref_id":"object:supplychain_hd0202:bkn_supply_forecast"`) {
-		t.Fatalf("missing declared business reference: %s", text)
-	}
-	if !strings.Contains(text, `"version_status":"versioned"`) {
-		t.Fatalf("declared version was not mapped to version_status: %s", text)
 	}
 	for _, leaked := range []string{"SELECT demand_no", "2026-06", "DF-SECRET-001", "11594"} {
 		if strings.Contains(text, leaked) {
@@ -666,6 +669,89 @@ func TestEmitSearchSchemaEventsNoopsWhenIngestDisabled(t *testing.T) {
 	}, &interfaces.SearchSchemaResp{
 		ObjectTypes: []any{map[string]any{"concept_id": "customer"}},
 	})
+}
+
+func TestEmitRunSQLEventsKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
+	artifactWrites := 0
+	var submittedEvents []Event
+	previous := evidenceHTTPClient
+	t.Cleanup(func() { evidenceHTTPClient = previous })
+	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/api/agent-observability/v1/evidence/artifacts":
+			artifactWrites++
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(""))}, nil
+		case "/api/agent-observability/v1/evidence/events":
+			var body trace30Event
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode run_sql events: %v", err)
+			}
+			submittedEvents = append(submittedEvents, body.Envelope)
+			return &http.Response{StatusCode: http.StatusAccepted, Body: io.NopCloser(strings.NewReader(""))}, nil
+		default:
+			t.Fatalf("unexpected evidence path: %s", r.URL.Path)
+		}
+		return nil, nil
+	})}
+	t.Setenv(envEvidenceIngestURL, "http://trace.local/api/agent-observability/v1/evidence/events")
+
+	sql := "SELECT material_id, SUM(quantity) FROM {{.inventory}} WHERE warehouse = '昆山' GROUP BY material_id LIMIT 10"
+	EmitRunSQLEvents(testTraceContext(), nil, sql, []string{"inventory"}, &interfaces.VegaRawQueryResp{
+		Entries: []map[string]any{{"material_id": "M-001", "SUM(quantity)": 42}},
+	})
+
+	if artifactWrites != 0 {
+		t.Fatalf("run_sql wrote %d duplicate artifacts; OperationCallFact is the payload authority", artifactWrites)
+	}
+	if len(submittedEvents) != 1 || submittedEvents[0]["event_type"] != "data.query.observed" {
+		t.Fatalf("submitted events=%#v, want one aggregate data.query.observed", submittedEvents)
+	}
+	payload, _ := submittedEvents[0]["payload"].(map[string]any)
+	if payload["row_count"] != float64(1) || payload["query_hash"] == "" {
+		t.Fatalf("aggregate query facts missing: %#v", payload)
+	}
+}
+
+func TestEmitRunSQLFailureKeepsAggregateWithoutDuplicatingOperationPayload(t *testing.T) {
+	artifactWrites := 0
+	var submittedEvents []Event
+	previous := evidenceHTTPClient
+	t.Cleanup(func() { evidenceHTTPClient = previous })
+	evidenceHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/api/agent-observability/v1/evidence/artifacts":
+			artifactWrites++
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(""))}, nil
+		case "/api/agent-observability/v1/evidence/events":
+			var body trace30Event
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode run_sql failure events: %v", err)
+			}
+			submittedEvents = append(submittedEvents, body.Envelope)
+			return &http.Response{StatusCode: http.StatusAccepted, Body: io.NopCloser(strings.NewReader(""))}, nil
+		default:
+			t.Fatalf("unexpected evidence path: %s", r.URL.Path)
+		}
+		return nil, nil
+	})}
+	t.Setenv(envEvidenceIngestURL, "http://trace.local/api/agent-observability/v1/evidence/events")
+
+	sql := "SELECT * FROM {{.inventory}} WHERE material_id = 'M-001'"
+	EmitRunSQLFailure(testTraceContext(), nil, sql, []string{"inventory"}, RunSQLFailure{
+		Stage: "vega_query", Code: "RUN_SQL_VEGA_QUERY_FAILED", Summary: "unknown column available_qty",
+	})
+
+	if artifactWrites != 0 {
+		t.Fatalf("failed run_sql wrote %d duplicate artifacts; OperationCallFact is the payload authority", artifactWrites)
+	}
+	if len(submittedEvents) != 1 || submittedEvents[0]["event_type"] != "data.query.observed" {
+		t.Fatalf("submitted events=%#v, want one data.query.observed", submittedEvents)
+	}
+	payload, _ := submittedEvents[0]["payload"].(map[string]any)
+	if payload["status"] != "error" || payload["error_stage"] != "vega_query" ||
+		payload["error_code"] != "RUN_SQL_VEGA_QUERY_FAILED" || payload["safe_error_summary"] != "unknown column available_qty" {
+		t.Fatalf("failure event is not structured: %#v", payload)
+	}
 }
 
 func TestSubmitEventsNoopsWhenAccountContextMissing(t *testing.T) {

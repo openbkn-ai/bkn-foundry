@@ -4,7 +4,10 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -58,7 +61,7 @@
       "schema_brief": {
         "type": "boolean",
         "default": true,
-        "description": "是否返回精简 Schema（MCP 默认 true）。精简版保留写查询所需的 data_source.id 与属性 name/type/condition_operations，省去属性 comment、tags、primary_keys，体积约省 70%。需要属性备注 / 主键 / 标签等完整信息时显式传 false。"
+        "description": "是否返回精简 Schema（MCP 默认 true）。精简版保留写查询所需的 data_source.id 与属性 name/type，省去属性 comment、主键、标签，体积约省 70%；需要属性备注、主键或标签时显式传 false。注意：condition_operations 不受本开关影响——MCP 面两种模式下都只列**索引带来的**算子（match / multi_match / knn，取决于该字段建没建全文/向量索引，从属性类型推不出来），没有这类能力的字段不带这个键。比较算子（==、!=、in、like、range 等）按属性 type 自行判断，服务端不下发，详见 query_object_instance 的 condition 说明。"
       },
       "enable_rerank": {
         "type": "boolean",
@@ -71,7 +74,10 @@
         "description": "是否在每个对象类的 data_property 上额外返回物理列名 column（取自 mapped_field）。写 run_sql 时列名要用 column（物理列），而非 name（逻辑名）——二者可不同，且同一资源可被多个对象类用不同逻辑名映射。默认 false 以保持响应精简，准备写 SQL 时再开启。"
       }
     },
-    "required": ["kn_id", "query"]
+    "required": [
+      "kn_id",
+      "query"
+    ]
   },
   "output_schema": {
     "type": "object",

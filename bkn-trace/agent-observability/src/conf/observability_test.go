@@ -45,3 +45,18 @@ func TestObservabilityConfigRejectsInvalidSourceQueryLimits(t *testing.T) {
 		t.Fatalf("invalid values must fall back to defaults: %+v", config)
 	}
 }
+
+func TestObservabilityConfigReadsSourceCoverageMonitor(t *testing.T) {
+	t.Setenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT", "http://otelcol:8888/metrics")
+	t.Setenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_SOURCE_ID", "otel-runtime")
+	t.Setenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_DEPLOYMENT_ID", "observability/otelcol-contrib")
+	t.Setenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_INTERVAL", "15s")
+
+	config := NewObservabilityConfig()
+	if config.SourceCoverageMetricsEndpoint != "http://otelcol:8888/metrics" ||
+		config.SourceCoverageSourceID != "otel-runtime" ||
+		config.SourceCoverageDeploymentID != "observability/otelcol-contrib" ||
+		config.SourceCoverageInterval != 15*time.Second {
+		t.Fatalf("unexpected source coverage monitor config: %+v", config)
+	}
+}

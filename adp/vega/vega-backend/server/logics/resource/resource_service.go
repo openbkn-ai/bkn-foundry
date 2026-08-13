@@ -10,6 +10,7 @@ package resource
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -46,7 +47,7 @@ var (
 const resourceAuthResourcePermissionBatchSize = 10000
 
 var activeResourceBuildTaskStatuses = []string{
-	interfaces.BuildTaskStatusInit,
+	interfaces.BuildTaskStatusPending,
 	interfaces.BuildTaskStatusRunning,
 	interfaces.BuildTaskStatusStopping,
 }
@@ -236,7 +237,13 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
 	}
+	if err := validateSingleFeatureTypePerProperty(ctx, req.SchemaDefinition); err != nil {
+		return nil, err
+	}
 	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
+		return nil, err
+	}
+	if err := rs.validateIndexConfigAnalyzers(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
 		return nil, err
 	}
 	if req.Extensions != nil {
@@ -705,7 +712,11 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		resource.LogicType = logicType
 		resource.LogicDefinition = req.LogicDefinition
 	default:
-		applyMutableSchemaFields(resource.SchemaDefinition, req.SchemaDefinition)
+		resource.SchemaDefinition = applyMutableSchemaFields(
+			resource.SchemaDefinition,
+			req.SchemaDefinition,
+			resource.Category == interfaces.ResourceCategoryDataset,
+		)
 	}
 	if req.IndexConfig != nil {
 		resource.IndexConfig = req.IndexConfig
@@ -714,7 +725,13 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
 		return err
 	}
+	if err := validateSingleFeatureTypePerProperty(ctx, resource.SchemaDefinition); err != nil {
+		return err
+	}
 	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
+		return err
+	}
+	if err := rs.validateIndexConfigAnalyzers(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 		return err
 	}
 	if req.Extensions != nil {
@@ -1015,7 +1032,7 @@ func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx,
 }
 
 func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {
-	tasks, _, err := rs.bta.List(ctx, interfaces.BuildTasksQueryParams{
+	tasks, _, err := rs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
 		ResourceID:            resource.ID,
 		Statuses:              activeResourceBuildTaskStatuses,
@@ -1033,6 +1050,12 @@ func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx cont
 }
 
 func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) (bool, error) {
+	if req.Category == "" {
+		return false, unsupportedResourceUpdateError(ctx, "category is required")
+	}
+	if req.Category != resource.Category {
+		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
 	}
@@ -1049,8 +1072,33 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if req.SchemaDefinition == nil {
 		return indexConfigChanged, nil
 	}
-	schemaChanged, err := validateMutableSchemaUpdate(ctx, resource.SchemaDefinition, req.SchemaDefinition)
+	schemaChanged, err := validateMutableSchemaUpdate(
+		ctx,
+		resource.SchemaDefinition,
+		req.SchemaDefinition,
+		resource.Category == interfaces.ResourceCategoryDataset,
+	)
 	return schemaChanged || indexConfigChanged, err
+}
+
+func validateSingleFeatureTypePerProperty(ctx context.Context, schema []*interfaces.Property) error {
+	for _, property := range schema {
+		if property == nil {
+			continue
+		}
+		seen := make(map[string]struct{}, len(property.Features))
+		for _, feature := range property.Features {
+			if feature.FeatureType == "" {
+				continue
+			}
+			if _, exists := seen[feature.FeatureType]; exists {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
+			}
+			seen[feature.FeatureType] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
@@ -1103,6 +1151,60 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 	return nil
 }
 
+func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+	if rs.lim == nil {
+		return nil
+	}
+	defaultAnalyzer := ""
+	if indexConfig != nil {
+		defaultAnalyzer = strings.TrimSpace(indexConfig.DefaultFulltextAnalyzer)
+	}
+	for _, prop := range schema {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Fulltext {
+				continue
+			}
+			analyzer := strings.TrimSpace(fulltextAnalyzerConfigValue(feature.Config))
+			if analyzer == "" {
+				analyzer = defaultAnalyzer
+			}
+			if analyzer == "" {
+				continue
+			}
+			fieldName := prop.Name
+			if feature.RefProperty != "" {
+				fieldName = feature.RefProperty
+			}
+			available, err := rs.lim.ValidateAnalyzer(ctx, analyzer)
+			if err != nil {
+				var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
+				if errors.As(err, &unavailableErr) {
+					return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+						WithErrorDetails(err.Error())
+				}
+				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+					WithErrorDetails(err.Error())
+			}
+			if !available {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_Analyzer).
+					WithErrorDetails(fmt.Sprintf("analyzer %q for field %q is unavailable", analyzer, fieldName))
+			}
+		}
+	}
+	return nil
+}
+
+func fulltextAnalyzerConfigValue(config map[string]any) string {
+	if config == nil {
+		return ""
+	}
+	value, _ := config["analyzer"].(string)
+	return value
+}
+
 func validateIndexConfigBuildKeyFields(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
 	if indexConfig == nil || len(indexConfig.BuildKeyFields) == 0 {
 		return nil
@@ -1128,9 +1230,12 @@ func unsupportedResourceUpdateError(ctx context.Context, details string) error {
 		WithErrorDetails(details)
 }
 
-func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property) (bool, error) {
-	if len(current) != len(requested) {
+func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) (bool, error) {
+	if !allowPropertyAdditions && len(current) != len(requested) {
 		return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
+	}
+	if len(requested) < len(current) {
+		return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot remove or rename fields")
 	}
 
 	currentByName := make(map[string]*interfaces.Property, len(current))
@@ -1141,20 +1246,24 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 		currentByName[prop.Name] = prop
 	}
 
-	featuresChanged := false
+	schemaChanged := false
 	seen := make(map[string]struct{}, len(requested))
 	for _, requestedProp := range requested {
 		if requestedProp == nil || requestedProp.Name == "" {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition contains an invalid field")
 		}
-		currentProp, ok := currentByName[requestedProp.Name]
-		if !ok {
-			return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot add, remove, or rename fields")
-		}
 		if _, dup := seen[requestedProp.Name]; dup {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition contains duplicate fields")
 		}
 		seen[requestedProp.Name] = struct{}{}
+		currentProp, ok := currentByName[requestedProp.Name]
+		if !ok {
+			if !allowPropertyAdditions {
+				return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot add, remove, or rename fields")
+			}
+			schemaChanged = true
+			continue
+		}
 
 		currentComparable := *currentProp
 		requestedComparable := *requestedProp
@@ -1168,15 +1277,20 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
 		}
 		if !reflect.DeepEqual(currentProp.Features, requestedProp.Features) {
-			featuresChanged = true
+			schemaChanged = true
 		}
 	}
-	return featuresChanged, nil
+	for name := range currentByName {
+		if _, ok := seen[name]; !ok {
+			return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot remove or rename fields")
+		}
+	}
+	return schemaChanged, nil
 }
 
-func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property) {
+func applyMutableSchemaFields(current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) []*interfaces.Property {
 	if requested == nil {
-		return
+		return current
 	}
 	currentByName := make(map[string]*interfaces.Property, len(current))
 	for _, prop := range current {
@@ -1192,8 +1306,13 @@ func applyMutableSchemaFields(current []*interfaces.Property, requested []*inter
 			currentProp.DisplayName = requestedProp.DisplayName
 			currentProp.Description = requestedProp.Description
 			currentProp.Features = requestedProp.Features
+			continue
+		}
+		if allowPropertyAdditions {
+			current = append(current, requestedProp)
 		}
 	}
+	return current
 }
 
 // ListAuthResources lists resource auth resources with filters.

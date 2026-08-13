@@ -252,7 +252,7 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 
 	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
 	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "default")
+	sort := common.GetQueryOrDefault(c, "sort", "create_time")
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
 	pageParam, err := validatePaginationQueryParams(ctx, offset, limit, sort, direction, interfaces.SEMANTIC_UNDERSTANDING_TASK_SORT)
@@ -265,10 +265,8 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 			WithErrorDetails("scope must be resource or catalog")
 	}
 
-	if active, _ := strconv.ParseBool(c.Query("active")); active {
-		params.Statuses = interfaces.SemanticUnderstandingTaskActiveStatuses
-	} else if raw := c.Query("status"); raw != "" {
-		statuses, err := parseSemanticUnderstandingTaskStatuses(ctx, raw)
+	if raw := c.QueryArray("status"); len(raw) > 0 {
+		statuses, err := parseTaskStatuses(ctx, raw, isValidSemanticUnderstandingTaskStatus, verrors.VegaBackend_InvalidParameter_Format)
 		if err != nil {
 			return params, err
 		}
@@ -299,29 +297,13 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 	return params, nil
 }
 
-func parseSemanticUnderstandingTaskStatuses(ctx context.Context, raw string) ([]string, error) {
-	parts := strings.Split(raw, ",")
-	statuses := make([]string, 0, len(parts))
-	for _, p := range parts {
-		s := strings.TrimSpace(p)
-		if s == "" {
-			continue
-		}
-		if !isValidSemanticUnderstandingTaskStatus(s) {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
-				WithErrorDetails(fmt.Sprintf("invalid status: %s", s))
-		}
-		statuses = append(statuses, s)
-	}
-	return statuses, nil
-}
-
 func isValidSemanticUnderstandingTaskStatus(status string) bool {
 	switch status {
 	case interfaces.SemanticUnderstandingTaskStatusPending,
 		interfaces.SemanticUnderstandingTaskStatusRunning,
-		interfaces.SemanticUnderstandingTaskStatusSucceeded,
-		interfaces.SemanticUnderstandingTaskStatusFailed:
+		interfaces.SemanticUnderstandingTaskStatusCompleted,
+		interfaces.SemanticUnderstandingTaskStatusFailed,
+		interfaces.SemanticUnderstandingTaskStatusCancelled:
 		return true
 	}
 	return false

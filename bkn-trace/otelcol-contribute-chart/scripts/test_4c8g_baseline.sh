@@ -13,14 +13,17 @@ assert_contains() {
 }
 
 assert_contains "memory_limiter:"
-assert_contains "limit_mib: 384"
-assert_contains "spike_limit_mib: 96"
+assert_contains "limit_mib: 512"
+assert_contains "spike_limit_mib: 128"
 assert_contains "processors:"
 assert_contains "- memory_limiter"
 assert_contains "send_batch_max_size: 1024"
+assert_contains "timeout: 1s"
 assert_contains "sending_queue:"
-assert_contains "queue_size: 2048"
+assert_contains "num_consumers: 4"
+assert_contains "queue_size: 512"
 assert_contains "retry_on_failure:"
+assert_contains "max_interval: 10s"
 assert_contains "max_elapsed_time: 5m"
 assert_contains "health_check:"
 assert_contains "endpoint: 0.0.0.0:13133"
@@ -31,10 +34,18 @@ assert_contains "containerPort: 8888"
 assert_contains "host: 0.0.0.0"
 assert_contains "port: 8888"
 
-if ! grep -Fq "memory: 512Mi" <<<"${rendered}"; then
-  echo "collector memory limit must fit the OpenBKN 4C8G baseline" >&2
+if ! grep -Fq "memory: 768Mi" <<<"${rendered}"; then
+  echo "collector memory limit must leave headroom above the 512MiB limiter" >&2
   exit 1
 fi
+
+readme="$(<README.md)"
+for documented_value in "500m CPU / 768MiB" "512MiB" "128MiB" "1 秒刷新" "512 批、4 个消费者" "10 秒"; do
+  if ! grep -Fq -- "${documented_value}" <<<"${readme}"; then
+    echo "4C8G README baseline is missing: ${documented_value}" >&2
+    exit 1
+  fi
+done
 
 if grep -Fq "kind: PrometheusRule" <<<"${rendered}" || grep -Fq "kind: NetworkPolicy" <<<"${rendered}"; then
   echo "cluster-specific monitoring and network policy resources must be opt in" >&2

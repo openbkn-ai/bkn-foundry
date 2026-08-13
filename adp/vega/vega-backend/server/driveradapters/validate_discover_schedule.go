@@ -12,8 +12,8 @@ import (
 	"net/http"
 
 	"github.com/openbkn-ai/bkn-comm-go/rest"
-	"github.com/robfig/cron/v3"
 
+	"vega-backend/common"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 )
@@ -30,7 +30,7 @@ func ValidateDiscoverScheduleRequest(ctx context.Context, req *interfaces.Discov
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidCronExpr).
 			WithErrorDetails("cron_expr is required")
 	}
-	if _, err := cron.ParseStandard(req.CronExpr); err != nil {
+	if _, err := common.ParseHourlyCronExpr(req.CronExpr); err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidCronExpr).
 			WithErrorDetails(fmt.Sprintf("invalid cron expression: %v", err))
 	}

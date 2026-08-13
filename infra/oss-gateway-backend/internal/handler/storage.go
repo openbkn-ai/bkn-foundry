@@ -26,16 +26,17 @@ func (h *StorageHandler) Create(c *gin.Context) {
 	if err != nil {
 		// 检查是否是校验错误
 		if validationErr, ok := err.(*service.StorageValidationError); ok {
-			if validationErr.Code == "400031107" {
+			switch validationErr.Code {
+			case "400031107":
 				response.StorageNameExist(c, req.StorageName)
 				return
-			} else if validationErr.Code == "400031108" {
+			case "400031108":
 				response.StorageExist(c, validationErr.Description)
 				return
-			} else if validationErr.Code == "400031110" {
+			case "400031110":
 				response.InvalidVendorType(c, req.VendorType)
 				return
-			} else if validationErr.Code == "400031112" {
+			case "400031112":
 				// validationErr.Description 已经是完整的错误描述
 				response.DefaultStorageExists(c, validationErr.Description)
 				return

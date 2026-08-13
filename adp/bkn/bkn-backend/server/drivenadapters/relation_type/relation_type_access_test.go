@@ -495,56 +495,6 @@ func Test_relationTypeAccess_GetRelationTypeByID(t *testing.T) {
 			}
 		})
 
-		Convey("GetRelationTypeByID Unmarshal mappingRules DATA_VIEW type error \n", func() {
-			invalidBytes := []byte("invalid json")
-			rows := sqlmock.NewRows([]string{
-				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
-				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
-			}).AddRow(
-				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
-				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DATA_VIEW, invalidBytes,
-				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
-			)
-
-			smock.ExpectQuery(sqlStr).WithArgs(knID, branch, rtID).WillReturnRows(rows)
-
-			relationType, err := rta.GetRelationTypeByID(testCtx, knID, branch, rtID)
-			So(relationType, ShouldBeNil)
-			So(err, ShouldNotBeNil)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
-		})
-
-		Convey("GetRelationTypeByID Success DATA_VIEW type \n", func() {
-			dataViewMapping := &interfaces.InDirectMapping{}
-			dataViewMappingBytes, _ := sonic.Marshal(dataViewMapping)
-			rows := sqlmock.NewRows([]string{
-				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
-				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
-			}).AddRow(
-				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
-				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DATA_VIEW, dataViewMappingBytes,
-				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
-			)
-
-			smock.ExpectQuery(sqlStr).WithArgs(knID, branch, rtID).WillReturnRows(rows)
-
-			relationType, err := rta.GetRelationTypeByID(testCtx, knID, branch, rtID)
-			So(err, ShouldBeNil)
-			So(relationType, ShouldNotBeNil)
-			So(relationType.RTID, ShouldEqual, "rt1")
-			So(relationType.Type, ShouldEqual, interfaces.RELATION_TYPE_DATA_VIEW)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
-		})
 	})
 }
 
@@ -634,52 +584,6 @@ func Test_relationTypeAccess_GetRelationTypesByIDs(t *testing.T) {
 			}
 		})
 
-		Convey("GetRelationTypesByIDs unmarshal MappingRules DATA_VIEW error \n", func() {
-			invalidBytes := []byte("invalid json")
-			rows := sqlmock.NewRows([]string{
-				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
-				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
-			}).AddRow(
-				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
-				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DATA_VIEW, invalidBytes,
-				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
-			)
-			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
-
-			_, err := rta.GetRelationTypesByIDs(testCtx, knID, branch, rtIDs)
-			So(err, ShouldNotBeNil)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
-		})
-
-		Convey("GetRelationTypesByIDs Success DATA_VIEW type \n", func() {
-			dataViewMapping := &interfaces.InDirectMapping{}
-			dataViewMappingBytes, _ := sonic.Marshal(dataViewMapping)
-			rows := sqlmock.NewRows([]string{
-				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
-				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
-			}).AddRow(
-				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
-				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DATA_VIEW, dataViewMappingBytes,
-				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
-			)
-			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
-
-			relationTypes, err := rta.GetRelationTypesByIDs(testCtx, knID, branch, rtIDs)
-			So(err, ShouldBeNil)
-			So(len(relationTypes), ShouldEqual, 1)
-			So(relationTypes[0].Type, ShouldEqual, interfaces.RELATION_TYPE_DATA_VIEW)
-
-			if err := smock.ExpectationsWereMet(); err != nil {
-				t.Errorf("there were unfulfilled expectations: %s", err)
-			}
-		})
 	})
 }
 

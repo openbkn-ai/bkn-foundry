@@ -7,11 +7,13 @@ package worker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/bytedance/sonic"
 	"github.com/hibiken/asynq"
+	"github.com/openbkn-ai/bkn-comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -45,13 +47,13 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusInit, Creator: creator,
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil).AnyTimes()
@@ -80,14 +82,63 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ResourceID:  "r1",
 			Mode:        interfaces.BuildTaskModeBatch,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
-			Status:      interfaces.BuildTaskStatusInit,
+			Status:      interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(false, nil)
+
+		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, bbw.HandleTask(context.Background(), task))
+	})
+
+	t.Run("cancels task when resource was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		bbw := &batchBuildWorker{bts: bts, rs: rs}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
+		}, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning).WithErrorMsg(""),
+			interfaces.BuildTaskStatusPending).Return(true, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("resource deleted"),
+			interfaces.BuildTaskStatusRunning).Return(true, nil)
+
+		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
+		require.NoError(t, bbw.HandleTask(context.Background(), task))
+	})
+
+	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		bbw := &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
+
+		taskInfo := &interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
+			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
+		}
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(taskInfo, nil)
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusRunning).WithErrorMsg(""),
+			interfaces.BuildTaskStatusPending).Return(true, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").
+			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).
+			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
+			interfaces.NewBuildTaskUpdate().WithStatus(interfaces.BuildTaskStatusCancelled).WithErrorMsg("catalog deleted"),
+			interfaces.BuildTaskStatusRunning).Return(true, nil)
 
 		task := asynq.NewTask("build:batch", workerBuildTaskPayload(t, interfaces.BatchBuildTaskMessage{TaskID: "t1"}))
 		require.NoError(t, bbw.HandleTask(context.Background(), task))
@@ -112,13 +163,13 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ResourceID:  "r1",
 			Mode:        interfaces.BuildTaskModeBatch,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
-			Status:      interfaces.BuildTaskStatusInit,
+			Status:      interfaces.BuildTaskStatusPending,
 		}, nil)
 		bts.EXPECT().InternalUpdateStatus(gomock.Any(), nil, "t1",
 			interfaces.NewBuildTaskUpdate().
 				WithStatus(interfaces.BuildTaskStatusRunning).
 				WithErrorMsg(""),
-			interfaces.BuildTaskStatusInit).
+			interfaces.BuildTaskStatusPending).
 			Return(true, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
@@ -166,7 +217,8 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		lim.EXPECT().CreateIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1"), gomock.Any()).
 			Return(errors.New("opensearch unavailable"))
 
-		err := bbw.executeBuild(context.Background(), resource, buildTask, interfaces.BuildTaskExecuteTypeIncremental)
+		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, buildTask,
+			interfaces.BuildTaskExecuteTypeIncremental)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "create local index failed: opensearch unavailable")
 		assert.False(t, enqueueCalled)
@@ -308,6 +360,63 @@ func TestValidateTaskEmbeddingFeatures(t *testing.T) {
 
 		require.NoError(t, err)
 	})
+}
+
+func TestValidateBuildTaskSchemaFeatures(t *testing.T) {
+	tests := []struct {
+		name     string
+		category string
+		schema   []*interfaces.Property
+		wantErr  string
+	}{
+		{
+			name:     "dataset rejects ref property",
+			category: interfaces.ResourceCategoryDataset,
+			schema: []*interfaces.Property{{
+				Name: "content", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "content"}},
+			}},
+			wantErr: "must not set ref_property",
+		},
+		{
+			name:     "rejects feature unsupported by property type",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{{
+				Name: "id", Type: interfaces.DataType_Integer,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}},
+			}},
+			wantErr: "does not support feature type",
+		},
+		{
+			name:     "rejects mismatched ref property type",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{
+				{Name: "embedding", Type: interfaces.DataType_Vector},
+				{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "embedding"}}},
+			},
+			wantErr: "incompatible with feature type",
+		},
+		{
+			name:     "accepts optional ref property on original resource",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{{
+				Name: "content", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateBuildTaskSchemaFeatures(tt.category, tt.schema)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
 }
 
 func buildTaskWithVector(field string) *interfaces.BuildTask {

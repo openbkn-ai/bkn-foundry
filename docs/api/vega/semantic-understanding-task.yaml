@@ -27,10 +27,15 @@ paths:
           in: query
           schema: { type: string }
         - name: status
-          description: 逗号分隔的状态列表；`active=true` 时筛选 pending 与 running。
+          description: 按状态过滤；多个状态重复传递该参数，状态之间为 OR 关系。
           in: query
+          style: form
+          explode: true
           schema:
-            type: string
+            type: array
+            items:
+              type: string
+              enum: [pending, running, completed, failed, cancelled]
         - name: apply_mode
           description: 应用方式。
           in: query
@@ -42,9 +47,6 @@ paths:
           in: query
           schema:
             type: boolean
-        - name: active
-          in: query
-          schema: { type: boolean }
         - name: offset
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
@@ -55,8 +57,8 @@ paths:
           in: query
           schema:
             type: string
-            enum: [default, create_time, update_time]
-            default: default
+            enum: [create_time, update_time]
+            default: create_time
         - name: direction
           in: query
           schema:
@@ -197,7 +199,7 @@ components:
         agent_id: { type: string }
         input: { type: string }
         input_hash: { type: string }
-        status: { type: string, enum: [pending, running, succeeded, failed] }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
         apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
         result_json: { type: string }
         confidence_threshold: { type: number, format: double }
@@ -216,5 +218,26 @@ components:
       properties:
         entries:
           type: array
-          items: { $ref: "#/components/schemas/SemanticUnderstandingTask" }
+          items: { $ref: "#/components/schemas/SemanticUnderstandingTaskSummary" }
         total_count: { type: integer, format: int64 }
+    SemanticUnderstandingTaskSummary:
+      type: object
+      required: [id, scope, catalog_id, agent_id, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time, update_time]
+      properties:
+        id: { type: string }
+        scope: { type: string, enum: [resource, catalog] }
+        catalog_id: { type: string }
+        catalog_name: { type: string }
+        resource_id: { type: string }
+        resource_name: { type: string }
+        agent_task_id: { type: string }
+        agent_id: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
+        confidence_threshold: { type: number, format: double }
+        confidence: { type: number, format: double }
+        applied: { type: boolean }
+        applied_time: { type: integer, format: int64 }
+        creator: { $ref: "#/components/schemas/AccountInfo" }
+        create_time: { type: integer, format: int64 }
+        update_time: { type: integer, format: int64 }

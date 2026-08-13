@@ -310,11 +310,9 @@ func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(
 
 	query, args, err := sq.Update(tableName).
 		Set("f_last_run", lastRun).
-		Set("f_next_run", sq.Expr(
-			"CASE WHEN f_update_time = ? THEN ? ELSE f_next_run END",
-			scheduleUpdateTime, nextRun,
-		)).
+		Set("f_next_run", nextRun).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
+		Where(sq.Eq{"f_update_time": scheduleUpdateTime}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build run metadata update SQL failed")
@@ -322,29 +320,34 @@ func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(
 		return err
 	}
 
-	_, err = chcsa.db.ExecContext(ctx, query, args...)
+	result, err := chcsa.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		otellog.LogError(ctx, "Update catalog health check schedule run metadata failed", err)
 		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		otellog.LogError(ctx, "Get affected rows after updating catalog health check schedule run metadata failed", err)
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogIDs(ctx context.Context, tx *sql.Tx, catalogIDs []string) error {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalog health check schedules")
+func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalog health check schedule")
 	defer span.End()
 
-	span.SetAttributes(attr.Key("catalog_ids").StringSlice(catalogIDs))
-
-	if len(catalogIDs) == 0 {
-		return nil
-	}
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
 	query, args, err := sq.Delete(tableName).
-		Where(sq.Eq{"f_catalog_id": catalogIDs}).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build delete SQL failed")

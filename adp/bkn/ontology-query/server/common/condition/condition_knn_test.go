@@ -480,123 +480,97 @@ func Test_rewriteKnnCond(t *testing.T) {
 			So(result, ShouldBeNil)
 		})
 
-		Convey("失败 - 非向量字段", func() {
-			cfg := &CondCfg{
-				Name:      "name",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name: "name",
-					Type: dtype.DATATYPE_STRING,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "model1",
-						},
-					},
-					MappedField: Field{
-						Name: "mapped_name",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+	})
+}
 
-		Convey("失败 - IndexConfig为nil", func() {
-			cfg := &CondCfg{
-				Name:      "vector_field",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name:        "vector_field",
-					Type:        dtype.DATATYPE_VECTOR,
-					IndexConfig: nil,
-					MappedField: Field{
-						Name: "mapped_vector",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+// 资源类对象类的属性是标量，向量落在构建任务生成的字段上：只看属性类型会把
+// 两条路径分工不同，必须分开钉住：
+//   - 属性本身是 vector 类型：向量就在该字段上，模型由对象类声明，在这里算好传下去。
+//     这类资源可能没有本地构建索引，下游没有别的依据可用。
+//   - 标量属性：向量在构建任务生成的字段上，字段名与模型都归 vega 解析，文本原样下传。
+func Test_rewriteKnnCond_NativeVectorPropertyPassesTextDownstream(t *testing.T) {
+	Convey("Test rewriteKnnCond on a native vector property", t, func() {
+		ctx := context.Background()
+		called := false
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			called = true
+			return []VectorResp{{Vector: []float32{0.1, 0.2}}}, nil
+		}
 
-		Convey("失败 - ModelID为空", func() {
-			cfg := &CondCfg{
-				Name:      "vector_field",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name: "vector_field",
-					Type: dtype.DATATYPE_VECTOR,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "",
-						},
-					},
-					MappedField: Field{
-						Name: "mapped_vector",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, vectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+		cfg := &CondCfg{
+			Name:      "embedding",
+			Operation: OperationKNN,
+			NameField: &DataProperty{
+				Name:        "embedding",
+				Type:        dtype.DATATYPE_VECTOR,
+				MappedField: Field{Name: "embedding_col"},
+				IndexConfig: &IndexConfig{VectorConfig: VectorConfig{Enabled: true, ModelID: "m-1"}},
+			},
+			ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
+		}
 
-		Convey("失败 - vectorizer错误", func() {
-			failingVectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
-				return nil, fmt.Errorf("vectorizer error")
-			}
-			cfg := &CondCfg{
-				Name:      "vector_field",
-				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
-				NameField: &DataProperty{
-					Name: "vector_field",
-					Type: dtype.DATATYPE_VECTOR,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "model1",
-						},
-					},
-					MappedField: Field{
-						Name: "mapped_vector",
-					},
-				},
-				RemainCfg: map[string]any{
-					"limit_key":   "k",
-					"limit_value": 10,
-				},
-			}
-			result, err := rewriteKnnCond(ctx, cfg, failingVectorizer)
-			So(err, ShouldNotBeNil)
-			So(result, ShouldBeNil)
-		})
+		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
 
+		So(err, ShouldBeNil)
+		So(called, ShouldBeFalse)
+		So(result.Name, ShouldEqual, "embedding_col")
+		So(result.Operation, ShouldEqual, OperationKNNVector)
+		So(result.Value, ShouldEqual, "famous stadium")
+	})
+}
+
+func Test_rewriteKnnCond_NativeVectorPropertyDoesNotNeedLocalModel(t *testing.T) {
+	Convey("Test rewriteKnnCond accepts a vector property without a local model", t, func() {
+		ctx := context.Background()
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			return []VectorResp{{Vector: []float32{0.1}}}, nil
+		}
+
+		cfg := &CondCfg{
+			Name:      "embedding",
+			Operation: OperationKNN,
+			NameField: &DataProperty{
+				Name:        "embedding",
+				Type:        dtype.DATATYPE_VECTOR,
+				MappedField: Field{Name: "embedding_col"},
+			},
+			ValueOptCfg: ValueOptCfg{Value: "x"},
+		}
+
+		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
+
+		So(err, ShouldBeNil)
+		So(result, ShouldNotBeNil)
+		So(result.Name, ShouldEqual, "embedding_col")
+		So(result.Operation, ShouldEqual, OperationKNNVector)
+		So(result.Value, ShouldEqual, "x")
+	})
+}
+
+// 向量字段与模型的解析归 vega：这里只把逻辑属性名换成资源字段名，查询词原样下传。
+func Test_rewriteKnnCond_PassesTextDownstream(t *testing.T) {
+	Convey("Test rewriteKnnCond keeps the query text", t, func() {
+		ctx := context.Background()
+		vectorizer := func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error) {
+			t.Fatal("ontology-query must not vectorize; vega owns that")
+			return nil, nil
+		}
+
+		cfg := &CondCfg{
+			Name:      "stadium_name",
+			Operation: OperationKNN,
+			NameField: &DataProperty{
+				Name:        "stadium_name",
+				MappedField: Field{Name: "stadium_name_col"},
+			},
+			ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
+		}
+
+		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
+
+		So(err, ShouldBeNil)
+		So(result.Name, ShouldEqual, "stadium_name_col")
+		So(result.Operation, ShouldEqual, OperationKNNVector)
+		So(result.Value, ShouldEqual, "famous stadium")
 	})
 }

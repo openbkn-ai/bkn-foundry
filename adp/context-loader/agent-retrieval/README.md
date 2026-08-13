@@ -105,11 +105,11 @@ server/
 
 ### Docker
 
-Build from the **repository root** (context-loader), so that the Dockerfile can copy the agent-retrieval subtree:
+Build from the **agent-retrieval directory**, matching the CI build context so `go.mod` and `server/` are at the Docker build root:
 
 ```bash
-# From context-loader root
-docker build -t agent-retrieval:latest -f agent-retrieval/docker/Dockerfile .
+# From context-loader/agent-retrieval
+docker build -t agent-retrieval:latest -f docker/Dockerfile .
 ```
 
 Run:

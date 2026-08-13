@@ -88,7 +88,9 @@ paths:
           resource_id: '{cl_resource_id}'
       description: |
         取单个资源的物理列与连接器类型——写 `run_sql` 之前该看的东西。
-        `connector_type` 决定该用哪种 SQL 方言心智（虽然 `run_sql` 统一收 Trino 方言）。
+        `connector_type` 决定实际目标方言；`run_sql` 仅支持 `mysql` / `mariadb` /
+        `postgresql` / `sqlserver` 资源，统一接收 MySQL 方言。目标方言不是 MySQL 时由
+        Vega 转译，MySQL / MariaDB 资源则直接下发；其他连接器（如 `opensearch`）会被拒绝。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
@@ -135,8 +137,11 @@ paths:
       summary: 对数据资源执行只读 SQL
       operationId: runSQL
       description: |
-        以 Trino 方言执行**只读** SQL。表名不写物理表名，写占位符
+        以 MySQL 方言执行**只读** SQL。表名不写物理表名，写占位符
         `{{.<resource_id>}}`，由服务端解析到真实数据源。
+
+        标识符需要引用时使用反引号（如 `` `order_id` ``）；双引号在 MySQL 方言下是
+        字符串字面量，不能用于标识符。
 
         **两条硬约束，违反直接 400，SQL 不会下发**：
 
@@ -146,7 +151,7 @@ paths:
         2. **必须是单条只读 `SELECT` 语句**。端到端兼容性以 vega 的只读策略为准；
            虽然本服务的本地守卫可接受以 `WITH` 开头的语句，但 vega 当前会拒绝 CTE，
            因此调用方**不得使用 `WITH` / CTE 或 `UNION` / `INTERSECT` / `EXCEPT`**。
-           守卫会先剥掉注释、字符串字面量与占位符，
+           守卫会先剥掉注释、字符串字面量、反引号标识符与占位符，
            再判定：不允许多语句（剥离后仍含 `;`）、必须以 `SELECT` 或 `WITH` 开头、不得含
            写入 / DDL / 权限 / 过程类关键字（INSERT、UPDATE、DELETE、DROP、ALTER、
            CREATE、TRUNCATE、GRANT、REVOKE、REPLACE、MERGE、UPSERT、CALL、EXEC、
@@ -156,6 +161,8 @@ paths:
            当前保证可用的只读语法为：单表或同一 catalog 内的 `JOIN`、`WHERE`、
            `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 及常用聚合函数（如 `COUNT`、`SUM`、
            `AVG`、`MIN`、`MAX`）。子查询和窗口函数不属于当前兼容性承诺，调用方不得依赖。
+           SQL Server 资源还要求 `SELECT` 输出列名唯一；使用 `JOIN` 时，`*` 必须带表别名
+           限定（如 `o.*`），不能使用裸 `*`。
 
            守卫不是完整 SQL 解析器，是纵深防御的一层：vega 侧另有基于 SQLGlot AST 的
            只读策略做最终裁决（拒绝非顶层 SELECT、WITH/CTE、集合运算等），两层都不可省。
@@ -175,7 +182,7 @@ paths:
                 value:
                   sql: >-
                     SELECT status, count(*) AS cnt FROM {{.res_orders}}
-                    WHERE created_at >= date_add('day', -7, current_date)
+                    WHERE created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)
                     GROUP BY status
               两表关联:
                 value:
@@ -348,8 +355,11 @@ components:
         sql:
           type: string
           description: |
-            Trino 方言 SQL。表名必须写成 `{{.<resource_id>}}` 占位符，
-            也接受 `{{<resource_id>}}` 形式。只允许单条 `SELECT` / `WITH`。
+            MySQL 方言 SQL。表名必须写成 `{{.<resource_id>}}` 占位符，
+            也接受 `{{<resource_id>}}` 形式；`resource_id` 必须匹配
+            `[a-z0-9][a-z0-9_-]{0,39}`（小写，最长 40 个字符），否则占位符不会被识别。
+            标识符需要引用时使用反引号；双引号在 MySQL 方言下是字符串字面量，不能用于
+            标识符。只允许单条 `SELECT`（不支持 `WITH` / CTE）。
           example: SELECT * FROM {{.res_orders}} LIMIT 100
         query_timeout:
           type: integer

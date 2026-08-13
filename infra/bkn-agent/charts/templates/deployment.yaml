@@ -72,6 +72,8 @@ spec:
               value: {{ .Values.runtime.mfModelApiPrivateBase | quote }}
             - name: OPERATOR_INTEGRATION_BASE
               value: {{ .Values.runtime.operatorIntegrationBase | quote }}
+            - name: CONTEXT_LOADER_MCP_URL
+              value: {{ .Values.runtime.contextLoaderMcpUrl | quote }}
             - name: BKN_AGENT_DEFAULT_MODEL
               value: {{ .Values.runtime.defaultModel | quote }}
             - name: CHECKPOINTER_BACKEND

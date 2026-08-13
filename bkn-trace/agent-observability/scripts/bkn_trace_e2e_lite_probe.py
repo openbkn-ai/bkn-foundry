@@ -308,8 +308,8 @@ def run_probe(args: argparse.Namespace) -> list[ProbeResult]:
     if trace_id:
         results.append(
             probe_endpoint(
-                "trace_graph",
-                join_url(args.base_url, f"/api/agent-observability/v1/traces/{trace_id}/trace-graph"),
+                "technical_trace_detail",
+                join_url(args.base_url, f"/api/agent-observability/v1/traces/{trace_id}"),
                 args.token,
                 args.timeout,
                 args.insecure,
@@ -322,7 +322,7 @@ def run_probe(args: argparse.Namespace) -> list[ProbeResult]:
                 "evidence_chain_by_trace",
                 join_url(
                     args.base_url,
-                    f"/api/agent-observability/v1/traces/{trace_id}/evidence-chain",
+                    f"/api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain",
                     {"limit": str(args.limit)},
                 ),
                 args.token,
@@ -337,7 +337,7 @@ def run_probe(args: argparse.Namespace) -> list[ProbeResult]:
                 "business_graph_by_trace",
                 join_url(
                     args.base_url,
-                    f"/api/agent-observability/v1/traces/{trace_id}/business-graph",
+                    f"/api/agent-observability/v1/business-provenance/traces/{trace_id}/business-graph",
                     {"limit": str(args.limit)},
                 ),
                 args.token,
@@ -352,7 +352,7 @@ def run_probe(args: argparse.Namespace) -> list[ProbeResult]:
                 "snapshot_preview_by_trace",
                 join_url(
                     args.base_url,
-                    f"/api/agent-observability/v1/traces/{trace_id}/snapshot-preview",
+                    f"/api/agent-observability/v1/business-provenance/traces/{trace_id}/snapshot-preview",
                     {"limit": str(args.limit)},
                 ),
                 args.token,
@@ -369,8 +369,8 @@ def run_probe(args: argparse.Namespace) -> list[ProbeResult]:
                 "evidence_chain_by_request",
                 join_url(
                     args.base_url,
-                    "/api/agent-observability/v1/traces/by-request",
-                    {"request_id": args.request_id, "limit": str(args.limit)},
+                    f"/api/agent-observability/v1/business-provenance/requests/{urllib.parse.quote(args.request_id, safe='')}/evidence-chain",
+                    {"limit": str(args.limit)},
                 ),
                 args.token,
                 args.timeout,
@@ -384,8 +384,8 @@ def run_probe(args: argparse.Namespace) -> list[ProbeResult]:
                 "business_graph_by_request",
                 join_url(
                     args.base_url,
-                    "/api/agent-observability/v1/traces/by-request/business-graph",
-                    {"request_id": args.request_id, "limit": str(args.limit)},
+                    f"/api/agent-observability/v1/business-provenance/requests/{urllib.parse.quote(args.request_id, safe='')}/business-graph",
+                    {"limit": str(args.limit)},
                 ),
                 args.token,
                 args.timeout,
@@ -399,8 +399,8 @@ def run_probe(args: argparse.Namespace) -> list[ProbeResult]:
                 "snapshot_preview_by_request",
                 join_url(
                     args.base_url,
-                    "/api/agent-observability/v1/traces/by-request/snapshot-preview",
-                    {"request_id": args.request_id, "limit": str(args.limit)},
+                    f"/api/agent-observability/v1/business-provenance/requests/{urllib.parse.quote(args.request_id, safe='')}/snapshot-preview",
+                    {"limit": str(args.limit)},
                 ),
                 args.token,
                 args.timeout,

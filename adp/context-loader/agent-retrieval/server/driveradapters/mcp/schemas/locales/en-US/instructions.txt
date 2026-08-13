@@ -7,7 +7,8 @@ Suggested exploration order:
 
 Query routing:
 - Use query_object_instance for single object-type filtering, sorting, and cursor-style pagination.
-- Use run_sql for joins, aggregation, ranking, GROUP BY, COUNT, SUM, AVG, and cross-table analysis. Use read-only Trino SQL. Reference tables with placeholders such as {{.resource_id}} where resource_id comes from search_schema or list_resources. Use physical column names from search_schema with include_columns=true or from describe_resource.
+- Use run_sql for joins, aggregation, ranking, GROUP BY, COUNT, SUM, AVG, and cross-table analysis. Use read-only MySQL SQL. Reference tables with placeholders such as {{.resource_id}} where resource_id comes from search_schema or list_resources. Use physical column names from search_schema with include_columns=true or from describe_resource.
+- Quote MySQL identifiers with backticks when needed (for example, `order_id`); double quotes are string literals, not identifiers.
 - Use query_instance_subgraph to expand related instances along relation paths.
 - Use get_action_info to discover actions that can be executed for object instances.
 
@@ -20,7 +21,7 @@ Metrics, object type first. Never re-derive a modelled metric in run_sql — its
    - only when nothing is modelled as a metric: run_sql
 
 Direct data-layer path:
-- Use list_resources to list visible data resources with resource_id, name, type, and catalog_id.
+- Use list_resources to list data resources with resource_id, name, type, and catalog_id. To answer "which tables does this knowledge network have", pass kn_id: it returns every resource bound to that network at once, and reports object types with no binding under unbound and unreachable bindings under missing. Without kn_id it pages the account-wide resource pool and can be filtered by catalog_id / type. Never fetch one page without kn_id and intersect it yourself — a large pool guarantees misses.
 - Use describe_resource to inspect a resource's physical columns and connector type.
 - Then use run_sql with table placeholders and physical column names.
 

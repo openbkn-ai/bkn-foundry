@@ -5,11 +5,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// AES-256 requires a 32-byte key; NewAESCrypto returns nil for anything else.
+const (
+	testKey    = "01234567890123456789012345678901"
+	testAltKey = "abcdefghijklmnopqrstuvwxyz123456"
 )
 
 func TestNewAESCrypto_ValidKey(t *testing.T) {
-	key := "01234567890123456789012345678901" // 32 bytes
-	aes, err := crypto.NewAESCrypto(key)
+	aes, err := crypto.NewAESCrypto(testKey)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, aes)
@@ -44,8 +50,8 @@ func TestNewAESCrypto_InvalidKey(t *testing.T) {
 }
 
 func TestAESCrypto_Encrypt_Success(t *testing.T) {
-	key := ""
-	aes, _ := crypto.NewAESCrypto(key)
+	aes, err := crypto.NewAESCrypto(testKey)
+	require.NoError(t, err)
 
 	plaintext := "Hello, World!"
 	ciphertext, err := aes.Encrypt(plaintext)
@@ -56,8 +62,8 @@ func TestAESCrypto_Encrypt_Success(t *testing.T) {
 }
 
 func TestAESCrypto_Decrypt_Success(t *testing.T) {
-	key := ""
-	aes, _ := crypto.NewAESCrypto(key)
+	aes, err := crypto.NewAESCrypto(testKey)
+	require.NoError(t, err)
 
 	plaintext := "Hello, World!"
 	ciphertext, _ := aes.Encrypt(plaintext)
@@ -69,8 +75,8 @@ func TestAESCrypto_Decrypt_Success(t *testing.T) {
 }
 
 func TestAESCrypto_EncryptDecrypt_MultipleValues(t *testing.T) {
-	key := ""
-	aes, _ := crypto.NewAESCrypto(key)
+	aes, err := crypto.NewAESCrypto(testKey)
+	require.NoError(t, err)
 
 	testCases := []string{
 		"",
@@ -94,8 +100,8 @@ func TestAESCrypto_EncryptDecrypt_MultipleValues(t *testing.T) {
 }
 
 func TestAESCrypto_Decrypt_InvalidCiphertext(t *testing.T) {
-	key := ""
-	aes, _ := crypto.NewAESCrypto(key)
+	aes, err := crypto.NewAESCrypto(testKey)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name       string
@@ -124,8 +130,8 @@ func TestAESCrypto_Decrypt_InvalidCiphertext(t *testing.T) {
 }
 
 func TestAESCrypto_EncryptProducesDifferentOutputs(t *testing.T) {
-	key := ""
-	aes, _ := crypto.NewAESCrypto(key)
+	aes, err := crypto.NewAESCrypto(testKey)
+	require.NoError(t, err)
 
 	plaintext := "same plaintext"
 
@@ -144,11 +150,10 @@ func TestAESCrypto_EncryptProducesDifferentOutputs(t *testing.T) {
 }
 
 func TestAESCrypto_DifferentKeysProduceDifferentOutputs(t *testing.T) {
-	key1 := ""
-	key2 := "abcdefghijklmnopqrstuvwxyz123456"
-
-	aes1, _ := crypto.NewAESCrypto(key1)
-	aes2, _ := crypto.NewAESCrypto(key2)
+	aes1, err := crypto.NewAESCrypto(testKey)
+	require.NoError(t, err)
+	aes2, err := crypto.NewAESCrypto(testAltKey)
+	require.NoError(t, err)
 
 	plaintext := "test message"
 
@@ -159,7 +164,7 @@ func TestAESCrypto_DifferentKeysProduceDifferentOutputs(t *testing.T) {
 	assert.NotEqual(t, encrypted1, encrypted2)
 
 	// 用错误的密钥解密应该失败或得到错误结果
-	_, err := aes1.Decrypt(encrypted2)
+	_, err = aes1.Decrypt(encrypted2)
 	// 可能会失败，也可能得到错误的结果
 	if err == nil {
 		decrypted, _ := aes1.Decrypt(encrypted2)
@@ -168,8 +173,8 @@ func TestAESCrypto_DifferentKeysProduceDifferentOutputs(t *testing.T) {
 }
 
 func TestAESCrypto_LargeData(t *testing.T) {
-	key := ""
-	aes, _ := crypto.NewAESCrypto(key)
+	aes, err := crypto.NewAESCrypto(testKey)
+	require.NoError(t, err)
 
 	// 生成一个大字符串
 	largeText := ""

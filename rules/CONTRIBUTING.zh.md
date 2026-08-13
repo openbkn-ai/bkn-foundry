@@ -18,7 +18,6 @@ BKN Foundry 是一个 **monorepo**（[`openbkn-ai/bkn-foundry`](https://github.c
 | **BKN Trace** | [`bkn-trace/`](../bkn-trace) | Agent 可观测与 OpenTelemetry Collector Chart |
 | **Infra** | [`infra/`](../infra) | `mf-model-manager`（模型注册）、`oss-gateway-backend`、`sandbox` 运行时 |
 | **BKN 示例** | [`bkn/`](../bkn) | 业务知识网络示例（如 `smart_home_supply_chain`） |
-| **示例** | [`examples/`](../examples) | 端到端 CLI 示例（数据库 / CSV / Action） |
 | **文档** | [`help/`](../help) | 中英双语产品文档 |
 | **部署** | [`deploy/`](../deploy) | Kubernetes 一键 `deploy.sh`（K8s + BKN Foundry Charts） |
 

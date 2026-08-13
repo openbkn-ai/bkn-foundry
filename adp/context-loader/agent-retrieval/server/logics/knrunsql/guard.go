@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // run_sql 只读 SQL 守卫。
@@ -23,7 +24,7 @@ import (
 
 var (
 	// resourcePlaceholderRe 与 vega extractResourceIDs 保持一致：{{.resource_id}} 或 {{resource_id}}。
-	resourcePlaceholderRe = regexp.MustCompile(`\{\{\.?(\w+)\}\}`)
+	resourcePlaceholderRe = regexp.MustCompile(`\{\{\.?([a-z0-9][a-z0-9_-]{0,39})\}\}`)
 	// anyPlaceholderRe 在关键字判定前把占位符整体替换掉，避免 {{.delete}} 之类内部词触发误判。
 	anyPlaceholderRe = regexp.MustCompile(`\{\{[^}]*\}\}`)
 	// startsWithSelectRe 只校验入口形态，允许前导空白与左括号；集合运算可能通过本地守卫，
@@ -47,7 +48,7 @@ func ExtractResourceIDs(sql string) []string {
 	return ids
 }
 
-// stripSQLNoise 去除行注释(-- 与 #)、块注释(/* */)、单引号字符串与反引号标识符，
+// stripSQLNoise 去除行注释(-- 与 #)、块注释(/* */)、MySQL 字符串与反引号标识符，
 // 以免其中藏有关键字或分号干扰守卫判定。
 func stripSQLNoise(sql string) string {
 	var b strings.Builder
@@ -56,7 +57,8 @@ func stripSQLNoise(sql string) string {
 	for i := 0; i < n; i++ {
 		c := runes[i]
 		switch {
-		case c == '-' && i+1 < n && runes[i+1] == '-': // 行注释 --
+		case c == '-' && i+1 < n && runes[i+1] == '-' &&
+			(i+2 >= n || unicode.IsSpace(runes[i+2]) || unicode.IsControl(runes[i+2])): // MySQL 行注释 --
 			for i < n && runes[i] != '\n' {
 				i++
 			}
@@ -73,30 +75,37 @@ func stripSQLNoise(sql string) string {
 			}
 			i++ // 跳过结尾的 '/'
 			b.WriteByte(' ')
-		case c == '\'': // 单引号字符串（'' 转义）
-			i++
-			for i < n {
-				if runes[i] == '\'' {
-					if i+1 < n && runes[i+1] == '\'' {
-						i += 2
-						continue
-					}
-					break
-				}
-				i++
-			}
+		case c == '\'' || c == '"': // MySQL 单/双引号字符串（反斜杠与重复引号转义）
+			i = skipQuotedSQLLiteral(runes, i, c)
 			b.WriteByte(' ')
 		case c == '`': // 反引号标识符
-			i++
-			for i < n && runes[i] != '`' {
-				i++
-			}
+			i = skipQuotedSQLLiteral(runes, i, c)
 			b.WriteByte(' ')
 		default:
 			b.WriteRune(c)
 		}
 	}
 	return b.String()
+}
+
+// skipQuotedSQLLiteral 返回从 openingQuote 开始的 MySQL 字符串或反引号标识符的结束位置。
+// 成对引号不会提前结束字面量；反斜杠转义对字符串字面量生效，
+// 反引号标识符内的反斜杠是普通字符。
+func skipQuotedSQLLiteral(runes []rune, start int, quote rune) int {
+	for i := start + 1; i < len(runes); i++ {
+		if quote != '`' && runes[i] == '\\' && i+1 < len(runes) {
+			i++
+			continue
+		}
+		if runes[i] == quote {
+			if i+1 < len(runes) && runes[i+1] == quote {
+				i++
+				continue
+			}
+			return i
+		}
+	}
+	return len(runes) - 1
 }
 
 // EnsureReadOnlySQL 校验 SQL 为单条只读 SELECT/WITH 查询；违规返回错误。

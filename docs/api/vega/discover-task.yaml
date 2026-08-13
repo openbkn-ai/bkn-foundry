@@ -10,7 +10,7 @@ info:
     - 手动触发：`POST /catalogs/{id}/discover`（动作端点，本规范末尾覆盖）
     - 定时触发：worker 内部由 `DiscoverSchedule`（见 [discover-schedule.yaml](discover-schedule.yaml)）按 cron 触发
 
-    状态机（`pending → running → completed/failed`）由 worker 单向推进；
+    状态机（`pending → running → completed/failed/cancelled`）由 worker 单向推进；
     用户不能 cancel / retry / restart。对外仅暴露 list / get / delete 三类只读 + 清理操作。
 
     端点设计遵循 [vega-backend/CLAUDE.md] 的"端点设计规则"：批量删除走 path
@@ -39,15 +39,15 @@ paths:
           schema:
             type: string
         - name: status
-          description: 按状态过滤
+          description: 按状态过滤；多个状态重复传递该参数，状态之间为 OR 关系。
           in: query
+          style: form
+          explode: true
           schema:
-            type: string
-            enum:
-              - pending
-              - running
-              - completed
-              - failed
+            type: array
+            items:
+              type: string
+              enum: [pending, running, completed, failed, cancelled]
         - name: strategy
           description: 按探查策略过滤
           in: query
@@ -81,12 +81,12 @@ paths:
             format: int64
             default: 20
         - name: sort
-          description: 排序字段；默认 `default`（执行中、等待中、失败、已完成，同状态按创建时间倒序）。
+          description: 排序字段；默认按创建时间倒序。
           in: query
           schema:
             type: string
-            enum: [default, create_time, start_time, finish_time]
-            default: default
+            enum: [create_time, start_time, finish_time]
+            default: create_time
         - name: direction
           description: 排序方向
           in: query
@@ -141,7 +141,7 @@ paths:
 
         1. 任一 id 处于 `pending` / `running` → 409 `VegaBackend.DiscoverTask.HasRunningExecution`，
            `error_details` 携带 `{ running_ids: [...] }`。状态拦截**不可绕过**——避免删除
-           掉 worker 正在写入的 task 留下孤儿数据。需等待任务进入终态（completed/failed）。
+           掉 worker 正在写入的 task 留下孤儿数据。需等待任务进入终态（completed/failed/cancelled）。
         2. 任一 id 不存在（且未启用 `ignore_missing`）→ 404 `VegaBackend.DiscoverTask.NotFound`，
            `error_details` 携带 `{ missing_ids: [...] }`。
         3. 全部通过 → 逐条删除，返回 204。
@@ -351,6 +351,7 @@ components:
             - running
             - completed
             - failed
+            - cancelled
         progress:
           description: 进度，0-100
           type: integer
@@ -374,6 +375,42 @@ components:
           description: 创建时间，毫秒级时间戳
           type: integer
           format: int64
+    DiscoverTaskResultSummary:
+      description: 发现任务列表使用的结果计数；执行说明仅在单条详情接口中返回。
+      type: object
+      required: [catalog_id, new_count, stale_count, unchanged_count, updated_count, restored_count, failed_count]
+      properties:
+        catalog_id: { type: string }
+        new_count: { type: integer }
+        stale_count: { type: integer }
+        unchanged_count: { type: integer }
+        updated_count: { type: integer }
+        restored_count: { type: integer }
+        failed_count: { type: integer }
+    DiscoverTaskSummary:
+      description: 发现任务列表摘要；完整执行结果及其 message 请调用单条详情接口获取。
+      type: object
+      required: [id, catalog_id, schedule_id, strategy, trigger_type, status, progress, creator, create_time]
+      properties:
+        id: { type: string }
+        catalog_id: { type: string }
+        catalog_name: { type: string }
+        schedule_id: { type: string }
+        strategy:
+          type: string
+          enum: [full_sync, create_only, cleanup_only]
+        trigger_type:
+          type: string
+          enum: [manual, scheduled]
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        progress: { type: integer }
+        start_time: { type: integer, format: int64 }
+        finish_time: { type: integer, format: int64 }
+        result: { $ref: "#/components/schemas/DiscoverTaskResultSummary" }
+        creator: { $ref: "#/components/schemas/AccountInfo" }
+        create_time: { type: integer, format: int64 }
     DiscoverTriggerResponse:
       description: 手动触发响应（异步——返回新建的 DiscoverTask ID）
       type: object
@@ -394,7 +431,7 @@ components:
             - create_only
             - cleanup_only
     ListDiscoverTasks:
-      description: 发现任务列表
+      description: 发现任务摘要列表；完整结果请调用单条详情接口。
       type: object
       required:
         - entries
@@ -404,7 +441,7 @@ components:
           description: 条目列表
           type: array
           items:
-            $ref: "#/components/schemas/DiscoverTask"
+            $ref: "#/components/schemas/DiscoverTaskSummary"
         total_count:
           description: 总条数
           type: integer

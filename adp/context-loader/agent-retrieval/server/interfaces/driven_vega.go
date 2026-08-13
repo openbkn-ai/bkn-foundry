@@ -7,11 +7,11 @@ package interfaces
 import "context"
 
 // VegaRawQueryReq vega 原始 SQL 查询请求（只读）。
-// Query 为 Trino 方言 SQL，表名用 {{.resource_id}} 占位符引用，由 vega 解析成真实表名。
+// Query 为 MySQL 方言 SQL，表名用 {{.resource_id}} 占位符引用，由 vega 解析成真实表名。
 type VegaRawQueryReq struct {
-	Query           string            `json:"query"`                       // Trino 方言 SQL
+	Query           string            `json:"query"`                       // MySQL 方言 SQL
 	QueryFormat     string            `json:"query_format"`                // 固定为 sql
-	InputDialect    string            `json:"input_dialect"`               // 固定为 trino
+	InputDialect    string            `json:"input_dialect"`               // 固定为 mysql
 	QueryTimeoutSec int               `json:"query_timeout_sec,omitempty"` // 查询超时（秒），1-3600
 	Paging          VegaPagingRequest `json:"paging"`
 }

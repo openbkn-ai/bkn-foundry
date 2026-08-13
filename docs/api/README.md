@@ -18,18 +18,29 @@
 
 ## 🗂️ 模块一览
 
+下表顺序即站点首页的卡片分组顺序，由 [`Makefile`](../../Makefile) 的 `MODULES` 决定，改那一行即改线上顺序。
+
 | 模块 | 目录 | 覆盖情况 |
 |---|---|---|
 | 🟦 bkn-backend | [`bkn/`](bkn/) | 业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出。**全量** |
+| 🟫 context-loader | [`context-loader/`](context-loader/) | Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP。**外部面全量**（内部 `/in/v1` 面不收录） |
 | 🟩 ontology-query | [`ontology-query/`](ontology-query/) | 本体查询 / 语义检索 / 行动执行与日志。**全量** |
 | 🟨 vega-backend | [`vega/`](vega/) | 数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询。**全量** |
-| 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent 运行时：agent CRUD / 对话 / 任务 / 提示词 / 导入导出。**全量** |
-| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。由 Go 注解生成，**禁止手改 YAML**。**全量** |
-| 🟫 context-loader | [`context-loader/`](context-loader/) | Agent 上下文入口：Schema 检索 / 实例与子图查询 / 逻辑属性 / 行动执行 / Skill 召回 / 数据直查 / MCP。**外部面全量**（内部 `/in/v1` 面不收录） |
 | 🟩 execution-factory | [`execution-factory/`](execution-factory/) | 执行工厂：函数 / 沙箱观测 / 导入导出 / 算子 / MCP / 工具箱 / Skill。**公开面全量**（89 个端点）。只收 Ingress 暴露的 `/v1`，内部面 `internal-v1` 刻意不收（不校验令牌），能力面 `/api/capabilities-lab/v1` 暂未收 |
 | 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | 模型工厂。**仅部分**：目前只覆盖大模型的连通性测试、默认模型设置与用量总览，其余接口（小模型、配额、提示词等）尚未文档化 |
+| 🟥 agent-observability | [`agent-observability/`](agent-observability/) | BKN Trace：受管会话生命周期、业务证据、技术链路与快照。由 Go 注解生成，**禁止手改 YAML**。**全量** |
+| 🟪 bkn-agent | [`bkn-agent/`](bkn-agent/) | Agent 运行时：agent CRUD / 对话 / 任务 / 提示词 / 导入导出。**全量** |
 
-> 未文档化的服务：`bkn-safe`。
+### 暂不发布的模块
+
+目录仍在仓库里，但不进站点、不参与 lint。登记在 Makefile 的 `MODULES_UNPUBLISHED`：
+
+| 目录 | 原因 |
+| --- | --- |
+| [`bkn-safe/`](bkn-safe/) | 只有一份自助知识网络授权范围读取接口，不作为通用集成合同对外，管理面 API 更不宜误当集成合同 |
+| [`observability/`](observability/) | 只有 `observability.json`，没有可发布的 YAML，渲染出来是空分组 |
+
+> 新增模块目录必须登记到 `MODULES` 或 `MODULES_UNPUBLISHED`，否则 `make api-docs-*` 直接报错——防止"加了文档但站点上没有"的静默漏发。
 
 ### ⚠️ `/api/ontology-manager/v1` 是历史别名，不要再用
 
@@ -40,7 +51,6 @@ bkn-backend 同时注册了 `/api/bkn-backend/v1` 与 `/api/ontology-manager/v1`
 **规范前缀是 `/api/bkn-backend/v1`**，本文档只按它编写：
 
 - 仓库内的服务调用一律走 `/api/bkn-backend/v1`（128 处），无一处使用别名；
-- 唯一残留的使用方是 examples 脚本，已切到规范前缀；
 - 别名路由暂不下线，避免破坏存量客户端；待确认外部无调用后再移除。
 
 ## 🔗 共享定义

@@ -29,6 +29,49 @@ import (
 
 // =========================== GET /discover-tasks ===========================
 
+func parseDiscoverTaskListParams(ctx context.Context, c *gin.Context) (interfaces.DiscoverTaskQueryParams, error) {
+	params := interfaces.DiscoverTaskQueryParams{}
+
+	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
+	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
+	sort := common.GetQueryOrDefault(c, "sort", "create_time")
+	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
+
+	pageParam, err := validatePaginationQueryParams(ctx,
+		offset, limit, sort, direction, interfaces.DISCOVER_TASK_SORT)
+	if err != nil {
+		return params, err
+	}
+
+	statuses, err := parseTaskStatuses(ctx, c.QueryArray("status"), isValidDiscoverTaskStatus,
+		verrors.VegaBackend_DiscoverTask_InvalidStatus)
+	if err != nil {
+		return params, err
+	}
+
+	strategy := c.Query("strategy")
+	if strategy != "" && !interfaces.IsValidDiscoverStrategy(strategy) {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(fmt.Sprintf("invalid strategy: %s", strategy))
+	}
+
+	triggerType := c.Query("trigger_type")
+	if triggerType != "" && !isValidDiscoverTaskTriggerType(triggerType) {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(fmt.Sprintf("invalid trigger_type: %s", triggerType))
+	}
+
+	params = interfaces.DiscoverTaskQueryParams{
+		PaginationQueryParams: pageParam,
+		CatalogID:             c.Query("catalog_id"),
+		ScheduleID:            c.Query("schedule_id"),
+		Statuses:              statuses,
+		Strategy:              strategy,
+		TriggerType:           triggerType,
+	}
+	return params, nil
+}
+
 // ListDiscoverTasksByEx handles GET /api/vega-backend/v1/discover-tasks (External)
 func (r *restHandler) ListDiscoverTasksByEx(c *gin.Context) {
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
@@ -52,32 +95,11 @@ func (r *restHandler) listDiscoverTasks(c *gin.Context, visitor hydra.Visitor) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	offset := common.GetQueryOrDefault(c, "offset", interfaces.DEFAULT_OFFSET)
-	limit := common.GetQueryOrDefault(c, "limit", interfaces.DEFAULT_LIMIT)
-	sort := common.GetQueryOrDefault(c, "sort", "default")
-	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
-
-	pageParam, err := validatePaginationQueryParams(ctx,
-		offset, limit, sort, direction, interfaces.DISCOVER_TASK_SORT)
+	params, err := parseDiscoverTaskListParams(ctx, c)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	params := interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: pageParam,
-		CatalogID:             c.Query("catalog_id"),
-		ScheduleID:            c.Query("schedule_id"),
-		Status:                c.Query("status"),
-		Strategy:              c.Query("strategy"),
-		TriggerType:           c.Query("trigger_type"),
-	}
-
-	if err := ValidateDiscoverTaskQueryParams(ctx, params); err != nil {
-		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

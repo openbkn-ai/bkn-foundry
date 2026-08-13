@@ -247,6 +247,56 @@ func TestMePermissions(t *testing.T) {
 	}
 }
 
+func TestMeKnowledgeNetworkGrantsReturnsDirectInstancesWithoutRoleWildcard(t *testing.T) {
+	r, e, _, _ := newAdminServer(t)
+	const path = "/api/safe/v1/me/knowledge-network-grants"
+
+	// The role-wide grant intentionally covers the direct grant. The normal
+	// effective-permissions endpoint collapses that direct row, but Trace needs
+	// the concrete management scope without treating the wildcard as data scope.
+	if err := e.GrantRolePermission("network_builder", "knowledge_network", "*", "modify"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole("builder-1", "network_builder"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("builder-1", "knowledge_network", "kn-managed", "modify"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("builder-1", "knowledge_network", "kn-managed", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("builder-1", "agent", "agent-1", "use"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission("other-user", "knowledge_network", "kn-other", "modify"); err != nil {
+		t.Fatal(err)
+	}
+
+	if w := tokReq(t, r, http.MethodGet, path, nil, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no token: want 401, got %d", w.Code)
+	}
+	w := tokReq(t, r, http.MethodGet, path, nil, "builder-1")
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var response struct {
+		Grants []struct {
+			KnowledgeNetworkID string   `json:"knowledge_network_id"`
+			Operations         []string `json:"operations"`
+		} `json:"grants"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Grants) != 1 || response.Grants[0].KnowledgeNetworkID != "kn-managed" {
+		t.Fatalf("want only the caller's direct KN grant, got %#v", response.Grants)
+	}
+	if got := response.Grants[0].Operations; len(got) != 2 || got[0] != "modify" || got[1] != "task_manage" {
+		t.Fatalf("direct grant operations = %v, want [modify task_manage]", got)
+	}
+}
+
 // TestMePermissionsScope covers the scope filters and their validation.
 func TestMePermissionsScope(t *testing.T) {
 	r, e, _, _ := newAdminServer(t)

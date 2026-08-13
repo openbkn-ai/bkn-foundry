@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/bytedance/sonic"
@@ -65,6 +64,26 @@ func discoverTaskColumns() []string {
 	}
 }
 
+// discoverTaskListColumns excludes execution messages. It retains result JSON
+// only to extract the compact counters required by list consumers.
+func discoverTaskListColumns() []string {
+	return []string{
+		"f_id",
+		"f_catalog_id",
+		"f_schedule_id",
+		"f_strategy",
+		"f_trigger_type",
+		"f_status",
+		"f_progress",
+		"f_start_time",
+		"f_finish_time",
+		"f_result",
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+	}
+}
+
 func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, error) {
 	task := &interfaces.DiscoverTask{}
 	var resultStr sql.NullString
@@ -92,6 +111,47 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 	if resultStr.Valid && resultStr.String != "" {
 		task.Result = &interfaces.DiscoverResult{}
 		_ = sonic.UnmarshalString(resultStr.String, task.Result)
+	}
+
+	return task, nil
+}
+
+func scanDiscoverTaskListItem(scanner discoverTaskScanner) (*interfaces.DiscoverTaskSummary, error) {
+	task := &interfaces.DiscoverTaskSummary{}
+	var resultStr sql.NullString
+
+	err := scanner.Scan(
+		&task.ID,
+		&task.CatalogID,
+		&task.ScheduleID,
+		&task.Strategy,
+		&task.TriggerType,
+		&task.Status,
+		&task.Progress,
+		&task.StartTime,
+		&task.FinishTime,
+		&resultStr,
+		&task.Creator.ID,
+		&task.Creator.Type,
+		&task.CreateTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if resultStr.Valid && resultStr.String != "" {
+		var result interfaces.DiscoverResult
+		if err := sonic.UnmarshalString(resultStr.String, &result); err == nil {
+			task.Result = &interfaces.DiscoverTaskResultSummary{
+				CatalogID:      result.CatalogID,
+				NewCount:       result.NewCount,
+				StaleCount:     result.StaleCount,
+				UnchangedCount: result.UnchangedCount,
+				UpdatedCount:   result.UpdatedCount,
+				RestoredCount:  result.RestoredCount,
+				FailedCount:    result.FailedCount,
+			}
+		}
 	}
 
 	return task, nil
@@ -220,11 +280,11 @@ func (dta *discoverTaskAccess) GetByID(ctx context.Context, id string) (*interfa
 }
 
 // List lists DiscoverTasks with filters.
-func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List discover_tasks")
 	defer span.End()
 
-	builder := sq.Select(discoverTaskColumns()...).From(DISCOVER_TASK_TABLE_NAME)
+	builder := sq.Select(discoverTaskListColumns()...).From(DISCOVER_TASK_TABLE_NAME)
 
 	countBuilder := sq.Select("COUNT(*)").From(DISCOVER_TASK_TABLE_NAME)
 
@@ -236,9 +296,9 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 		builder = builder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
 		countBuilder = countBuilder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
 	}
-	if params.Status != "" {
-		builder = builder.Where(sq.Eq{"f_status": params.Status})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Status})
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Statuses})
 	}
 	if params.Strategy != "" {
 		builder = builder.Where(sq.Eq{"f_strategy": params.Strategy})
@@ -277,9 +337,9 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 	}
 	defer func() { _ = rows.Close() }()
 
-	tasks := make([]*interfaces.DiscoverTask, 0)
+	tasks := make([]*interfaces.DiscoverTaskSummary, 0)
 	for rows.Next() {
-		task, err := scanDiscoverTask(rows)
+		task, err := scanDiscoverTaskListItem(rows)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, 0, err
@@ -298,10 +358,6 @@ func (dta *discoverTaskAccess) List(ctx context.Context, params interfaces.Disco
 }
 
 func buildOrderByClause(sort, direction string) string {
-	if sort == "default" {
-		return "CASE f_status WHEN 'running' THEN 1 WHEN 'pending' THEN 2 WHEN 'failed' THEN 3 WHEN 'completed' THEN 4 ELSE 999 END ASC, f_create_time DESC"
-	}
-
 	column := "f_create_time"
 	switch sort {
 	case "start_time":
@@ -339,6 +395,7 @@ func (dta *discoverTaskAccess) UpdateStatus(ctx context.Context, id, status, mes
 	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
 		SetMap(data).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -355,6 +412,40 @@ func (dta *discoverTaskAccess) UpdateStatus(ctx context.Context, id, status, mes
 	return nil
 }
 
+func (dta *discoverTaskAccess) MarkCancelled(ctx context.Context, id, message string, finishTime int64) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover task cancelled")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
+		Set("f_status", interfaces.DiscoverTaskStatusCancelled).
+		Set("f_message", message).
+		Set("f_finish_time", finishTime).
+		Where(sq.Eq{"f_id": id}).
+		Where(sq.Eq{"f_status": []string{
+			interfaces.DiscoverTaskStatusPending,
+			interfaces.DiscoverTaskStatusRunning,
+		}}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+
+	result, err := dta.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "RowsAffected failed")
+		return false, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return affected > 0, nil
+}
+
 // UpdateProgress updates a DiscoverTask's progress.
 func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update discover_task progress")
@@ -362,8 +453,8 @@ func (dta *discoverTaskAccess) UpdateProgress(ctx context.Context, id string, pr
 
 	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
 		Set("f_progress", progress).
-		Set("f_update_time", time.Now().UnixMilli()).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -393,6 +484,7 @@ func (dta *discoverTaskAccess) UpdateResult(ctx context.Context, id string, resu
 		Set("f_progress", 100).
 		Set("f_finish_time", stime).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.NotEq{"f_status": interfaces.DiscoverTaskStatusCancelled}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -468,6 +560,38 @@ func (dta *discoverTaskAccess) Delete(ctx context.Context, id string) error {
 		return sql.ErrNoRows
 	}
 
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// MarkCancelledByCatalogID marks pending tasks as cancelled when their Catalog is deleted.
+func (dta *discoverTaskAccess) MarkCancelledByCatalogID(
+	ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64,
+) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Mark discover tasks cancelled by catalog ID")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+	sqlStr, vals, err := sq.Update(DISCOVER_TASK_TABLE_NAME).
+		Set("f_status", interfaces.DiscoverTaskStatusCancelled).
+		Set("f_message", message).
+		Set("f_finish_time", finishTime).
+		Where(sq.Eq{"f_catalog_id": catalogID}).
+		Where(sq.Eq{"f_status": interfaces.DiscoverTaskStatusPending}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = dta.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return err
+	}
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

@@ -40,3 +40,7 @@ jobs:
         with:
           go-version-file: adp/bkn/ontology-query/server/go.mod
       - run: go build ./...
+      - name: Run ontology query unit tests
+        env:
+          I18N_MODE_UT: "true"
+        run: go test -count=1 -gcflags="all=-l" ./...

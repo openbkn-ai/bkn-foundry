@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode="preview"
+if [[ ${1:-} == "--confirm" ]]; then
+  mode="confirm"
+  shift
+fi
+if [[ $# -ne 0 ]]; then
+  echo "usage: $0 [--confirm]" >&2
+  exit 2
+fi
+
+required=(
+  BKN_TRACE_CLEANUP_DB_HOST
+  BKN_TRACE_CLEANUP_DB_NAME
+  BKN_TRACE_CLEANUP_DB_USER
+  OPENSEARCH_ENDPOINT
+  OPENSEARCH_TRACE_INDEX
+  OPENSEARCH_EVIDENCE_INDEX
+  BKN_TRACE_PROJECTION_INDEX
+)
+for name in "${required[@]}"; do
+  if [[ -z ${!name:-} ]]; then
+    echo "$name is required" >&2
+    exit 2
+  fi
+  if [[ ${!name} == *'${'* || ${!name} == *'$('* ]]; then
+    echo "$name contains an unresolved expression" >&2
+    exit 2
+  fi
+done
+
+endpoint=${OPENSEARCH_ENDPOINT%/}
+if [[ ! $endpoint =~ ^https?://[^[:space:]]+$ ]] || [[ $endpoint == *'*'* || $endpoint == *'?'* || $endpoint == *'#'* ]]; then
+  echo "OPENSEARCH_ENDPOINT must be one explicit http(s) endpoint without wildcards, query, or fragment" >&2
+  exit 2
+fi
+
+database=${BKN_TRACE_CLEANUP_DB_NAME}
+if [[ ! $database =~ ^[A-Za-z0-9_]+$ ]] || [[ $database =~ ^(mysql|information_schema|performance_schema|sys)$ ]]; then
+  echo "BKN_TRACE_CLEANUP_DB_NAME must be one explicit application database" >&2
+  exit 2
+fi
+
+indices=("$OPENSEARCH_TRACE_INDEX" "$OPENSEARCH_EVIDENCE_INDEX" "$BKN_TRACE_PROJECTION_INDEX")
+for index in "${indices[@]}"; do
+  if [[ ! $index =~ ^[A-Za-z0-9._-]+$ ]] || [[ $index == .* || $index == _all ]]; then
+    echo "OpenSearch index must be one explicit non-system index: $index" >&2
+    exit 2
+  fi
+done
+
+for command in mysql curl jq; do
+  command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 2; }
+done
+
+db_port=${BKN_TRACE_CLEANUP_DB_PORT:-3306}
+if [[ ! $db_port =~ ^[0-9]+$ ]]; then
+  echo "BKN_TRACE_CLEANUP_DB_PORT must be numeric" >&2
+  exit 2
+fi
+mysql_args=(
+  "--host=$BKN_TRACE_CLEANUP_DB_HOST"
+  "--port=$db_port"
+  "--user=$BKN_TRACE_CLEANUP_DB_USER"
+  "--database=$database"
+  --batch
+  --skip-column-names
+)
+
+curl_args=(-fsS)
+if [[ -n ${OPENSEARCH_USERNAME:-} || -n ${OPENSEARCH_PASSWORD:-} ]]; then
+  if [[ -z ${OPENSEARCH_USERNAME:-} || -z ${OPENSEARCH_PASSWORD:-} ]]; then
+    echo "OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD must be provided together" >&2
+    exit 2
+  fi
+  curl_args+=(--user "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD")
+fi
+tables=(
+  bkn_trace_operation_call_facts
+  bkn_trace_receipts
+  bkn_trace_operations
+  bkn_trace_assembly_revisions
+  bkn_trace_event_conflicts
+  bkn_trace_projection_outbox
+  bkn_trace_projection_checkpoints
+  bkn_trace_dlq_replay_audit
+  bkn_trace_dlq
+  bkn_trace_evidence_event_ledger
+  bkn_trace_idempotency_records
+  bkn_trace_interactions
+  bkn_trace_conversations
+)
+
+echo "mode=$mode database=$database"
+existing_tables=()
+for table in "${tables[@]}"; do
+  exists=$(mysql "${mysql_args[@]}" --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '$table'")
+  if [[ $exists == "0" ]]; then
+    echo "mariadb $table status=absent"
+    continue
+  fi
+  existing_tables+=("$table")
+  count=$(mysql "${mysql_args[@]}" --execute="SELECT COUNT(*) FROM $table")
+  echo "mariadb $table count=$count"
+done
+for index in "${indices[@]}"; do
+  count=$(curl "${curl_args[@]}" "$endpoint/$index/_count" | jq -er '.count')
+  echo "opensearch $index count=$count"
+done
+
+if [[ $mode == "preview" ]]; then
+  echo "preview only; rerun with --confirm to delete exactly the targets above"
+  exit 0
+fi
+
+delete_sql="SET FOREIGN_KEY_CHECKS=0;"
+for table in "${existing_tables[@]}"; do
+  delete_sql+=" DELETE FROM $table;"
+done
+delete_sql+=" SET FOREIGN_KEY_CHECKS=1;"
+mysql "${mysql_args[@]}" --execute="$delete_sql"
+for index in "${indices[@]}"; do
+  response=$(curl "${curl_args[@]}" -X POST "$endpoint/$index/_delete_by_query?conflicts=proceed&refresh=true" -H 'Content-Type: application/json' --data '{"query":{"match_all":{}}}')
+  if ! jq -e '(.failures // []) | length == 0' >/dev/null <<<"$response"; then
+    echo "OpenSearch cleanup reported failures for $index" >&2
+    exit 1
+  fi
+done
+
+for table in "${existing_tables[@]}"; do
+  remaining=$(mysql "${mysql_args[@]}" --execute="SELECT COUNT(*) FROM $table")
+  if [[ $remaining != "0" ]]; then
+    echo "MariaDB cleanup verification failed: table=$table remaining=$remaining" >&2
+    exit 1
+  fi
+done
+for index in "${indices[@]}"; do
+  remaining=$(curl "${curl_args[@]}" "$endpoint/$index/_count" | jq -er '.count')
+  if [[ $remaining != "0" ]]; then
+    echo "OpenSearch cleanup verification failed: index=$index remaining=$remaining" >&2
+    exit 1
+  fi
+done
+echo "cleanup complete; all explicit BKN Trace targets are empty"

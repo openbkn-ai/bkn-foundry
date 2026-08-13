@@ -14,12 +14,51 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 )
 
 var testSortTypes = map[string]string{
 	"name":        "f_name",
 	"create_time": "f_create_time",
+}
+
+func TestParseTaskStatuses(t *testing.T) {
+	ctx := context.Background()
+	isValid := func(status string) bool {
+		return status == "pending" || status == "running"
+	}
+
+	tests := []struct {
+		name    string
+		values  []string
+		want    []string
+		wantErr bool
+	}{
+		{name: "absent", want: []string{}},
+		{name: "single value", values: []string{"pending"}, want: []string{"pending"}},
+		{
+			name:   "multiple values are trimmed and deduplicated",
+			values: []string{" pending ", "running", "pending"},
+			want:   []string{"pending", "running"},
+		},
+		{name: "unknown value", values: []string{"unknown"}, wantErr: true},
+		{name: "explicit empty value", values: []string{""}, wantErr: true},
+		{name: "comma-separated value", values: []string{"pending,running"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTaskStatuses(ctx, tt.values, isValid, verrors.VegaBackend_InvalidParameter_Format)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestValidateName(t *testing.T) {
@@ -156,10 +195,7 @@ func TestValidateCreateResourceCategory(t *testing.T) {
 	})
 }
 
-// 注意分层：ValidateResourceRequest 的 dataset 路径只做"schema 非空 + extensions"
-// 兜底校验（字段级校验为兼容 v0.8.0 历史 schema 已断开，见 validateDatasetRequest
-// 注释）；字段级规则由保留待接回的 validateDatasetFields 承载，直接对它测试。
-func TestValidateDatasetRequest(t *testing.T) {
+func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 	ctx := context.Background()
 	baseReq := func(props []*interfaces.Property) *interfaces.ResourceRequest {
 		return &interfaces.ResourceRequest{
@@ -179,15 +215,64 @@ func TestValidateDatasetRequest(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("ValidateResourceRequest does not enforce field-level rules at request entry", func(t *testing.T) {
+	t.Run("ValidateResourceRequest rejects duplicate field names", func(t *testing.T) {
 		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
 			{Name: "dup", Type: interfaces.DataType_String},
 			{Name: "dup", Type: interfaces.DataType_Integer},
 		}))
+		require.Error(t, err)
+	})
+
+	t.Run("ValidateResourceRequest rejects nil property", func(t *testing.T) {
+		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{nil}))
+		require.Error(t, err)
+	})
+
+	t.Run("ValidateResourceRequest accepts text keyword multi-field", func(t *testing.T) {
+		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{
+					{FeatureName: "content.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword},
+				},
+			},
+		}))
 		require.NoError(t, err)
 	})
 
-	t.Run("validateDatasetFields rejects invalid fields", func(t *testing.T) {
+	t.Run("ValidateResourceRequest rejects dataset feature ref_property", func(t *testing.T) {
+		err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
+			{Name: "content_keyword", Type: interfaces.DataType_String},
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{
+					{FeatureName: "content.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "content_keyword"},
+				},
+			},
+		}))
+		require.Error(t, err)
+	})
+
+	t.Run("ValidateResourceRequest rejects invalid table feature", func(t *testing.T) {
+		err := ValidateResourceRequest(ctx, &interfaces.ResourceRequest{
+			Name:     "table",
+			Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{
+					Name: "id",
+					Type: interfaces.DataType_Integer,
+					Features: []interfaces.PropertyFeature{
+						{FeatureName: "id.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "id"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("validateSchemaProperties rejects invalid original resource fields", func(t *testing.T) {
 		tests := []struct {
 			name   string
 			fields []*interfaces.Property
@@ -239,19 +324,38 @@ func TestValidateDatasetRequest(t *testing.T) {
 				},
 			},
 			{
-				name: "non-native feature with missing ref_property",
+				name: "feature with unsupported property type",
 				fields: []*interfaces.Property{
-					{Name: "f1", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
-						{FeatureName: "feat1", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "missing"},
+					{Name: "f1", Type: interfaces.DataType_String},
+					{Name: "f2", Type: interfaces.DataType_Integer, Features: []interfaces.PropertyFeature{
+						{FeatureName: "feat1", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "f1"},
 					}},
 				},
 			},
 			{
-				name: "feature with mismatched ref type",
+				name: "native feature with unsupported property type",
 				fields: []*interfaces.Property{
-					{Name: "f1", Type: interfaces.DataType_Integer},
+					{Name: "f1", Type: interfaces.DataType_String},
+					{Name: "f2", Type: interfaces.DataType_Integer, Features: []interfaces.PropertyFeature{
+						{FeatureName: "feat1", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "f1", IsNative: true},
+					}},
+				},
+			},
+			{
+				name: "feature with mismatched ref property type",
+				fields: []*interfaces.Property{
+					{Name: "f1", Type: interfaces.DataType_Vector},
 					{Name: "f2", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
 						{FeatureName: "feat1", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "f1"},
+					}},
+				},
+			},
+			{
+				name: "duplicate default features without ref_property",
+				fields: []*interfaces.Property{
+					{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+						{FeatureName: "body.ft1", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: true},
+						{FeatureName: "body.ft2", FeatureType: interfaces.PropertyFeatureType_Fulltext, IsDefault: true},
 					}},
 				},
 			},
@@ -259,12 +363,12 @@ func TestValidateDatasetRequest(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				require.Error(t, validateDatasetFields(ctx, tt.fields))
+				require.Error(t, validateSchemaProperties(ctx, tt.fields, true))
 			})
 		}
 	})
 
-	t.Run("validateDatasetFields accepts valid fields", func(t *testing.T) {
+	t.Run("validateSchemaProperties accepts valid original resource fields", func(t *testing.T) {
 		tests := []struct {
 			name   string
 			fields []*interfaces.Property
@@ -285,10 +389,28 @@ func TestValidateDatasetRequest(t *testing.T) {
 				},
 			},
 			{
-				name: "fulltext feature referencing string field",
+				name: "original resource feature without ref_property",
 				fields: []*interfaces.Property{
-					{Name: "title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{
-						{FeatureName: "title.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "title"},
+					{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+						{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext},
+					}},
+				},
+			},
+			{
+				name: "feature can reuse a matching result from a differently typed property",
+				fields: []*interfaces.Property{
+					{Name: "title_keyword", Type: interfaces.DataType_String},
+					{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+						{FeatureName: "title.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title_keyword"},
+					}},
+				},
+			},
+			{
+				name: "vector feature reuses vector property",
+				fields: []*interfaces.Property{
+					{Name: "embedding", Type: interfaces.DataType_Vector},
+					{Name: "content", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+						{FeatureName: "content.vector", FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "embedding"},
 					}},
 				},
 			},
@@ -296,7 +418,7 @@ func TestValidateDatasetRequest(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				require.NoError(t, validateDatasetFields(ctx, tt.fields))
+				require.NoError(t, validateSchemaProperties(ctx, tt.fields, true))
 			})
 		}
 	})

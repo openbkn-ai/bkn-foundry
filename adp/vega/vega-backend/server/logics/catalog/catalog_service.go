@@ -34,7 +34,6 @@ import (
 	"vega-backend/logics/catalog_health_check_schedule"
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/extensions"
-	"vega-backend/logics/local_index"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/user_mgmt"
 )
@@ -47,6 +46,7 @@ const (
 	defaultConnectionTestTimeout           = 30 * time.Second
 	connectorInitializationFailedResult    = "Connector initialization failed."
 	connectionTestFailedResult             = "Connection test failed."
+	catalogDeletedTaskMessage              = "catalog deleted"
 )
 
 var (
@@ -64,9 +64,11 @@ type catalogService struct {
 	ra   interfaces.ResourceAccess
 	ps   interfaces.PermissionService
 	ums  interfaces.UserMgmtService
-	bta  interfaces.BuildTaskAccess // 删 catalog 时级联清其下资源的构建任务/索引
+	bta  interfaces.BuildTaskAccess
+	dsa  interfaces.DiscoverScheduleAccess
+	dta  interfaces.DiscoverTaskAccess
 	hcss interfaces.CatalogHealthCheckScheduleService
-	lim  interfaces.LocalIndexManager
+	suta interfaces.SemanticUnderstandingTaskAccess
 }
 
 // NewCatalogService creates a new CatalogService.
@@ -83,7 +85,6 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 
 		cf := factory.GetFactory(appSetting)
 		hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
-		lim := local_index.NewLocalIndexManager(appSetting)
 		ps := permission.NewPermissionService(appSetting)
 		ums := user_mgmt.NewUserMgmtService(appSetting)
 		cService = &catalogService{
@@ -94,10 +95,12 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 			bta:  logics.BTA,
 			ca:   logics.CA,
 			cf:   cf,
+			dsa:  logics.DSA,
+			dta:  logics.DTA,
 			hcss: hcss,
-			lim:  lim,
 			ps:   ps,
 			ra:   logics.RA,
+			suta: logics.SUTA,
 			ums:  ums,
 		}
 	})
@@ -841,51 +844,210 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 	return nil
 }
 
-// DeleteByIDs deletes Catalogs by IDs.
-func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete catalogs")
-	defer span.End()
-
-	if len(ids) == 0 {
-		span.SetStatus(codes.Ok, "")
-		return nil
-	}
-
-	// 判断userid是否有删除权限；内部目录按 internal_catalog 类型校验
+func (cs *catalogService) authorizeDelete(ctx context.Context, id string) (map[string]struct{}, error) {
 	internalSet, err := cs.internalCatalogIDSet(ctx)
 	if err != nil {
-		span.SetStatus(codes.Error, "List internal catalog IDs failed")
-		return err
+		return nil, err
 	}
-	matchResoucesMap, err := cs.filterCatalogResources(ctx, ids, internalSet,
+	matched, err := cs.filterCatalogResources(ctx, []string{id}, internalSet,
 		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
 	if err != nil {
-		span.SetStatus(codes.Error, "Filter resources error")
+		return nil, err
+	}
+	if _, exists := matched[id]; !exists {
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("Access denied: insufficient permissions for catalog's delete operation.")
+	}
+	return internalSet, nil
+}
+
+// GetDeletionImpact returns the dependency counts used by catalog deletion.
+func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*interfaces.CatalogDeletionImpact, error) {
+	if _, err := cs.authorizeDelete(ctx, id); err != nil {
+		return nil, err
+	}
+	impact, err := cs.getDeletionImpact(ctx, id)
+	if err != nil {
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return nil, httpErr
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to inspect catalog dependencies")
+	}
+	return impact, nil
+}
+
+// getDeletionImpact uses access ports so the catalog service does not depend on
+// discover services, which already depend on catalog service.
+func (cs *catalogService) getDeletionImpact(ctx context.Context, id string) (*interfaces.CatalogDeletionImpact, error) {
+	page := interfaces.PaginationQueryParams{Limit: 1}
+	catalog, err := cs.ca.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if catalog == nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound).
+			WithErrorDetails(fmt.Sprintf("id %s not found", id))
+	}
+	resources, err := cs.ra.GetByCatalogID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var pendingBuild, buildExecuting, scheduleTotal, pendingDiscover, runningDiscover int64
+	healthCheckScheduleTotal := int64(0)
+	if catalog.Type == interfaces.CatalogTypePhysical {
+		_, pendingBuild, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses:              []string{interfaces.BuildTaskStatusPending},
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, buildExecuting, err = cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses: []string{
+				interfaces.BuildTaskStatusRunning,
+				interfaces.BuildTaskStatusStopping,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, scheduleTotal, err = cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, pendingDiscover, err = cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses:              []string{interfaces.DiscoverTaskStatusPending},
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, runningDiscover, err = cs.dta.List(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+			Statuses:              []string{interfaces.DiscoverTaskStatusRunning},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		healthCheckSchedule, getErr := cs.hcss.GetByCatalogID(ctx, id)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if healthCheckSchedule != nil {
+			healthCheckScheduleTotal = 1
+		}
+	}
+	_, pendingSemantic, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusPending},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, semanticRunning, err := cs.suta.List(ctx, interfaces.SemanticUnderstandingTaskQueryParams{
+		PaginationQueryParams: page,
+		CatalogID:             id,
+		Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusRunning},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	protectedResources := 0
+	resourceIDs := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		resourceIDs = append(resourceIDs, resource.ID)
+		if resource.Category == interfaces.ResourceCategoryDataset || resource.Category == interfaces.ResourceCategoryLogicView {
+			protectedResources++
+		}
+	}
+
+	blockers := make([]string, 0, 4)
+	if protectedResources > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerProtectedResources)
+	}
+	if buildExecuting > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerBuildTasksRunningOrStopping)
+	}
+	if runningDiscover > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerDiscoverTasksRunning)
+	}
+	if semanticRunning > 0 {
+		blockers = append(blockers, interfaces.CatalogDeletionBlockerSemanticUnderstandingTasksRunning)
+	}
+
+	return &interfaces.CatalogDeletionImpact{
+		CatalogID: id,
+		CanDelete: len(blockers) == 0,
+		Blockers:  blockers,
+		BuildTasks: interfaces.CatalogDeletionTaskImpact{
+			WillCancel: pendingBuild,
+			Blocking:   buildExecuting,
+		},
+		DiscoverTasks: interfaces.CatalogDeletionTaskImpact{
+			WillCancel: pendingDiscover,
+			Blocking:   runningDiscover,
+		},
+		SemanticUnderstandingTasks: interfaces.CatalogDeletionTaskImpact{
+			WillCancel: pendingSemantic,
+			Blocking:   semanticRunning,
+		},
+		DiscoverSchedules:           scheduleTotal,
+		CatalogHealthCheckSchedules: healthCheckScheduleTotal,
+		Resources:                   len(resources),
+		ProtectedResources:          protectedResources,
+		ResourceIDs:                 resourceIDs,
+	}, nil
+}
+
+// DeleteByID deletes a Catalog by ID.
+func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete catalog")
+	defer span.End()
+
+	internalSet, err := cs.authorizeDelete(ctx, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Authorize catalog deletion failed")
 		return err
 	}
 
-	// 检查是否有删除权限
-	if len(matchResoucesMap) != len(ids) {
-		// 请求的资源id可以重复，未去重，资源过滤出来的资源id是去重过的，所以单纯判断数量不准确
-		for _, id := range ids {
-			if _, exist := matchResoucesMap[id]; !exist {
-				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-					WithErrorDetails("Access denied: insufficient permissions for catalog's delete operation.")
-			}
+	impact, err := cs.getDeletionImpact(ctx, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalog deletion impact failed")
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return httpErr
 		}
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to inspect catalog dependencies")
+	}
+	if !impact.CanDelete {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails(impact)
 	}
 
-	// 删 catalog 前先级联清掉其下所有资源的构建任务 + OpenSearch 索引，
-	// 否则资源行被删后任务行与索引全成孤儿。运行中任务会拒绝整个删除（HasRunningExecution），
-	// 用户需先停止再删。放在删 catalog/resource 行之前，cascade 失败则什么都不删。
-	for _, id := range ids {
-		if err := logics.CascadeDeleteBuildTasks(ctx, cs.bta, cs.lim,
-			interfaces.BuildTasksQueryParams{CatalogID: id}); err != nil {
-			span.SetStatus(codes.Error, "Cascade delete build tasks failed")
-			return err
-		}
+	// Task rows are audit records and must be retained.
+	buildTasks, _, err := cs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{CatalogID: id})
+	if err != nil {
+		span.SetStatus(codes.Error, "List build tasks failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
+			WithErrorDetails("failed to inspect catalog build tasks")
 	}
-
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
@@ -896,12 +1058,38 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	err = cs.hcss.DeleteByCatalogIDs(ctx, tx, ids)
-	if err == nil {
-		err = cs.ra.DeleteByCatalogIDs(ctx, tx, ids)
+	now := time.Now().UnixMilli()
+	cancelled := interfaces.BuildTaskStatusCancelled
+	errorMessage := catalogDeletedTaskMessage
+	for _, task := range buildTasks {
+		if task.Status != interfaces.BuildTaskStatusPending {
+			continue
+		}
+		_, err = cs.bta.UpdateStatus(ctx, tx, task.ID, interfaces.BuildTaskUpdate{
+			Status:   &cancelled,
+			ErrorMsg: &errorMessage,
+		}, now, interfaces.BuildTaskStatusPending)
+		if err != nil {
+			break
+		}
 	}
 	if err == nil {
-		err = cs.ca.DeleteByIDs(ctx, tx, ids)
+		err = cs.dta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
+	}
+	if err == nil {
+		err = cs.suta.MarkCancelledByCatalogID(ctx, tx, id, catalogDeletedTaskMessage, now)
+	}
+	if err == nil {
+		err = cs.dsa.DeleteByCatalogID(ctx, tx, id)
+	}
+	if err == nil {
+		err = cs.hcss.DeleteByCatalogID(ctx, tx, id)
+	}
+	if err == nil {
+		err = cs.ra.DeleteByCatalogID(ctx, tx, id)
+	}
+	if err == nil {
+		err = cs.ca.DeleteByID(ctx, tx, id)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -914,17 +1102,21 @@ func (cs *catalogService) DeleteByIDs(ctx context.Context, ids []string) error {
 			WithErrorDetails("failed to delete catalog")
 	}
 
-	//  清除资源策略，按内部/普通目录分组删除对应类型的策略
-	normalIDs, internalIDs := partitionCatalogIDs(ids, internalSet)
-	if len(normalIDs) > 0 {
-		if err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CATALOG, normalIDs); err != nil {
-			return err
+	// The database is the source of truth. Permission cleanup is best-effort
+	// after commit and must not turn a completed deletion into an API error.
+	catalogPermissionType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
+	resourcePermissionType := interfaces.AUTH_RESOURCE_TYPE_RESOURCE
+	if _, internal := internalSet[id]; internal {
+		catalogPermissionType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+		resourcePermissionType = interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
+	}
+	if len(impact.ResourceIDs) > 0 {
+		if cleanupErr := cs.ps.DeleteResources(ctx, resourcePermissionType, impact.ResourceIDs); cleanupErr != nil {
+			logger.Errorf("delete catalog %s: delete resource permissions failed: %v", id, cleanupErr)
 		}
 	}
-	if len(internalIDs) > 0 {
-		if err = cs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, internalIDs); err != nil {
-			return err
-		}
+	if cleanupErr := cs.ps.DeleteResources(ctx, catalogPermissionType, []string{id}); cleanupErr != nil {
+		logger.Errorf("delete catalog %s: delete catalog permission failed: %v", id, cleanupErr)
 	}
 
 	span.SetStatus(codes.Ok, "")

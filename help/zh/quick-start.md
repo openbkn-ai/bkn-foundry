@@ -2,7 +2,7 @@
 
 以下步骤假设 BKN Foundry 已按 [安装与部署](install.md) 文档完成安装及文中的安装后检查。**完整安装以 Linux 为主**；可选 **macOS** + kind 流程见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)（[English](../../deploy/dev/README.md)）。
 
-> 新主机安装前，先在目标机上跑 **`sudo bash deploy/preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh openbkn install` 之后，再跑 **`sudo bash deploy/onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），完整安装下还会建好业务用户 **`test`**（Context Loader 工具集由 agent-retrieval 启动时自动导入，不是 onboard 的步骤）。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
+> 新主机安装前，先在目标机上跑 **`sudo bash deploy/preflight.sh`**（仅检查 / 加 `--fix`）确认内核、sysctl、containerd、kubectl、helm、Node 与 `openbkn` CLI 都齐了；`deploy.sh openbkn install` 之后，再跑 **`sudo bash deploy/onboard.sh`**（Linux，与 `sudo deploy.sh` 对齐；macOS 开发路径用普通 `bash`）完成 LLM + embedding 注册、按需 patch BKN ConfigMap（仅在默认变化时执行），完整安装下还会建好业务用户 **`test`**（Context Loader 的工具只走 MCP 面，不注册工具箱，onboard 与安装都无相关步骤）。两者详见 [安装与部署 — 装机前体检：`preflight.sh`](install.md#-装机前体检--修复preflightsh) 与 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)。
 
 ---
 
@@ -83,13 +83,13 @@ openbkn config show
 
 > 💡 **无浏览器 / CI 场景** 的更多登录方式（`--no-browser` 一次性 OAuth、`openbkn auth export` + 重放、HTTP 用户名密码等）见 [安装与部署 — Post-install：`onboard.sh`](install.md#post-installonboardsh安装后引导)（脚本内部用的就是 HTTP `-u`/`-p`）以及 [OpenBKN SDK 认证文档](https://github.com/openbkn-ai/bkn-sdk#authentication)。
 
-Context Loader 工具集（供 Agent 调用知识网络）由 **agent-retrieval 服务在启动时自动导入**，没有手工步骤（`deploy/scripts/lib/onboard_report.sh:105` 也是这个口径）。因此若查不到它，先看 agent-retrieval 是否正常起来，而不是重跑安装。确认命令：
+Context Loader 的工具（供 Agent 调用知识网络）**只通过 MCP 面对外提供**，不再往执行工厂注册工具箱。查工具目录：
 
 ```bash
-openbkn call '/api/agent-operator-integration/v1/tool-box/list?name=contextloader&page=1&page_size=50' -bd bd_public --pretty
+openbkn context info
 ```
 
-（这查的是 Operator 侧的工具箱列表；MCP 侧的工具目录用 `openbkn context info`，或按知识网络看 `openbkn context tools <kn-id>`。）
+（按知识网络看则用 `openbkn context tools <kn-id>`。执行工厂的 `/tool-box/list` 里查不到 Context Loader 的工具，这是预期的。）
 
 ### 🧠 配置模型（按需）
 
@@ -310,7 +310,7 @@ Trace 返回按时间排列的 Span 树，展示：
 CSV 仍需要一个数据库作为落地存储：先把 CSV 装进库，再注册 Catalog 建网。
 
 ```bash
-# 1. 用标准 mysql 客户端把 CSV 装进目标库（示例见 examples/02-csv-to-kn）
+# 1. 用标准 mysql 客户端把 CSV 装进目标库
 mysql -h db.example.com -u root -p supply_chain < load_csv.sql
 
 # 2. 注册 Catalog 并发现表（同上一场景）
@@ -328,8 +328,7 @@ openbkn bkn search <kn_id> "库存为零"
 ```
 
 > `openbkn bkn create-from-csv <catalog_id> --files ...` 仍在 CLI 中，但它依赖已下线的
-> dataflow 导入通道，当前部署上不可用；请按上面的三步走。完整可运行版本见
-> `examples/02-csv-to-kn`。
+> dataflow 导入通道，当前部署上不可用；请按上面的三步走。
 
 ---
 

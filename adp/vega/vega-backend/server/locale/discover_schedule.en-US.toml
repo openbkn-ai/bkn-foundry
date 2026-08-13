@@ -5,7 +5,7 @@ ErrorLink = "No solution"
 
 [VegaBackend.DiscoverSchedule.InvalidCronExpr]
 Description = "Invalid cron expression"
-Solution = "Please provide a valid 5/6-field cron expression"
+Solution = "Please provide a valid 5-field cron expression with at least 1 hour between adjacent executions"
 ErrorLink = "No solution"
 
 [VegaBackend.DiscoverSchedule.InvalidStrategies]

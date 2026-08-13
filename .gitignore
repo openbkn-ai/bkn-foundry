@@ -15,9 +15,6 @@ lib64/
 !deploy/dev/lib/
 !deploy/dev/lib/**
 deploy/scripts/lib/__pycache__/
-# Track example shell helpers
-!examples/*/lib/
-!examples/*/lib/**
 parts/
 sdist/
 var/
@@ -50,9 +47,6 @@ htmlcov/
 .env
 .env.local
 .env.*.local
-
-# examples/04 cached skill id (per-deployment state)
-.exp_skill_id
 
 # Logs
 *.log

@@ -1,276 +1,216 @@
-# 本体管理模块 (BKN Backend)
+# BKN Backend
 
-## 模块概述
+[中文](README.zh.md) | English
 
-本体管理模块是本体引擎的核心组件，负责本体模型的创建、编辑、管理和维护。该模块提供了完整的本体生命周期管理功能，支持对象类、关系类、行动类的定义和管理，以及知识网络的构建和维护。
+`bkn-backend` is the BKN Engine modeling and management service. It owns the
+metadata model for Business Knowledge Networks and exposes APIs for creating,
+validating, updating, searching, importing, and exporting BKN definitions.
 
-## 核心功能
+## Current Capability Scope
 
-### 1. 知识网络管理 (Knowledge Network Management)
-- **网络创建**: 创建领域特定的知识网络
-- **网络拓扑**: 管理和可视化网络拓扑结构
-- **语义层**: 构建多层次的语义网络
-- **网络分析**: 网络结构分析和优化
+Implemented capabilities:
 
-### 2. 对象类管理 (Object Type Management)
-- **对象类定义**: 创建和管理知识网络中的对象类
-- **属性定义**: 为对象类定义丰富的属性字段
-- **图标和样式**: 自定义对象类的可视化展示
+- Knowledge network create, list, get, update, delete, name lookup, and validation.
+- Object type management, including data properties, logic properties, validation,
+  sample data lookup, and selected data-property updates.
+- Relation type management and relation-type path lookup.
+- Action type management, validation, and concept search.
+- Concept group management, including nested concepts and object-type membership.
+- Metric definition management and validation.
+- Risk type management.
+- Action schedule management, including cron validation, status update, and next
+  run-time calculation.
+- Resource listing through VEGA integration.
+- BKN package upload/download for import/export.
+- Concept indexing and search through OpenSearch and model-factory embeddings.
+- BKN Trace outbox inspection plus retry/abandon operations.
 
-### 3. 关系类管理 (Relation Type Management)
-- **关系类定义**: 创建和管理知识网络中的关系类
-- **方向性**: 支持有向和无向关系
-- **属性约束**: 关系类的属性约束
-- **多重性**: 支持一对一、一对多、多对多关系
+Important boundaries:
 
-### 4. 行动类管理 (Action Type Management)
-- **行动类定义**: 创建和管理知识网络中的行动类
-- **参数配置**: 行动类的输入输出参数定义
-- **执行策略**: 行动类的执行策略和规则
+- Branch is a supported data dimension through the `branch` query parameter, but
+  this service does not expose a complete branch lifecycle API such as create,
+  merge, publish, or rollback.
+- Permission-resource hooks exist, but fine-grained resource permission enforcement
+  is currently not complete in the service layer.
+- Natural-language query planning and context loading are not handled here; use
+  `adp/context-loader` for that layer.
+- Object sample-data and resource operations depend on VEGA availability.
+- Vector search and concept indexing depend on OpenSearch and model-factory
+  embedding configuration.
 
-### 5. 概念分组管理 (Concept Group Management)
-- **概念组定义**: 创建和管理知识网络中的概念分组
-- **成员管理**: 管理概念分组成员
+## Main API Groups
 
-### 6. 数据源集成 (Data Source Integration)
-- **多源集成**: 基于VEGA实现多种数据源的集成
+Public API prefix:
 
-## 技术架构
-
-### 技术栈
-- **编程语言**: Go 1.24
-- **Web框架**: Gin 1.11
-- **数据库**: MariaDB/DM8, OpenSearch
-- **容器化**: Docker, Kubernetes
-- **监控**: OpenTelemetry
-
-### 架构设计
-```
-server/
-├── common/              # 公共配置和工具
-├── config/              # 配置文件
-├── drivenadapters/      # 数据访问层
-│   ├── action_type/     # 动作类数据访问
-│   ├── business_system/ # 业务域数据访问
-│   ├── concept_group/   # 概念分组数据访问
-│   ├── data_model/      # 数据模型数据访问
-│   ├── data_view/       # 数据视图数据访问
-│   ├── job/             # 任务数据访问
-│   ├── knowledge_network/ # 知识网络数据访问
-│   ├── model_factory/   # 模型工厂数据访问
-│   ├── object_type/     # 对象类数据访问
-│   ├── opensearch/      # OpenSearch数据访问
-│   ├── permission/      # 权限数据访问
-│   ├── relation_type/   # 关系类数据访问
-│   └── user_mgmt/       # 用户管理数据访问
-├── driveradapters/      # 接口适配层
-├── errors/              # 错误定义
-├── interfaces/          # 接口定义
-├── locale/              # 国际化支持
-├── logics/              # 业务逻辑层
-├── version/             # 版本信息
-└── worker/              # 后台任务处理
-    ├── concept_syncer/  # 概念同步任务
-    └── job_executor/    # 任务执行器
+```text
+/api/bkn-backend/v1
 ```
 
-## API 接口
+Internal API prefix:
 
-### 知识网络API
-- **获取知识网络列表**: `GET /api/bkn-backend/v1/knowledge-networks`
-- **创建知识网络**: `POST /api/bkn-backend/v1/knowledge-networks`
-- **获取网络详情**: `GET /api/bkn-backend/v1/knowledge-networks/{id}`
-- **更新网络配置**: `PUT /api/bkn-backend/v1/knowledge-networks/{id}`
+```text
+/api/bkn-backend/in/v1
+```
 
-### 对象类API
-- **获取对象类列表**: `GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types`
-- **创建对象类**: `POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types`
-- **更新对象类**: `PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{id}`
-- **删除对象类**: `DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{id}`
+Representative public routes are registered in `server/driveradapters/routers.go`:
 
-### 关系类API
-- **获取关系类列表**: `GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types`
-- **创建关系类**: `POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types`
-- **更新关系类**: `PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types/{id}`
-- **删除关系类**: `DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types/{id}`
+| Resource | Routes |
+| --- | --- |
+| Knowledge networks | `/knowledge-networks`, `/knowledge-networks/{kn_id}`, `/knowledge-networks/{kn_id}/validation` |
+| Concept groups | `/knowledge-networks/{kn_id}/concept-groups` |
+| Object types | `/knowledge-networks/{kn_id}/object-types` |
+| Relation types | `/knowledge-networks/{kn_id}/relation-types`, `/knowledge-networks/{kn_id}/relation-type-paths` |
+| Action types | `/knowledge-networks/{kn_id}/action-types` |
+| Metrics | `/knowledge-networks/{kn_id}/metrics` |
+| Risk types | `/knowledge-networks/{kn_id}/risk-types` |
+| Action schedules | `/knowledge-networks/{kn_id}/action-schedules` |
+| BKN import/export | `/bkns`, `/bkns/{kn_id}` |
+| Resources | `/resources` |
+| Trace outbox | `/api/bkn-backend/v1/trace/outbox` |
 
-### 动作类API
-- **获取动作类列表**: `GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types`
-- **创建动作类**: `POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types`
-- **更新动作类**: `PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types/{id}`
-- **删除动作类**: `DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types/{id}`
+The canonical OpenAPI source is maintained at the repository root:
 
-### 概念分组API
-- **获取概念组列表**: `GET /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups`
-- **创建概念组**: `POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups`
-- **更新概念组**: `PUT /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{id}`
-- **删除概念组**: `DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{id}`
-- **添加概念组成员**: `POST /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{id}/members`
-- **删除概念组成员**: `DELETE /api/bkn-backend/v1/knowledge-networks/{kn_id}/concept-groups/{id}/members/{member_id}`
+```text
+docs/api/bkn/*.yaml
+```
 
-### 内部接口
-- 相同路径，前缀改为 `/api/ontology-query/in/v1/`
-- 跳过OAuth认证
+Run from the repository root:
 
-### 系统接口
-- **健康检查**: `GET /health`
+```bash
+npm install
+make api-docs-lint
+make api-docs-html
+```
 
-详细的API文档请参考: [API文档](./api_doc/)
+## Architecture
 
-## 快速开始
+```text
+bkn-backend/
+  server/
+    common/              # Shared helpers, settings, condition handling, trace helpers
+    config/              # Service configuration
+    drivenadapters/      # DB, OpenSearch, VEGA, model-factory, user-management clients
+    driveradapters/      # HTTP handlers, routers, request validation
+    errors/              # BKN Backend error definitions
+    interfaces/          # DTOs and service interfaces
+    locale/              # i18n resources
+    logics/              # Business logic
+    version/             # Build/version metadata
+    worker/              # Background concept sync and job execution
+    bkn-specification/   # BKN package parsing and serialization
+```
 
-### 环境要求
-- Go 1.24.0+
-- MariaDB 11.4+
+Core logic packages:
+
+| Package | Responsibility |
+| --- | --- |
+| `knowledge_network` | Full BKN lifecycle orchestration |
+| `object_type` | Object type validation, CRUD, indexing, sample data |
+| `relation_type` | Relation type validation, CRUD, and path support |
+| `action_type` | Action type validation, CRUD, search, and source checks |
+| `concept_group` | Concept group tree and membership management |
+| `metric` | Metric definition validation, CRUD, and search |
+| `risk_type` | Risk type CRUD and concept search |
+| `action_schedule` | Scheduled action metadata and cron handling |
+| `permission` | Permission-resource integration hooks |
+| `bkn` | BKN import/export service |
+
+## Local Development
+
+Prerequisites:
+
+- Go 1.24+
+- MariaDB 11.4+ or DM8
 - OpenSearch 2.x
+- Reachable VEGA, model-factory, and identity/user-management dependencies when
+  exercising integration paths.
 
-### 本地开发
+Configure local settings in:
 
-1. **克隆代码库**
-```bash
-git clone https://github.com/your-org/ontology-opensource.git
-cd ontology-opensource/bkn-backend
+```text
+server/config/bkn-backend-config.yaml
 ```
 
-2. **配置数据库连接**
-编辑 `server/config/bkn-backend-config.yaml`，配置数据库和OpenSearch连接信息。
+Run locally:
 
-3. **安装依赖**
 ```bash
-cd server
+cd adp/bkn/bkn-backend/server
 go mod download
-```
-
-4. **运行服务**
-```bash
 go run main.go
 ```
 
-服务将在 http://localhost:13014 启动
+Default port:
 
-### Docker 部署
+```text
+http://localhost:13014
+```
 
-1. **构建镜像**
+Health check:
+
 ```bash
+curl http://localhost:13014/health
+```
+
+## Testing
+
+Use the module Makefile:
+
+```bash
+cd adp/bkn/bkn-backend
+make test
+make test-cover
+make lint
+make ci
+```
+
+The Makefile sets `I18N_MODE_UT=true` for unit tests. Coverage artifacts are
+written to:
+
+```text
+adp/bkn/bkn-backend/test-result/
+```
+
+Useful direct package test example:
+
+```bash
+cd adp/bkn/bkn-backend/server
+I18N_MODE_UT=true go test ./logics/object_type/... -v
+```
+
+Integration tests that require external services must stay isolated behind
+explicit environment variables or build tags and must not be added to the default
+`make test` path.
+
+## Build and Deploy
+
+Build the service binary:
+
+```bash
+cd adp/bkn/bkn-backend/server
+go build -o bkn-backend .
+```
+
+Build the Docker image:
+
+```bash
+cd adp/bkn/bkn-backend
 docker build -t bkn-backend:latest -f docker/Dockerfile .
 ```
 
-2. **运行容器**
-```bash
-docker run -d -p 13014:13014 --name bkn-backend bkn-backend:latest
+Helm chart:
+
+```text
+adp/bkn/bkn-backend/helm/bkn-backend/
 ```
 
-### Kubernetes 部署
+The normal product deployment path is the repository-level installer under
+`deploy/`, which installs this service together with its dependencies.
 
-使用提供的Helm chart进行部署：
+## Maintainer Checklist
 
-```bash
-helm install bkn-backend helm/bkn-backend/
-```
-
-## 配置说明
-
-### 主要配置项
-
-```yaml
-# server/config/bkn-backend-config.yaml
-server:
-  http_port: 13014
-  read_timeout: 60
-  write_timeout: 60
-  language: zh-CN
-  run_mode: debug
-```
-
-## 监控与运维
-
-### 健康检查
-- **健康检查端点**: `GET /health`
-- **就绪检查端点**: `GET /ready`
-
-### 日志配置
-支持结构化日志输出，可配置日志级别和输出格式：
-
-```yaml
-log:
-  logLevel: debug
-  developMode: false
-  maxAge: 100
-  maxBackups: 20
-  maxSize: 100
-```
-
-## 开发规范
-
-### 代码规范
-1. 遵循Go语言官方编码规范
-3. 遵循清洁架构原则
-4. 接口和实现分离
-5. 完善的错误处理
-
-### 测试要求
-1. 单元测试覆盖率 > 80%
-2. 集成测试覆盖主要业务流程
-3. 性能测试验证系统性能
-4. 安全测试确保系统安全
-
-### 运行单元测试
-
-单元测试依赖 `I18N_MODE_UT=true` 环境变量，使测试跳过 locale 文件加载：
-
-```bash
-cd server
-I18N_MODE_UT=true go test ./...
-```
-
-单个包：
-
-```bash
-I18N_MODE_UT=true go test ./logics/knowledge_network/... -v
-```
-
-带覆盖率：
-
-```bash
-I18N_MODE_UT=true go test ./... -coverprofile=coverage.out
-go tool cover -html=coverage.out
-```
-
-### 提交规范
-1. 使用语义化提交信息
-2. 每个提交对应一个功能点
-3. 详细的提交描述
-4. 关联相关的issue
-
-## 故障排查
-
-### 常见问题
-
-1. **数据库连接失败**
-   - 检查数据库配置
-   - 验证网络连通性
-   - 确认数据库服务状态
-
-2. **OpenSearch连接失败**
-   - 检查OpenSearch配置
-   - 验证证书和认证信息
-   - 确认OpenSearch集群状态
-
-### 调试工具
-- **性能分析**: pprof性能分析
-- **日志分析**: 运行日志分析
-- **链路追踪**: 分布式链路追踪
-
-## 版本历史
-
-- **v0.1.0**: 初始版本，支持核心本体管理功能
-
-## 支持与联系
-
-- **技术支持**: AISHU ADP团队
-- **文档更新**: 持续更新中
-- **问题反馈**: 通过内部系统提交
-
----
-
-**注意**: 这是一个企业级内部项目，请根据实际业务需求进行配置和使用。
+- Keep `server/driveradapters/routers.go` and `docs/api/bkn/*.yaml` in sync.
+- Keep `README.md` focused on implemented service behavior, not UI or product
+  capabilities owned by other repositories.
+- Update tests when changing validation, import/export, indexing, or API behavior.
+- Treat permission, branch lifecycle, and model/index compatibility changes as
+  cross-service changes and document their impact explicitly.

@@ -42,6 +42,10 @@ class TraceContext:
     business_domain: Optional[str] = None
     account_id: Optional[str] = None
     account_type: Optional[str] = None
+    application_principal_id: Optional[str] = None
+    effective_subject_type: Optional[str] = None
+    effective_subject_id: Optional[str] = None
+    delegation_id: Optional[str] = None
     observed_at: str = field(default_factory=_utc_now)
 
 
@@ -182,6 +186,16 @@ def build_context(headers) -> TraceContext:
     business_domain = (headers.get("x-business-domain") or "").strip() or None
     account_id = (headers.get("x-account-id") or "").strip() or None
     account_type = (headers.get("x-account-type") or "").strip() or None
+    application_principal_id = (
+        headers.get("x-bkn-application-principal-id") or ""
+    ).strip() or None
+    effective_subject_type = (
+        headers.get("x-bkn-effective-subject-type") or ""
+    ).strip() or None
+    effective_subject_id = (
+        headers.get("x-bkn-effective-subject-id") or ""
+    ).strip() or None
+    delegation_id = (headers.get("x-bkn-delegation-id") or "").strip() or None
     conversation_id = (headers.get(CONVERSATION_ID_HEADER) or "").strip() or None
     if not _valid_correlation_id(conversation_id):
         conversation_id = None
@@ -206,6 +220,10 @@ def build_context(headers) -> TraceContext:
         business_domain=business_domain,
         account_id=account_id,
         account_type=account_type,
+        application_principal_id=application_principal_id,
+        effective_subject_type=effective_subject_type,
+        effective_subject_id=effective_subject_id,
+        delegation_id=delegation_id,
         observed_at=observed_at or _utc_now(),
     )
 

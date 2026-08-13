@@ -17,9 +17,17 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics/extensions"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
+	if err := validateResourceRequestBase(ctx, req); err != nil {
+		return err
+	}
+	return validateResourceRequestSchema(ctx, req)
+}
+
+func validateResourceRequestBase(ctx context.Context, req *interfaces.ResourceRequest) error {
 	if err := validateID(ctx, req.ID); err != nil {
 		return err
 	}
@@ -37,100 +45,82 @@ func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceReques
 			return err
 		}
 	}
+	return nil
+}
 
+func validateResourceRequestSchema(ctx context.Context, req *interfaces.ResourceRequest) error {
 	switch req.Category {
 	case interfaces.ResourceCategoryLogicView:
 		return validateLogicViewRequest(ctx, req)
 	case interfaces.ResourceCategoryDataset:
-		return validateDatasetRequest(ctx, req)
-	default:
-		// 物理类资源在 createResource 入口已被 validateCreateResourceCategory 拦截，
-		// 此处仅作 extensions 兜底校验。
-		if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
-			return err
+		if len(req.SchemaDefinition) == 0 {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_SchemaDefinition).
+				WithErrorDetails("schema_definition is required and must contain at least one field")
 		}
-		return nil
+		return validateSchemaProperties(ctx, req.SchemaDefinition, false)
+	default:
+		return validateSchemaProperties(ctx, req.SchemaDefinition, true)
 	}
 }
 
-// validateDatasetRequest 校验 dataset 类资源：仅检查 schema_definition 非空并跑
-// extension 兜底校验。
-//
-// 关键差异 vs PR #469/#473：那次 PR 给 Dataset 引入了字段 Name/DisplayName/
-// FeatureName 去重 + FeatureType-vs-FieldType 严格匹配（参见 validateDatasetFields
-// / validateDatasetFeatures）。但 bkn-backend 与 kweaver-ai/kweaver-core v0.8.0
-// 一直使用 ES 风格的 text + keyword multi-field schema（fulltext 与 keyword 特征
-// 引用同一 text 字段），并且历史 schema 里存在两处复制粘贴遗留的重复字段名。在
-// v0.8.0 时这些遗留可以工作，是因为 vega-backend 的 Dataset 路径根本没有跑这些
-// 校验（只 LogicView 跑）。
-//
-// 为了和 v0.8.0 行为保持一致并解除 bkn-backend 首次部署被 panic 的问题，这里
-// 不再调用 validateDatasetFields——schema_definition 的具体字段约束改由调用方
-// （bkn-backend / 数据集模板生成器）自行保障；vega-backend 仍校验扩展字段的
-// 结构。validateDatasetFields / validateDatasetFeatures 函数保留在文件里供
-// 后续按需重新接回。
-func validateDatasetRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
-	if len(req.SchemaDefinition) == 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_SchemaDefinition).
-			WithErrorDetails("schema_definition is required and must contain at least one field")
-	}
-	return extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition)
-}
-
-// validateDatasetFields 校验字段名/长度/重复/类型/特征。
-func validateDatasetFields(ctx context.Context, props []*interfaces.Property) error {
-	fieldsMap := make(map[string]*interfaces.Property, len(props))
-	for _, p := range props {
-		fieldsMap[p.Name] = p
+// validateSchemaProperties 校验 schema 字段名、类型与 Feature。
+func validateSchemaProperties(ctx context.Context, props []*interfaces.Property, allowFeatureRefProperty bool) error {
+	propsMap := make(map[string]*interfaces.Property, len(props))
+	for _, prop := range props {
+		if prop == nil {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldName).
+				WithErrorDetails("The field is null")
+		}
+		propsMap[prop.Name] = prop
 	}
 
 	nameMap := make(map[string]struct{})
 	displayNameMap := make(map[string]struct{})
-	for _, field := range props {
-		if field.Name == "" {
+	for _, prop := range props {
+		if prop.Name == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldName).
 				WithErrorDetails("The field name is null")
 		}
-		if utf8.RuneCountInString(field.Name) > interfaces.MaxLength_PropertyName {
+		if utf8.RuneCountInString(prop.Name) > interfaces.MaxLength_PropertyName {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldName).
-				WithErrorDetails(fmt.Sprintf("The length of the field name %s exceeds %d", field.Name, interfaces.MaxLength_PropertyName))
+				WithErrorDetails(fmt.Sprintf("The length of the field name %s exceeds %d", prop.Name, interfaces.MaxLength_PropertyName))
 		}
-		if field.DisplayName == "" {
-			field.DisplayName = field.Name
+		if prop.DisplayName == "" {
+			prop.DisplayName = prop.Name
 		}
-		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
+		if utf8.RuneCountInString(prop.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldDisplayName).
-				WithErrorDetails(fmt.Sprintf("The length of the field display name %s exceeds %d", field.DisplayName, interfaces.MaxLength_PropertyDisplayName))
+				WithErrorDetails(fmt.Sprintf("The length of the field display name %s exceeds %d", prop.DisplayName, interfaces.MaxLength_PropertyDisplayName))
 		}
-		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription {
+		if utf8.RuneCountInString(prop.Description) > interfaces.MaxLength_PropertyDescription {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_LengthExceeded_FieldComment).
-				WithErrorDetails(fmt.Sprintf("The length of the field comment %s exceeds %d", field.Description, interfaces.MaxLength_PropertyDescription))
+				WithErrorDetails(fmt.Sprintf("The length of the field comment %s exceeds %d", prop.Description, interfaces.MaxLength_PropertyDescription))
 		}
-		if _, dup := nameMap[field.Name]; dup {
+		if _, dup := nameMap[prop.Name]; dup {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldName).
-				WithDescription(map[string]any{"FieldName": field.Name}).
-				WithErrorDetails(fmt.Sprintf("Dataset field '%s' already exists", field.Name))
+				WithDescription(map[string]any{"FieldName": prop.Name}).
+				WithErrorDetails(fmt.Sprintf("Dataset field '%s' already exists", prop.Name))
 		}
-		nameMap[field.Name] = struct{}{}
+		nameMap[prop.Name] = struct{}{}
 
-		if _, dup := displayNameMap[field.DisplayName]; dup {
+		if _, dup := displayNameMap[prop.DisplayName]; dup {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName).
-				WithDescription(map[string]any{"FieldName": field.Name, "DisplayName": field.DisplayName}).
-				WithErrorDetails(fmt.Sprintf("Dataset field '%s' display name '%s' already exists", field.Name, field.DisplayName))
+				WithDescription(map[string]any{"FieldName": prop.Name, "DisplayName": prop.DisplayName}).
+				WithErrorDetails(fmt.Sprintf("Dataset field '%s' display name '%s' already exists", prop.Name, prop.DisplayName))
 		}
-		displayNameMap[field.DisplayName] = struct{}{}
+		displayNameMap[prop.DisplayName] = struct{}{}
 
-		if !isValidDataType(field.Type) {
+		if !isValidDataType(prop.Type) {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldType).
-				WithErrorDetails(fmt.Sprintf("Dataset field '%s' type '%s' is invalid", field.Name, field.Type))
+				WithErrorDetails(fmt.Sprintf("Dataset field '%s' type '%s' is invalid", prop.Name, prop.Type))
 		}
 
-		if err := validateDatasetFeatures(ctx, fieldsMap, field.Features); err != nil {
+		if err := validatePropertyFeatures(ctx, prop, propsMap, allowFeatureRefProperty); err != nil {
 			return err
 		}
 
-		if len(field.Extensions) > 0 {
-			if err := extensions.ValidatePropertyExtensionsMap(ctx, field.Extensions); err != nil {
+		if len(prop.Extensions) > 0 {
+			if err := extensions.ValidatePropertyExtensionsMap(ctx, prop.Extensions); err != nil {
 				return err
 			}
 		}
@@ -138,10 +128,10 @@ func validateDatasetFields(ctx context.Context, props []*interfaces.Property) er
 	return nil
 }
 
-func validateDatasetFeatures(ctx context.Context, fieldsMap map[string]*interfaces.Property, features []interfaces.PropertyFeature) error {
+func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, propsMap map[string]*interfaces.Property, allowRefProperty bool) error {
 	enabledMap := make(map[string]bool)
 	featureNameMap := make(map[string]struct{})
-	for _, f := range features {
+	for _, f := range prop.Features {
 		if f.FeatureName == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureName).
 				WithErrorDetails("The field feature name is null")
@@ -167,20 +157,24 @@ func validateDatasetFeatures(ctx context.Context, fieldsMap map[string]*interfac
 				WithErrorDetails(fmt.Sprintf("The length of the field feature comment %s exceeds %d", f.Description, interfaces.MaxLength_PropertyFeatureDescription))
 		}
 
-		if f.RefProperty == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
-				WithErrorDetails("The field feature ref_property is null")
+		if !resourcelogic.IsFeatureSupported(prop.Type, f.FeatureType) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Unsupported_FieldFeatureRefType).
+				WithErrorDetails(fmt.Sprintf("The field '%s' type '%s' does not support feature type '%s'", prop.Name, prop.Type, f.FeatureType))
 		}
+		if f.RefProperty != "" {
+			if !allowRefProperty {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
+					WithErrorDetails("ref_property is only supported by original resources")
+			}
 
-		refField, exists := fieldsMap[f.RefProperty]
-		if !f.IsNative {
+			refProp, exists := propsMap[f.RefProperty]
 			if !exists {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
 					WithErrorDetails(fmt.Sprintf("The field feature ref_property '%s' is not in the field list", f.RefProperty))
 			}
-			if !IsFeatureSupported(refField.Type, f.FeatureType) {
+			if !resourcelogic.IsFeatureRefPropertyTypeSupported(refProp.Type, f.FeatureType) {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Unsupported_FieldFeatureRefType).
-					WithErrorDetails(fmt.Sprintf("The field feature ref_property '%s' type '%s' does not match feature type '%s'", f.RefProperty, refField.Type, f.FeatureType))
+					WithErrorDetails(fmt.Sprintf("The field feature ref_property '%s' type '%s' does not match feature type '%s'", f.RefProperty, refProp.Type, f.FeatureType))
 			}
 		}
 
@@ -449,7 +443,7 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 			}
 
 			// 引用字段的类型是否符合特征类型
-			if !IsFeatureSupported(fieldsMap[f.RefProperty].Type, f.FeatureType) {
+			if !resourcelogic.IsFeatureSupported(fieldsMap[f.RefProperty].Type, f.FeatureType) {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, rest.PublicError_BadRequest).
 					WithErrorDetails(fmt.Sprintf("The field feature ref field '%s' type '%s' is not supported", f.RefProperty, fieldsMap[f.RefProperty].Type))
 			}
@@ -467,18 +461,4 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 	}
 
 	return nil
-}
-
-func IsFeatureSupported(fieldType string, featureType string) bool {
-	switch featureType {
-	case interfaces.PropertyFeatureType_Fulltext:
-		// 全文检索支持 text 与 string：ES 风格 multi-field 下 string 字段同样可分词检索
-		return fieldType == interfaces.DataType_Text || fieldType == interfaces.DataType_String
-	case interfaces.PropertyFeatureType_Keyword:
-		return fieldType == interfaces.DataType_String
-	case interfaces.PropertyFeatureType_Vector:
-		return fieldType == interfaces.DataType_Vector
-	default:
-		return false
-	}
 }

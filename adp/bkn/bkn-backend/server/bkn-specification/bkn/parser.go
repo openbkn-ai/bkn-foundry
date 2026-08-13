@@ -580,36 +580,6 @@ func ParseRelationTypeFile(text string, sourcePath string) (*BknRelationType, er
 			mapping.TargetCondition = parseCondition(s)
 		}
 		rel.MappingRules = mapping
-	case RELATION_MAPPING_TYPE_DATA_VIEW:
-		indirect := &InDirectMappingRule{}
-		if s, ok := sections["Mapping View"]; ok {
-			rows := parseTable(strings.Split(s, "\n"))
-			if len(rows) > 0 {
-				indirect.BackingDataSource = &ResourceInfo{
-					Type: rows[0]["Type"],
-					ID:   rows[0]["ID"],
-				}
-			}
-		}
-		if s, ok := sections["Source Mapping"]; ok {
-			rows := parseTable(strings.Split(s, "\n"))
-			for _, row := range rows {
-				sp, vp := row["Source Property"], row["View Property"]
-				if sp != "" || vp != "" {
-					indirect.SourceMappingRules = append(indirect.SourceMappingRules, MappingRule{SourceProperty: sp, TargetProperty: vp})
-				}
-			}
-		}
-		if s, ok := sections["Target Mapping"]; ok {
-			rows := parseTable(strings.Split(s, "\n"))
-			for _, row := range rows {
-				vp, tp := row["View Property"], row["Target Property"]
-				if vp != "" || tp != "" {
-					indirect.TargetMappingRules = append(indirect.TargetMappingRules, MappingRule{SourceProperty: vp, TargetProperty: tp})
-				}
-			}
-		}
-		rel.MappingRules = indirect
 	}
 
 	return rel, nil

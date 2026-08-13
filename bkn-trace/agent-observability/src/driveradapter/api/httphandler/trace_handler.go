@@ -1,262 +1,131 @@
 package httphandler
 
 import (
+	"context"
 	"encoding/json"
-	"io"
 	"net/http"
-	"os"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/oteltracevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
 )
 
+type technicalTraceSummarySource interface {
+	ListTraceExecutions(context.Context, evidencevo.SummaryQueryOptions) (evidencevo.TraceSummaryPage, error)
+}
+
+type technicalOperationSource interface {
+	ListOperationExecutionsByTraceIDScoped(context.Context, evidencevo.QueryScope, string) ([]sessionvo.OperationExecution, error)
+}
+
 type TraceHandler struct {
 	traceQueryService *tracesvc.TraceQueryService
-	authz             traceReadAuthz
-	allowRawQuery     bool
+	traceSummaries    technicalTraceSummarySource
+	operations        technicalOperationSource
+}
+
+func NewTraceHandlerWithTechnicalSources(
+	traceQueryService *tracesvc.TraceQueryService,
+	traceSummaries technicalTraceSummarySource,
+	operations technicalOperationSource,
+) *TraceHandler {
+	handler := NewTraceHandler(traceQueryService)
+	handler.traceSummaries = traceSummaries
+	handler.operations = operations
+	return handler
 }
 
 func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandler {
-	return &TraceHandler{
-		traceQueryService: traceQueryService,
-		authz:             newTraceReadAuthz(conf.NewTraceReadAuthzConfig()),
-		allowRawQuery:     strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_ALLOW_RAW_TRACE_QUERY")), "true"),
-	}
-}
-
-// NewTraceHandlerWithAuthz builds the handler with an explicit read-authz
-// config (tests inject enforce/shadow directly).
-func NewTraceHandlerWithAuthz(traceQueryService *tracesvc.TraceQueryService, authzCfg conf.TraceReadAuthzConfig) *TraceHandler {
-	return &TraceHandler{
-		traceQueryService: traceQueryService,
-		authz:             newTraceReadAuthz(authzCfg),
-		allowRawQuery:     true,
-	}
-}
-
-// SearchTraces godoc
-// @Summary Search traces with raw OpenSearch DSL
-// @Description Proxy raw OpenSearch DSL to the configured trace index and return the original OpenSearch response body.
-// @Tags traces
-// @Accept json
-// @Produce json
-// @Param request body string true "OpenSearch DSL JSON body"
-// @Success 200 {string} string "Raw OpenSearch search response"
-// @Failure 400 {object} rdto.ErrorResponse
-// @Failure 405 {object} rdto.ErrorResponse
-// @Failure 504 {object} rdto.ErrorResponse
-// @Router /traces/_search [post]
-func (h *TraceHandler) SearchTraces(w http.ResponseWriter, r *http.Request) {
-	if !h.allowRawQuery {
-		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped raw trace query is disabled"})
-		return
-	}
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
-			Code:    "METHOD_NOT_ALLOWED",
-			Message: "only POST is supported",
-		})
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-			Code:    "INVALID_ARGUMENT",
-			Message: "failed to read request body",
-		})
-		return
-	}
-
-	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-			Code:    "INVALID_ARGUMENT",
-			Message: "opensearch dsl body is required",
-		})
-		return
-	}
-
-	var raw json.RawMessage
-	if err := json.Unmarshal(body, &raw); err != nil {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-			Code:    "INVALID_ARGUMENT",
-			Message: "request body must be valid json",
-		})
-		return
-	}
-
-	// Read authorization: scope the query to the caller's account (or reject an
-	// unauthenticated caller when enforcing). In shadow mode this passes the
-	// query through unchanged and only logs.
-	effective, status, message := h.authz.authorize(identityFromRequest(r), raw)
-	if status != 0 {
-		writeJSON(w, status, rdto.ErrorResponse{Code: "FORBIDDEN", Message: message})
-		return
-	}
-
-	traceData, err := h.traceQueryService.SearchTraces(r.Context(), effective)
-	if err != nil {
-		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
-			Code:    "QUERY_FAILED",
-			Message: err.Error(),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(traceData)
-}
-
-// SearchTracesByConversationID godoc
-// @Summary Search traces by conversation ID
-// @Description Build a term filter automatically using attributes.gen_ai.conversation.id.keyword and return the original OpenSearch response body.
-// @Tags traces
-// @Accept json
-// @Produce json
-// @Param conversation_id query string true "Conversation ID"
-// @Success 200 {string} string "Raw OpenSearch search response"
-// @Failure 400 {object} rdto.ErrorResponse
-// @Failure 405 {object} rdto.ErrorResponse
-// @Failure 500 {object} rdto.ErrorResponse
-// @Failure 504 {object} rdto.ErrorResponse
-// @Router /traces/by-conversation [get]
-func (h *TraceHandler) SearchTracesByConversationID(w http.ResponseWriter, r *http.Request) {
-	if !h.allowRawQuery {
-		writeJSON(w, http.StatusForbidden, rdto.ErrorResponse{Code: "RAW_TRACE_QUERY_DISABLED", Message: "unscoped conversation trace query is disabled"})
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
-			Code:    "METHOD_NOT_ALLOWED",
-			Message: "only GET is supported",
-		})
-		return
-	}
-
-	conversationID := r.URL.Query().Get("conversation_id")
-	if conversationID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-			Code:    "INVALID_ARGUMENT",
-			Message: "conversation_id is required",
-		})
-		return
-	}
-
-	query, err := json.Marshal(map[string]any{
-		"size": 1000,
-		"query": map[string]any{
-			"bool": map[string]any{
-				"filter": []map[string]any{
-					{
-						"term": map[string]string{
-							"attributes.gen_ai.conversation.id.keyword": conversationID,
-						},
-					},
-				},
-			},
-		},
-	})
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to build query",
-		})
-		return
-	}
-
-	// Same read authorization as _search: the conversation filter is scoped to
-	// the caller's account, so one account cannot read another's conversation
-	// by id.
-	effective, status, message := h.authz.authorize(identityFromRequest(r), query)
-	if status != 0 {
-		writeJSON(w, status, rdto.ErrorResponse{Code: "FORBIDDEN", Message: message})
-		return
-	}
-
-	traceData, err := h.traceQueryService.SearchTraces(r.Context(), effective)
-	if err != nil {
-		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
-			Code:    "QUERY_FAILED",
-			Message: err.Error(),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(traceData)
+	return &TraceHandler{traceQueryService: traceQueryService}
 }
 
 func (h *TraceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Request) bool {
-	if !strings.HasSuffix(r.URL.Path, "/trace-graph") {
-		return false
+	if traceIDFromDetailPath(r.URL.Path) != "" {
+		h.GetTechnicalTraceDetail(w, r)
+		return true
 	}
-	h.GetTraceGraphByTraceID(w, r)
-	return true
+	return false
 }
 
-// GetTraceGraphByTraceID godoc
-// @Summary Get trace graph by trace ID
-// @Description Returns normalized trace tree nodes, parent-child edges, status, duration, and partial reasons for a trace.
+// GetTechnicalTraceDetail godoc
+// @Summary Get one typed technical trace
+// @Description Returns the authorized trace summary, Span graph, and ordered raw Operation call facts. Operation facts remain visible without Span data; Span nodes remain visible without Operation facts.
 // @Tags traces
 // @Produce json
 // @Param trace_id path string true "Trace ID"
-// @Success 200 {object} map[string]interface{}
-// @Failure 400 {object} rdto.ErrorResponse
+// @Success 200 {object} tracesvc.TechnicalTraceDetail
+// @Failure 401 {object} rdto.ErrorResponse
 // @Failure 404 {object} rdto.ErrorResponse
-// @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
 // @Failure 504 {object} rdto.ErrorResponse
-// @Router /traces/{trace_id}/trace-graph [get]
-func (h *TraceHandler) GetTraceGraphByTraceID(w http.ResponseWriter, r *http.Request) {
+// @Router /traces/{trace_id} [get]
+func (h *TraceHandler) GetTechnicalTraceDetail(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
-			Code:    "METHOD_NOT_ALLOWED",
-			Message: "only GET is supported",
+			Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported",
 		})
 		return
 	}
-
-	traceID := traceIDFromTraceGraphPath(r.URL.Path)
+	traceID := traceIDFromDetailPath(r.URL.Path)
 	if traceID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
-			Code:    "INVALID_ARGUMENT",
-			Message: "trace_id is required",
-		})
+		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "trace_id is required"})
 		return
 	}
-
-	response, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
+	if h.traceSummaries == nil || h.operations == nil {
+		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "TRACE_DETAIL_UNAVAILABLE", Message: "typed trace detail is not configured"})
+		return
+	}
+	scope, ok := trustedQueryScopeFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "UNAUTHORIZED", Message: "trusted trace query scope is required"})
+		return
+	}
+	scope.View = evidencevo.AccessViewTechnical
+	executions, err := h.operations.ListOperationExecutionsByTraceIDScoped(r.Context(), scope, traceID)
 	if err != nil {
-		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{
-			Code:    "QUERY_FAILED",
-			Message: "failed to query trace graph",
-		})
+		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query operation facts"})
 		return
 	}
-	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
-			Code:    "NOT_FOUND",
-			Message: "trace graph not found",
-		})
+	page, err := h.traceSummaries.ListTraceExecutions(r.Context(), evidencevo.SummaryQueryOptions{
+		TraceID: traceID, Scope: scope, Limit: 1,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace summary"})
 		return
 	}
-
-	writeJSON(w, http.StatusOK, response)
+	if len(page.Entries) == 0 && len(executions) == 0 {
+		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
+		return
+	}
+	summary := evidencevo.TraceSummary{TraceID: traceID, Status: "unknown"}
+	if len(page.Entries) > 0 {
+		summary = page.Entries[0]
+	} else if len(executions) > 0 {
+		summary.RootService = executions[0].Fact.SourceModule
+		summary.RootOperation = executions[0].Fact.ToolName
+	}
+	graph, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
+	if err != nil {
+		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace spans"})
+		return
+	}
+	var graphPointer *oteltracevo.TraceGraphResponse
+	if found {
+		graphPointer = &graph
+	}
+	writeJSON(w, http.StatusOK, tracesvc.BuildTechnicalTraceDetail(summary, graphPointer, executions))
 }
 
-func traceIDFromTraceGraphPath(path string) string {
+func traceIDFromDetailPath(path string) string {
 	const prefix = "/api/agent-observability/v1/traces/"
-	const suffix = "/trace-graph"
-	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}
-	traceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
-	traceID = strings.Trim(traceID, "/")
-	if strings.Contains(traceID, "/") {
+	traceID := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if traceID == "" || strings.Contains(traceID, "/") {
 		return ""
 	}
 	return strings.TrimSpace(traceID)

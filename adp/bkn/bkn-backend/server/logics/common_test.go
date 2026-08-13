@@ -196,3 +196,40 @@ func TestVegaResourceIndexCaps_RefPropertyRedirectsCapability(t *testing.T) {
 		t.Fatalf("summary should carry both the redirected fulltext and its own keyword, got %+v", got)
 	}
 }
+
+func TestVegaResourceIndexCaps_VectorCapabilityFollowsFeature(t *testing.T) {
+	res := &interfaces.VegaResource{
+		LocalIndexName: "vega-build-abc",
+		SchemaDefinition: []*interfaces.Property{
+			{
+				Name: "stadium_name",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.FieldFeatureType_Vector},
+					{FeatureType: interfaces.FieldFeatureType_Fulltext},
+				},
+			},
+			{Name: "stadium_id"},
+		},
+	}
+
+	caps := VegaResourceIndexCaps(res)
+
+	if !caps["stadium_name"].Vector || !caps["stadium_name"].Fulltext {
+		t.Fatalf("both features must survive on the same field, got %+v", caps["stadium_name"])
+	}
+	if _, exists := caps["stadium_id"]; exists {
+		t.Fatalf("a field without features has no index capability, got %+v", caps)
+	}
+}
+
+func TestVegaResourceIndexCaps_NoVectorFieldWithoutLocalIndex(t *testing.T) {
+	res := &interfaces.VegaResource{
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "stadium_name", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Vector}}},
+		},
+	}
+
+	if caps := VegaResourceIndexCaps(res); len(caps) != 0 {
+		t.Fatalf("declared features without a built index must yield no capability, got %+v", caps)
+	}
+}

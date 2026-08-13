@@ -34,7 +34,7 @@ func setupBuildTaskHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockBuildTaskS
 
 	bts := vmock.NewMockBuildTaskService(mockCtrl)
 	rs := vmock.NewMockResourceService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, bts, nil, nil, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, bts, nil, nil, nil, nil, nil)
 	handler.RegisterPublic(engine)
 	return engine, bts, rs
 }
@@ -108,6 +108,88 @@ func Test_BuildTaskRestHandler_GetBuildTask(t *testing.T) {
 	})
 }
 
+// newBuildTaskListContext 造一个仅带 query 的 GET 测试上下文。
+func newBuildTaskListContext(query string) *gin.Context {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/build-tasks?"+query, nil)
+	return c
+}
+
+func TestParseBuildTaskListParams(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		query   string
+		assert  func(t *testing.T, got interfaces.BuildTasksQueryParams)
+		wantErr bool
+	}{
+		{
+			name:  "defaults when no query",
+			query: "",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, 0, got.Offset)
+				assert.Equal(t, 20, got.Limit)
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
+				assert.Equal(t, interfaces.DESC_DIRECTION, got.Order)
+				assert.Empty(t, got.Statuses)
+			},
+		},
+		{
+			name:  "removed active parameter does not override status",
+			query: "active=true&status=completed",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, []string{interfaces.BuildTaskStatusCompleted}, got.Statuses)
+			},
+		},
+		{
+			name:  "multi-value status",
+			query: "status=running&status=pending&status=running",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, []string{"running", "pending"}, got.Statuses)
+			},
+		},
+		{
+			name:  "order by and order honored",
+			query: "order_by=created_at&order=asc",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, got.OrderBy)
+				assert.Equal(t, interfaces.ASC_DIRECTION, got.Order)
+			},
+		},
+		{name: "invalid order by returns error", query: "order_by=bogus", wantErr: true},
+		{name: "invalid order returns error", query: "order=sideways", wantErr: true},
+		{name: "invalid status returns error", query: "status=running&status=nope", wantErr: true},
+		{name: "comma-separated status returns error", query: "status=running,pending", wantErr: true},
+		{name: "invalid mode returns error", query: "mode=nope", wantErr: true},
+		{name: "negative offset returns error", query: "offset=-1", wantErr: true},
+		{
+			name:  "limit no-limit allowed",
+			query: "limit=-1",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, -1, got.Limit)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseBuildTaskListParams(ctx, newBuildTaskListContext(tt.query))
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tt.assert != nil {
+				tt.assert(t, got)
+			}
+		})
+	}
+}
+
 func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
@@ -122,7 +204,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		bts := vmock.NewMockBuildTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 		return engine, bts
 	}
@@ -137,6 +219,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 		{name: "invalid offset", query: "?offset=-1", wantBody: "VegaBackend.InvalidParameter.Offset"},
 		{name: "invalid limit", query: "?limit=99999999", wantBody: "VegaBackend.InvalidParameter.Limit"},
 		{name: "invalid order_by", query: "?order_by=unknown_field", wantBody: "VegaBackend.InvalidParameter.Sort"},
+		{name: "removed default order_by", query: "?order_by=default", wantBody: "VegaBackend.InvalidParameter.Sort"},
 		{name: "invalid order", query: "?order=foo", wantBody: "VegaBackend.InvalidParameter.Direction"},
 		{name: "invalid status", query: "?status=foo", wantBody: "VegaBackend.BuildTask.InvalidStatus"},
 		{name: "invalid mode", query: "?mode=foo", wantBody: "VegaBackend.BuildTask.InvalidParameter.Mode"},
@@ -158,12 +241,12 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	t.Run("success with default pagination", func(t *testing.T) {
 		engine, bts := setup(t)
 		bts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Equal(t, 0, params.Offset)
 				assert.Equal(t, 20, params.Limit)
-				assert.Equal(t, interfaces.BuildTaskOrderByDefault, params.OrderBy)
+				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, params.OrderBy)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Order)
-				return []*interfaces.BuildTask{}, int64(0), nil
+				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url, nil)
@@ -177,7 +260,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 	t.Run("success with explicit query params", func(t *testing.T) {
 		engine, bts := setup(t)
 		bts.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTask, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Equal(t, "res-1", params.ResourceID)
 				assert.Equal(t, "cat-1", params.CatalogID)
 				assert.Equal(t, []string{interfaces.BuildTaskStatusCompleted}, params.Statuses)
@@ -186,7 +269,7 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, interfaces.BuildTaskOrderByCreatedAt, params.OrderBy)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Order)
-				return []*interfaces.BuildTask{}, int64(0), nil
+				return []*interfaces.BuildTaskSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?resource_id=res-1&catalog_id=cat-1&status=completed&mode=batch&offset=5&limit=10&order_by=created_at&order=asc", nil)
@@ -210,7 +293,7 @@ func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		bts := vmock.NewMockBuildTaskService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		bts.EXPECT().Delete(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)

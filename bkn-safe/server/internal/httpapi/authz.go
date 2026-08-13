@@ -76,6 +76,102 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		c.JSON(http.StatusOK, gin.H{"operations": allowed})
 	})
 
+	// POST /resource-filter — batched decision for a whole list page: which of
+	// the given resources the accessor may see, and which of the candidate
+	// operations it holds on each.
+	//
+	//	{ accessor_id, resources:[{type,id}], visibility_operations:[...], candidate_operations:[...] }
+	//	-> { resources:[ {resource_type, resource_id, operations:[...]} ] }
+	//
+	// Resources may also be given as resource_type + resource_ids (the
+	// single-type list-page form); both forms may be combined, and types may be
+	// mixed within one request.
+	//
+	// The two operation lists are separate axes on purpose. visibility_operations
+	// filters — a resource is returned only if the accessor holds every one of
+	// them; an empty list returns each requested resource. candidate_operations
+	// projects — the returned operations are the subset held, regardless of what
+	// made the resource visible. Omitting candidate_operations falls back to the
+	// resource type's catalog ops, as POST /operations does.
+	//
+	// Errors: 400 on a malformed body or a missing accessor_id; 500 on an engine
+	// failure. An empty resource list is not an error — it returns an empty
+	// result, so paginating callers need no special case.
+	g.POST("/resource-filter", func(c *gin.Context) {
+		var req struct {
+			AccessorID           string        `json:"accessor_id" binding:"required"`
+			Resources            []resourceRef `json:"resources"`
+			ResourceType         string        `json:"resource_type"`
+			ResourceIDs          []string      `json:"resource_ids"`
+			VisibilityOperations []string      `json:"visibility_operations"`
+			CandidateOperations  []string      `json:"candidate_operations"`
+		}
+		if !bind(c, &req) {
+			return
+		}
+		refs := make([]authz.ResourceRef, 0, len(req.Resources)+len(req.ResourceIDs))
+		for _, r := range req.Resources {
+			refs = append(refs, authz.ResourceRef{Type: r.Type, ID: r.ID})
+		}
+		if len(req.ResourceIDs) > 0 {
+			if req.ResourceType == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required with resource_ids"})
+				return
+			}
+			for _, id := range req.ResourceIDs {
+				refs = append(refs, authz.ResourceRef{Type: req.ResourceType, ID: id})
+			}
+		}
+
+		// One evaluation pass for the whole batch — including mixed types — when
+		// the caller states the candidate operations, which is the list-page
+		// case. Only the catalog fallback has to split by type, because there
+		// the candidate set is a property of the type rather than the request.
+		out := make([]gin.H, 0, len(refs))
+		appendResults := func(results []authz.FilteredResource) {
+			for _, r := range results {
+				out = append(out, gin.H{
+					"resource_type": r.Type,
+					"resource_id":   r.ID,
+					"operations":    r.Operations,
+				})
+			}
+		}
+		if len(req.CandidateOperations) > 0 {
+			results, err := e.FilterResourceOps(req.AccessorID, refs, req.VisibilityOperations, req.CandidateOperations)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			appendResults(results)
+			c.JSON(http.StatusOK, gin.H{"resources": out})
+			return
+		}
+
+		byType := map[string][]authz.ResourceRef{}
+		order := make([]string, 0, 4)
+		for _, r := range refs {
+			if _, seen := byType[r.Type]; !seen {
+				order = append(order, r.Type)
+			}
+			byType[r.Type] = append(byType[r.Type], r)
+		}
+		for _, rtype := range order {
+			candidates, err := catalogOps(db, rtype)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			results, err := e.FilterResourceOps(req.AccessorID, byType[rtype], req.VisibilityOperations, candidates)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			appendResults(results)
+		}
+		c.JSON(http.StatusOK, gin.H{"resources": out})
+	})
+
 	// POST /policies — grant an accessor concrete ops on one resource instance
 	// (the create-resource pattern). { accessor_id, resource, operations:[...] }
 	g.POST("/policies", func(c *gin.Context) {

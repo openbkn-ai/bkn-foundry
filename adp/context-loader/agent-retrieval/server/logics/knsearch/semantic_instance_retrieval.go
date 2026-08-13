@@ -40,14 +40,11 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	instanceConfig := config.SemanticInstanceRetrieval
 	propertyConfig := config.PropertyFilter
 
-	s.backfillConditionOperations(ctx, req.KnID, objectTypes)
-
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
 
-	// 遍历每个对象类型进行语义检索
 	for _, objType := range objectTypes {
-		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig)
+		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, knnAllowedFor(objType, instanceConfig))
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Failed to retrieve instances for %s: %v",
 				objType.ConceptID, err)
@@ -107,6 +104,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 	req *interfaces.KnSearchLocalRequest,
 	objType *interfaces.KnSearchObjectType,
 	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	allowKnn bool,
 ) ([]*interfaces.KnSearchNode, error) {
 	searchable := findSemanticSearchableFields(objType)
 	if len(searchable) == 0 {
@@ -114,7 +112,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 		return nil, nil
 	}
 
-	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config)
+	cond := s.buildSemanticSearchConditionStruct(req.Query, searchable, config, allowKnn)
 	if cond == nil {
 		s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Object type %s has no index-backed condition to issue, skip", objType.ConceptID)
 		return nil, nil
@@ -173,6 +171,7 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 	query string,
 	searchable []searchableField,
 	config *interfaces.KnSearchSemanticInstanceRetrievalConfig,
+	allowKnn bool,
 ) *interfaces.KnCondition {
 	if len(searchable) == 0 {
 		return nil
@@ -188,14 +187,22 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 
 	var subConditions []*interfaces.KnCondition
 
+	knnBudget := 0
+	if allowKnn {
+		knnBudget = config.MaxKnnSubConditionsPerType
+		if knnBudget <= 0 {
+			knnBudget = 1
+		}
+	}
 	for i := range searchable {
-		if len(subConditions) >= maxSub {
+		if len(subConditions) >= maxSub || knnBudget <= 0 {
 			break
 		}
 		f := &searchable[i]
 		if !f.HasKnn {
 			continue
 		}
+		knnBudget--
 		subConditions = append(subConditions, &interfaces.KnCondition{
 			Field:      f.Name,
 			Operation:  interfaces.KnOperationTypeKnn,
@@ -398,4 +405,29 @@ func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode,
 		}
 	}
 	return nodes
+}
+
+// knnAllowedFor 判断某个对象类这一轮是否发向量条件。
+//
+// 唯一的门槛是它真有向量字段：没有的话本来也拼不出 knn，白占成本。至于「只挑最相关
+// 的几个对象类」——概念召回在主路径上不给对象类打分（Schema 取自知识网络详情，没有
+// _score），排出来的名次是知识网络里的自然顺序而不是相关度，按它截取只会随机地把
+// 向量能力从某些对象类上拿掉。实测在筛掉无向量字段的对象类之后，限不限个数的延迟
+// 没有差别，因此不设这个旋钮。成本随「建了向量索引的对象类数量」增长，那由建索引
+// 的人决定。
+func knnAllowedFor(objType *interfaces.KnSearchObjectType, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) bool {
+	if config == nil || !boolValue(config.EnableKnnInstanceRetrieval) {
+		return false
+	}
+	return hasKnnField(objType)
+}
+
+// hasKnnField 判断对象类上有没有可以发向量条件的属性。
+func hasKnnField(objType *interfaces.KnSearchObjectType) bool {
+	for _, f := range findSemanticSearchableFields(objType) {
+		if f.HasKnn {
+			return true
+		}
+	}
+	return false
 }

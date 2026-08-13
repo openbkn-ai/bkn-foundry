@@ -21,7 +21,7 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 130,
-    "description": "统一的 Schema 探索入口，先锁定对象类（object_types）。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费；其中 metric_types 只是辅助线索，指标的权威清单以 get_object_types 返回的 related_metrics 为准（按对象类 scope 全量枚举）。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type/condition_operations，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
+    "description": "统一的 Schema 探索入口，先锁定对象类（object_types）。根据 query 返回相关 object_types、relation_types、action_types、metric_types，供 query_*、find_*、get_* 工具继续消费；其中 metric_types 只是辅助线索，指标的权威清单以 get_object_types 返回的 related_metrics 为准（按对象类 scope 全量枚举）。默认返回精简 Schema（schema_brief=true：保留 data_source.id 与属性 name/type，并只列索引带来的算子 match/multi_match/knn，省约 70%），够规划查询；需要属性备注/主键/标签的完整 Schema 时传 schema_brief=false。"
   },
   "query_object_instance": {
     "name": "query_object_instance",
@@ -29,7 +29,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 210,
-    "description": "单对象类实例过滤查询。已知对象类与过滤条件时，查询实例列表。支持 search_after 游标顺序翻页（用上一页返回的 search_after 取下一页，不支持跳页）。"
+    "description": "单对象类实例过滤查询。已知对象类与过滤条件时，查询实例列表。支持 search_after 游标顺序翻页（用上一页返回的 search_after 取下一页，不支持跳页）。 文本检索按字段能力选算子：condition_operations 含 match 的字段可做全文模糊匹配，含 knn 的字段可做向量语义检索（自然语言、跨语言、换个说法都能召回，需配 limit_key=k + limit_value）；两者都要就用 or 把子条件并起来。"
   },
   "query_instance_subgraph": {
     "name": "query_instance_subgraph",
@@ -90,9 +90,9 @@
   "find_skills": {
     "name": "find_skills",
     "title": "技能召回",
-    "group": "resource",
-    "group_title": "数据资源与技能",
-    "order": 430,
+    "group": "skill",
+    "group_title": "技能",
+    "order": 510,
     "description": "技能召回。根据知识网络、对象类型、实例上下文等召回匹配的可用技能列表。"
   },
   "list_knowledge_networks": {
@@ -133,54 +133,54 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 240,
-    "description": "对知识网络挂载的数据资源执行只读 SQL（Trino 方言）。注意：已建模指标不要用 SQL 重写口径——指标走 get_object_types 选定后的 query_metric / get_logic_properties_values；run_sql 用于未建成指标的即席聚合与跨表统计。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
+    "description": "对知识网络挂载的数据资源执行只读 SQL（MySQL 方言）。标识符需要引用时用反引号；双引号是字符串字面量，不是标识符。注意：已建模指标不要用 SQL 重写口径——指标走 get_object_types 选定后的 query_metric / get_logic_properties_values；run_sql 用于未建成指标的即席聚合与跨表统计。表名用占位符 {{.resource_id}} 引用；vega 会解析成真实表并限量。仅允许单条 SELECT：支持同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合函数；不支持 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 和跨目录 join，子查询与窗口函数不在兼容性承诺内。两种拿 resource_id + 物理列的方式：本体路 search_schema（对象类 data_source.id + data_property.column），数据层路 list_resources → describe_resource（直查裸资源，脱离本体）。"
   },
   "list_resources": {
     "name": "list_resources",
     "title": "数据资源列表",
     "group": "resource",
-    "group_title": "数据资源与技能",
+    "group_title": "数据资源",
     "order": 410,
-    "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id），可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。"
+    "description": "数据层资源直查（脱离本体）：列出当前账户有权查看的数据资源（resource_id、name、type、catalog_id）。要「某张知识网络有哪些表」就传 kn_id，一次全返该网络绑定的资源；不传 kn_id 时是账户级资源池分页，可按 catalog_id / type 过滤。资源未建成对象类、或想绕本体直查数据时用。配合 describe_resource + run_sql。"
   },
   "describe_resource": {
     "name": "describe_resource",
     "title": "数据资源详情",
     "group": "resource",
-    "group_title": "数据资源与技能",
+    "group_title": "数据资源",
     "order": 420,
     "description": "取单个数据资源的物理 schema：connector_type 与列（columns:[{name,type}]）。写 run_sql 前用它拿物理列名。入参 resource_id 取自 list_resources。"
   },
   "list_skills": {
     "name": "list_skills",
     "title": "技能列表",
-    "group": "resource",
-    "group_title": "数据资源与技能",
-    "order": 440,
+    "group": "skill",
+    "group_title": "技能",
+    "order": 520,
     "description": "浏览已发布技能（不需要知识网络上下文）。与 find_skills 互补：那条按对象类/实例召回，这条按名称或分类翻列表。拿到 skill_id 后用 get_skill_content 读 SKILL.md，用 read_skill_file 下钻附属文件，用 execute_skill 执行入口命令。"
   },
   "get_skill_content": {
     "name": "get_skill_content",
     "title": "技能内容",
-    "group": "resource",
-    "group_title": "数据资源与技能",
-    "order": 450,
+    "group": "skill",
+    "group_title": "技能",
+    "order": 530,
     "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法与入口命令都写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。"
   },
   "read_skill_file": {
     "name": "read_skill_file",
     "title": "读技能文件",
-    "group": "resource",
-    "group_title": "数据资源与技能",
-    "order": 460,
+    "group": "skill",
+    "group_title": "技能",
+    "order": 540,
     "description": "读技能包内单个文件的正文，rel_path 取自 get_skill_content 返回的 files 清单。渐进式加载用：大文件不必常驻上下文。二进制文件只回元数据不回正文。"
   },
   "execute_skill": {
     "name": "execute_skill",
     "title": "执行技能",
-    "group": "resource",
-    "group_title": "数据资源与技能",
-    "order": 470,
+    "group": "skill",
+    "group_title": "技能",
+    "order": 550,
     "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。"
   }
 }

@@ -25,6 +25,29 @@ func TestIngestAcceptsTwoPointTwoArtifactLinkedCoreEvents(t *testing.T) {
 	}
 }
 
+func TestIngestAcceptsTwoPointTwoStructuredDataQueryFailure(t *testing.T) {
+	batch := twoPointTwoBatch(t)
+	events := batch["events"].([]map[string]any)
+	for _, event := range events {
+		if event["event_type"] != "data.query.observed" {
+			continue
+		}
+		payload := event["payload"].(map[string]any)
+		payload["status"] = "error"
+		payload["error_stage"] = "vega_query"
+		payload["error_code"] = "RUN_SQL_VEGA_QUERY_FAILED"
+		payload["safe_error_summary"] = "unknown column available_qty"
+	}
+
+	_, validationErrors, err := New(evidencestore.New()).Ingest(context.Background(), mustJSON(t, batch))
+	if err != nil {
+		t.Fatalf("unexpected ingest error: %v", err)
+	}
+	if len(validationErrors) != 0 {
+		t.Fatalf("2.2 structured data query failure must be accepted: %+v", validationErrors)
+	}
+}
+
 func TestIngestAcceptsTwoPointTwoUnresolvedEmptyBusinessRefs(t *testing.T) {
 	batch := twoPointTwoBatch(t)
 	events := batch["events"].([]map[string]any)

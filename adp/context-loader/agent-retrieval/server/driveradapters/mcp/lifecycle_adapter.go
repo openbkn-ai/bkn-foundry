@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
@@ -54,8 +53,10 @@ func ensureOperationAdapter(client *bkntrace.LifecycleClient) ensureOperationFun
 				OperationKey: intent.Context.OperationKey, ParentOperationID: intent.Context.ParentOperationID,
 				CausationEventIDs: intent.Context.CausationEventIDs, BusinessRefs: intent.Context.BusinessRefs,
 			},
-			ToolName:            intent.ToolName,
-			NormalizedInputHash: normalizedBusinessInputHash(intent.Input),
+			ToolName:     intent.ToolName,
+			Protocol:     "mcp",
+			SourceModule: "context-loader",
+			Input:        normalizedBusinessInput(intent.Input),
 		})
 		if apiErr != nil {
 			value := lifecycleError(*apiErr)
@@ -86,7 +87,18 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 		if !ok {
 			return nil, nil, nil
 		}
-		raw, err := json.Marshal(downstream.StructuredContent)
+		payload := any(downstream)
+		if downstream.IsError {
+			failure, ok := ctx.Value(operationFailureKey{}).(operationFailure)
+			if !ok {
+				failure = operationFailure{
+					Code: "tool_error", Message: toolResultErrorMessage(downstream), Stage: "tool_execution",
+				}
+			}
+			failure.Result = downstream
+			payload = failure
+		}
+		raw, err := json.Marshal(payload)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -96,7 +108,7 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 		}}
 		retryable, _ := ctx.Value(downstreamRetryableKey{}).(bool)
 		result, apiErr, err := bkntrace.NewGuard(client).Finish(
-			ctx, state, hashBytes(raw), downstream.IsError, retryable,
+			ctx, state, raw, downstream.IsError, retryable,
 		)
 		if apiErr != nil {
 			value := lifecycleError(*apiErr)
@@ -112,23 +124,31 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 	}
 }
 
-func normalizedBusinessInputHash(input map[string]any) string {
+func toolResultErrorMessage(result *mcpsdk.CallToolResult) string {
+	if structured, ok := result.StructuredContent.(map[string]any); ok {
+		for _, key := range []string{"message", "error"} {
+			if message, ok := structured[key].(string); ok && message != "" {
+				return message
+			}
+		}
+	}
+	for _, content := range result.Content {
+		if text, ok := mcpsdk.AsTextContent(content); ok && text.Text != "" {
+			return text.Text
+		}
+	}
+	return "tool returned an error"
+}
+
+func normalizedBusinessInput(input map[string]any) json.RawMessage {
 	normalized := make(map[string]any, len(input))
 	for key, value := range input {
 		if key != "bkn_context" {
 			normalized[key] = value
 		}
 	}
-	if rawContext, ok := input["bkn_context"].(map[string]any); ok {
-		causationIDs := stringSliceValue(rawContext["causation_event_ids"])
-		sort.Strings(causationIDs)
-		normalized["bkn_causality"] = map[string]any{
-			"parent_operation_id": stringValue(rawContext["parent_operation_id"]),
-			"causation_event_ids": causationIDs,
-		}
-	}
 	raw, _ := json.Marshal(normalized)
-	return hashBytes(raw)
+	return raw
 }
 
 func hashBytes(raw []byte) string {

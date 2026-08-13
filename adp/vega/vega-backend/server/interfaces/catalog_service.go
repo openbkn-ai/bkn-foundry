@@ -24,8 +24,10 @@ type CatalogService interface {
 	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest, allowUnhealthy bool) error
 	// SetEnabled updates Catalog enabled state.
 	SetEnabled(ctx context.Context, catalog *Catalog, enabled bool) error
-	// DeleteByIDs deletes Catalogs by IDs.
-	DeleteByIDs(ctx context.Context, ids []string) error
+	// DeleteByID deletes a Catalog by ID.
+	DeleteByID(ctx context.Context, id string) error
+	// GetDeletionImpact returns the current impact and guards for deleting a catalog.
+	GetDeletionImpact(ctx context.Context, id string) (*CatalogDeletionImpact, error)
 	// CheckExistByID checks if a Catalog exists by ID.
 	CheckExistByID(ctx context.Context, id string) (bool, error)
 	// ListInternalIDs 列出所有系统内部目录的 ID（用于资源权限校验时按 internal_resource 类型分组）。

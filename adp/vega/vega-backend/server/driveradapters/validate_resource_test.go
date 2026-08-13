@@ -146,8 +146,9 @@ func TestValidateViewFields(t *testing.T) {
 func TestValidateFeatures(t *testing.T) {
 	ctx := context.Background()
 	fieldsMap := map[string]*interfaces.ViewProperty{
-		"title": {Property: interfaces.Property{Name: "title", Type: interfaces.DataType_Text}},
-		"name":  {Property: interfaces.Property{Name: "name", Type: interfaces.DataType_String}},
+		"title":     {Property: interfaces.Property{Name: "title", Type: interfaces.DataType_Text}},
+		"name":      {Property: interfaces.Property{Name: "name", Type: interfaces.DataType_String}},
+		"embedding": {Property: interfaces.Property{Name: "embedding", Type: interfaces.DataType_Vector}},
 	}
 
 	t.Run("accepts valid native and referenced features", func(t *testing.T) {
@@ -174,7 +175,7 @@ func TestValidateFeatures(t *testing.T) {
 			{name: "description too long", features: []interfaces.PropertyFeature{{FeatureName: "kw", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "name", Description: strings.Repeat("a", interfaces.MaxLength_PropertyFeatureDescription+1)}}},
 			{name: "empty ref property", features: []interfaces.PropertyFeature{{FeatureName: "kw", FeatureType: interfaces.PropertyFeatureType_Keyword}}},
 			{name: "missing ref property", features: []interfaces.PropertyFeature{{FeatureName: "kw", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "missing"}}},
-			{name: "unsupported ref type", features: []interfaces.PropertyFeature{{FeatureName: "kw", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title"}}},
+			{name: "unsupported ref type", features: []interfaces.PropertyFeature{{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "embedding"}}},
 			{name: "duplicate default per type", features: []interfaces.PropertyFeature{
 				{FeatureName: "kw1", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "name", IsDefault: true},
 				{FeatureName: "kw2", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "name", IsDefault: true},
@@ -187,27 +188,4 @@ func TestValidateFeatures(t *testing.T) {
 			})
 		}
 	})
-}
-
-func TestIsFeatureSupported(t *testing.T) {
-	tests := []struct {
-		fieldType   string
-		featureType string
-		want        bool
-	}{
-		{interfaces.DataType_Text, interfaces.PropertyFeatureType_Fulltext, true},
-		{interfaces.DataType_String, interfaces.PropertyFeatureType_Fulltext, true},
-		{interfaces.DataType_Integer, interfaces.PropertyFeatureType_Fulltext, false},
-		{interfaces.DataType_String, interfaces.PropertyFeatureType_Keyword, true},
-		{interfaces.DataType_Text, interfaces.PropertyFeatureType_Keyword, false},
-		{interfaces.DataType_Vector, interfaces.PropertyFeatureType_Vector, true},
-		{interfaces.DataType_String, interfaces.PropertyFeatureType_Vector, false},
-		{interfaces.DataType_Text, "unknown", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.fieldType+"/"+tt.featureType, func(t *testing.T) {
-			assert.Equal(t, tt.want, IsFeatureSupported(tt.fieldType, tt.featureType))
-		})
-	}
 }

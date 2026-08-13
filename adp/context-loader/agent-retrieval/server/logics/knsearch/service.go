@@ -42,6 +42,14 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 	s.logger.WithContext(ctx).Infof("[KnSearchLocal] Concept retrieval completed: object_types=%d, relation_types=%d, action_types=%d",
 		len(conceptResult.ObjectTypes), len(conceptResult.RelationTypes), len(conceptResult.ActionTypes))
 
+	// 概念召回默认走知识网络导出视图，那条路不做数据源富化，属性上的
+	// condition_operations 一律为空。调用方（尤其是 Agent）正是靠它判断字段能不能做
+	// match / knn，拿到空的就只能靠猜——能力再准，取不到等于没有。在这里补齐，
+	// Schema 响应与后续实例召回共用同一份结果。
+	// 一律补齐全量算子：实例召回要靠它挑可检索字段，裁剪留到出响应前，免得响应的
+	// 精简开关顺带改变了召回口径。
+	s.backfillConditionOperations(ctx, req.KnID, conceptResult.ObjectTypes, false)
+
 	// 3. 构建响应
 	response := &interfaces.KnSearchLocalResponse{
 		ObjectTypes:   conceptResult.ObjectTypes,
@@ -52,6 +60,7 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 	// 4. 语义实例召回：只在调用方明确要实例时做（search_schema 恒为 schema-only）
 	if req.OnlySchema {
 		s.logger.WithContext(ctx).Infof("[KnSearchLocal] only_schema=true, skip semantic instance retrieval")
+		trimToIndexBackedOperations(response.ObjectTypes, req.IndexOpsOnly)
 		return response, nil
 	}
 
@@ -59,6 +68,7 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 	if instanceErr != nil {
 		// 实例召回失败不拖垮整条检索：Schema 本身已经是有用的结果，降级返回。
 		s.logger.WithContext(ctx).Warnf("[KnSearchLocal] Semantic instance retrieval failed, degrade to schema-only: %v", instanceErr)
+		trimToIndexBackedOperations(response.ObjectTypes, req.IndexOpsOnly)
 		return response, nil
 	}
 
@@ -66,5 +76,6 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 	response.Message = instanceResult.Message
 	s.logger.WithContext(ctx).Infof("[KnSearchLocal] Semantic instance retrieval completed: nodes=%d", len(response.Nodes))
 
+	trimToIndexBackedOperations(response.ObjectTypes, req.IndexOpsOnly)
 	return response, nil
 }

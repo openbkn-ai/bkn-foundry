@@ -29,6 +29,8 @@ type KnSearchLocalRequest struct {
 	// IncludeColumns adds each data property's physical column name (mapped_field)
 	// to the response for run_sql. Off by default to keep responses compact.
 	IncludeColumns bool `json:"include_columns" default:"false"`
+	// IndexOpsOnly 见 SearchSchemaReq 同名字段。
+	IndexOpsOnly bool `json:"-"`
 }
 
 // KnSearchRetrievalConfig 召回配置参数
@@ -66,6 +68,15 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	EnableGlobalFinalScoreRatioFilter *bool   `json:"enable_global_final_score_ratio_filter" default:"true"`
 	GlobalFinalScoreRatio             float64 `json:"global_final_score_ratio" default:"0.25"`
 	ExactNameMatchScore               float64 `json:"exact_name_match_score" default:"0.85"`
+
+	// EnableKnnInstanceRetrieval 控制实例召回是否发向量条件。关掉只留全文：
+	// 向量能跨语言、跨措辞召回，但每个 knn 子条件都要向量化一次查询词，是这条
+	// 链路上唯一按次计费也按次等待的部分。
+	EnableKnnInstanceRetrieval *bool `json:"enable_knn_instance_retrieval" default:"true"`
+	// MaxKnnSubConditionsPerType 限制单个对象类发多少个向量条件。
+	// 同一行的多个文本字段各发一次 knn，召回增益很小，成本却是线性叠加，默认只取
+	// 最靠前的一个字段。
+	MaxKnnSubConditionsPerType int `json:"max_knn_sub_conditions_per_type" default:"1"`
 }
 
 // KnSearchPropertyFilterConfig 实例属性过滤配置

@@ -93,35 +93,6 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
 		}
 	}
-	if objectType.DataProperties != nil {
-		for _, prop := range objectType.DataProperties {
-			if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled && prop.IndexConfig.VectorConfig.ModelID != "" {
-				model, err := ots.mfs.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
-				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]属性[%s]的小模型[%s]获取失败: %s",
-							objectType.OTName, prop.Name, prop.IndexConfig.VectorConfig.ModelID, err.Error()))
-				}
-				if model == nil {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]属性[%s]的小模型[%s]不存在",
-							objectType.OTName, prop.Name, prop.IndexConfig.VectorConfig.ModelID))
-				}
-				if model.ModelType != interfaces.SMALL_MODEL_TYPE_EMBEDDING {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("model type %s is not %s model", model.ModelType, interfaces.SMALL_MODEL_TYPE_EMBEDDING))
-				}
-				if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("model %s has invalid embedding dim, batch size or max tokens", model.ModelID))
-				}
-			}
-		}
-	}
 	// Schema for logic properties (type, data_source) is validated in driveradapters.ValidateObjectType.
 	for _, lp := range objectType.LogicProperties {
 		switch lp.Type {
@@ -1209,7 +1180,15 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除对象类概念索引失败")
-			return err
+
+			// Vega 返回的是普通 error，必须归一为 HTTPError 后再上抛，
+			// 否则 handler 侧的类型断言会 panic，连接在写响应头前断开，网关只能报 502。
+			var httpErr *rest.HTTPError
+			if errors.As(err, &httpErr) {
+				return httpErr
+			}
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
 
@@ -1959,15 +1938,16 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 // multi_match 的执行链路本来就是通的（bkn 改写 → Vega 路由到 fulltext 子字段），
 // 这里只是把它如实登记出来，让上层检索知道可以用。
 //
-// 向量能力有意不映射成 knn：knn 改写要求属性类型字面是 vector，而表资源的源字段
-// 是 string，向量落在构建任务生成的字段上，对象类里并没有对应属性——现在放开
-// 只会让上层稳定收到 400。等「生成向量字段 → 对象类属性」的映射契约落地后再说。
+// 向量能力映射成 knn 的前提是属性上已经带了 index_config.vector_config（物理向量
+// 字段 + 已解析的模型 ID）：表资源的源字段是 string，向量落在构建任务生成的字段上，
+// 查询侧靠这份配置改写，缺了就发不出去。调用方在解析不到模型时会先把 Vector 置回
+// false，所以这里只管如实登记。
 func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string {
-	if !propCaps.Keyword && !propCaps.Fulltext {
+	if !propCaps.Keyword && !propCaps.Fulltext && !propCaps.Vector {
 		return ops
 	}
 
-	merged := make([]string, len(ops), len(ops)+len(interfaces.DSL_KEYWORD_OPS)+len(interfaces.DSL_TEXT_OPS))
+	merged := make([]string, len(ops), len(ops)+len(interfaces.DSL_KEYWORD_OPS)+len(interfaces.DSL_TEXT_OPS)+len(interfaces.DSL_VECTOR_OPS))
 	copy(merged, ops)
 	seen := make(map[string]struct{}, cap(merged))
 	for _, op := range merged {
@@ -1988,6 +1968,9 @@ func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string 
 	}
 	if propCaps.Fulltext {
 		appendOps(interfaces.DSL_TEXT_OPS)
+	}
+	if propCaps.Vector {
+		appendOps(interfaces.DSL_VECTOR_OPS)
 	}
 	return merged
 }

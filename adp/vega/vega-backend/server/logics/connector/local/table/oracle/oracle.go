@@ -346,7 +346,7 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
-	baseQuery := "SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE 1=1 "
+	baseQuery := "SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE OBJECT_TYPE IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW')"
 	// Filter schemas
 
 	var query string
@@ -402,7 +402,7 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 
 		meta := &interfaces.TableMeta{
 			Name:        name,
-			TableType:   "table",
+			TableType:   oracleTableType(tableType),
 			Description: "",
 			Database:    schema,
 		}
@@ -418,6 +418,17 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 		return nil, fmt.Errorf("failed to iterate table info: %w", err)
 	}
 	return tables, nil
+}
+
+func oracleTableType(objectType string) string {
+	switch strings.ToUpper(objectType) {
+	case "VIEW":
+		return "view"
+	case "MATERIALIZED VIEW":
+		return "materialized_view"
+	default:
+		return "table"
+	}
 }
 
 // GetTableMeta returns metadata for a specific table.
@@ -450,30 +461,35 @@ func (c *OracleConnector) GetTableMeta(ctx context.Context, table *interfaces.Ta
 	return nil
 }
 
-// fetchTableStatus retrieves table status from ALL_TABLES and ALL_TAB_COMMENTS.
+// fetchTableStatus retrieves supported object status and table statistics.
 func (c *OracleConnector) fetchTableStatus(ctx context.Context, table *interfaces.TableMeta) error {
 	query := `
-		SELECT 
+		SELECT
+			O.OBJECT_TYPE,
 			T.NUM_ROWS,
 			C.COMMENTS,
 			T.LAST_ANALYZED
-		FROM ALL_TABLES T
-		LEFT JOIN ALL_TAB_COMMENTS C ON T.OWNER = C.OWNER AND T.TABLE_NAME = C.TABLE_NAME
-		WHERE T.OWNER = :1 AND T.TABLE_NAME = :2
+		FROM ALL_OBJECTS O
+		LEFT JOIN ALL_TABLES T ON O.OWNER = T.OWNER AND O.OBJECT_NAME = T.TABLE_NAME
+		LEFT JOIN ALL_TAB_COMMENTS C ON O.OWNER = C.OWNER AND O.OBJECT_NAME = C.TABLE_NAME
+		WHERE O.OWNER = :1 AND O.OBJECT_NAME = :2
+		  AND O.OBJECT_TYPE IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW')
 	`
 
+	var objectType sql.NullString
 	var tableRows sql.NullInt64
 	var description sql.NullString
 	var lastAnalyzed sql.NullTime
 
 	row := c.db.QueryRowContext(ctx, query, strings.ToUpper(table.Database), strings.ToUpper(table.Name))
 	if err := row.Scan(
+		&objectType,
 		&tableRows,
 		&description,
 		&lastAnalyzed,
 	); err != nil {
 		if err == sql.ErrNoRows {
-			return nil
+			return fmt.Errorf("table metadata not found or inaccessible: %s.%s", table.Database, table.Name)
 		}
 		return err
 	}
@@ -483,9 +499,7 @@ func (c *OracleConnector) fetchTableStatus(ctx context.Context, table *interface
 		table.Properties = make(map[string]any)
 	}
 
-	if table.TableType == "" {
-		table.TableType = "table"
-	}
+	table.TableType = oracleTableType(objectType.String)
 
 	table.Properties["row_count"] = tableRows.Int64
 	table.Description = description.String

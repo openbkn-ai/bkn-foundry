@@ -2,6 +2,7 @@ package sessionstore
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ type Store struct {
 	conversations  map[string]sessionvo.Conversation
 	interactions   map[string]sessionvo.Interaction
 	operations     map[string]sessionvo.Operation
+	operationCalls map[string]sessionvo.OperationCallFact
 	receipts       map[string]sessionvo.Receipt
 	idempotencies  map[string]sessionvo.IdempotencyRecord
 	projections    map[uint64]sessionvo.ProjectionMutation
@@ -30,14 +32,15 @@ func New() *Store {
 
 func NewWithClock(now func() time.Time) *Store {
 	return &Store{
-		now:           now,
-		conversations: make(map[string]sessionvo.Conversation),
-		interactions:  make(map[string]sessionvo.Interaction),
-		operations:    make(map[string]sessionvo.Operation),
-		receipts:      make(map[string]sessionvo.Receipt),
-		idempotencies: make(map[string]sessionvo.IdempotencyRecord),
-		projections:   make(map[uint64]sessionvo.ProjectionMutation),
-		revisions:     make(map[string]sessionvo.AssemblyRevision),
+		now:            now,
+		conversations:  make(map[string]sessionvo.Conversation),
+		interactions:   make(map[string]sessionvo.Interaction),
+		operations:     make(map[string]sessionvo.Operation),
+		operationCalls: make(map[string]sessionvo.OperationCallFact),
+		receipts:       make(map[string]sessionvo.Receipt),
+		idempotencies:  make(map[string]sessionvo.IdempotencyRecord),
+		projections:    make(map[uint64]sessionvo.ProjectionMutation),
+		revisions:      make(map[string]sessionvo.AssemblyRevision),
 	}
 }
 
@@ -156,6 +159,22 @@ func (tx memoryTransaction) PeekInteraction(interactionID string) (sessionvo.Int
 	return tx.FindInteraction(interactionID)
 }
 
+func (tx memoryTransaction) ListInteractions(conversationID string) []sessionvo.Interaction {
+	result := make([]sessionvo.Interaction, 0)
+	for _, interaction := range tx.s.interactions {
+		if interaction.ConversationID == conversationID {
+			result = append(result, interaction)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Ordinal == result[j].Ordinal {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].Ordinal < result[j].Ordinal
+	})
+	return result
+}
+
 func (tx memoryTransaction) NextInteractionOrdinal(conversationID string) uint64 {
 	var max uint64
 	for _, interaction := range tx.s.interactions {
@@ -181,6 +200,64 @@ func (tx memoryTransaction) FindOperationByKey(interactionID, operationKey strin
 
 func (tx memoryTransaction) SaveOperation(operation sessionvo.Operation) {
 	tx.s.operations[operation.ID] = operation
+}
+
+func (tx memoryTransaction) FindOperationCallFact(
+	operationID string,
+	attempt uint32,
+) (sessionvo.OperationCallFact, bool) {
+	fact, found := tx.s.operationCalls[operationCallFactKey(operationID, attempt)]
+	return fact, found
+}
+
+func (tx memoryTransaction) ListOperationCallFacts(interactionID string) []sessionvo.OperationCallFact {
+	result := make([]sessionvo.OperationCallFact, 0)
+	for _, fact := range tx.s.operationCalls {
+		if fact.InteractionID == interactionID {
+			result = append(result, fact)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].StartedAt.Equal(result[j].StartedAt) {
+			if result[i].OperationID == result[j].OperationID {
+				return result[i].Attempt < result[j].Attempt
+			}
+			return result[i].OperationID < result[j].OperationID
+		}
+		return result[i].StartedAt.Before(result[j].StartedAt)
+	})
+	return result
+}
+
+func (tx memoryTransaction) ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact {
+	result := make([]sessionvo.OperationCallFact, 0)
+	for _, fact := range tx.s.operationCalls {
+		if fact.TraceID == traceID {
+			result = append(result, fact)
+		}
+	}
+	sortOperationCallFacts(result)
+	return result
+}
+
+func sortOperationCallFacts(result []sessionvo.OperationCallFact) {
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].StartedAt.Equal(result[j].StartedAt) {
+			if result[i].OperationID == result[j].OperationID {
+				return result[i].Attempt < result[j].Attempt
+			}
+			return result[i].OperationID < result[j].OperationID
+		}
+		return result[i].StartedAt.Before(result[j].StartedAt)
+	})
+}
+
+func (tx memoryTransaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
+	tx.s.operationCalls[operationCallFactKey(fact.OperationID, fact.Attempt)] = fact
+}
+
+func operationCallFactKey(operationID string, attempt uint32) string {
+	return fmt.Sprintf("%s\x00%d", operationID, attempt)
 }
 
 func (tx memoryTransaction) FindOperation(operationID string) (sessionvo.Operation, bool) {

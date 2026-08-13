@@ -11,6 +11,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isourcecoveragestore"
 )
 
 var (
@@ -40,12 +41,16 @@ type Service struct {
 	cursorKey            []byte
 	sourceTimeout        time.Duration
 	maxConcurrentSources int
+	coverageStore        isourcecoveragestore.Store
+	coverageDeploymentID string
 }
 
 type Options struct {
 	CursorKey            []byte
 	SourceTimeout        time.Duration
 	MaxConcurrentSources int
+	CoverageStore        isourcecoveragestore.Store
+	CoverageDeploymentID string
 }
 
 const (
@@ -74,6 +79,7 @@ func NewWithOptions(sources []Source, options Options) *Service {
 	return &Service{
 		sources: append([]Source(nil), sources...), cursorKey: append([]byte(nil), options.CursorKey...),
 		sourceTimeout: options.SourceTimeout, maxConcurrentSources: options.MaxConcurrentSources,
+		coverageStore: options.CoverageStore, coverageDeploymentID: options.CoverageDeploymentID,
 	}
 }
 
@@ -214,6 +220,7 @@ func (service *Service) listPage(
 	sourceQuery.ObservedBefore = &queryWatermark
 	succeeded := 0
 	failed := 0
+	coveragePartial := false
 	sourcePageSizes := make(map[string]int)
 	sourceCandidates := make(map[string]int)
 	sourceLastRawPosition := make(map[string]observabilityvo.SourcePosition)
@@ -237,6 +244,7 @@ func (service *Service) listPage(
 		succeeded++
 		page := sourceResult.page
 		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
+		coveragePartial = coveragePartial || sourceResult.status.Status == "degraded"
 		sourcePageSizes[source.ID()] = len(page.Records)
 		totalCount += page.Count
 		countExact = countExact && normalizedAccuracy(page.CountAccuracy) == "exact"
@@ -301,7 +309,7 @@ func (service *Service) listPage(
 			})
 		}
 	}
-	result.Partial = failed > 0
+	result.Partial = failed > 0 || coveragePartial
 	result.Count = totalCount
 	result.CountExact = !result.Partial && countExact
 	return result, nil
@@ -372,7 +380,7 @@ func (service *Service) searchSources(
 	semaphore := make(chan struct{}, service.maxConcurrentSources)
 	var waitGroup sync.WaitGroup
 	for index, source := range sources {
-		results[index] = sourceSearchResult{source: source, status: sourceStatus(source)}
+		results[index] = sourceSearchResult{source: source, status: service.sourceStatus(ctx, source)}
 		if results[index].status.Status == "not_integrated" {
 			continue
 		}
@@ -412,8 +420,10 @@ func (service *Service) searchSources(
 				results[index].status.CountAccuracy = "unavailable"
 				return
 			}
-			results[index].status.Status = "healthy"
-			results[index].status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
+			if results[index].status.Status != observabilityvo.SourceCoverageDegraded {
+				results[index].status.Status = "healthy"
+				results[index].status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
+			}
 		}(index, source)
 	}
 	waitGroup.Wait()
@@ -582,13 +592,29 @@ func sourceIDs(sources []Source) []string {
 	return normalizedStrings(result)
 }
 
-func sourceStatus(source Source) observabilityvo.SourceStatus {
+func (service *Service) sourceStatus(ctx context.Context, source Source) observabilityvo.SourceStatus {
+	var status observabilityvo.SourceStatus
 	if metadata, ok := source.(metadataSource); ok {
-		return metadata.Metadata()
+		status = metadata.Metadata()
+	} else {
+		status = observabilityvo.SourceStatus{
+			SourceID: source.ID(), Reliability: "best_effort", CountAccuracy: "exact",
+		}
 	}
-	return observabilityvo.SourceStatus{
-		SourceID: source.ID(), Reliability: "best_effort", CountAccuracy: "exact",
+	if service.coverageStore == nil || service.coverageDeploymentID == "" {
+		return status
 	}
+	coverage, found, err := service.coverageStore.Get(ctx, source.ID(), service.coverageDeploymentID)
+	if err != nil {
+		status.Status = observabilityvo.SourceCoverageDegraded
+		status.Reason = "source_status_probe_failed"
+		status.CountAccuracy = "partial"
+		return status
+	}
+	if found {
+		return coverage.Merge(status)
+	}
+	return status
 }
 
 func afterSourcePosition(record observabilityvo.LogRecord, position *observabilityvo.SourcePosition) bool {

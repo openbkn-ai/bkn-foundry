@@ -3,18 +3,7 @@ package opensearchevidencestore
 import "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 
 func scopeCandidateMust(scope evidencevo.QueryScope) []map[string]any {
-	must := make([]map[string]any, 0, 3)
-	for _, item := range []struct {
-		field string
-		value string
-	}{
-		{"bkn.tenant.id", scope.TenantID},
-		{"business_domain", scope.BusinessDomain},
-	} {
-		if item.value != "" {
-			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
-		}
-	}
+	must := scopeBoundaryMust(scope)
 
 	if scope.AccessProfile == nil {
 		return appendLegacyOwnerMust(must, scope)
@@ -27,6 +16,9 @@ func scopeCandidateMust(scope evidencevo.QueryScope) []map[string]any {
 	}
 
 	profile := *scope.AccessProfile
+	if evidencevo.HasTenantWideTraceAccess(profile) {
+		return must
+	}
 	should := make([]map[string]any, 0, 4)
 	if profile.EffectiveSubjectID != "" {
 		should = append(should, map[string]any{"bool": exactTermQuery("effective_subject_id", profile.EffectiveSubjectID)})
@@ -49,6 +41,22 @@ func scopeCandidateMust(scope evidencevo.QueryScope) []map[string]any {
 	return append(must, map[string]any{"bool": map[string]any{
 		"should": should, "minimum_should_match": 1,
 	}})
+}
+
+func scopeBoundaryMust(scope evidencevo.QueryScope) []map[string]any {
+	must := make([]map[string]any, 0, 2)
+	for _, item := range []struct {
+		field string
+		value string
+	}{
+		{"bkn.tenant.id", scope.TenantID},
+		{"business_domain", scope.BusinessDomain},
+	} {
+		if item.value != "" {
+			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
+		}
+	}
+	return must
 }
 
 func appendLegacyOwnerMust(must []map[string]any, scope evidencevo.QueryScope) []map[string]any {

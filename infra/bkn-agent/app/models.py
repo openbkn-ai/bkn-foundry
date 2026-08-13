@@ -117,8 +117,27 @@ class AgentToolRef(_ToolRefBase):
     agent_id: str = Field(min_length=1, max_length=100)
 
 
+class ContextLoaderToolRef(_ToolRefBase):
+    """Context Loader 的知识网络检索工具，经其 MCP 面装载。
+
+    刻意不带 url：端点来自 CONTEXT_LOADER_MCP_URL，agent 定义因此可以跨环境
+    导入导出而不带环境地址（type=mcp 写死 url 就不行）。
+    """
+
+    type: Literal["context_loader"]
+    # 未声明时保留既有「装载 Context Loader 全部业务工具」行为。需要只读诊断的
+    # agent 则必须显式列出允许的 MCP 工具名，避免在 prompt 约束之外仍拿到 run_sql
+    # 或执行类工具。
+    allowed_tools: Optional[list[str]] = Field(
+        default=None,
+        max_length=100,
+        description="可装载的 Context Loader MCP 工具名白名单；未声明表示不限制。",
+    )
+
+
 ToolRef = Annotated[
-    McpToolRef | ToolboxToolRef | AgentToolRef, Field(discriminator="type")
+    McpToolRef | ToolboxToolRef | AgentToolRef | ContextLoaderToolRef,
+    Field(discriminator="type"),
 ]
 
 

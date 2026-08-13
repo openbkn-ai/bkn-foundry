@@ -37,7 +37,7 @@ func setupConnectorTypeHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockConnec
 
 	as := vmock.NewMockAuthService(mockCtrl)
 	cts := vmock.NewMockConnectorTypeService(mockCtrl)
-	handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil, nil)
+	handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil)
 	handler.RegisterPublic(engine)
 
 	as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
@@ -101,7 +101,7 @@ func Test_ConnectorTypeRestHandler_UpdateConnectorType(t *testing.T) {
 
 		as := vmock.NewMockAuthService(mockCtrl)
 		cts := vmock.NewMockConnectorTypeService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
@@ -315,7 +315,7 @@ func Test_ConnectorTypeRestHandler_ListConnectorTypes(t *testing.T) {
 
 		as := vmock.NewMockAuthService(mockCtrl)
 		cts := vmock.NewMockConnectorTypeService(mockCtrl)
-		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil, nil)
+		handler := MockNewRestHandler(&common.AppSetting{}, as, nil, nil, nil, nil, cts, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().

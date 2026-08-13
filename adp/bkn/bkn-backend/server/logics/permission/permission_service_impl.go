@@ -193,15 +193,19 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 		})
 	}
 
-	// todo: 权限过滤先去掉，进来多少个id就返回多少个id
+	// ops 判定可见性，fullOps 是回给前端的候选操作集——两者必须都传下去。
+	// 早前 fullOps 收而不用：ISF 在 allow_operation=true 时无视请求的操作列表、直接
+	// 回该资源的全部允许操作，遗漏不显症；bkn-safe 严格按请求列表求交，于是列表/详情
+	// 的 operations 塌成只剩 ops（如 view_detail），Studio 据此把编辑/删除入口藏了。
 	matchResouces, err := ps.pa.FilterResources(ctx, interfaces.PermissionResourcesFilter{
 		Accessor: interfaces.PermissionAccessor{
 			ID:   accountInfo.ID,
 			Type: accountInfo.Type,
 		},
-		Resources:      resources,
-		Operations:     ops,
-		AllowOperation: allowOperation,
+		Resources:           resources,
+		Operations:          ops,
+		CandidateOperations: fullOps,
+		AllowOperation:      allowOperation,
 	})
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,

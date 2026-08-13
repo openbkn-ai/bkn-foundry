@@ -31,11 +31,11 @@ import (
 	"vega-backend/logics/dataset"
 	"vega-backend/logics/discover_schedule"
 	"vega-backend/logics/discover_task"
+	"vega-backend/logics/local_index"
 	"vega-backend/logics/resource"
 	"vega-backend/logics/resource_data"
 	"vega-backend/logics/semantic_understanding_task"
 	"vega-backend/version"
-	"vega-backend/worker"
 )
 
 // RestHandler interface
@@ -46,33 +46,33 @@ type RestHandler interface {
 type restHandler struct {
 	appSetting *common.AppSetting
 	as         interfaces.AuthService
-	cs         interfaces.CatalogService
-	rs         interfaces.ResourceService
 	bts        interfaces.BuildTaskService
-	ds         interfaces.DatasetService
+	cs         interfaces.CatalogService
 	cts        interfaces.ConnectorTypeService
-	dts        interfaces.DiscoverTaskService
+	ds         interfaces.DatasetService
 	dss        interfaces.DiscoverScheduleService
+	dts        interfaces.DiscoverTaskService
 	hcss       interfaces.CatalogHealthCheckScheduleService
+	lim        interfaces.LocalIndexManager
 	rds        interfaces.ResourceDataService
+	rs         interfaces.ResourceService
 	suts       interfaces.SemanticUnderstandingTaskService
-
-	sw *worker.ScheduleWorker
 }
 
 // NewRestHandler creates a new RestHandler.
-func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) RestHandler {
+func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	as := auth.NewAuthService(appSetting)
 	cs := catalog.NewCatalogService(appSetting)
-	rs := resource.NewResourceService(appSetting)
-	bts := build_task.NewBuildTaskService(appSetting, rs)
 	cts := connector_type.NewConnectorTypeService(appSetting)
 	ds := dataset.NewDatasetService(appSetting)
 	dts := discover_task.NewDiscoverTaskService(appSetting)
 	dss := discover_schedule.NewDiscoverScheduleService(appSetting, dts)
 	hcss := catalog_health_check_schedule.NewCatalogHealthCheckScheduleService(appSetting)
-	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
+	lim := local_index.NewLocalIndexManager(appSetting)
 	rds := resource_data.NewResourceDataService(appSetting)
+	rs := resource.NewResourceService(appSetting)
+	bts := build_task.NewBuildTaskService(appSetting, rs)
+	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 
 	return &restHandler{
 		appSetting: appSetting,
@@ -82,12 +82,12 @@ func NewRestHandler(appSetting *common.AppSetting, sw *worker.ScheduleWorker) Re
 		cts:        cts,
 		ds:         ds,
 		dss:        dss,
-		hcss:       hcss,
 		dts:        dts,
+		hcss:       hcss,
+		lim:        lim,
 		rds:        rds,
 		rs:         rs,
 		suts:       suts,
-		sw:         sw,
 	}
 }
 
@@ -110,7 +110,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.POST("", r.verifyJsonContentType(), r.CreateCatalogByEx)
 			catalogs.PUT("/:id", r.verifyJsonContentType(), r.UpdateCatalogByEx)
 			catalogs.GET("/:id", r.GetCatalogsByEx)
-			catalogs.DELETE("/:id", r.DeleteCatalogsByEx)
+			catalogs.DELETE("/:id", r.DeleteCatalogByEx)
 			catalogs.POST("/:id/enable", r.EnableCatalogByEx)
 			catalogs.POST("/:id/disable", r.DisableCatalogByEx)
 
@@ -191,6 +191,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			connectorTypes.POST("/:type/disable", r.DisableConnectorType)
 		}
 
+		apiV1.GET("/index-capabilities", r.GetIndexCapabilitiesByEx)
+
 		apiV1.GET("/auth-resources", r.ListAuthResources)
 	}
 
@@ -204,7 +206,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			catalogs.POST("", r.verifyJsonContentType(), r.CreateCatalogByIn)
 			catalogs.PUT("/:id", r.verifyJsonContentType(), r.UpdateCatalogByIn)
 			catalogs.GET("/:id", r.GetCatalogsByIn)
-			catalogs.DELETE("/:id", r.DeleteCatalogsByIn)
+			catalogs.DELETE("/:id", r.DeleteCatalogByIn)
 			catalogs.POST("/:id/enable", r.EnableCatalogByIn)
 			catalogs.POST("/:id/disable", r.DisableCatalogByIn)
 

@@ -29,7 +29,7 @@ OpenBKN is an ontology-driven business knowledge network platform. Through ontol
 - 🚢 [Deployment](deploy/README.md) - One-click deploy to Kubernetes
 - 📘 [Documentation](help/README.md) - Product documentation and usage guides ([EN](help/en/README.md) / [中文](help/zh/README.md))
 - 📖 [API Reference](docs/api/) - OpenAPI docs for every service (YAML source + rendered Markdown / interactive HTML)
-- 📦 [Examples](examples/README.md) - End-to-end CLI walkthroughs (DB / CSV / actions)
+- 📦 [Samples](https://github.com/openbkn-ai/bkn-samples) - Runnable end-to-end walkthroughs, in their own repo
 - 🧾 [Release Notes](release-notes/) - All notable changes
 
 <a id="toc-quick-start"></a>
@@ -86,12 +86,12 @@ kubectl get pods -A
 
 5. **Post-install bootstrap with `onboard.sh`** (recommended)
 
-   On the **same host** as the install (where `kubectl` reaches the cluster), run the post-install bootstrap. It (re-runnable) registers an LLM + an embedding, patches the BKN ConfigMaps when the default embedding actually changes, and on a **full install** also creates the business user **`test`**, assigns every role from `openbkn admin role list`, switches `openbkn` to that user, and imports the Context Loader toolset:
+   On the **same host** as the install (where `kubectl` reaches the cluster), run the post-install bootstrap. It (re-runnable) registers an LLM + an embedding, patches the BKN ConfigMaps when the default embedding actually changes, and on a **full install** also creates the business user **`test`**, assigns every role from `openbkn admin role list`, and switches `openbkn` to that user:
 
 ```bash
 cd deploy
 sudo bash ./onboard.sh        # interactive; or:  sudo bash ./onboard.sh -y
-sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, --skip-context-loader, …)
+sudo bash ./onboard.sh --help # all flags (--config=models.yaml, --enable-bkn-search, …)
 ```
 
    > **Why `sudo`?** `onboard.sh` reads `$HOME/.openbkn-ai/config.yaml` (written by `sudo deploy.sh` into `/root/.openbkn-ai/`) and writes the `openbkn` auth token to `$HOME/.bkn`. Running it without `sudo` falls back to the in-repo template `deploy/conf/config.yaml` and may resolve a different access URL. **macOS dev path** (`bash deploy/dev/mac.sh onboard`) does **not** need `sudo`.

@@ -52,8 +52,7 @@ openbkn bkn create-from-csv <catalog_id> \
 ```
 
 > **该命令当前不可用**：它的 CSV 入库依赖已下线的 dataflow 通道。请走下面的分步路径
-> （mysql 客户端装库 → 重新发现 → `create-from-catalog`），`examples/02-csv-to-kn`
-> 是完整可运行版本。
+> （mysql 客户端装库 → 重新发现 → `create-from-catalog`）。
 
 参数速查：
 
@@ -133,4 +132,3 @@ openbkn bkn search <kn_id> "物料"
 ## 6. See also（延伸阅读）
 
 - 参考：[BKN 引擎](../manual/bkn.md) · [数据源管理](../manual/datasource.md) · [快速开始](../quick-start.md)
-- 完整示例项目：仓库内 [`examples/02-csv-to-kn/`](../../../examples/02-csv-to-kn/)

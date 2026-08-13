@@ -86,18 +86,18 @@ func (mr *MockCatalogServiceMockRecorder) Create(ctx, req, allowUnhealthy any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCatalogService)(nil).Create), ctx, req, allowUnhealthy)
 }
 
-// DeleteByIDs mocks base method.
-func (m *MockCatalogService) DeleteByIDs(ctx context.Context, ids []string) error {
+// DeleteByID mocks base method.
+func (m *MockCatalogService) DeleteByID(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids)
+	ret := m.ctrl.Call(m, "DeleteByID", ctx, id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteByIDs indicates an expected call of DeleteByIDs.
-func (mr *MockCatalogServiceMockRecorder) DeleteByIDs(ctx, ids any) *gomock.Call {
+// DeleteByID indicates an expected call of DeleteByID.
+func (mr *MockCatalogServiceMockRecorder) DeleteByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockCatalogService)(nil).DeleteByIDs), ctx, ids)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByID", reflect.TypeOf((*MockCatalogService)(nil).DeleteByID), ctx, id)
 }
 
 // GetByID mocks base method.
@@ -128,6 +128,21 @@ func (m *MockCatalogService) GetByIDs(ctx context.Context, ids []string) ([]*int
 func (mr *MockCatalogServiceMockRecorder) GetByIDs(ctx, ids any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockCatalogService)(nil).GetByIDs), ctx, ids)
+}
+
+// GetDeletionImpact mocks base method.
+func (m *MockCatalogService) GetDeletionImpact(ctx context.Context, id string) (*interfaces.CatalogDeletionImpact, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDeletionImpact", ctx, id)
+	ret0, _ := ret[0].(*interfaces.CatalogDeletionImpact)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDeletionImpact indicates an expected call of GetDeletionImpact.
+func (mr *MockCatalogServiceMockRecorder) GetDeletionImpact(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeletionImpact", reflect.TypeOf((*MockCatalogService)(nil).GetDeletionImpact), ctx, id)
 }
 
 // InternalGetByID mocks base method.

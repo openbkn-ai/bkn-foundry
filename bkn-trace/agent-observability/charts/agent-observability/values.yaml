@@ -48,18 +48,6 @@ ingress:
 evidence:
   store: memory
   index: bkn-trace-evidence-v2
-  indexManagement:
-    enabled: false
-    maxResultWindow: 10000
-    refreshInterval: 5s
-    createJob:
-      enabled: false
-      image:
-        registry: docker.io
-        repository: curlimages/curl
-        tag: "8.10.1"
-        pullPolicy: IfNotPresent
-      backoffLimit: 1
   ingestAuth:
     existingSecret: ""
     secretKey: token
@@ -67,8 +55,6 @@ evidence:
     # externally managed Secrets outside Helm ownership by default.
     createSecret: false
     allowUnauthenticated: false
-  rawTraceQuery:
-    enabled: false
   queryAuth:
     hydraAdminURL: http://bkn-safe-hydra-admin:4445
     # 0.1.3 is deployed as a single tenant. This trusted server-side value is
@@ -88,6 +74,14 @@ businessResolver:
   vegaBaseURL: "http://vega-backend-svc:13014"
   timeout: 3s
 
+# The Community binary ignores this block. The EE image uses it solely to
+# select the deployment-approved, read-only business-provenance Agent.
+enterpriseBusinessProvenance:
+  enabled: false
+  agentURL: ""
+  agentID: ""
+  agentName: ""
+
 observability:
   # Configure the same Secret on every replica so signed pagination cursors
   # remain valid across pods. A single local replica may leave this empty.
@@ -96,6 +90,15 @@ observability:
     secretKey: key
   sourceTimeout: 3s
   maxConcurrentSources: 4
+  sourceCoverage:
+    # Optional independent health probe. It is disabled unless the installation
+    # uses the persistent MariaDB Core store and provides a cluster-internal
+    # Collector metrics endpoint.
+    enabled: false
+    metricsEndpoint: ""
+    sourceID: otel-runtime
+    deploymentID: observability/otelcol-contrib
+    interval: 30s
 
 core:
   # Keep existing trace/evidence reads available after an upgrade. Enable
@@ -109,7 +112,7 @@ core:
     enabled: false
     index: bkn-trace-core
     interval: 1s
-    rebuildVersion: bkn-trace-core-v013
+    rebuildVersion: bkn-trace-core-v014
   mariadb:
     existingSecret: bkn-trace-core-mariadb
     dsnKey: dsn
@@ -128,9 +131,11 @@ affinity: {}
 
 opensearch:
   endpoint:  http://opensearch-cluster-master.resource.svc.cluster.local:9200
-  traceIndex: ss4o_traces-default-anyshare
-  logIndex: ss4o_logs-default-anyshare
+  # Keep these aligned with the bundled Collector's ss4o dataset/namespace.
+  traceIndex: ss4o_traces-default-namespace
+  logIndex: ss4o_logs-default-namespace
   auth:
     enabled: false
-    username: ""
-    password: ""
+    existingSecret: ""
+    usernameKey: username
+    passwordKey: password
