@@ -146,7 +146,7 @@ func (client *Client) authorize(ctx context.Context, operation, key, method stri
 	if err != nil {
 		return "", "", nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return "", "", nil, err
@@ -183,7 +183,7 @@ func (client *Client) storageID(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return "", fmt.Errorf("query default archive storage: %s", response.Status)
 	}
@@ -213,7 +213,7 @@ func (client *Client) signed(ctx context.Context, method, signedURL string, head
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("write archive bundle: %s", response.Status)
 	}
