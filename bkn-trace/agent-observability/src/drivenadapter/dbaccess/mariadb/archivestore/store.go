@@ -18,7 +18,7 @@ func (store *Store) Create(job archivesvc.Job) error {
 	if err != nil {
 		return err
 	}
-	payloads, err := json.Marshal(job.Candidates)
+	payloads, err := json.Marshal([]archivesvc.Candidate{})
 	if err != nil {
 		return err
 	}
@@ -27,7 +27,17 @@ func (store *Store) Create(job archivesvc.Job) error {
 }
 
 func (store *Store) Update(job archivesvc.Job) error {
-	_, err := store.db.Exec(`UPDATE bkn_trace_archive_jobs SET archive_status=?, manifest_ref=?, error_message=?, updated_at=? WHERE archive_job_id=?`, job.Status, nullableString(job.ManifestRef), nullableString(job.ErrorMessage), job.UpdatedAt.UTC(), job.ID)
+	payloads, err := json.Marshal([]archivesvc.Candidate{})
+	if err != nil {
+		return err
+	}
+	if job.Status == observabilityvo.ArchiveStatusCleanupIncomplete {
+		payloads, err = json.Marshal(job.Candidates)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = store.db.Exec(`UPDATE bkn_trace_archive_jobs SET archive_status=?, candidate_payloads=?, manifest_ref=?, error_message=?, updated_at=? WHERE archive_job_id=?`, job.Status, payloads, nullableString(job.ManifestRef), nullableString(job.ErrorMessage), job.UpdatedAt.UTC(), job.ID)
 	return err
 }
 

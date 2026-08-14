@@ -66,6 +66,35 @@ func TestRetryCleanupReusesFrozenCandidatePayload(t *testing.T) {
 	}
 }
 
+func TestCreatePersistsVerifiedManifestAndCandidatesBeforePurge(t *testing.T) {
+	now := time.Date(2026, time.August, 14, 8, 0, 0, 0, time.UTC)
+	store := NewMemoryStore()
+	source := &checkingSource{store: store, candidates: []Candidate{{ID: "trace-1", OccurredAt: now.AddDate(0, 0, -8), Payload: []byte(`{"technical_trace_ids":["trace-a"]}`)}}}
+	service := New(store, source, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
+
+	if _, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace, "tenant-a"); err != nil {
+		t.Fatalf("create archive: %v", err)
+	}
+	if !source.manifestPersisted || !source.candidatesPersisted {
+		t.Fatalf("verified archive state was not persisted before purge: %+v", source)
+	}
+}
+
+func TestCompletedArchiveDoesNotRetainRetryPayload(t *testing.T) {
+	now := time.Date(2026, time.August, 14, 8, 0, 0, 0, time.UTC)
+	store := NewMemoryStore()
+	service := New(store, &fakeSource{candidates: []Candidate{{ID: "log-1", OccurredAt: now.AddDate(0, 0, -31), Payload: []byte(`{"id":"log-1"}`)}}}, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
+
+	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog, "tenant-a")
+	if err != nil {
+		t.Fatalf("create archive: %v", err)
+	}
+	stored, ok := store.Get(job.ID)
+	if !ok || len(stored.Candidates) != 0 {
+		t.Fatalf("completed archive must not retain retry payload: %+v", stored)
+	}
+}
+
 type fakeSource struct {
 	candidates []Candidate
 	purged     map[string]bool
@@ -96,4 +125,25 @@ func (store *fakeObjectStore) WriteAndVerify(_ context.Context, _ Job, _ []Candi
 		return "", store.verifyErr
 	}
 	return "archive/job/manifest.json", nil
+}
+
+type checkingSource struct {
+	store               Store
+	candidates          []Candidate
+	manifestPersisted   bool
+	candidatesPersisted bool
+}
+
+func (source *checkingSource) Freeze(_ context.Context, _ observabilityvo.ArchiveKind, _ string, _ observabilityvo.ArchiveRange) ([]Candidate, error) {
+	return append([]Candidate(nil), source.candidates...), nil
+}
+
+func (source *checkingSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind, _ string, candidates []Candidate) error {
+	job, ok := source.store.Latest("tenant-a", observabilityvo.ArchiveKindTrace)
+	if !ok || len(candidates) != 1 || len(job.Candidates) != 1 {
+		return errors.New("verified archive state is unavailable before purge")
+	}
+	source.manifestPersisted = job.ManifestRef != ""
+	source.candidatesPersisted = len(job.Candidates[0].Payload) > 0 && candidates[0].ID == job.Candidates[0].ID
+	return nil
 }

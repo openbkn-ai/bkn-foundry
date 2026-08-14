@@ -110,7 +110,13 @@ func (service *Service) Create(ctx context.Context, kind observabilityvo.Archive
 		_ = service.store.Update(job)
 		return job, err
 	}
-	job.ManifestRef, job.UpdatedAt = manifestRef, service.now().UTC()
+	// Persist the verified manifest and frozen candidates before any hot data is
+	// deleted. A process interruption after this point is recoverable through
+	// RetryCleanup; an interruption before it leaves hot data intact.
+	job.ManifestRef, job.Status, job.ErrorMessage, job.UpdatedAt = manifestRef, observabilityvo.ArchiveStatusCleanupIncomplete, "", service.now().UTC()
+	if err := service.store.Update(job); err != nil {
+		return Job{}, err
+	}
 	if err := service.source.Purge(ctx, kind, tenantID, candidates); err != nil {
 		job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusCleanupIncomplete, err.Error(), service.now().UTC()
 		_ = service.store.Update(job)
@@ -222,7 +228,7 @@ func (store *memoryStore) Create(job Job) error {
 	if _, ok := store.jobs[job.ID]; ok {
 		return errors.New("archive job already exists")
 	}
-	store.jobs[job.ID] = job
+	store.jobs[job.ID] = storedJob(job)
 	return nil
 }
 func (store *memoryStore) Update(job Job) error {
@@ -231,8 +237,15 @@ func (store *memoryStore) Update(job Job) error {
 	if _, ok := store.jobs[job.ID]; !ok {
 		return errors.New("archive job does not exist")
 	}
-	store.jobs[job.ID] = job
+	store.jobs[job.ID] = storedJob(job)
 	return nil
+}
+
+func storedJob(job Job) Job {
+	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
+		job.Candidates = nil
+	}
+	return job
 }
 func (store *memoryStore) Latest(tenantID string, kind observabilityvo.ArchiveKind) (Job, bool) {
 	store.mu.Lock()
