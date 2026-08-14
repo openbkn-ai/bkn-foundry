@@ -73,6 +73,9 @@ func SetDefaultLocale(locale string) {
 	normalized := normalizeLocale(locale)
 	catalogMu.Lock()
 	defer catalogMu.Unlock()
+	if len(activeCatalog.messages) == 0 {
+		return
+	}
 	if normalized == "" || activeCatalog.messages[normalized] == nil {
 		warnFallback(normalized, "", "default_locale_missing")
 		return

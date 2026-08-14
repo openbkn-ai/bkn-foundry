@@ -16,6 +16,12 @@ SPEC.loader.exec_module(catalog_check)
 
 
 class TestPythonCatalogValidation(unittest.TestCase):
+    def test_rejects_positional_placeholders(self) -> None:
+        with self.assertRaisesRegex(ValueError, "positional placeholder"):
+            catalog_check.placeholders("Missing parameter: {}")
+        with self.assertRaisesRegex(ValueError, "positional placeholder"):
+            catalog_check.placeholders("Missing parameter: {0}")
+
     def test_reports_missing_codes_and_template_mismatches(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)

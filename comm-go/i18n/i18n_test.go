@@ -68,6 +68,26 @@ func TestTranslateFallsBackWithoutFatal(t *testing.T) {
 	}
 }
 
+func TestRegisterI18nKeepsValidMessagesAfterMalformedFile(t *testing.T) {
+	dir := writeLocaleFiles(t, map[string]string{
+		"errors.zh-CN.toml": "[Error]\nDescription = '请求失败'\n",
+		"errors.en-US.toml": "[Error]\nDescription = 'Request failed'\n",
+		"broken.en-US.toml": "[Error]\nDescription = ",
+	})
+
+	RegisterI18n(dir, "zh-CN")
+	if got := Translate("en-US", "Error.Description", nil); got != "Request failed" {
+		t.Fatalf("expected valid message after malformed resource, got %q", got)
+	}
+}
+
+func TestRegisterI18nUsesFallbackForMissingDirectory(t *testing.T) {
+	RegisterI18n(filepath.Join(t.TempDir(), "missing"), "zh-CN")
+	if got := Translate("zh-CN", "Error.Description", nil); got != genericChineseMessage {
+		t.Fatalf("expected generic fallback after missing directory, got %q", got)
+	}
+}
+
 func TestSetDefaultLocaleChangesRuntimeFallback(t *testing.T) {
 	dir := writeLocaleFiles(t, map[string]string{
 		"errors.zh-CN.toml": "[Error]\nDescription = '请求失败'\n",

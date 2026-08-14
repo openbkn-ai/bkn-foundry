@@ -87,8 +87,11 @@ def placeholders(value: str) -> Counter[str]:
     except ValueError as error:
         raise ValueError(f"invalid format template {value!r}: {error}") from error
     for _, field_name, _, _ in parsed:
-        if field_name:
-            fields[field_name] += 1
+        if field_name is None:
+            continue
+        if field_name == "" or field_name.isdecimal():
+            raise ValueError(f"positional placeholder is not allowed in {value!r}")
+        fields[field_name] += 1
     return fields
 
 
