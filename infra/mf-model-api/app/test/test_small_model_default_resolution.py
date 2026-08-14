@@ -4,7 +4,7 @@
 兜底（context-loader 猜 "reranker"、vega 猜 "embedding"），注册名一改就全线
 NameNotExist——而管理员在模型管理里勾的默认反倒没人读。
 """
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.controller.small_model_controller import (
     DEFAULT_MODEL_CACHE_TTL_SECONDS,
@@ -56,3 +56,26 @@ class TestDefaultSmallModelResolution:
         assert _model_cache_ttl(True) == DEFAULT_MODEL_CACHE_TTL_SECONDS
         assert _model_cache_ttl(False) == MODEL_CACHE_TTL_SECONDS
         assert DEFAULT_MODEL_CACHE_TTL_SECONDS < MODEL_CACHE_TTL_SECONDS
+
+
+class TestSmallModelDaoDefaultQuery:
+    def test_query_filters_by_default_flag_and_type(self):
+        """SQL 必须同时按 f_default=1 与 f_model_type 过滤。
+
+        只按 f_default 查会串类型：embedding 与 reranker 各有各的默认，
+        查错类型的后果是拿一个 embedding 去做重排。
+        """
+        from app.dao.small_model_dao import SmallModelDao
+
+        cursor = Mock()
+        cursor.fetchall.return_value = [{"f_model_name": "gte-rerank-v2"}]
+
+        # 装饰器负责建连接，这里直接调用被包裹的函数体（靠 functools.wraps 暴露的 __wrapped__）
+        SmallModelDao.get_default_by_type.__wrapped__(
+            SmallModelDao(), RERANKER_MODEL_TYPE, Mock(), cursor
+        )
+
+        sql, params = cursor.execute.call_args[0]
+        assert "f_default = 1" in sql
+        assert "f_model_type = %s" in sql
+        assert params == RERANKER_MODEL_TYPE
