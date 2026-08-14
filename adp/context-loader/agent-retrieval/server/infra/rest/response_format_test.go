@@ -144,9 +144,9 @@ func TestMarshalResponse_TOONStructPreservesLargeJSONNumber(t *testing.T) {
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(decoded["columns"], convey.ShouldNotBeNil)
 		convey.So(decoded["Columns"], convey.ShouldBeNil)
-		convey.So(decoded["total_count"], convey.ShouldBeNil)
-		convey.So(decoded["warnings"], convey.ShouldBeNil)
-		convey.So(decoded["paging"], convey.ShouldBeNil)
+		convey.So(string(toonBytes), convey.ShouldNotContainSubstring, "total_count")
+		convey.So(string(toonBytes), convey.ShouldNotContainSubstring, "warnings")
+		convey.So(string(toonBytes), convey.ShouldNotContainSubstring, "paging")
 	})
 }
 
