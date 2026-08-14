@@ -109,7 +109,7 @@ func TestResourceFilterEndpointSuperAdmin(t *testing.T) {
 	_ = e.Grant(role, "*", "*")
 	_ = e.AssignRole(admin, role)
 
-	candidates := []string{"view_detail", "create", "modify", "delete", "data_query", "authorize", "task_manage"}
+	candidates := []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage"}
 	got := postFilter(t, r, map[string]any{
 		"accessor_id":           admin,
 		"resource_type":         "knowledge_network",

@@ -37,7 +37,7 @@
         {"id": "modify", "name": "修改"},
         {"id": "delete", "name": "删除"},
         {"id": "authorize", "name": "授权"},
-        {"id": "data_query", "name": "数据查询"}
+        {"id": "query_data", "name": "数据查询"}
       ]
     },
     {
@@ -95,7 +95,7 @@
         {"id": "create", "name": "创建"},
         {"id": "modify", "name": "修改"},
         {"id": "delete", "name": "删除"},
-        {"id": "data_query", "name": "数据查询"},
+        {"id": "query_data", "name": "数据查询"},
         {"id": "authorize", "name": "授权"},
         {"id": "task_manage", "name": "任务管理"}
       ]

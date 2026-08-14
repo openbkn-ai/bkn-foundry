@@ -116,6 +116,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := reconcileSeedRoles(db, enforcer); err != nil {
 		return fmt.Errorf("reconcile seed roles: %w", err)
 	}
+	if err := renameLegacyOperations(enforcer); err != nil {
+		return fmt.Errorf("rename legacy operations: %w", err)
+	}
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
 	}
@@ -335,6 +338,39 @@ func seedRoleBindings(enforcer *authz.Enforcer) error {
 	for _, b := range rb.Bindings {
 		if err := enforcer.AssignRole(b.AccessorID, b.RoleID); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// legacyOperationRenames are vocabulary spellings that were corrected after
+// they had already shipped. Role grants need no migration — the seed wipes and
+// rebuilds those every start — but a grant an administrator wrote on a single
+// object keeps the old string in the policy store, and after the rename it
+// matches nothing. That reads as "the permission I granted disappeared", so the
+// rows are moved rather than left behind.
+var legacyOperationRenames = []struct {
+	resourceType string
+	from, to     string
+}{
+	// 数据查询 was spelled data_query on these two types and query_data on
+	// catalog/resource. One vocabulary, one spelling.
+	{"knowledge_network", "data_query", "query_data"},
+	{"stream_data_pipeline", "data_query", "query_data"},
+}
+
+// renameLegacyOperations migrates object grants onto the corrected spellings.
+// Idempotent: once nothing holds the old spelling it is a no-op, so it costs one
+// filtered read per entry on every subsequent start.
+func renameLegacyOperations(enforcer *authz.Enforcer) error {
+	for _, r := range legacyOperationRenames {
+		moved, err := enforcer.RenameOperation(r.resourceType, r.from, r.to)
+		if err != nil {
+			return err
+		}
+		if moved > 0 {
+			slog.Info("migrated object grants onto the corrected operation name",
+				"resource_type", r.resourceType, "from", r.from, "to", r.to, "rows", moved)
 		}
 	}
 	return nil

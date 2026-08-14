@@ -127,7 +127,7 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
 		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
-		{"normal-user can query knowledge", normalUser, "knowledge_network", "kn1", "data_query", true},
+		{"normal-user can query knowledge", normalUser, "knowledge_network", "kn1", "query_data", true},
 		{"normal-user can execute skill", normalUser, "skill", "s1", "execute", true},
 		{"normal-user can use agent", normalUser, "agent", "a1", "use", true},
 		{"normal-user cannot create catalog", normalUser, "catalog", "x", "create", false},

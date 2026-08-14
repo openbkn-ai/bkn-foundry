@@ -127,3 +127,64 @@ func TestValidateHierarchyAcceptsShippedCatalog(t *testing.T) {
 		t.Fatalf("shipped catalog.json declares an invalid hierarchy: %v", err)
 	}
 }
+
+// TestSeedMigratesLegacyOperationSpelling: 知识网络与流式数据管道上的「数据查询」
+// 原本拼作 data_query，而目录/资源侧是 query_data。统一成后者时，角色授权会随种子
+// 重建自动跟上，但管理员在**单个对象**上发过的授权带的还是旧拼写——不迁移的话，
+// 用户的体验是「我发过的权限凭空消失了」。
+func TestSeedMigratesLegacyOperationSpelling(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 升级前的对象级授权：管理员在某个知识网络上发过 data_query。
+	const user = "u-1"
+	mustNoErrSeed(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "data_query"))
+	mustNoErrSeed(t, e.GrantObjectPermission(user, "stream_data_pipeline", "p-1", "data_query"))
+	// 同名但不同类型的授权不该被动到：catalog 侧从来就叫 query_data。
+	mustNoErrSeed(t, e.GrantObjectPermission(user, "catalog", "c-1", "query_data"))
+
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ rtype, id string }{
+		{"knowledge_network", "kn-1"},
+		{"stream_data_pipeline", "p-1"},
+	} {
+		ok, err := e.Check(user, tc.rtype, tc.id, "query_data")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Errorf("%s/%s: 旧拼写的对象级授权没有迁移过来，用户会以为权限被吞了", tc.rtype, tc.id)
+		}
+		stale, err := e.Check(user, tc.rtype, tc.id, "data_query")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stale {
+			t.Errorf("%s/%s: 旧拼写还在，等于同一件事有两个名字", tc.rtype, tc.id)
+		}
+	}
+
+	// 幂等：再跑一次不该有任何变化。
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := e.Check(user, "catalog", "c-1", "query_data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("catalog 侧本来就是 query_data，不该被迁移逻辑碰到")
+	}
+}
+
+func mustNoErrSeed(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}

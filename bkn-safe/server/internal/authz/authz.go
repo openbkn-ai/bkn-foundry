@@ -395,6 +395,42 @@ func (en *Enforcer) RemoveRoleCompletely(roleID string) error {
 	return err
 }
 
+// RenameOperation rewrites every policy row on a resource type that grants the
+// old operation so that it grants the new one instead. Returns how many rows
+// moved, so a caller can log an upgrade that actually did something.
+//
+// Renaming an operation in the seeded vocabulary only fixes the ROLE grants —
+// those are wiped and rebuilt from the seed on every start. Grants written per
+// object by an administrator carry the old string in the policy store and would
+// silently stop matching, which reads as "the permission I granted disappeared".
+// This is the migration for those, and it is idempotent: once no row holds the
+// old spelling, it does nothing.
+func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, error) {
+	rows, err := en.e.GetFilteredPolicy(2, oldOp)
+	if err != nil {
+		return 0, err
+	}
+	prefix := resourceType + ":"
+	moved := 0
+	for _, row := range rows {
+		if len(row) < 3 {
+			continue
+		}
+		object := row[1]
+		if len(object) <= len(prefix) || object[:len(prefix)] != prefix {
+			continue
+		}
+		if _, err := en.e.RemovePolicy(row[0], object, oldOp); err != nil {
+			return moved, err
+		}
+		if _, err := en.e.AddPolicy(row[0], object, newOp); err != nil {
+			return moved, err
+		}
+		moved++
+	}
+	return moved, nil
+}
+
 // RemoveRolePermissions purges only the p-lines owned by a role, preserving its
 // member bindings. Seed uses this before re-applying the built-in permission
 // matrix so removed grants do not linger across upgrades.
