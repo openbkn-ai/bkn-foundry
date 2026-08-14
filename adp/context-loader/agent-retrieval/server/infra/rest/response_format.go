@@ -68,10 +68,17 @@ func MarshalResponse(format ResponseFormat, body interface{}) (contentType strin
 	}
 }
 
+type toonValueProvider interface {
+	TOONValue() any
+}
+
 // marshalTOON 将 body 编码为 TOON。
-// map/slice 等非 struct 类型直接交给 toon-go；
-// struct 因为只有 json tag、没有 toon tag，需通过 JSON 中转为 map 再编码，确保字段名与 API 契约一致。
+// 实现 toonValueProvider 的响应可提供适配后的 TOON 视图；
+// 其他 struct 因为只有 json tag、没有 toon tag，需通过 JSON 中转为 map 再编码，确保字段名与 API 契约一致。
 func marshalTOON(body interface{}) ([]byte, error) {
+	if provider, ok := body.(toonValueProvider); ok {
+		return toon.Marshal(provider.TOONValue(), toon.WithLengthMarkers(true))
+	}
 	v := reflect.ValueOf(body)
 	for v.Kind() == reflect.Ptr {
 		v = v.Elem()

@@ -12,6 +12,8 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/toon-format/toon-go"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 func TestParseResponseFormat(t *testing.T) {
@@ -119,6 +121,20 @@ func TestMarshalResponse_TOON_Struct(t *testing.T) {
 		convey.So(c0["concept_id"], convey.ShouldEqual, "ot_1")
 		// should NOT have Go field names
 		convey.So(c0["ConceptType"], convey.ShouldBeNil)
+	})
+}
+
+func TestMarshalResponse_TOONStructPreservesLargeJSONNumber(t *testing.T) {
+	convey.Convey("MarshalResponse FormatTOON preserves a large json.Number in a struct", t, func() {
+		body := &interfaces.VegaRawQueryResp{Entries: []map[string]any{{
+			"id_card": json.Number("110101199001152345"),
+		}}}
+
+		ct, toonBytes, err := MarshalResponse(FormatTOON, body)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(ct, convey.ShouldEqual, ContentTypeTOON)
+		convey.So(string(toonBytes), convey.ShouldContainSubstring, `"110101199001152345"`)
+		convey.So(body.Entries[0]["id_card"], convey.ShouldEqual, json.Number("110101199001152345"))
 	})
 }
 
