@@ -71,7 +71,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
 		return observabilityvo.SourcePage{}, fmt.Errorf("BKN Safe access source returned status %d", response.StatusCode)
@@ -104,7 +104,7 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusNotFound {
 		return observabilityvo.LogRecord{}, false, nil
 	}
