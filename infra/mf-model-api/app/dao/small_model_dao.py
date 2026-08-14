@@ -58,9 +58,15 @@ class SmallModelDao:
         与大模型侧 llm_model_dao.get_data_from_default_model 对齐：调用方不指定模型时，
         用管理员在模型管理里勾选的默认模型，而不是让各服务各自硬编码一个名字去猜
         （见 #842、#296——猜名字的后果是注册名一改就全线 NameNotExist）。
+
+        管理端「清掉旧默认」与「置新默认」是两次独立提交（mf-model-manager 的
+        small_model_controller），中间失败会在库里留下同类型多行 f_default = 1。
+        按 f_update_time 倒序取第一行，至少让此后的解析结果是确定的——最后被置位
+        的那一行。
         """
         sql = """select f_model_id, f_model_name, f_model_type, f_model_config,f_adapter,f_adapter_code,f_embedding_dim
-                    from t_small_model where f_default = 1 and f_model_type = %s"""
+                    from t_small_model where f_default = 1 and f_model_type = %s
+                    order by f_update_time desc"""
         cursor.execute(sql, model_type)
         res = cursor.fetchall()
         return res

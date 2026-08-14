@@ -30,11 +30,38 @@ def _model_cache_ttl(is_default):
     return DEFAULT_MODEL_CACHE_TTL_SECONDS if is_default else MODEL_CACHE_TTL_SECONDS
 
 
+# #842 之前各服务硬编码的兜底名字：context-loader 猜 "reranker"、vega 猜 "embedding"
+# （#296）。存量库里 f_default 全是 0——「设为默认」是后加的能力，没人点过就没人置位，
+# 也没有任何迁移回填它。若默认解析取不到就直接 400，存量环境升级当天精排即静默退回
+# 原序（三处调用方都是优雅降级，只打一条 warn）。
+#
+# 所以默认解析落空时，按老约定的名字再兜一次，命中就打 warn 指路。等日志里不再出现
+# 这条 warn，这一跳就可以删掉。
+LEGACY_DEFAULT_MODEL_NAMES = {
+    RERANKER_MODEL_TYPE: "reranker",
+    "embedding": "embedding",
+}
+
+
 def _load_small_model(is_default, model_type, model_name, model_id):
     """按「有没有指定模型」分流：指定了按名字/ID 查，没指定取该类型的系统默认。"""
-    if is_default:
-        return small_model_dao.get_default_by_type(model_type)
-    return small_model_dao.get_model_info_by_name_id(model_name, model_id)
+    if not is_default:
+        return small_model_dao.get_model_info_by_name_id(model_name, model_id)
+
+    model_info = small_model_dao.get_default_by_type(model_type)
+    if model_info:
+        return model_info
+
+    legacy_name = LEGACY_DEFAULT_MODEL_NAMES.get(model_type)
+    if not legacy_name:
+        return model_info
+
+    model_info = small_model_dao.get_model_info_by_name_id(legacy_name, None)
+    if model_info:
+        StandLogger.warn(
+            f"{model_type} 未配置默认小模型，暂按旧命名约定回退到 {legacy_name}；"
+            f"请在模型管理中为该类型勾选默认模型")
+    return model_info
 
 
 def _model_missing_error(is_default):

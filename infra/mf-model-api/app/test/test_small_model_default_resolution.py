@@ -43,6 +43,50 @@ class TestDefaultSmallModelResolution:
             dao.get_default_by_type.assert_not_called()
             assert result[0]["f_model_name"] == "bge-reranker"
 
+    def test_unset_default_falls_back_to_the_legacy_name(self):
+        """存量库里 f_default 全是 0，也没有迁移回填它。
+
+        默认解析落空就直接 400 的话，升级当天精排即静默退回原序——调用方都是优雅
+        降级只打 warn。所以这里按老约定的名字再兜一次。
+        """
+        with patch("app.controller.small_model_controller.small_model_dao") as dao:
+            dao.get_default_by_type.return_value = []
+            dao.get_model_info_by_name_id.return_value = [{"f_model_name": "reranker"}]
+
+            result = _load_small_model(True, RERANKER_MODEL_TYPE, "", "")
+
+            dao.get_model_info_by_name_id.assert_called_once_with("reranker", None)
+            assert result[0]["f_model_name"] == "reranker"
+
+    def test_configured_default_wins_over_the_legacy_name(self):
+        """管理员勾了默认就以它为准，旧名字那一跳根本不该发生。"""
+        with patch("app.controller.small_model_controller.small_model_dao") as dao:
+            dao.get_default_by_type.return_value = [{"f_model_name": "gte-rerank-v2"}]
+
+            _load_small_model(True, RERANKER_MODEL_TYPE, "", "")
+
+            dao.get_model_info_by_name_id.assert_not_called()
+
+    def test_no_legacy_name_for_an_unknown_type(self):
+        """老约定只存在于 reranker / embedding 两类，别的类型不许瞎猜名字。"""
+        with patch("app.controller.small_model_controller.small_model_dao") as dao:
+            dao.get_default_by_type.return_value = []
+
+            result = _load_small_model(True, "ocr", "", "")
+
+            dao.get_model_info_by_name_id.assert_not_called()
+            assert result == []
+
+    def test_legacy_fallback_covers_the_embedding_guess_too(self):
+        """vega 猜的是 "embedding"（#296），同样得兜住。"""
+        with patch("app.controller.small_model_controller.small_model_dao") as dao:
+            dao.get_default_by_type.return_value = []
+            dao.get_model_info_by_name_id.return_value = [{"f_model_name": "embedding"}]
+
+            _load_small_model(True, "embedding", "", "")
+
+            dao.get_model_info_by_name_id.assert_called_once_with("embedding", None)
+
     def test_missing_error_distinguishes_the_two_cases(self):
         """「你指定的模型不存在」与「管理员没配默认」处理方式不同，错误码不能混。"""
         assert _model_missing_error(False) is ModelFactory_ExternalSmallModel_Used_NameNotExist
@@ -79,3 +123,20 @@ class TestSmallModelDaoDefaultQuery:
         assert "f_default = 1" in sql
         assert "f_model_type = %s" in sql
         assert params == RERANKER_MODEL_TYPE
+
+    def test_query_orders_so_the_result_is_deterministic(self):
+        """管理端清旧默认与置新默认是两次独立提交，中途失败会留下多行 f_default=1。
+
+        没有 order by 时取 [0] 拿到哪一行由存储引擎决定，此后默认解析结果不确定。
+        """
+        from app.dao.small_model_dao import SmallModelDao
+
+        cursor = Mock()
+        cursor.fetchall.return_value = []
+
+        SmallModelDao.get_default_by_type.__wrapped__(
+            SmallModelDao(), RERANKER_MODEL_TYPE, Mock(), cursor
+        )
+
+        sql = cursor.execute.call_args[0][0]
+        assert "order by f_update_time desc" in sql
