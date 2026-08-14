@@ -368,8 +368,38 @@ top = collections.Counter(r.get(team_field) for r in rows.get("datas", [])).most
 print(top)
 ` + "```" + `
 
-沙箱是完整的 Python 3.11：pandas、numpy、scipy、requests、httpx、sqlite3 与全部
-标准库都在，分组、连接、统计交给它们，不要为此多跑一轮。
+## 能下推的聚合一律下推
+
+计数、求和、分组、排序、Top-N 这类，**优先写一条 ` + "`run_sql`" + `**，让数据库算完只回结果，
+不要用 ` + "`query_object_instance`" + ` 把行拉进沙箱再统计——那既慢又受 ` + "`limit`" + ` 截断，
+统计口径会悄悄错。
+
+` + "```python" + `
+# 对：一条 SQL 回三行
+run_sql(sql="SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name ORDER BY c DESC LIMIT 3")
+
+# 错：拉 5000 行回来自己数，还可能没拉全
+rows = query_object_instance(kn_id=kn, ot_id="goals", limit=5000)
+` + "```" + `
+
+沙箱里的 pandas、numpy、scipy、sqlite3 与全部标准库，留给 SQL 表达不了的部分：
+跨数据源关联、非 SQL 数据源、按中间结果分支、扇出。那些才是代码模式真正的用武之地。
+
+## 一次执行同时产出答案与依据
+
+多跑一轮，最常见的原因不是想不出解法，而是**对数据口径有误解**：以为只有男足却混着女足，
+以为球队名唯一却有 West Germany 与 Germany 两条。这类问题撞上一次修一次，就变成了
+一轮一次调用。
+
+对策是在**同一段脚本里**把你依赖的口径先打出来，再给答案：
+
+` + "```python" + `
+print("取值范围:", run_sql(sql="SELECT DISTINCT tournament_name FROM {{.<resource_id>}}")["entries"][:20])
+print("答案:", run_sql(sql="SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name ORDER BY c DESC LIMIT 5")["entries"])
+` + "```" + `
+
+这样即使口径判断错了，你也已经拿到了改对它所需的全部信息，下一轮直接给最终答案，
+而不是再花一轮"看一眼"。
 
 不确定的地方用代码兜住而不是回到对话：取值一律 ` + "`.get()`" + `，可能失败的分支用
 try/except 包住并 print 出关键中间信息，让一次执行既拿到答案、又带回排查线索。

@@ -314,3 +314,36 @@ func TestSandboxMCPURLAlwaysEndsWithSlash(t *testing.T) {
 		t.Fatalf("默认地址不对: %s", got)
 	}
 }
+
+// 实测（2026-08-14，A/B）：同一个问题，普通工具面 2 次调用 55k token 答完，PTC 用了
+// 12 次 136k token 还没收敛。差别在于普通面的提示词把聚合推给 run_sql，而 PTC 的
+// digest 当时写着「分组、连接、统计交给 pandas 或 collections」，把模型推去
+// query_object_instance(limit=5000) 拉行回来自己算——慢，且被 limit 悄悄截断。
+func TestPTCDigestPrefersSQLPushdown(t *testing.T) {
+	digest := ptcTestDigest()
+
+	if !strings.Contains(digest, "## 能下推的聚合一律下推") {
+		t.Fatalf("digest 缺少下推小节:\n%s", digest)
+	}
+	// 不能再出现「统计交给 pandas」这类把模型推离 SQL 的表述。
+	if strings.Contains(digest, "分组、连接、统计交给") {
+		t.Fatalf("digest 仍在把聚合推给 pandas:\n%s", digest)
+	}
+	// 反例要写出来：只说「优先 SQL」模型照旧会拉行回来。
+	if !strings.Contains(digest, "拉 5000 行回来自己数") {
+		t.Fatalf("digest 缺少反例:\n%s", digest)
+	}
+}
+
+// 实测里那 12 轮不是瞎试，是逐轮修正口径：第 6 轮才发现数据混着女足，第 7 轮才发现
+// West Germany 与 Germany 是同一支。这类误解本可以在第一段脚本里连同答案一起打出来。
+func TestPTCDigestTeachesPrintingAssumptions(t *testing.T) {
+	digest := ptcTestDigest()
+
+	if !strings.Contains(digest, "## 一次执行同时产出答案与依据") {
+		t.Fatalf("digest 缺少「口径与答案同时打印」小节:\n%s", digest)
+	}
+	if !strings.Contains(digest, "DISTINCT") {
+		t.Fatalf("缺少打印取值范围的示例:\n%s", digest)
+	}
+}
