@@ -290,7 +290,6 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 		ExecuteType: req.ExecuteType,
 		Creator:     accountInfo,
 		CreateTime:  now,
-		UpdateTime:  now,
 	}
 
 	if err := bts.fillBuildTaskIndexSnapshot(ctx, resource, buildTask); err != nil {
@@ -764,7 +763,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 	// Persist pending before signaling the worker. This prevents a stopped task
 	// from being skipped and keeps the running transition owned by execution.
 	resetProgress := reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeFull
-	updated, err := bts.bta.MarkPending(ctx, taskID, resetProgress, time.Now().UnixMilli())
+	updated, err := bts.bta.MarkPending(ctx, taskID, resetProgress)
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_UpdateFailed).
@@ -855,7 +854,7 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	if buildTask.Status == interfaces.BuildTaskStatusPending {
 		updated, err = bts.bta.MarkStopped(ctx, taskID, time.Now().UnixMilli())
 	} else {
-		updated, err = bts.bta.MarkStopping(ctx, taskID, time.Now().UnixMilli())
+		updated, err = bts.bta.MarkStopping(ctx, taskID)
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Update build task status failed", err)

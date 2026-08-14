@@ -88,7 +88,9 @@ paths:
             type: string
             enum:
               - create_time
-              - update_time
+              - start_time
+              - finish_time
+              - last_progress_time
             default: create_time
         - name: direction
           description: 排序方向，默认 desc
@@ -360,7 +362,6 @@ components:
         - vectorized_count
         - creator
         - create_time
-        - update_time
       properties:
         id:
           description: 全局唯一 ID
@@ -424,8 +425,16 @@ components:
           description: 创建时间，毫秒级时间戳
           type: integer
           format: int64
-        update_time:
-          description: 更新时间，毫秒级时间戳
+        start_time:
+          description: 开始执行时间，毫秒级时间戳；未开始时为 0
+          type: integer
+          format: int64
+        finish_time:
+          description: 完成时间，毫秒级时间戳；未完成时为 0
+          type: integer
+          format: int64
+        last_progress_time:
+          description: 最近一次对外可观测进度更新时间，毫秒级时间戳；无进度更新时为 0
           type: integer
           format: int64
         failure_detail:
@@ -438,7 +447,7 @@ components:
     BuildTaskSummary:
       description: 构建任务列表摘要；索引配置快照和 failure_detail 请调用单条详情接口获取。
       type: object
-      required: [id, resource_id, catalog_id, status, mode, total_count, synced_count, vectorized_count, synced_mark, creator, create_time, update_time]
+      required: [id, resource_id, catalog_id, status, mode, total_count, synced_count, vectorized_count, synced_mark, creator, create_time]
       properties:
         id: { type: string }
         resource_id: { type: string }
@@ -455,7 +464,9 @@ components:
         error_msg: { type: string }
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }
-        update_time: { type: integer, format: int64 }
+        start_time: { type: integer, format: int64 }
+        finish_time: { type: integer, format: int64 }
+        last_progress_time: { type: integer, format: int64 }
         index_health: { $ref: "#/components/schemas/IndexHealth" }
     BuildTaskIndexConfig:
       description: 创建任务时从 Resource 派生的索引配置快照

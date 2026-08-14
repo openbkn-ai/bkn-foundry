@@ -420,13 +420,19 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_creator                 VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
     f_creator_type            VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
     f_create_time             BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
-    f_update_time             BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+    f_start_time              BIGINT(20) NOT NULL DEFAULT 0 COMMENT '开始执行时间',
+    f_finish_time             BIGINT(20) NOT NULL DEFAULT 0 COMMENT '完成时间',
+    f_last_progress_time      BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最近一次对外可观测进度更新时间',
 
     -- 索引
     PRIMARY KEY (f_id),
     INDEX idx_resource_id (f_resource_id),
     INDEX idx_catalog_id (f_catalog_id),
-    INDEX idx_status (f_status)
+    INDEX idx_status (f_status),
+    INDEX idx_create_time (f_create_time),
+    INDEX idx_start_time (f_start_time),
+    INDEX idx_finish_time (f_finish_time),
+    INDEX idx_last_progress_time (f_last_progress_time)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='构建任务表';
 
 -- ==========================================

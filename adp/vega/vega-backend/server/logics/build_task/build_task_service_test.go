@@ -861,7 +861,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			},
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 		}, nil)
-		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", true, gomock.Any()).Return(true, nil)
+		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", true).Return(true, nil)
 
 		require.NoError(t, service.Start(context.Background(), "task-1", true))
 		select {
@@ -898,7 +898,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			},
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 		}, nil)
-		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", false, gomock.Any()).Return(false, nil)
+		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", false).Return(false, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
@@ -1182,7 +1182,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
 			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
-		mockBTA.EXPECT().MarkStopping(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
+		mockBTA.EXPECT().MarkStopping(gomock.Any(), "task-1").Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})

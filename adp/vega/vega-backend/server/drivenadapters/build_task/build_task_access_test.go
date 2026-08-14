@@ -136,8 +136,8 @@ func TestBuildTaskAccessSetProgress(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_synced_count = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?,?)")).
-			WithArgs(int64(10), int64(123), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_last_progress_time = ?, f_synced_count = ? WHERE f_id = ? AND f_status IN (?,?)")).
+			WithArgs(int64(123), int64(10), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		syncedCount := int64(10)
@@ -153,8 +153,8 @@ func TestBuildTaskAccessSetProgress(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_synced_count = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?,?)")).
-			WithArgs(int64(10), int64(123), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_last_progress_time = ?, f_synced_count = ? WHERE f_id = ? AND f_status IN (?,?)")).
+			WithArgs(int64(123), int64(10), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		syncedCount := int64(10)
@@ -172,8 +172,8 @@ func TestBuildTaskAccessMarkRunning(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
-			WithArgs("", interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs("", int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		claimed, err := access.MarkRunning(context.Background(), "task-1", 123)
@@ -187,8 +187,8 @@ func TestBuildTaskAccessMarkRunning(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
-			WithArgs("", interfaces.BuildTaskStatusRunning, int64(123), "task-1", interfaces.BuildTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs("", int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		claimed, err := access.MarkRunning(context.Background(), "task-1", 123)
@@ -197,6 +197,22 @@ func TestBuildTaskAccessMarkRunning(t *testing.T) {
 		assert.False(t, claimed)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestBuildTaskAccessMarkPending(t *testing.T) {
+	db, mock, access := newBuildTaskAccessMock(t)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_finish_time = ?, f_last_progress_time = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status IN (?,?)")).
+		WithArgs(int64(0), int64(0), int64(0), interfaces.BuildTaskStatusPending, "task-1",
+			interfaces.BuildTaskStatusStopped, interfaces.BuildTaskStatusFailed).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	updated, err := access.MarkPending(context.Background(), "task-1", false)
+
+	require.NoError(t, err)
+	assert.True(t, updated)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestBuildTaskAccessMarkTerminal(t *testing.T) {
@@ -226,8 +242,8 @@ func TestBuildTaskAccessMarkTerminal(t *testing.T) {
 			db, mock, access := newBuildTaskAccessMock(t)
 			defer func() { _ = db.Close() }()
 
-			mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?,?,?)")).
-				WithArgs("execution failed", tt.status, int64(123), "task-1",
+			mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_finish_time = ?, f_status = ? WHERE f_id = ? AND f_status IN (?,?,?)")).
+				WithArgs("execution failed", int64(123), tt.status, "task-1",
 					interfaces.BuildTaskStatusPending,
 					interfaces.BuildTaskStatusRunning,
 					interfaces.BuildTaskStatusStopping).
@@ -246,8 +262,8 @@ func TestBuildTaskAccessMarkCancelledByCatalogID(t *testing.T) {
 	db, mock, access := newBuildTaskAccessMock(t)
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_status = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_status = ?")).
-		WithArgs("catalog deleted", interfaces.BuildTaskStatusCancelled, int64(123), "catalog-1", interfaces.BuildTaskStatusPending).
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_finish_time = ?, f_status = ? WHERE f_catalog_id = ? AND f_status = ?")).
+		WithArgs("catalog deleted", int64(123), interfaces.BuildTaskStatusCancelled, "catalog-1", interfaces.BuildTaskStatusPending).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
 	err := access.MarkCancelledByCatalogID(context.Background(), nil, "catalog-1", "catalog deleted", 123)
@@ -420,11 +436,20 @@ func TestBuildOrderByClause(t *testing.T) {
 		assert.Equal(t, "f_create_time DESC", buildOrderByClause(interfaces.BuildTaskSortCreateTime, "desc"))
 	})
 
-	t.Run("update_time follows direction", func(t *testing.T) {
-		assert.Equal(t, "f_update_time ASC", buildOrderByClause(interfaces.BuildTaskSortUpdateTime, "asc"))
-		assert.Equal(t, "f_update_time DESC", buildOrderByClause(interfaces.BuildTaskSortUpdateTime, "desc"))
+	t.Run("start_time follows direction", func(t *testing.T) {
+		assert.Equal(t, "f_start_time ASC", buildOrderByClause(interfaces.BuildTaskSortStartTime, "asc"))
+		assert.Equal(t, "f_start_time DESC", buildOrderByClause(interfaces.BuildTaskSortStartTime, "desc"))
 	})
 
+	t.Run("finish_time follows direction", func(t *testing.T) {
+		assert.Equal(t, "f_finish_time ASC", buildOrderByClause(interfaces.BuildTaskSortFinishTime, "asc"))
+		assert.Equal(t, "f_finish_time DESC", buildOrderByClause(interfaces.BuildTaskSortFinishTime, "desc"))
+	})
+
+	t.Run("last_progress_time follows direction", func(t *testing.T) {
+		assert.Equal(t, "f_last_progress_time ASC", buildOrderByClause(interfaces.BuildTaskSortLastProgressTime, "asc"))
+		assert.Equal(t, "f_last_progress_time DESC", buildOrderByClause(interfaces.BuildTaskSortLastProgressTime, "desc"))
+	})
 }
 
 func newBuildTaskAccessMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *buildTaskAccess) {
@@ -440,20 +465,22 @@ func newBuildTaskAccessMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *buildTaskA
 
 func sampleBuildTask() *interfaces.BuildTask {
 	return &interfaces.BuildTask{
-		ID:              "task-1",
-		ResourceID:      "resource-1",
-		CatalogID:       "catalog-1",
-		Status:          interfaces.BuildTaskStatusPending,
-		Mode:            interfaces.BuildTaskModeBatch,
-		ExecuteType:     interfaces.BuildTaskExecuteTypeIncremental,
-		TotalCount:      100,
-		SyncedCount:     80,
-		VectorizedCount: 70,
-		SyncedMark:      "cursor-1",
-		ErrorMsg:        "soft error",
-		Creator:         interfaces.AccountInfo{ID: "creator-1", Type: interfaces.ACCESSOR_TYPE_USER},
-		CreateTime:      1000,
-		UpdateTime:      2000,
+		ID:               "task-1",
+		ResourceID:       "resource-1",
+		CatalogID:        "catalog-1",
+		Status:           interfaces.BuildTaskStatusPending,
+		Mode:             interfaces.BuildTaskModeBatch,
+		ExecuteType:      interfaces.BuildTaskExecuteTypeIncremental,
+		TotalCount:       100,
+		SyncedCount:      80,
+		VectorizedCount:  70,
+		SyncedMark:       "cursor-1",
+		ErrorMsg:         "soft error",
+		Creator:          interfaces.AccountInfo{ID: "creator-1", Type: interfaces.ACCESSOR_TYPE_USER},
+		CreateTime:       1000,
+		StartTime:        1500,
+		FinishTime:       2000,
+		LastProgressTime: 1800,
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
 			BuildKeyFields: []string{"id"},
 			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
@@ -494,7 +521,9 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 		task.Creator.ID,
 		task.Creator.Type,
 		task.CreateTime,
-		task.UpdateTime,
+		task.StartTime,
+		task.FinishTime,
+		task.LastProgressTime,
 	}
 }
 
