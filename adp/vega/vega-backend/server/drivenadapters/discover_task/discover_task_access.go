@@ -57,6 +57,7 @@ func discoverTaskColumns() []string {
 		"f_message",
 		"f_start_time",
 		"f_finish_time",
+		"f_last_progress_time",
 		"f_result",
 		"f_creator",
 		"f_creator_type",
@@ -77,6 +78,7 @@ func discoverTaskListColumns() []string {
 		"f_progress",
 		"f_start_time",
 		"f_finish_time",
+		"f_last_progress_time",
 		"f_result",
 		"f_creator",
 		"f_creator_type",
@@ -99,6 +101,7 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 		&task.Message,
 		&task.StartTime,
 		&task.FinishTime,
+		&task.LastProgressTime,
 		&resultStr,
 		&task.Creator.ID,
 		&task.Creator.Type,
@@ -130,6 +133,7 @@ func scanDiscoverTaskListItem(scanner discoverTaskScanner) (*interfaces.Discover
 		&task.Progress,
 		&task.StartTime,
 		&task.FinishTime,
+		&task.LastProgressTime,
 		&resultStr,
 		&task.Creator.ID,
 		&task.Creator.Type,
@@ -224,6 +228,7 @@ func (dta *discoverTaskAccess) Create(ctx context.Context, task *interfaces.Disc
 			task.Message,
 			task.StartTime,
 			task.FinishTime,
+			task.LastProgressTime,
 			"", // result initially empty
 			task.Creator.ID,
 			task.Creator.Type,
@@ -378,6 +383,8 @@ func buildOrderByClause(sort, direction string) string {
 		column = "f_start_time"
 	case interfaces.DiscoverTaskSortFinishTime:
 		column = "f_finish_time"
+	case interfaces.DiscoverTaskSortLastProgressTime:
+		column = "f_last_progress_time"
 	case interfaces.DiscoverTaskSortCreateTime, "":
 		column = "f_create_time"
 	}
@@ -397,6 +404,19 @@ func (dta *discoverTaskAccess) MarkRunning(ctx context.Context, id string, start
 	}, map[string]any{
 		"f_id":     id,
 		"f_status": interfaces.DiscoverTaskStatusPending,
+	})
+}
+
+func (dta *discoverTaskAccess) UpdateProgress(
+	ctx context.Context, id string, progress int, message string, lastProgressTime int64,
+) (bool, error) {
+	return dta.update(ctx, nil, map[string]any{
+		"f_progress":           progress,
+		"f_message":            message,
+		"f_last_progress_time": lastProgressTime,
+	}, map[string]any{
+		"f_id":     id,
+		"f_status": interfaces.DiscoverTaskStatusRunning,
 	})
 }
 

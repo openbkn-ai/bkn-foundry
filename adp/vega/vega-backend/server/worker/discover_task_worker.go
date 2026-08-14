@@ -267,7 +267,8 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	//然后根据 connector 信息获取 connector 实例，
 	//然后根据 connector 实例获取 catalog 的元数据，
 	//然后根据 catalog 的元数据获取 catalog 的资源信息：元数据
-	result, err := dtw.discoverCatalog(ctx, catalog, taskInfo)
+	progress := &discoverTaskReconcileProgress{}
+	result, err := dtw.discoverCatalog(ctx, catalog, taskInfo, progress)
 	if err != nil {
 		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after execution error: id=%s, error=%v", taskID, updateErr)
@@ -292,6 +293,17 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	return nil
 }
 
+func (dtw *DiscoverTaskWorker) updateProgress(ctx context.Context, taskID string, progress int, message string) error {
+	updated, err := dtw.dts.InternalUpdateProgress(ctx, taskID, progress, message)
+	if err != nil {
+		return fmt.Errorf("update discover task progress: %w", err)
+	}
+	if !updated {
+		return fmt.Errorf("discover task progress was not updated")
+	}
+	return nil
+}
+
 // discoverCatalog discovers resources for a specific catalog.
 // discoverCatalog 是一个发现目录资源的方法
 // 它接收上下文和目录信息，返回发现结果或错误
@@ -303,7 +315,7 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 //   - *interfaces.DiscoverResult: 发现结果，包含发现的资源信息
 //   - error: 错误信息，如果发现过程中出现错误
 func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *interfaces.Catalog,
-	task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+	task *interfaces.DiscoverTask, progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
 
 	logger.Infof("Starting discover for catalog: %s", catalog.ID)
 
@@ -332,13 +344,13 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 	switch category {
 	// table类型的会到这里，例如mysql
 	case interfaces.ConnectorCategoryTable:
-		return dtw.discoverTableResources(ctx, catalog, connector, task)
+		return dtw.discoverTableResources(ctx, task, catalog, connector, progress)
 	// index类型的会到这里，例如open search
 	case interfaces.ConnectorCategoryIndex:
-		return dtw.discoverIndexResources(ctx, catalog, connector, task)
+		return dtw.discoverIndexResources(ctx, task, catalog, connector, progress)
 	// fileset类型的会到这里，例如anyshare
 	case interfaces.ConnectorCategoryFileset:
-		return dtw.discoverFilesetResources(ctx, catalog, connector, task)
+		return dtw.discoverFilesetResources(ctx, task, catalog, connector, progress)
 	default:
 		return nil, fmt.Errorf("unsupported connector category for discover: %s", category)
 	}

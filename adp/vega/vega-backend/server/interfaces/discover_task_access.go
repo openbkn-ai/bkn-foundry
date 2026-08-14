@@ -27,6 +27,8 @@ type DiscoverTaskAccess interface {
 
 	// MarkRunning transitions a pending DiscoverTask to running.
 	MarkRunning(ctx context.Context, id string, startTime int64) (bool, error)
+	// UpdateProgress stores observable execution progress for a running DiscoverTask.
+	UpdateProgress(ctx context.Context, id string, progress int, message string, lastProgressTime int64) (bool, error)
 	// MarkCompleted completes a running DiscoverTask and stores its result.
 	MarkCompleted(ctx context.Context, id string, result *DiscoverResult, finishTime int64) (bool, error)
 	// MarkFailed only fails pending or running DiscoverTasks.

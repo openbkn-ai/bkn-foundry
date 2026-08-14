@@ -23,8 +23,9 @@ type tableDiscoverItem struct {
 
 // discoverTableResources discovers table resources from a table connector.
 // 分步执行：1. 获取表名列表 2. 创建/更新 Resource 3. 逐个补齐详细元数据
-func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
+	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, connector interfaces.Connector,
+	progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
 
 	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
@@ -36,6 +37,11 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context, catal
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tables: %w", err)
 	}
+	if current, changed := progress.MarkSourceListed(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "source tables listed"); err != nil {
+			return nil, err
+		}
+	}
 	logger.Infof("Discovered %d tables from source", len(sourceTables))
 
 	// Step 2: 获取现有 Resources
@@ -43,17 +49,30 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context, catal
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
+	logger.Infof("Loaded %d existing resources for table discovery", len(existingResources))
 
 	// Step 3: 对比并创建/更新 Resource（基础信息）
-	result, items, err := dtw.reconcileTableResources(ctx, catalog, sourceTables, existingResources, task.DiscoverActions)
+	result, items, err := dtw.reconcileTableResources(ctx, task, catalog, sourceTables, existingResources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
 	}
+	if current, changed := progress.MarkResourcesReconciled(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "resources reconciled"); err != nil {
+			return nil, err
+		}
+	}
+	logger.Infof("Reconciled %d table resources", len(items))
 
 	// Step 4: 逐个补齐详细元数据:元数据采集就是补充每一个table的元数据信息
-	if err := dtw.enrichTableMetadata(ctx, tableConnector, items, result); err != nil {
+	if err := dtw.enrichTableMetadata(ctx, task, tableConnector, items, result, progress); err != nil {
 		return nil, fmt.Errorf("failed to enrich table metadata: %w", err)
 	}
+	if current, changed := progress.MarkMetadataEnriched(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "resource metadata enriched"); err != nil {
+			return nil, err
+		}
+	}
+	logger.Infof("Enriched metadata for %d table resources", len(items))
 
 	result.Message = formatDiscoverResultMessage(result)
 	logger.Info(result.Message)
@@ -69,8 +88,11 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context, catal
 //
 // 返回值:
 //   - error: 如果在处理过程中发生错误，则返回错误信息
-func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableConnector interfaces.TableConnector,
-	items []tableDiscoverItem, result *interfaces.DiscoverResult) error {
+func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *interfaces.DiscoverTask,
+	tableConnector interfaces.TableConnector, items []tableDiscoverItem, result *interfaces.DiscoverResult,
+	progress *discoverTaskReconcileProgress) error {
+
+	progress.SetMetadataTotal(len(items))
 
 	// 遍历所有表发现项目
 	for _, item := range items {
@@ -88,6 +110,12 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableCon
 			if updateErr := dtw.rs.UpdateResource(ctx, resource); updateErr != nil {
 				logger.Errorf("Failed to update discover error for table %s: %v", table.Name, updateErr)
 				return updateErr
+			}
+			if current, changed := progress.AdvanceMetadata(); changed {
+				message := fmt.Sprintf("resource metadata enriched: %d/%d", progress.metadataProcessed, progress.metadataTotal)
+				if err := dtw.updateProgress(ctx, task.ID, current, message); err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -161,14 +189,22 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, tableCon
 		}
 
 		logger.Debugf("Enriched table %s: properties=%v, columns=%d, indices=%d, foreign_keys=%d", table.Name, table.Properties, len(table.Columns), len(table.Indices), len(table.ForeignKeys))
+		if current, changed := progress.AdvanceMetadata(); changed {
+			message := fmt.Sprintf("resource metadata enriched: %d/%d", progress.metadataProcessed, progress.metadataTotal)
+			if err := dtw.updateProgress(ctx, task.ID, current, message); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
 // reconcileTableResources reconciles source tables with existing resources.
-func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
-	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
+func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
+	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
+	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
 
+	actions := task.DiscoverActions
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
 	}

@@ -22,8 +22,9 @@ type filesetDiscoverItem struct {
 }
 
 // discoverFilesetResources discovers fileset resources from a fileset connector.
-func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context,
+	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, connector interfaces.Connector,
+	progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
 
 	filesetConnector, ok := connector.(interfaces.FilesetConnector)
 	if !ok {
@@ -34,21 +35,39 @@ func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context, cat
 	if err != nil {
 		return nil, fmt.Errorf("failed to list filesets: %w", err)
 	}
+	if current, changed := progress.MarkSourceListed(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "source filesets listed"); err != nil {
+			return nil, err
+		}
+	}
 	logger.Infof("Discovered %d fileset objects from source", len(sourceFilesets))
 
 	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
+	logger.Infof("Loaded %d existing resources for fileset discovery", len(existingResources))
 
-	result, items, err := dtw.reconcileFilesetResources(ctx, catalog, sourceFilesets, existingResources, task.DiscoverActions)
+	result, items, err := dtw.reconcileFilesetResources(ctx, task, catalog, sourceFilesets, existingResources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile fileset resources: %w", err)
 	}
+	if current, changed := progress.MarkResourcesReconciled(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "resources reconciled"); err != nil {
+			return nil, err
+		}
+	}
+	logger.Infof("Reconciled %d fileset resources", len(items))
 
-	if err := dtw.enrichFilesetMetadata(ctx, items, result); err != nil {
+	if err := dtw.enrichFilesetMetadata(ctx, task, items, result, progress); err != nil {
 		return nil, fmt.Errorf("failed to enrich fileset metadata: %w", err)
 	}
+	if current, changed := progress.MarkMetadataEnriched(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "resource metadata enriched"); err != nil {
+			return nil, err
+		}
+	}
+	logger.Infof("Enriched metadata for %d fileset resources", len(items))
 
 	result.Message = formatDiscoverResultMessage(result)
 	logger.Info(result.Message)
@@ -56,11 +75,15 @@ func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context, cat
 	return result, nil
 }
 
-func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, catalog *interfaces.Catalog, source []*interfaces.FilesetMeta,
-	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []filesetDiscoverItem, error) {
+func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, task *interfaces.DiscoverTask,
+	catalog *interfaces.Catalog, source []*interfaces.FilesetMeta,
+	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []filesetDiscoverItem, error) {
+
+	actions := task.DiscoverActions
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
 	}
+
 	var items []filesetDiscoverItem
 
 	existingMap := make(map[string]*interfaces.Resource)
@@ -70,7 +93,6 @@ func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, ca
 		}
 		existingMap[r.SourceIdentifier] = r
 	}
-
 	sourceMap := make(map[string]*interfaces.FilesetMeta)
 	for _, fs := range source {
 		sid := filesetSourceIdentifier(fs)
@@ -124,7 +146,6 @@ func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, ca
 			}
 		}
 	}
-
 	return result, items, nil
 }
 
@@ -158,7 +179,10 @@ func (dtw *DiscoverTaskWorker) createFilesetResource(ctx context.Context, catalo
 	return resource, nil
 }
 
-func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, items []filesetDiscoverItem, result *interfaces.DiscoverResult) error {
+func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, task *interfaces.DiscoverTask,
+	items []filesetDiscoverItem, result *interfaces.DiscoverResult, progress *discoverTaskReconcileProgress) error {
+	progress.SetMetadataTotal(len(items))
+
 	for _, item := range items {
 		fs := item.meta
 		resource := item.resource
@@ -199,6 +223,12 @@ func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, items 
 			return err
 		}
 		logger.Infof("Enriched fileset resource %s (%s)", resource.Name, fs.ID)
+		if current, changed := progress.AdvanceMetadata(); changed {
+			message := fmt.Sprintf("resource metadata enriched: %d/%d", progress.metadataProcessed, progress.metadataTotal)
+			if err := dtw.updateProgress(ctx, task.ID, current, message); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

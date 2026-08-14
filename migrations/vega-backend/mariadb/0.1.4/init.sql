@@ -371,6 +371,7 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
     -- 时间信息
     f_start_time              BIGINT(20) NOT NULL DEFAULT 0 COMMENT '开始执行时间',
     f_finish_time             BIGINT(20) NOT NULL DEFAULT 0 COMMENT '完成时间',
+    f_last_progress_time      BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最近一次对外可观测进度更新时间',
 
     -- 执行结果
     f_result                  MEDIUMTEXT NOT NULL COMMENT '发现结果（JSON格式，包含发现的资源统计等）',
@@ -384,7 +385,11 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
     PRIMARY KEY (f_id),
     INDEX idx_catalog_id (f_catalog_id),
     INDEX idx_status (f_status),
-    INDEX idx_schedule_id (f_schedule_id)
+    INDEX idx_schedule_id (f_schedule_id),
+    INDEX idx_create_time (f_create_time),
+    INDEX idx_start_time (f_start_time),
+    INDEX idx_finish_time (f_finish_time),
+    INDEX idx_last_progress_time (f_last_progress_time)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='发现任务表，记录异步资源发现任务的状态和结果';
 
 -- ==========================================

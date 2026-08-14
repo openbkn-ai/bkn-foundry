@@ -32,8 +32,9 @@ type indexDiscoverItem struct {
 // 返回值:
 //   - *interfaces.DiscoverResult: 发现结果，包含新资源、过期资源和未变化资源的统计信息
 //   - error: 错误信息，如果在发现过程中出现错误则返回
-func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context, catalog *interfaces.Catalog,
-	connector interfaces.Connector, task *interfaces.DiscoverTask) (*interfaces.DiscoverResult, error) {
+func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context,
+	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, connector interfaces.Connector,
+	progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
 
 	// 检查连接器是否实现了IndexConnector接口
 	indexConnector, ok := connector.(interfaces.IndexConnector)
@@ -46,6 +47,11 @@ func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context, catal
 	if err != nil {
 		return nil, fmt.Errorf("failed to list indices: %w", err)
 	}
+	if current, changed := progress.MarkSourceListed(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "source indices listed"); err != nil {
+			return nil, err
+		}
+	}
 	logger.Infof("Discovered %d indices from source", len(sourceIndices))
 
 	// Step 2: Get Existing Resources：查出db是否已存在，然后做比对
@@ -53,17 +59,30 @@ func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context, catal
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
+	logger.Infof("Loaded %d existing resources for index discovery", len(existingResources))
 
 	// Step 3: Reconcile:将index数据获取并插入：
-	result, items, err := dtw.reconcileIndexResources(ctx, catalog, sourceIndices, existingResources, task.DiscoverActions)
+	result, items, err := dtw.reconcileIndexResources(ctx, task, catalog, sourceIndices, existingResources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
 	}
+	if current, changed := progress.MarkResourcesReconciled(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "resources reconciled"); err != nil {
+			return nil, err
+		}
+	}
+	logger.Infof("Reconciled %d index resources", len(items))
 
 	// Step 4: Enrich ： 为索引项丰富元数据信息
-	if err := dtw.enrichIndexMetadata(ctx, indexConnector, items, result); err != nil {
+	if err := dtw.enrichIndexMetadata(ctx, task, indexConnector, items, result, progress); err != nil {
 		return nil, fmt.Errorf("failed to enrich index metadata: %w", err)
 	}
+	if current, changed := progress.MarkMetadataEnriched(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "resource metadata enriched"); err != nil {
+			return nil, err
+		}
+	}
+	logger.Infof("Enriched metadata for %d index resources", len(items))
 
 	result.Message = formatDiscoverResultMessage(result)
 	logger.Info(result.Message)
@@ -83,8 +102,11 @@ func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context, catal
 //   - *interfaces.DiscoverResult: 发现结果，包含目录ID和各类资源的统计信息
 //   - []indexDiscoverItem: 索引发现项目列表，包含资源和索引元数据
 //   - error: 错误信息，如果处理过程中出现错误则返回
-func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, catalog *interfaces.Catalog, sourceIndices []*interfaces.IndexMeta,
-	existingResources []*interfaces.Resource, actions *interfaces.DiscoverActions) (*interfaces.DiscoverResult, []indexDiscoverItem, error) {
+func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, task *interfaces.DiscoverTask,
+	catalog *interfaces.Catalog, sourceIndices []*interfaces.IndexMeta,
+	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []indexDiscoverItem, error) {
+
+	actions := task.DiscoverActions
 
 	// 初始化发现结果，设置目录ID
 	result := &interfaces.DiscoverResult{
@@ -101,7 +123,6 @@ func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, cata
 		}
 		existingMap[r.SourceIdentifier] = r
 	}
-
 	// 创建源索引映射，以索引名为键
 	sourceMap := make(map[string]*interfaces.IndexMeta)
 	for _, idx := range sourceIndices {
@@ -165,7 +186,6 @@ func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, cata
 			}
 		}
 	}
-
 	return result, items, nil
 }
 
@@ -200,7 +220,10 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context, catalog 
 //
 // 返回值:
 //   - error: 如果在处理过程中发生错误，则返回错误信息
-func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, indexConnector interfaces.IndexConnector, items []indexDiscoverItem, result *interfaces.DiscoverResult) error {
+func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *interfaces.DiscoverTask,
+	indexConnector interfaces.IndexConnector, items []indexDiscoverItem, result *interfaces.DiscoverResult,
+	progress *discoverTaskReconcileProgress) error {
+	progress.SetMetadataTotal(len(items))
 
 	// 遍历所有需要处理的索引项
 	for _, item := range items {
@@ -263,6 +286,12 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, indexCon
 		// Wait a bit to avoid overwhelming the server? No, it's fine for now.
 		// Just logging
 		logger.Infof("Enriched index %s: fields=%d", idx.Name, len(columns))
+		if current, changed := progress.AdvanceMetadata(); changed {
+			message := fmt.Sprintf("resource metadata enriched: %d/%d", progress.metadataProcessed, progress.metadataTotal)
+			if err := dtw.updateProgress(ctx, task.ID, current, message); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

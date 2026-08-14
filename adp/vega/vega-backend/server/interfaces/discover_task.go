@@ -19,16 +19,18 @@ const (
 	DiscoverTaskTriggerManual    string = "manual"    // 手动/立即执行
 	DiscoverTaskTriggerScheduled string = "scheduled" // 定时驱动
 
-	DiscoverTaskSortCreateTime string = "create_time"
-	DiscoverTaskSortStartTime  string = "start_time"
-	DiscoverTaskSortFinishTime string = "finish_time"
+	DiscoverTaskSortCreateTime       string = "create_time"
+	DiscoverTaskSortStartTime        string = "start_time"
+	DiscoverTaskSortFinishTime       string = "finish_time"
+	DiscoverTaskSortLastProgressTime string = "last_progress_time"
 )
 
 var (
 	DISCOVER_TASK_SORT = map[string]string{
-		DiscoverTaskSortCreateTime: "",
-		DiscoverTaskSortStartTime:  "",
-		DiscoverTaskSortFinishTime: "",
+		DiscoverTaskSortCreateTime:       "",
+		DiscoverTaskSortStartTime:        "",
+		DiscoverTaskSortFinishTime:       "",
+		DiscoverTaskSortLastProgressTime: "",
 	}
 )
 
@@ -53,12 +55,13 @@ type DiscoverTask struct {
 	Strategy    string `json:"strategy"`     // Discover strategy: full_sync/create_only/cleanup_only
 	TriggerType string `json:"trigger_type"` // manual/scheduled
 
-	Status     string          `json:"status"`   // pending/running/completed/failed/cancelled
-	Progress   int             `json:"progress"` // 0-100
-	Message    string          `json:"message"`
-	StartTime  int64           `json:"start_time,omitempty"`  // 开始执行时间
-	FinishTime int64           `json:"finish_time,omitempty"` // 完成时间
-	Result     *DiscoverResult `json:"result,omitempty"`
+	Status           string          `json:"status"`   // pending/running/completed/failed/cancelled
+	Progress         int             `json:"progress"` // 0-100
+	Message          string          `json:"message"`
+	StartTime        int64           `json:"start_time,omitempty"`         // 开始执行时间
+	FinishTime       int64           `json:"finish_time,omitempty"`        // 完成时间
+	LastProgressTime int64           `json:"last_progress_time,omitempty"` // 最近一次进度更新时间
+	Result           *DiscoverResult `json:"result,omitempty"`
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
@@ -77,11 +80,12 @@ type DiscoverTaskSummary struct {
 	Strategy    string `json:"strategy"`
 	TriggerType string `json:"trigger_type"`
 
-	Status     string                     `json:"status"`
-	Progress   int                        `json:"progress"`
-	StartTime  int64                      `json:"start_time,omitempty"`
-	FinishTime int64                      `json:"finish_time,omitempty"`
-	Result     *DiscoverTaskResultSummary `json:"result,omitempty"`
+	Status           string                     `json:"status"`
+	Progress         int                        `json:"progress"`
+	StartTime        int64                      `json:"start_time,omitempty"`
+	FinishTime       int64                      `json:"finish_time,omitempty"`
+	LastProgressTime int64                      `json:"last_progress_time,omitempty"`
+	Result           *DiscoverTaskResultSummary `json:"result,omitempty"`
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`

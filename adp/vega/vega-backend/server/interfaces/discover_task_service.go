@@ -30,6 +30,8 @@ type DiscoverTaskService interface {
 	InternalList(ctx context.Context, params DiscoverTaskQueryParams) ([]*DiscoverTaskSummary, error)
 	// InternalMarkRunning transitions a pending DiscoverTask to running.
 	InternalMarkRunning(ctx context.Context, id string) (bool, error)
+	// InternalUpdateProgress stores observable execution progress for a running DiscoverTask.
+	InternalUpdateProgress(ctx context.Context, id string, progress int, message string) (bool, error)
 	// InternalMarkCancelled only cancels active DiscoverTasks.
 	InternalMarkCancelled(ctx context.Context, id string, message string) (bool, error)
 	// InternalMarkFailed only fails active DiscoverTasks.
