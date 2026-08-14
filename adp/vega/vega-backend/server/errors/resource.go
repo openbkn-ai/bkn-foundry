@@ -10,19 +10,20 @@ package errors
 // Resource 错误码
 const (
 	// 400 Bad Request
-	VegaBackend_Resource_InvalidParameter           = "VegaBackend.Resource.InvalidParameter"
-	VegaBackend_Resource_InvalidParameter_Type      = "VegaBackend.Resource.InvalidParameter.Type"
-	VegaBackend_Resource_InvalidParameter_Name      = "VegaBackend.Resource.InvalidParameter.Name"
-	VegaBackend_Resource_InvalidParameter_CatalogID = "VegaBackend.Resource.InvalidParameter.CatalogID"
-	VegaBackend_Resource_InvalidParameter_Analyzer  = "VegaBackend.Resource.InvalidParameter.Analyzer"
-	VegaBackend_Resource_LengthExceeded_Name        = "VegaBackend.Resource.LengthExceeded.Name"
-	VegaBackend_Resource_LengthExceeded_Description = "VegaBackend.Resource.LengthExceeded.Description"
-	VegaBackend_Resource_CategoryNotCreatable       = "VegaBackend.Resource.CategoryNotCreatable"
-	VegaBackend_InvalidParameter_Aggregation        = "VegaBackend.InvalidParameter.Aggregation"
-	VegaBackend_InvalidParameter_GroupBy            = "VegaBackend.InvalidParameter.GroupBy"
-	VegaBackend_InvalidParameter_OrderBy            = "VegaBackend.InvalidParameter.OrderBy"
-	VegaBackend_InvalidParameter_Having             = "VegaBackend.InvalidParameter.Having"
-	VegaBackend_InvalidParameter_CalendarInterval   = "VegaBackend.InvalidParameter.CalendarInterval"
+	VegaBackend_Resource_InvalidParameter                = "VegaBackend.Resource.InvalidParameter"
+	VegaBackend_Resource_InvalidParameter_Type           = "VegaBackend.Resource.InvalidParameter.Type"
+	VegaBackend_Resource_InvalidParameter_Name           = "VegaBackend.Resource.InvalidParameter.Name"
+	VegaBackend_Resource_InvalidParameter_CatalogID      = "VegaBackend.Resource.InvalidParameter.CatalogID"
+	VegaBackend_Resource_InvalidParameter_Analyzer       = "VegaBackend.Resource.InvalidParameter.Analyzer"
+	VegaBackend_Resource_InvalidParameter_BuildKeyFields = "VegaBackend.Resource.InvalidParameter.BuildKeyFields"
+	VegaBackend_Resource_LengthExceeded_Name             = "VegaBackend.Resource.LengthExceeded.Name"
+	VegaBackend_Resource_LengthExceeded_Description      = "VegaBackend.Resource.LengthExceeded.Description"
+	VegaBackend_Resource_CategoryNotCreatable            = "VegaBackend.Resource.CategoryNotCreatable"
+	VegaBackend_InvalidParameter_Aggregation             = "VegaBackend.InvalidParameter.Aggregation"
+	VegaBackend_InvalidParameter_GroupBy                 = "VegaBackend.InvalidParameter.GroupBy"
+	VegaBackend_InvalidParameter_OrderBy                 = "VegaBackend.InvalidParameter.OrderBy"
+	VegaBackend_InvalidParameter_Having                  = "VegaBackend.InvalidParameter.Having"
+	VegaBackend_InvalidParameter_CalendarInterval        = "VegaBackend.InvalidParameter.CalendarInterval"
 
 	// 404 Not Found
 	VegaBackend_Resource_NotFound        = "VegaBackend.Resource.NotFound"
@@ -54,6 +55,7 @@ var ResourceErrCodeList = []string{
 	VegaBackend_Resource_InvalidParameter_Name,
 	VegaBackend_Resource_InvalidParameter_CatalogID,
 	VegaBackend_Resource_InvalidParameter_Analyzer,
+	VegaBackend_Resource_InvalidParameter_BuildKeyFields,
 	VegaBackend_Resource_LengthExceeded_Name,
 	VegaBackend_Resource_LengthExceeded_Description,
 	VegaBackend_Resource_CategoryNotCreatable,

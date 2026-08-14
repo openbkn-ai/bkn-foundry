@@ -198,6 +198,40 @@ func validateBuildKeyFields(ctx context.Context, resource *interfaces.Resource) 
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
 			WithErrorDetails("build task requires at least one build_key_fields entry")
 	}
+
+	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+	unsupportedFields := make([]string, 0)
+	for _, prop := range resource.SchemaDefinition {
+		if prop == nil {
+			continue
+		}
+		schemaFields[prop.Name] = prop
+		if prop.Type == interfaces.DataType_Other {
+			unsupportedFields = append(unsupportedFields, fmt.Sprintf("%s (original_type: %s)", prop.Name, prop.OriginalType))
+		}
+	}
+	if len(unsupportedFields) > 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields).
+			WithErrorDetails(fmt.Sprintf("resource schema contains unsupported fields: %s", strings.Join(unsupportedFields, ", ")))
+	}
+
+	seen := make(map[string]struct{}, len(resource.IndexConfig.BuildKeyFields))
+	for _, fieldName := range resource.IndexConfig.BuildKeyFields {
+		prop, exists := schemaFields[fieldName]
+		if !exists {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
+				WithErrorDetails(fmt.Sprintf("build_key_fields field %q is not in the resource schema", fieldName))
+		}
+		if _, duplicate := seen[fieldName]; duplicate {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
+				WithErrorDetails(fmt.Sprintf("build_key_fields contains duplicate field %q", fieldName))
+		}
+		if !interfaces.DataType_IsBuildKey(prop.Type) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields).
+				WithErrorDetails(fmt.Sprintf("build_key_fields field %q has unsupported type %q", fieldName, prop.Type))
+		}
+		seen[fieldName] = struct{}{}
+	}
 	return nil
 }
 
@@ -766,6 +800,9 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	if !reflect.DeepEqual(buildTask.IndexConfig, currentSnapshot.IndexConfig) {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails("resource index config has changed; create a new build task instead")
+	}
+	if err := validateBuildKeyFields(ctx, resource); err != nil {
+		return err
 	}
 
 	tasks, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{

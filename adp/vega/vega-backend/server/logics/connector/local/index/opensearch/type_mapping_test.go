@@ -83,6 +83,18 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		assert.False(t, hasVector)
 		assert.Contains(t, err.Error(), "unsupported feature type")
 	})
+	t.Run("open search build field mappings rejects other type", func(t *testing.T) {
+		connector := &OpenSearchConnector{}
+
+		properties, hasVector, err := connector.buildFieldMappings([]*interfaces.Property{
+			{Name: "interests", Type: interfaces.DataType_Other, OriginalType: "_text"},
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, properties)
+		assert.False(t, hasVector)
+		assert.ErrorContains(t, err, "unsupported schema field \"interests\"")
+	})
 	conn := &OpenSearchConnector{}
 
 	t.Run("maps decimal vector geo and text keyword feature", func(t *testing.T) {

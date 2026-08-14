@@ -15,7 +15,12 @@ ErrorLink = "No solution"
 
 [VegaBackend.BuildTask.InvalidParameter.BuildKeyFields]
 Description = "Invalid batch build key fields"
-Solution = "Configure at least one build_key_fields field from the resource schema in index_config"
+Solution = "Configure at least one unique build_key_fields field that exists in the resource schema and has a supported type"
+ErrorLink = "No solution"
+
+[VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields]
+Description = "Resource contains field types unsupported for index builds"
+Solution = "Resolve fields with type other before creating an index build task"
 ErrorLink = "No solution"
 
 [VegaBackend.BuildTask.InvalidParameter.Analyzer]

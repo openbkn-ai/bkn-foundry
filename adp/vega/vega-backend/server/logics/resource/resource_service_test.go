@@ -93,7 +93,11 @@ func TestValidateSingleFeatureTypePerPropertyRejectsKeywordDuplicates(t *testing
 }
 
 func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
-	schema := []*interfaces.Property{{Name: "id"}, {Name: "updated_at"}}
+	schema := []*interfaces.Property{
+		{Name: "id", Type: interfaces.DataType_Integer},
+		{Name: "updated_at", Type: interfaces.DataType_Timestamp},
+		{Name: "body", Type: interfaces.DataType_Text},
+	}
 
 	t.Run("allows an empty build key configuration", func(t *testing.T) {
 		require.NoError(t, validateIndexConfigBuildKeyFields(context.Background(), schema, nil))
@@ -110,9 +114,22 @@ func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
 		err := validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			BuildKeyFields: []string{"missing_id"},
 		})
-		httpErr := err.(*rest.HTTPError)
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields)
 		require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		require.Contains(t, httpErr.BaseError.ErrorDetails, `build_key_fields field "missing_id"`)
+	})
+
+	t.Run("rejects duplicate and unsupported build key types", func(t *testing.T) {
+		err := validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"id", "id"},
+		})
+		requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields)
+
+		err = validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			BuildKeyFields: []string{"body"},
+		})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, `unsupported type "text"`)
 	})
 }
 
@@ -1132,7 +1149,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			LocalIndexName:   "vega-build-r1-task-1",
 			SourceIdentifier: "public.orders",
-			SchemaDefinition: []*interfaces.Property{{Name: "id"}, {Name: "updated_at"}},
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "updated_at", Type: interfaces.DataType_Timestamp},
+			},
 			IndexConfig: &interfaces.ResourceIndexConfig{
 				BuildKeyFields: []string{"id"},
 			},

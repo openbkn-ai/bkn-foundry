@@ -28,6 +28,11 @@ Description = "配置的全文分词器不可用"
 Solution = "请选择当前索引能力快照支持的分词器"
 ErrorLink = "暂无"
 
+[VegaBackend.Resource.InvalidParameter.BuildKeyFields]
+Description = "构建键无效"
+Solution = "构建键必须不重复、存在于 schema，且类型为 integer、unsigned integer、string、date、datetime 或 timestamp"
+ErrorLink = "暂无"
+
 [VegaBackend.Resource.LengthExceeded.Name]
 Description = "数据资源名称长度超限"
 Solution = "请缩短名称"

@@ -28,6 +28,11 @@ Description = "Configured full-text analyzer is unavailable"
 Solution = "Choose an analyzer supported by the current index capability snapshot"
 ErrorLink = "None"
 
+[VegaBackend.Resource.InvalidParameter.BuildKeyFields]
+Description = "Invalid build key fields"
+Solution = "Build keys must be unique schema fields of type integer, unsigned integer, string, date, datetime, or timestamp"
+ErrorLink = "None"
+
 [VegaBackend.Resource.LengthExceeded.Name]
 Description = "Resource name length exceeded"
 Solution = "Please shorten the name"

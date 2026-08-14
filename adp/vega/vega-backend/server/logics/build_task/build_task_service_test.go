@@ -145,7 +145,7 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 			DefaultFulltextAnalyzer: "standard",
 		},
 		SchemaDefinition: []*interfaces.Property{
-			{Name: "id"},
+			{Name: "id", Type: interfaces.DataType_Integer},
 			{Name: "coupon_code", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}}}},
 			{Name: "status", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "hanlp_index"}}}},
 		},
@@ -355,6 +355,46 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
+	t.Run("rejects resources containing unsupported fields before creating a task", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		service := &buildTaskService{rs: mockRS}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:          "resource-1",
+			CatalogID:   "catalog-1",
+			Category:    interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "interests", Type: interfaces.DataType_Other, OriginalType: "_text"},
+			},
+		}, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "interests (original_type: _text)")
+	})
+
+	t.Run("rejects an unsupported build key type before creating a task", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		service := &buildTaskService{rs: mockRS}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:               "resource-1",
+			CatalogID:        "catalog-1",
+			Category:         interfaces.ResourceCategoryTable,
+			IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"body"}},
+			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
+		}, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_BuildKeyFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, `unsupported type "text"`)
+	})
 
 	t.Run("rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -368,7 +408,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				CatalogID:        "catalog-1",
 				Category:         interfaces.ResourceCategoryTable,
 				IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
-				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
@@ -389,7 +429,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				CatalogID:        "catalog-1",
 				Category:         interfaces.ResourceCategoryTable,
 				IndexConfig:      &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
-				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 			}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -422,7 +462,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			IndexConfig: &interfaces.ResourceIndexConfig{
 				BuildKeyFields: []string{"supplier_id"},
 			},
-			SchemaDefinition: []*interfaces.Property{{Name: "supplier_id"}},
+			SchemaDefinition: []*interfaces.Property{{Name: "supplier_id", Type: interfaces.DataType_Integer}},
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -480,7 +520,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 					DefaultFulltextAnalyzer: "ik_max_word",
 				},
 				SchemaDefinition: []*interfaces.Property{
-					{Name: "id"},
+					{Name: "id", Type: interfaces.DataType_Integer},
 					{
 						Name: "family_name",
 						Features: []interfaces.PropertyFeature{
@@ -546,7 +586,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				DefaultFulltextAnalyzer: "ik_max_word",
 			},
 			SchemaDefinition: []*interfaces.Property{
-				{Name: "id"},
+				{Name: "id", Type: interfaces.DataType_Integer},
 				{
 					Name: "family_name",
 					Features: []interfaces.PropertyFeature{
@@ -604,7 +644,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 					DefaultEmbeddingModel: "default-model",
 				},
 				SchemaDefinition: []*interfaces.Property{
-					{Name: "id"},
+					{Name: "id", Type: interfaces.DataType_Integer},
 					{
 						Name: "family_name",
 						Features: []interfaces.PropertyFeature{
@@ -664,7 +704,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 					DefaultFulltextAnalyzer: "default_analyzer",
 				},
 				SchemaDefinition: []*interfaces.Property{
-					{Name: "id"},
+					{Name: "id", Type: interfaces.DataType_Integer},
 					{
 						Name: "title",
 						Features: []interfaces.PropertyFeature{
@@ -740,7 +780,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 					DefaultEmbeddingModel: "bogus-model",
 				},
 				SchemaDefinition: []*interfaces.Property{
-					{Name: "id"},
+					{Name: "id", Type: interfaces.DataType_Integer},
 					{
 						Name: "family_name",
 						Features: []interfaces.PropertyFeature{
@@ -804,13 +844,22 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
 			Status: interfaces.BuildTaskStatusFailed, ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+			IndexConfig: &interfaces.BuildTaskIndexConfig{
+				BuildKeyFields: []string{"id"},
+				Features:       map[string]interfaces.BuildTaskFieldIndexFeature{},
+			},
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID: "resource-1", CatalogID: "catalog-1",
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				BuildKeyFields: []string{"id"},
+			},
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 		}, nil)
 		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", true, gomock.Any()).Return(true, nil)
 
@@ -832,13 +881,22 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
 			Status: interfaces.BuildTaskStatusStopped,
+			IndexConfig: &interfaces.BuildTaskIndexConfig{
+				BuildKeyFields: []string{"id"},
+				Features:       map[string]interfaces.BuildTaskFieldIndexFeature{},
+			},
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID: "resource-1", CatalogID: "catalog-1",
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				BuildKeyFields: []string{"id"},
+			},
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 		}, nil)
 		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", false, gomock.Any()).Return(false, nil)
 
@@ -1000,10 +1058,48 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			IndexConfig: &interfaces.ResourceIndexConfig{
 				BuildKeyFields: []string{"id"},
 			},
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
 		}, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
 		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
+	})
+	t.Run("rejects restart when the resource contains an unsupported field", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
+
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
+			ID:         "task-1",
+			ResourceID: "resource-1",
+			CatalogID:  "catalog-1",
+			Status:     interfaces.BuildTaskStatusStopped,
+			IndexConfig: &interfaces.BuildTaskIndexConfig{
+				BuildKeyFields: []string{"id"},
+				Features:       map[string]interfaces.BuildTaskFieldIndexFeature{},
+			},
+		}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				BuildKeyFields: []string{"id"},
+			},
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "interests", Type: interfaces.DataType_Other, OriginalType: "_text"},
+			},
+		}, nil)
+
+		err := service.Start(context.Background(), "task-1", false)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "interests (original_type: _text)")
 	})
 	t.Run("rejects unavailable analyzer before updating status or dispatching", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1022,7 +1118,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			ResourceID: "resource-1",
 			CatalogID:  "catalog-1",
 			Status:     interfaces.BuildTaskStatusStopped,
-			IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+			IndexConfig: &interfaces.BuildTaskIndexConfig{BuildKeyFields: []string{"id"}, Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 				"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
 			}},
 		}
@@ -1037,15 +1133,19 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 				return nil, nil
 			}).Times(2)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID:        "resource-1",
-			CatalogID: "catalog-1",
-			SchemaDefinition: []*interfaces.Property{{
-				Name: "status",
-				Features: []interfaces.PropertyFeature{{
-					FeatureType: interfaces.PropertyFeatureType_Fulltext,
-					Config:      map[string]any{"analyzer": "hanlp_index"},
-				}},
-			}},
+			ID:          "resource-1",
+			CatalogID:   "catalog-1",
+			IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{
+					Name: "status",
+					Features: []interfaces.PropertyFeature{{
+						FeatureType: interfaces.PropertyFeatureType_Fulltext,
+						Config:      map[string]any{"analyzer": "hanlp_index"},
+					}},
+				},
+			},
 		}, nil)
 
 		err := service.Start(context.Background(), "task-1", false)

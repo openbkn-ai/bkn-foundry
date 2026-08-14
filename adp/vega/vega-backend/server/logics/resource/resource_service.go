@@ -1224,17 +1224,28 @@ func validateIndexConfigBuildKeyFields(ctx context.Context, schema []*interfaces
 		return nil
 	}
 
-	schemaFields := make(map[string]struct{}, len(schema))
+	schemaFields := make(map[string]*interfaces.Property, len(schema))
 	for _, prop := range schema {
 		if prop != nil {
-			schemaFields[prop.Name] = struct{}{}
+			schemaFields[prop.Name] = prop
 		}
 	}
+	seen := make(map[string]struct{}, len(indexConfig.BuildKeyFields))
 	for _, field := range indexConfig.BuildKeyFields {
-		if _, exists := schemaFields[field]; !exists {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		prop, exists := schemaFields[field]
+		if !exists {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields).
 				WithErrorDetails(fmt.Sprintf("build_key_fields field %q is not in the resource schema", field))
 		}
+		if _, duplicate := seen[field]; duplicate {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields).
+				WithErrorDetails(fmt.Sprintf("build_key_fields contains duplicate field %q", field))
+		}
+		if !interfaces.DataType_IsBuildKey(prop.Type) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields).
+				WithErrorDetails(fmt.Sprintf("build_key_fields field %q has unsupported type %q", field, prop.Type))
+		}
+		seen[field] = struct{}{}
 	}
 	return nil
 }

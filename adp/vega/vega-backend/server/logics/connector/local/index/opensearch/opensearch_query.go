@@ -947,6 +947,8 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 			fieldType = "geo_point"
 		case interfaces.DataType_Shape:
 			fieldType = "geo_shape"
+		case interfaces.DataType_Other:
+			return nil, false, fmt.Errorf("unsupported schema field %q: type %s (original_type: %s)", prop.Name, prop.Type, prop.OriginalType)
 		default:
 			// 保持 fieldType 不变
 		}
