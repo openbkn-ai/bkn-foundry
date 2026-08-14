@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS bkn_trace_archive_jobs (
     range_to DATETIME(6) NOT NULL,
     archive_status VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     candidate_ids LONGTEXT NOT NULL,
+    candidate_payloads LONGTEXT NOT NULL,
     candidate_count BIGINT UNSIGNED NOT NULL,
     manifest_ref VARCHAR(1024) NULL,
     error_message VARCHAR(1024) NULL,

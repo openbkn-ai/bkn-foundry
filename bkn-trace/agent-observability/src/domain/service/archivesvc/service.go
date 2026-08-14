@@ -32,6 +32,7 @@ type Job struct {
 	Range          observabilityvo.ArchiveRange  `json:"range"`
 	Status         observabilityvo.ArchiveStatus `json:"status"`
 	CandidateIDs   []string                      `json:"-"`
+	Candidates     []Candidate                   `json:"-"`
 	CandidateCount int                           `json:"candidate_count"`
 	ManifestRef    string                        `json:"manifest_ref,omitempty"`
 	ErrorMessage   string                        `json:"error_message,omitempty"`
@@ -158,9 +159,9 @@ func (service *Service) RetryCleanup(ctx context.Context, jobID, tenantID string
 	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
 		return Job{}, fmt.Errorf("archive cleanup cannot be retried")
 	}
-	candidates := make([]Candidate, 0, len(job.CandidateIDs))
-	for _, id := range job.CandidateIDs {
-		candidates = append(candidates, Candidate{ID: id})
+	candidates := append([]Candidate(nil), job.Candidates...)
+	if len(candidates) != len(job.CandidateIDs) {
+		return Job{}, fmt.Errorf("archive cleanup candidates are unavailable")
 	}
 	if err := service.source.Purge(ctx, job.Kind, tenantID, candidates); err != nil {
 		job.ErrorMessage, job.UpdatedAt = err.Error(), service.now().UTC()
@@ -206,7 +207,7 @@ func newJob(kind observabilityvo.ArchiveKind, tenantID string, archiveRange obse
 		ids = append(ids, candidate.ID)
 	}
 	sort.Strings(ids)
-	return Job{ID: fmt.Sprintf("arc_%s_%d", kind, now.UnixNano()), TenantID: tenantID, Kind: kind, Range: archiveRange, Status: observabilityvo.ArchiveStatusFailed, CandidateIDs: ids, CandidateCount: len(candidates), CreatedAt: now, UpdatedAt: now}
+	return Job{ID: fmt.Sprintf("arc_%s_%d", kind, now.UnixNano()), TenantID: tenantID, Kind: kind, Range: archiveRange, Status: observabilityvo.ArchiveStatusFailed, CandidateIDs: ids, Candidates: append([]Candidate(nil), candidates...), CandidateCount: len(candidates), CreatedAt: now, UpdatedAt: now}
 }
 
 type memoryStore struct {

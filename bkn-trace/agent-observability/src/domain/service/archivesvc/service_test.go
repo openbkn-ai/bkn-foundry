@@ -51,6 +51,21 @@ func TestKindsDoNotBlockEachOtherButIncompleteCleanupBlocksSameKind(t *testing.T
 	}
 }
 
+func TestRetryCleanupReusesFrozenCandidatePayload(t *testing.T) {
+	now := time.Date(2026, time.August, 14, 8, 0, 0, 0, time.UTC)
+	source := &fakeSource{candidates: []Candidate{{ID: "trace-1", OccurredAt: now.AddDate(0, 0, -8), Payload: []byte(`{"technical_trace_ids":["trace-a"]}`)}}, purgeErr: errors.New("temporary delete failure")}
+	service := New(NewMemoryStore(), source, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
+	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace, "tenant-a")
+	if err != nil || job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
+		t.Fatalf("expected incomplete cleanup, job=%+v err=%v", job, err)
+	}
+	source.purgeErr = nil
+	job, err = service.RetryCleanup(context.Background(), job.ID, "tenant-a")
+	if err != nil || job.Status != observabilityvo.ArchiveStatusCompleted || !source.purged["trace-1"] {
+		t.Fatalf("retry must purge the frozen candidate: job=%+v err=%v purged=%v", job, err, source.purged)
+	}
+}
+
 type fakeSource struct {
 	candidates []Candidate
 	purged     map[string]bool

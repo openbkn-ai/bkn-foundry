@@ -39,13 +39,16 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		return candidates, nil
 	}
 	ids := sortedKeys(all)
-	query, _ := json.Marshal(map[string]any{"size": 10000, "query": map[string]any{"terms": map[string]any{"traceId.keyword": ids}}})
+	query, _ := json.Marshal(map[string]any{"size": 10000, "track_total_hits": true, "query": map[string]any{"terms": map[string]any{"traceId.keyword": ids}}})
 	body, err := store.client.Search(ctx, store.index, query)
 	if err != nil {
 		return nil, err
 	}
 	var response struct {
 		Hits struct {
+			Total struct {
+				Value int `json:"value"`
+			} `json:"total"`
 			Hits []struct {
 				ID     string          `json:"_id"`
 				Source json.RawMessage `json:"_source"`
@@ -54,6 +57,9 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, err
+	}
+	if searchResultTruncated(response.Hits.Total.Value, len(response.Hits.Hits)) {
+		return nil, fmt.Errorf("technical trace archive exceeds the 10000-record batch limit")
 	}
 	byTrace := map[string][]json.RawMessage{}
 	for _, hit := range response.Hits.Hits {
@@ -88,6 +94,8 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 	}
 	return result, nil
 }
+
+func searchResultTruncated(total, returned int) bool { return total > returned }
 
 func (store *ArchiveStore) Purge(ctx context.Context, candidates []archivesvc.Candidate) error {
 	all := map[string]struct{}{}

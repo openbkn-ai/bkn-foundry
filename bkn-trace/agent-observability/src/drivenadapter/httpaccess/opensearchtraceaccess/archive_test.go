@@ -17,3 +17,12 @@ func TestTraceIDsUsesFrozenCallFactsAndPreservesExistingIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchResultTruncatedPreventsUnarchivedTraceDeletion(t *testing.T) {
+	if !searchResultTruncated(10001, 10000) {
+		t.Fatal("a partial OpenSearch result must fail the archive before cleanup")
+	}
+	if searchResultTruncated(10000, 10000) {
+		t.Fatal("a complete OpenSearch result must remain archivable")
+	}
+}

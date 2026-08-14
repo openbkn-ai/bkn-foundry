@@ -18,7 +18,11 @@ func (store *Store) Create(job archivesvc.Job) error {
 	if err != nil {
 		return err
 	}
-	_, err = store.db.Exec(`INSERT INTO bkn_trace_archive_jobs (archive_job_id, tenant_id, archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_count, manifest_ref, error_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, job.ID, job.TenantID, job.Kind, nullableTime(job.Range.From), job.Range.To.UTC(), job.Status, ids, job.CandidateCount, nullableString(job.ManifestRef), nullableString(job.ErrorMessage), job.CreatedAt.UTC(), job.UpdatedAt.UTC())
+	payloads, err := json.Marshal(job.Candidates)
+	if err != nil {
+		return err
+	}
+	_, err = store.db.Exec(`INSERT INTO bkn_trace_archive_jobs (archive_job_id, tenant_id, archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_payloads, candidate_count, manifest_ref, error_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, job.ID, job.TenantID, job.Kind, nullableTime(job.Range.From), job.Range.To.UTC(), job.Status, ids, payloads, job.CandidateCount, nullableString(job.ManifestRef), nullableString(job.ErrorMessage), job.CreatedAt.UTC(), job.UpdatedAt.UTC())
 	return err
 }
 
@@ -33,24 +37,26 @@ func (store *Store) Latest(tenantID string, kind observabilityvo.ArchiveKind) (a
 }
 
 func (store *Store) Get(jobID string) (archivesvc.Job, bool) {
-	row := store.db.QueryRow(`SELECT tenant_id, archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE archive_job_id=?`, jobID)
+	row := store.db.QueryRow(`SELECT tenant_id, archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_payloads, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE archive_job_id=?`, jobID)
 	var tenantID, kind string
 	var rangeFrom sql.NullTime
 	var rangeTo time.Time
 	var status string
 	var ids []byte
+	var payloads []byte
 	var count int
 	var manifest, message string
 	var createdAt, updatedAt time.Time
-	err := row.Scan(&tenantID, &kind, &rangeFrom, &rangeTo, &status, &ids, &count, &manifest, &message, &createdAt, &updatedAt)
+	err := row.Scan(&tenantID, &kind, &rangeFrom, &rangeTo, &status, &ids, &payloads, &count, &manifest, &message, &createdAt, &updatedAt)
 	if err != nil {
 		return archivesvc.Job{}, false
 	}
 	var candidateIDs []string
-	if json.Unmarshal(ids, &candidateIDs) != nil {
+	var candidates []archivesvc.Candidate
+	if json.Unmarshal(ids, &candidateIDs) != nil || json.Unmarshal(payloads, &candidates) != nil {
 		return archivesvc.Job{}, false
 	}
-	job := archivesvc.Job{ID: jobID, TenantID: tenantID, Kind: observabilityvo.ArchiveKind(kind), Range: observabilityvo.ArchiveRange{To: rangeTo.UTC()}, Status: observabilityvo.ArchiveStatus(status), CandidateIDs: candidateIDs, CandidateCount: count, ManifestRef: manifest, ErrorMessage: message, CreatedAt: createdAt.UTC(), UpdatedAt: updatedAt.UTC()}
+	job := archivesvc.Job{ID: jobID, TenantID: tenantID, Kind: observabilityvo.ArchiveKind(kind), Range: observabilityvo.ArchiveRange{To: rangeTo.UTC()}, Status: observabilityvo.ArchiveStatus(status), CandidateIDs: candidateIDs, Candidates: candidates, CandidateCount: count, ManifestRef: manifest, ErrorMessage: message, CreatedAt: createdAt.UTC(), UpdatedAt: updatedAt.UTC()}
 	if rangeFrom.Valid {
 		job.Range.From = rangeFrom.Time.UTC()
 	}
