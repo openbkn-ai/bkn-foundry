@@ -283,14 +283,14 @@ func TestLogicViewDSLConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"terms": map[string]any{"title.keyword": []any{"a", "b"}}}}},
 		},
 		{
-			name: "like converts wildcards to regexp",
-			cfg:  dslConditionCfg("title", filter_condition.OperationLike, interfaces.ValueFrom_Const, `a\_%`),
-			want: map[string]any{"regexp": map[string]any{"title.keyword": "a_.*"}},
+			name: "like matches an escaped underscore literally",
+			cfg:  dslConditionCfg("title", filter_condition.OperationLike, interfaces.ValueFrom_Const, `a\_b`),
+			want: map[string]any{"wildcard": map[string]any{"title.keyword": "*a_b*"}},
 		},
 		{
 			name: "not like",
-			cfg:  dslConditionCfg("title", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, `a%`),
-			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"regexp": map[string]any{"title.keyword": "a.*"}}}},
+			cfg:  dslConditionCfg("title", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, `ab`),
+			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"wildcard": map[string]any{"title.keyword": "*ab*"}}}},
 		},
 		{
 			name: "contain",

@@ -51,9 +51,19 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"terms": map[string]any{"name": []any{"alice", "bob"}}},
 		},
 		{
-			name: "like converts SQL wildcards to regexp",
-			cfg:  osConstCfg("name", filter_condition.OperationLike, "a_%"),
-			want: map[string]any{"regexp": map[string]any{"name": "a..*"}},
+			name: "like matches the value as a literal substring",
+			cfg:  osConstCfg("name", filter_condition.OperationLike, "ali"),
+			want: map[string]any{"wildcard": map[string]any{"name": "*ali*"}},
+		},
+		{
+			name: "like escapes wildcard metacharacters in the value",
+			cfg:  osConstCfg("name", filter_condition.OperationLike, `a*b?c`),
+			want: map[string]any{"wildcard": map[string]any{"name": `*a\*b\?c*`}},
+		},
+		{
+			name: "like treats an escaped percent as a literal character",
+			cfg:  osConstCfg("name", filter_condition.OperationLike, `50\%`),
+			want: map[string]any{"wildcard": map[string]any{"name": "*50%*"}},
 		},
 		{
 			name: "range uses inclusive bounds",

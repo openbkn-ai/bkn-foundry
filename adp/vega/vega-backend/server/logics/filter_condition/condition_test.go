@@ -349,15 +349,30 @@ func TestInCond(t *testing.T) {
 
 func TestLikeCond(t *testing.T) {
 	t.Run("like cond valid", func(t *testing.T) {
-		cfg := constCfg("name", "like", "ali%")
+		cfg := constCfg("name", "like", "ali")
 		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		like := cond.(*LikeCond)
-		if like.Value != "ali%" {
-			t.Errorf("expected value 'ali%%', got '%s'", like.Value)
+		if like.Value != "ali" {
+			t.Errorf("expected value 'ali', got '%s'", like.Value)
 		}
+	})
+	// like 的值是字面子串。调用方按 SQL 习惯传 "%ali%" 时，SQL 连接器会把 % 转义成
+	// 字面量，查询恒返回空集且不报错——必须在入口就说清楚。
+	t.Run("like cond rejects SQL wildcards", func(t *testing.T) {
+		cfg := constCfg("name", "like", "%ali%")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "literal substring")
+		assert.Contains(t, err.Error(), "[regex]")
+	})
+	t.Run("not_like cond rejects SQL wildcards", func(t *testing.T) {
+		cfg := constCfg("name", "not_like", "ali_")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "literal substring")
 	})
 	t.Run("like cond non string field", func(t *testing.T) {
 		cfg := constCfg("age", "like", "test")
@@ -379,6 +394,40 @@ func TestLikeCond(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
+}
+
+func TestParseLikeValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      string
+		want       string
+		errContain string
+	}{
+		{name: "plain substring", value: "Indirect", want: "Indirect"},
+		{name: "empty value", value: "", want: ""},
+		{name: "cjk substring", value: "吹塑风管", want: "吹塑风管"},
+		{name: "escaped percent is a literal", value: `50\%`, want: "50%"},
+		{name: "escaped underscore is a literal", value: `a\_b`, want: "a_b"},
+		{name: "escaped backslash is a literal", value: `a\\b`, want: `a\b`},
+		{name: "backslash before a plain char is kept", value: `a\nb`, want: `a\nb`},
+		{name: "trailing backslash is kept", value: `ab\`, want: `ab\`},
+		{name: "leading and trailing percent rejected", value: "%Indirect%", errContain: "literal substring"},
+		{name: "bare underscore rejected", value: "a_b", errContain: "literal substring"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseLikeValue(OperationLike, tt.value)
+
+			if tt.errContain != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContain)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestRangeCond(t *testing.T) {

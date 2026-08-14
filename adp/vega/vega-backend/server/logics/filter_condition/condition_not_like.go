@@ -50,10 +50,14 @@ func (c *NotLikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
 	}
+	literal, err := ParseLikeValue(OperationNotLike, val)
+	if err != nil {
+		return nil, err
+	}
 
 	return &NotLikeCond{
 		Cfg:    cfg,
 		Lfield: field,
-		Value:  val,
+		Value:  literal,
 	}, nil
 }

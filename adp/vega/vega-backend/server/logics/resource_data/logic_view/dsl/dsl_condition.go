@@ -447,9 +447,9 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionLike(ctx context.Context, 
 		return nil, err
 	}
 
-	vStr := c.replaceLikeWildcards(cond.Value)
+	vStr := c.likeContainsPattern(cond.Value)
 	return map[string]any{
-		"regexp": map[string]any{
+		"wildcard": map[string]any{
 			fieldName + keyword: vStr,
 		},
 	}, nil
@@ -473,11 +473,11 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionNotLike(ctx context.Contex
 		return nil, err
 	}
 
-	vStr := c.replaceLikeWildcards(cond.Value)
+	vStr := c.likeContainsPattern(cond.Value)
 	return map[string]any{
 		"bool": map[string]any{
 			"must_not": map[string]any{
-				"regexp": map[string]any{
+				"wildcard": map[string]any{
 					fieldName + keyword: vStr,
 				},
 			},
@@ -1082,54 +1082,19 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionKnnVector(ctx context.Cont
 	}, nil
 }
 
-// replaceLikeWildcards，把 like 的通配符替换成正则表达式里的字符
-func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
-	if input == "" {
-		return input
-	}
-
-	var result strings.Builder
-	escaped := false
-	runes := []rune(input)
-
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-
-		if escaped {
-			// 转义字符后的字符
-			switch r {
-			case '%', '_', '\\':
-				result.WriteRune(r)
-			default:
-				// 如果转义了非特殊字符，保留转义符和字符
-				result.WriteRune('\\')
-				result.WriteRune(r)
-			}
-			escaped = false
-		} else if r == '\\' {
-			// 遇到转义符，检查是否是最后一个字符
-			if i == len(runes)-1 {
-				// 转义符在末尾，直接输出
-				result.WriteRune(r)
-			} else {
-				// 标记转义状态，但不立即输出转义符
-				escaped = true
-			}
-		} else if r == '%' {
-			result.WriteString(".*")
-		} else if r == '_' {
-			result.WriteString(".")
-		} else {
-			result.WriteRune(r)
+// likeContainsPattern 把 like / not_like 的字面子串转成 OpenSearch 的 wildcard 模式。
+//
+// like 的契约是子串包含，值里的 % 与 _ 已在 filter_condition.ParseLikeValue 拦下，
+// 到这里的都是要原样匹配的字面量，因此只需转义 wildcard 自己的元字符 * ? \ 后两端补 *。
+func (c *logicViewDSLGenerator) likeContainsPattern(input string) string {
+	var escaped strings.Builder
+	for _, r := range input {
+		if r == '*' || r == '?' || r == '\\' {
+			escaped.WriteRune('\\')
 		}
+		escaped.WriteRune(r)
 	}
-
-	// 处理以转义符结尾的情况
-	if escaped {
-		result.WriteRune('\\')
-	}
-
-	return result.String()
+	return "*" + escaped.String() + "*"
 }
 
 // getKeywordSuffix text 类型在部分查询场景（如 eq/in）下，需使用 keyword 类型的子字段，返回关键字后缀，否则返回空字符串
