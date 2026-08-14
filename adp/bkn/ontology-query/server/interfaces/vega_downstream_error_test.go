@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func Test_VegaDownstreamError(t *testing.T) {
@@ -55,6 +56,19 @@ func Test_VegaDownstreamError(t *testing.T) {
 		}
 		if !strings.HasSuffix(msg, "...(truncated)") {
 			t.Fatalf("truncation must be visible, got %q", msg[len(msg)-32:])
+		}
+	})
+
+	t.Run("截断不会切开多字节字符", func(t *testing.T) {
+		// vega 的中文错误体、或本地化的网关错误页超过上限时，按字节切会在 UTF-8
+		// 序列中间断开，调用方拿到的 error_details 里会留下半个字符。
+		raw := strings.Repeat("知识网络查询失败", 200)
+		msg := NewVegaDownstreamError(http.StatusBadGateway, raw).Message()
+		if !utf8.ValidString(msg) {
+			t.Fatalf("truncated message must stay valid UTF-8: %q", msg)
+		}
+		if !strings.HasSuffix(msg, "...(truncated)") {
+			t.Fatal("truncation must stay visible")
 		}
 	})
 

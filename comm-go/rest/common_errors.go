@@ -31,7 +31,7 @@ var (
 			},
 			"en-US": {
 				ErrorCode:   PublicError_BadRequest,
-				Description: "Internal Server Error",
+				Description: "bad request",
 				Solution:    "None",
 				ErrorLink:   "None",
 			},

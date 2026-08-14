@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"unicode/utf8"
 )
 
 // VegaDownstreamError 保留 vega-backend 返回的状态码与错误内容。
@@ -56,7 +57,13 @@ func (e *VegaDownstreamError) Message() string {
 	if len(e.Raw) <= maxRawMessageLen {
 		return e.Raw
 	}
-	return e.Raw[:maxRawMessageLen] + "...(truncated)"
+	// 按字节切会在多字节字符中间断开，error_details 里会留下半个 UTF-8 序列。
+	// vega 返回中文错误体、或本地化的网关错误页超过上限时都会命中。
+	truncated := e.Raw[:maxRawMessageLen]
+	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return truncated + "...(truncated)"
 }
 
 // IsClientError 表示这是请求侧的问题，调用方改请求即可，不该被当成依赖故障。

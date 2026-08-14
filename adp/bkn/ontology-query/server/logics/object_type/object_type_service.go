@@ -329,8 +329,12 @@ func downstreamErrorCode(statusCode int) string {
 	case http.StatusConflict:
 		return rest.PublicError_Conflict
 	default:
-		// 其余 4xx（如 429）没有对应的公共错误码，状态码本身仍如实透传。
-		return rest.PublicError_BadRequest
+		// 其余 4xx（405/413/422/429 等）没有语义对应的公共错误码。这里不能退回
+		// rest.PublicError_BadRequest：它的 en-US 文案是 "Internal Server Error"，
+		// 英文调用方会在一条 429 上读到「内部服务错误」，正是本次要消除的误导。
+		// 退回本服务的参数错误码——两种语言的文案都正确，且与改动前一致；真正的
+		// 语义由如实透传的状态码与下游给出的原因承载。
+		return oerrors.OntologyQuery_ObjectType_InvalidParameter
 	}
 }
 
