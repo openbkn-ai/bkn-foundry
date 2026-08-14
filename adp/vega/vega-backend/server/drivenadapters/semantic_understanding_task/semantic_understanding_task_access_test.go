@@ -166,10 +166,10 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		assert.Equal(t, task.ConfidenceThreshold, gotTask.ConfidenceThreshold)
 		assert.Equal(t, task.Confidence, gotTask.Confidence)
 		assert.Equal(t, task.Applied, gotTask.Applied)
-		assert.Equal(t, task.AppliedTime, gotTask.AppliedTime)
 		assert.Equal(t, task.Creator, gotTask.Creator)
 		assert.Equal(t, task.CreateTime, gotTask.CreateTime)
-		assert.Equal(t, task.UpdateTime, gotTask.UpdateTime)
+		assert.Equal(t, task.StartTime, gotTask.StartTime)
+		assert.Equal(t, task.FinishTime, gotTask.FinishTime)
 		payload, err := json.Marshal(gotTask)
 		require.NoError(t, err)
 		assert.NotContains(t, string(payload), `"input"`)
@@ -212,8 +212,8 @@ func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
-			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs(int64(123), interfaces.SemanticUnderstandingTaskStatusRunning, "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		updated, err := access.MarkRunning(context.Background(), "semantic-task-1", 123)
@@ -227,8 +227,8 @@ func TestSemanticUnderstandingTaskAccessMarkRunning(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
-			WithArgs(interfaces.SemanticUnderstandingTaskStatusRunning, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs(int64(123), interfaces.SemanticUnderstandingTaskStatusRunning, "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		updated, err := access.MarkRunning(context.Background(), "semantic-task-1", 123)
@@ -243,11 +243,11 @@ func TestSemanticUnderstandingTaskAccessSetApplied(t *testing.T) {
 	db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_applied = ?, f_applied_time = ?, f_apply_detail_json = ?, f_update_time = ? WHERE f_id = ? AND f_status = ?")).
-		WithArgs(true, int64(123), `{"resource_updated":true}`, int64(123), "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusCompleted).
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_applied = ?, f_apply_detail_json = ? WHERE f_id = ? AND f_status = ?")).
+		WithArgs(true, `{"resource_updated":true}`, "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusCompleted).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	updated, err := access.SetApplied(context.Background(), nil, "semantic-task-1", true, 123, `{"resource_updated":true}`)
+	updated, err := access.SetApplied(context.Background(), nil, "semantic-task-1", true, `{"resource_updated":true}`)
 
 	require.NoError(t, err)
 	assert.True(t, updated)
@@ -286,7 +286,7 @@ func TestSemanticUnderstandingTaskAccessMarkCancelledByCatalogID(t *testing.T) {
 	db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_failure_detail = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_status = ?")).
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_status = ?, f_failure_detail = ?, f_finish_time = ? WHERE f_catalog_id = ? AND f_status = ?")).
 		WithArgs(interfaces.SemanticUnderstandingTaskStatusCancelled, "catalog deleted", int64(100), "catalog-1",
 			interfaces.SemanticUnderstandingTaskStatusPending).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -299,8 +299,8 @@ func TestSemanticUnderstandingTaskAccessMarkCancelled(t *testing.T) {
 	db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_failure_detail = ?, f_status = ?, f_update_time = ? WHERE f_id = ? AND f_status IN (?,?)")).
-		WithArgs("catalog or resource deleted", interfaces.SemanticUnderstandingTaskStatusCancelled, int64(123),
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_failure_detail = ?, f_finish_time = ?, f_status = ? WHERE f_id = ? AND f_status IN (?,?)")).
+		WithArgs("catalog or resource deleted", int64(123), interfaces.SemanticUnderstandingTaskStatusCancelled,
 			"semantic-task-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -336,11 +336,11 @@ func sampleSemanticUnderstandingTask() *interfaces.SemanticUnderstandingTask {
 		ConfidenceDetailJSON: `{"fields":[]}`,
 		ApplyDetailJSON:      "",
 		Applied:              false,
-		AppliedTime:          0,
 		FailureDetail:        "",
 		Creator:              interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
 		CreateTime:           100,
-		UpdateTime:           200,
+		StartTime:            200,
+		FinishTime:           300,
 	}
 }
 
@@ -362,12 +362,12 @@ func semanticUnderstandingTaskRowValues(task *interfaces.SemanticUnderstandingTa
 		task.ConfidenceDetailJSON,
 		task.ApplyDetailJSON,
 		task.Applied,
-		task.AppliedTime,
 		task.FailureDetail,
 		task.Creator.ID,
 		task.Creator.Type,
 		task.CreateTime,
-		task.UpdateTime,
+		task.StartTime,
+		task.FinishTime,
 	}
 }
 
@@ -392,11 +392,11 @@ func semanticUnderstandingTaskListRowValues(task *interfaces.SemanticUnderstandi
 		task.ConfidenceThreshold,
 		task.Confidence,
 		task.Applied,
-		task.AppliedTime,
 		task.Creator.ID,
 		task.Creator.Type,
 		task.CreateTime,
-		task.UpdateTime,
+		task.StartTime,
+		task.FinishTime,
 	}
 }
 

@@ -438,10 +438,10 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	assert.True(t, running)
 
 	taskAccess.EXPECT().
-		MarkCompleted(gomock.Any(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`, gomock.Any()).
+		MarkCompleted(gomock.Any(), nil, "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`, gomock.Any()).
 		Return(true, nil)
 
-	completed, err := service.InternalMarkCompleted(context.Background(), "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
+	completed, err := service.InternalMarkCompleted(context.Background(), nil, "semantic-task-1", `{"confidence":0.8}`, 0.8, `{"fields":[]}`)
 	require.NoError(t, err)
 	assert.True(t, completed)
 }

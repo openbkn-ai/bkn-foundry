@@ -449,14 +449,15 @@ CREATE TABLE IF NOT EXISTS t_semantic_understanding_task (
     f_confidence_detail_json     MEDIUMTEXT NOT NULL COMMENT '字段、逻辑视图、stale 建议等细粒度置信分(JSON)',
     f_apply_detail_json          MEDIUMTEXT NOT NULL COMMENT '应用明细(JSON)',
     f_applied                    TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'agent 结果是否已应用: 0-否, 1-是',
-    f_applied_time               BIGINT(20) NOT NULL DEFAULT 0 COMMENT '应用时间',
     f_failure_detail             TEXT NOT NULL COMMENT '失败详情',
 
     -- 审计字段
     f_creator                    VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
     f_creator_type               VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
     f_create_time                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
-    f_update_time                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+
+    f_start_time                 BIGINT(20) NOT NULL DEFAULT 0 COMMENT '开始执行时间',
+    f_finish_time                BIGINT(20) NOT NULL DEFAULT 0 COMMENT '完成时间',
 
     -- 索引
     PRIMARY KEY (f_id),
@@ -464,7 +465,10 @@ CREATE TABLE IF NOT EXISTS t_semantic_understanding_task (
     INDEX idx_catalog_id (f_catalog_id),
     INDEX idx_resource_id (f_resource_id),
     INDEX idx_agent_task_id (f_agent_task_id),
-    INDEX idx_status (f_status)
+    INDEX idx_status (f_status),
+    INDEX idx_create_time (f_create_time),
+    INDEX idx_start_time (f_start_time),
+    INDEX idx_finish_time (f_finish_time)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='语义理解任务表，记录 resource/catalog 语义理解异步任务、agent 输出和应用状态';
 
 

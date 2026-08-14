@@ -172,7 +172,6 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	task.Status = interfaces.SemanticUnderstandingTaskStatusPending
 	task.Creator = accountInfo
 	task.CreateTime = now
-	task.UpdateTime = now
 	if err := suts.suta.Create(ctx, task); err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_CreateResourcesFailed).
 			WithErrorDetails(err.Error())
@@ -224,7 +223,7 @@ func (suts *semanticUnderstandingTaskService) InternalSetApplied(ctx context.Con
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalSetApplied")
 	defer span.End()
 
-	return suts.suta.SetApplied(ctx, tx, id, applied, time.Now().UnixMilli(), applyDetailJSON)
+	return suts.suta.SetApplied(ctx, tx, id, applied, applyDetailJSON)
 }
 
 func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params interfaces.SemanticUnderstandingTaskQueryParams) ([]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
@@ -449,10 +448,10 @@ func (suts *semanticUnderstandingTaskService) InternalSetAgentTaskID(ctx context
 		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("agent_task_id is required")
 	}
-	return suts.suta.SetAgentTaskID(ctx, id, agentTaskID, time.Now().UnixMilli())
+	return suts.suta.SetAgentTaskID(ctx, id, agentTaskID)
 }
 
-func (suts *semanticUnderstandingTaskService) InternalMarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
+func (suts *semanticUnderstandingTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalMarkCompleted")
 	defer span.End()
 
@@ -460,7 +459,7 @@ func (suts *semanticUnderstandingTaskService) InternalMarkCompleted(ctx context.
 		return false, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("confidence must be between 0 and 1")
 	}
-	return suts.suta.MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON, time.Now().UnixMilli())
+	return suts.suta.MarkCompleted(ctx, tx, id, resultJSON, confidence, confidenceDetailJSON, time.Now().UnixMilli())
 }
 
 func (suts *semanticUnderstandingTaskService) InternalMarkFailed(ctx context.Context, id string, failureDetail string) (bool, error) {

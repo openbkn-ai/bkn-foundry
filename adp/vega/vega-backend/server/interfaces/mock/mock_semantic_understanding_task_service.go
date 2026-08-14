@@ -161,18 +161,18 @@ func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkCancelle
 }
 
 // InternalMarkCompleted mocks base method.
-func (m *MockSemanticUnderstandingTaskService) InternalMarkCompleted(ctx context.Context, id, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
+func (m *MockSemanticUnderstandingTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalMarkCompleted", ctx, id, resultJSON, confidence, confidenceDetailJSON)
+	ret := m.ctrl.Call(m, "InternalMarkCompleted", ctx, tx, id, resultJSON, confidence, confidenceDetailJSON)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalMarkCompleted indicates an expected call of InternalMarkCompleted.
-func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) InternalMarkCompleted(ctx, tx, id, resultJSON, confidence, confidenceDetailJSON any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCompleted", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkCompleted), ctx, id, resultJSON, confidence, confidenceDetailJSON)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkCompleted", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).InternalMarkCompleted), ctx, tx, id, resultJSON, confidence, confidenceDetailJSON)
 }
 
 // InternalMarkFailed mocks base method.

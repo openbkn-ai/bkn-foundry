@@ -20,14 +20,14 @@ type SemanticUnderstandingTaskAccess interface {
 	List(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, int64, error)
 	DeleteByIDs(ctx context.Context, ids []string) (int64, error)
 
-	MarkRunning(ctx context.Context, id string, updateTime int64) (bool, error)
-	MarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string, updateTime int64) (bool, error)
-	MarkFailed(ctx context.Context, id string, failureDetail string, updateTime int64) (bool, error)
-	MarkCancelled(ctx context.Context, id string, failureDetail string, updateTime int64) (bool, error)
-	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, updateTime int64) error
+	MarkRunning(ctx context.Context, id string, startTime int64) (bool, error)
+	MarkCompleted(ctx context.Context, tx *sql.Tx, id string, resultJSON string, confidence float64, confidenceDetailJSON string, finishTime int64) (bool, error)
+	MarkFailed(ctx context.Context, id string, failureDetail string, finishTime int64) (bool, error)
+	MarkCancelled(ctx context.Context, id string, failureDetail string, finishTime int64) (bool, error)
+	MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, finishTime int64) error
 
-	SetAgentTaskID(ctx context.Context, id string, agentTaskID string, updateTime int64) (bool, error)
-	SetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error)
+	SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)
+	SetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error)
 
 	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, error)
 }
