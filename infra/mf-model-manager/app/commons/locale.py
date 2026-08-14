@@ -76,7 +76,9 @@ def localized_error_content(
     message = lookup_error_message(code, locale)
     if message:
         for field in ("description", "detail", "solution"):
-            if field in message and (field != "detail" or message[field]):
+            if field == "detail":
+                localized[field] = _localize_detail(message, content.get(field))
+            elif field in message:
                 localized[field] = message[field]
     elif locale == ENGLISH_LOCALE:
         localized["description"] = "Request failed."
@@ -91,6 +93,15 @@ def is_business_api_path(path: str) -> bool:
 
 def is_authenticated_public_api_path(path: str) -> bool:
     return path.startswith("/api/mf-model-manager/v1/")
+
+
+def _localize_detail(message: Dict[str, Any], detail: Any) -> Any:
+    template = message.get("detail_template")
+    if template and isinstance(detail, str):
+        _, separator, parameter_names = detail.partition(":")
+        if separator and parameter_names.strip():
+            return template.format(parameters=parameter_names.strip())
+    return message.get("detail") or detail
 
 
 def _localized_http_error_content(status_code: int, locale: str) -> Dict[str, Any]:

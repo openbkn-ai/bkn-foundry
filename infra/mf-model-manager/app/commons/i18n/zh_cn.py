@@ -6,6 +6,7 @@ error_messages = {
         "code": ParamValidationErrors.ParamMissing,
         "description": "参数缺失",
         "detail": "",
+        "detail_template": "缺少必填参数：{parameters}",
         "solution": "请阅读API文档填写正确的参数",
         "link": ""
     },
@@ -14,6 +15,7 @@ error_messages = {
         "description": "参数类型错误",
         "solution": "请阅读API文档填写正确的参数",
         "detail": "",
+        "detail_template": "参数类型错误：{parameters}",
         "link": ""
 
     },

@@ -45,7 +45,7 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         self.assertIsNotNone(message)
         self.assertEqual(message["code"], ParamValidationErrors.ParamMissing)
 
-    def test_preserves_dynamic_parameter_error_detail_when_translation_is_empty(self):
+    def test_localizes_dynamic_missing_parameter_detail(self):
         localized, is_localized = localized_error_content(
             {
                 "code": ParamValidationErrors.ParamMissing,
@@ -59,7 +59,22 @@ class TestAcceptLanguageResolver(unittest.TestCase):
 
         self.assertTrue(is_localized)
         self.assertEqual(localized["description"], "Required parameter is missing.")
-        self.assertEqual(localized["detail"], "missing parameters: max_model_len")
+        self.assertEqual(localized["detail"], "Missing required parameters: max_model_len")
+
+    def test_localizes_dynamic_parameter_type_detail_in_chinese(self):
+        localized, is_localized = localized_error_content(
+            {
+                "code": ParamValidationErrors.ParamTypeError,
+                "description": "参数类型错误",
+                "detail": "parameters type error: model_names",
+                "solution": "请检查参数",
+                "link": "",
+            },
+            "zh-CN",
+        )
+
+        self.assertTrue(is_localized)
+        self.assertEqual(localized["detail"], "参数类型错误：model_names")
 
     def test_uses_request_scoped_locale_instead_of_the_raw_header(self):
         class State:

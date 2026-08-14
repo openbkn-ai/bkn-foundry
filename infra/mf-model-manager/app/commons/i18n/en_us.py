@@ -6,6 +6,7 @@ error_messages = {
         "code": ParamValidationErrors.ParamMissing,
         "description": "Required parameter is missing.",
         "detail": "",
+        "detail_template": "Missing required parameters: {parameters}",
         "solution": "Please read the API documentation and pass the correct parameters",
         "link": ""
     },
@@ -14,6 +15,7 @@ error_messages = {
         "description": "Parameter type is invalid.",
         "solution": "Please read the API documentation and pass the correct parameters",
         "detail": "",
+        "detail_template": "Parameter type error: {parameters}",
         "link": ""
 
     },
