@@ -72,7 +72,7 @@ func (c *Client) Search(ctx context.Context, q observabilityvo.LogQuery) (observ
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return observabilityvo.SourcePage{}, fmt.Errorf("execution factory audit source returned status %d", resp.StatusCode)
 	}
@@ -108,7 +108,7 @@ func (c *Client) Get(ctx context.Context, logID string) (observabilityvo.LogReco
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return observabilityvo.LogRecord{}, false, nil
 	}

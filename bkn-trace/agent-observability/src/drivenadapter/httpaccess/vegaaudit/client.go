@@ -42,7 +42,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	}
 	authorization := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
 	if authorization == "" || query.AuthorizedTenantID == "" || query.AuthorizedBusinessDomain == "" {
-		return observabilityvo.SourcePage{}, errors.New("Vega audit source requires caller authorization and trusted scope")
+		return observabilityvo.SourcePage{}, errors.New("vega audit source requires caller authorization and trusted scope")
 	}
 	parameters := url.Values{}
 	parameters.Set("limit", strconv.Itoa(normalizedLimit(query.Limit)))
@@ -72,10 +72,10 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<20))
-		return observabilityvo.SourcePage{}, fmt.Errorf("Vega audit source returned status %d", response.StatusCode)
+		return observabilityvo.SourcePage{}, fmt.Errorf("vega audit source returned status %d", response.StatusCode)
 	}
 	var payload struct {
 		Entries []auditEntry `json:"entries"`
@@ -99,7 +99,7 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	authorization := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
 	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
 	if authorization == "" || scope.TenantID == "" || scope.BusinessDomain == "" {
-		return observabilityvo.LogRecord{}, false, errors.New("Vega audit source requires caller authorization and trusted scope")
+		return observabilityvo.LogRecord{}, false, errors.New("vega audit source requires caller authorization and trusted scope")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.baseURL+"/api/vega-backend/v1/operation-audits/"+url.PathEscape(sourceLogID(logID)), nil)
 	if err != nil {
@@ -110,12 +110,12 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusNotFound {
 		return observabilityvo.LogRecord{}, false, nil
 	}
 	if response.StatusCode != http.StatusOK {
-		return observabilityvo.LogRecord{}, false, fmt.Errorf("Vega audit source returned status %d", response.StatusCode)
+		return observabilityvo.LogRecord{}, false, fmt.Errorf("vega audit source returned status %d", response.StatusCode)
 	}
 	var entry auditEntry
 	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&entry); err != nil {

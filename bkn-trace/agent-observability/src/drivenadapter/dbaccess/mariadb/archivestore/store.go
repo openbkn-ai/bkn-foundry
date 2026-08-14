@@ -71,7 +71,7 @@ func (store *Store) List(tenantID string, kind observabilityvo.ArchiveKind, limi
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	jobs := make([]archivesvc.Job, 0, limit)
 	for rows.Next() {
 		var id, status string

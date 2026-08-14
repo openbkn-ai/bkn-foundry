@@ -31,7 +31,7 @@ func (source *TraceArchiveSource) Freeze(ctx context.Context, kind observability
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var candidates []archivesvc.Candidate
 	for rows.Next() {
 		var interactionID string
@@ -87,7 +87,7 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, candidate := range candidates {
 		var id string
 		err := tx.QueryRowContext(ctx, `SELECT i.interaction_id FROM bkn_trace_interactions i JOIN bkn_trace_conversations c ON c.conversation_id=i.conversation_id WHERE i.interaction_id=? AND c.tenant_id=? AND i.execution_status<>? FOR UPDATE`, candidate.ID, tenantID, sessionvo.InteractionActive).Scan(&id)
