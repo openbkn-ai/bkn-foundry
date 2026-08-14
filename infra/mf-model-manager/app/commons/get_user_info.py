@@ -4,6 +4,7 @@ import os
 import aiohttp
 from app.core.config import base_config
 from app.commons.errors import UserManagementError
+from app.commons.locale import internal_request_headers
 from app.core.config import base_config
 
 
@@ -16,7 +17,7 @@ async def _resolve_names_bkn_safe(bkn_safe_url, user_ids):
         async with session.post(
                 f"{bkn_safe_url}/api/safe/v1/directory/names",
                 json={"user_ids": user_ids, "app_ids": user_ids},
-                headers={"Content-Type": "application/json"}) as resp:
+                headers=internal_request_headers({"Content-Type": "application/json"})) as resp:
             if resp.status != 200:
                 raise Exception("bkn-safe directory service error,please check")
             data = json.loads(await resp.text())
@@ -47,13 +48,14 @@ async def get_username_by_ids(user_ids):
             "name"
         ]
     }
+    headers = internal_request_headers()
     
     # 存储最终的用户信息
     final_user_infos = {}
     
     for i in range(2):
         async with aiohttp.ClientSession() as session:
-            async with session.post(user_management_url, json=payload) as response:
+            async with session.post(user_management_url, json=payload, headers=headers) as response:
                 if response.status != 200:
                     if response.status == 404:
                         res = await response.text()
@@ -70,7 +72,8 @@ async def get_username_by_ids(user_ids):
                             }
                             
                             # 调用应用名称接口
-                            async with session.post(user_management_app_url, json=app_payload) as app_response:
+                            async with session.post(
+                                    user_management_app_url, json=app_payload, headers=headers) as app_response:
                                 if app_response.status == 200:
                                     app_res = await app_response.text()
                                     app_result = json.loads(app_res)
@@ -88,7 +91,9 @@ async def get_username_by_ids(user_ids):
                                     if valid_app_ids:
                                         # 重新调用应用名称接口，只包含有效的应用ID
                                         app_payload["app_ids"] = valid_app_ids
-                                        async with session.post(user_management_app_url, json=app_payload) as retry_response:
+                                        async with session.post(
+                                                user_management_app_url, json=app_payload,
+                                                headers=headers) as retry_response:
                                             if retry_response.status == 200:
                                                 retry_res = await retry_response.text()
                                                 retry_result = json.loads(retry_res)

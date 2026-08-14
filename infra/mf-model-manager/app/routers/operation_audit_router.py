@@ -6,22 +6,37 @@ import aiohttp
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 
 from app.mydb.pymysql_pool import PymysqlPool
+from app.commons.locale import internal_request_headers
 
 operation_audit_router = APIRouter()
 _MAX_RANGE_SECONDS = 30 * 24 * 60 * 60
+_AUDIT_ERRORS = {
+    "access_denied": (403, "ModelFactory.OperationAudit.AccessDenied"),
+    "invalid_timestamp": (400, "ModelFactory.OperationAudit.InvalidTimestamp"),
+    "invalid_time_range": (400, "ModelFactory.OperationAudit.InvalidTimeRange"),
+    "event_not_found": (404, "ModelFactory.OperationAudit.EventNotFound"),
+}
+
+
+def _audit_error(name):
+    status_code, code = _AUDIT_ERRORS[name]
+    return HTTPException(status_code=status_code, detail={"code": code, "link": ""})
 
 async def _require_audit_reader(request: Request):
     token = request.headers.get("authorization", "")
     safe = os.getenv("BKN_SAFE_URL", "").rstrip("/")
     if not token or not safe:
-        raise HTTPException(403, "operation audit access denied")
+        raise _audit_error("access_denied")
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
-        async with session.get(safe + "/api/safe/v1/me", headers={"Authorization": token}) as response:
+        async with session.get(
+            safe + "/api/safe/v1/me",
+            headers=internal_request_headers({"Authorization": token}),
+        ) as response:
             if response.status != 200:
-                raise HTTPException(403, "operation audit access denied")
+                raise _audit_error("access_denied")
             me = await response.json()
     if not me.get("enabled") or not set(me.get("roles", [])) & {"super_admin", "admin", "audit"}:
-        raise HTTPException(403, "operation audit access denied")
+        raise _audit_error("access_denied")
 
 def _list(tenant, domain, from_time, to_time, limit, before_time, before_event_id, actor_id, action, target_type, target_id, outcome):
     pool=PymysqlPool.get_pool(); connection=pool.connection(); cursor=connection.cursor()
@@ -44,12 +59,12 @@ def _get(event_id,tenant,domain):
 
 def _time(value):
     try: return datetime.fromisoformat(value.replace("Z","+00:00"))
-    except ValueError: raise HTTPException(400,"from/to must be RFC3339")
+    except ValueError: raise _audit_error("invalid_timestamp")
 
 @operation_audit_router.get("/operation-audits")
 async def list_operation_audits(request: Request, from_: str = Query(alias="from"), to: str = Query(), limit: int = Query(50, ge=1, le=500), before_time: str = Query(""), before_event_id: str = Query(""), actor_id: str = Query(""), action: str = Query(""), target_type: str = Query(""), target_id: str = Query(""), outcome: str = Query(""), x_tenant_id: str = Header(alias="x-tenant-id"), x_business_domain: str = Header(alias="x-business-domain")):
     await _require_audit_reader(request); start,end=_time(from_),_time(to)
-    if start>=end or (end-start).total_seconds()>_MAX_RANGE_SECONDS: raise HTTPException(400,"from/to must be a valid RFC3339 range of at most 30 days")
+    if start>=end or (end-start).total_seconds()>_MAX_RANGE_SECONDS: raise _audit_error("invalid_time_range")
     before=_time(before_time) if before_time else None
     rows,more=await asyncio.to_thread(_list,x_tenant_id,x_business_domain,start,end,limit,before,before_event_id,actor_id.strip(),action.strip(),target_type.strip(),target_id.strip(),outcome.strip())
     return {"entries":rows,"has_more":more}
@@ -57,5 +72,5 @@ async def list_operation_audits(request: Request, from_: str = Query(alias="from
 @operation_audit_router.get("/operation-audits/{event_id}")
 async def get_operation_audit(event_id: str, request: Request, x_tenant_id: str = Header(alias="x-tenant-id"), x_business_domain: str = Header(alias="x-business-domain")):
     await _require_audit_reader(request); row=await asyncio.to_thread(_get,event_id,x_tenant_id,x_business_domain)
-    if not row: raise HTTPException(404,"operation audit event not found")
+    if not row: raise _audit_error("event_not_found")
     return row

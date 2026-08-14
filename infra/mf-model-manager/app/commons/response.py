@@ -2,7 +2,8 @@ from typing import Any, Dict
 from fastapi import status
 from fastapi.responses import JSONResponse
 
-from app.commons.i18n import get_error_message
+from app.commons.i18n import lookup_error_message
+from app.commons.locale import DEFAULT_LOCALE, localized_error_content
 
 
 def error_response(
@@ -11,7 +12,7 @@ def error_response(
         detail: str,
         solution: str = "",
         link: str = "",
-        language: str = "zh"
+        language: str = DEFAULT_LOCALE
 ) -> JSONResponse:
     """Handle errors response
     Args:
@@ -26,15 +27,20 @@ def error_response(
     """
     error_content: Dict[str, str] = {
         "code": code,
-        "description": get_error_message(code, language),
+        "description": "Request failed." if language == "en-US" else "请求失败。",
         "solution": solution,
         "detail": detail,
         "link": link
     }
+    message = lookup_error_message(code, language)
+    if message:
+        error_content.update({key: message[key] for key in ("description", "solution") if key in message})
+    error_content, _ = localized_error_content(error_content, language)
 
     return JSONResponse(
         status_code=status_code,
-        content=error_content
+        content=error_content,
+        headers={"Content-Language": language},
     )
 
 

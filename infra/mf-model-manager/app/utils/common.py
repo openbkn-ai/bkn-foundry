@@ -7,6 +7,8 @@ import inspect
 import os
 from typing import Tuple
 
+from app.commons.locale import resolve_accept_language
+
 cur_pwd = os.getcwd()
 
 
@@ -52,7 +54,9 @@ async def get_user_info(request, **kwargs):
     headers = request.headers
     userId = headers.get('x-account-id', "")
     role = headers.get('x-account-type', "")
-    language = headers.get('accept-language', "zh-CN")
+    language = getattr(request.state, "effective_locale", None)
+    if language is None:
+        language = resolve_accept_language(headers.get('accept-language', ""))
     return userId, language, role
 
 async def validate_required_params(params_dict, required_params):

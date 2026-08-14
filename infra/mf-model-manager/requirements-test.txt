@@ -5,7 +5,8 @@
 #
 #   pip install -r requirements-test.txt && pytest app/test
 #
-# No httpx pin needed here: these tests don't use fastapi TestClient (unlike
-# mf-model-api). They drive controllers directly via asyncio event loops.
+# FastAPI TestClient relies on httpx. Pin it below 0.28 to remain compatible
+# with the FastAPI/Starlette versions provided by the model-factory-base image.
 pytest>=7.4
 pytest-asyncio>=0.21
+httpx>=0.24,<0.28

@@ -2,10 +2,19 @@ import asyncio
 import json
 import aiohttp
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.commons.errors import UnauthorizedError, HydraServiceError
+from app.commons.locale import (
+    DEFAULT_LOCALE,
+    LocaleResponseMiddleware,
+    internal_request_headers,
+    is_authenticated_public_api_path,
+    is_business_api_path,
+    localized_error_content,
+)
 from app.core.config import base_config, server_info, observability_config
 from app.logs import log_init, sys_log
 from app.mydb.ConnectUtil import get_redis_util
@@ -81,7 +90,11 @@ async def auth_middleware(request: Request, call_next):
         async with aiohttp.ClientSession() as session:
             try:
                 payload = {"token": token}
-                async with session.post(hydra_url, data=payload) as response:
+                async with session.post(
+                    hydra_url,
+                    data=payload,
+                    headers=internal_request_headers(),
+                ) as response:
                     if response.status != 200:
                         error_dict = HydraServiceError.copy()
                         error_dict["detail"] = await response.text()
@@ -125,6 +138,88 @@ class RequestSizeMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    if not is_business_api_path(request.url.path):
+        return PlainTextResponse("Internal Server Error", status_code=500)
+
+    locale = getattr(request.state, "effective_locale", DEFAULT_LOCALE)
+    content, _ = localized_error_content(
+        {
+            "code": "ModelFactory.InternalError",
+            "description": "请求失败。",
+            "detail": "服务内部错误。",
+            "solution": "请查看请求详情或联系管理员。",
+            "link": "",
+        },
+        locale,
+    )
+    headers = {"Content-Language": locale}
+    headers["Cache-Control"] = "private, no-cache"
+    return JSONResponse(status_code=500, content=content, headers=headers)
+
+
+def configure_locale_openapi(app: FastAPI) -> None:
+    """Expose the locale and cache response contract in generated OpenAPI."""
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        components = schema.setdefault("components", {})
+        parameters = components.setdefault("parameters", {})
+        parameters["AcceptLanguage"] = {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": False,
+            "description": "Preferred response language. Supports zh-CN and en-US.",
+            "schema": {"type": "string", "example": "en-US"},
+        }
+        headers = components.setdefault("headers", {})
+        headers["ContentLanguage"] = {
+            "description": "Language used for a localized error response.",
+            "schema": {"type": "string", "enum": ["zh-CN", "en-US"]},
+        }
+        headers["PrivateNoCache"] = {
+            "description": "Authenticated response cache policy.",
+            "schema": {"type": "string", "example": "private, no-cache"},
+        }
+
+        for path, methods in schema.get("paths", {}).items():
+            for operation in methods.values():
+                if not isinstance(operation, dict):
+                    continue
+                operation.setdefault("parameters", []).append(
+                    {"$ref": "#/components/parameters/AcceptLanguage"}
+                )
+                responses = operation.setdefault("responses", {})
+                if is_authenticated_public_api_path(path):
+                    responses.setdefault("401", {"description": "Authentication failed"})
+                for status, response in responses.items():
+                    if not isinstance(response, dict):
+                        continue
+                    response_headers = response.setdefault("headers", {})
+                    if is_business_api_path(path):
+                        response_headers["Cache-Control"] = {
+                            "$ref": "#/components/headers/PrivateNoCache"
+                        }
+                    if (
+                            is_business_api_path(path)
+                            and str(status).isdigit()
+                            and int(status) >= 400):
+                        response_headers["Content-Language"] = {
+                            "$ref": "#/components/headers/ContentLanguage"
+                        }
+        app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
+
+
 def create_app():
     app = FastAPI(title="My API",
                   description="",
@@ -140,6 +235,8 @@ def create_app():
     # injected by auth_middleware after the handler returns.
     app.add_middleware(BaseHTTPMiddleware, dispatch=operation_audit_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=auth_middleware)
+    app.add_middleware(LocaleResponseMiddleware)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
 
     # 初始化日志
     log_init()
@@ -147,4 +244,5 @@ def create_app():
     conf_init(app)
     # 初始化路由配置
     router_init(app)
+    configure_locale_openapi(app)
     return app
