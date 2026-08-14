@@ -245,6 +245,12 @@ func TestResourceServiceGetByID(t *testing.T) {
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
 			gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+		// 资源侧拒了会再问所属目录（#817）；目录也没批，结论不变。
+		ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r1"}).
+			Return([]*interfaces.Resource{{ID: "r1", CatalogID: "cat-int"}}, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+			[]string{"cat-int"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
 		_, err := rs.GetByID(context.Background(), "r1")
 		if err == nil {
@@ -257,6 +263,12 @@ func TestResourceServiceGetByID(t *testing.T) {
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-user"}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			gomock.Any(), gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+		// 同上：回落到目录，目录也没批。
+		ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r1"}).
+			Return([]*interfaces.Resource{{ID: "r1", CatalogID: "cat-user"}}, nil)
+		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+			[]string{"cat-user"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
 		_, err := rs.GetByID(interfaces.WithS2SInternalAccess(context.Background()), "r1")
@@ -404,6 +416,13 @@ func TestResourceServiceList(t *testing.T) {
 		// 内部目录下的资源按 internal_resource 类型校验；业务角色无授权 → 被过滤
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
 			[]string{"r2"}, gomock.Any(), true, gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{}, nil)
+		// r2 资源侧被拒，回落问它所属的内部目录（#817）；目录也没批，仍然被过滤掉。
+		mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"cat-internal"}, nil)
+		mockRA.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r2"}).
+			Return([]*interfaces.Resource{{ID: "r2", CatalogID: "cat-internal"}}, nil)
+		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+			[]string{"cat-internal"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 		mockRA.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1"}}, nil)

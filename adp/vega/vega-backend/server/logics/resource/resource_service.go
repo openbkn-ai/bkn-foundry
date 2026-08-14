@@ -93,6 +93,188 @@ func resourceAuthResourceType(internal bool) string {
 	return interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 }
 
+// resourceOpOnCatalog 是「资源上的操作」到「所属目录上要问的操作」的翻译表。
+//
+// 逐条列而不按同名照搬:目录上的 modify 语义是「改目录自己」,同名照搬就等于把
+// 「能重命名目录」的人升级成「能改目录下每一张表」,那是越权不是便利。
+//
+// authorize 故意缺席:持有目录授权权的人，不应因此获得把目录下每张表转授出去的
+// 能力。没有条目的操作到此为止，不向上问。
+var resourceOpOnCatalog = map[string]string{
+	interfaces.OPERATION_TYPE_VIEW_DETAIL: interfaces.OPERATION_TYPE_VIEW_DETAIL,
+	interfaces.OPERATION_TYPE_QUERY_DATA:  interfaces.OPERATION_TYPE_QUERY_DATA,
+	interfaces.OPERATION_TYPE_CREATE:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
+	interfaces.OPERATION_TYPE_MODIFY:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
+	interfaces.OPERATION_TYPE_DELETE:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
+	interfaces.OPERATION_TYPE_TASK_MANAGE: interfaces.OPERATION_TYPE_TASK_MANAGE,
+}
+
+// catalogAuthResourceType 返回数据目录在权限服务中的资源类型，与
+// resourceAuthResourceType 对称。
+func catalogAuthResourceType(internal bool) string {
+	if internal {
+		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
+	}
+	return interfaces.AUTH_RESOURCE_TYPE_CATALOG
+}
+
+// checkResourceOrCatalog 判一个资源上的操作:先问资源自己,拒了再问它所属的目录
+// （操作按上表翻译）。
+//
+// 这是纯放宽:今天能做的第一问就过,常态下仍然只发一次鉴权请求;只有第一问拒了
+// 才会有第二问。两问都拒时返回**第一问的错误**,调用方看到的错误码与提示一字不变。
+//
+// 归属关系不需要任何同步:catalog_id 就在 vega 正在判的那行资源记录里。
+func (rs *resourceService) checkResourceOrCatalog(ctx context.Context,
+	resourceID, catalogID string, parentInternal bool, op string) error {
+
+	err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: resourceAuthResourceType(parentInternal),
+		ID:   resourceID,
+	}, []string{op})
+	if err == nil {
+		return nil
+	}
+	catalogOp, ok := resourceOpOnCatalog[op]
+	if !ok || catalogID == "" {
+		return err
+	}
+	if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: catalogAuthResourceType(parentInternal),
+		ID:   catalogID,
+	}, []string{catalogOp}); err2 != nil {
+		return err // 返回旧口径的错误,保持既有报错语义不变
+	}
+	return nil
+}
+
+// mergeCatalogPermissions 给资源侧没批下来的操作补上「所属目录给的」那部分。
+//
+// 只为差额发请求:资源侧已经全批的常态下一次额外请求都不发。这也是为什么补在
+// 过滤之后而不是之前。
+func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []string,
+	ops []string, result map[string]interfaces.PermissionResourceOps) error {
+
+	// 只补资源侧**完全没批**的那些。判据是「在不在结果里」而不是「操作集齐不齐」,
+	// 因为调用方读的就是前者:出现在 map 里即视为可见,Operations 只用来渲染按钮。
+	// 按后者触发会在资源侧已经放行时多发一轮请求,白花钱。
+	pending := make([]string, 0)
+	seenPending := map[string]bool{}
+	for _, id := range ids {
+		if _, allowed := result[id]; allowed || seenPending[id] {
+			continue
+		}
+		seenPending[id] = true
+		pending = append(pending, id)
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	catalogOps := make([]string, 0, len(ops))
+	seenOp := map[string]bool{}
+	for _, op := range ops {
+		catalogOp, ok := resourceOpOnCatalog[op]
+		if !ok || seenOp[catalogOp] {
+			continue
+		}
+		seenOp[catalogOp] = true
+		catalogOps = append(catalogOps, catalogOp)
+	}
+	if len(catalogOps) == 0 {
+		return nil // 请求的操作都不向上问（如 authorize）
+	}
+
+	resources, err := rs.ra.GetByIDsBasic(ctx, pending)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	catalogOf := make(map[string]string, len(resources))
+	catalogIDs := make([]string, 0, len(resources))
+	seenCatalog := map[string]bool{}
+	for _, r := range resources {
+		if r == nil || r.CatalogID == "" {
+			continue
+		}
+		catalogOf[r.ID] = r.CatalogID
+		if !seenCatalog[r.CatalogID] {
+			seenCatalog[r.CatalogID] = true
+			catalogIDs = append(catalogIDs, r.CatalogID)
+		}
+	}
+	if len(catalogIDs) == 0 {
+		return nil
+	}
+
+	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	if err != nil {
+		return err
+	}
+	normalCatalogs, internalIDs := make([]string, 0, len(catalogIDs)), make([]string, 0)
+	for _, id := range catalogIDs {
+		if _, ok := internalCatalogs[id]; ok {
+			internalIDs = append(internalIDs, id)
+		} else {
+			normalCatalogs = append(normalCatalogs, id)
+		}
+	}
+
+	// 每个目录批下来的操作集合。按目录问一次，页面上同目录的多张表共用一个答案。
+	granted := make(map[string]map[string]bool, len(catalogIDs))
+	for _, group := range []struct {
+		authType string
+		ids      []string
+	}{
+		{interfaces.AUTH_RESOURCE_TYPE_CATALOG, normalCatalogs},
+		{interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, internalIDs},
+	} {
+		if len(group.ids) == 0 {
+			continue
+		}
+		for _, catalogOp := range catalogOps {
+			matched, err := rs.ps.FilterResources(ctx, group.authType, group.ids,
+				[]string{catalogOp}, true, interfaces.COMMON_OPERATIONS)
+			if err != nil {
+				return err
+			}
+			for catalogID := range matched {
+				if granted[catalogID] == nil {
+					granted[catalogID] = map[string]bool{}
+				}
+				granted[catalogID][catalogOp] = true
+			}
+		}
+	}
+
+	for _, id := range pending {
+		catalogID, ok := catalogOf[id]
+		if !ok || len(granted[catalogID]) == 0 {
+			continue
+		}
+		entry, exists := result[id]
+		if !exists {
+			entry = interfaces.PermissionResourceOps{ResourceID: id}
+		}
+		held := map[string]bool{}
+		for _, op := range entry.Operations {
+			held[op] = true
+		}
+		for _, op := range ops {
+			catalogOp, mapped := resourceOpOnCatalog[op]
+			if !mapped || held[op] || !granted[catalogID][catalogOp] {
+				continue
+			}
+			held[op] = true
+			entry.Operations = append(entry.Operations, op)
+		}
+		if len(entry.Operations) > 0 {
+			result[id] = entry
+		}
+	}
+	return nil
+}
+
 // internalCatalogIDSet 查询所有系统内部目录 ID 集合
 func (rs *resourceService) internalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
 	ids, err := rs.cs.ListInternalIDs(ctx)
@@ -167,6 +349,10 @@ func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []
 			result[resourceOps.ResourceID] = resourceOps
 		}
 	}
+	// 资源侧没批下来的，再看它所属目录给不给（#817）。差额为空时不发请求。
+	if err := rs.mergeCatalogPermissions(ctx, ids, ops, result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -184,13 +370,20 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	_, parentInternal := internalCatalogs[req.CatalogID]
 	authType := resourceAuthResourceType(parentInternal)
 
-	// 判断userid是否有创建数据资源的权限（策略决策）
+	// 判断userid是否有创建数据资源的权限（策略决策）。建表时资源还不存在，判的是
+	// resource:* 这个通配对象——它答不了「这张表要建在哪个目录」，所以持有它的人
+	// 可以往任意目录里建表。拒了再问目标目录的 resource_manage（#817）。
 	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: authType,
 		ID:   interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_CREATE})
 	if err != nil {
-		return nil, err
+		if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: catalogAuthResourceType(parentInternal),
+			ID:   req.CatalogID,
+		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err2 != nil {
+			return nil, err // 返回旧口径的错误，保持既有报错语义不变
+		}
 	}
 
 	// Get account info from context
@@ -365,6 +558,12 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
+			return nil, err
+		}
+		// 资源侧没批，再看所属目录（#817）。
+		if err := rs.mergeCatalogPermissions(ctx, []string{resource.ID},
+			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, matchResoucesMap); err != nil {
+			span.SetStatus(codes.Error, "Merge catalog permissions error")
 			return nil, err
 		}
 
@@ -677,12 +876,8 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
-	authType := resourceAuthResourceType(parentInternal)
-	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: authType,
-		ID:   resource.ID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
+	if err = rs.checkResourceOrCatalog(ctx, resource.ID, resource.CatalogID,
+		parentInternal, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return err
 	}
 

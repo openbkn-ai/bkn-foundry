@@ -13,13 +13,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-// TestSeedDeclaresResourceUnderCatalog pins the operation MAPPING, which is the
-// part that is easy to get wrong and dangerous when wrong. Inheriting by name
-// would let "modify" on a catalog — rename the catalog — reach every table
-// inside it; the mapping sends the table's write verbs to resource_manage
-// instead. authorize deliberately maps to nothing: a catalog grant must not turn
-// into the right to re-grant every table under it (#800).
-func TestSeedDeclaresResourceUnderCatalog(t *testing.T) {
+// TestSeedDeclaresNoHierarchyForResources pins the hierarchy DORMANT.
+//
+// The mechanism below (declaration, climb, enumeration) works and is kept, but
+// the catalog/resource pair no longer uses it: vega resolves the fallback at its
+// own decision point, where the resource row it is judging already carries
+// catalog_id (#817). Nothing has to reach bkn-safe, and with no declaration the
+// climb never fires — so this asserts the ABSENCE, which is the thing a future
+// edit could silently undo.
+func TestSeedDeclaresNoHierarchyForResources(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -29,47 +31,22 @@ func TestSeedDeclaresResourceUnderCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var rt model.ResourceType
-	if err := db.First(&rt, "id = ?", "resource").Error; err != nil {
-		t.Fatalf("load resource type: %v", err)
+	var types []model.ResourceType
+	if err := db.Where("parent_type_id <> ''").Find(&types).Error; err != nil {
+		t.Fatalf("load resource types: %v", err)
 	}
-	if rt.ParentTypeID != "catalog" {
-		t.Errorf("resource.parent_type = %q, want catalog", rt.ParentTypeID)
-	}
-
-	var catalogType model.ResourceType
-	if err := db.First(&catalogType, "id = ?", "catalog").Error; err != nil {
-		t.Fatalf("load catalog type: %v", err)
-	}
-	if catalogType.ParentTypeID != "" {
-		t.Errorf("catalog.parent_type = %q, want empty (catalog is a root)", catalogType.ParentTypeID)
+	for _, rt := range types {
+		t.Errorf("resource type %q declares parent %q — the shipped catalog declares no hierarchy, "+
+			"and adding one turns the climb back on for every decision on that type", rt.ID, rt.ParentTypeID)
 	}
 
-	want := map[string]string{
-		"view_detail": "view_detail",
-		"query_data":  "query_data",
-		"modify":      "resource_manage",
-		"delete":      "resource_manage",
-		"task_manage": "task_manage",
-		"authorize":   "", // no second-hand granting through the parent
-		// create is judged against the wildcard object resource:* (the table does
-		// not exist yet), and a wildcard id can never have an ownership row, so an
-		// inheritance mapping here would be one that can never fire. Creating a
-		// table is judged at the call site against catalog/resource_manage instead.
-		"create": "",
-	}
 	var ops []model.Operation
-	if err := db.Where("resource_type_id = ?", "resource").Find(&ops).Error; err != nil {
-		t.Fatalf("load resource operations: %v", err)
+	if err := db.Where("parent_operation_id <> ''").Find(&ops).Error; err != nil {
+		t.Fatalf("load operations: %v", err)
 	}
-	got := make(map[string]string, len(ops))
 	for _, op := range ops {
-		got[op.ID] = op.ParentOperationID
-	}
-	for op, parentOp := range want {
-		if got[op] != parentOp {
-			t.Errorf("resource/%s inherits from catalog/%q, want %q", op, got[op], parentOp)
-		}
+		t.Errorf("operation %s/%s maps to %q on a parent, but no type declares a parent",
+			op.ResourceTypeID, op.ID, op.ParentOperationID)
 	}
 }
 
