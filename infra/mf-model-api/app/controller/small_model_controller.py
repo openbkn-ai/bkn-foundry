@@ -538,6 +538,7 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
                                      expire=_model_cache_ttl(is_default))
 
         model_info = model_info[0]
+        model_name = model_info["f_model_name"]
         config_info = json.loads(model_info["f_model_config"])
         adapter = model_info["f_adapter"]
         model_id = model_info["f_model_id"]
