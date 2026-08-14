@@ -21,10 +21,33 @@ import (
 )
 
 func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
+	normalizeSchemaFeatures(req.SchemaDefinition)
+
 	if err := validateResourceRequestBase(ctx, req); err != nil {
 		return err
 	}
 	return validateResourceRequestSchema(ctx, req)
+}
+
+// normalizeSchemaFeatures 归一化字段特征里的自引用 ref_property。
+//
+// ref_property 的语义是「特征挂在 A 属性上、但作用于 B 字段」，指向字段自身是一个
+// 无意义的冗余写法：能力派生本来就在 ref_property 为空时落回属性自身（见 bkn-backend
+// 的 VegaResourceIndexCaps），两种写法结果完全相同。
+//
+// 但历史上平台自己写入的存量资源正是这个形状，因此这里必须就地抹平而不是报错——
+// 一旦报错，存量资源的任何读改写（vega dataset build 就是）都会失败，索引再也重建不了。
+func normalizeSchemaFeatures(props []*interfaces.Property) {
+	for _, prop := range props {
+		if prop == nil {
+			continue
+		}
+		for i := range prop.Features {
+			if prop.Features[i].RefProperty == prop.Name {
+				prop.Features[i].RefProperty = ""
+			}
+		}
+	}
 }
 
 func validateResourceRequestBase(ctx context.Context, req *interfaces.ResourceRequest) error {
@@ -166,11 +189,6 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
 					WithErrorDetails("ref_property is only supported by original resources")
 			}
-			if f.RefProperty == prop.Name {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
-					WithErrorDetails(fmt.Sprintf("The field feature ref_property '%s' cannot reference itself", f.RefProperty))
-			}
-
 			refProp, exists := propsMap[f.RefProperty]
 			if !exists {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldFeatureRef).
