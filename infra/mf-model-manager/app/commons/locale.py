@@ -104,6 +104,8 @@ def _localize_detail(message: Dict[str, Any], detail: Any) -> Any:
     template = message.get("detail_template")
     parameter_names = _parameter_names_from_detail(detail)
     if template and parameter_names:
+        if _contains_multiple_parameter_names(parameter_names):
+            template = message.get("detail_template_plural", template)
         return template.format(parameters=parameter_names)
     return message.get("detail") or detail
 
@@ -117,10 +119,14 @@ def _parameter_names_from_detail(detail: Any) -> str:
     if separator and parameter_names.strip():
         return parameter_names.strip()
 
-    for suffix in (" 参数缺失", " 参数类型错误"):
+    for suffix in ("参数缺失", "参数类型错误"):
         if value.endswith(suffix):
-            return value[:-len(suffix)].strip()
+            return value[:-len(suffix)].strip(" :：")
     return ""
+
+
+def _contains_multiple_parameter_names(parameter_names: str) -> bool:
+    return len([name for name in parameter_names.split(",") if name.strip()]) > 1
 
 
 def _contains_chinese(value: Any) -> bool:

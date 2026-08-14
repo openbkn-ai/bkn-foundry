@@ -19,6 +19,7 @@ async def get_error_message(code: str, lang: str) -> dict:
     message = lookup_error_message(code, lang)
     if message:
         message.pop("detail_template", None)
+        message.pop("detail_template_plural", None)
         return message
     return {
         "code": code,

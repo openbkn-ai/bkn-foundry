@@ -61,6 +61,20 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         self.assertEqual(localized["description"], "Required parameter is missing.")
         self.assertEqual(localized["detail"], "Missing required parameter: max_model_len")
 
+    def test_uses_plural_template_for_multiple_missing_parameters(self):
+        localized, _ = localized_error_content(
+            {
+                "code": ParamValidationErrors.ParamMissing,
+                "description": "参数缺失",
+                "detail": "missing parameters: max_model_len, model_name",
+                "solution": "请检查参数",
+                "link": "",
+            },
+            "en-US",
+        )
+
+        self.assertEqual(localized["detail"], "Missing required parameters: max_model_len, model_name")
+
     def test_localizes_fastapi_missing_parameter_detail(self):
         content = {
             "code": "ModelFactory.Router.ParamError.ParamMissing",
@@ -77,6 +91,22 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         self.assertEqual(english["description"], "Required parameter is missing.")
         self.assertEqual(english["detail"], "Missing required parameter: page")
         self.assertEqual(chinese["detail"], "缺少必填参数：page")
+
+    def test_localizes_fastapi_missing_body_without_chinese_detail(self):
+        content = {
+            "code": "ModelFactory.Router.ParamError.ParamMissing",
+            "description": "参数缺失",
+            "detail": "参数缺失",
+            "solution": "请检查填写的参数是否正确。",
+            "link": "",
+        }
+
+        english, is_localized = localized_error_content(content, "en-US")
+        chinese, _ = localized_error_content(content, "zh-CN")
+
+        self.assertTrue(is_localized)
+        self.assertEqual(english["detail"], "A required request parameter is missing.")
+        self.assertEqual(chinese["detail"], "缺少必填参数。")
 
     def test_localizes_dynamic_parameter_type_detail_in_chinese(self):
         localized, is_localized = localized_error_content(
@@ -97,7 +127,8 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         message = asyncio.run(get_error_message(ParamValidationErrors.ParamMissing, "zh-CN"))
 
         self.assertNotIn("detail_template", message)
-        self.assertEqual(message["detail"], "")
+        self.assertNotIn("detail_template_plural", message)
+        self.assertEqual(message["detail"], "缺少必填参数。")
 
     def test_uses_request_scoped_locale_instead_of_the_raw_header(self):
         class State:

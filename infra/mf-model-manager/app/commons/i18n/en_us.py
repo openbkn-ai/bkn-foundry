@@ -5,8 +5,9 @@ error_messages = {
     ParamValidationErrors.ParamMissing: {
         "code": ParamValidationErrors.ParamMissing,
         "description": "Required parameter is missing.",
-        "detail": "",
+        "detail": "A required request parameter is missing.",
         "detail_template": "Missing required parameter: {parameters}",
+        "detail_template_plural": "Missing required parameters: {parameters}",
         "solution": "Please read the API documentation and pass the correct parameters",
         "link": ""
     },
@@ -22,8 +23,9 @@ error_messages = {
     "ModelFactory.Router.ParamError.ParamMissing": {
         "code": "ModelFactory.Router.ParamError.ParamMissing",
         "description": "Required parameter is missing.",
-        "detail": "",
+        "detail": "A required request parameter is missing.",
         "detail_template": "Missing required parameter: {parameters}",
+        "detail_template_plural": "Missing required parameters: {parameters}",
         "solution": "Please read the API documentation and pass the correct parameters",
         "link": ""
     },
