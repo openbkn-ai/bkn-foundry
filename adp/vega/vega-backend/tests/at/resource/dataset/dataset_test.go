@@ -446,7 +446,7 @@ func TestDatasetResourceCreateAndQuery(t *testing.T) {
 				"source_identifier": "at_db",
 				"schema_definition": []map[string]any{
 					{"name": "id", "type": "integer", "display_name": "整数ID", "original_name": "id", "description": "整数类型"},
-					{"name": "uid", "type": "unsigned_integer", "display_name": "无符号整数", "original_name": "uid", "description": "无符号整数类型"},
+					{"name": "uid", "type": "unsigned integer", "display_name": "无符号整数", "original_name": "uid", "description": "无符号整数类型"},
 					{"name": "score", "type": "float", "display_name": "浮点数", "original_name": "score", "description": "浮点数类型"},
 					{"name": "price", "type": "decimal", "display_name": "小数", "original_name": "price", "description": "小数类型"},
 					{"name": "name", "type": "string", "display_name": "字符串", "original_name": "name", "description": "字符串类型"},
