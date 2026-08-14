@@ -59,7 +59,24 @@ class TestAcceptLanguageResolver(unittest.TestCase):
 
         self.assertTrue(is_localized)
         self.assertEqual(localized["description"], "Required parameter is missing.")
-        self.assertEqual(localized["detail"], "Missing required parameters: max_model_len")
+        self.assertEqual(localized["detail"], "Missing required parameter: max_model_len")
+
+    def test_localizes_fastapi_missing_parameter_detail(self):
+        content = {
+            "code": "ModelFactory.Router.ParamError.ParamMissing",
+            "description": "参数缺失",
+            "detail": "page 参数缺失",
+            "solution": "请检查填写的参数是否正确。",
+            "link": "",
+        }
+
+        english, is_localized = localized_error_content(content, "en-US")
+        chinese, _ = localized_error_content(content, "zh-CN")
+
+        self.assertTrue(is_localized)
+        self.assertEqual(english["description"], "Required parameter is missing.")
+        self.assertEqual(english["detail"], "Missing required parameter: page")
+        self.assertEqual(chinese["detail"], "缺少必填参数：page")
 
     def test_localizes_dynamic_parameter_type_detail_in_chinese(self):
         localized, is_localized = localized_error_content(

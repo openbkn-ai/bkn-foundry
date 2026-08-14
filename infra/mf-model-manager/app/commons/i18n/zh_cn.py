@@ -19,6 +19,14 @@ error_messages = {
         "link": ""
 
     },
+    "ModelFactory.Router.ParamError.ParamMissing": {
+        "code": "ModelFactory.Router.ParamError.ParamMissing",
+        "description": "参数缺失",
+        "detail": "",
+        "detail_template": "缺少必填参数：{parameters}",
+        "solution": "请阅读API文档填写正确的参数",
+        "link": ""
+    },
     "ModelFactory.OperationAudit.AccessDenied": {
         "code": "ModelFactory.OperationAudit.AccessDenied",
         "description": "访问被拒绝。",

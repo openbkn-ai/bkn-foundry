@@ -102,11 +102,25 @@ def is_authenticated_public_api_path(path: str) -> bool:
 
 def _localize_detail(message: Dict[str, Any], detail: Any) -> Any:
     template = message.get("detail_template")
-    if template and isinstance(detail, str):
-        _, separator, parameter_names = detail.partition(":")
-        if separator and parameter_names.strip():
-            return template.format(parameters=parameter_names.strip())
+    parameter_names = _parameter_names_from_detail(detail)
+    if template and parameter_names:
+        return template.format(parameters=parameter_names)
     return message.get("detail") or detail
+
+
+def _parameter_names_from_detail(detail: Any) -> str:
+    if not isinstance(detail, str):
+        return ""
+
+    value = detail.strip()
+    _, separator, parameter_names = value.partition(":")
+    if separator and parameter_names.strip():
+        return parameter_names.strip()
+
+    for suffix in (" 参数缺失", " 参数类型错误"):
+        if value.endswith(suffix):
+            return value[:-len(suffix)].strip()
+    return ""
 
 
 def _contains_chinese(value: Any) -> bool:

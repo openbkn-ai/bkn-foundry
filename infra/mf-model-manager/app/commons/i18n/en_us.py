@@ -6,7 +6,7 @@ error_messages = {
         "code": ParamValidationErrors.ParamMissing,
         "description": "Required parameter is missing.",
         "detail": "",
-        "detail_template": "Missing required parameters: {parameters}",
+        "detail_template": "Missing required parameter: {parameters}",
         "solution": "Please read the API documentation and pass the correct parameters",
         "link": ""
     },
@@ -18,6 +18,14 @@ error_messages = {
         "detail_template": "Parameter type error: {parameters}",
         "link": ""
 
+    },
+    "ModelFactory.Router.ParamError.ParamMissing": {
+        "code": "ModelFactory.Router.ParamError.ParamMissing",
+        "description": "Required parameter is missing.",
+        "detail": "",
+        "detail_template": "Missing required parameter: {parameters}",
+        "solution": "Please read the API documentation and pass the correct parameters",
+        "link": ""
     },
     "ModelFactory.OperationAudit.AccessDenied": {
         "code": "ModelFactory.OperationAudit.AccessDenied",
