@@ -54,6 +54,7 @@ type AccessCapabilities struct {
 	LogSensitiveFields                bool
 	LogExport                         bool
 	LogPolicyRead                     bool
+	ObservabilityArchiveManage        bool
 }
 
 func CapabilitiesFor(profile evidencevo.AccessProfile) AccessCapabilities {
@@ -99,6 +100,7 @@ func CapabilitiesFor(profile evidencevo.AccessProfile) AccessCapabilities {
 		LogSensitiveFields:                controlledLogAccess,
 		LogExport:                         globalLogSearch,
 		LogPolicyRead:                     controlledLogAccess,
+		ObservabilityArchiveManage:        hasRole("admin", "audit", "super_admin"),
 	}
 }
 

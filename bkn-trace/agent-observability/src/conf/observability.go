@@ -16,6 +16,9 @@ type ObservabilityConfig struct {
 	SourceCoverageSourceID        string
 	SourceCoverageDeploymentID    string
 	SourceCoverageInterval        time.Duration
+	ArchiveObjectStoreURL         string
+	ArchiveObjectStorageID        string
+	ArchiveObjectPrefix           string
 }
 
 func NewObservabilityConfig() ObservabilityConfig {
@@ -54,5 +57,8 @@ func NewObservabilityConfig() ObservabilityConfig {
 		SourceCoverageSourceID:        strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_SOURCE_ID")),
 		SourceCoverageDeploymentID:    strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_DEPLOYMENT_ID")),
 		SourceCoverageInterval:        coverageInterval,
+		ArchiveObjectStoreURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_ARCHIVE_OSS_GATEWAY_URL")), "/"),
+		ArchiveObjectStorageID:        strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_ARCHIVE_STORAGE_ID")),
+		ArchiveObjectPrefix:           strings.Trim(strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_ARCHIVE_PREFIX")), "/"),
 	}
 }

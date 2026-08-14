@@ -13,6 +13,7 @@ import (
 
 	docs "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/docs/swagger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
@@ -23,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sourcecoveragesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/archivestore"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknbackendaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
@@ -37,6 +39,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchlogaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchtraceaccess"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/ossgatewayarchive"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/otelcolmetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/vegaaudit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
@@ -172,6 +175,25 @@ func NewApp() (*App, error) {
 		},
 		Metrics: metrics,
 	})
+	archiveStore := archivesvc.NewMemoryStore()
+	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok {
+		archiveStore = archivestore.New(databaseStore.Database())
+	}
+	archiveObjectStore := ossgatewayarchive.New(ossgatewayarchive.Config{
+		BaseURL: observabilityConfig.ArchiveObjectStoreURL, StorageID: observabilityConfig.ArchiveObjectStorageID,
+		Prefix: observabilityConfig.ArchiveObjectPrefix,
+	})
+	archiveSource := archivesvc.Router{}
+	if databaseStore, ok := sessionStore.(*mariadbsessionstore.Store); ok {
+		archiveSource.Trace = archivesvc.TraceBundleSource{
+			Core:      mariadbsessionstore.NewTraceArchiveSource(databaseStore),
+			Technical: opensearchtraceaccess.NewArchiveStore(openSearchClient, openSearchConfig.TraceIndex),
+		}
+	}
+	if coreConfig.ProjectionEnabled {
+		archiveSource.Log = opensearchconversationaudit.NewArchiveSource(openSearchClient, coreConfig.ProjectionIndex)
+	}
+	archiveHandler := httphandler.NewArchiveHandler(archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{}), evidenceHandler)
 	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
 		traceQueryService, evidenceService, sessionService,
 	)
@@ -182,8 +204,8 @@ func NewApp() (*App, error) {
 	ledgerHandler := httphandler.NewConfiguredLedgerHandler(ledgersvc.NewWithMetrics(ledgerStore, metrics))
 
 	enterpriseReader := httphandler.NewEnterpriseInteractionFactsReader(evidenceService, sessionService)
-	app := newApp(
-		httpServerConfig, traceHandler, evidenceHandler, logHandler,
+	app := newAppWithArchive(
+		httpServerConfig, traceHandler, evidenceHandler, logHandler, archiveHandler,
 		sessionHandler, ledgerHandler, metrics, enterpriseReader,
 	)
 	app.closeDatabase = closeDatabase
@@ -390,11 +412,27 @@ func runProjectionSupervisor(
 	runWorker(ctx)
 }
 
+// newApp preserves the community route test seam. Archive routes are mounted
+// only by the fully assembled production application below.
 func newApp(
 	httpServerConfig conf.HTTPServerConfig,
 	traceHandler *httphandler.TraceHandler,
 	evidenceHandler *httphandler.EvidenceHandler,
 	logHandler *httphandler.LogHandler,
+	sessionHandler *httphandler.SessionHandler,
+	ledgerHandler *httphandler.LedgerHandler,
+	metrics http.Handler,
+	enterpriseReaders ...enterpriseroute.Reader,
+) *App {
+	return newAppWithArchive(httpServerConfig, traceHandler, evidenceHandler, logHandler, nil, sessionHandler, ledgerHandler, metrics, enterpriseReaders...)
+}
+
+func newAppWithArchive(
+	httpServerConfig conf.HTTPServerConfig,
+	traceHandler *httphandler.TraceHandler,
+	evidenceHandler *httphandler.EvidenceHandler,
+	logHandler *httphandler.LogHandler,
+	archiveHandler *httphandler.ArchiveHandler,
 	sessionHandler *httphandler.SessionHandler,
 	ledgerHandler *httphandler.LedgerHandler,
 	metrics http.Handler,
@@ -442,6 +480,13 @@ func newApp(
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-policies", readAuth(logHandler.ListLogPolicies))
+	if archiveHandler != nil {
+		mux.HandleFunc(ObservabilityAPIBasePath+"/log-archive-overview", readAuth(archiveHandler.Overview(observabilityvo.ArchiveKindLog)))
+		mux.HandleFunc(ObservabilityAPIBasePath+"/trace-archive-overview", readAuth(archiveHandler.Overview(observabilityvo.ArchiveKindTrace)))
+		mux.HandleFunc(ObservabilityAPIBasePath+"/log-archive-jobs", readAuth(archiveHandler.ListOrCreate(observabilityvo.ArchiveKindLog)))
+		mux.HandleFunc(ObservabilityAPIBasePath+"/trace-archive-jobs", readAuth(archiveHandler.ListOrCreate(observabilityvo.ArchiveKindTrace)))
+		mux.HandleFunc(ObservabilityAPIBasePath+"/archive-jobs/", readAuth(archiveHandler.GetOrRetry))
+	}
 	var enterpriseReader enterpriseroute.Reader
 	if len(enterpriseReaders) > 0 {
 		enterpriseReader = enterpriseReaders[0]

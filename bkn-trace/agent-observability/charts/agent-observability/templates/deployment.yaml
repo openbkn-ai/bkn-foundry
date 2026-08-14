@@ -145,6 +145,14 @@ spec:
               value: {{ .Values.observability.sourceTimeout | quote }}
             - name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
               value: {{ .Values.observability.maxConcurrentSources | quote }}
+            {{- if and .Values.observability.archive.ossGatewayURL .Values.observability.archive.storageID }}
+            - name: BKN_OBSERVABILITY_ARCHIVE_OSS_GATEWAY_URL
+              value: {{ .Values.observability.archive.ossGatewayURL | quote }}
+            - name: BKN_OBSERVABILITY_ARCHIVE_STORAGE_ID
+              value: {{ .Values.observability.archive.storageID | quote }}
+            - name: BKN_OBSERVABILITY_ARCHIVE_PREFIX
+              value: {{ .Values.observability.archive.prefix | quote }}
+            {{- end }}
             {{- if .Values.observability.sourceCoverage.enabled }}
             - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT
               value: {{ required "observability.sourceCoverage.metricsEndpoint is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.metricsEndpoint | quote }}

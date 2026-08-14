@@ -27,6 +27,10 @@ func New(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// Database is intentionally exposed only to adjacent Trace Core adapters that
+// share the same migration boundary (for example manual archive jobs).
+func (s *Store) Database() *sql.DB { return s.db }
+
 func (s *Store) Migrate(ctx context.Context) error {
 	for _, statement := range strings.Split(SchemaSQL(), ";") {
 		statement = strings.TrimSpace(statement)

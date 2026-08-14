@@ -92,6 +92,12 @@ observability:
     secretKey: key
   sourceTimeout: 3s
   maxConcurrentSources: 4
+  archive:
+    # Object storage is configured only by the deployment owner. Studio never
+    # receives storage credentials or an arbitrary archive target.
+    ossGatewayURL: ""
+    storageID: ""
+    prefix: observability-archive
   sourceCoverage:
     # Optional independent health probe. It is disabled unless the installation
     # uses the persistent MariaDB Core store and provides a cluster-internal
