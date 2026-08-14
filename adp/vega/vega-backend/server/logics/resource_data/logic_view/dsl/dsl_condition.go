@@ -447,9 +447,9 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionLike(ctx context.Context, 
 		return nil, err
 	}
 
-	vStr := c.replaceLikeWildcards(cond.Value)
+	vStr := c.likeContainsPattern(cond.Value)
 	return map[string]any{
-		"regexp": map[string]any{
+		"wildcard": map[string]any{
 			fieldName + keyword: vStr,
 		},
 	}, nil
@@ -473,11 +473,11 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionNotLike(ctx context.Contex
 		return nil, err
 	}
 
-	vStr := c.replaceLikeWildcards(cond.Value)
+	vStr := c.likeContainsPattern(cond.Value)
 	return map[string]any{
 		"bool": map[string]any{
 			"must_not": map[string]any{
-				"regexp": map[string]any{
+				"wildcard": map[string]any{
 					fieldName + keyword: vStr,
 				},
 			},
@@ -1082,54 +1082,19 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionKnnVector(ctx context.Cont
 	}, nil
 }
 
-// replaceLikeWildcards, replace the wildcard of like with the character in the regular expression
-func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
-	if input == "" {
-		return input
-	}
-
-	var result strings.Builder
-	escaped := false
-	runes := []rune(input)
-
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-
-		if escaped {
-			// The character after the escape character
-			switch r {
-			case '%', '_', '\\':
-				result.WriteRune(r)
-			default:
-				// If non-special characters are escaped, retain the escape character and the characters
-				result.WriteRune('\\')
-				result.WriteRune(r)
-			}
-			escaped = false
-		} else if r == '\\' {
-			// When encountering an escape character, check if it is the last character
-			if i == len(runes)-1 {
-				// The escape character is at the end and is output directly
-				result.WriteRune(r)
-			} else {
-				// Mark the escape status but do not immediately output the escape character
-				escaped = true
-			}
-		} else if r == '%' {
-			result.WriteString(".*")
-		} else if r == '_' {
-			result.WriteString(".")
-		} else {
-			result.WriteRune(r)
+// likeContainsPattern 把 like / not_like 的字面子串转成 OpenSearch 的 wildcard 模式。
+//
+// like 的契约是子串包含，值里的 % 与 _ 已在 filter_condition.ParseLikeValue 拦下，
+// 到这里的都是要原样匹配的字面量，因此只需转义 wildcard 自己的元字符 * ? \ 后两端补 *。
+func (c *logicViewDSLGenerator) likeContainsPattern(input string) string {
+	var escaped strings.Builder
+	for _, r := range input {
+		if r == '*' || r == '?' || r == '\\' {
+			escaped.WriteRune('\\')
 		}
+		escaped.WriteRune(r)
 	}
-
-	// Handle cases ending with an escape character
-	if escaped {
-		result.WriteRune('\\')
-	}
-
-	return result.String()
+	return "*" + escaped.String() + "*"
 }
 
 // in some query scenarios (such as eq/in), the getKeywordSuffix text type needs to use a subfield of the keyword type to return the keyword suffix; otherwise, it returns an empty string

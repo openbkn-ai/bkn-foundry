@@ -9,6 +9,7 @@ package filter_condition
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"vega-backend/interfaces"
 )
@@ -51,10 +52,53 @@ func (c *LikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
 	}
+	literal, err := ParseLikeValue(OperationLike, val)
+	if err != nil {
+		return nil, err
+	}
 
 	return &LikeCond{
 		Cfg:    cfg,
 		Lfield: field,
-		Value:  val,
+		Value:  literal,
 	}, nil
+}
+
+// ParseLikeValue 校验并解析 like / not_like 的值，返回要匹配的字面子串。
+//
+// like 的契约是「子串包含」，不是 SQL LIKE 模式：% 和 _ 不作通配符解释。各后端此前
+// 对通配符的处理并不一致——SQL 连接器把 % 转义成字面量再两端补 %，OpenSearch 却把 %
+// 翻译成 .*——同一条 like 在明细库与索引上给出不同结果，而失败形式是静默返回空集，
+// 调用方看不出算子本身没生效。
+//
+// 因此这里显式拒绝未转义的 % 与 _：需要模式匹配用 regex，需要匹配字面量则写 \% \_。
+func ParseLikeValue(operation, value string) (string, error) {
+	var literal strings.Builder
+	escaped := false
+
+	for _, r := range value {
+		switch {
+		case escaped:
+			// 只有 % _ \ 有转义意义，其余保留反斜杠本身
+			if r != '%' && r != '_' && r != '\\' {
+				literal.WriteRune('\\')
+			}
+			literal.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == '%' || r == '_':
+			return "", fmt.Errorf(
+				"condition [%s] value is matched as a literal substring, so the wildcard '%s' is not supported; "+
+					"use operation [regex] for pattern matching, or escape it as '\\%s' to match the character itself",
+				operation, string(r), string(r))
+		default:
+			literal.WriteRune(r)
+		}
+	}
+	if escaped {
+		literal.WriteRune('\\')
+	}
+
+	return literal.String(), nil
 }

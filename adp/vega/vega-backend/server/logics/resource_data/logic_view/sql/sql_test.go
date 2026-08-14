@@ -360,7 +360,7 @@ func TestLogicViewSQLConvertFilterCondition(t *testing.T) {
 			Operation: filter_condition.OperationLike,
 			ValueOptCfg: interfaces.ValueOptCfg{
 				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     "a_%'b",
+				Value:     `a\_\%'b`,
 			},
 		}, fields)
 
@@ -386,7 +386,7 @@ func TestLogicViewSQLConvertFilterCondition(t *testing.T) {
 		{name: "gte field", cfg: sqlConditionCfg("age", filter_condition.OperationGte, interfaces.ValueFrom_Field, "score"), wantSQL: "`age` >= `score`"},
 		{name: "in const slice", cfg: sqlConditionCfg("name", filter_condition.OperationIn, interfaces.ValueFrom_Const, []any{"alice", "bob"}), wantSQL: "`name` IN (?,?)", wantArg: []any{"alice", "bob"}},
 		{name: "not in const slice", cfg: sqlConditionCfg("name", filter_condition.OperationNotIn, interfaces.ValueFrom_Const, []any{"alice", "bob"}), wantSQL: "`name` NOT IN (?,?)", wantArg: []any{"alice", "bob"}},
-		{name: "not like escapes special chars", cfg: sqlConditionCfg("name", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, "a_%"), wantSQL: "`name` NOT LIKE ?", wantArg: []any{`%a\_\%%`}},
+		{name: "not like escapes special chars", cfg: sqlConditionCfg("name", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, `a\_\%`), wantSQL: "`name` NOT LIKE ?", wantArg: []any{`%a\_\%%`}},
 		{name: "contain values", cfg: sqlConditionCfg("tags", filter_condition.OperationContain, interfaces.ValueFrom_Const, []any{"core", "pii"}), wantSQL: "(FIND_IN_SET(?, `tags`) > 0 AND FIND_IN_SET(?, `tags`) > 0)", wantArg: []any{"core", "pii"}},
 		{name: "not contain values", cfg: sqlConditionCfg("tags", filter_condition.OperationNotContain, interfaces.ValueFrom_Const, []any{"core", "pii"}), wantSQL: "(FIND_IN_SET(?, `tags`) = 0 OR FIND_IN_SET(?, `tags`) = 0)", wantArg: []any{"core", "pii"}},
 		{name: "range values", cfg: sqlConditionCfg("age", filter_condition.OperationRange, interfaces.ValueFrom_Const, []any{18, 30}), wantSQL: "(`age` >= ? AND `age` <= ?)", wantArg: []any{18, 30}},

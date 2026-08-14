@@ -261,8 +261,10 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, mergedFilterCond, fieldMap)
 	if err != nil {
+		// 过滤条件是调用方传进来的：字段不存在、值类型不对、算子用法不合法都属于请求错误，
+		// 报 500 会把「你传错了」说成「服务坏了」，调用方只能去猜。
 		otellog.LogError(ctx, "Create filter condition failed", err)
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 	params.ActualFilterCond = actualFilterCond
