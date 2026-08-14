@@ -81,9 +81,14 @@ def localized_error_content(
             elif field in message:
                 localized[field] = message[field]
     elif locale == ENGLISH_LOCALE:
-        localized["description"] = "Request failed."
-        localized["detail"] = "The request could not be completed."
-        localized["solution"] = "See the request details or contact an administrator."
+        fallback_messages = {
+            "description": "Request failed.",
+            "detail": "The request could not be completed.",
+            "solution": "See the request details or contact an administrator.",
+        }
+        for field, fallback in fallback_messages.items():
+            if not localized.get(field) or _contains_chinese(localized[field]):
+                localized[field] = fallback
     return localized, True
 
 
@@ -102,6 +107,10 @@ def _localize_detail(message: Dict[str, Any], detail: Any) -> Any:
         if separator and parameter_names.strip():
             return template.format(parameters=parameter_names.strip())
     return message.get("detail") or detail
+
+
+def _contains_chinese(value: Any) -> bool:
+    return isinstance(value, str) and any("\u4e00" <= char <= "\u9fff" for char in value)
 
 
 def _localized_http_error_content(status_code: int, locale: str) -> Dict[str, Any]:
@@ -159,6 +168,10 @@ class LocaleResponseMiddleware:
             nonlocal response_start
             if message["type"] == "http.response.start":
                 response_start = message
+                if not _is_json_response(message):
+                    self._apply_cache_policy(response_start, scope["path"])
+                    await send(response_start)
+                    response_start = None
                 return
             if message["type"] != "http.response.body" or response_start is None:
                 await send(message)
@@ -228,6 +241,10 @@ def _get_header(headers: list[Tuple[bytes, bytes]], name: str) -> str:
         if key.lower() == wanted:
             return value.decode("latin-1")
     return ""
+
+
+def _is_json_response(response_start: Dict[str, Any]) -> bool:
+    return "application/json" in _get_header(response_start["headers"], "content-type").lower()
 
 
 def _set_header(headers: list[Tuple[bytes, bytes]], name: str, value: str) -> None:

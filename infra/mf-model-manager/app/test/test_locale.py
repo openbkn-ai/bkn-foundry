@@ -14,7 +14,7 @@ from app.commons.locale import (
     resolve_accept_language,
     set_effective_locale,
 )
-from app.commons.i18n import lookup_error_message
+from app.commons.i18n import get_error_message, lookup_error_message
 from app.commons.errors.codes import ParamValidationErrors
 from app.utils.common import get_user_info
 
@@ -76,6 +76,12 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         self.assertTrue(is_localized)
         self.assertEqual(localized["detail"], "参数类型错误：model_names")
 
+    def test_controller_error_message_hides_internal_detail_template(self):
+        message = asyncio.run(get_error_message(ParamValidationErrors.ParamMissing, "zh-CN"))
+
+        self.assertNotIn("detail_template", message)
+        self.assertEqual(message["detail"], "")
+
     def test_uses_request_scoped_locale_instead_of_the_raw_header(self):
         class State:
             effective_locale = "en-US"
@@ -136,9 +142,27 @@ class TestLocaleResponseMiddleware(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers[b"content-language"], b"en-US")
         self.assertEqual(headers[b"cache-control"], b"private, no-cache")
         self.assertEqual(payload["code"], "Unauthorized")
-        self.assertEqual(payload["description"], "Request failed.")
+        self.assertEqual(payload["description"], "token invalid")
         self.assertEqual(payload["detail"], "The request could not be completed.")
+        self.assertEqual(payload["solution"], "check token")
         self.assertNotIn("无效", json.dumps(payload, ensure_ascii=False))
+
+    async def test_preserves_existing_english_message_for_unknown_error_code(self):
+        localized, is_localized = localized_error_content(
+            {
+                "code": "ModelFactory.ConnectController.LLMAdd.NameRepeat",
+                "description": "Name already exists, please modify",
+                "detail": "Name already exists, please modify",
+                "solution": "Please check the input information",
+                "link": "",
+            },
+            "en-US",
+        )
+
+        self.assertTrue(is_localized)
+        self.assertEqual(localized["description"], "Name already exists, please modify")
+        self.assertEqual(localized["detail"], "Name already exists, please modify")
+        self.assertEqual(localized["solution"], "Please check the input information")
 
     async def test_does_not_apply_business_cache_policy_to_health(self):
         async def app(scope, receive, send):
@@ -279,6 +303,35 @@ class TestLocaleResponseMiddleware(unittest.IsolatedAsyncioTestCase):
 
         headers = dict(messages[0]["headers"])
         self.assertEqual(headers[b"cache-control"], b"no-store, no-transform, private")
+
+    async def test_forwards_sse_response_start_before_the_first_event(self):
+        messages = []
+
+        async def app(scope, receive, send):
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/event-stream; charset=utf-8")],
+            })
+            self.assertEqual(len(messages), 1)
+            self.assertEqual(dict(messages[0]["headers"])[b"cache-control"], b"private, no-cache")
+            await send({"type": "http.response.body", "body": b"data: first\\n\\n", "more_body": True})
+
+        async def collect(message):
+            messages.append(message)
+
+        await LocaleResponseMiddleware(app)(
+            {
+                "type": "http",
+                "path": "/api/mf-model-manager/v1/llm/chat",
+                "headers": [(b"accept-language", b"en-US")],
+            },
+            None,
+            collect,
+        )
+
+        self.assertEqual(messages[0]["type"], "http.response.start")
+        self.assertEqual(messages[1]["body"], b"data: first\\n\\n")
 
 
 if __name__ == "__main__":

@@ -16,7 +16,11 @@ def lookup_error_message(code: str, locale: str) -> Optional[dict]:
 
 async def get_error_message(code: str, lang: str) -> dict:
     """Compatibility wrapper for existing async controller call sites."""
-    return lookup_error_message(code, lang) or {
+    message = lookup_error_message(code, lang)
+    if message:
+        message.pop("detail_template", None)
+        return message
+    return {
         "code": code,
         "description": "Request failed." if lang == ENGLISH_LOCALE else "请求失败。",
         "detail": "",
