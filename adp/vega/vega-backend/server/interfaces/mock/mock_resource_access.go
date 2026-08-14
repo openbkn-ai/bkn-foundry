@@ -262,30 +262,30 @@ func (mr *MockResourceAccessMockRecorder) UpdateDiscoverStatus(ctx, id, status a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDiscoverStatus", reflect.TypeOf((*MockResourceAccess)(nil).UpdateDiscoverStatus), ctx, id, status)
 }
 
-// UpdateStatus mocks base method.
-func (m *MockResourceAccess) UpdateStatus(ctx context.Context, id, status, statusMessage string) error {
+// UpdateLocalIndexName mocks base method.
+func (m *MockResourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatus", ctx, id, status, statusMessage)
+	ret := m.ctrl.Call(m, "UpdateLocalIndexName", ctx, tx, id, localIndexName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLocalIndexName indicates an expected call of UpdateLocalIndexName.
+func (mr *MockResourceAccessMockRecorder) UpdateLocalIndexName(ctx, tx, id, localIndexName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLocalIndexName", reflect.TypeOf((*MockResourceAccess)(nil).UpdateLocalIndexName), ctx, tx, id, localIndexName)
+}
+
+// UpdateStatus mocks base method.
+func (m *MockResourceAccess) UpdateStatus(ctx context.Context, tx *sql.Tx, id, status, statusMessage string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStatus", ctx, tx, id, status, statusMessage)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateStatus indicates an expected call of UpdateStatus.
-func (mr *MockResourceAccessMockRecorder) UpdateStatus(ctx, id, status, statusMessage any) *gomock.Call {
+func (mr *MockResourceAccessMockRecorder) UpdateStatus(ctx, tx, id, status, statusMessage any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockResourceAccess)(nil).UpdateStatus), ctx, id, status, statusMessage)
-}
-
-// UpdateStatusWithTx mocks base method.
-func (m *MockResourceAccess) UpdateStatusWithTx(ctx context.Context, tx *sql.Tx, id, status, statusMessage string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatusWithTx", ctx, tx, id, status, statusMessage)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateStatusWithTx indicates an expected call of UpdateStatusWithTx.
-func (mr *MockResourceAccessMockRecorder) UpdateStatusWithTx(ctx, tx, id, status, statusMessage any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatusWithTx", reflect.TypeOf((*MockResourceAccess)(nil).UpdateStatusWithTx), ctx, tx, id, status, statusMessage)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockResourceAccess)(nil).UpdateStatus), ctx, tx, id, status, statusMessage)
 }

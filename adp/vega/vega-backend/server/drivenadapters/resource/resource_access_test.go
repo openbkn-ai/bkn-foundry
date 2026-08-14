@@ -352,6 +352,37 @@ func TestResourceAccessUpdate(t *testing.T) {
 	})
 }
 
+func TestResourceAccessUpdateLocalIndexName(t *testing.T) {
+	t.Run("updates only local index name", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_local_index_name = ? WHERE f_id = ?")).
+			WithArgs("vega-build-resource-1-task-1", "resource-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.UpdateLocalIndexName(context.Background(), nil, "resource-1", "vega-build-resource-1-task-1"))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("updates local index name in transaction", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_local_index_name = ? WHERE f_id = ?")).
+			WithArgs("vega-build-resource-1-task-1", "resource-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.UpdateLocalIndexName(context.Background(), tx, "resource-1", "vega-build-resource-1-task-1"))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestResourceAccessAttachListExtensions(t *testing.T) {
 	t.Run("skips empty resources", func(t *testing.T) {
 		access, _, cleanup := newResourceAccessMock(t)
@@ -519,7 +550,24 @@ func TestResourceAccessUpdateStatus(t *testing.T) {
 			WithArgs(interfaces.ResourceStatusDisabled, "manual", "resource-1").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateStatus(context.Background(), "resource-1", interfaces.ResourceStatusDisabled, "manual"))
+		require.NoError(t, access.UpdateStatus(context.Background(), nil, "resource-1", interfaces.ResourceStatusDisabled, "manual"))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("updates status in transaction", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_status = ?, f_status_message = ? WHERE f_id = ?")).
+			WithArgs(interfaces.ResourceStatusDisabled, "manual", "resource-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.UpdateStatus(context.Background(), tx, "resource-1", interfaces.ResourceStatusDisabled, "manual"))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

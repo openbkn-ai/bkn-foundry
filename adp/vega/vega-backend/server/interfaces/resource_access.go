@@ -35,10 +35,10 @@ type ResourceAccess interface {
 	ListIDs(ctx context.Context, params ResourcesQueryParams) ([]string, error)
 	// Update updates a Resource.
 	Update(ctx context.Context, tx *sql.Tx, resource *Resource) error
-	// UpdateStatus updates a Resource's status.
-	UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error
-	// UpdateStatusWithTx updates a Resource's status within a transaction.
-	UpdateStatusWithTx(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
+	// UpdateLocalIndexName updates only a Resource's local index name.
+	UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
+	// UpdateStatus updates a Resource's status, using tx when provided.
+	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.
 	UpdateDiscoverStatus(ctx context.Context, id string, status string) error
 	// DeleteByIDs deletes Resources by IDs.

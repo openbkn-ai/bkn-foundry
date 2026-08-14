@@ -57,6 +57,8 @@ type ResourceService interface {
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// InternalUpdate updates a Resource for internal workers.
 	InternalUpdate(ctx context.Context, tx *sql.Tx, resource *Resource) error
+	// InternalUpdateLocalIndexName updates only a Resource's local index name for internal workers.
+	InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
 	// InternalCreate creates a Resource for internal workers within a transaction.
 	InternalCreate(ctx context.Context, tx *sql.Tx, req *ResourceRequest) (*Resource, error)
 	// InternalUpdateStatus updates a Resource status for internal workers within a transaction.

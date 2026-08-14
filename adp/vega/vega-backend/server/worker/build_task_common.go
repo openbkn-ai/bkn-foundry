@@ -55,21 +55,14 @@ func getNewDocID(primaryKeyValues []interfaces.KeyValue, document map[string]any
 
 // updateResourceIndexName updates the index name of a resource
 func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource, rs interfaces.ResourceService, indexName string) error {
-	if resource.LocalIndexName == "" {
-		resource.LocalIndexName = indexName
-		return rs.InternalUpdate(ctx, nil, resource)
-	}
-
 	if resource.LocalIndexName == indexName {
 		return nil
 	}
 
-	oldIndexName := resource.LocalIndexName
-	resource.LocalIndexName = indexName
-	if err := rs.InternalUpdate(ctx, nil, resource); err != nil {
-		resource.LocalIndexName = oldIndexName
+	if err := rs.InternalUpdateLocalIndexName(ctx, nil, resource.ID, indexName); err != nil {
 		return err
 	}
+	resource.LocalIndexName = indexName
 
 	return nil
 }
@@ -92,11 +85,10 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 
 	oldIndexName := resource.LocalIndexName
 	if resource.LocalIndexName != indexName {
-		resource.LocalIndexName = indexName
-		if err := rs.InternalUpdate(ctx, tx, resource); err != nil {
-			resource.LocalIndexName = oldIndexName
+		if err := rs.InternalUpdateLocalIndexName(ctx, tx, resource.ID, indexName); err != nil {
 			return fmt.Errorf("update resource index name: %w", err)
 		}
+		resource.LocalIndexName = indexName
 	}
 
 	completed, err := bts.InternalMarkCompleted(ctx, tx, taskID)

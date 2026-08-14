@@ -809,7 +809,7 @@ func (rs *resourceService) UpdateStatus(ctx context.Context, id string, status s
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource status")
 	defer span.End()
 
-	if err := rs.ra.UpdateStatus(ctx, id, status, statusMessage); err != nil {
+	if err := rs.ra.UpdateStatus(ctx, nil, id, status, statusMessage); err != nil {
 		span.SetStatus(codes.Error, "Update resource status failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
@@ -973,6 +973,13 @@ func (rs *resourceService) InternalUpdate(ctx context.Context, tx *sql.Tx, resou
 	return rs.ra.Update(ctx, tx, resource)
 }
 
+func (rs *resourceService) InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateLocalIndexName")
+	defer span.End()
+
+	return rs.ra.UpdateLocalIndexName(ctx, tx, id, localIndexName)
+}
+
 func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 	if tx == nil {
 		return nil, fmt.Errorf("transaction is required")
@@ -1028,7 +1035,7 @@ func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx,
 	if tx == nil {
 		return fmt.Errorf("transaction is required")
 	}
-	return rs.ra.UpdateStatusWithTx(ctx, tx, id, status, statusMessage)
+	return rs.ra.UpdateStatus(ctx, tx, id, status, statusMessage)
 }
 
 func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {

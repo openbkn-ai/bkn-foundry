@@ -801,7 +801,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 func TestResourceServiceUpdateStatus(t *testing.T) {
 	t.Run("update status success", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().UpdateStatus(gomock.Any(), "r1", "active", "").Return(nil)
+		mockRA.EXPECT().UpdateStatus(gomock.Any(), nil, "r1", "active", "").Return(nil)
 
 		err := rs.UpdateStatus(context.Background(), "r1", "active", "")
 		if err != nil {
@@ -810,7 +810,7 @@ func TestResourceServiceUpdateStatus(t *testing.T) {
 	})
 	t.Run("update status error", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().UpdateStatus(gomock.Any(), "r1", "active", "").
+		mockRA.EXPECT().UpdateStatus(gomock.Any(), nil, "r1", "active", "").
 			Return(fmt.Errorf("db error"))
 
 		err := rs.UpdateStatus(context.Background(), "r1", "active", "")
