@@ -100,6 +100,10 @@ if ! grep -A1 -Fq 'name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
   echo "observability source concurrency must be rendered" >&2
   exit 1
 fi
+if ! render_chart agent-observability "${chart_dir}" --set-json 'observability.archive=null' >/dev/null; then
+  echo "existing releases without observability.archive must remain upgradeable" >&2
+  exit 1
+fi
 if ! grep -A1 -Fq 'name: BKN_TRACE_DEPLOYMENT_TENANT_ID
               value: "openbkn-local"' <<<"${default_rendered}"; then
   echo "single-tenant deployments must inject the trusted deployment tenant" >&2
