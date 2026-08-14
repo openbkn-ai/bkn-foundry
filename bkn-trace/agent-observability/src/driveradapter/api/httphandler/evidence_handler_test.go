@@ -1022,7 +1022,7 @@ func TestBusinessProvenanceRequestSubresourcesUsePathScopedRoutes(t *testing.T) 
 	}
 
 	mux := http.NewServeMux()
-	RegisterBusinessProvenanceRoutes(mux, "/api/agent-observability/v1", handler)
+	registerLegacySummaryTestRoutes(mux, "/api/agent-observability/v1", handler)
 	for _, subresource := range []string{"evidence-chain", "business-graph", "snapshot-preview"} {
 		req := authenticatedQueryRequest(http.MethodGet,
 			"/api/agent-observability/v1/business-provenance/requests/req_handler_002/"+subresource, nil)
@@ -1207,7 +1207,7 @@ func TestEvidenceHandlerListsBusinessRequestsAndRequestDetail(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	RegisterBusinessProvenanceRoutes(mux, "/api/agent-observability/v1", handler)
+	registerLegacySummaryTestRoutes(mux, "/api/agent-observability/v1", handler)
 
 	listReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/business-provenance/requests?keyword=原始问题&limit=10", nil)
 	listReq.Header.Set("x-tenant-id", "tenant_demo")
@@ -1242,7 +1242,7 @@ func TestEvidenceHandlerListsBusinessProvenanceConversationsAndInteractions(t *t
 		t.Fatalf("seed event: %d %s", eventRec.Code, eventRec.Body.String())
 	}
 	mux := http.NewServeMux()
-	RegisterBusinessProvenanceRoutes(mux, "/api/agent-observability/v1", handler)
+	registerLegacySummaryTestRoutes(mux, "/api/agent-observability/v1", handler)
 
 	conversationReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/business-provenance/conversations?limit=10", nil)
 	conversationReq.Header.Set("x-tenant-id", "tenant_demo")
@@ -1281,7 +1281,7 @@ func TestEvidenceHandlerListsRequestTracesAndTechnicalExecutions(t *testing.T) {
 		t.Fatalf("seed evidence: %d %s", ingestRec.Code, ingestRec.Body.String())
 	}
 	mux := http.NewServeMux()
-	RegisterBusinessProvenanceRoutes(mux, "/api/agent-observability/v1", handler)
+	registerLegacySummaryTestRoutes(mux, "/api/agent-observability/v1", handler)
 
 	requestTracesReq := authenticatedQueryRequest(http.MethodGet, "/api/agent-observability/v1/business-provenance/requests/req_handler_001/traces", nil)
 	requestTracesRec := httptest.NewRecorder()

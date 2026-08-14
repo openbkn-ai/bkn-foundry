@@ -282,7 +282,7 @@ func artifactIDFromPath(path string) string {
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /business-provenance/traces/{trace_id}/evidence-chain [get]
+// Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -356,7 +356,7 @@ func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Req
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /business-provenance/traces/{trace_id}/business-graph [get]
+// Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -411,7 +411,7 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /business-provenance/requests/{request_id}/evidence-chain [get]
+// Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -466,7 +466,7 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /business-provenance/traces/{trace_id}/snapshot-preview [get]
+// Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -521,7 +521,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /business-provenance/requests/{request_id}/snapshot-preview [get]
+// Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -576,7 +576,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /business-provenance/requests/{request_id}/business-graph [get]
+// Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
@@ -633,7 +633,7 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 // @Failure 404 {object} rdto.ErrorResponse
 // @Failure 405 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
-// @Router /business-provenance/evidence-nodes/{node_id} [get]
+// Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
