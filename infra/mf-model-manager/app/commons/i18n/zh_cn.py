@@ -7,6 +7,7 @@ error_messages = {
         "description": "参数缺失",
         "detail": "缺少必填参数。",
         "detail_template": "缺少必填参数：{parameters}",
+        "detail_template_plural": "缺少必填参数：{parameters}",
         "solution": "请阅读API文档填写正确的参数",
         "link": ""
     },
@@ -24,6 +25,7 @@ error_messages = {
         "description": "参数缺失",
         "detail": "缺少必填参数。",
         "detail_template": "缺少必填参数：{parameters}",
+        "detail_template_plural": "缺少必填参数：{parameters}",
         "solution": "请阅读API文档填写正确的参数",
         "link": ""
     },
