@@ -126,15 +126,27 @@ func TestMarshalResponse_TOON_Struct(t *testing.T) {
 
 func TestMarshalResponse_TOONStructPreservesLargeJSONNumber(t *testing.T) {
 	convey.Convey("MarshalResponse FormatTOON preserves a large json.Number in a struct", t, func() {
-		body := &interfaces.VegaRawQueryResp{Entries: []map[string]any{{
-			"id_card": json.Number("110101199001152345"),
-		}}}
+		body := &interfaces.VegaRawQueryResp{
+			Columns: []interfaces.VegaColumn{{Name: "id_card"}},
+			Entries: []map[string]any{{
+				"id_card": json.Number("110101199001152345"),
+			}},
+		}
 
 		ct, toonBytes, err := MarshalResponse(FormatTOON, body)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(ct, convey.ShouldEqual, ContentTypeTOON)
 		convey.So(string(toonBytes), convey.ShouldContainSubstring, `"110101199001152345"`)
 		convey.So(body.Entries[0]["id_card"], convey.ShouldEqual, json.Number("110101199001152345"))
+
+		var decoded map[string]any
+		err = toon.Unmarshal(toonBytes, &decoded)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(decoded["columns"], convey.ShouldNotBeNil)
+		convey.So(decoded["Columns"], convey.ShouldBeNil)
+		convey.So(decoded["total_count"], convey.ShouldBeNil)
+		convey.So(decoded["warnings"], convey.ShouldBeNil)
+		convey.So(decoded["paging"], convey.ShouldBeNil)
 	})
 }
 
