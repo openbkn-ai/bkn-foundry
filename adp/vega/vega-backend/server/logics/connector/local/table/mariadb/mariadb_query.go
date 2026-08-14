@@ -101,6 +101,159 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 	return response, nil
 }
 
+// buildSelectBuilder assembles the SELECT statement for detail and aggregate queries.
+//
+// Every identifier — table, column, alias — must go through quoteColumnName / qualTable.
+// A source column named after a SQL reserved word (say `key`) survives DDL, catalog
+// discover and bkn push untouched, because none of them build a query; concatenating it
+// raw only fails at execution time with a 1064 that names nothing useful.
+func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams, fieldMap map[string]*interfaces.Property,
+	condition sq.Sqlizer) (sq.SelectBuilder, error) {
+
+	// Source column name; fall back to the property name when the schema has no mapping.
+	originalName := func(property string) string {
+		if field, ok := fieldMap[property]; ok {
+			return field.OriginalName
+		}
+		return property
+	}
+
+	// Construct the SELECT clause
+	selectFields := []string{}
+	// Output names already selected (column or alias), used to de-duplicate output_fields
+	selected := map[string]struct{}{}
+
+	// Add the GROUP BY field (when aggregating queries)
+	for _, groupByItem := range params.GroupBy {
+		column := originalName(groupByItem.Property)
+		// Check whether calendar_interval is needed
+		if groupByItem.CalendarInterval != "" {
+			dateFmt := c.buildDateFormat(groupByItem.Property, quoteColumnName(column), groupByItem.CalendarInterval)
+			selectFields = append(selectFields, dateFmt+" AS "+quoteColumnName(groupByItem.Property))
+			selected[groupByItem.Property] = struct{}{}
+		} else {
+			selectFields = append(selectFields, quoteColumnName(column))
+			selected[groupByItem.Property] = struct{}{}
+		}
+	}
+
+	// Add the aggregate field (when aggregating queries)
+	var aggAlias string
+	if params.Aggregation != nil {
+		aggField := quoteColumnName(originalName(params.Aggregation.Property))
+
+		// Determine the aggregate function
+		aggFunc := params.Aggregation.Aggr
+		switch aggFunc {
+		case "count_distinct":
+			aggFunc = "COUNT(DISTINCT " + aggField + ")"
+		default:
+			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
+		}
+
+		// Determine the alias
+		if params.Aggregation.Alias != "" {
+			aggAlias = params.Aggregation.Alias
+		} else {
+			aggAlias = "__value"
+		}
+
+		selectFields = append(selectFields, aggFunc+" AS "+quoteColumnName(aggAlias))
+		selected[aggAlias] = struct{}{}
+	} else if params.Having != nil && params.Having.Field == "count(*)" {
+		// When HAVING uses count(*), add the COUNT(*) aggregate automatically
+		aggAlias = "__value"
+		selectFields = append(selectFields, "COUNT(*) AS "+quoteColumnName(aggAlias))
+		selected[aggAlias] = struct{}{}
+	}
+
+	// Select every field when the query is neither aggregated nor grouped
+	if len(params.GroupBy) == 0 && params.Aggregation == nil {
+		if len(params.OutputFields) > 0 {
+			for _, outName := range params.OutputFields {
+				selectFields = append(selectFields, quoteColumnName(originalName(outName)))
+			}
+		} else if len(selectFields) == 0 {
+			// No output fields specified, so query them all
+			for _, prop := range resource.SchemaDefinition {
+				selectFields = append(selectFields, quoteColumnName(prop.OriginalName))
+			}
+		}
+	} else if len(params.OutputFields) > 0 {
+		// For aggregate or GROUP BY queries, make sure output_fields end up in selectFields
+		for _, outName := range params.OutputFields {
+			if _, found := selected[outName]; found {
+				continue
+			}
+			selectFields = append(selectFields, quoteColumnName(originalName(outName)))
+			selected[outName] = struct{}{}
+		}
+	}
+
+	// Build the query
+	builder := sq.Select(selectFields...).From(qualTable(resource.SourceIdentifier))
+
+	// Add the WHERE condition
+	if condition != nil {
+		builder = builder.Where(condition)
+	}
+
+	// Add GROUP BY (when aggregating queries)
+	if len(params.GroupBy) > 0 {
+		groupByFields := []string{}
+		for _, groupByItem := range params.GroupBy {
+			column := quoteColumnName(originalName(groupByItem.Property))
+			// Check whether calendar_interval is needed
+			if groupByItem.CalendarInterval != "" {
+				groupByFields = append(groupByFields,
+					c.buildDateFormat(groupByItem.Property, column, groupByItem.CalendarInterval))
+			} else {
+				groupByFields = append(groupByFields, column)
+			}
+		}
+		builder = builder.GroupBy(groupByFields...)
+	}
+
+	// Add the HAVING condition (when aggregating queries)
+	if params.Having != nil && (params.Aggregation != nil || (params.Having.Field == "count(*)")) {
+		havingCond, err := c.buildHavingCondition(params.Having, aggAlias)
+		if err != nil {
+			return builder, fmt.Errorf("failed to build HAVING condition: %w", err)
+		}
+		if havingCond != "" {
+			builder = builder.Having(havingCond)
+		}
+	}
+
+	// Add ORDER BY
+	for _, sortItem := range params.Sort {
+		dir := "ASC"
+		if sortItem.Direction == interfaces.DESC_DIRECTION {
+			dir = "DESC"
+		}
+
+		// Check whether this is a GROUP BY field using calendar_interval
+		sortField := quoteColumnName(originalName(sortItem.Field))
+		for _, groupByItem := range params.GroupBy {
+			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
+				// Use the full date_format expression
+				sortField = c.buildDateFormat(groupByItem.Property,
+					quoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
+				break
+			}
+		}
+
+		builder = builder.OrderBy(sortField + " " + dir)
+	}
+
+	// Add LIMIT and OFFSET
+	if params.CursorEncoded == "" {
+		builder = builder.Offset(uint64(params.Offset))
+	}
+	return builder.Limit(uint64(params.Limit)), nil
+}
+
 func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 
@@ -126,175 +279,10 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		Entries: make([]map[string]any, 0),
 	}
 
-	// Construct the SELECT clause
-	selectFields := []string{}
-
-	// Add the GROUP BY field (when aggregating queries)
-	for _, groupByItem := range params.GroupBy {
-		if field, ok := fieldMap[groupByItem.Property]; ok {
-			// Check whether calendar_interval is needed
-			if groupByItem.CalendarInterval != "" {
-				dateFmt := c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
-				selectFields = append(selectFields, dateFmt+" AS "+groupByItem.Property)
-			} else {
-				selectFields = append(selectFields, field.OriginalName)
-			}
-		} else {
-			// Check whether calendar_interval is needed
-			if groupByItem.CalendarInterval != "" {
-				dateFmt := c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
-				selectFields = append(selectFields, dateFmt+" AS "+groupByItem.Property)
-			} else {
-				selectFields = append(selectFields, groupByItem.Property)
-			}
-		}
+	builder, err := c.buildSelectBuilder(resource, params, fieldMap, condition)
+	if err != nil {
+		return nil, err
 	}
-
-	// Add aggregated fields (when performing aggregated queries)
-	var aggAlias string
-	if params.Aggregation != nil {
-		aggField := params.Aggregation.Property
-		if field, ok := fieldMap[aggField]; ok {
-			aggField = field.OriginalName
-		}
-
-		// Determine the aggregation function
-		aggFunc := params.Aggregation.Aggr
-		switch aggFunc {
-		case "count_distinct":
-			aggFunc = "COUNT(DISTINCT " + aggField + ")"
-		default:
-			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
-		}
-
-		// Determine the alias
-		if params.Aggregation.Alias != "" {
-			aggAlias = params.Aggregation.Alias
-		} else {
-			aggAlias = "__value"
-		}
-
-		selectFields = append(selectFields, aggFunc+" AS "+aggAlias)
-	} else if params.Having != nil && params.Having.Field == "count(*)" {
-		// When HAVING uses count(*), COUNT(*) aggregates are automatically added
-		aggAlias = "__value"
-		selectFields = append(selectFields, "COUNT(*) AS "+aggAlias)
-	}
-
-	// If it is not an aggregated query and GROUP BY is not specified, add all fields
-	if len(params.GroupBy) == 0 && params.Aggregation == nil {
-		if len(params.OutputFields) > 0 {
-			for _, outName := range params.OutputFields {
-				if field, ok := fieldMap[outName]; ok {
-					selectFields = append(selectFields, field.OriginalName)
-				} else {
-					// For fields not defined in the Schema, use the field names directly
-					selectFields = append(selectFields, outName)
-				}
-			}
-		} else if len(selectFields) == 0 {
-			// If no output field is specified, all fields will be queried
-			for _, prop := range resource.SchemaDefinition {
-				selectFields = append(selectFields, prop.OriginalName)
-			}
-		}
-	} else if len(params.OutputFields) > 0 {
-		// For aggregated queries or GROUP BY queries, ensure that the fields in output_fields are in selectFields
-		for _, outName := range params.OutputFields {
-			found := false
-			for _, field := range selectFields {
-				// Check whether the field already exists (including aliases)
-				if field == outName || strings.HasSuffix(field, " AS "+outName) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				if field, ok := fieldMap[outName]; ok {
-					selectFields = append(selectFields, field.OriginalName)
-				} else {
-					// For fields not defined in the Schema, use the field names directly
-					selectFields = append(selectFields, outName)
-				}
-			}
-		}
-	}
-
-	// Build query
-	builder := sq.Select(selectFields...).From(resource.SourceIdentifier)
-
-	// Add the WHERE condition
-	if condition != nil {
-		builder = builder.Where(condition)
-	}
-
-	// Add GROUP BY (when aggregating queries)
-	if len(params.GroupBy) > 0 {
-		groupByFields := []string{}
-		for _, groupByItem := range params.GroupBy {
-			if field, ok := fieldMap[groupByItem.Property]; ok {
-				// Check whether calendar_interval is needed
-				if groupByItem.CalendarInterval != "" {
-					dateFmt := c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
-					groupByFields = append(groupByFields, dateFmt)
-				} else {
-					groupByFields = append(groupByFields, field.OriginalName)
-				}
-			} else {
-				// Check whether calendar_interval is needed
-				if groupByItem.CalendarInterval != "" {
-					dateFmt := c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
-					groupByFields = append(groupByFields, dateFmt)
-				} else {
-					groupByFields = append(groupByFields, groupByItem.Property)
-				}
-			}
-		}
-		builder = builder.GroupBy(groupByFields...)
-	}
-
-	// Add a HAVING condition (when aggregating queries)
-	if params.Having != nil && (params.Aggregation != nil || (params.Having.Field == "count(*)")) {
-		havingCond, err := c.buildHavingCondition(params.Having, aggAlias)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build HAVING condition: %w", err)
-		}
-		if havingCond != "" {
-			builder = builder.Having(havingCond)
-		}
-	}
-
-	// Add ORDER BY
-	if len(params.Sort) > 0 {
-		for _, sortItem := range params.Sort {
-			dir := "ASC"
-			if sortItem.Direction == interfaces.DESC_DIRECTION {
-				dir = "DESC"
-			}
-
-			// Check if it is the GROUP BY field and if calendar_interval is used
-			sortField := sortItem.Field
-			for _, groupByItem := range params.GroupBy {
-				if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
-					// Use the complete date_format expression
-					if field, ok := fieldMap[groupByItem.Property]; ok {
-						sortField = c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
-					} else {
-						sortField = c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
-					}
-					break
-				}
-			}
-
-			builder = builder.OrderBy(sortField + " " + dir)
-		}
-	}
-
-	// Add LIMIT and OFFSET
-	if params.CursorEncoded == "" {
-		builder = builder.Offset(uint64(params.Offset))
-	}
-	builder = builder.Limit(uint64(params.Limit))
 
 	// Build SQL and execute it
 	query, args, err := builder.ToSql()
@@ -346,7 +334,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	// Previously, directly take len(result.Entries) - that is, the number of rows on this page. For tables with more than one page, total is always equal to
 	// LIMIT (The progress bar of the build task shows "20802/1000", which indicates this bug)
 	if params.NeedTotal && !isAggregate {
-		countBuilder := sq.Select("COUNT(1)").From(resource.SourceIdentifier)
+		countBuilder := sq.Select("COUNT(1)").From(qualTable(resource.SourceIdentifier))
 		if condition != nil {
 			countBuilder = countBuilder.Where(condition)
 		}

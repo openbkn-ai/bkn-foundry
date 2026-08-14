@@ -122,6 +122,106 @@ func TestBuildDateFormat(t *testing.T) {
 	}
 }
 
+func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
+	connector := &MariaDBConnector{}
+	// fact 表带一个名为 key 的列——MySQL 保留字，裸拼进 SELECT 会在执行期报 1064
+	resource := &interfaces.Resource{
+		SourceIdentifier: "yanfeng_kb.fact",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id", OriginalName: "id", Type: interfaces.DataType_String},
+			{Name: "key", OriginalName: "key", Type: interfaces.DataType_String},
+			{Name: "created", OriginalName: "created_at", Type: interfaces.DataType_Datetime},
+		},
+	}
+	fieldMap := map[string]*interfaces.Property{}
+	for _, prop := range resource.SchemaDefinition {
+		fieldMap[prop.Name] = prop
+	}
+
+	t.Run("detail query quotes every column and the table", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource,
+			&interfaces.ResourceDataQueryParams{Limit: 10}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT `id`, `key`, `created_at` FROM `yanfeng_kb`.`fact` LIMIT 10 OFFSET 0",
+			sql)
+	})
+
+	t.Run("output_fields resolve to quoted original names", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource,
+			&interfaces.ResourceDataQueryParams{OutputFields: []string{"key", "created"}, Limit: 5}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT `key`, `created_at` FROM `yanfeng_kb`.`fact` LIMIT 5 OFFSET 0", sql)
+	})
+
+	t.Run("sort quotes the column and maps to its original name", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			OutputFields: []string{"id"},
+			Sort:         []*interfaces.SortField{{Field: "created", Direction: interfaces.DESC_DIRECTION}},
+			Limit:        5,
+		}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT `id` FROM `yanfeng_kb`.`fact` ORDER BY `created_at` DESC LIMIT 5 OFFSET 0",
+			sql)
+	})
+
+	t.Run("aggregation quotes the aggregated column, group by and alias", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},
+			Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "cnt"},
+			Limit:       20,
+		}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20 OFFSET 0",
+			sql)
+	})
+
+	t.Run("output_fields already selected as an alias are not duplicated", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			GroupBy:      []*interfaces.GroupByItem{{Property: "key"}},
+			Aggregation:  &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "cnt"},
+			OutputFields: []string{"key", "cnt"},
+			Limit:        20,
+		}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT `key`, COUNT(`id`) AS `cnt` FROM `yanfeng_kb`.`fact` GROUP BY `key` LIMIT 20 OFFSET 0",
+			sql)
+	})
+
+	t.Run("calendar interval keeps the date_format expression over a quoted column", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			GroupBy: []*interfaces.GroupByItem{{Property: "created", CalendarInterval: interfaces.CALENDAR_UNIT_DAY}},
+			Limit:   20,
+		}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT date_format(`created_at`,'%Y-%m-%d') AS `created` FROM `yanfeng_kb`.`fact` "+
+				"GROUP BY date_format(`created_at`,'%Y-%m-%d') LIMIT 20 OFFSET 0",
+			sql)
+	})
+}
+
 func TestMariaDBConvertValue(t *testing.T) {
 	t.Run("maria dbconvert value", func(t *testing.T) {
 		assert.Equal(t, "hello", convertValue([]byte("hello")))
