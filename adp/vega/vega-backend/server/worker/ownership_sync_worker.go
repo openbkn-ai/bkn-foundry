@@ -37,6 +37,10 @@ type OwnershipSyncWorker struct {
 	// approved 是「我看过预演报告，可以推」的批准记录，不是判定开关。
 	// 判定开关已经明确否掉：归属表为空天然等于关闭，回滚是删数据不是发版。
 	// 它落在 vega 而不是 bkn-safe，因为决定推不推的是数据的生产方。
+	//
+	// 它是常驻环境变量，因此批准的其实是「此后每一份快照」，而人只看过当时那
+	// 一份。缓解办法不是假装它是一次性的：预演每轮照跑、差异照记日志，扩权因此
+	// 始终留痕；用法是收敛完就把它关回去。
 	approved bool
 	stop     chan struct{}
 	once     sync.Once
@@ -46,7 +50,8 @@ const (
 	ownershipSyncDefaultInterval = 30 * time.Minute
 	// ownershipSyncChunk 与 bkn-safe 单次请求上限一致。
 	ownershipSyncChunk = 1000
-	// ownershipPageSize 是从本地库分页读资源的步长。
+	// ownershipPageSize 有两处用途：按批取本地资源详情（IN 子句的长度上限），
+	// 以及回读 bkn-safe 归属表时的分页步长——那个端点是真的支持 limit/offset。
 	ownershipPageSize = 500
 
 	authResourceType = "resource"
@@ -137,13 +142,18 @@ func (w *OwnershipSyncWorker) pushSnapshot(ctx context.Context, links []ownershi
 		if err != nil {
 			return fmt.Errorf("预演: %w", err)
 		}
-		if total > 0 && !w.approved {
-			// 差异非空意味着有人的可见范围会变。这里停下不是保守，是把决定权
-			// 交回给人：报告先出，推送等批准（VEGA_OWNERSHIP_SYNC_APPROVED）。
-			skipped += len(chunk)
-			logger.Warnf("资源归属同步暂停：本片会改变 %d 条判定，需人工确认后设置 "+
-				"VEGA_OWNERSHIP_SYNC_APPROVED=true 再推。样本: %s", total, sample)
-			continue
+		if total > 0 {
+			if !w.approved {
+				// 差异非空意味着有人的可见范围会变。这里停下不是保守，是把决定
+				// 权交回给人：报告先出，推送等批准。
+				skipped += len(chunk)
+				logger.Warnf("资源归属同步暂停：本片会改变 %d 条判定，需人工确认后设置 "+
+					"VEGA_OWNERSHIP_SYNC_APPROVED=true 再推。样本: %s", total, sample)
+				continue
+			}
+			// 已批准也照记：批准是对当时那份快照的，之后新建的目录与资源带来的
+			// 扩权没人看过，至少要留下痕迹。
+			logger.Warnf("资源归属同步（已批准）：本片改变 %d 条判定。样本: %s", total, sample)
 		}
 		if err := w.push(ctx, chunk); err != nil {
 			return fmt.Errorf("推送归属: %w", err)
@@ -166,24 +176,31 @@ type ownershipLink struct {
 // 跳过内部目录下的资源是有意的：它们在权限服务按 internal_catalog /
 // internal_resource 注册，种子里没有声明层级，推过去会被 400 拒掉——那是设计
 // 如此，不是故障。它们本来也只有超级管理员通配够得到，继承对其无收益。
+//
+// 这里不翻页：ResourceAccess.ListIDs 的实现根本不读 Offset/Limit，一次就返回
+// 全量 id（drivenadapters/resource/resource_access.go 的 builder 里没有
+// Limit/Offset）。写成翻页循环反而会每轮拿到同一批全量、无限追加直到 context
+// 超时——同步永远走不到推送那一步。真要分页得先改适配器。
 func (w *OwnershipSyncWorker) snapshot(ctx context.Context) ([]ownershipLink, error) {
-	internal, err := w.internalCatalogIDs(ctx)
+	internalIDs, err := logics.CA.ListInternalIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("读取内部目录: %w", err)
+	}
+	internal := make(map[string]bool, len(internalIDs))
+	for _, id := range internalIDs {
+		internal[id] = true
+	}
+
+	ids, err := logics.RA.ListIDs(ctx, interfaces.ResourcesQueryParams{})
 	if err != nil {
 		return nil, err
 	}
-	var out []ownershipLink
-	for offset := 0; ; offset += ownershipPageSize {
-		ids, err := logics.RA.ListIDs(ctx, interfaces.ResourcesQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: offset, Limit: ownershipPageSize},
-		})
-		if err != nil {
-			return nil, err
-		}
-		if len(ids) == 0 {
-			break
-		}
-		// GetByIDsBasic 不解析 schema/logic 那几个大 JSON 字段，这里只要 catalog_id。
-		resources, err := logics.RA.GetByIDsBasic(ctx, ids)
+	out := make([]ownershipLink, 0, len(ids))
+	// 详情按批取：GetByIDsBasic 拼的是 IN 子句，一次塞进上万个 id 会把语句撑爆。
+	// 它不解析 schema/logic 那几个大 JSON 字段，这里只要 catalog_id。
+	for start := 0; start < len(ids); start += ownershipPageSize {
+		batch := ids[start:min(start+ownershipPageSize, len(ids))]
+		resources, err := logics.RA.GetByIDsBasic(ctx, batch)
 		if err != nil {
 			return nil, err
 		}
@@ -192,33 +209,6 @@ func (w *OwnershipSyncWorker) snapshot(ctx context.Context) ([]ownershipLink, er
 				continue
 			}
 			out = append(out, ownershipLink{ResourceID: r.ID, ParentID: r.CatalogID})
-		}
-		if len(ids) < ownershipPageSize {
-			break
-		}
-	}
-	return out, nil
-}
-
-func (w *OwnershipSyncWorker) internalCatalogIDs(ctx context.Context) (map[string]bool, error) {
-	out := map[string]bool{}
-	for offset := 0; ; offset += ownershipPageSize {
-		catalogs, _, err := logics.CA.List(ctx, interfaces.CatalogsQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Offset: offset, Limit: ownershipPageSize},
-		})
-		if err != nil {
-			return nil, err
-		}
-		if len(catalogs) == 0 {
-			break
-		}
-		for _, c := range catalogs {
-			if c != nil && c.Internal {
-				out[c.ID] = true
-			}
-		}
-		if len(catalogs) < ownershipPageSize {
-			break
 		}
 	}
 	return out, nil

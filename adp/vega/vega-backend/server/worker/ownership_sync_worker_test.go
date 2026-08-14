@@ -9,10 +9,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"go.uber.org/mock/gomock"
+
+	"vega-backend/interfaces"
+	mock_interfaces "vega-backend/interfaces/mock"
+	"vega-backend/logics"
 )
 
 // safeStub 是一个可编程的 bkn-safe 替身，记录同步器实际发了什么。
@@ -215,4 +222,79 @@ func TestChunkLinks(t *testing.T) {
 	if chunkLinks(nil, 3) != nil {
 		t.Error("空快照应返回 nil")
 	}
+}
+
+// --- 本地快照（唯一读本地库的那一段）--------------------------------------
+
+// TestSnapshotSkipsInternalCatalogs：内部目录下的资源不能推——权限服务按
+// internal_catalog / internal_resource 注册它们，种子没声明层级，推过去会 400。
+func TestSnapshotSkipsInternalCatalogs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ca, ra := mock_interfaces.NewMockCatalogAccess(ctrl), mock_interfaces.NewMockResourceAccess(ctrl)
+	restore := swapAccess(ca, ra)
+	defer restore()
+
+	ca.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"c-internal"}, nil)
+	ra.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return([]string{"r-1", "r-2", "r-3"}, nil)
+	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r-1", "r-2", "r-3"}).Return([]*interfaces.Resource{
+		{ID: "r-1", CatalogID: "c-1"},
+		{ID: "r-2", CatalogID: "c-internal"},
+		{ID: "r-3", CatalogID: ""}, // 没有目录的资源无处可挂
+	}, nil)
+
+	links, err := newSyncWorker("http://x", false).snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(links) != 1 || links[0].ResourceID != "r-1" || links[0].ParentID != "c-1" {
+		t.Fatalf("links = %v, want only r-1 under c-1", links)
+	}
+}
+
+// TestSnapshotTerminatesBeyondOnePage 是这一段返工的原因：ListIDs 的实现不读
+// Offset/Limit，一次返回全量。曾经的翻页循环因此每轮拿到同一批、无限追加，直到
+// context 超时——同步永远走不到推送。这里用超过一页的资源量把它钉住。
+func TestSnapshotTerminatesBeyondOnePage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ca, ra := mock_interfaces.NewMockCatalogAccess(ctrl), mock_interfaces.NewMockResourceAccess(ctrl)
+	restore := swapAccess(ca, ra)
+	defer restore()
+
+	const n = ownershipPageSize + 7
+	ids := make([]string, n)
+	resources := make([]*interfaces.Resource, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("r-%d", i)
+		resources[i] = &interfaces.Resource{ID: ids[i], CatalogID: "c-1"}
+	}
+	ca.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	// 全量一次返回,且只被问一次——多问一次就是又写回了翻页循环。
+	ra.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil).Times(1)
+	// 详情按批取,所以正好两批。
+	ra.EXPECT().GetByIDsBasic(gomock.Any(), ids[:ownershipPageSize]).Return(resources[:ownershipPageSize], nil)
+	ra.EXPECT().GetByIDsBasic(gomock.Any(), ids[ownershipPageSize:]).Return(resources[ownershipPageSize:], nil)
+
+	done := make(chan int, 1)
+	go func() {
+		links, err := newSyncWorker("http://x", false).snapshot(context.Background())
+		if err != nil {
+			t.Error(err)
+		}
+		done <- len(links)
+	}()
+	select {
+	case got := <-done:
+		if got != n {
+			t.Errorf("links = %d, want %d", got, n)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("snapshot 没有终止——翻页循环又回来了")
+	}
+}
+
+// swapAccess 临时替换 logics 里的两个访问单例，返回还原函数。
+func swapAccess(ca interfaces.CatalogAccess, ra interfaces.ResourceAccess) func() {
+	prevCA, prevRA := logics.CA, logics.RA
+	logics.CA, logics.RA = ca, ra
+	return func() { logics.CA, logics.RA = prevCA, prevRA }
 }
