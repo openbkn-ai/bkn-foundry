@@ -921,31 +921,31 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 	properties := map[string]any{}
 	hasVectorField := false
 
-	for _, column := range schemaDefinition {
-		fieldType := column.Type
-		switch column.Type {
-		case "integer":
+	for _, prop := range schemaDefinition {
+		fieldType := prop.Type
+		switch prop.Type {
+		case interfaces.DataType_Integer:
 			fieldType = "long"
-		case "unsigned_integer":
+		case interfaces.DataType_UnsignedInteger:
 			fieldType = "unsigned_long"
-		case "float":
+		case interfaces.DataType_Float:
 			fieldType = "double"
-		case "decimal":
+		case interfaces.DataType_Decimal:
 			fieldType = "scaled_float"
-		case "string":
+		case interfaces.DataType_String:
 			fieldType = "keyword"
-		case "datetime", "timestamp":
+		case interfaces.DataType_Datetime, interfaces.DataType_Timestamp:
 			fieldType = "date"
-		case "time":
+		case interfaces.DataType_Time:
 			fieldType = "keyword"
-		case "json":
+		case interfaces.DataType_Json:
 			fieldType = "object"
-		case "vector":
+		case interfaces.DataType_Vector:
 			hasVectorField = true
 			fieldType = "knn_vector"
-		case "point":
+		case interfaces.DataType_Point:
 			fieldType = "geo_point"
-		case "shape":
+		case interfaces.DataType_Shape:
 			fieldType = "geo_shape"
 		default:
 			// 保持 fieldType 不变
@@ -957,24 +957,24 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 		}
 
 		// 为decimal类型添加scaling_factor参数
-		if column.Type == "decimal" {
+		if prop.Type == interfaces.DataType_Decimal {
 			fieldProps["scaling_factor"] = 1000000000000000000.0 // 18位小数
 		}
 
 		// 处理字段特性
-		if column.Features != nil {
-			for _, feature := range column.Features {
+		if prop.Features != nil {
+			for _, feature := range prop.Features {
 				// fulltext 不依赖 config（可无 analyzer 走默认分词器），单独处理
-				if feature.FeatureType == "fulltext" {
-					applyFulltextFeature(fieldProps, column.Type, feature)
+				if feature.FeatureType == interfaces.PropertyFeatureType_Fulltext {
+					applyFulltextFeature(fieldProps, prop.Type, feature)
 					continue
 				}
 				if feature.Config != nil {
 					switch feature.FeatureType {
-					case "keyword":
+					case interfaces.PropertyFeatureType_Keyword:
 						fieldsAdded := false
 						for k, v := range feature.Config {
-							if column.Type == "text" {
+							if prop.Type == interfaces.DataType_Text {
 								if !fieldsAdded {
 									// 添加子字段
 									fieldProps["fields"] = map[string]any{
@@ -995,13 +995,13 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 								fieldProps[k] = v
 							}
 						}
-					case "vector":
+					case interfaces.PropertyFeatureType_Vector:
 						// A vector feature on a source field describes VEGA's embedding
 						// workflow. Only the generated *_vector field is an OpenSearch
 						// vector mapping; its configuration must not be applied to the
 						// source field (for example, a keyword field cannot accept
 						// embedding_model).
-						if column.Type != interfaces.DataType_Vector {
+						if prop.Type != interfaces.DataType_Vector {
 							continue
 						}
 						for k, v := range feature.Config {
@@ -1014,7 +1014,7 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 			}
 		}
 
-		properties[column.Name] = fieldProps
+		properties[prop.Name] = fieldProps
 	}
 
 	return properties, hasVectorField, nil
