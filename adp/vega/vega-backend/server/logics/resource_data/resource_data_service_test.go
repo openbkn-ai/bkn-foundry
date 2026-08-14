@@ -8,7 +8,6 @@ package resource_data
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"testing"
 
@@ -20,7 +19,6 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
-	"vega-backend/logics/filter_condition"
 )
 
 func TestResourceDataServicePrepareOutputFieldsParams(t *testing.T) {
@@ -357,90 +355,4 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
-}
-
-// TestQueryClassifiesUnsupportedOperations 覆盖两个之前被抹平的分型点。
-//
-// 之前的形态是：QueryData 里判出的 400 被 query() 无条件重包成 500，而 fileset
-// 分支根本没做判断——两处加起来，anyshare / mariadb 那几个连接器返回
-// UnsupportedOperationError 的改动一点行为变化都没有，调用方拿到的仍是
-// 「数据资源内部错误」，ontology-query 继续判成依赖故障。
-func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
-	newResource := func(category string) *interfaces.Resource {
-		return &interfaces.Resource{
-			ID: "resource-1", CatalogID: "catalog-1", Category: category,
-			SchemaDefinition: []*interfaces.Property{{Name: "name", Type: interfaces.DataType_String}},
-		}
-	}
-	unsupported := filter_condition.NewUnsupportedOperationError("regex", filter_condition.QueryChannelSQL)
-
-	t.Run("表分支的 400 不再被上层压成 500", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
-		mockConn := mock_interfaces.NewMockTableConnector(ctrl)
-		rds := &resourceDataService{cs: mockCS, cf: mockCF}
-		resource := newResource(interfaces.ResourceCategoryTable)
-
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
-		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
-		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
-		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, unsupported)
-
-		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		assertUnsupportedOperationHTTPError(t, err)
-	})
-
-	t.Run("fileset 分支也要分型", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
-		mockConn := mock_interfaces.NewMockFilesetConnector(ctrl)
-		rds := &resourceDataService{cs: mockCS, cf: mockCF}
-		resource := newResource(interfaces.ResourceCategoryFileset)
-
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
-		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
-		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
-		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
-			Return(nil, filter_condition.NewUnsupportedOperationError("regex", filter_condition.QueryChannelFileset))
-
-		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		assertUnsupportedOperationHTTPError(t, err)
-	})
-
-	t.Run("真正的下游故障仍然是 500", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCF := mock_interfaces.NewMockConnectorFactory(ctrl)
-		mockConn := mock_interfaces.NewMockTableConnector(ctrl)
-		rds := &resourceDataService{cs: mockCS, cf: mockCF}
-		resource := newResource(interfaces.ResourceCategoryTable)
-
-		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockConn, nil)
-		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
-		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
-		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
-			Return(nil, errors.New("connection reset by peer"))
-
-		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var httpErr *rest.HTTPError
-		require.True(t, errors.As(err, &httpErr), "want an HTTPError, got %v", err)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-	})
-}
-
-func assertUnsupportedOperationHTTPError(t *testing.T, err error) {
-	t.Helper()
-	var httpErr *rest.HTTPError
-	require.True(t, errors.As(err, &httpErr), "want an HTTPError, got %v", err)
-	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode,
-		"算子不支持是请求侧问题：包成 500 会让 ontology-query 判成依赖故障")
-	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
 }

@@ -311,6 +311,29 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 }
 
 // getObjectsFromResource queries vega-backend resource data (same row mapping as view path).
+// downstreamErrorCode 按下游状态码选错误码。
+//
+// 全部贴 InvalidParameter 会把 403（无权访问该资源）、409（catalog 已停用）、
+// 429（并发超限）都说成「参数错误」——前端读到 403 会当成用户自己没权限，读到 429
+// 会去改查询而不是重试。状态码本身已经准确，错误码要跟着它走。
+func downstreamErrorCode(statusCode int) string {
+	switch statusCode {
+	case http.StatusBadRequest:
+		return oerrors.OntologyQuery_ObjectType_InvalidParameter
+	case http.StatusUnauthorized:
+		return rest.PublicError_Unauthorized
+	case http.StatusForbidden:
+		return rest.PublicError_Forbidden
+	case http.StatusNotFound:
+		return rest.PublicError_NotFound
+	case http.StatusConflict:
+		return rest.PublicError_Conflict
+	default:
+		// 其余 4xx（如 429）没有专门的公共错误码，状态码仍如实透传。
+		return rest.PublicError_BadRequest
+	}
+}
+
 func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string) error {
 
@@ -369,7 +392,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		// 像服务故障，调用方既无法自纠，人工排查也会被引向错误方向。
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return rest.NewHTTPError(ctx, downstream.StatusCode,
-				oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(downstream.Message())
+				downstreamErrorCode(downstream.StatusCode)).WithErrorDetails(downstream.Message())
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails(err.Error())

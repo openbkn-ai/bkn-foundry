@@ -3,7 +3,6 @@ package resource_data
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -207,10 +206,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		data, total, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query table data failed", err)
-			// QueryData 已经分好型的错误原样上抛。无条件重包成 500 会把它在
-			// 里面判出来的 400（算子不支持）抹平，那几处映射也就等于没写。
-			var httpErr *rest.HTTPError
-			if errors.As(err, &httpErr) {
+			// QueryData 已经分好级的错误（算子不支持是 400、连接器类目不匹配是 400）
+			// 原样返回：在这里一律重包成 500，会把可自纠的参数问题重新伪装成服务故障。
+			if httpErr, ok := err.(*rest.HTTPError); ok {
 				return nil, 0, httpErr
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -224,10 +222,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		data, total, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query index data failed", err)
-			// QueryData 已经分好型的错误原样上抛。无条件重包成 500 会把它在
-			// 里面判出来的 400（算子不支持）抹平，那几处映射也就等于没写。
-			var httpErr *rest.HTTPError
-			if errors.As(err, &httpErr) {
+			if httpErr, ok := err.(*rest.HTTPError); ok {
 				return nil, 0, httpErr
 			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -439,8 +434,6 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := fc.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Fileset query failed", err)
-			// 与表/索引两条分支同样的分型：anyshare 未实现的算子是请求侧的问题，
-			// 调用方换个算子就能过；一律包成 500 会让 ontology-query 判成依赖故障。
 			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails(unsupported.Error())
