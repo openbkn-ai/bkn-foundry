@@ -7,6 +7,8 @@ import inspect
 import os
 from typing import Tuple
 
+from app.commons.locale import get_effective_locale
+
 cur_pwd = os.getcwd()
 
 
@@ -52,7 +54,9 @@ async def get_user_info(request, **kwargs):
     headers = request.headers
     userId = headers.get('x-account-id', "")
     role = headers.get('x-account-type', "")
-    language = headers.get('accept-language', "zh-CN")
+    scope = getattr(request, "scope", {})
+    state = scope.get("state", {}) if isinstance(scope, dict) else {}
+    language = state.get("effective_locale") or get_effective_locale()
     return userId, language, role
 
 async def validate_required_params(params_dict, required_params):

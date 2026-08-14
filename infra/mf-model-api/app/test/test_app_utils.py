@@ -228,7 +228,8 @@ class TestAuthMiddleware:
             assert response.status_code == 200
             session.post.assert_called_once_with(
                 "http://safe:8080/api/safe/v1/api-keys/introspect",
-                json={"token": "bak_kid_secret"})
+                json={"token": "bak_kid_secret"},
+                headers={"Accept-Language": "zh-CN"})
             assert (b"x-account-id", b"user123") in mock_request.scope['headers']
             assert (b"x-account-type", b"user") in mock_request.scope['headers']
 

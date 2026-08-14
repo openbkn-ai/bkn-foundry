@@ -272,12 +272,15 @@ def test_post_batch_retries_non_2xx(monkeypatch):
 
 def test_evidence_ingest_headers_use_dedicated_token(monkeypatch):
     monkeypatch.setenv(evidence.EVIDENCE_INGEST_TOKEN_ENV, "producer-token")
-    assert evidence._ingest_headers() == {"X-BKN-Trace-Ingest-Token": "producer-token"}
+    assert evidence._ingest_headers() == {
+        "X-BKN-Trace-Ingest-Token": "producer-token",
+        "Accept-Language": "zh-CN",
+    }
 
 
 def test_evidence_ingest_headers_omit_empty_token(monkeypatch):
     monkeypatch.delenv(evidence.EVIDENCE_INGEST_TOKEN_ENV, raising=False)
-    assert evidence._ingest_headers() == {}
+    assert evidence._ingest_headers() == {"Accept-Language": "zh-CN"}
 
 
 def test_emit_model_call_events_keeps_background_task_reference(monkeypatch):
