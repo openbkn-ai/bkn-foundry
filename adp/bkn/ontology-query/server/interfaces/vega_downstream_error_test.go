@@ -9,6 +9,7 @@ package interfaces
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +42,19 @@ func Test_VegaDownstreamError(t *testing.T) {
 		err := NewVegaDownstreamError(http.StatusBadRequest, "boom")
 		if got := err.Message(); got != "boom" {
 			t.Fatalf("unparsable payload must survive, got %q", got)
+		}
+	})
+
+	t.Run("解析不出结构的长报文被截断", func(t *testing.T) {
+		// 4xx 不一定来自 vega：网关在 413/502 时返回整页 HTML，整段回退会让终端
+		// 调用方在 error_details 里收到一坨 HTML 当作错误原因。
+		html := "<html><body>" + strings.Repeat("x", 4096) + "</body></html>"
+		msg := NewVegaDownstreamError(http.StatusRequestEntityTooLarge, html).Message()
+		if len(msg) > maxRawMessageLen+len("...(truncated)") {
+			t.Fatalf("raw payload must be truncated, got %d bytes", len(msg))
+		}
+		if !strings.HasSuffix(msg, "...(truncated)") {
+			t.Fatalf("truncation must be visible, got %q", msg[len(msg)-32:])
 		}
 	})
 
