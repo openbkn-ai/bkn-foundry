@@ -41,6 +41,7 @@ error_messages = {
         "description": "参数类型错误",
         "solution": "请阅读API文档填写正确的参数",
         "detail": "输入参数格式不符合要求。",
+        "detail_template": "参数类型错误：{parameter}",
         "link": ""
 
     }

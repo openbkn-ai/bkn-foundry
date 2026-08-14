@@ -41,6 +41,7 @@ error_messages = {
         "description": "Parameter type is invalid.",
         "solution": "Read the API documentation and provide the correct parameter type.",
         "detail": "The request parameter format is invalid.",
+        "detail_template": "Parameter type is invalid: {parameter}",
         "link": ""
 
     }

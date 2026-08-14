@@ -158,7 +158,8 @@ def _localize_detail(message: Dict[str, str], detail: Any) -> Any:
         parameter = _parameter_name_from_detail(detail)
         if parameter:
             return template.format(parameter=parameter)
-    return message.get("detail") or detail
+        return message.get("detail") or detail
+    return detail if isinstance(detail, str) and detail else message.get("detail")
 
 
 def _parameter_name_from_detail(detail: str) -> str:

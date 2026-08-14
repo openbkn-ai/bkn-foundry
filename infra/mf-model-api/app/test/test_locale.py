@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 from app.commons.i18n import get_error_message
+from app.commons.errors.codes import ParamValidationErrors
 from app.commons.locale import (
     LocaleResponseMiddleware,
     internal_request_headers,
@@ -70,6 +71,32 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         )
         self.assertTrue(changed)
         self.assertEqual(content["detail"], "Missing required parameter: model_ids")
+
+    def test_parameter_type_error_uses_a_localized_parameter_name(self):
+        content, changed = localized_error_content(
+            {
+                "code": ParamValidationErrors.ParamTypeError,
+                "description": "参数类型错误",
+                "detail": "parameters type error: model_names",
+                "solution": "请检查输入信息",
+            },
+            "en-US",
+        )
+        self.assertTrue(changed)
+        self.assertEqual(content["detail"], "Parameter type is invalid: model_names")
+
+    def test_format_error_preserves_a_dynamic_validation_reason(self):
+        content, changed = localized_error_content(
+            {
+                "code": "ModelFactory.Router.ParamError.FormatError",
+                "description": "参数错误",
+                "detail": "value is not a valid integer",
+                "solution": "请检查输入信息",
+            },
+            "en-US",
+        )
+        self.assertTrue(changed)
+        self.assertEqual(content["detail"], "value is not a valid integer")
 
     def test_platform_stream_error_uses_the_frozen_locale_and_stable_code(self):
         token = set_effective_locale("en-US")
