@@ -790,11 +790,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 
 	resourceInfo.Updater = task.Creator
 	resourceInfo.UpdateTime = time.Now().UnixMilli()
-	if tx != nil {
-		err = sutw.rs.InternalUpdate(ctx, tx, resourceInfo)
-	} else {
-		err = sutw.rs.UpdateResource(ctx, resourceInfo)
-	}
+	err = sutw.rs.InternalUpdateSemanticMetadata(ctx, tx, resourceInfo)
 	if err != nil {
 		return nil, err
 	}

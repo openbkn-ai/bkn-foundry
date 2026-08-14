@@ -929,6 +929,49 @@ func (ra *resourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, 
 	return nil
 }
 
+// UpdateSemanticMetadata updates only fields owned by semantic understanding so
+// a stale semantic snapshot cannot overwrite a local index name written by build.
+func (ra *resourceAccess) UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource semantic metadata")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("resource_id").String(resource.ID))
+	schemaDefinitionBytes, err := sonic.Marshal(resource.SchemaDefinition)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal schema definition failed")
+		return err
+	}
+	if resource.SchemaDefinition == nil {
+		schemaDefinitionBytes = []byte("[]")
+	}
+	sqlStr, vals, err := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_name", resource.Name).
+		Set("f_description", resource.Description).
+		Set("f_schema_definition", string(schemaDefinitionBytes)).
+		Set("f_updater", resource.Updater.ID).
+		Set("f_updater_type", resource.Updater.Type).
+		Set("f_update_time", resource.UpdateTime).
+		Where(sq.Eq{"f_id": resource.ID}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // GetByCatalogID retrieves all Resources under a Catalog.
 func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resources by catalog ID")

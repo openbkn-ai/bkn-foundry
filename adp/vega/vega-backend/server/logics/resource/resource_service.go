@@ -980,6 +980,13 @@ func (rs *resourceService) InternalUpdateLocalIndexName(ctx context.Context, tx 
 	return rs.ra.UpdateLocalIndexName(ctx, tx, id, localIndexName)
 }
 
+func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateSemanticMetadata")
+	defer span.End()
+
+	return rs.ra.UpdateSemanticMetadata(ctx, tx, resource)
+}
+
 func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 	if tx == nil {
 		return nil, fmt.Errorf("transaction is required")

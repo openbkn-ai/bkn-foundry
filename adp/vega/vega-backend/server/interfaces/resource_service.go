@@ -59,6 +59,8 @@ type ResourceService interface {
 	InternalUpdate(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// InternalUpdateLocalIndexName updates only a Resource's local index name for internal workers.
 	InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
+	// InternalUpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
+	InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// InternalCreate creates a Resource for internal workers within a transaction.
 	InternalCreate(ctx context.Context, tx *sql.Tx, req *ResourceRequest) (*Resource, error)
 	// InternalUpdateStatus updates a Resource status for internal workers within a transaction.

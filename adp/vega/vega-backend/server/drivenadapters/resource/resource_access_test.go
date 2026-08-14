@@ -383,6 +383,47 @@ func TestResourceAccessUpdateLocalIndexName(t *testing.T) {
 	})
 }
 
+func TestResourceAccessUpdateSemanticMetadata(t *testing.T) {
+	t.Run("updates only semantic metadata", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		resource := sampleResource()
+		resource.LocalIndexName = "vega-build-resource-1-task-1"
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_schema_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
+			WithArgs(
+				resource.Name,
+				resource.Description,
+				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+				resource.Updater.ID,
+				resource.Updater.Type,
+				resource.UpdateTime,
+				resource.ID,
+			).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.UpdateSemanticMetadata(context.Background(), nil, resource))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("updates semantic metadata in transaction", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		resource := sampleResource()
+
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_schema_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		require.NoError(t, access.UpdateSemanticMetadata(context.Background(), tx, resource))
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestResourceAccessAttachListExtensions(t *testing.T) {
 	t.Run("skips empty resources", func(t *testing.T) {
 		access, _, cleanup := newResourceAccessMock(t)

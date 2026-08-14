@@ -122,25 +122,10 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("preserves semantic metadata when build completes from stale snapshot", func(t *testing.T) {
+	t.Run("does not write stale resource snapshot when build completes", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
 		ts := vmock.NewMockBuildTaskService(ctrl)
-		catalogResource := &interfaces.Resource{
-			ID:               "r1",
-			Name:             "supply_chain.material_entity",
-			SourceIdentifier: "supply_chain.material_entity",
-			Description:      "source material description",
-			SourceMetadata: map[string]any{
-				"original_description": "source material description",
-			},
-			SchemaDefinition: []*interfaces.Property{{
-				Name:                "material_id",
-				DisplayName:         "material_id",
-				Description:         "source material identifier",
-				OriginalDescription: "source material identifier",
-			}},
-		}
 		staleBuildResource := &interfaces.Resource{
 			ID:               "r1",
 			Name:             "supply_chain.material_entity",
@@ -153,18 +138,6 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 				OriginalDescription: "source material identifier",
 			}},
 		}
-		semanticWorker := &SemanticUnderstandingTaskWorker{rs: rs}
-		semanticTask := &interfaces.SemanticUnderstandingTask{
-			ResourceID:          "r1",
-			ApplyMode:           interfaces.SemanticUnderstandingApplyModeFillEmpty,
-			ConfidenceThreshold: 0.75,
-		}
-
-		rs.EXPECT().GetByID(gomock.Any(), "r1").Return(catalogResource, nil)
-		rs.EXPECT().UpdateResource(gomock.Any(), catalogResource).Return(nil)
-		applied, err := semanticWorker.applyResourceResult(context.Background(), semanticTask, `{"confidence":1,"resource":{"display_name":"物料","description":"物料主数据"},"fields":[{"name":"material_id","display_name":"物料ID","description":"物料唯一标识"}]}`, nil)
-		require.NoError(t, err)
-		assert.True(t, applied.Applied)
 
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -175,14 +148,11 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		rs.EXPECT().InternalUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, id, indexName string) error {
 				assert.Equal(t, "r1", id)
-				assert.Equal(t, "物料", catalogResource.Name)
-				assert.Equal(t, "物料主数据", catalogResource.Description)
-				assert.Equal(t, "物料ID", catalogResource.SchemaDefinition[0].DisplayName)
-				assert.Equal(t, "物料唯一标识", catalogResource.SchemaDefinition[0].Description)
-				catalogResource.LocalIndexName = indexName
+				assert.Equal(t, "new-index", indexName)
 				return nil
 			},
 		)
@@ -190,11 +160,7 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 		mock.ExpectCommit()
 
 		require.NoError(t, completeBuildTaskWithoutEmbedding(context.Background(), staleBuildResource, rs, ts, "build-task-1", "new-index"))
-		assert.Equal(t, "物料", catalogResource.Name)
-		assert.Equal(t, "物料主数据", catalogResource.Description)
-		assert.Equal(t, "物料ID", catalogResource.SchemaDefinition[0].DisplayName)
-		assert.Equal(t, "物料唯一标识", catalogResource.SchemaDefinition[0].Description)
-		assert.Equal(t, "new-index", catalogResource.LocalIndexName)
+		assert.Equal(t, "new-index", staleBuildResource.LocalIndexName)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

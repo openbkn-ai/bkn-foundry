@@ -37,6 +37,8 @@ type ResourceAccess interface {
 	Update(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// UpdateLocalIndexName updates only a Resource's local index name.
 	UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
+	// UpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
+	UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// UpdateStatus updates a Resource's status, using tx when provided.
 	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.

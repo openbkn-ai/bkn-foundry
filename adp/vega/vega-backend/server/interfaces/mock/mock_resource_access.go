@@ -276,6 +276,20 @@ func (mr *MockResourceAccessMockRecorder) UpdateLocalIndexName(ctx, tx, id, loca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLocalIndexName", reflect.TypeOf((*MockResourceAccess)(nil).UpdateLocalIndexName), ctx, tx, id, localIndexName)
 }
 
+// UpdateSemanticMetadata mocks base method.
+func (m *MockResourceAccess) UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSemanticMetadata", ctx, tx, resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateSemanticMetadata indicates an expected call of UpdateSemanticMetadata.
+func (mr *MockResourceAccessMockRecorder) UpdateSemanticMetadata(ctx, tx, resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSemanticMetadata", reflect.TypeOf((*MockResourceAccess)(nil).UpdateSemanticMetadata), ctx, tx, resource)
+}
+
 // UpdateStatus mocks base method.
 func (m *MockResourceAccess) UpdateStatus(ctx context.Context, tx *sql.Tx, id, status, statusMessage string) error {
 	m.ctrl.T.Helper()
