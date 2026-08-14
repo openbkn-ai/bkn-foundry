@@ -244,7 +244,7 @@ func TestSemanticUnderstandingTaskAccessSetApplied(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_applied = ?, f_apply_detail_json = ? WHERE f_id = ? AND f_status = ?")).
-		WithArgs(true, `{"resource_updated":true}`, "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusCompleted).
+		WithArgs(true, `{"resource_updated":true}`, "semantic-task-1", interfaces.SemanticUnderstandingTaskStatusRunning).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	updated, err := access.SetApplied(context.Background(), nil, "semantic-task-1", true, `{"resource_updated":true}`)

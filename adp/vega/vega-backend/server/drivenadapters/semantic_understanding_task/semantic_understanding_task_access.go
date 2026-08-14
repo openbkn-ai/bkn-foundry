@@ -526,7 +526,7 @@ func (suta *semanticUnderstandingTaskAccess) SetApplied(ctx context.Context, tx 
 	}
 	return suta.update(ctx, tx, updateColumns, map[string]any{
 		"f_id":     id,
-		"f_status": interfaces.SemanticUnderstandingTaskStatusCompleted,
+		"f_status": interfaces.SemanticUnderstandingTaskStatusRunning,
 	})
 }
 

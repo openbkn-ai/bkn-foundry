@@ -286,7 +286,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 				assert.NotZero(t, got.UpdateTime)
 				return nil
 			})
-		taskService.EXPECT().
+		markCompleted := taskService.EXPECT().
 			InternalMarkCompleted(gomock.Any(), gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, _ string, _ float64, detailJSON string) (bool, error) {
 				var detail map[string]sonic.NoCopyRawMessage
@@ -296,13 +296,14 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 				assert.Contains(t, detail, "warnings")
 				return true, nil
 			})
-		taskService.EXPECT().
+		setApplied := taskService.EXPECT().
 			InternalSetApplied(gomock.Any(), gomock.Any(), "semantic-task-1", true, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, applied bool, detailJSON string) (bool, error) {
 				assert.True(t, applied)
 				assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name","description"],"updated_fields":["id"],"field_details":[{"name":"id","status":"updated","updated":["display_name","description"]}]}`, detailJSON)
 				return true, nil
 			})
+		gomock.InOrder(setApplied, markCompleted)
 
 		err := worker.Run(context.Background(), "semantic-task-1")
 
