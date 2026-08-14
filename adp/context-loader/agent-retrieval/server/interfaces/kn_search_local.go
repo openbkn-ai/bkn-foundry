@@ -85,6 +85,17 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	// RRFK RRF 融合常数 k：score = Σ 1/(k + rank)。k 越大越平缓（各通道靠前名次之间
 	// 的差距被压小），60 是文献与工业界的通用取值，跨知识网络不需要重调。
 	RRFK int `json:"rrf_k" default:"60"`
+	// KnnWeight 向量通道在融合里的权重，0~1，默认 0.5（等权，与不带权重时逐位等价）。
+	// 全文通道取 1-KnnWeight：名次分的绝对幅度不影响排序，只有两路的**比例**有意义，
+	// 所以一个数就够，不需要两个独立权重。
+	//
+	// 1 = 只信向量，0 = 只信全文。什么时候值得偏：中文短名称、跨语言表述上 BM25 分词
+	// 效果差，向量更可靠；编号 / 编码类字段则相反。
+	//
+	// 代价：偏权会打破「任一通道第 1 名恒为 1.0」这个跨对象类锚点——调高向量权重之后，
+	// 没有向量字段的对象类整体被压低。那是调用方声明的偏好带来的**语义正确**的结果，
+	// 不是缺陷，但正因如此默认必须保持 0.5。
+	KnnWeight *float64 `json:"knn_weight,omitempty" default:"0.5"`
 
 	// InstanceRerankMode 精排级开关：off / shadow / on。
 	//

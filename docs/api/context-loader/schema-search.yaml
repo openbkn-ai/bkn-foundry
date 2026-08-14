@@ -384,7 +384,14 @@ components:
             semantic_instance_retrieval:
               type: object
               additionalProperties: true
-              description: 兼容接收，当前版本不生效。
+              description: |
+                语义实例召回配置。除既有字段外，`knn_weight`（0~1，默认 `0.5`）调节
+                向量与全文两路在名次融合里的权重，全文权重取 `1 - knn_weight`：
+                `1` 只信向量、`0` 只信全文。默认 `0.5` 与不带权重时逐位等价。
+
+                偏权会带来跨对象类的系统性倾斜——调高向量权重后，没有向量字段的对象类
+                整体被压低。那是调用方声明的偏好带来的结果，不是缺陷，但也因此默认值
+                保持中性。
             property_filter:
               type: object
               additionalProperties: true

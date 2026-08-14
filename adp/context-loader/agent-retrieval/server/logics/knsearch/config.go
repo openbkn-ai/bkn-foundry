@@ -44,6 +44,7 @@ func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstan
 		MaxKnnSubConditionsPerType:        1,
 		EnableRRFFusion:                   boolPtr(true),
 		RRFK:                              60,
+		KnnWeight:                         float64Ptr(0.5),
 		InstanceRerankMode:                InstanceRerankModeOff,
 		RerankTopN:                        50,
 		RerankFieldCharLimit:              200,
@@ -172,6 +173,9 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	if user.RRFK > 0 {
 		base.RRFK = user.RRFK
 	}
+	if user.KnnWeight != nil {
+		base.KnnWeight = user.KnnWeight
+	}
 	if mode := normalizeRerankMode(user.InstanceRerankMode); mode != "" {
 		base.InstanceRerankMode = mode
 	}
@@ -207,4 +211,8 @@ func boolValue(value *bool) bool {
 		return false
 	}
 	return *value
+}
+
+func float64Ptr(value float64) *float64 {
+	return &value
 }
