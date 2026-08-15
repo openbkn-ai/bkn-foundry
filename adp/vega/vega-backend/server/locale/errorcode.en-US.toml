@@ -268,3 +268,37 @@ ErrorLink = "None"
 Description = "Too many extension filter pairs"
 Solution = "Reduce the number of filter pairs"
 ErrorLink = "None"
+[VegaBackend.OperationAudit.InvalidRange]
+Description = "The operation-audit time range is invalid."
+Solution = "Provide a valid RFC3339 time range no longer than 30 days."
+ErrorLink = "None"
+
+[VegaBackend.OperationAudit.InvalidBeforeTime]
+Description = "The operation-audit cursor time is invalid."
+Solution = "Provide before_time in RFC3339 format."
+ErrorLink = "None"
+
+[VegaBackend.OperationAudit.MissingScope]
+Description = "The operation-audit scope is incomplete."
+Solution = "Provide x-tenant-id and x-business-domain headers."
+ErrorLink = "None"
+
+[VegaBackend.OperationAudit.AccessDenied]
+Description = "You are not permitted to view operation-audit records."
+Solution = "Request an administrator, audit, or super_admin role."
+ErrorLink = "None"
+
+[VegaBackend.OperationAudit.ServiceUnavailable]
+Description = "The operation-audit service is unavailable."
+Solution = "Try again later."
+ErrorLink = "None"
+
+[VegaBackend.OperationAudit.QueryFailed]
+Description = "The operation-audit query failed."
+Solution = "Try again later or contact an administrator."
+ErrorLink = "None"
+
+[VegaBackend.OperationAudit.NotFound]
+Description = "The operation-audit event was not found."
+Solution = "Check the event_id and scope."
+ErrorLink = "None"

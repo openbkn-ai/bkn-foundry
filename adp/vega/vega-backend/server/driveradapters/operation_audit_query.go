@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/common/operationaudit"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 )
 
@@ -38,7 +39,7 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 		return
 	}
 	if r.auditQueryStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "operation audit source is unavailable"})
+		replyOperationAuditError(c, http.StatusServiceUnavailable, verrors.VegaBackend_OperationAudit_ServiceUnavailable, nil)
 		return
 	}
 	filter := operationaudit.Filter{TenantID: strings.TrimSpace(c.GetHeader("x-tenant-id")), BusinessDomain: strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)), From: from, To: to}
@@ -48,7 +49,9 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 	filter.TargetID = strings.TrimSpace(c.Query("target_id"))
 	filter.Outcome = strings.TrimSpace(c.Query("outcome"))
 	if filter.TenantID == "" || filter.BusinessDomain == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "x-tenant-id and x-business-domain are required"})
+		replyOperationAuditError(c, http.StatusBadRequest, verrors.VegaBackend_OperationAudit_MissingScope, gin.H{
+			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+		})
 		return
 	}
 	if limit, err := strconv.Atoi(strings.TrimSpace(c.Query("limit"))); err == nil {
@@ -57,14 +60,17 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 	if before := strings.TrimSpace(c.Query("before_time")); before != "" {
 		parsed, err := time.Parse(time.RFC3339Nano, before)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "before_time must be RFC3339"})
+			replyOperationAuditError(c, http.StatusBadRequest, verrors.VegaBackend_OperationAudit_InvalidBeforeTime, gin.H{
+				"field":  "before_time",
+				"format": "RFC3339",
+			})
 			return
 		}
 		filter.BeforeTime, filter.BeforeEventID = parsed.UTC(), strings.TrimSpace(c.Query("before_event_id"))
 	}
 	page, err := r.auditQueryStore.List(c.Request.Context(), filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "operation audit query failed"})
+		replyOperationAuditError(c, http.StatusInternalServerError, verrors.VegaBackend_OperationAudit_QueryFailed, nil)
 		return
 	}
 	response := gin.H{"entries": operationAuditResponses(page.Entries), "has_more": page.HasMore}
@@ -81,21 +87,23 @@ func (r *restHandler) GetOperationAudit(c *gin.Context) {
 		return
 	}
 	if r.auditQueryStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "operation audit source is unavailable"})
+		replyOperationAuditError(c, http.StatusServiceUnavailable, verrors.VegaBackend_OperationAudit_ServiceUnavailable, nil)
 		return
 	}
 	tenantID, businessDomain := strings.TrimSpace(c.GetHeader("x-tenant-id")), strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN))
 	if tenantID == "" || businessDomain == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "x-tenant-id and x-business-domain are required"})
+		replyOperationAuditError(c, http.StatusBadRequest, verrors.VegaBackend_OperationAudit_MissingScope, gin.H{
+			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+		})
 		return
 	}
 	entry, found, err := r.auditQueryStore.Get(c.Request.Context(), strings.TrimSpace(c.Param("event_id")), tenantID, businessDomain)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "operation audit query failed"})
+		replyOperationAuditError(c, http.StatusInternalServerError, verrors.VegaBackend_OperationAudit_QueryFailed, nil)
 		return
 	}
 	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "operation audit event not found"})
+		replyOperationAuditError(c, http.StatusNotFound, verrors.VegaBackend_OperationAudit_NotFound, gin.H{"event_id": strings.TrimSpace(c.Param("event_id"))})
 		return
 	}
 	c.JSON(http.StatusOK, operationAuditResponse(entry))
@@ -105,7 +113,11 @@ func operationAuditRange(c *gin.Context) (time.Time, time.Time, bool) {
 	from, fromErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(c.Query("from")))
 	to, toErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(c.Query("to")))
 	if fromErr != nil || toErr != nil || !from.Before(to) || to.Sub(from) > maximumOperationAuditRange {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "from/to must be a valid RFC3339 range of at most 30 days"})
+		replyOperationAuditError(c, http.StatusBadRequest, verrors.VegaBackend_OperationAudit_InvalidRange, gin.H{
+			"fields":       []string{"from", "to"},
+			"format":       "RFC3339",
+			"max_duration": maximumOperationAuditRange.String(),
+		})
 		return time.Time{}, time.Time{}, false
 	}
 	return from.UTC(), to.UTC(), true
@@ -117,10 +129,18 @@ func (r *restHandler) requireOperationAuditReader(c *gin.Context) bool {
 		return false
 	}
 	if !operationAuditReader(c.Request.Context(), c.GetHeader("Authorization"), visitor.ID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "operation audit access denied"})
+		replyOperationAuditError(c, http.StatusForbidden, verrors.VegaBackend_OperationAudit_AccessDenied, nil)
 		return false
 	}
 	return true
+}
+
+func replyOperationAuditError(c *gin.Context, status int, code string, details any) {
+	err := rest.NewHTTPError(c.Request.Context(), status, code)
+	if details != nil {
+		err.WithErrorDetails(details)
+	}
+	rest.ReplyError(c, err)
 }
 
 func operationAuditReader(ctx context.Context, authorization, expectedActorID string) bool {

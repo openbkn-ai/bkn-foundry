@@ -268,3 +268,37 @@ ErrorLink = "暂无"
 Description = "扩展筛选条件组数超过上限"
 Solution = "请减少筛选组数"
 ErrorLink = "暂无"
+[VegaBackend.OperationAudit.InvalidRange]
+Description = "操作审计查询时间范围无效。"
+Solution = "请提供不超过 30 天的有效 RFC3339 时间范围。"
+ErrorLink = "暂无"
+
+[VegaBackend.OperationAudit.InvalidBeforeTime]
+Description = "操作审计游标时间无效。"
+Solution = "请使用 RFC3339 格式提供 before_time。"
+ErrorLink = "暂无"
+
+[VegaBackend.OperationAudit.MissingScope]
+Description = "操作审计查询范围不完整。"
+Solution = "请提供 x-tenant-id 和 x-business-domain 请求头。"
+ErrorLink = "暂无"
+
+[VegaBackend.OperationAudit.AccessDenied]
+Description = "您没有查看操作审计记录的权限。"
+Solution = "请申请 administrator、audit 或 super_admin 角色。"
+ErrorLink = "暂无"
+
+[VegaBackend.OperationAudit.ServiceUnavailable]
+Description = "操作审计服务暂不可用。"
+Solution = "请稍后重试。"
+ErrorLink = "暂无"
+
+[VegaBackend.OperationAudit.QueryFailed]
+Description = "操作审计查询失败。"
+Solution = "请稍后重试或联系管理员。"
+ErrorLink = "暂无"
+
+[VegaBackend.OperationAudit.NotFound]
+Description = "未找到操作审计事件。"
+Solution = "请检查 event_id 和查询范围。"
+ErrorLink = "暂无"
