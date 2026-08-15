@@ -120,6 +120,9 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 	if c.Request.Method == http.MethodGet && c.Param("path") == "/info" {
 		info, err := buildMCPInfo(mcpEndpointURL(c.Request))
 		if err != nil {
+			if r.Logger != nil {
+				r.Logger.Errorf("BuildMCPInfo failed: %v", err)
+			}
 			sharedrest.MarkLocalizedCacheableResponse(c)
 			infrarest.ReplyError(c, infraerrors.NewHTTPError(c.Request.Context(), http.StatusInternalServerError, infraerrors.ErrExtMCPInfoBuildFailed, nil))
 			return
