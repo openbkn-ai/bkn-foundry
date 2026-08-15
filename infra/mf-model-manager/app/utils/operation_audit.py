@@ -2,11 +2,14 @@
 import asyncio
 import hashlib
 import json
+import logging
 import secrets
 from datetime import datetime, timezone
 
 from app.commons.get_user_info import get_username_by_ids
 from app.mydb.pymysql_pool import PymysqlPool
+
+logger = logging.getLogger(__name__)
 
 _RULES = {
     ("POST", "/api/mf-model-manager/v1/llm/add"): ("create", "llm_model"),
@@ -104,6 +107,13 @@ async def operation_audit_middleware(request, call_next):
     try:
         await asyncio.to_thread(_write, entry)
     except Exception:
-        # Never overturn a completed management request; pipeline health is monitored separately.
-        pass
+        # A completed management request remains successful, but audit persistence
+        # failures must be diagnosable from the service logs.
+        logger.error(
+            "operation_audit_write_failed request_id=%s action=%s target_type=%s",
+            request_id,
+            rule[0],
+            rule[1],
+            exc_info=True,
+        )
     return response

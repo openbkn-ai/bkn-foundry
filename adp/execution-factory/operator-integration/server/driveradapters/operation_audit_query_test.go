@@ -46,6 +46,50 @@ type executionAuditUserManagementStub struct {
 	err  error
 }
 
+// executionAuditAuthorizationStub mirrors the platform-wide safe_admin
+// capability gate.  The audit reader must use this shared decision rather
+// than perform a second, independent directory-role lookup.
+type executionAuditAuthorizationStub struct {
+	interfaces.IAuthorizationService
+	err    error
+	called int
+}
+
+func (s *executionAuditAuthorizationStub) CheckAdminPermission(context.Context, *interfaces.AuthAccessor) error {
+	s.called++
+	return s.err
+}
+
+func TestExecutionOperationAuditUsesSharedAdminCapability(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	authorization := &executionAuditAuthorizationStub{}
+	handler := &restPublicHandler{
+		auditQueryStore:    &executionAuditQueryStoreStub{},
+		auditAuthorization: authorization,
+	}
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(infra.SetAccountAuthContextToCtx(c.Request.Context(), &interfaces.AccountAuthContext{
+			AccountID: "super-admin", AccountType: interfaces.AccessorTypeUser,
+		}))
+		c.Next()
+	})
+	engine.GET("/operation-audits", handler.ListOperationAudits)
+
+	request := httptest.NewRequest(http.MethodGet, "/operation-audits?from=2026-08-01T00:00:00Z&to=2026-08-08T00:00:00Z", nil)
+	request.Header.Set("x-tenant-id", "tenant-a")
+	request.Header.Set(string(interfaces.HeaderXBusinessDomain), "domain-a")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if authorization.called != 1 {
+		t.Fatalf("CheckAdminPermission calls = %d, want 1", authorization.called)
+	}
+}
+
 func (s executionAuditUserManagementStub) GetAppInfo(context.Context, string) (*interfaces.AppInfo, error) {
 	return nil, nil
 }
@@ -69,7 +113,7 @@ func TestExecutionOperationAuditErrorsAreLocalized(t *testing.T) {
 		language        string
 		path            string
 		authenticated   bool
-		roles           []string
+		adminAllowed    bool
 		store           operationAuditQueryStore
 		wantStatus      int
 		wantCode        string
@@ -86,42 +130,42 @@ func TestExecutionOperationAuditErrorsAreLocalized(t *testing.T) {
 			wantCode: infraerrors.ErrExtOperationAuditAuthenticationRequired.String(), wantDescription: "Authentication is required to view operation-audit records.",
 		},
 		{
-			name: "Chinese access denied", language: "zh-CN", authenticated: true, roles: []string{"user"},
+			name: "Chinese access denied", language: "zh-CN", authenticated: true,
 			path: "/operation-audits?from=2026-08-01T00:00:00Z&to=2026-08-08T00:00:00Z", wantStatus: http.StatusForbidden,
 			wantCode: infraerrors.ErrExtOperationAuditAccessDenied.String(), wantDescription: "您没有查看操作审计记录的权限。",
 		},
 		{
-			name: "English access denied", language: "en-US", authenticated: true, roles: []string{"user"},
+			name: "English access denied", language: "en-US", authenticated: true,
 			path: "/operation-audits?from=2026-08-01T00:00:00Z&to=2026-08-08T00:00:00Z", wantStatus: http.StatusForbidden,
 			wantCode: infraerrors.ErrExtOperationAuditAccessDenied.String(), wantDescription: "You are not permitted to view operation-audit records.",
 		},
 		{
-			name: "Chinese invalid range", language: "zh-CN", authenticated: true, roles: []string{"audit"}, store: &executionAuditQueryStoreStub{},
+			name: "Chinese invalid range", language: "zh-CN", authenticated: true, adminAllowed: true, store: &executionAuditQueryStoreStub{},
 			path: "/operation-audits?from=invalid&to=2026-08-08T00:00:00Z", wantStatus: http.StatusBadRequest,
 			wantCode: infraerrors.ErrExtOperationAuditInvalidRange.String(), wantDescription: "操作审计查询时间范围无效。",
 		},
 		{
-			name: "English invalid range", language: "en-US", authenticated: true, roles: []string{"audit"}, store: &executionAuditQueryStoreStub{},
+			name: "English invalid range", language: "en-US", authenticated: true, adminAllowed: true, store: &executionAuditQueryStoreStub{},
 			path: "/operation-audits?from=invalid&to=2026-08-08T00:00:00Z", wantStatus: http.StatusBadRequest,
 			wantCode: infraerrors.ErrExtOperationAuditInvalidRange.String(), wantDescription: "The operation-audit time range is invalid.",
 		},
 		{
-			name: "Chinese query failed", language: "zh-CN", authenticated: true, roles: []string{"audit"}, store: &executionAuditQueryStoreStub{listErr: errors.New("store unavailable")},
+			name: "Chinese query failed", language: "zh-CN", authenticated: true, adminAllowed: true, store: &executionAuditQueryStoreStub{listErr: errors.New("store unavailable")},
 			path: "/operation-audits?from=2026-08-01T00:00:00Z&to=2026-08-08T00:00:00Z", wantStatus: http.StatusInternalServerError,
 			wantCode: infraerrors.ErrExtOperationAuditQueryFailed.String(), wantDescription: "操作审计查询失败。",
 		},
 		{
-			name: "English query failed", language: "en-US", authenticated: true, roles: []string{"audit"}, store: &executionAuditQueryStoreStub{listErr: errors.New("store unavailable")},
+			name: "English query failed", language: "en-US", authenticated: true, adminAllowed: true, store: &executionAuditQueryStoreStub{listErr: errors.New("store unavailable")},
 			path: "/operation-audits?from=2026-08-01T00:00:00Z&to=2026-08-08T00:00:00Z", wantStatus: http.StatusInternalServerError,
 			wantCode: infraerrors.ErrExtOperationAuditQueryFailed.String(), wantDescription: "The operation-audit query failed.",
 		},
 		{
-			name: "Chinese not found", language: "zh-CN", authenticated: true, roles: []string{"audit"}, store: &executionAuditQueryStoreStub{},
+			name: "Chinese not found", language: "zh-CN", authenticated: true, adminAllowed: true, store: &executionAuditQueryStoreStub{},
 			path: "/operation-audits/event-missing", wantStatus: http.StatusNotFound,
 			wantCode: infraerrors.ErrExtOperationAuditNotFound.String(), wantDescription: "未找到操作审计事件。",
 		},
 		{
-			name: "English not found", language: "en-US", authenticated: true, roles: []string{"audit"}, store: &executionAuditQueryStoreStub{},
+			name: "English not found", language: "en-US", authenticated: true, adminAllowed: true, store: &executionAuditQueryStoreStub{},
 			path: "/operation-audits/event-missing", wantStatus: http.StatusNotFound,
 			wantCode: infraerrors.ErrExtOperationAuditNotFound.String(), wantDescription: "The operation-audit event was not found.",
 		},
@@ -137,10 +181,11 @@ func TestExecutionOperationAuditErrorsAreLocalized(t *testing.T) {
 					c.Next()
 				})
 			}
-			handler := &restPublicHandler{
-				auditQueryStore:     test.store,
-				auditUserManagement: executionAuditUserManagementStub{user: &interfaces.UserInfo{UserID: "user-a", Roles: test.roles}},
+			authorization := &executionAuditAuthorizationStub{}
+			if !test.adminAllowed {
+				authorization.err = errors.New("not an administrator")
 			}
+			handler := &restPublicHandler{auditQueryStore: test.store, auditAuthorization: authorization}
 			engine.GET("/operation-audits", handler.ListOperationAudits)
 			engine.GET("/operation-audits/:event_id", handler.GetOperationAudit)
 

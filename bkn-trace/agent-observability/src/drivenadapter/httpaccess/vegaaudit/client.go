@@ -33,7 +33,7 @@ func (client *Client) Metadata() observabilityvo.SourceStatus {
 	if client.baseURL == "" {
 		return observabilityvo.SourceStatus{SourceID: sourceID, Status: "not_integrated", Reason: "source_not_configured", Reliability: "best_effort", CollectionMethod: "not_integrated", CoveredModules: []string{"data_resource_knowledge_network"}, CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin}}
 	}
-	return observabilityvo.SourceStatus{SourceID: sourceID, Status: "degraded", Reason: "management_audit_coverage_in_progress", Reliability: "best_effort", CollectionMethod: "source_adapter", CoveredModules: []string{"data_resource_knowledge_network"}, CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin}}
+	return observabilityvo.SourceStatus{SourceID: sourceID, Status: "degraded", Reason: "partial_management_audit_coverage", Reliability: "best_effort", CollectionMethod: "source_adapter", CoveredModules: []string{"data_resource_knowledge_network"}, CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin}}
 }
 
 func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {

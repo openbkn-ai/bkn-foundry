@@ -12,6 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
@@ -32,7 +33,7 @@ type restPublicHandler struct {
 	businessDomainService interfaces.IBusinessDomainService
 	auditStore            *operationaudit.Store
 	auditQueryStore       operationAuditQueryStore
-	auditUserManagement   interfaces.UserManagement
+	auditAuthorization    interfaces.IAuthorizationService
 }
 
 // NewRestPublicHandler 创建restHandler实例
@@ -54,6 +55,7 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 		businessDomainService: business_domain.NewBusinessDomainService(),
 		auditStore:            auditStore,
 		auditQueryStore:       auditStore,
+		auditAuthorization:    auth.NewAuthServiceImpl(),
 	}
 }
 

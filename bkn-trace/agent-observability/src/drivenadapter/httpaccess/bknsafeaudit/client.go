@@ -100,9 +100,23 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	}
 	records := make([]observabilityvo.LogRecord, 0, len(payload.Logs))
 	for _, entry := range payload.Logs {
+		if businessModuleForResource(entry.Resource) == "" {
+			// Login and logout rows are carried by the dedicated access source.
+			// This source is the management-audit projection, so do not pass its
+			// legacy access duplicates to the public operation-log contract.
+			continue
+		}
 		records = append(records, projectAuditLog(entry, query.AuthorizedTenantID))
 	}
-	return observabilityvo.SourcePage{Records: records, Count: payload.Total, CountAccuracy: "exact"}, nil
+	countAccuracy := "exact"
+	count := payload.Total
+	if count != int64(len(records)) {
+		// The upstream total includes legacy rows outside this source's explicit
+		// management-audit scope. Report the normalized lower bound instead of
+		// letting those rows make the combined result appear unavailable.
+		count, countAccuracy = int64(len(records)), "partial"
+	}
+	return observabilityvo.SourcePage{Records: records, Count: count, CountAccuracy: countAccuracy}, nil
 }
 
 func onlyFailedOutcomes(outcomes []string) bool {

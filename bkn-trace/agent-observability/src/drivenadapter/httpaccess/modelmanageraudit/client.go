@@ -33,7 +33,7 @@ func (c *Client) Metadata() observabilityvo.SourceStatus {
 	if c.baseURL == "" {
 		return observabilityvo.SourceStatus{SourceID: sourceID, Status: "not_integrated", Reason: "source_not_configured", Reliability: "best_effort", CollectionMethod: "not_integrated", CoveredModules: []string{"model_management"}, CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin}}
 	}
-	return observabilityvo.SourceStatus{SourceID: sourceID, Status: "degraded", Reason: "management_audit_coverage_in_progress", Reliability: "best_effort", CollectionMethod: "source_adapter", CoveredModules: []string{"model_management"}, CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin}}
+	return observabilityvo.SourceStatus{SourceID: sourceID, Status: "degraded", Reason: "partial_management_audit_coverage", Reliability: "best_effort", CollectionMethod: "source_adapter", CoveredModules: []string{"model_management"}, CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin}}
 }
 func (c *Client) Search(ctx context.Context, q observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	if !contains(q.AuthorizedCategories, observabilityvo.CategoryAuditAdmin) {

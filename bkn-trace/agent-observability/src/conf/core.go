@@ -51,7 +51,7 @@ func NewCoreConfig() CoreConfig {
 	}
 	projectionRebuildVersion := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_REBUILD_VERSION"))
 	if projectionEnabled && projectionRebuildVersion == "" {
-		projectionRebuildVersion = projectionIndex + "-v014"
+		projectionRebuildVersion = projectionIndex + "-v014-r1"
 	}
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),

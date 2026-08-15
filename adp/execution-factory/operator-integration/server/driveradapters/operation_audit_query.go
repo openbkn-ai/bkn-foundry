@@ -9,11 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	infra "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	infrarest "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	logicsauth "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 )
 
 const maximumExecutionAuditRange = 30 * 24 * time.Hour
@@ -100,22 +100,17 @@ func (r *restPublicHandler) executionAuditReader(c *gin.Context) bool {
 		replyExecutionAuditError(c, http.StatusUnauthorized, infraerrors.ErrExtOperationAuditAuthenticationRequired, nil)
 		return false
 	}
-	userManagement := r.auditUserManagement
-	if userManagement == nil {
-		userManagement = drivenadapters.NewUserManagementClient()
+	authorization := r.auditAuthorization
+	if authorization == nil {
+		authorization = logicsauth.NewAuthServiceImpl()
 	}
-	user, err := userManagement.GetUserInfo(c.Request.Context(), auth.AccountID, "roles")
-	if err != nil || user == nil {
+	if err := authorization.CheckAdminPermission(c.Request.Context(), &interfaces.AuthAccessor{
+		ID: auth.AccountID, Type: auth.AccountType,
+	}); err != nil {
 		replyExecutionAuditError(c, http.StatusForbidden, infraerrors.ErrExtOperationAuditAccessDenied, nil)
 		return false
 	}
-	for _, role := range user.Roles {
-		if role == "super_admin" || role == "admin" || role == "audit" {
-			return true
-		}
-	}
-	replyExecutionAuditError(c, http.StatusForbidden, infraerrors.ErrExtOperationAuditAccessDenied, nil)
-	return false
+	return true
 }
 
 func replyExecutionAuditError(c *gin.Context, status int, code infraerrors.ErrorCode, details any) {

@@ -168,6 +168,18 @@ type categorizedSource struct {
 	queries    int
 }
 
+type partialCoverageSource struct {
+	categorizedSource
+}
+
+func (source *partialCoverageSource) Metadata() observabilityvo.SourceStatus {
+	return observabilityvo.SourceStatus{
+		SourceID: source.id, Status: observabilityvo.SourceCoverageDegraded,
+		Reason: "partial_management_audit_coverage", Reliability: "best_effort",
+		CountAccuracy: "partial", Categories: append([]string(nil), source.categories...),
+	}
+}
+
 type filteredPageSource struct {
 	pages [][]observabilityvo.LogRecord
 }
@@ -250,7 +262,7 @@ func TestListReturnsCompleteRecordsMatchingAnyManagedNetwork(t *testing.T) {
 }
 
 func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) {
-	profile := activeProfile("admin-a", "admin")
+	profile := activeProfile("admin-a", "super_admin")
 	available := fakeSource{id: "otel", records: []observabilityvo.LogRecord{
 		{LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
 	}}
@@ -267,6 +279,29 @@ func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) 
 	_, err = New([]Source{unavailable}).List(context.Background(), profile, observabilityvo.LogQuery{})
 	if !errors.Is(err, ErrSourcesUnavailable) {
 		t.Fatalf("all failed sources must return sources unavailable, got %v", err)
+	}
+}
+
+func TestListDoesNotMarkAvailableResultsPartialForNotIntegratedSources(t *testing.T) {
+	profile := activeProfile("admin-a", "super_admin")
+	available := fakeSource{id: "safe", records: []observabilityvo.LogRecord{{
+		LogID: "audit-a", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created", TenantID: "tenant-a",
+		EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+	}}}
+	service := New([]Source{
+		available,
+		NewNotIntegratedSource("future-source", []string{observabilityvo.CategoryAuditAdmin}, []string{"Future module"}),
+	})
+
+	result, err := service.List(context.Background(), profile, observabilityvo.LogQuery{})
+	if err != nil {
+		t.Fatalf("available source must remain queryable: %v", err)
+	}
+	if result.Partial || len(result.Records) != 1 {
+		t.Fatalf("not-integrated coverage must not make available results partial: %+v", result)
+	}
+	if len(result.SourceStatus) != 2 || result.SourceStatus[1].Status != "not_integrated" {
+		t.Fatalf("not-integrated source state must still be disclosed: %+v", result.SourceStatus)
 	}
 }
 
@@ -454,7 +489,7 @@ func TestSourcesHealthCheckUsesTheConfiguredSourceTimeout(t *testing.T) {
 	}, Options{CursorKey: []byte("test-cursor-key"), SourceTimeout: 20 * time.Millisecond, MaxConcurrentSources: 2})
 
 	startedAt := time.Now()
-	statuses, err := service.Sources(context.Background(), activeProfile("admin-a", "admin"))
+	statuses, err := service.Sources(context.Background(), activeProfile("admin-a", "super_admin"))
 	if err != nil {
 		t.Fatalf("source health query failed: %v", err)
 	}
@@ -464,6 +499,20 @@ func TestSourcesHealthCheckUsesTheConfiguredSourceTimeout(t *testing.T) {
 	if len(statuses) != 2 || statuses[0].SourceID != "slow" || statuses[0].Reason != "source_timeout" ||
 		statuses[1].Status != "healthy" {
 		t.Fatalf("source health status is incomplete: %+v", statuses)
+	}
+}
+
+func TestSourcesReportsReachablePartialCoverageSourceAsHealthy(t *testing.T) {
+	service := New([]Source{&partialCoverageSource{categorizedSource: categorizedSource{
+		id: "vega", categories: []string{observabilityvo.CategoryAuditAdmin},
+	}}})
+
+	statuses, err := service.Sources(context.Background(), activeProfile("admin-a", "super_admin"))
+	if err != nil || len(statuses) != 1 {
+		t.Fatalf("source health query failed: statuses=%+v err=%v", statuses, err)
+	}
+	if statuses[0].Status != "healthy" || statuses[0].Reason != "partial_management_audit_coverage" {
+		t.Fatalf("reachable source must be healthy while retaining its partial coverage note: %+v", statuses[0])
 	}
 }
 
@@ -848,8 +897,27 @@ func TestOperationAuditOnlyRejectsIncompletePublicProjection(t *testing.T) {
 	if len(result.Records) != 0 {
 		t.Fatalf("incomplete public operation audit projection was disclosed: %+v", result.Records)
 	}
-	if result.Count != 0 || !result.Partial || result.CountExact {
-		t.Fatalf("rejected projections must not remain in the visible exact count: %+v", result)
+	if result.Count != 0 || result.Partial || result.CountExact {
+		t.Fatalf("rejected projections must not make a reachable source partial or remain in the visible exact count: %+v", result)
+	}
+}
+
+func TestOperationAuditListDoesNotReportReachableSourcesUnavailableForLegacyRows(t *testing.T) {
+	record := validTestRecord(observabilityvo.LogRecord{
+		LogID: "audit-legacy", Category: observabilityvo.CategoryAuditAdmin, EventName: "resource_config.changed",
+		TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "source-a",
+		BusinessModule: "legacy_unknown_module",
+	})
+	service := NewWithOptions([]Source{fakeSource{id: "source-a", records: []observabilityvo.LogRecord{record}}}, Options{
+		OperationAuditOnly: true,
+	})
+
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+	if err != nil {
+		t.Fatalf("list operation audit records: %v", err)
+	}
+	if result.Partial || result.CountExact || len(result.Records) != 0 {
+		t.Fatalf("a rejected legacy row must not make a reachable source appear unavailable: %+v", result)
 	}
 }
 

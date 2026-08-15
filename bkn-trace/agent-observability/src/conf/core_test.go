@@ -26,7 +26,7 @@ func TestProjectionUsesVersionedIndexBehindAliasByDefault(t *testing.T) {
 	t.Setenv("BKN_TRACE_PROJECTION_REBUILD_VERSION", "")
 
 	config := NewCoreConfig()
-	if config.ProjectionRebuildVersion != "bkn-trace-core-v014" {
+	if config.ProjectionRebuildVersion != "bkn-trace-core-v014-r1" {
 		t.Fatalf("projection could create a concrete alias index: %#v", config)
 	}
 }

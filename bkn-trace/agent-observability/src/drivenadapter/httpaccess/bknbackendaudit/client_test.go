@@ -62,7 +62,7 @@ func TestMetadataDoesNotClaimAnUnconfiguredSourceIsHealthy(t *testing.T) {
 
 func TestMetadataDoesNotClaimPartialManagementCoverageIsHealthy(t *testing.T) {
 	status := New("http://bkn-backend:8080", nil).Metadata()
-	if status.Status != "degraded" || status.Reason != "management_audit_coverage_in_progress" {
+	if status.Status != "degraded" || status.Reason != "partial_management_audit_coverage" {
 		t.Fatalf("status = %#v", status)
 	}
 }

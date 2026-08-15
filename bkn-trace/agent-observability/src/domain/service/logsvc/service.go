@@ -243,7 +243,8 @@ func (service *Service) listPage(
 	for _, sourceResult := range service.searchSources(ctx, visibleSources, sourceQuery, positions) {
 		source := sourceResult.source
 		if sourceResult.status.Status == "not_integrated" {
-			failed++
+			// Coverage is shown in source status, but a source that was never
+			// queried cannot make results from reachable sources incomplete.
 			result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 			continue
 		}
@@ -287,10 +288,9 @@ func (service *Service) listPage(
 			// Source totals describe its raw result set. Once the public contract
 			// rejects records, retaining that raw total produces an impossible UI
 			// (for example “5 facts” with an empty table). Report the visible lower
-			// bound and mark it partial; later pages may contain more valid records.
+			// bound and mark the count inexact; the source itself remains reachable.
 			totalCount += int64(len(candidates))
 			countExact = false
-			coveragePartial = true
 		} else {
 			totalCount += page.Count
 		}
@@ -449,7 +449,7 @@ func (service *Service) searchSources(
 				results[index].status.CountAccuracy = "unavailable"
 				return
 			}
-			if results[index].status.Status != observabilityvo.SourceCoverageDegraded {
+			if results[index].status.Status != observabilityvo.SourceCoverageDegraded || results[index].status.Reason == "partial_management_audit_coverage" {
 				results[index].status.Status = "healthy"
 				results[index].status.CountAccuracy = normalizedAccuracy(page.CountAccuracy)
 			}

@@ -66,6 +66,34 @@ func TestSearchForwardsCallerAuthorizationFiltersAtSourceAndDropsDetail(t *testi
 	}
 }
 
+func TestSearchExcludesLegacyAccessRowsFromManagementAuditResults(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(candidate *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{"logs":[
+				{"id":"access-logout","actor_id":"admin-a","actor_name_snapshot":"Administrator","auth_method":"password","source_channel":"web","method":"POST","resource":"logout","action":"logout","target_id":"admin-a","target_name":"Administrator","status":200,"created_at":"2026-08-01T10:00:00Z"},
+				{"id":"audit-user","actor_id":"admin-a","actor_name_snapshot":"Administrator","auth_method":"password","source_channel":"web","method":"POST","resource":"users","action":"create","target_id":"user-a","target_name":"User A","status":201,"created_at":"2026-08-01T09:00:00Z"}
+			],"total":2}`)),
+			Header: make(http.Header), Request: candidate,
+		}, nil
+	})}
+	client := New("http://bkn-safe:3000", httpClient)
+	ctx := observabilityvo.WithSourceAuthorization(context.Background(), "Bearer token-a")
+
+	page, err := client.Search(ctx, observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
+	})
+	if err != nil {
+		t.Fatalf("search audit source: %v", err)
+	}
+	if len(page.Records) != 1 || page.Records[0].LogID != "bkn-safe-admin:audit-user" {
+		t.Fatalf("legacy access row must not be exposed as a management audit record: %+v", page.Records)
+	}
+	if page.Count != 1 || page.CountAccuracy != "partial" {
+		t.Fatalf("management audit count must describe the normalized result set: %+v", page)
+	}
+}
+
 func TestSearchRequiresForwardedCallerAuthorization(t *testing.T) {
 	client := New("http://bkn-safe:3000", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		t.Fatal("request must not be sent without caller authorization")
