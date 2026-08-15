@@ -10,34 +10,34 @@ ErrorLink = "暂无"
 [BknSafe.Unauthorized]
 Description = "认证失败。"
 Solution = "请提供有效的认证凭据。"
-ErrorLink = "??"
+ErrorLink = "暂无"
 
 [BknSafe.Forbidden]
 Description = "没有执行此操作的权限。"
 Solution = "请联系管理员授予所需权限。"
-ErrorLink = "??"
+ErrorLink = "暂无"
 
 [BknSafe.NotFound]
 Description = "请求的资源不存在。"
 Solution = "请检查资源标识是否正确。"
-ErrorLink = "??"
+ErrorLink = "暂无"
 
 [BknSafe.Conflict]
 Description = "请求与当前资源状态冲突。"
 Solution = "请刷新资源状态后重试。"
-ErrorLink = "??"
+ErrorLink = "暂无"
 
 [BknSafe.MethodNotAllowed]
 Description = "不支持当前请求方法。"
 Solution = "请使用接口支持的请求方法。"
-ErrorLink = "??"
+ErrorLink = "暂无"
 
 [BknSafe.ServiceUnavailable]
 Description = "服务暂时不可用。"
 Solution = "请稍后重试。"
-ErrorLink = "??"
+ErrorLink = "暂无"
 
 [BknSafe.InternalError]
 Description = "服务内部错误。"
 Solution = "请稍后重试；如问题持续，请联系管理员。"
-ErrorLink = "??"
+ErrorLink = "暂无"

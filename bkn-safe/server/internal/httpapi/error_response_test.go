@@ -21,9 +21,10 @@ func TestRequireUserLocalizesAuthenticationFailure(t *testing.T) {
 		name        string
 		language    string
 		description string
+		errorLink   string
 	}{
-		{name: "Chinese", language: "zh-CN", description: "认证失败。"},
-		{name: "English", language: "en-US", description: "Authentication failed."},
+		{name: "Chinese", language: "zh-CN", description: "认证失败。", errorLink: "暂无"},
+		{name: "English", language: "en-US", description: "Authentication failed.", errorLink: "None"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			router := gin.New()
@@ -58,6 +59,9 @@ func TestRequireUserLocalizesAuthenticationFailure(t *testing.T) {
 			}
 			if got := body["error"]; got != testCase.description {
 				t.Errorf("legacy error = %q, want localized description %q", got, testCase.description)
+			}
+			if got := body["error_link"]; got != testCase.errorLink {
+				t.Errorf("error_link = %q, want %q when no documentation link exists", got, testCase.errorLink)
 			}
 		})
 	}
