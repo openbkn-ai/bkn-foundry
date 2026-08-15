@@ -18,6 +18,7 @@ import (
 
 	"bkn-backend/common/bkntrace"
 	"bkn-backend/common/operationaudit"
+	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
 
@@ -33,7 +34,7 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 		return
 	}
 	if r.auditQueryStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "operation audit source is unavailable"})
+		replyOperationAuditError(c, http.StatusServiceUnavailable, berrors.BknBackend_OperationAudit_ServiceUnavailable, nil)
 		return
 	}
 	filter := operationaudit.Filter{
@@ -48,13 +49,15 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 		Outcome:          strings.TrimSpace(c.Query("outcome")),
 	}
 	if filter.TenantID == "" || filter.BusinessDomainID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "x-tenant-id and x-business-domain are required"})
+		replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_MissingScope, gin.H{
+			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+		})
 		return
 	}
 	requestedActor := filter.ActorID
 	applyOperationAuditScope(&filter, nil, visitor.ID, profile)
 	if requestedActor != "" && filter.ActorID != requestedActor {
-		c.JSON(http.StatusForbidden, gin.H{"error": "actor filter is outside the authorized scope"})
+		replyOperationAuditError(c, http.StatusForbidden, berrors.BknBackend_OperationAudit_AccessDenied, gin.H{"field": "actor_id"})
 		return
 	}
 	if limit, err := strconv.Atoi(strings.TrimSpace(c.Query("limit"))); err == nil {
@@ -63,7 +66,7 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 	if before := strings.TrimSpace(c.Query("before_time")); before != "" {
 		parsed, err := time.Parse(time.RFC3339Nano, before)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "before_time must be RFC3339"})
+			replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_InvalidBeforeTime, gin.H{"field": "before_time", "format": "RFC3339"})
 			return
 		}
 		filter.BeforeTime = parsed.UTC()
@@ -71,7 +74,7 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 	}
 	page, err := r.auditQueryStore.List(c.Request.Context(), filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "operation audit query failed"})
+		replyOperationAuditError(c, http.StatusInternalServerError, berrors.BknBackend_OperationAudit_QueryFailed, nil)
 		return
 	}
 	response := gin.H{"entries": operationAuditResponses(page.Entries), "has_more": page.HasMore}
@@ -88,7 +91,7 @@ func (r *restHandler) GetOperationAudit(c *gin.Context) {
 		return
 	}
 	if r.auditQueryStore == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "operation audit source is unavailable"})
+		replyOperationAuditError(c, http.StatusServiceUnavailable, berrors.BknBackend_OperationAudit_ServiceUnavailable, nil)
 		return
 	}
 	scope := operationaudit.Scope{
@@ -96,17 +99,19 @@ func (r *restHandler) GetOperationAudit(c *gin.Context) {
 		BusinessDomainID: strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
 	}
 	if scope.TenantID == "" || scope.BusinessDomainID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "x-tenant-id and x-business-domain are required"})
+		replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_MissingScope, gin.H{
+			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+		})
 		return
 	}
 	applyOperationAuditScope(nil, &scope, visitor.ID, profile)
 	entry, found, err := r.auditQueryStore.Get(c.Request.Context(), strings.TrimSpace(c.Param("event_id")), scope)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "operation audit query failed"})
+		replyOperationAuditError(c, http.StatusInternalServerError, berrors.BknBackend_OperationAudit_QueryFailed, nil)
 		return
 	}
 	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "operation audit event not found"})
+		replyOperationAuditError(c, http.StatusNotFound, berrors.BknBackend_OperationAudit_NotFound, gin.H{"event_id": strings.TrimSpace(c.Param("event_id"))})
 		return
 	}
 	c.JSON(http.StatusOK, operationAuditResponse(entry))
@@ -119,18 +124,18 @@ func (r *restHandler) operationAuditQueryProfile(c *gin.Context) (visitor hydra.
 	}
 	visitor = verified
 	if r.auditAccessResolver == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "operation audit authorization is unavailable"})
+		replyOperationAuditError(c, http.StatusServiceUnavailable, berrors.BknBackend_OperationAudit_ServiceUnavailable, nil)
 		return hydra.Visitor{}, bkntrace.OperationAuditProfile{}, false
 	}
 	profile, err = r.auditAccessResolver(c.Request.Context(), c.GetHeader("Authorization"), verified.ID)
 	if err != nil {
 		status := http.StatusServiceUnavailable
-		message := "operation audit authorization is unavailable"
+		code := berrors.BknBackend_OperationAudit_ServiceUnavailable
 		if errors.Is(err, bkntrace.ErrAccessProfileDenied) {
 			status = http.StatusForbidden
-			message = "operation audit access denied"
+			code = berrors.BknBackend_OperationAudit_AccessDenied
 		}
-		c.JSON(status, gin.H{"error": message})
+		replyOperationAuditError(c, status, code, nil)
 		return hydra.Visitor{}, bkntrace.OperationAuditProfile{}, false
 	}
 	return visitor, profile, true
@@ -140,10 +145,22 @@ func operationAuditRange(c *gin.Context) (time.Time, time.Time, bool) {
 	from, fromErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(c.Query("from")))
 	to, toErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(c.Query("to")))
 	if fromErr != nil || toErr != nil || !from.Before(to) || to.Sub(from) > maximumOperationAuditRange {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "from/to must be a valid RFC3339 range of at most 30 days"})
+		replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_InvalidRange, gin.H{
+			"fields":       []string{"from", "to"},
+			"format":       "RFC3339",
+			"max_duration": maximumOperationAuditRange.String(),
+		})
 		return time.Time{}, time.Time{}, false
 	}
 	return from.UTC(), to.UTC(), true
+}
+
+func replyOperationAuditError(c *gin.Context, status int, code string, details any) {
+	err := rest.NewHTTPError(c.Request.Context(), status, code)
+	if details != nil {
+		err.WithErrorDetails(details)
+	}
+	rest.ReplyError(c, err)
 }
 
 func applyOperationAuditScope(filter *operationaudit.Filter, scope *operationaudit.Scope, actorID string, profile bkntrace.OperationAuditProfile) {

@@ -39,6 +39,41 @@ Description = "指定的每页数量限制无效"
 Solution = "请检查参数是否正确。"
 ErrorLink = "暂无"
 
+[BknBackend.OperationAudit.InvalidRange]
+Description = "操作审计查询时间范围无效。"
+Solution = "请提供不超过 30 天的有效 RFC3339 时间范围。"
+ErrorLink = "暂无"
+
+[BknBackend.OperationAudit.InvalidBeforeTime]
+Description = "操作审计分页时间无效。"
+Solution = "请提供有效的 RFC3339 before_time 参数。"
+ErrorLink = "暂无"
+
+[BknBackend.OperationAudit.MissingScope]
+Description = "缺少操作审计查询作用域。"
+Solution = "请提供租户和业务域标识。"
+ErrorLink = "暂无"
+
+[BknBackend.OperationAudit.AccessDenied]
+Description = "没有查看操作审计记录的权限。"
+Solution = "请检查访问范围或联系管理员。"
+ErrorLink = "暂无"
+
+[BknBackend.OperationAudit.ServiceUnavailable]
+Description = "操作审计服务暂时不可用。"
+Solution = "请稍后重试。"
+ErrorLink = "暂无"
+
+[BknBackend.OperationAudit.QueryFailed]
+Description = "查询操作审计记录失败。"
+Solution = "请稍后重试；如问题持续，请联系管理员。"
+ErrorLink = "暂无"
+
+[BknBackend.OperationAudit.NotFound]
+Description = "操作审计事件不存在。"
+Solution = "请检查事件标识是否正确。"
+ErrorLink = "暂无"
+
 [BknBackend.InvalidParameter.ModuleType]
 Description = "指定的模块名称无效"
 Solution = "请检查参数是否正确。"
@@ -132,4 +167,4 @@ ErrorLink = "暂无"
 [BknBackend.InternalError.UnMarshalDataFailed]
 Description = "反序列化数据时，服务器内部发生错误"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
-ErrorLink = "暂无" 
+ErrorLink = "暂无"
