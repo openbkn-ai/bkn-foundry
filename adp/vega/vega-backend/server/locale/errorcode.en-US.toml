@@ -285,7 +285,7 @@ ErrorLink = "None"
 
 [VegaBackend.OperationAudit.AccessDenied]
 Description = "You are not permitted to view operation-audit records."
-Solution = "Request an administrator, audit, or super_admin role."
+Solution = "Request an admin, audit, or super_admin role."
 ErrorLink = "None"
 
 [VegaBackend.OperationAudit.ServiceUnavailable]
