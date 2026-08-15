@@ -11,6 +11,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
@@ -93,14 +94,8 @@ func loadPublicErrorI18n() map[string]map[string]BaseError {
 }
 
 func fallbackPublicError(lang Language) publicErrorMessage {
-	if lang == AmericanEnglish {
-		return publicErrorMessage{
-			Description: "Request failed.",
-			Solution:    "See the request details or contact an administrator.",
-		}
-	}
 	return publicErrorMessage{
-		Description: "请求失败。",
-		Solution:    "请查看请求详情或联系管理员。",
+		Description: i18n.Translate(lang, PublicError_InternalServerError+".Description", nil),
+		Solution:    i18n.Translate(lang, PublicError_InternalServerError+".Solution", nil),
 	}
 }
