@@ -25,6 +25,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	infrarest "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	logicsSkills "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
@@ -45,6 +47,8 @@ type restPublicHandler struct {
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
 }
+
+var buildMCPInfo = mcp.BuildMCPInfo
 
 // NewRestPublicHandler 创建restHandler实例
 func NewRestPublicHandler(logger interfaces.Logger) interfaces.HTTPRouterInterface {
@@ -114,9 +118,10 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 // handleMCP 在 MCP catch-all 路由内分流：GET …/mcp/info 返回自描述文档，其余交给 MCP Server。
 func (r *restPublicHandler) handleMCP(c *gin.Context) {
 	if c.Request.Method == http.MethodGet && c.Param("path") == "/info" {
-		info, err := mcp.BuildMCPInfo(mcpEndpointURL(c.Request))
+		info, err := buildMCPInfo(mcpEndpointURL(c.Request))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			sharedrest.MarkLocalizedCacheableResponse(c)
+			infrarest.ReplyError(c, infraerrors.NewHTTPError(c.Request.Context(), http.StatusInternalServerError, infraerrors.ErrExtMCPInfoBuildFailed, nil))
 			return
 		}
 		c.JSON(http.StatusOK, info)
