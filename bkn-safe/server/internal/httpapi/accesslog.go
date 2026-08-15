@@ -45,7 +45,7 @@ func registerAccessLogReads(group *gin.RouterGroup, store *accesslog.Store, e *a
 			return
 		}
 		if !found {
-			c.JSON(http.StatusNotFound, gin.H{"error": "access log not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		c.JSON(http.StatusOK, entry)
@@ -59,7 +59,7 @@ func accessLogTimeFilter(c *gin.Context, key string, target *time.Time) bool {
 	}
 	parsed, err := time.Parse(time.RFC3339Nano, value)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": key + " must be an RFC3339 timestamp"})
+		replyPublicErrorDetails(c, http.StatusBadRequest, gin.H{"field": key, "format": "RFC3339"})
 		return false
 	}
 	*target = parsed

@@ -56,7 +56,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		resourceType := objectGrantQueryParam(c, "resource_type", "obj_type")
 		resourceID := objectGrantQueryParam(c, "resource_id", "obj_id")
 		if resourceType == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		policies, err := e.ResourcePolicies(resourceType, resourceID)
@@ -234,11 +234,11 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if req.Resource.ID == "" || req.Resource.ID == "*" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "object grants target a concrete resource id (not \"*\")"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		if len(req.Operations) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "operations required; use DELETE to revoke a grant"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		// safe_admin:console:manage is exactly what CanAdmin tests, so granting it
@@ -246,7 +246,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		// object-grant route — bypassing role binding and its escalation guards.
 		// Administrative capability is role-conferred only.
 		if req.Resource.Type == adminConsoleResourceType {
-			c.JSON(http.StatusForbidden, gin.H{"error": "admin console capability is granted by role binding, not by object grants"})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		// Grantee must be a user (apps are user rows too). Departments/groups are
@@ -257,7 +257,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id must be a known user (object grants support user grantees only)"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		// Ops must be registered for the resource type — blocks typos that would
@@ -268,12 +268,12 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if len(valid) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown resource type: " + req.Resource.Type})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		for _, op := range req.Operations {
 			if !valid[op] {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "operation not registered for " + req.Resource.Type + ": " + op})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 		}
@@ -307,7 +307,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if req.Resource.ID == "" || req.Resource.ID == "*" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "object grants target a concrete resource id (not \"*\")"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		valid, err := catalogOpSet(db, req.Resource.Type)
@@ -316,7 +316,7 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if len(valid) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown resource type: " + req.Resource.Type})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		removed, err := e.RemoveAccessorResourcePolicies(req.AccessorID, req.Resource.Type, req.Resource.ID)

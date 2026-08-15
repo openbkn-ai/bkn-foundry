@@ -16,6 +16,8 @@ paths:
       tags: [Self service]
       operationId: getMyKnowledgeNetworkGrants
       summary: 获取当前主体的直接知识网络实例授权
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       description: |
         返回 bearer token 对应主体在具体知识网络实例上的直接授权及操作集合。
         `knowledge_network:*` 等角色级或类型级授权不会出现在响应中，调用方不得
@@ -44,7 +46,43 @@ paths:
                             type: string
         '401':
           description: 缺少或无效 bearer token
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '../_shared/errors.yaml#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        deprecated: true
+                        description: 兼容旧客户端的人类可读错误别名，值与 `description` 相同。
 components:
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: 请求的人类可读错误文案语言。支持 `zh-CN` 与 `en-US`。
+      schema:
+        type: string
+        example: en-US
+  headers:
+    ContentLanguage:
+      description: 本地化错误响应实际使用的语言。
+      schema:
+        type: string
+        example: en-US
+    PrivateNoCache:
+      description: 认证响应仅允许私有缓存且每次使用前必须重新验证。
+      schema:
+        type: string
+        example: private, no-cache
   securitySchemes:
     BearerAuth:
       type: http

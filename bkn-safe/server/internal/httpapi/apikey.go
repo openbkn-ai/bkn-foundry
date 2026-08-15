@@ -43,12 +43,12 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 		}
 		exp, err := resolveExpiry(req.ExpiresAt, req.NeverExpire)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		plaintext, rec, err := keys.Issue(c.Request.Context(), owner, req.Name, exp)
 		if errors.Is(err, auth.ErrAPIKeyNameTaken) {
-			c.JSON(http.StatusConflict, gin.H{"error": "an api key with this name already exists"})
+			replyPublicError(c, http.StatusConflict)
 			return
 		}
 		if err != nil {
@@ -78,7 +78,7 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 		owner := c.GetString(ctxAccessorID)
 		err := keys.DeleteOwned(c.Request.Context(), owner, c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -96,7 +96,7 @@ func registerMeAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore) {
 		owner := c.GetString(ctxAccessorID)
 		plaintext, rec, err := keys.Regenerate(c.Request.Context(), owner, c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -128,7 +128,7 @@ func registerAdminAPIKeys(g *gin.RouterGroup, keys *auth.APIKeyStore, e *authz.E
 		setAuditOperation(c, "revoke", c.Param("id"), "")
 		err := keys.Delete(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "api key not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {

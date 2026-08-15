@@ -1,0 +1,43 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+[BknSafe.InvalidRequest]
+Description = "请求参数无效。"
+Solution = "请检查请求参数。"
+ErrorLink = "??"
+
+[BknSafe.Unauthorized]
+Description = "认证失败。"
+Solution = "请提供有效的认证凭据。"
+ErrorLink = "??"
+
+[BknSafe.Forbidden]
+Description = "没有执行此操作的权限。"
+Solution = "请联系管理员授予所需权限。"
+ErrorLink = "??"
+
+[BknSafe.NotFound]
+Description = "请求的资源不存在。"
+Solution = "请检查资源标识是否正确。"
+ErrorLink = "??"
+
+[BknSafe.Conflict]
+Description = "请求与当前资源状态冲突。"
+Solution = "请刷新资源状态后重试。"
+ErrorLink = "??"
+
+[BknSafe.MethodNotAllowed]
+Description = "不支持当前请求方法。"
+Solution = "请使用接口支持的请求方法。"
+ErrorLink = "??"
+
+[BknSafe.ServiceUnavailable]
+Description = "服务暂时不可用。"
+Solution = "请稍后重试。"
+ErrorLink = "??"
+
+[BknSafe.InternalError]
+Description = "服务内部错误。"
+Solution = "请稍后重试；如问题持续，请联系管理员。"
+ErrorLink = "??"

@@ -68,13 +68,11 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 			return
 		}
 		if err := checkDeclaredHierarchy(c.Request.Context(), db, req.ResourceType, req.ParentType); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		if len(req.Items) > maxResourceParentBatch {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "items exceeds the per-request cap of " + strconv.Itoa(maxResourceParentBatch),
-			})
+			replyPublicErrorDetails(c, http.StatusBadRequest, gin.H{"field": "items", "max_items": maxResourceParentBatch})
 			return
 		}
 		rows := make([]model.ResourceParent, 0, len(req.Items))
@@ -83,11 +81,11 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 			// parent (or one instance inherit from every parent) — the hierarchy is
 			// a membership fact about concrete instances only.
 			if it.ResourceID == "*" || it.ParentID == "*" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": `resource_id and parent_id must be concrete ids (not "*")`})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			if req.ResourceType == req.ParentType && it.ResourceID == it.ParentID {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "a resource cannot be its own parent: " + it.ResourceID})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			rows = append(rows, model.ResourceParent{
@@ -152,9 +150,7 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 			return
 		}
 		if len(req.ResourceIDs) > maxResourceParentBatch {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "resource_ids exceeds the per-request cap of " + strconv.Itoa(maxResourceParentBatch),
-			})
+			replyPublicErrorDetails(c, http.StatusBadRequest, gin.H{"field": "resource_ids", "max_items": maxResourceParentBatch})
 			return
 		}
 		if len(req.ResourceIDs) == 0 {
@@ -178,7 +174,7 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 	g.GET("/resource-parents", func(c *gin.Context) {
 		rtype := c.Query("resource_type")
 		if rtype == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		q := db.WithContext(c.Request.Context()).Model(&model.ResourceParent{}).
@@ -198,9 +194,7 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 		if v := c.Query("limit"); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n <= 0 || n > maxResourceParentBatch {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error": "limit must be an integer in 1.." + strconv.Itoa(maxResourceParentBatch),
-				})
+				replyPublicErrorDetails(c, http.StatusBadRequest, gin.H{"field": "limit", "min": 1, "max": maxResourceParentBatch})
 				return
 			}
 			limit = n
@@ -209,7 +203,7 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 		if v := c.Query("offset"); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "offset must be a non-negative integer"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			offset = n

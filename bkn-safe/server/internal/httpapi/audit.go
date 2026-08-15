@@ -463,7 +463,7 @@ func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforce
 		if v := c.Query("from"); v != "" {
 			t, err := time.Parse(time.RFC3339Nano, v)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "from must be an RFC3339 timestamp"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			f.From = t
@@ -471,7 +471,7 @@ func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforce
 		if v := c.Query("to"); v != "" {
 			t, err := time.Parse(time.RFC3339Nano, v)
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "to must be an RFC3339 timestamp"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			f.To = t
@@ -490,7 +490,7 @@ func registerAuditReads(g *gin.RouterGroup, store *audit.Store, e *authz.Enforce
 			return
 		}
 		if !found {
-			c.JSON(http.StatusNotFound, gin.H{"error": "audit log not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		c.JSON(http.StatusOK, entry)

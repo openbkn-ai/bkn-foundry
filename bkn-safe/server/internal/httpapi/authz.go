@@ -115,7 +115,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		}
 		if len(req.ResourceIDs) > 0 {
 			if req.ResourceType == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required with resource_ids"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			for _, id := range req.ResourceIDs {
@@ -187,7 +187,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		// input validation is the only thing standing between a caller and an
 		// arbitrary policy row. It is staged deliberately — see policyGuard.
 		if err := rejectWildcardGrant(req.Resource.Type, req.Operations); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		auditPolicyWriteShape(c, db, "POST", req.AccessorID, req.Resource, req.Operations)
@@ -212,7 +212,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		// A wildcard type here would drop every policy in the system — an
 		// authorization teardown, not a resource cleanup.
 		if err := rejectWildcardGrant(req.Resource.Type, nil); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		auditPolicyWriteShape(c, db, "DELETE", "", req.Resource, nil)
@@ -241,7 +241,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		rtype := c.Query("resource_type")
 		op := c.Query("operation")
 		if accessorID == "" || rtype == "" || op == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id, resource_type, operation required"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		ids, err := e.AccessibleResources(accessorID, rtype, op)
@@ -260,7 +260,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		rtype := c.Query("resource_type")
 		rid := c.Query("resource_id")
 		if rtype == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		policies, err := e.ResourcePolicies(rtype, rid)
@@ -307,7 +307,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id does not match any user, department or group id: " + req.AccessorID})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		var n int64
@@ -317,7 +317,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if n == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "role_id does not match any role id: " + req.RoleID})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		// Escalation guards. The permission gate on this route (admin-role:members)
@@ -340,7 +340,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if isSuper {
-			c.JSON(http.StatusForbidden, gin.H{"error": superAdminSeedOnlyMsg})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		if caller != "" && caller == req.AccessorID {
@@ -350,7 +350,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 				return
 			}
 			if role != nil && role.Source == model.RoleSourceSystem {
-				c.JSON(http.StatusForbidden, gin.H{"error": "a system role cannot be bound to yourself; ask another administrator"})
+				replyPublicError(c, http.StatusForbidden)
 				return
 			}
 		}
@@ -362,7 +362,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			}
 			for _, currentRoleID := range currentRoleIDs {
 				if currentRoleID != req.RoleID && isThreeAdminRoleID(currentRoleID) {
-					c.JSON(http.StatusConflict, gin.H{"error": "three-admin roles are mutually exclusive for one accessor"})
+					replyPublicError(c, http.StatusConflict)
 					return
 				}
 			}
@@ -379,7 +379,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	g.GET("/role-bindings", RequirePermission(e, "admin-role", "view"), func(c *gin.Context) {
 		accessorID := c.Query("accessor_id")
 		if accessorID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "accessor_id required"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		roleIDs, err := e.RolesForAccessor(accessorID)
@@ -409,7 +409,7 @@ func registerRoleBindings(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		if isSuper {
-			c.JSON(http.StatusForbidden, gin.H{"error": superAdminSeedOnlyMsg})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		if err := e.RemoveRole(req.AccessorID, req.RoleID); err != nil {
@@ -638,7 +638,7 @@ func loadRole(c *gin.Context, db *gorm.DB, id string) (*model.Role, error) {
 	var role model.Role
 	err := db.WithContext(c.Request.Context()).First(&role, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "role not found"})
+		replyPublicError(c, http.StatusNotFound)
 		return nil, err
 	}
 	if err != nil {
@@ -712,12 +712,12 @@ func catalogOps(db *gorm.DB, resourceType string) ([]string, error) {
 
 func bind(c *gin.Context, v any) bool {
 	if err := c.ShouldBindJSON(v); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		replyPublicError(c, http.StatusBadRequest)
 		return false
 	}
 	return true
 }
 
-func serverError(c *gin.Context, err error) {
-	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+func serverError(c *gin.Context, _ error) {
+	replyInternalError(c)
 }

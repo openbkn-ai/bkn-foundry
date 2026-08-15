@@ -44,7 +44,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforce
 	g.GET("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
 		if !manageableClients[id] {
-			c.JSON(http.StatusForbidden, gin.H{"error": "client not manageable"})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		uris, err := mgr.GetClientRedirectURIs(c.Request.Context(), id)
@@ -60,7 +60,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforce
 	g.POST("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
 		if !manageableClients[id] {
-			c.JSON(http.StatusForbidden, gin.H{"error": "client not manageable"})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		var req struct {
@@ -70,7 +70,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforce
 			return
 		}
 		if !validRedirectURI(req.RedirectURI) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "redirect_uri must be an absolute http(s) URL with a host and no wildcard or fragment"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		uris, err := mgr.AddClientRedirectURI(c.Request.Context(), id, req.RedirectURI)
@@ -85,7 +85,7 @@ func registerClientAdmin(g *gin.RouterGroup, mgr ClientManager, e *authz.Enforce
 	g.DELETE("/clients/:id/redirect-uris", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		id := c.Param("id")
 		if !manageableClients[id] {
-			c.JSON(http.StatusForbidden, gin.H{"error": "client not manageable"})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		var req struct {

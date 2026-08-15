@@ -42,7 +42,7 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 
 		user, err := dir.GetUser(c.Request.Context(), sub)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "no user for token subject: " + sub})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -126,7 +126,7 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 		}
 		scope := c.Query("scope")
 		if scope != "" && scope != "type" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": `unknown scope: only "type" is supported`})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		// scope 校验先于 resource_type 缺失校验:?scope=type&resource_id=m1 的真正
@@ -134,11 +134,11 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 		// "resource_id requires resource_type" 先命中,调用方会照文案加上
 		// resource_type 再撞一次 400,把真矛盾藏了一层。
 		if scope == "type" && len(resourceIDs) > 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_id conflicts with scope=type"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		if len(resourceIDs) > 0 && resourceType == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_id requires resource_type"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		_, grants, err := e.EffectivePermissions(accessorID, authz.PermQuery{
@@ -215,11 +215,11 @@ func registerMeProfile(g *gin.RouterGroup, users *auth.UserStore) {
 		if req.Name != nil {
 			name := strings.TrimSpace(*req.Name)
 			if name == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "name cannot be empty"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			if len(name) > 255 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "name too long (max 255)"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			fields["name"] = name
@@ -231,7 +231,7 @@ func registerMeProfile(g *gin.RouterGroup, users *auth.UserStore) {
 			if email != "" {
 				addr, err := mail.ParseAddress(email)
 				if err != nil || addr.Name != "" || addr.Address != email {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email"})
+					replyPublicError(c, http.StatusBadRequest)
 					return
 				}
 			}
@@ -240,19 +240,19 @@ func registerMeProfile(g *gin.RouterGroup, users *auth.UserStore) {
 		if req.Telephone != nil {
 			tel := strings.TrimSpace(*req.Telephone)
 			if len(tel) > 64 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "telephone too long (max 64)"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			fields["telephone"] = tel
 		}
 		if len(fields) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		sub := c.GetString(ctxAccessorID)
 		err := users.UpdateUser(c.Request.Context(), sub, fields)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "no user for token subject: " + sub})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
