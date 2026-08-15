@@ -22,30 +22,30 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// VisitorType 访问者类型
+// VisitorType identifies the visitor type.
 type VisitorType string
 
-// 访问者类型定义
+// Visitor type values.
 const (
-	VisitorType_RealName  VisitorType = "realname"  // 实名用户
-	VisitorType_User      VisitorType = "user"      // 实名用户
-	VisitorType_Anonymous VisitorType = "anonymous" // 匿名用户
-	VisitorType_App       VisitorType = "app"       // 应用账户
+	VisitorType_RealName  VisitorType = "realname"  // Authenticated user.
+	VisitorType_User      VisitorType = "user"      // Authenticated user.
+	VisitorType_Anonymous VisitorType = "anonymous" // Anonymous user.
+	VisitorType_App       VisitorType = "app"       // Application account.
 )
 
-// AccountType 登录账号类型
+// AccountType identifies the login account type.
 type AccountType string
 
-// 登录账号类型定义
+// Account type values.
 const (
 	AccountType_Other  AccountType = "other"
 	AccountType_IDCard AccountType = "id_card"
 )
 
-// ClientType 设备类型
+// ClientType identifies the client device type.
 type ClientType string
 
-// 设备类型定义
+// Client device type values.
 const (
 	ClientType_Windows      ClientType = "windows"
 	ClientType_IOS          ClientType = "ios"
@@ -62,18 +62,18 @@ const (
 	ClientType_App          ClientType = "app"
 )
 
-// TokenIntrospectInfo 令牌内省结果
+// TokenIntrospectInfo contains the token introspection result.
 type TokenIntrospectInfo struct {
-	Active     bool        // 令牌状态
-	VisitorID  string      // 访问者ID
-	Scope      string      // 权限范围
-	ClientID   string      // 客户端ID
-	VisitorTyp VisitorType // 访问者类型
-	// 以下字段只在visitorType=RealName，即实名用户时才存在
-	LoginIP    string      // 登陆IP
-	Udid       string      // 设备码
-	AccountTyp AccountType // 账户类型
-	ClientTyp  ClientType  // 设备类型
+	Active     bool        // Token status.
+	VisitorID  string      // Visitor ID.
+	Scope      string      // Granted scopes.
+	ClientID   string      // Client ID.
+	VisitorTyp VisitorType // Visitor type.
+	// The following fields exist only for authenticated users.
+	LoginIP    string      // Login IP address.
+	Udid       string      // Device ID.
+	AccountTyp AccountType // Account type.
+	ClientTyp  ClientType  // Client device type.
 }
 
 var (
@@ -104,12 +104,12 @@ var (
 	}
 )
 
-// Visitor 访问者信息
+// Visitor contains caller identity information.
 type Visitor struct {
 	ID string
 
-	// TokenID 在 JSON 序列化和反序列化时会被忽略，用于防止令牌在持久化过程中泄露
-	// 如需在反序列化时获取 TokenID，请通过代码手动处理
+	// TokenID is ignored during JSON serialization to prevent token persistence.
+	// Handle TokenID explicitly when it is required after deserialization.
 	TokenID    string `json:"-"`
 	IP         string
 	Mac        string
@@ -121,12 +121,12 @@ type Visitor struct {
 
 //go:generate mockgen -package mock -source ./hydra.go -destination ./mock/mock_hydra.go
 
-// Hydra 授权服务接口
+// Hydra defines the authorization service interface.
 type Hydra interface {
-	// Introspect token内省
+	// Introspect performs token introspection.
 	Introspect(ctx context.Context, token string) (info TokenIntrospectInfo, err error)
 
-	// token 有效性检查
+	// VerifyToken verifies token validity.
 	VerifyToken(ctx context.Context, c *gin.Context) (Visitor, error)
 }
 
@@ -141,7 +141,7 @@ type hydra struct {
 	client       *http.Client
 }
 
-// newHydra 创建授权服务
+// NewHydra creates an authorization service client.
 func NewHydra(setting HydraAdminSetting) Hydra {
 	h := &hydra{
 		adminAddress: fmt.Sprintf("http://%s:%d", setting.HydraAdminHost, setting.HydraAdminPort),
@@ -151,7 +151,7 @@ func NewHydra(setting HydraAdminSetting) Hydra {
 	return h
 }
 
-// Introspect token内省
+// Introspect performs token introspection.
 func (h *hydra) Introspect(ctx context.Context, token string) (info TokenIntrospectInfo, err error) {
 	url := fmt.Sprintf("%v/admin/oauth2/introspect", h.adminAddress)
 
@@ -181,47 +181,47 @@ func (h *hydra) Introspect(ctx context.Context, token string) (info TokenIntrosp
 		return
 	}
 
-	// 令牌状态
+	// Token status.
 	info.Active = respParam["active"].(bool)
 	if !info.Active {
 		return
 	}
 
-	// 访问者ID
+	// Visitor ID.
 	info.VisitorID = respParam["sub"].(string)
-	// Scope 权限范围
+	// Granted scopes.
 	info.Scope = respParam["scope"].(string)
-	// 客户端ID
+	// Client ID.
 	info.ClientID = respParam["client_id"].(string)
-	// 客户端凭据模式
+	// Client-credentials grant.
 	if info.VisitorID == info.ClientID {
 		info.VisitorTyp = VisitorType_App
 		return
 	}
 
-	// 以下字段 只在非客户端凭据模式时才存在
-	// 访问者类型
+	// The following fields do not exist for client-credentials grants.
+	// Visitor type.
 	visitorTyp := respParam["ext"].(map[string]interface{})["visitor_type"].(string)
 	info.VisitorTyp = visitorTypeMap[VisitorType(visitorTyp)]
 
-	// 匿名用户
+	// Anonymous user.
 	if info.VisitorTyp == VisitorType_Anonymous {
-		// 文档库访问规则接口考虑后续扩展性，clientType为必传。本身规则计算未使用clientType
-		// 设备类型本身未解析,匿名时默认为web
+		// The document-library authorization API requires clientType for extensibility.
+		// Anonymous callers do not provide a device type, so default to web.
 		info.ClientTyp = ClientType_Web
 		return
 	}
 
-	// 实名用户
+	// Authenticated user.
 	if info.VisitorTyp == VisitorType_User {
-		// 登陆IP
+		// Login IP address.
 		info.LoginIP = respParam["ext"].(map[string]interface{})["login_ip"].(string)
-		// 设备ID
+		// Device ID.
 		info.Udid = respParam["ext"].(map[string]interface{})["udid"].(string)
-		// 登录账号类型
+		// Login account type.
 		accountTyp := respParam["ext"].(map[string]interface{})["account_type"].(string)
 		info.AccountTyp = accountTypeMap[AccountType(accountTyp)]
-		// 设备类型
+		// Client device type.
 		clientTyp := respParam["ext"].(map[string]interface{})["client_type"].(string)
 		info.ClientTyp = clientTypeMap[ClientType(clientTyp)]
 		return

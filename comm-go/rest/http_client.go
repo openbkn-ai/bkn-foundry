@@ -25,7 +25,7 @@ import (
 
 //go:generate mockgen -package mock -source ./http_client.go -destination ./mock/mock_http_client.go
 
-// HTTPClient HTTP客户端服务接口
+// HTTPClient defines the HTTP client service interface.
 type HTTPClient interface {
 	Get(ctx context.Context, url string, queryValues url.Values, headers map[string]string) (respCode int, respData interface{}, err error)
 	GetNoUnmarshal(ctx context.Context, url string, queryValues url.Values, headers map[string]string) (respCode int, respBody []byte, err error)
@@ -39,17 +39,17 @@ type HTTPClient interface {
 	PatchNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error)
 }
 
-// httpClient HTTP客户端结构
+// httpClient implements HTTPClient.
 type httpClient struct {
 	client *http.Client
 }
 
-// httpClient 配置信息
+// HttpClientOptions configures an HTTP client.
 type HttpClientOptions struct {
 	TimeOut int
 }
 
-// NewRawHTTPClient 创建原生HTTP客户端对象
+// NewRawHTTPClient creates a raw HTTP client.
 func NewRawHTTPClient() *http.Client {
 	opts := HttpClientOptions{
 		TimeOut: 600,
@@ -57,7 +57,7 @@ func NewRawHTTPClient() *http.Client {
 	return NewRawHTTPClientWithOptions(opts)
 }
 
-// NewHTTPClientWithOptions 根据配置创建HTTP客户端对象
+// NewHTTPClientWithOptions creates an HTTP client with the supplied options.
 func NewHTTPClientWithOptions(opts HttpClientOptions) HTTPClient {
 	client := &httpClient{
 		client: NewRawHTTPClientWithOptions(opts),
@@ -66,7 +66,7 @@ func NewHTTPClientWithOptions(opts HttpClientOptions) HTTPClient {
 	return client
 }
 
-// NewRawHTTPClientWithOptions 根据配置创建原生HTTP客户端对象
+// NewRawHTTPClientWithOptions creates a raw HTTP client with the supplied options.
 func NewRawHTTPClientWithOptions(opts HttpClientOptions) *http.Client {
 	rawClient := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -95,7 +95,7 @@ func NewHTTPClientWithRawClient(rawClient *http.Client) *httpClient {
 	return client
 }
 
-// NewHTTPClient 创建HTTP客户端对象
+// NewHTTPClient creates an HTTP client.
 func NewHTTPClient() HTTPClient {
 	client := &httpClient{
 		client: NewRawHTTPClient(),
@@ -104,7 +104,7 @@ func NewHTTPClient() HTTPClient {
 	return client
 }
 
-// Get, 返回序列化对象
+// Get returns a decoded response object.
 func (c *httpClient) Get(ctx context.Context, rawURL string, queryValues url.Values, headers map[string]string) (respCode int, respData interface{}, err error) {
 	url, err := c.generateURL(rawURL, queryValues)
 	if err != nil {
@@ -115,7 +115,7 @@ func (c *httpClient) Get(ctx context.Context, rawURL string, queryValues url.Val
 	return c.httpDo(ctx, http.MethodGet, url.String(), headers, nil)
 }
 
-// Get, 返回text
+// GetNoUnmarshal returns the raw response body.
 func (c *httpClient) GetNoUnmarshal(ctx context.Context, rawURL string, queryValues url.Values, headers map[string]string) (respCode int, respBody []byte, err error) {
 	url, err := c.generateURL(rawURL, queryValues)
 	if err != nil {
@@ -126,47 +126,47 @@ func (c *httpClient) GetNoUnmarshal(ctx context.Context, rawURL string, queryVal
 	return c.httpDoNoUnmarshal(ctx, http.MethodGet, url.String(), headers, nil)
 }
 
-// Post, 传入序列化对象，返回序列化对象
+// Post sends a serializable request and returns a decoded response object.
 func (c *httpClient) Post(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPost, url, headers, reqParam)
 }
 
-// Post, 传入序列化对象，返回text
+// PostNoUnmarshal sends a serializable request and returns the raw response body.
 func (c *httpClient) PostNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPost, url, headers, reqParam)
 }
 
-// Put, 传入序列化对象，返回序列化对象
+// Put sends a serializable request and returns a decoded response object.
 func (c *httpClient) Put(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPut, url, headers, reqParam)
 }
 
-// Put, 传入序列化对象，返回text
+// PutNoUnmarshal sends a serializable request and returns the raw response body.
 func (c *httpClient) PutNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPut, url, headers, reqParam)
 }
 
-// Delete, 返回序列化对象
+// Delete returns a decoded response object.
 func (c *httpClient) Delete(ctx context.Context, url string, headers map[string]string) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodDelete, url, headers, nil)
 }
 
-// Delete, 传入序列化对象，返回text
+// DeleteNoUnmarshal returns the raw response body.
 func (c *httpClient) DeleteNoUnmarshal(ctx context.Context, url string, headers map[string]string) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodDelete, url, headers, nil)
 }
 
-// Patch, 传入序列化对象，返回序列化对象
+// Patch sends a serializable request and returns a decoded response object.
 func (c *httpClient) Patch(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPatch, url, headers, reqParam)
 }
 
-// Patch, 传入序列化对象，返回text
+// PatchNoUnmarshal sends a serializable request and returns the raw response body.
 func (c *httpClient) PatchNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPatch, url, headers, reqParam)
 }
 
-// 反序列化返回内容
+// httpDo decodes the response body.
 func (c *httpClient) httpDo(ctx context.Context, mtehod string, url string, headers map[string]string,
 	reqParam interface{}) (respCode int, respData interface{}, err error) {
 
@@ -186,7 +186,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod string, url string, head
 	return
 }
 
-// 返回原始respBody, 不进行反序列化
+// httpDoNoUnmarshal returns the raw response body without decoding it.
 func (c *httpClient) httpDoNoUnmarshal(ctx context.Context, mtehod string, url string, headers map[string]string,
 	reqParam interface{}) (respCode int, respBody []byte, err error) {
 
@@ -200,7 +200,7 @@ func (c *httpClient) httpDoNoUnmarshal(ctx context.Context, mtehod string, url s
 		return 0, nil, err
 	}
 
-	// 把 trace 上下文注入到请求的 header 中
+	// Inject the trace context into request headers.
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	resp, err := c.client.Do(req)

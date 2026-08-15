@@ -16,13 +16,13 @@ import (
 )
 
 type BaseError struct {
-	ErrorCode               string         `json:"error_code"`    // 错误码
-	Description             string         `json:"description"`   // 错误描述
-	Solution                string         `json:"solution"`      // 解决方法
-	ErrorLink               string         `json:"error_link"`    // 错误链接
-	ErrorDetails            interface{}    `json:"error_details"` // 详细内容
-	DescriptionTemplateData map[string]any `json:"-"`             // 错误描述参数
-	SolutionTemplateData    map[string]any `json:"-"`             // 解决方法参数
+	ErrorCode               string         `json:"error_code"`    // Stable error code.
+	Description             string         `json:"description"`   // Human-readable description.
+	Solution                string         `json:"solution"`      // Suggested resolution.
+	ErrorLink               string         `json:"error_link"`    // Documentation link.
+	ErrorDetails            interface{}    `json:"error_details"` // Structured error details.
+	DescriptionTemplateData map[string]any `json:"-"`             // Description template parameters.
+	SolutionTemplateData    map[string]any `json:"-"`             // Solution template parameters.
 }
 
 var (
@@ -55,7 +55,7 @@ type HTTPError struct {
 	BaseError BaseError
 }
 
-// 创建 HTTPError
+// NewHTTPError creates an HTTP error.
 func NewHTTPError(ctx context.Context, httpCode int, errorCode string) *HTTPError {
 	lang := GetLanguageByCtx(ctx)
 	errs, ok := allErrs[errorCode]
@@ -94,7 +94,7 @@ func (e *HTTPError) WithSolution(templateData map[string]interface{}) *HTTPError
 	return e
 }
 
-// 设置错误详情
+// WithErrorDetails sets structured error details.
 func (e *HTTPError) WithErrorDetails(errorDetails interface{}) *HTTPError {
 	e.BaseError.ErrorDetails = errorDetails
 	return e

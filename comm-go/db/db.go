@@ -21,7 +21,7 @@ const (
 	DRIVER_NAME = "openbkn-rds"
 )
 
-// db配置项
+// DBSetting configures a database connection.
 type DBSetting struct {
 	Host     string
 	Port     int
@@ -36,7 +36,7 @@ var (
 	dbUrl  string
 )
 
-// 配置db的客户端参数
+// NewDB configures and returns the shared database client.
 func NewDB(setting *DBSetting) *sql.DB {
 	dbOnce.Do(func() {
 		db = InitDB(setting)
@@ -45,7 +45,7 @@ func NewDB(setting *DBSetting) *sql.DB {
 	return db
 }
 
-// 初始化链接
+// InitDB initializes a database connection.
 func InitDB(setting *DBSetting) *sql.DB {
 	dbUrl = fmt.Sprintf("%s@tcp(%s:%d)/%s?charset=utf8mb4&loc=Local", setting.Username, setting.Host, setting.Port, setting.DBName)
 	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&loc=Local",
@@ -53,20 +53,20 @@ func InitDB(setting *DBSetting) *sql.DB {
 
 	Db, err := sql.Open(DRIVER_NAME, dbDSN)
 	if err != nil {
-		// 打开连接失败
+		// Opening the connection failed.
 		logger.Infof("dbDSN: %s", dbDSN)
-		panic("数据源配置不正确: " + err.Error())
+		panic("invalid data source configuration: " + err.Error())
 	}
 
-	// 最大连接数
+	// Maximum open connections.
 	Db.SetMaxOpenConns(100)
-	// 闲置连接数
+	// Maximum idle connections.
 	Db.SetMaxIdleConns(20)
-	// 最大连接周期
+	// Maximum connection lifetime.
 	Db.SetConnMaxLifetime(100 * time.Second)
 
 	if err = Db.Ping(); err != nil {
-		panic("数据库连接失败: " + err.Error())
+		panic("database connection failed: " + err.Error())
 	}
 
 	logger.Info("connect success")

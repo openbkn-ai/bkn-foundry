@@ -12,7 +12,7 @@ type MQAuthSetting struct {
 	Mechanism string
 }
 
-// mq配置项
+// MQSetting contains message queue configuration.
 type MQSetting struct {
 	MQType string
 	MQHost string

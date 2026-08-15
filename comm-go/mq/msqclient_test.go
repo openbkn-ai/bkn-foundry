@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// TestNewOpenBKNMQClientFactory 确认只保留 nsq / kafka 两种类型时工厂创建正常工作。
+// TestNewOpenBKNMQClientFactory verifies factory behavior for the supported NSQ and Kafka clients.
 func TestNewOpenBKNMQClientFactory(t *testing.T) {
 	type args struct {
 		mqType string

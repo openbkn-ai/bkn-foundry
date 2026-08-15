@@ -27,7 +27,7 @@ type LogSetting struct {
 	MaxSize        int    `json:"maxSize"        mapstructure:"maxSize"`
 }
 
-// 初始化日志对象
+// InitLogger initializes the logger.
 func InitLogger(setting LogSetting) *zap.SugaredLogger {
 	level, err := zapcore.ParseLevel(setting.LogLevel)
 	if err != nil {
@@ -39,18 +39,18 @@ func InitLogger(setting LogSetting) *zap.SugaredLogger {
 	}
 
 	if setting.LogFileName != "" {
-		// 日志文件hook
+		// File output hook.
 		hook := &lumberjack.Logger{
 			Filename:   setting.LogFileName,
-			LocalTime:  true,               //日志文件名的时间格式为本地时间
-			MaxAge:     setting.MaxAge,     //文件保留的最长时间，单位为天
-			MaxBackups: setting.MaxBackups, // 旧文件保留的最大个数
-			MaxSize:    setting.MaxSize,    // 单个文件最大长度，单位是M
+			LocalTime:  true,               // Use local time in log file names.
+			MaxAge:     setting.MaxAge,     // Maximum retention period in days.
+			MaxBackups: setting.MaxBackups, // Maximum number of retained files.
+			MaxSize:    setting.MaxSize,    // Maximum size of a single file in MB.
 		}
 		ws = append(ws, zapcore.AddSync(hook))
 	}
 
-	// 日志格式设定
+	// Log encoder configuration.
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -59,17 +59,17 @@ func InitLogger(setting LogSetting) *zap.SugaredLogger {
 		MessageKey:     "msg",
 		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,                    // 小写编码器
-		EncodeTime:     zapcore.TimeEncoderOfLayout(common.RFC3339Milli), // RFC3339Milli 时间格式
+		EncodeLevel:    zapcore.LowercaseLevelEncoder,                    // Lowercase level encoder.
+		EncodeTime:     zapcore.TimeEncoderOfLayout(common.RFC3339Milli), // RFC3339Milli timestamp format.
 		EncodeDuration: zapcore.SecondsDurationEncoder,                   //
-		EncodeCaller:   zapcore.FullCallerEncoder,                        // 全路径编码器
+		EncodeCaller:   zapcore.FullCallerEncoder,                        // Full caller-path encoder.
 		EncodeName:     zapcore.FullNameEncoder,
 	}
 
 	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(encoderConfig), // 编码器配置
-		zapcore.NewMultiWriteSyncer(ws...),    // 打印到控制台和文件
-		level,                                 // 日志级别
+		zapcore.NewJSONEncoder(encoderConfig), // Encoder configuration.
+		zapcore.NewMultiWriteSyncer(ws...),    // Write to stdout and files.
+		level,                                 // Log level.
 	)
 
 	options := []zap.Option{
@@ -77,7 +77,7 @@ func InitLogger(setting LogSetting) *zap.SugaredLogger {
 	}
 
 	if setting.DevelopMode {
-		// 开启开发模式，堆栈跟踪
+		// Enable development-mode stack traces.
 		options = append(options, zap.AddCaller(), zap.AddCallerSkip(1), zap.Development())
 	}
 

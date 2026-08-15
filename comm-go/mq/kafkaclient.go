@@ -42,7 +42,7 @@ type OpenBKNKafkaClient struct {
 	tlsConfig         *tls.Config
 	brokers           []string
 	writers           map[string]*kafka.Writer
-	// 共享的 transport 实例，用于连接池
+	// Shared transport used for connection pooling.
 	transport  *kafka.Transport
 	mu         sync.Mutex
 	sharedConn bool
@@ -55,7 +55,7 @@ func NewKafkaClient(pubServer string, pubPort int, subServer string, subPort int
 		brokers = append(brokers, fmt.Sprintf("%s:%d", parseHost(addr), pubPort))
 	}
 
-	// 创建一个共享的 transport 实例，用于连接池
+	// A shared transport is initialized lazily for connection pooling.
 	return &OpenBKNKafkaClient{
 		brokers: brokers,
 		writers: make(map[string]*kafka.Writer),
@@ -64,7 +64,7 @@ func NewKafkaClient(pubServer string, pubPort int, subServer string, subPort int
 
 func (kc *OpenBKNKafkaClient) initialize() (err error) {
 	if kc.saslMechanism != nil {
-		// 确保在测试等场景下零值结构体也能正常工作
+		// Keep zero-value clients usable in tests and other lightweight callers.
 		if kc.writers == nil {
 			kc.writers = make(map[string]*kafka.Writer)
 		}
@@ -100,7 +100,7 @@ func (kc *OpenBKNKafkaClient) initialize() (err error) {
 		kc.writers = make(map[string]*kafka.Writer)
 	}
 
-	// 初始化全局 transport
+	// Initialize the shared transport.
 	kc.transport = &kafka.Transport{
 		DialTimeout: ConnTimeout,
 		IdleTimeout: IdleTimeout,
@@ -122,7 +122,7 @@ func (kc *OpenBKNKafkaClient) getWriter(topic string) *kafka.Writer {
 		writeTransport = kc.transport
 	} else {
 		writeTransport = &kafka.Transport{
-			// 设置合理的连接池超时时间
+			// Use the configured connection pool timeouts.
 			DialTimeout: ConnTimeout,
 			IdleTimeout: IdleTimeout,
 			TLS:         kc.tlsConfig,
@@ -149,7 +149,7 @@ func (kc *OpenBKNKafkaClient) createTopic(topic string) {
 		SASLMechanism: kc.saslMechanism,
 	}
 
-	// 如果 auto.create.topics.enable=true，这将创建主题
+	// This creates the topic when auto.create.topics.enable=true.
 	conn, err := dialer.DialLeader(context.Background(), "tcp", kc.brokers[0], topic, 0)
 	if err != nil {
 		log.Printf("connect kafka with topic %s failed, %v", topic, err)
@@ -167,7 +167,7 @@ func (kc *OpenBKNKafkaClient) Pub(topic string, msg []byte) (err error) {
 	writer := kc.getWriter(topic)
 
 	maxAttempts := uint(200)
-	// 最长重试阻塞时间：10s
+	// Limit total retry blocking time to ten seconds.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return retry.Do(
@@ -235,7 +235,7 @@ func (kc *OpenBKNKafkaClient) Close() {
 	kc.mu.Lock()
 	defer kc.mu.Unlock()
 
-	// 关闭所有 writers
+	// Close all writers.
 	for topic, writer := range kc.writers {
 		if writer != nil {
 			_ = writer.Close()
@@ -243,7 +243,7 @@ func (kc *OpenBKNKafkaClient) Close() {
 		delete(kc.writers, topic)
 	}
 
-	// 关闭共享的 transport 的所有空闲连接
+	// Close idle connections held by the shared transport.
 	if kc.transport != nil {
 		kc.transport.CloseIdleConnections()
 	}

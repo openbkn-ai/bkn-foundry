@@ -42,7 +42,7 @@ const (
 	HTTP_HEADER_ACCOUNT_TYPE    = "x-account-type"
 )
 
-// TraceAttrs HTTP 请求相关属性的汇总，用于埋点。
+// TraceAttrs groups HTTP request attributes used for tracing.
 type TraceAttrs struct {
 	HttpUrl            string
 	HttpMethod         string
@@ -56,7 +56,7 @@ type TraceAttrs struct {
 	HttpClientIP       string
 }
 
-// GetAttrsByGinCtx 从 *gin.Context 抽取 TraceAttrs。
+// GetAttrsByGinCtx extracts TraceAttrs from a *gin.Context.
 func GetAttrsByGinCtx(c *gin.Context) TraceAttrs {
 	return TraceAttrs{
 		HttpUrl:            fmt.Sprintf("http://%s%s", c.Request.Host, c.Request.RequestURI),
@@ -72,7 +72,7 @@ func GetAttrsByGinCtx(c *gin.Context) TraceAttrs {
 	}
 }
 
-// serverClientIP 从 X-Forwarded-For 头取第一段。
+// serverClientIP returns the first address from X-Forwarded-For.
 func serverClientIP(xForwardedFor string) string {
 	if idx := strings.Index(xForwardedFor, ","); idx >= 0 {
 		xForwardedFor = xForwardedFor[:idx]
@@ -80,7 +80,7 @@ func serverClientIP(xForwardedFor string) string {
 	return xForwardedFor
 }
 
-// AddHttpAttrs4API 设置 API 入口 span 的 HTTP 属性。
+// AddHttpAttrs4API sets HTTP attributes on an API entry span.
 func AddHttpAttrs4API(span trace.Span, attrs TraceAttrs) {
 	span.SetAttributes(
 		attr.Key(KEY_HTTP_URL).String(attrs.HttpUrl),
@@ -100,7 +100,7 @@ func AddHttpAttrs4API(span trace.Span, attrs TraceAttrs) {
 	}
 }
 
-// AddHttpAttrs4Error 设置错误状态到 span。
+// AddHttpAttrs4Error records an error status on a span.
 func AddHttpAttrs4Error(span trace.Span, status int, errorCode string, statusDescription string) {
 	span.SetAttributes(
 		attr.Key(KEY_HTTP_STATUS).Int(status),
@@ -109,7 +109,7 @@ func AddHttpAttrs4Error(span trace.Span, status int, errorCode string, statusDes
 	span.SetStatus(codes.Error, statusDescription)
 }
 
-// AddHttpAttrs4HttpError 从 *rest.HTTPError 设置错误到 span。
+// AddHttpAttrs4HttpError records a *rest.HTTPError on a span.
 func AddHttpAttrs4HttpError(span trace.Span, err *rest.HTTPError) {
 	span.SetAttributes(
 		attr.Key(KEY_HTTP_STATUS).Int(err.HTTPCode),
@@ -118,13 +118,13 @@ func AddHttpAttrs4HttpError(span trace.Span, err *rest.HTTPError) {
 	span.SetStatus(codes.Error, fmt.Sprintf("%v", err.BaseError.ErrorDetails))
 }
 
-// AddHttpAttrs4Ok 设置成功状态到 span。
+// AddHttpAttrs4Ok records a successful span status.
 func AddHttpAttrs4Ok(span trace.Span, status int) {
 	span.SetAttributes(attr.Key(KEY_HTTP_STATUS).Int(status))
 	span.SetStatus(codes.Ok, "")
 }
 
-// AddAttrs4InternalHttp 设置内部 http 调用 span 的属性。
+// AddAttrs4InternalHttp sets attributes for an internal HTTP client span.
 func AddAttrs4InternalHttp(span trace.Span, attrs TraceAttrs) {
 	span.SetAttributes(
 		attr.Key(KEY_HTTP_URL).String(attrs.HttpUrl),

@@ -16,14 +16,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
-// golangci-lint 要求独立定义key的类型
+// golangci-lint requires a dedicated type for context keys.
 
 const (
 	ContentTypeKey  = "Content-Type"
 	ContentTypeJson = "application/json"
 )
 
-// ReplyOK 响应成功
+// ReplyOK writes a successful response.
 func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	var (
 		bodyStr string
@@ -50,7 +50,7 @@ func ReplyOkWithHeaders(c *gin.Context, statusCode int, body interface{}, header
 	ReplyOK(c, statusCode, body)
 }
 
-// ReplyError 响应错误
+// ReplyError writes an error response.
 func ReplyError(c *gin.Context, err error) {
 	var statusCode int
 	var body string

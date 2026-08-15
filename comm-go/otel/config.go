@@ -6,7 +6,7 @@
 
 package otel
 
-// OtelConfig 新版 OTel Collector 配置
+// OtelConfig configures the OpenTelemetry Collector.
 type OtelConfig struct {
 	ServiceName    string    `yaml:"service_name" mapstructure:"service_name"`
 	ServiceVersion string    `yaml:"service_version" mapstructure:"service_version"`
@@ -16,19 +16,19 @@ type OtelConfig struct {
 	Log            LogConf   `yaml:"log" mapstructure:"log"`
 }
 
-// TraceConf trace 子配置
+// TraceConf contains trace settings.
 type TraceConf struct {
 	Enabled      bool    `yaml:"enabled" mapstructure:"enabled"`
 	SamplingRate float64 `yaml:"sampling_rate" mapstructure:"sampling_rate"`
 }
 
-// LogConf log 子配置
+// LogConf contains log settings.
 type LogConf struct {
 	Enabled bool   `yaml:"enabled" mapstructure:"enabled"`
 	Level   string `yaml:"level" mapstructure:"level"`
 }
 
-// SetDefaults 设置 OtelConfig 默认值
+// SetDefaults applies default OtelConfig values.
 func (c *OtelConfig) SetDefaults(serverName string, serverVersion string) {
 	if c.ServiceName == "" {
 		c.ServiceName = serverName

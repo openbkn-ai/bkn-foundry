@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// 把tags数组转成数据库存储的字符串的形式，格式为 "a","b","c"
+// TagSlice2TagString converts tags to the database format: "a","b","c".
 func TagSlice2TagString(strs []string) string {
 	newStrs := make([]string, len(strs))
 	for i, str := range strs {
@@ -21,7 +21,7 @@ func TagSlice2TagString(strs []string) string {
 	return strings.Join(newStrs, ",")
 }
 
-// 把数据库存储的tags字符串(格式为 "a","b","c")转成tags数组
+// TagString2TagSlice converts the database tag format into a slice.
 func TagString2TagSlice(str string) []string {
 	if str == "" {
 		return []string{}
@@ -35,7 +35,7 @@ func TagString2TagSlice(str string) []string {
 	return newStrs
 }
 
-// 除去tag前后的空格, 数组去重, 并排序
+// TagSliceTransform trims tags, removes duplicates, and sorts them.
 func TagSliceTransform(origTags []string) []string {
 	uniqueMap := make(map[string]bool)
 	var tags []string

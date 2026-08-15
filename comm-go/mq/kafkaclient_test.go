@@ -155,7 +155,7 @@ func TestOpenBKNKafkaClientPub(t *testing.T) {
 		fields  fields
 		args    args
 		wantErr error
-		setup   func() *gomonkey.Patches // 不可直接声明patches，多个自测试之间会混淆，通过函数返回，在子测试中调用，作为局部变量打桩
+		setup   func() *gomonkey.Patches // Return patches from a function so each subtest owns and resets its own patch set.
 	}{
 		{
 			name: "Success",
@@ -178,14 +178,14 @@ func TestOpenBKNKafkaClientPub(t *testing.T) {
 				brokers:           []string{"127.0.0.1:9092"},
 			},
 			setup: func() (p *gomonkey.Patches) {
-				// 使用单一打桩函数，避免 ApplyMethodSeq 在重试场景下出现 double seq panic。
+				// Use one stub to avoid ApplyMethodSeq double-sequence panics during retries.
 				p = gomonkey.ApplyMethod(reflect.TypeOf(&kafka.Writer{}), "WriteMessages", func(*kafka.Writer, context.Context, ...kafka.Message) error {
 					log.Println("patch ErrorWithRetry test")
 					return kafka.BrokerIDNotRegistered
 				})
 				return
 			},
-			// Pub 在重试超时后会返回 context.DeadlineExceeded
+			// Pub returns context.DeadlineExceeded after retry timeout.
 			wantErr: context.DeadlineExceeded,
 		},
 		{
@@ -201,7 +201,7 @@ func TestOpenBKNKafkaClientPub(t *testing.T) {
 				})
 				return
 			},
-			// Pub 在重试超时后会返回 context.DeadlineExceeded
+			// Pub returns context.DeadlineExceeded after retry timeout.
 			wantErr: context.DeadlineExceeded,
 		},
 	}

@@ -23,33 +23,33 @@ import (
 )
 
 var (
-	MAX_PRODUCER_RETRY              = 5               // 重试次数
-	NET_MAX_OPEN_REQUESTS           = 1               // 设置为 1, 确保某一时刻只能发送一个请求, 避免因为 retry 导致的消息乱序
-	RECOVER_AUDIT_PRODUCER_INTERVAL = 2 * time.Minute //时间间隔
+	MAX_PRODUCER_RETRY              = 5               // Maximum retry count.
+	NET_MAX_OPEN_REQUESTS           = 1               // Preserve message order by allowing one in-flight request.
+	RECOVER_AUDIT_PRODUCER_INTERVAL = 2 * time.Minute // Recovery retry interval.
 
-	// 日志类型
-	LOGIN      = "login"      // 登录
-	OPERATION  = "operation"  // 操作
-	MANAGEMENT = "management" // 管理
+	// Audit log types.
+	LOGIN      = "login"      // Login.
+	OPERATION  = "operation"  // Operation.
+	MANAGEMENT = "management" // Management.
 
-	// 日志级别
-	INFO = "INFO" // 信息
-	WARN = "WARN" // 警告
+	// Audit log levels.
+	INFO = "INFO" // Informational.
+	WARN = "WARN" // Warning.
 
-	// 日志状态
-	SUCCESS = "success" // 成功
-	FAILED  = "failed"  // 失败
+	// Audit log statuses.
+	SUCCESS = "success" // Success.
+	FAILED  = "failed"  // Failure.
 
-	// 操作类型
-	CREATE   = "create"   // 新建
-	DELETE   = "delete"   // 删除
-	UPDATE   = "update"   // 修改
-	START    = "start"    // 开始
-	STOP     = "stop"     // 停止
-	PAUSE    = "pause"    // 暂停
-	ROLLOVER = "rollover" // 轮转
-	RECYCLE  = "recycle"  // 回收
-	RECOVER  = "recover"  // 恢复
+	// Audit operation types.
+	CREATE   = "create"   // Create.
+	DELETE   = "delete"   // Delete.
+	UPDATE   = "update"   // Update.
+	START    = "start"    // Start.
+	STOP     = "stop"     // Stop.
+	PAUSE    = "pause"    // Pause.
+	ROLLOVER = "rollover" // Rollover.
+	RECYCLE  = "recycle"  // Recycle.
+	RECOVER  = "recover"  // Recover.
 
 	AUDIT_TOPIC = "isf.audit_log.log"
 )
@@ -83,27 +83,27 @@ type AuditOperatorAgent struct {
 }
 
 type AuditLogFrom struct {
-	Package string              `json:"package"` // pakcgae名称
-	Service AuditLogFromService `json:"service"` // service
+	Package string              `json:"package"` // Package name.
+	Service AuditLogFromService `json:"service"` // Service information.
 }
 
 type AuditLogFromService struct {
-	Name string `json:"name"` // service名称
+	Name string `json:"name"` // Service name.
 }
 
 type AuditLog struct {
-	Type        string            `json:"type"`        // 日志类型
-	ID          string            `json:"out_biz_id"`  // 日志ID
-	Level       string            `json:"level"`       // 日志级别
-	Operation   string            `json:"operation"`   // 操作类型
-	Description string            `json:"description"` // 日志描述
-	OpTime      int64             `json:"op_time"`     // 操作时间
-	Operator    AuditOperator     `json:"operator"`    // 操作者信息
-	Object      AuditObject       `json:"object"`      // 操作对象信息
-	LogFrom     AuditLogFrom      `json:"log_from"`    // 日志来源
-	Detail      map[string]string `json:"detail"`      // 详情
+	Type        string            `json:"type"`        // Log type.
+	ID          string            `json:"out_biz_id"`  // Log ID.
+	Level       string            `json:"level"`       // Log level.
+	Operation   string            `json:"operation"`   // Operation type.
+	Description string            `json:"description"` // Log description.
+	OpTime      int64             `json:"op_time"`     // Operation timestamp.
+	Operator    AuditOperator     `json:"operator"`    // Operator information.
+	Object      AuditObject       `json:"object"`      // Target object information.
+	LogFrom     AuditLogFrom      `json:"log_from"`    // Log source.
+	Detail      map[string]string `json:"detail"`      // Details.
 
-	Status string `json:"-"` // 状态
+	Status string `json:"-"` // Status.
 }
 
 var (
@@ -147,7 +147,7 @@ func TransforOperator(visitor hydra.Visitor) AuditOperator {
 	}
 }
 
-// 创建信息级别的审计日志
+// NewInfoLog creates an informational audit log.
 func NewInfoLog(logType string, op string, operator AuditOperator, obj AuditObject, detail string) {
 	auditLog := AuditLog{
 		Type:      logType,
@@ -165,7 +165,7 @@ func NewInfoLog(logType string, op string, operator AuditOperator, obj AuditObje
 	auditLogChan <- &auditLog
 }
 
-// 创建警告级别的审计日志
+// NewWarnLog creates a warning audit log.
 func NewWarnLog(logType string, op string, operator AuditOperator, obj AuditObject, status string, detail string) {
 	auditLog := AuditLog{
 		Type:      logType,
@@ -183,7 +183,7 @@ func NewWarnLog(logType string, op string, operator AuditOperator, obj AuditObje
 	auditLogChan <- &auditLog
 }
 
-// 创建警告级别的审计日志
+// NewWarnLogWithError creates a warning audit log from an HTTP error.
 func NewWarnLogWithError(logType string, op string, operator AuditOperator, obj AuditObject, err *rest.BaseError) {
 	auditLog := AuditLog{
 		Type:      logType,
@@ -201,24 +201,24 @@ func NewWarnLogWithError(logType string, op string, operator AuditOperator, obj 
 	auditLogChan <- &auditLog
 }
 
-// 处理审计日志
+// initAuditLogHandler processes audit logs.
 func initAuditLogHandler(mqSetting *mq.MQSetting) {
 
 	auditProducer = getAuditProcuder(mqSetting, RECOVER_AUDIT_PRODUCER_INTERVAL)
 
-	//从channel中取数据
+	// Read the next audit log from the channel.
 	for {
 		auditLog := <-auditLogChan
 
-		// 处理审计日志
+		// Populate derived audit fields.
 		transformLog(auditLog)
 
-		// 发送审计日志
+		// Send the audit log.
 		sendLog(auditLog)
 	}
 }
 
-// 处理审计日志
+// transformLog populates derived audit fields.
 func transformLog(auditLog *AuditLog) {
 	auditLog.ID = xid.New().String()
 	auditLog.LogFrom = DEFAULT_AUDIT_LOG_FROM
@@ -241,7 +241,7 @@ func transformLog(auditLog *AuditLog) {
 	auditLog.Detail["status"] = auditLog.Status
 }
 
-// 往kafka发送审计日志
+// sendLog sends an audit log to Kafka.
 func sendLog(auditLog *AuditLog) {
 
 	auditLogStr, err := sonic.MarshalString(auditLog)
@@ -252,14 +252,14 @@ func sendLog(auditLog *AuditLog) {
 
 	logger.Infof("audit log: %v", auditLogStr)
 
-	// 构造一个消息
+	// Build the Kafka message.
 	msg := &sarama.ProducerMessage{
 		Topic: AUDIT_TOPIC,
 		Value: sarama.StringEncoder(auditLogStr),
 	}
 
 	for {
-		// 发送消息
+		// Send the message.
 		_, _, err = auditProducer.SendMessage(msg)
 		if err == nil {
 			return
@@ -269,7 +269,7 @@ func sendLog(auditLog *AuditLog) {
 	}
 }
 
-// 新建kafka生产者
+// newAuditProducer creates a Kafka producer.
 func newAuditProducer(mqSetting *mq.MQSetting) (sarama.SyncProducer, error) {
 
 	hosts := []string{fmt.Sprintf("%s:%d", mqSetting.MQHost, mqSetting.MQPort)}
@@ -287,7 +287,7 @@ func newAuditProducer(mqSetting *mq.MQSetting) (sarama.SyncProducer, error) {
 	config.Producer.Retry.Max = MAX_PRODUCER_RETRY
 	config.Net.MaxOpenRequests = NET_MAX_OPEN_REQUESTS
 
-	// 连接kafka
+	// Connect to Kafka.
 	producer, err := sarama.NewSyncProducer(hosts, config)
 	if err != nil {
 		logger.Errorf("can not connect to kafka ,create kafka producer failed: %v", err)
@@ -298,8 +298,8 @@ func newAuditProducer(mqSetting *mq.MQSetting) (sarama.SyncProducer, error) {
 	return producer, nil
 }
 
-// 获取auditProducer
-// 若获取auditProducer为nil时，过两分钟继续获取，实现kafka恢复正常后自动连接
+// getAuditProcuder obtains an audit producer.
+// It retries after the interval so the producer reconnects when Kafka recovers.
 func getAuditProcuder(mqSetting *mq.MQSetting, interval time.Duration) sarama.SyncProducer {
 
 	logger.Infof("get auditProducer if auditProducer is nil, interval: %s", interval)
