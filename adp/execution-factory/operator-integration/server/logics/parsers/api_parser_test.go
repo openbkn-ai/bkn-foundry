@@ -125,7 +125,7 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 			"testGet", "parameters": [ { "name": "id", "in": "sss", "required": true, "schema": { "type": "integer" } } ], "responses":
 			{ "200": { "description": "OK" } } } } }, "components": {} }`),
 			Code:        myErr.ErrExtOpenAPIInvalidParameterValue.String(),
-			Description: "Parameter校验错误，请查看错误详情",
+			Description: "参数校验错误，请查看错误详情",
 		},
 		{
 			Name: "Path 定义错误，缺少参数",
@@ -133,7 +133,7 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 			"paths": { "/test": { "get": { "summary": "Test GET", "operationId": "testGet", "parameters": [ { "name": "id", "in": "path", "required": true, "schema":
 			{ "type": "integer" } } ], "responses": { "200": { "description": "OK" } } } } }, "components": {} }`),
 			Code:        myErr.ErrExtOpenAPIInvalidParameterValue.String(),
-			Description: "Parameter校验错误，请查看错误详情",
+			Description: "参数校验错误，请查看错误详情",
 		},
 		{
 			Name: "requestBody 缺少引用",

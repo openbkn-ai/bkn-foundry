@@ -160,7 +160,7 @@
         "OpenAPIInvalidParameterRequired": "Parameter \"%s\" is required, please check if there is any missing parameter",
         "OpenAPIInvalidParameterSchema": "Parameter \"%s\" Schema definition is invalid, please check if the parameter definition is correct",
         "OpenAPIInvalidParameterDefinition": "Parameter \"%s\" definition is invalid, please check if the parameter definition is correct",
-        "OpenAPIInvalidParameterValue": "Parameter \"%s\" value is invalid, please check if the value is correct",
+        "OpenAPIInvalidParameterValue": "Parameter value is invalid, please check the error details",
         "OpenAPIInvalidResponseRequired": "Response \"%s\" is required, please check if there is any missing response field",
         "OpenAPIInvalidResponseDefinition": "Response \"%s\" definition is invalid, please check if the response definition is correct",
         "OpenAPIInvalidResponseSchema": "Response Schema definition is invalid, please check if the Schema definition is correct",
