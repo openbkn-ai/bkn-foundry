@@ -9,6 +9,8 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -41,6 +43,10 @@ func loadMCPLocaleBundle(locale string) *mcpLocaleBundle {
 }
 
 func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
+	return buildMCPLocaleBundleFromFS(schemasFS, normalized)
+}
+
+func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBundle {
 	bundle := &mcpLocaleBundle{
 		locale:       normalized,
 		instructions: serverInstructions,
@@ -49,17 +55,31 @@ func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
 		return bundle
 	}
 	base := fmt.Sprintf("schemas/locales/%s", normalized)
-	if data, err := schemasFS.ReadFile(base + "/instructions.txt"); err == nil {
+	if data, err := fs.ReadFile(resources, base+"/instructions.txt"); err != nil {
+		log.Printf("WARN: cannot load MCP locale instructions for %s: %v; using baseline", normalized, err)
+	} else if strings.TrimSpace(string(data)) == "" {
+		log.Printf("WARN: MCP locale instructions for %s are empty; using baseline", normalized)
+	} else {
 		bundle.instructions = string(data)
 	}
-	if data, err := schemasFS.ReadFile(base + "/tools_meta.json"); err == nil {
+	if data, err := fs.ReadFile(resources, base+"/tools_meta.json"); err != nil {
+		log.Printf("WARN: cannot load MCP locale tool metadata for %s: %v; using baseline", normalized, err)
+	} else {
 		if err := json.Unmarshal(data, &bundle.toolMeta); err != nil {
-			panic("invalid localized tools_meta.json: " + err.Error())
+			log.Printf("WARN: cannot parse MCP locale tool metadata for %s: %v; using baseline", normalized, err)
+			bundle.toolMeta = nil
+		} else if bundle.toolMeta == nil {
+			log.Printf("WARN: MCP locale tool metadata for %s is empty; using baseline", normalized)
 		}
 	}
-	if data, err := schemasFS.ReadFile(base + "/schema_descriptions.json"); err == nil {
+	if data, err := fs.ReadFile(resources, base+"/schema_descriptions.json"); err != nil {
+		log.Printf("WARN: cannot load MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
+	} else {
 		if err := json.Unmarshal(data, &bundle.schemaDescriptions); err != nil {
-			panic("invalid schema_descriptions.json: " + err.Error())
+			log.Printf("WARN: cannot parse MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
+			bundle.schemaDescriptions = nil
+		} else if bundle.schemaDescriptions == nil {
+			log.Printf("WARN: MCP locale schema descriptions for %s are empty; using baseline", normalized)
 		}
 	}
 	return bundle
