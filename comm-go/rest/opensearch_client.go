@@ -20,7 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
-// OpenSearch配置项
+// OpenSearchClientConfig configures an OpenSearch client.
 type OpenSearchClientConfig struct {
 	Protocol string
 	Host     string
@@ -29,31 +29,31 @@ type OpenSearchClientConfig struct {
 	Password string `json:"-"`
 }
 
-// NewOpenSearchClient 初始化OpenSearchClient实例
+// NewOpenSearchClient initializes an OpenSearch client.
 func NewOpenSearchClient(cfg OpenSearchClientConfig) *opensearch.Client {
-	// 初始化http.Client
+	// Initialize the HTTP client.
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second, // 连接超时时间
-			KeepAlive: 60 * time.Second, // 保持长连接的时间
-		}).DialContext, // 设置连接的参数
-		MaxIdleConns:          1000,             // 最大空闲连接
-		IdleConnTimeout:       60 * time.Second, // 空闲连接的超时时间
-		ExpectContinueTimeout: 30 * time.Second, // 等待服务第一个响应的超时时间
-		MaxIdleConnsPerHost:   500,              // 每个host保持的空闲连接数
+			Timeout:   30 * time.Second, // Connection timeout.
+			KeepAlive: 60 * time.Second, // Keep-alive duration.
+		}).DialContext, // Dialer configuration.
+		MaxIdleConns:          1000,             // Maximum idle connections.
+		IdleConnTimeout:       60 * time.Second, // Idle connection timeout.
+		ExpectContinueTimeout: 30 * time.Second, // Wait time for the first response.
+		MaxIdleConnsPerHost:   500,              // Maximum idle connections per host.
 		TLSHandshakeTimeout:   30 * time.Second,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
 	}
 
-	// 连接地址
+	// Endpoint address.
 	address := fmt.Sprintf("%s://%s:%d", cfg.Protocol, cfg.Host, cfg.Port)
 
-	// 重试
+	// Retry policy.
 	retryBackoff := backoff.NewExponentialBackOff()
 
-	// 初始化openSearch.Clisnt
+	// Initialize the OpenSearch client.
 	osc, _ := opensearch.NewClient(opensearch.Config{
 		Addresses: []string{
 			address,
@@ -75,7 +75,7 @@ func NewOpenSearchClient(cfg OpenSearchClientConfig) *opensearch.Client {
 	return osc
 }
 
-// 检查连接状态
+// CheckConnection verifies the OpenSearch connection.
 func CheckConnection(osc *opensearch.Client) bool {
 	res, err := osc.Info()
 	if err != nil {

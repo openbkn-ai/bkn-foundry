@@ -119,7 +119,7 @@ func (ci rsaCipher) Signature(signContent string) (string, error) {
 func parsePrivateKey(privateKeyPEM string) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(privateKeyPEM))
 	if block == nil {
-		return nil, errors.New("私钥信息错误！")
+		return nil, errors.New("invalid RSA private key PEM")
 	}
 	// Try PKCS1 first
 	priKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
@@ -141,7 +141,7 @@ func parsePrivateKey(privateKeyPEM string) (*rsa.PrivateKey, error) {
 func parsePublicKey(publicKeyPEM string) (*rsa.PublicKey, error) {
 	block, _ := pem.Decode([]byte(publicKeyPEM))
 	if block == nil {
-		return nil, errors.New("公钥信息错误！")
+		return nil, errors.New("invalid RSA public key PEM")
 	}
 
 	// Try PKIX format first (most common)

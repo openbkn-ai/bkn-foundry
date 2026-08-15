@@ -59,8 +59,8 @@ func TestReconcileIndexResources(t *testing.T) {
 			})
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusNew).Return(nil)
 
-		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.Catalog{ID: "catalog-1"},
-			[]*interfaces.IndexMeta{{Name: "idx-a"}}, nil, &actions)
+		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1"},
+			[]*interfaces.IndexMeta{{Name: "idx-a"}}, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, 1, result.NewCount)
@@ -78,14 +78,14 @@ func TestReconcileIndexResources(t *testing.T) {
 		rs.EXPECT().UpdateStatus(gomock.Any(), "r1", interfaces.ResourceStatusActive, "").Return(nil)
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusRestored).Return(nil)
 
-		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.Catalog{ID: "catalog-1"},
+		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1"},
 			[]*interfaces.IndexMeta{{Name: "idx-a"}},
 			[]*interfaces.Resource{{
 				ID:               "r1",
 				SourceIdentifier: "idx-a",
 				Category:         interfaces.ResourceCategoryIndex,
 				Status:           interfaces.ResourceStatusStale,
-			}}, &actions)
+			}})
 
 		require.NoError(t, err)
 		assert.Equal(t, 1, result.RestoredCount)
@@ -103,14 +103,14 @@ func TestReconcileIndexResources(t *testing.T) {
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
 		rs.EXPECT().UpdateStatus(gomock.Any(), "r1", interfaces.ResourceStatusStale, "").Return(nil)
 
-		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.Catalog{ID: "catalog-1"},
+		result, items, err := dh.reconcileIndexResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1"},
 			nil,
 			[]*interfaces.Resource{{
 				ID:               "r1",
 				SourceIdentifier: "idx-a",
 				Category:         interfaces.ResourceCategoryIndex,
 				Status:           interfaces.ResourceStatusActive,
-			}}, &actions)
+			}})
 
 		require.NoError(t, err)
 		assert.Equal(t, 1, result.StaleCount)

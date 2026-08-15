@@ -9,11 +9,15 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -32,6 +36,8 @@ type Deps struct {
 	// Audit records admin-API mutations. When nil, the audit middleware and the
 	// audit-log read endpoint are not mounted (auditing off).
 	Audit *audit.Store
+	// AccessLog records login/logout outcomes separately from management audit.
+	AccessLog *accesslog.Store
 	// TokenVerifier validates admin-API bearer tokens. Defaults to Hydra when
 	// nil (production); tests inject a stub.
 	TokenVerifier TokenVerifier
@@ -45,8 +51,17 @@ type Deps struct {
 
 // New builds the gin engine with all routes mounted.
 func New(deps Deps) *gin.Engine {
+	httperrors.Register()
+
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(gin.CustomRecovery(func(c *gin.Context, _ any) {
+		if strings.HasPrefix(c.Request.URL.Path, "/health/") {
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		abortInternalError(c)
+	}))
+	r.Use(sharedrest.LanguageMiddleware())
 
 	r.GET("/health/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
@@ -69,7 +84,7 @@ func New(deps Deps) *gin.Engine {
 
 	// hydra login/consent/device provider pages.
 	if deps.Provider != nil && deps.Hydra != nil {
-		registerAuth(r, deps.Provider, deps.Hydra)
+		registerAuth(r, deps.Provider, deps.Hydra, deps.AccessLog)
 	}
 
 	// Internal user-directory reads (name resolution, batch lookups) — ClusterIP.
@@ -101,7 +116,7 @@ func New(deps Deps) *gin.Engine {
 		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
-		admin := r.Group("/api/safe/v1/admin", RequireAdmin(verifier, deps.Enforcer))
+		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), RequireAdmin(verifier, deps.Enforcer))
 		// Audit every mutating admin request. Use() must precede the route
 		// registrations below: gin snapshots the group's handler chain at
 		// register time. The middleware sits after RequireAdmin, so it only runs
@@ -109,6 +124,9 @@ func New(deps Deps) *gin.Engine {
 		if deps.Audit != nil {
 			admin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 			registerAuditReads(admin, deps.Audit, deps.Enforcer)
+		}
+		if deps.AccessLog != nil {
+			registerAccessLogReads(admin, deps.AccessLog, deps.Enforcer)
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
 		registerAdminReads(admin, deps.Directory, deps.Enforcer)
@@ -128,7 +146,7 @@ func New(deps Deps) *gin.Engine {
 		// identifiable without any credential at all. Audit sits after the gate
 		// for the same reason: a hidden route must not produce a record shaped
 		// differently from a route that does not exist.
-		gatedAdmin := r.Group("/api/safe/v1/admin", adminwrite.Gate(), RequireAdmin(verifier, deps.Enforcer))
+		gatedAdmin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), adminwrite.Gate(), RequireAdmin(verifier, deps.Enforcer))
 		if deps.Audit != nil {
 			gatedAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
@@ -178,23 +196,26 @@ func New(deps Deps) *gin.Engine {
 		// Read-only /me (GET "" + GET /permissions): the login burst fires these
 		// two in parallel, so they get the cached, singleflight-deduplicated
 		// verifier.
-		meReads := r.Group("/api/safe/v1/me", RequireUser(meVerifier))
+		meReads := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
 		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
 
 		// What this deployment can do, for the frontend's menu. Authn only:
 		// it describes the cluster, not the caller. Enforcement stays at each
 		// gated call site (open-core-gating §2.5).
-		caps := r.Group("/api/safe/v1", RequireUser(meVerifier))
+		caps := r.Group("/api/safe/v1", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
 		registerCapabilities(caps, deps.License)
 
 		// Mutating /me (profile PUT, AppKey issue/revoke) uses the RAW verifier so
 		// a revoked/logged-out token cannot edit the profile or mint a long-lived
 		// API key within the read cache's TTL window.
-		meWrites := r.Group("/api/safe/v1/me", RequireUser(verifier))
+		meWrites := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(verifier))
 		if deps.Audit != nil {
 			meWrites.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
 		registerMeProfile(meWrites, deps.Users)
+		if deps.AccessLog != nil && deps.Directory != nil {
+			registerLogout(meWrites, deps.AccessLog, deps.Directory)
+		}
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
 			registerMeAPIKeys(meWrites, apiKeys)

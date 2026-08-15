@@ -6,6 +6,7 @@ package authz
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -528,5 +529,260 @@ func TestAccessibleResourcesSeesPubliclyGrantedAncestor(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != "res-1" {
 		t.Errorf("ids = %v, want [res-1] — enumeration must agree with Check", ids)
+	}
+}
+
+// --- ownership preview (dry run) -------------------------------------------
+
+// TestPreviewOwnershipReportsTheWidening is the confirmation step the design
+// promised in place of a feature flag: before any ownership row is written, say
+// exactly who starts reaching what.
+func TestPreviewOwnershipReportsTheWidening(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	const alice, bob = "u-alice", "u-bob"
+	mustNoErr(t, e.GrantObjectPermission(alice, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(bob, "catalog", "cat-2", "view_detail"))
+
+	links := map[string]string{"res-1": "cat-1", "res-2": "cat-1", "res-3": "cat-2"}
+	flips, total, err := e.PreviewOwnership("resource", "catalog", links, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, f := range flips {
+		got[f.AccessorID+"/"+f.ResourceID+"/"+f.Operation] = true
+	}
+	// alice's resource_manage maps to both modify and delete on the two tables
+	// in cat-1; bob's view_detail maps to view_detail on the single table in cat-2.
+	want := []string{
+		alice + "/res-1/modify", alice + "/res-1/delete",
+		alice + "/res-2/modify", alice + "/res-2/delete",
+		bob + "/res-3/view_detail",
+	}
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("preview missed %s (got %v)", w, got)
+		}
+	}
+	if total != len(want) {
+		t.Errorf("total = %d, want %d (%v)", total, len(want), got)
+	}
+	// Nothing may have been written: the preview is the step that happens before
+	// the decision to write.
+	var n int64
+	db.Model(&model.ResourceParent{}).Count(&n)
+	if n != 0 {
+		t.Errorf("dry run wrote %d ownership rows", n)
+	}
+}
+
+// TestPreviewOwnershipSkipsWhatIsAlreadyHeld: a table the subject can already
+// touch is not a change, and reporting it would drown the real widening.
+func TestPreviewOwnershipSkipsWhatIsAlreadyHeld(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "modify"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "delete"))
+
+	_, total, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-1"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0 {
+		t.Errorf("total = %d, want 0 — the subject already held both operations", total)
+	}
+}
+
+// TestPreviewOwnershipEmptyWhenNobodyHoldsTheCatalog is the case that matters
+// most in practice: on an installation with no per-object catalog grants, the
+// diff is empty and the push is a zero-behaviour-change operation.
+func TestPreviewOwnershipEmptyWhenNobodyHoldsTheCatalog(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	_, total, err := e.PreviewOwnership("resource", "catalog",
+		map[string]string{"res-1": "cat-1", "res-2": "cat-2"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0 {
+		t.Errorf("total = %d, want 0", total)
+	}
+}
+
+// TestPreviewOwnershipCountsBeyondTheLimit: the sample is capped but the total
+// is exact, so a reviewer is never shown a short list that reads as complete.
+func TestPreviewOwnershipCountsBeyondTheLimit(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	mustNoErr(t, e.GrantObjectPermission("u-1", "catalog", "cat-1", "resource_manage"))
+
+	links := map[string]string{}
+	for i := 0; i < 20; i++ {
+		links["res-"+strconv.Itoa(i)] = "cat-1"
+	}
+	flips, total, err := e.PreviewOwnership("resource", "catalog", links, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flips) != 5 {
+		t.Errorf("sample = %d, want 5", len(flips))
+	}
+	if total != 40 { // 20 tables x {modify, delete}
+		t.Errorf("total = %d, want 40", total)
+	}
+}
+
+// TestPreviewOwnershipSeesRoleAndPublicGrants: the report has to name the grant
+// that causes the widening, and a catalog held through a role or granted to
+// everyone widens exactly as a direct grant does.
+func TestPreviewOwnershipSeesRoleAndPublicGrants(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	const role = "role-builder"
+	mustNoErr(t, e.GrantRolePermission(role, "catalog", "cat-1", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(PublicAccessorID, "catalog", "cat-2", "view_detail"))
+
+	flips, total, err := e.PreviewOwnership("resource", "catalog",
+		map[string]string{"res-1": "cat-1", "res-2": "cat-2"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subjects := map[string]bool{}
+	for _, f := range flips {
+		subjects[f.AccessorID] = true
+	}
+	if !subjects[role] {
+		t.Error("preview did not name the role whose grant causes the widening")
+	}
+	if !subjects[PublicAccessorID] {
+		t.Error("preview missed the grant-to-everyone subject")
+	}
+	if total == 0 {
+		t.Error("total = 0")
+	}
+}
+
+// TestPreviewOwnershipSeesGrandparentGrants: the enforce-time climb has no depth
+// limit, so a grant two levels above the proposed parent reaches the child. A
+// preview that only read policy rows on the immediate parent would miss it, and
+// a safety preview that under-reports is worse than none at all.
+func TestPreviewOwnershipSeesGrandparentGrants(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	types := []model.ResourceType{
+		{ID: "top"},
+		{ID: "mid", ParentTypeID: "top"},
+		{ID: "leaf", ParentTypeID: "mid"},
+	}
+	if err := db.Create(&types).Error; err != nil {
+		t.Fatal(err)
+	}
+	ops := []model.Operation{
+		{ResourceTypeID: "top", ID: "manage_all"},
+		{ResourceTypeID: "mid", ID: "manage_children", ParentOperationID: "manage_all"},
+		{ResourceTypeID: "leaf", ID: "modify", ParentOperationID: "manage_children"},
+	}
+	if err := db.Create(&ops).Error; err != nil {
+		t.Fatal(err)
+	}
+	// mid already hangs under top; the proposal is to put a leaf under mid.
+	if err := db.Create(&model.ResourceParent{
+		ResourceTypeID: "mid", ResourceID: "m-1", ParentTypeID: "top", ParentID: "t-1",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "top", "t-1", "manage_all"))
+
+	flips, total, err := e.PreviewOwnership("leaf", "mid", map[string]string{"l-1": "m-1"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(flips) != 1 {
+		t.Fatalf("flips = %v (total %d), want the one grandparent-derived grant", flips, total)
+	}
+	if flips[0].AccessorID != user || flips[0].Operation != "modify" || flips[0].Direction != FlipGrant {
+		t.Errorf("flip = %+v, want u-1 gains modify on l-1", flips[0])
+	}
+}
+
+// TestPreviewOwnershipReportsRevokesOnReparent: moving a resource to another
+// parent takes it away from the old parent's holders. Counting only widening
+// would hand a synchroniser total=0 for a push that silently removes access.
+func TestPreviewOwnershipReportsRevokesOnReparent(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-old")
+
+	const loser, keeper = "u-loser", "u-keeper"
+	mustNoErr(t, e.GrantObjectPermission(loser, "catalog", "cat-old", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(keeper, "catalog", "cat-new", "resource_manage"))
+
+	flips, total, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-new"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byDir := map[string][]string{}
+	for _, f := range flips {
+		byDir[f.Direction] = append(byDir[f.Direction], f.AccessorID+"/"+f.Operation)
+	}
+	sort.Strings(byDir[FlipGrant])
+	sort.Strings(byDir[FlipRevoke])
+	if strings.Join(byDir[FlipGrant], ",") != keeper+"/delete,"+keeper+"/modify" {
+		t.Errorf("grants = %v, want the new catalog's holder gaining modify+delete", byDir[FlipGrant])
+	}
+	if strings.Join(byDir[FlipRevoke], ",") != loser+"/delete,"+loser+"/modify" {
+		t.Errorf("revokes = %v, want the old catalog's holder losing modify+delete", byDir[FlipRevoke])
+	}
+	if total != 4 {
+		t.Errorf("total = %d, want 4", total)
+	}
+}
+
+// TestPreviewOwnershipKeepsDirectGrantsOnReparent: a grant written on the
+// resource itself survives a move, so it must not be reported as a loss.
+func TestPreviewOwnershipKeepsDirectGrantsOnReparent(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-1", "cat-old")
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-old", "resource_manage"))
+	mustNoErr(t, e.GrantObjectPermission(user, "resource", "res-1", "modify"))
+
+	flips, _, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-new"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range flips {
+		if f.Operation == "modify" && f.Direction == FlipRevoke {
+			t.Errorf("reported a loss of modify, but it is granted on the resource itself: %+v", f)
+		}
+	}
+}
+
+// TestPreviewOwnershipFirstRegistrationCannotRevoke: a resource that had no
+// parent cannot lose anything, so the report must be grants only.
+func TestPreviewOwnershipFirstRegistrationCannotRevoke(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+
+	const user = "u-1"
+	mustNoErr(t, e.GrantObjectPermission(user, "catalog", "cat-1", "resource_manage"))
+
+	flips, _, err := e.PreviewOwnership("resource", "catalog", map[string]string{"res-1": "cat-1"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range flips {
+		if f.Direction != FlipGrant {
+			t.Errorf("first registration reported %+v", f)
+		}
 	}
 }

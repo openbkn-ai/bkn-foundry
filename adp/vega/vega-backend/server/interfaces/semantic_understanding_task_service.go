@@ -23,7 +23,7 @@ type SemanticUnderstandingTaskService interface {
 	InternalList(ctx context.Context, params SemanticUnderstandingTaskQueryParams) ([]*SemanticUnderstandingTaskSummary, error)
 
 	InternalMarkRunning(ctx context.Context, id string) (bool, error)
-	InternalMarkCompleted(ctx context.Context, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
+	InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id string, resultJSON string, confidence float64, confidenceDetailJSON string) (bool, error)
 	InternalMarkFailed(ctx context.Context, id string, failureDetail string) (bool, error)
 	InternalMarkCancelled(ctx context.Context, id string, failureDetail string) (bool, error)
 	InternalSetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error)

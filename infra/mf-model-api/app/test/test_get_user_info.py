@@ -36,7 +36,7 @@ class _FakeSession:
         return False
 
     def post(self, url, json=None, headers=None):
-        _FakeSession.captured = {"url": url, "json": json}
+        _FakeSession.captured = {"url": url, "json": json, "headers": headers}
         return _FakeResp(self._status, self._body)
 
 
@@ -65,6 +65,7 @@ class TestGetUsernameByIdsBknSafe(unittest.IsolatedAsyncioTestCase):
         # ids are sent as BOTH user_ids and app_ids (app accounts are User rows)
         self.assertEqual(_FakeSession.captured["json"],
                          {"user_ids": ["u1", "a2"], "app_ids": ["u1", "a2"]})
+        self.assertEqual(_FakeSession.captured["headers"]["Accept-Language"], "zh-CN")
 
     async def test_empty_ids_short_circuit(self):
         with mock.patch.object(get_user_info.base_config, "DEBUG", False):

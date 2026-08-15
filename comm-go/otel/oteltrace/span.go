@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	// InstrumentationName 用于创建 tracer 的 instrumentation name
+	// InstrumentationName is the instrumentation name used to create tracers.
 	InstrumentationName = "bkn-backend/otel"
 )
 
-// StartInternalSpan 服务内函数调用创建 span，自动从 runtime.Caller 获取 span name。
+// StartInternalSpan starts a span for an in-service function call and derives its name from runtime.Caller.
 func StartInternalSpan(ctx context.Context) (context.Context, trace.Span) {
 	name, filepath := callerFuncName(2)
 	newCtx, span := StartNamedInternalSpan(ctx, name)
@@ -36,7 +36,7 @@ func StartInternalSpan(ctx context.Context) (context.Context, trace.Span) {
 	return newCtx, span
 }
 
-// StartClientSpan 外部依赖调用创建 span，自动从 runtime.Caller 获取 span name。
+// StartClientSpan starts a span for an external dependency call and derives its name from runtime.Caller.
 func StartClientSpan(ctx context.Context) (context.Context, trace.Span) {
 	name, filepath := callerFuncName(2)
 	newCtx, span := StartNamedClientSpan(ctx, name)
@@ -46,7 +46,7 @@ func StartClientSpan(ctx context.Context) (context.Context, trace.Span) {
 	return newCtx, span
 }
 
-// StartServerSpanFromContext 服务端调用创建 span，自动从 runtime.Caller 获取 span name。
+// StartServerSpanFromContext starts a server span and derives its name from runtime.Caller.
 func StartServerSpanFromContext(ctx context.Context) (context.Context, trace.Span) {
 	name, filepath := callerFuncName(2)
 	newCtx, span := StartNamedServerSpan(ctx, name)
@@ -56,7 +56,7 @@ func StartServerSpanFromContext(ctx context.Context) (context.Context, trace.Spa
 	return newCtx, span
 }
 
-// StartProducerSpan 消息生产创建 span，自动从 runtime.Caller 获取 span name。
+// StartProducerSpan starts a message producer span and derives its name from runtime.Caller.
 func StartProducerSpan(ctx context.Context) (context.Context, trace.Span) {
 	name, filepath := callerFuncName(2)
 	newCtx, span := StartNamedProducerSpan(ctx, name)
@@ -66,7 +66,7 @@ func StartProducerSpan(ctx context.Context) (context.Context, trace.Span) {
 	return newCtx, span
 }
 
-// StartConsumerSpan 消息消费创建 span，自动从 runtime.Caller 获取 span name。
+// StartConsumerSpan starts a message consumer span and derives its name from runtime.Caller.
 func StartConsumerSpan(ctx context.Context) (context.Context, trace.Span) {
 	name, filepath := callerFuncName(2)
 	newCtx, span := StartNamedConsumerSpan(ctx, name)
@@ -85,35 +85,34 @@ func callerFuncName(skip int) (string, string) {
 	return funcPaths[len(funcPaths)-1], fmt.Sprintf("%s:%v", file, lineNo)
 }
 
-// StartNamedClientSpan用自定义业务名创建 SpanKindClient 类型 span。
+// StartNamedClientSpan starts a SpanKindClient span with a caller-provided name.
 func StartNamedClientSpan(ctx context.Context, name string) (context.Context, trace.Span) {
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindClient))
 }
 
-// StartNamedInternalSpan 用自定义业务名创建 SpanKindInternal 类型 span。
+// StartNamedInternalSpan starts a SpanKindInternal span with a caller-provided name.
 func StartNamedInternalSpan(ctx context.Context, name string) (context.Context, trace.Span) {
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindInternal))
 }
 
-// StartNamedServerSpan 用自定义业务名创建 SpanKindServer 类型 span。
+// StartNamedServerSpan starts a SpanKindServer span with a caller-provided name.
 func StartNamedServerSpan(ctx context.Context, name string) (context.Context, trace.Span) {
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindServer))
 }
 
-// StartNamedProducerSpan 用自定义业务名创建 SpanKindProducer 类型 span。
+// StartNamedProducerSpan starts a SpanKindProducer span with a caller-provided name.
 func StartNamedProducerSpan(ctx context.Context, name string) (context.Context, trace.Span) {
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindProducer))
 }
 
-// StartNamedConsumerSpan 用自定义业务名创建 SpanKindConsumer 类型 span。
+// StartNamedConsumerSpan starts a SpanKindConsumer span with a caller-provided name.
 func StartNamedConsumerSpan(ctx context.Context, name string) (context.Context, trace.Span) {
 	return otel.Tracer(InstrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindConsumer))
 }
 
-// StartServerSpan 跨服务（HTTP 接口）创建 span。
-// 前置依赖：TracingMiddleware 已把 trace header 提取到 c.Request.Context()，
-//
-//	LanguageMiddleware 已把 language 叠加到 c.Request.Context()。
+// StartServerSpan starts a span for a cross-service HTTP request.
+// Prerequisites: TracingMiddleware extracts trace headers into c.Request.Context(),
+// and LanguageMiddleware adds the language to c.Request.Context().
 func StartServerSpan(c *gin.Context) (context.Context, trace.Span) {
 	spanName := fmt.Sprintf("%s %s", c.Request.Method, c.FullPath())
 	newCtx, span := StartNamedServerSpan(c.Request.Context(), spanName)
@@ -126,7 +125,7 @@ func StartServerSpan(c *gin.Context) (context.Context, trace.Span) {
 	return newCtx, span
 }
 
-// ExtractTraceHeader 从 HTTP Header 中提取 Trace 上下文。
+// ExtractTraceHeader extracts trace context from HTTP headers.
 func ExtractTraceHeader(ctx context.Context, header http.Header) context.Context {
 	if header == nil {
 		return ctx
@@ -135,13 +134,13 @@ func ExtractTraceHeader(ctx context.Context, header http.Header) context.Context
 	return otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(header))
 }
 
-// SetAttributes 在当前 span 上设置属性。
+// SetAttributes applies attributes to the current span.
 func SetAttributes(ctx context.Context, kv ...attr.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(kv...)
 }
 
-// EndSpan 结束当前 span，如有错误则记录。
+// EndSpan finishes the current span and records an error when provided.
 func EndSpan(ctx context.Context, err error) {
 	span := trace.SpanFromContext(ctx)
 	if span == nil {

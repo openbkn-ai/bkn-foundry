@@ -44,7 +44,7 @@ func NewHaitaiCipher(key string, host string, realm string, dataKey string) Ciph
 	return ci
 }
 
-// hmac_sha256摘要k
+// hmacSha256 returns the HMAC-SHA256 digest.
 func (ci haitaiCipher) hmacSha256(data []byte) string {
 	key, _ := hex.DecodeString(ci.key)
 	h := hmac.New(sha256.New, key)

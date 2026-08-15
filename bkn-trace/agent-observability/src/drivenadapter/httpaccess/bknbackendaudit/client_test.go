@@ -60,6 +60,13 @@ func TestMetadataDoesNotClaimAnUnconfiguredSourceIsHealthy(t *testing.T) {
 	}
 }
 
+func TestMetadataDoesNotClaimPartialManagementCoverageIsHealthy(t *testing.T) {
+	status := New("http://bkn-backend:8080", nil).Metadata()
+	if status.Status != "degraded" || status.Reason != "management_audit_coverage_in_progress" {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
 func TestGetKeepsUnauthorizedDetailAsNotFound(t *testing.T) {
 	client := New("http://bkn-backend:8080", &http.Client{Transport: roundTripFunc(func(candidate *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusNotFound, Header: make(http.Header), Request: candidate, Body: io.NopCloser(strings.NewReader(`{"error":"not found"}`))}, nil

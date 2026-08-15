@@ -21,6 +21,7 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 
 		properties, hasVector, err := connector.buildFieldMappings([]*interfaces.Property{
 			{Name: "id", Type: interfaces.DataType_Integer},
+			{Name: "unsigned_id", Type: interfaces.DataType_UnsignedInteger},
 			{Name: "amount", Type: interfaces.DataType_Decimal},
 			{Name: "last_login_time", Type: interfaces.DataType_Timestamp},
 			{Name: "payload", Type: interfaces.DataType_Json},
@@ -41,6 +42,7 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, hasVector)
 		assert.Equal(t, map[string]any{"type": "long"}, properties["id"])
+		assert.Equal(t, map[string]any{"type": "unsigned_long"}, properties["unsigned_id"])
 		assert.Equal(t, map[string]any{"type": "date"}, properties["last_login_time"])
 		assert.Equal(t, map[string]any{"type": "object"}, properties["payload"])
 
@@ -80,6 +82,18 @@ func TestOpenSearchBuildFieldMappings(t *testing.T) {
 		assert.Nil(t, properties)
 		assert.False(t, hasVector)
 		assert.Contains(t, err.Error(), "unsupported feature type")
+	})
+	t.Run("open search build field mappings rejects other type", func(t *testing.T) {
+		connector := &OpenSearchConnector{}
+
+		properties, hasVector, err := connector.buildFieldMappings([]*interfaces.Property{
+			{Name: "interests", Type: interfaces.DataType_Other, OriginalType: "_text"},
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, properties)
+		assert.False(t, hasVector)
+		assert.ErrorContains(t, err, "unsupported schema field \"interests\"")
 	})
 	conn := &OpenSearchConnector{}
 

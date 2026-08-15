@@ -221,7 +221,7 @@ type KnowledgeRerankReq struct {
 	KnowledgeConcepts  []*ConceptResult          `json:"concepts" validate:"required"`                                 // Business knowledge network concepts
 	Action             KnowledgeRerankActionType `json:"action" validate:"required,oneof=llm vector" default:"vector"` // Action: llm based rerank, vector based rerank
 	LLMModel           string                    `json:"llm_model,omitempty"`                                          // per-request override for LLM rerank model; empty => config.Model
-	VectorModel        string                    `json:"vector_model,omitempty"`                                       // per-request override for vector rerank model; empty => "reranker"
+	VectorModel        string                    `json:"vector_model,omitempty"`                                       // per-request override for the rerank small model; empty => the factory default
 }
 
 // KnDataSourceConfig Knowledge network data source configuration
@@ -290,7 +290,7 @@ type KnSearchReq struct {
 	RetrievalConfig any                   `json:"retrieval_config,omitempty"`
 	OnlySchema      *bool                 `json:"only_schema,omitempty"`
 	EnableRerank    *bool                 `json:"enable_rerank,omitempty"`
-	RerankModel     *string               `json:"rerank_model,omitempty"` // 精排小模型名覆盖；空走部署级默认
+	RerankModel     *string               `json:"rerank_model,omitempty"` // 精排小模型名覆盖；空即用模型管理配置的默认 reranker
 	IncludeColumns  *bool                 `json:"include_columns,omitempty"`
 	// IndexOpsOnly 让响应里的 condition_operations 只保留索引带来的算子。由 MCP 层设置，
 	// 不进请求契约：比较算子按属性 type 可推导，逐个下发对 Agent 是纯噪音；REST 调用方

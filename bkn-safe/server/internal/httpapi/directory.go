@@ -28,7 +28,7 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 	g.GET("/users/:id", func(c *gin.Context) {
 		d, err := dir.GetUser(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -215,7 +215,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service, e *authz.Enf
 	g.GET("/users/:id", RequirePermission(e, "admin-user", "view"), func(c *gin.Context) {
 		d, err := dir.GetUser(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -251,7 +251,7 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service, e *authz.Enf
 	g.GET("/departments/:id", RequirePermission(e, "admin-dept", "view"), func(c *gin.Context) {
 		d, err := dir.GetDepartmentDetail(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -351,13 +351,13 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 		}
 		fields := directory.PatchDepartmentFields(req)
 		if len(fields) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		id := c.Param("id")
 		current, err := dir.GetDepartment(c.Request.Context(), id)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -370,7 +370,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 		}
 		err = dir.UpdateDepartment(c.Request.Context(), id, fields)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -385,11 +385,11 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 	g.DELETE("/departments/:id", RequirePermission(e, "admin-dept", "delete"), func(c *gin.Context) {
 		err := dir.DeleteDepartment(c.Request.Context(), c.Param("id"))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if errors.Is(err, directory.ErrDepartmentNotEmpty) {
-			c.JSON(http.StatusConflict, gin.H{"error": "department has child departments or members"})
+			replyPublicError(c, http.StatusConflict)
 			return
 		}
 		if err != nil {
@@ -412,11 +412,11 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 		}
 		err := dir.AddDepartmentMembers(c.Request.Context(), c.Param("id"), req.UserIDs)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if errors.Is(err, directory.ErrUnknownUser) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		if err != nil {
@@ -437,7 +437,7 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 		}
 		err := dir.RemoveDepartmentMembers(c.Request.Context(), c.Param("id"), req.UserIDs)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "department not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -451,12 +451,12 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 func writeDepartmentValidationError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, directory.ErrUnknownUser):
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		replyPublicError(c, http.StatusBadRequest)
 	case errors.Is(err, directory.ErrDuplicateDepartmentCode):
-		c.JSON(http.StatusConflict, gin.H{"error": "department code already exists"})
+		replyPublicError(c, http.StatusConflict)
 	default:
 		if strings.Contains(err.Error(), "invalid department email") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		serverError(c, err)

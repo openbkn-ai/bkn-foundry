@@ -228,3 +228,30 @@ func TestNormalizeSearchInstanceReq_PassesIndexOpsOnly(t *testing.T) {
 		t.Error("index_ops_only must stay off unless the MCP layer sets it")
 	}
 }
+
+// 精排开关交给调用方：这一次查询要精度还是要速度，只有发起查询的人知道。
+func TestNormalizeSearchInstanceReq_RerankFlag(t *testing.T) {
+	modeOf := func(req *interfaces.SearchInstanceReq) string {
+		knReq, err := NormalizeSearchInstanceReq(req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return knReq.RetrievalConfig.(*interfaces.KnSearchRetrievalConfig).
+			SemanticInstanceRetrieval.InstanceRerankMode
+	}
+
+	// 默认关：精排要多一次模型调用，不该在调用方没要求时发生。
+	if got := modeOf(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"}); got != InstanceRerankModeOff {
+		t.Errorf("rerank must default to off, got %q", got)
+	}
+
+	on := true
+	if got := modeOf(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q", Rerank: &on}); got != InstanceRerankModeOn {
+		t.Errorf("rerank=true must turn the stage on, got %q", got)
+	}
+
+	off := false
+	if got := modeOf(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q", Rerank: &off}); got != InstanceRerankModeOff {
+		t.Errorf("rerank=false must keep it off, got %q", got)
+	}
+}

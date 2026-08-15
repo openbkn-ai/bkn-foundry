@@ -1,0 +1,43 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+[BknSafe.InvalidRequest]
+Description = "The request parameters are invalid."
+Solution = "Check the request parameters."
+ErrorLink = ""
+
+[BknSafe.Unauthorized]
+Description = "Authentication failed."
+Solution = "Provide valid authentication credentials."
+ErrorLink = ""
+
+[BknSafe.Forbidden]
+Description = "You are not permitted to perform this operation."
+Solution = "Contact an administrator to obtain the required permission."
+ErrorLink = ""
+
+[BknSafe.NotFound]
+Description = "The requested resource was not found."
+Solution = "Check that the resource identifier is correct."
+ErrorLink = ""
+
+[BknSafe.Conflict]
+Description = "The request conflicts with the current resource state."
+Solution = "Refresh the resource state and try again."
+ErrorLink = ""
+
+[BknSafe.MethodNotAllowed]
+Description = "This request method is not supported."
+Solution = "Use a method supported by this endpoint."
+ErrorLink = ""
+
+[BknSafe.ServiceUnavailable]
+Description = "The service is temporarily unavailable."
+Solution = "Try again later."
+ErrorLink = ""
+
+[BknSafe.InternalError]
+Description = "An internal service error occurred."
+Solution = "Try again later; contact an administrator if the problem persists."
+ErrorLink = ""

@@ -250,6 +250,34 @@ func (mr *MockResourceServiceMockRecorder) InternalUpdate(ctx, tx, resource any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdate", reflect.TypeOf((*MockResourceService)(nil).InternalUpdate), ctx, tx, resource)
 }
 
+// InternalUpdateLocalIndexName mocks base method.
+func (m *MockResourceService) InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalUpdateLocalIndexName", ctx, tx, id, localIndexName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InternalUpdateLocalIndexName indicates an expected call of InternalUpdateLocalIndexName.
+func (mr *MockResourceServiceMockRecorder) InternalUpdateLocalIndexName(ctx, tx, id, localIndexName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateLocalIndexName", reflect.TypeOf((*MockResourceService)(nil).InternalUpdateLocalIndexName), ctx, tx, id, localIndexName)
+}
+
+// InternalUpdateSemanticMetadata mocks base method.
+func (m *MockResourceService) InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalUpdateSemanticMetadata", ctx, tx, resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InternalUpdateSemanticMetadata indicates an expected call of InternalUpdateSemanticMetadata.
+func (mr *MockResourceServiceMockRecorder) InternalUpdateSemanticMetadata(ctx, tx, resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateSemanticMetadata", reflect.TypeOf((*MockResourceService)(nil).InternalUpdateSemanticMetadata), ctx, tx, resource)
+}
+
 // InternalUpdateStatus mocks base method.
 func (m *MockResourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx, id, status, statusMessage string) error {
 	m.ctrl.T.Helper()

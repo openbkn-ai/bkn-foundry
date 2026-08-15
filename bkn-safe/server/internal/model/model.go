@@ -188,6 +188,24 @@ type AuditLog struct {
 	CreatedAt time.Time `json:"created_at" gorm:"index"`
 }
 
+// AccessLog records an authentication fact. It is deliberately separate from
+// AuditLog: login and logout explain who entered or left the platform, while
+// AuditLog records administration mutations made after authentication.
+// Passwords, tokens, cookies and request bodies are never stored here.
+type AccessLog struct {
+	ID                string    `json:"id" gorm:"primaryKey;size:64"`
+	ActorID           string    `json:"actor_id" gorm:"size:64;index"`
+	ActorNameSnapshot string    `json:"actor_name_snapshot" gorm:"size:255"`
+	AuthMethod        string    `json:"auth_method" gorm:"size:32"`
+	SourceChannel     string    `json:"source_channel" gorm:"size:32"`
+	Action            string    `json:"action" gorm:"size:32;index"`  // login | logout
+	Outcome           string    `json:"outcome" gorm:"size:32;index"` // success | failure
+	FailureCode       string    `json:"failure_code" gorm:"size:64"`
+	RequestID         string    `json:"request_id" gorm:"size:128;index"`
+	ClientIP          string    `json:"client_ip" gorm:"size:64"`
+	CreatedAt         time.Time `json:"created_at" gorm:"index"`
+}
+
 // APIKey is a user-issued long-lived credential (AppKey). It authenticates AS its
 // owner: verification resolves the owner's id + account_type, so downstream authz
 // is identical to the owner using an OAuth token (no second permission system).
@@ -236,6 +254,6 @@ func AllModels() []any {
 	return []any{
 		&User{}, &Role{}, &Department{}, &UserDepartment{},
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
-		&AuditLog{}, &APIKey{}, &License{}, &ResourceParent{},
+		&AuditLog{}, &AccessLog{}, &APIKey{}, &License{}, &ResourceParent{},
 	}
 }

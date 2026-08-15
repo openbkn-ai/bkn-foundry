@@ -8,9 +8,13 @@ exercise the device-code flow. Per the §11.1 decision (default = upstream hydra
 ## Run (on the VM, not the local Mac)
 
 ```bash
-scp -r bkn-safe/dev parallels@10.211.55.4:~/bkn-safe-dev
-ssh parallels@10.211.55.4 'cd ~/bkn-safe-dev && docker compose up -d && ./seed-clients.sh && ./validate.sh'
+scp -r bkn-safe parallels@10.211.55.4:~/bkn-safe
+ssh parallels@10.211.55.4 'cd ~/bkn-safe/dev && docker compose up -d && ./seed-clients.sh && ./validate.sh'
 ```
+
+Place the prebuilt Linux binary at `bkn-safe/dev/bkn-safe` before starting the
+stack. The Compose build uses the `bkn-safe` directory as its context so the
+container also receives `server/locale`.
 
 Ports: hydra public `4444`, admin `4445`, MySQL `13306`.
 

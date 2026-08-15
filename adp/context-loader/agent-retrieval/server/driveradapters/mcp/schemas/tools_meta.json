@@ -29,7 +29,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 205,
-    "description": "用一句自然语言直接召回实例，不需要先知道对象类和字段名。先按 query 锁定相关对象类，再在这些对象类上做语义实例召回（向量 + 全文两路并发，按名次融合），返回实例行**以及读懂它们所需的对象类精简定义**（只含真正出了实例的那几个），因此单次调用就够用，不必再回头查 Schema。适合「这句话说的是哪几条数据」这类取数起点；只想了解网络里有哪些结构、不取数时用 search_schema，已经知道对象类和过滤条件时用 query_object_instance。只有 condition_operations 含 match / knn 的属性参与召回，因此没建索引的对象类不会出实例。"
+    "description": "用一句自然语言直接召回实例，不需要先知道对象类和字段名。先按 query 锁定相关对象类，再在这些对象类上做语义实例召回（向量 + 全文两路并发，按名次融合），返回实例行**以及读懂它们所需的对象类精简定义**（只含真正出了实例的那几个），因此单次调用就够用，不必再回头查 Schema。适合「这句话说的是哪几条数据」这类取数起点；只想了解网络里有哪些结构、不取数时用 search_schema，已经知道对象类和过滤条件时用 query_object_instance。只有 condition_operations 含 match / knn 的属性参与召回，因此没建索引的对象类不会出实例。默认按名次融合排序；传 rerank=true 可让 cross-encoder 逐条判断相关性并重排，能分辨「欠款」与「还款」这类融合分不出的语义差异，代价是多一次模型调用。"
   },
   "query_object_instance": {
     "name": "query_object_instance",

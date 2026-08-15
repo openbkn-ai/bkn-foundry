@@ -54,7 +54,7 @@ func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service, e *authz.Enf
 			case errors.Is(err, license.ErrActivatedElsewhere):
 				status = http.StatusConflict
 			}
-			c.JSON(status, gin.H{"error": err.Error()})
+			replyPublicError(c, status)
 			return
 		}
 		_ = snap
@@ -87,7 +87,7 @@ func registerLicenseAdmin(g *gin.RouterGroup, svc *license.Service, e *authz.Enf
 	// DELETE /license — drop the installed license (back to unactivated).
 	g.DELETE("/license", RequirePermission(e, "admin-license", "manage"), func(c *gin.Context) {
 		if err := svc.Remove(c.Request.Context()); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusInternalServerError)
 			return
 		}
 		c.Status(http.StatusNoContent)
@@ -110,7 +110,7 @@ func importLicense(c *gin.Context, svc *license.Service) {
 		case errors.Is(err, license.ErrBoundElsewhere):
 			status = http.StatusConflict
 		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		replyPublicError(c, status)
 		return
 	}
 	if actErr != nil {
@@ -148,10 +148,10 @@ func registerLicenseInternal(r *gin.Engine, svc *license.Service) {
 		text, etag, err := svc.Current()
 		if err != nil {
 			if errors.Is(err, license.ErrNoLicense) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "no license installed"})
+				replyPublicError(c, http.StatusNotFound)
 				return
 			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusInternalServerError)
 			return
 		}
 		quoted := `"` + etag + `"`

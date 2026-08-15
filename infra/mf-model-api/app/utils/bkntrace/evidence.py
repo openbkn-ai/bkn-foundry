@@ -10,6 +10,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import aiohttp
 
+from app.commons.locale import internal_request_headers
+
 
 CONTRACT_VERSION = "2.1.0"
 MODULE_NAME = "mf-model-api"
@@ -183,9 +185,8 @@ async def _post_once(ingest_url: str, payload: Dict[str, Any], timeout: aiohttp.
 
 def _ingest_headers() -> Dict[str, str]:
     token = os.getenv(EVIDENCE_INGEST_TOKEN_ENV, "").strip()
-    if not token:
-        return {}
-    return {"X-BKN-Trace-Ingest-Token": token}
+    headers = {"X-BKN-Trace-Ingest-Token": token} if token else {}
+    return internal_request_headers(headers)
 
 
 def _finish_background_task(task: asyncio.Task) -> None:

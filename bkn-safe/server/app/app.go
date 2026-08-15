@@ -33,6 +33,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -112,6 +113,7 @@ func Boot(opts Options) (*App, error) {
 	provider := auth.NewProvider(authenticator, hydraAdmin, userStore)
 	dir := directory.New(db)
 	auditStore := audit.New(db)
+	accessLogStore := accesslog.New(db)
 
 	// Cluster license hub: hold the one .lic, be the only egress to the
 	// license-server, distribute to modules.
@@ -150,6 +152,7 @@ func Boot(opts Options) (*App, error) {
 			Directory: dir,
 			Users:     userStore,
 			Audit:     auditStore,
+			AccessLog: accessLogStore,
 			License:   licSvc,
 		},
 	}, nil

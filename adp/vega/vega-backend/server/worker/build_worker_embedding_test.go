@@ -241,9 +241,10 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
 			Return(kafka.Message{}, context.DeadlineExceeded).
 			Times(embeddingDrainEmptyPolls)
-		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
-				assert.Equal(t, wantIndexName, got.LocalIndexName)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", wantIndexName).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, id, indexName string) error {
+				assert.Equal(t, "r1", id)
+				assert.Equal(t, wantIndexName, indexName)
 				return nil
 			})
 		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").
@@ -279,7 +280,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
 			Return(kafka.Message{}, context.DeadlineExceeded).
 			Times(embeddingDrainEmptyPolls)
-		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).Return(nil)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(nil, errors.New("database unavailable"))
 		ts.EXPECT().InternalSetProgress(gomock.Any(), nil, "t1", gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, update interfaces.BuildTaskProgress) (bool, error) {
@@ -308,7 +309,7 @@ func TestEmbeddingWorkerExecuteEmbedding(t *testing.T) {
 		ka.EXPECT().ReadMessage(gomock.Any(), gomock.Any()).
 			Return(kafka.Message{}, context.DeadlineExceeded).
 			Times(embeddingDrainEmptyPolls)
-		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).Return(nil)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", interfaces.BuildIndexName("r1", "t1")).Return(nil)
 		ts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(task, nil)
 		ts.EXPECT().InternalSetProgress(gomock.Any(), nil, "t1", gomock.Any()).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, "t1").Return(false, nil)

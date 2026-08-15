@@ -81,11 +81,11 @@ paths:
             format: int64
             default: 20
         - name: sort
-          description: 排序字段；默认按创建时间倒序。
+          description: 排序字段；默认按创建时间倒序。时间值为 0 时按数据库普通数值排序：升序在前、降序在后。
           in: query
           schema:
             type: string
-            enum: [create_time, start_time, finish_time]
+            enum: [create_time, start_time, finish_time, last_progress_time]
             default: create_time
         - name: direction
           description: 排序方向
@@ -366,6 +366,10 @@ components:
           description: 完成时间，毫秒级时间戳；未完成时为 0
           type: integer
           format: int64
+        last_progress_time:
+          description: 最近一次对外可观测进度更新的时间，毫秒级时间戳；无进度更新时为 0
+          type: integer
+          format: int64
         result:
           description: 执行结果（仅 completed 状态下非空）
           $ref: "#/components/schemas/DiscoverResult"
@@ -408,6 +412,7 @@ components:
         progress: { type: integer }
         start_time: { type: integer, format: int64 }
         finish_time: { type: integer, format: int64 }
+        last_progress_time: { type: integer, format: int64 }
         result: { $ref: "#/components/schemas/DiscoverTaskResultSummary" }
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }

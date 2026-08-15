@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 from app.core.config import base_config
 from app.dao.small_model_dao import small_model_dao
 from app.logs.stand_log import StandLogger
+from app.commons.locale import internal_request_headers
 
 
 class PermissionManager:
@@ -101,7 +102,7 @@ class PermissionManager:
             async with session.post(
                     self.auth_url,
                     json=payload,
-                    headers={'Content-Type': 'application/json'}
+                    headers=internal_request_headers({'Content-Type': 'application/json'})
             ) as response:
                 if response.status == 204:
                     return True
@@ -144,7 +145,7 @@ class PermissionManager:
             async with session.post(
                     self.check_single_auth_url,
                     json=payload,
-                    headers={'Content-Type': 'application/json'}
+                    headers=internal_request_headers({'Content-Type': 'application/json'})
             ) as response:
                 if response.status == 200:
                     result = await response.json()
@@ -176,7 +177,7 @@ class PermissionManager:
                 json={"accessor_id": user_id,
                       "resource": {"type": resource_type, "id": resource_id},
                       "operation": operation},
-                headers={'Content-Type': 'application/json'}) as resp:
+                headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
             data = await resp.json()
             return bool(data.get('allowed', False))
 
@@ -188,7 +189,7 @@ class PermissionManager:
                     json={"accessor_id": user_id,
                           "resource": {"type": resource_type, "id": resource_id},
                           "operations": operations},
-                    headers={'Content-Type': 'application/json'}) as resp:
+                    headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
                 return resp.status == 204
         except Exception as e:
             StandLogger.error(e.args)
@@ -217,7 +218,7 @@ class PermissionManager:
                 async with session.delete(
                         f"{self.bkn_safe_url}/api/safe/v1/authz/policies",
                         json={"resource": {"type": resource_type, "id": resource_id}},
-                        headers={'Content-Type': 'application/json'}) as resp:
+                        headers=internal_request_headers({'Content-Type': 'application/json'})) as resp:
                     if resp.status != 204:
                         ok = False
             except Exception as e:
@@ -275,7 +276,7 @@ class PermissionManager:
             async with session.post(
                     self.resource_filter_url,
                     json=payload,
-                    headers={'Content-Type': 'application/json'}
+                    headers=internal_request_headers({'Content-Type': 'application/json'})
             ) as response:
                 if response.status == 200:
                     result = await response.json()
@@ -300,7 +301,7 @@ class PermissionManager:
             async with session.post(
                     self.delete_resource_url,
                     json=payload,
-                    headers={"Content-Type": "application/json"}
+                    headers=internal_request_headers({"Content-Type": "application/json"})
             ) as response:
                 if response.status == 204:
                     return True

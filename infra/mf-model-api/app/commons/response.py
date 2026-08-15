@@ -2,7 +2,7 @@ from typing import Any, Dict
 from fastapi import status
 from fastapi.responses import JSONResponse
 
-from app.commons.i18n import get_error_message
+from app.commons.i18n import lookup_error_message
 
 
 def error_response(
@@ -26,7 +26,7 @@ def error_response(
     """
     error_content: Dict[str, str] = {
         "code": code,
-        "description": get_error_message(code, language),
+        "description": (lookup_error_message(code, language) or {}).get("description", ""),
         "solution": solution,
         "detail": detail,
         "link": link

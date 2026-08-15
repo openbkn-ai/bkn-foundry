@@ -19,33 +19,33 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// globalServiceName 全局服务名称，由 InitOTel 设置。
+// globalServiceName is set by InitOTel.
 var globalServiceName string
 
-// SetServiceName 设置全局服务名称。
+// SetServiceName sets the global service name.
 func SetServiceName(name string) {
 	globalServiceName = name
 }
 
-// LogDebug 发送 Debug 级别的结构化日志，自动关联 trace 上下文；同时写入 zap stdout。
+// LogDebug emits a Debug-level structured log with trace context and writes to zap stdout.
 func LogDebug(ctx context.Context, message string, attrs ...otellog.KeyValue) {
 	emitLog(ctx, otellog.SeverityDebug, message, attrs...)
 	logger.Debug(formatForStdout(ctx, message, attrs))
 }
 
-// LogInfo 发送 Info 级别的结构化日志，自动关联 trace 上下文；同时写入 zap stdout。
+// LogInfo emits an Info-level structured log with trace context and writes to zap stdout.
 func LogInfo(ctx context.Context, message string, attrs ...otellog.KeyValue) {
 	emitLog(ctx, otellog.SeverityInfo, message, attrs...)
 	logger.Info(formatForStdout(ctx, message, attrs))
 }
 
-// LogWarn 发送 Warn 级别的结构化日志，自动关联 trace 上下文；同时写入 zap stdout。
+// LogWarn emits a Warn-level structured log with trace context and writes to zap stdout.
 func LogWarn(ctx context.Context, message string, attrs ...otellog.KeyValue) {
 	emitLog(ctx, otellog.SeverityWarn, message, attrs...)
 	logger.Warn(formatForStdout(ctx, message, attrs))
 }
 
-// LogError 发送 Error 级别的结构化日志，在当前 span 记录错误；同时写入 zap stdout。
+// LogError emits an Error-level structured log, records it on the current span, and writes to zap stdout.
 func LogError(ctx context.Context, message string, err error, attrs ...otellog.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 	if err != nil {
@@ -72,7 +72,7 @@ func LogError(ctx context.Context, message string, err error, attrs ...otellog.K
 	logger.Error(formatForStdout(ctx, message, allAttrs))
 }
 
-// emitLog 通用 OTel 日志发送函数。
+// emitLog sends an OpenTelemetry log record.
 func emitLog(ctx context.Context, severity otellog.Severity, message string, attrs ...otellog.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 
@@ -90,7 +90,7 @@ func emitLog(ctx context.Context, severity otellog.Severity, message string, att
 	otelLogger.Emit(ctx, record)
 }
 
-// baseLogAttributes 构建基础日志属性，包含 trace 关联信息。
+// baseLogAttributes builds base log attributes, including trace correlation metadata.
 func baseLogAttributes(span trace.Span) []otellog.KeyValue {
 	attrs := []otellog.KeyValue{
 		otellog.String("service.name", globalServiceName),
@@ -108,7 +108,7 @@ func baseLogAttributes(span trace.Span) []otellog.KeyValue {
 	return attrs
 }
 
-// formatForStdout 拼装 stdout 日志行：[trace=... span=...] message k=v k=v
+// formatForStdout formats a stdout log line: [trace=... span=...] message k=v k=v.
 func formatForStdout(ctx context.Context, message string, attrs []otellog.KeyValue) string {
 	var b strings.Builder
 	sc := trace.SpanFromContext(ctx).SpanContext()

@@ -151,13 +151,6 @@ type OpenSearchConfig struct {
 type KnConceptSearchConfig struct {
 	ConceptRecallSize int    `yaml:"concept_recall_size"`             // Concept rough recall size
 	KnnKValue         int    `yaml:"knn_k"`                           // knn k value
-	RerankModel       string `yaml:"rerank_model" default:"reranker"` // 关系精排小模型名；空则回退 "reranker"。可指向工厂里实际注册的 rerank 小模型，无需改代码
-	// InstanceRerankMode 实例精排的**部署级**开关：off / shadow / on，默认 off。
-	// 精排是否开启该由部署方决定（要多一次模型调用、要求工厂里有 rerank 小模型），
-	// 不该指望每个调用方在请求里传——Agent 也无从判断这些。请求体仍可覆盖它。
-	InstanceRerankMode string `yaml:"instance_rerank_mode" default:"off"`
-	// InstanceRerankModel 实例精排小模型名；留空走 rerank_model，再空由下游解析默认。
-	InstanceRerankModel string `yaml:"instance_rerank_model"`
 }
 
 // MFModelAPI 配置使用统一的 PrivateBaseConfig 结构

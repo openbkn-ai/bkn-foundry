@@ -1251,6 +1251,14 @@ ModelQuotaControllerUserModelConfigNoLeftSpaceError = {
     "solution": "请联系管理员增加额度",
     "link": ""
 }
+ModelFactory_DefaultSmallModel_NotExist = {
+    "code": "ModelFactory.ExternalSmallModel.Used.DefaultNotExist",
+    "description": "管理员没有配置该类型的默认小模型",
+    "detail": "管理员没有配置该类型的默认小模型",
+    "solution": "请在模型管理中为该类型设置默认小模型",
+    "link": ""
+}
+
 ModelFactory_DedaultModel_NotExist = {
     "code": "ModelFactory.ExternalSmallModel.Used.NameNotExist",
     "description": "管理员没有配置默认大模型",

@@ -8,12 +8,15 @@ package i18n
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	gotemplate "text/template"
+	"text/template/parse"
 
 	"github.com/BurntSushi/toml"
 	"golang.org/x/text/language"
@@ -21,158 +24,349 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
-type Message struct {
-	Data string
+const (
+	defaultLocale          = "zh-CN"
+	genericChineseMessage  = "请求失败。"
+	genericEnglishMessage  = "Request failed."
+	genericChineseSolution = "请查看请求详情或联系管理员。"
+	genericEnglishSolution = "See the request details or contact an administrator."
+)
 
-	parseOnce      sync.Once
-	parsedTemplate *gotemplate.Template
+type Message struct {
+	Data     string
+	template *gotemplate.Template
+}
+
+type catalog struct {
+	defaultLocale string
+	messages      map[string]map[string]*Message
 }
 
 var (
-	iLocalizer = make(map[string]map[string]*Message)
-	leftDelim  = "{{"
+	catalogMu      sync.RWMutex
+	activeCatalog  = &catalog{defaultLocale: defaultLocale, messages: map[string]map[string]*Message{}}
+	warnedFallback sync.Map
 )
 
-// 语言类型map
-func RegisterI18n(localeDir string) {
-	// get locale file list
-	fileInfos, err := os.ReadDir(localeDir)
-	if err != nil {
-		logger.Fatalf("load locale dir %s failed: %v", localeDir, err)
+// RegisterI18n loads a locale directory. Resource validation failures are logged and
+// the valid portion remains available so an invalid translation cannot stop a service.
+// The optional default locale keeps the original API compatible with existing callers.
+func RegisterI18n(localeDir string, configuredDefaultLocale ...string) {
+	locale := defaultLocale
+	if len(configuredDefaultLocale) > 0 && configuredDefaultLocale[0] != "" {
+		locale = configuredDefaultLocale[0]
 	}
 
-	for _, fileInfos := range fileInfos {
-		// filename format must be <module>.<language>.toml
-		s := strings.Split(fileInfos.Name(), ".")
-		if len(s) == 2 && s[1] == "go" {
+	loaded, err := loadCatalog(localeDir, locale)
+	if err != nil {
+		logger.Warnf("i18n resource validation failed; using runtime fallback: %v", err)
+	}
+
+	catalogMu.Lock()
+	activeCatalog = loaded
+	catalogMu.Unlock()
+}
+
+// SetDefaultLocale updates the fallback locale after a service loads its startup
+// configuration. It only accepts a locale with a loaded catalog.
+func SetDefaultLocale(locale string) {
+	normalized := normalizeLocale(locale)
+	catalogMu.Lock()
+	defer catalogMu.Unlock()
+	if len(activeCatalog.messages) == 0 {
+		return
+	}
+	if normalized == "" || activeCatalog.messages[normalized] == nil {
+		warnFallback(normalized, "", "default_locale_missing")
+		return
+	}
+	activeCatalog = &catalog{defaultLocale: normalized, messages: activeCatalog.messages}
+}
+
+// ValidateLocaleDir performs deterministic, strict catalog validation for CI.
+// requiredLocales allows a service to declare the locale set it must ship.
+func ValidateLocaleDir(localeDir string, configuredDefaultLocale string, requiredLocales ...string) error {
+	loaded, err := loadCatalog(localeDir, configuredDefaultLocale)
+	var errs []error
+	if err != nil {
+		errs = append(errs, err)
+	}
+	for _, requiredLocale := range requiredLocales {
+		normalized := normalizeLocale(requiredLocale)
+		if normalized == "" || loaded.messages[normalized] == nil {
+			errs = append(errs, fmt.Errorf("required locale %s is not present", requiredLocale))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func loadCatalog(localeDir string, configuredDefaultLocale string) (*catalog, error) {
+	locale := normalizeLocale(configuredDefaultLocale)
+	if locale == "" {
+		locale = defaultLocale
+	}
+	loaded := &catalog{defaultLocale: locale, messages: make(map[string]map[string]*Message)}
+
+	entries, err := os.ReadDir(localeDir)
+	if err != nil {
+		return loaded, fmt.Errorf("read locale directory %s: %w", localeDir, err)
+	}
+
+	var errs []error
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".go") {
 			continue
 		}
-		if len(s) != 3 || s[2] != "toml" {
-			logger.Fatalf("locale file %s filename format error, correct format is <module>.<language>.toml", fileInfos.Name())
-			return
+
+		_, lang, ok := parseLocaleFilename(entry.Name())
+		if !ok {
+			errs = append(errs, fmt.Errorf("locale file %s has invalid filename; expected <module>.<language>.toml", entry.Name()))
+			continue
+		}
+		if loaded.messages[lang] == nil {
+			loaded.messages[lang] = make(map[string]*Message)
 		}
 
-		lang := s[1]
-		language.MustParse(lang)
-		if iLocalizer[lang] == nil {
-			iLocalizer[lang] = make(map[string]*Message)
-		}
-
-		filename := path.Join(localeDir, fileInfos.Name())
+		filename := filepath.Join(localeDir, entry.Name())
 		logger.Infof("load locale file: %s", filename)
-
-		buf, err := os.ReadFile(filename)
-		if err != nil {
-			logger.Fatalf("load locale file %s failed: %v", filename, err)
-			return
+		contents, readErr := os.ReadFile(filename)
+		if readErr != nil {
+			errs = append(errs, fmt.Errorf("read locale file %s: %w", filename, readErr))
+			continue
 		}
 
 		var raw interface{}
-		if err = toml.Unmarshal(buf, &raw); err != nil {
-			logger.Fatalf("Unmarshal locale file %s failed: %v", filename, err)
-			return
-		}
-
-		if err = recGetMessages(lang, "", raw); err != nil {
-			logger.Fatalf("recGetMessages failed: %v", err)
-			return
-		}
-	}
-
-	if err := checkLanguageMap(); err != nil {
-		logger.Fatalf(err.Error())
-	}
-}
-
-func checkLanguageMap() error {
-
-	first := true
-	var firstLang string
-	var firstMap map[string]*Message
-	for lang, mp := range iLocalizer {
-		if first {
-			first = false
-			firstLang = lang
-			firstMap = mp
+		if unmarshalErr := toml.Unmarshal(contents, &raw); unmarshalErr != nil {
+			errs = append(errs, fmt.Errorf("parse locale file %s: %w", filename, unmarshalErr))
 			continue
 		}
-
-		if len(mp) != len(firstMap) {
-			return fmt.Errorf("%s(%d) map length is not equal to %s(%d)", lang, len(mp), firstLang, len(firstMap))
-		}
-
-		for k := range firstMap {
-			if mp[k] == nil {
-				return fmt.Errorf("%s map is not equal to %s, missing messageId %s", lang, firstLang, k)
-			}
+		if flattenErr := flattenMessages(loaded.messages[lang], "", raw); flattenErr != nil {
+			errs = append(errs, fmt.Errorf("validate locale file %s: %w", filename, flattenErr))
 		}
 	}
 
-	return nil
+	if validationErr := validateCatalog(loaded); validationErr != nil {
+		errs = append(errs, validationErr)
+	}
+	return loaded, errors.Join(errs...)
 }
 
-func recGetMessages(lang string, messageId string, raw interface{}) error {
-	switch data := raw.(type) {
+func parseLocaleFilename(filename string) (string, string, bool) {
+	parts := strings.Split(filename, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] != "toml" {
+		return "", "", false
+	}
+	lang := normalizeLocale(parts[1])
+	if lang == "" {
+		return "", "", false
+	}
+	return parts[0], lang, true
+}
+
+func normalizeLocale(raw string) string {
+	tag, err := language.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return tag.String()
+}
+
+func flattenMessages(messages map[string]*Message, messageID string, raw interface{}) error {
+	switch value := raw.(type) {
 	case string:
-		if data == "" {
-			logger.Fatalf("messageId %s is empty string", messageId)
+		if value == "" && !strings.HasSuffix(messageID, ".ErrorLink") {
+			return fmt.Errorf("messageId %s is an empty string", messageID)
 		}
-		if oldMessage, ok := iLocalizer[lang][messageId]; ok {
-			logger.Fatalf("messageId %s already exist, old data: %s, new data: %s", messageId, oldMessage.Data, data)
-		}
-		iLocalizer[lang][messageId] = &Message{
-			Data: data,
+		if _, ok := messages[messageID]; ok {
+			return fmt.Errorf("messageId %s already exists", messageID)
 		}
 
+		parsed, err := gotemplate.New(messageID).Option("missingkey=error").Parse(value)
+		if err != nil {
+			return fmt.Errorf("messageId %s has an invalid template: %w", messageID, err)
+		}
+		messages[messageID] = &Message{Data: value, template: parsed}
+		return nil
 	case map[string]interface{}:
-		for k, v := range data {
-			// recursively scan map items
-			if messageId != "" {
-				k = messageId + "." + k
+		keys := make([]string, 0, len(value))
+		for key := range value {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		var errs []error
+		for _, key := range keys {
+			nextID := key
+			if messageID != "" {
+				nextID = messageID + "." + key
 			}
-			err := recGetMessages(lang, k, v)
-			if err != nil {
-				return err
+			if err := flattenMessages(messages, nextID, value[key]); err != nil {
+				errs = append(errs, err)
 			}
 		}
-
+		return errors.Join(errs...)
 	default:
-		return fmt.Errorf("unsupported data format %T: %v", raw, data)
+		return fmt.Errorf("messageId %s uses unsupported data format %T", messageID, raw)
+	}
+}
+
+func validateCatalog(loaded *catalog) error {
+	baseline, ok := loaded.messages[loaded.defaultLocale]
+	if !ok {
+		return fmt.Errorf("default locale %s is not present", loaded.defaultLocale)
 	}
 
+	langs := make([]string, 0, len(loaded.messages))
+	for lang := range loaded.messages {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+
+	var errs []error
+	for _, lang := range langs {
+		if lang == loaded.defaultLocale {
+			continue
+		}
+		messages := loaded.messages[lang]
+		for messageID, baseMessage := range baseline {
+			message, exists := messages[messageID]
+			if !exists {
+				errs = append(errs, fmt.Errorf("locale %s is missing messageId %s from %s", lang, messageID, loaded.defaultLocale))
+				continue
+			}
+			if err := validateTemplateFields(loaded.defaultLocale, lang, messageID, baseMessage, message); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		for messageID := range messages {
+			if _, exists := baseline[messageID]; !exists {
+				errs = append(errs, fmt.Errorf("locale %s has unexpected messageId %s", lang, messageID))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func validateTemplateFields(baseLocale, locale, messageID string, baseMessage, message *Message) error {
+	baseFields := templateFields(baseMessage.template.Tree.Root)
+	fields := templateFields(message.template.Tree.Root)
+	if len(baseFields) != len(fields) {
+		return fmt.Errorf("locale %s messageId %s template field count differs from %s", locale, messageID, baseLocale)
+	}
+	for field, count := range baseFields {
+		if fields[field] != count {
+			return fmt.Errorf("locale %s messageId %s template field %s differs from %s", locale, messageID, field, baseLocale)
+		}
+	}
 	return nil
 }
 
-// 根据语言获取对应的国际化内容
-func Translate(lang string, messageId string, templateDate map[string]interface{}) string {
-	localizer, ok := iLocalizer[lang]
-	if !ok {
-		logger.Fatalf("the localizer of %s is not exist", lang)
-		return ""
-	}
-
-	message, ok := localizer[messageId]
-	if !ok {
-		logger.Fatalf("the messageId %s in localizer %s is not exist", messageId, lang)
-		return ""
-	}
-
-	if !strings.Contains(message.Data, leftDelim) {
-		return message.Data
-	}
-
-	var err error
-	message.parseOnce.Do(func() {
-		message.parsedTemplate, err = gotemplate.New("").Parse(message.Data)
-		if err != nil {
-			logger.Fatalf("messageId %s in localizer %s is incorrect, failed to parse the message, message data is '%s'", messageId, lang, message.Data)
+func templateFields(node parse.Node) map[string]int {
+	fields := make(map[string]int)
+	var walk func(parse.Node)
+	walk = func(current parse.Node) {
+		if current == nil {
+			return
 		}
-	})
+		switch value := current.(type) {
+		case *parse.ListNode:
+			for _, child := range value.Nodes {
+				walk(child)
+			}
+		case *parse.ActionNode:
+			walk(value.Pipe)
+		case *parse.IfNode:
+			walk(value.Pipe)
+			walk(value.List)
+			walk(value.ElseList)
+		case *parse.RangeNode:
+			walk(value.Pipe)
+			walk(value.List)
+			walk(value.ElseList)
+		case *parse.WithNode:
+			walk(value.Pipe)
+			walk(value.List)
+			walk(value.ElseList)
+		case *parse.PipeNode:
+			for _, command := range value.Cmds {
+				walk(command)
+			}
+		case *parse.CommandNode:
+			for _, arg := range value.Args {
+				walk(arg)
+			}
+		case *parse.FieldNode:
+			fields[strings.Join(value.Ident, ".")]++
+		case *parse.ChainNode:
+			walk(value.Node)
+			if len(value.Field) > 0 {
+				fields[strings.Join(value.Field, ".")]++
+			}
+		}
+	}
+	walk(node)
+	return fields
+}
+
+// Translate returns a localized message. Missing or malformed resources use a stable
+// generic fallback and are logged once instead of terminating the process.
+func Translate(lang string, messageID string, templateData map[string]interface{}) string {
+	catalogMu.RLock()
+	loaded := activeCatalog
+	catalogMu.RUnlock()
+
+	locale := normalizeLocale(lang)
+	message := lookupMessage(loaded, locale, messageID)
+	if message == nil {
+		warnFallback(locale, messageID, "message_missing")
+		return fallbackMessage(locale, messageID)
+	}
 
 	var buf bytes.Buffer
-	if err := message.parsedTemplate.Execute(&buf, templateDate); err != nil {
-		logger.Fatalf("messageId %s in localizer %s is incorrect, failed to execute the message, message data is '%s', template data is %v", messageId, lang, message.Data, templateDate)
-		return ""
+	if err := message.template.Execute(&buf, templateData); err != nil {
+		warnFallback(locale, messageID, "template_execute")
+		return fallbackMessage(locale, messageID)
 	}
 	return buf.String()
+}
+
+func lookupMessage(loaded *catalog, locale, messageID string) *Message {
+	if messages := loaded.messages[locale]; messages != nil {
+		if message := messages[messageID]; message != nil {
+			return message
+		}
+	}
+	if locale != loaded.defaultLocale {
+		if messages := loaded.messages[loaded.defaultLocale]; messages != nil {
+			if message := messages[messageID]; message != nil {
+				warnFallback(locale, messageID, "locale_fallback")
+				return message
+			}
+		}
+	}
+	return nil
+}
+
+func fallbackMessage(locale, messageID string) string {
+	english := strings.HasPrefix(normalizeLocale(locale), "en")
+	switch {
+	case strings.HasSuffix(messageID, ".ErrorLink"):
+		return ""
+	case strings.HasSuffix(messageID, ".Solution"):
+		if english {
+			return genericEnglishSolution
+		}
+		return genericChineseSolution
+	default:
+		if english {
+			return genericEnglishMessage
+		}
+		return genericChineseMessage
+	}
+}
+
+func warnFallback(locale, messageID, reason string) {
+	key := locale + "|" + messageID + "|" + reason
+	if _, loaded := warnedFallback.LoadOrStore(key, struct{}{}); !loaded {
+		logger.Warnf("i18n runtime fallback: locale=%s message_id=%s reason=%s", locale, messageID, reason)
+	}
 }

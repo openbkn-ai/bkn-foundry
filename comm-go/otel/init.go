@@ -17,8 +17,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 )
 
-// InitOTel 初始化 traces 和 logs 两类 provider。
-// 示例：服务启动时调用一次，退出时再调用 providers.Shutdown(ctx)。
+// InitOTel initializes trace and log providers.
+// Call it once at startup and call providers.Shutdown(ctx) during shutdown.
 func InitOTel(ctx context.Context, cfg *OtelConfig) (*Providers, error) {
 	cfg.SetDefaults(cfg.ServiceName, cfg.ServiceVersion)
 	otellog.SetServiceName(cfg.ServiceName)
@@ -30,7 +30,7 @@ func InitOTel(ctx context.Context, cfg *OtelConfig) (*Providers, error) {
 
 	providers := &Providers{}
 
-	// 初始化 Trace 提供者
+	// Initialize the trace provider.
 	if cfg.Trace.Enabled {
 		tracerProvider, err := newTracerProvider(ctx, cfg.OTLPEndpoint, cfg.Trace.SamplingRate, res)
 		if err != nil {
@@ -41,13 +41,13 @@ func InitOTel(ctx context.Context, cfg *OtelConfig) (*Providers, error) {
 		providers.TracerProvider = tracerProvider
 	}
 
-	// 设置全局传播器
+	// Configure the global propagator.
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},
 	))
 
-	// 初始化 Log 提供者
+	// Initialize the log provider.
 	if cfg.Log.Enabled {
 		loggerProvider, err := newLoggerProvider(ctx, cfg.OTLPEndpoint, res)
 		if err != nil {

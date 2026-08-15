@@ -373,7 +373,7 @@ func (h *CapabilitiesHandler) RegisterSkillCapability(c *gin.Context) {
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		writeBadRequest(c, "file is required")
+		writeFileRequired(c)
 		return
 	}
 
@@ -461,7 +461,7 @@ func (h *CapabilitiesHandler) ImportCapabilityPackage(c *gin.Context) {
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		writeBadRequest(c, "file is required")
+		writeFileRequired(c)
 		return
 	}
 

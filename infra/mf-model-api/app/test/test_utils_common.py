@@ -192,3 +192,13 @@ class TestCommonFunctions:
         assert language == 'zh-CN'
         assert role == 'user'
 
+    @pytest.mark.asyncio
+    async def test_get_user_info_uses_the_resolved_request_locale(self):
+        request = Mock()
+        request.headers = {'accept-language': 'zh-CN, en-US;q=0.8'}
+        request.scope = {'state': {'effective_locale': 'en-US'}}
+
+        _, language, _ = await get_user_info(request)
+
+        assert language == 'en-US'
+

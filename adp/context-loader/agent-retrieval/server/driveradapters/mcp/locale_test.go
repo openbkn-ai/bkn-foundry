@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/smartystreets/goconvey/convey"
 )
@@ -54,6 +55,42 @@ func TestMCPLocaleBundle(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreUnavailable(t *testing.T) {
+	resources := fstest.MapFS{}
+
+	bundle := buildMCPLocaleBundleFromFS(resources, "en-US")
+
+	if got := bundle.ServerInstructions(); got != serverInstructions {
+		t.Fatalf("instructions = %q, want baseline %q", got, serverInstructions)
+	}
+	if bundle.toolMeta != nil {
+		t.Fatalf("tool metadata = %#v, want no overlay", bundle.toolMeta)
+	}
+	if bundle.schemaDescriptions != nil {
+		t.Fatalf("schema descriptions = %#v, want no overlay", bundle.schemaDescriptions)
+	}
+}
+
+func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) {
+	resources := fstest.MapFS{
+		"schemas/locales/en-US/instructions.txt":         &fstest.MapFile{Data: []byte("English instructions")},
+		"schemas/locales/en-US/tools_meta.json":          &fstest.MapFile{Data: []byte(`{`)},
+		"schemas/locales/en-US/schema_descriptions.json": &fstest.MapFile{Data: []byte(`{`)},
+	}
+
+	bundle := buildMCPLocaleBundleFromFS(resources, "en-US")
+
+	if got := bundle.ServerInstructions(); got != "English instructions" {
+		t.Fatalf("instructions = %q, want localized instructions", got)
+	}
+	if bundle.toolMeta != nil {
+		t.Fatalf("tool metadata = %#v, want no overlay", bundle.toolMeta)
+	}
+	if bundle.schemaDescriptions != nil {
+		t.Fatalf("schema descriptions = %#v, want no overlay", bundle.schemaDescriptions)
+	}
 }
 
 func getNestedString(root map[string]any, path []string) (string, bool) {

@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 // Language identifies a supported response language.
@@ -49,6 +51,7 @@ type languageRange struct {
 func SetLang(langStr string) {
 	if lang, ok := normalizeLanguage(langStr); ok {
 		DefaultLanguage = lang
+		i18n.SetDefaultLocale(lang)
 	}
 }
 

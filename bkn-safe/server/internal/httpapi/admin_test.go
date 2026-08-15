@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -76,6 +77,7 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
 		Audit:         audit.New(db),
+		AccessLog:     accesslog.New(db),
 		TokenVerifier: stubVerifier{},
 	})
 	return r, e, db, users

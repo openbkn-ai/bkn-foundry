@@ -161,7 +161,7 @@ func TestFuseByRRF_ScoreMath(t *testing.T) {
 		{ObjectTypeID: "ot1", InstanceName: "c", UniqueIdentities: map[string]any{"id": "c"}},
 	}}
 
-	fused := fuseByRRF([]channelOutcome{knn, match}, k)
+	fused := fuseByRRF([]channelOutcome{knn, match}, k, equalWeights())
 	if len(fused) != 3 {
 		t.Fatalf("expected 3 unique instances, got %d", len(fused))
 	}
@@ -188,7 +188,7 @@ func TestFuseByRRF_ScoreMath(t *testing.T) {
 	}
 	// 任一通道的第 1 名恰为 1.0——这个锚点不随该对象类发了几路而变，
 	// 否则双通道对象类里只被一路命中的实例会被系统性压低（VM 实测踩过）。
-	single := fuseByRRF([]channelOutcome{knn}, k)
+	single := fuseByRRF([]channelOutcome{knn}, k, equalWeights())
 	if math.Abs(single[0].Score-1.0) > 1e-9 {
 		t.Errorf("expected rank-1-in-one-channel to score 1.0, got %.6f", single[0].Score)
 	}
@@ -210,7 +210,7 @@ func TestFuseByRRF_DedupKeepsMaxRecallScore(t *testing.T) {
 	fused := fuseByRRF([]channelOutcome{
 		{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{node(0.8)}},
 		{name: channelMatch, scored: true, nodes: []*interfaces.KnSearchNode{node(17.2)}},
-	}, 60)
+	}, 60, equalWeights())
 
 	if len(fused) != 1 {
 		t.Fatalf("expected dedup to a single node, got %d", len(fused))
@@ -229,7 +229,7 @@ func TestFuseByRRF_AnonymousRowsNotMerged(t *testing.T) {
 	fused := fuseByRRF([]channelOutcome{
 		{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{anon()}},
 		{name: channelMatch, scored: true, nodes: []*interfaces.KnSearchNode{anon()}},
-	}, 60)
+	}, 60, equalWeights())
 	if len(fused) != 2 {
 		t.Fatalf("expected anonymous rows kept separate, got %d", len(fused))
 	}
@@ -395,7 +395,7 @@ func TestInstanceKey_FallsBackToInstanceIDProperty(t *testing.T) {
 	fused := fuseByRRF([]channelOutcome{
 		{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{knnRow}},
 		{name: channelMatch, scored: true, nodes: []*interfaces.KnSearchNode{matchRow}},
-	}, 60)
+	}, 60, equalWeights())
 	if len(fused) != 1 {
 		t.Fatalf("expected the duplicate to be merged, got %d nodes", len(fused))
 	}
@@ -412,4 +412,10 @@ func TestInstanceKey_FallsBackToPropertiesFingerprint(t *testing.T) {
 	if instanceKey(a) == instanceKey(c) {
 		t.Error("different property values must produce different keys")
 	}
+}
+
+// equalWeights 等权，即默认 knn_weight=0.5。老用例全部走它——「加了权重之后默认
+// 行为逐位不变」这件事，就靠这些原样保留的断言盯着。
+func equalWeights() map[string]float64 {
+	return channelWeights(DefaultSemanticInstanceRetrievalConfig())
 }

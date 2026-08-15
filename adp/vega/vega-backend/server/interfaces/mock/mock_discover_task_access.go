@@ -190,3 +190,18 @@ func (mr *MockDiscoverTaskAccessMockRecorder) MarkRunning(ctx, id, startTime any
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).MarkRunning), ctx, id, startTime)
 }
+
+// UpdateProgress mocks base method.
+func (m *MockDiscoverTaskAccess) UpdateProgress(ctx context.Context, id string, progress int, message string, lastProgressTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateProgress", ctx, id, progress, message, lastProgressTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateProgress indicates an expected call of UpdateProgress.
+func (mr *MockDiscoverTaskAccessMockRecorder) UpdateProgress(ctx, id, progress, message, lastProgressTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProgress", reflect.TypeOf((*MockDiscoverTaskAccess)(nil).UpdateProgress), ctx, id, progress, message, lastProgressTime)
+}

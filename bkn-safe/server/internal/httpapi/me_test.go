@@ -409,7 +409,7 @@ func TestMePermissionsScope(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("scope=type with bare resource_id: want 400, got %d", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), "conflicts with scope=type") {
-		t.Errorf("want the scope-conflict error, got %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), `"error_code":"BknSafe.InvalidRequest"`) {
+		t.Errorf("want the localized invalid-request error, got %s", w.Body.String())
 	}
 }

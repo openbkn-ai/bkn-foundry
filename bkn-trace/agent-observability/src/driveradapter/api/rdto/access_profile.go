@@ -11,5 +11,6 @@ type AccessProfileResponse struct {
 	LogSensitiveFields                bool     `json:"log_sensitive_fields"`
 	LogExport                         bool     `json:"log_export"`
 	LogPolicyRead                     bool     `json:"log_policy_read"`
+	ObservabilityArchiveManage        bool     `json:"observability_archive_manage"`
 	AccessScopeFingerprint            string   `json:"access_scope_fingerprint"`
 }

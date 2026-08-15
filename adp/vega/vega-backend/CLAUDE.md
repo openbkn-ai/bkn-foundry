@@ -94,7 +94,7 @@ MariaDB/MySQL 8.0+，主要表:
 
 ### Schema 字段类型系统
 
-VEGA 统一类型: `integer`, `unsigned_integer`, `float`, `decimal`, `string`, `text`, `date`, `datetime`, `time`, `boolean`, `binary`, `json`, `vector`
+VEGA 统一类型: `integer`, `unsigned integer`, `float`, `decimal`, `string`, `text`, `date`, `datetime`, `time`, `boolean`, `binary`, `json`, `vector`
 
 字段特征 (Features): `keyword`, `fulltext`, `vector`
 

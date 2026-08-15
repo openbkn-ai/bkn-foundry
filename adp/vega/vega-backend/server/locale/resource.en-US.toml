@@ -1,119 +1,124 @@
 [VegaBackend.Resource.InvalidParameter]
 Description = "Invalid resource parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.CategoryNotCreatable]
 Description = "Resource category cannot be created via API"
 Solution = "Only 'dataset' and 'logicview' resources can be created via this API. Other categories must be created via a discover task."
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InvalidParameter.Type]
 Description = "Invalid resource type"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InvalidParameter.Name]
 Description = "Invalid resource name"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InvalidParameter.CatalogID]
 Description = "Catalog ID is required"
 Solution = "Please provide a valid catalog ID"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InvalidParameter.Analyzer]
 Description = "Configured full-text analyzer is unavailable"
 Solution = "Choose an analyzer supported by the current index capability snapshot"
-ErrorLink = "None"
+ErrorLink = ""
+
+[VegaBackend.Resource.InvalidParameter.BuildKeyFields]
+Description = "Invalid build key fields"
+Solution = "Build keys must be unique schema fields of type integer, unsigned integer, string, date, datetime, or timestamp"
+ErrorLink = ""
 
 [VegaBackend.Resource.LengthExceeded.Name]
 Description = "Resource name length exceeded"
 Solution = "Please shorten the name"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.LengthExceeded.Description]
 Description = "Resource description length exceeded"
 Solution = "Please shorten the description"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.NotFound]
 Description = "Resource not found"
 Solution = "Please check the resource ID"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.NameExists]
 Description = "Resource name already exists in catalog"
 Solution = "Please use a different name"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.IDExists]
 Description = "Resource ID already exists"
 Solution = "Please use a different ID"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.CatalogNotFound]
 Description = "Catalog not found for resource"
 Solution = "Please check the catalog ID"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.IsDisabled]
 Description = "Resource is disabled"
 Solution = "Please enable the resource first"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.AlreadyEnabled]
 Description = "Resource is already enabled"
 Solution = "No action needed"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.AlreadyDisabled]
 Description = "Resource is already disabled"
 Solution = "No action needed"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.NotQueryable]
 Description = "Resource is not queryable in its current status"
 Solution = "Only resources in active or deprecated status are queryable; enable the resource or refresh its schema"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError]
 Description = "Resource internal error"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError.CreateFailed]
 Description = "Failed to create resource"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError.GetFailed]
 Description = "Failed to get resource"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError.UpdateFailed]
 Description = "Failed to update resource"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError.DeleteFailed]
 Description = "Failed to delete resource"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError.SyncFailed]
 Description = "Failed to sync resource"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError.InvalidCategory]
 Description = "Invalid resource category"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Resource.InternalError.GetAccountNamesFailed]
 Description = "Failed to get account names"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""

@@ -72,6 +72,8 @@ businessResolver:
   enabled: true
   bknBaseURL: "http://bkn-backend-svc:13014"
   vegaBaseURL: "http://vega-backend-svc:13014"
+  executionFactoryURL: "http://agent-operator-integration:9000"
+  modelManagerURL: "http://mf-model-manager:9898"
   timeout: 3s
 
 # The Community binary ignores this block. The EE image uses it solely to
@@ -90,6 +92,12 @@ observability:
     secretKey: key
   sourceTimeout: 3s
   maxConcurrentSources: 4
+  archive:
+    # Object storage is configured only by the deployment owner. Studio never
+    # receives storage credentials or an arbitrary archive target.
+    ossGatewayURL: ""
+    storageID: ""
+    prefix: observability-archive
   sourceCoverage:
     # Optional independent health probe. It is disabled unless the installation
     # uses the persistent MariaDB Core store and provides a cluster-internal

@@ -54,10 +54,11 @@ paths:
           in: query
           schema: { type: integer, default: 20 }
         - name: sort
+          description: 排序字段。`start_time`、`finish_time` 为 `0` 的未开始或未结束任务按普通数值排序。
           in: query
           schema:
             type: string
-            enum: [create_time, update_time]
+            enum: [create_time, start_time, finish_time]
             default: create_time
         - name: direction
           in: query
@@ -187,7 +188,7 @@ components:
             required: [catalog_id]
     SemanticUnderstandingTask:
       type: object
-      required: [id, scope, catalog_id, agent_id, input, input_hash, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time, update_time]
+      required: [id, scope, catalog_id, agent_id, input, input_hash, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time]
       properties:
         id: { type: string }
         scope: { type: string, enum: [resource, catalog] }
@@ -207,11 +208,11 @@ components:
         confidence_detail_json: { type: string }
         apply_detail_json: { type: string }
         applied: { type: boolean }
-        applied_time: { type: integer, format: int64 }
         failure_detail: { type: string }
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }
-        update_time: { type: integer, format: int64 }
+        start_time: { type: integer, format: int64 }
+        finish_time: { type: integer, format: int64 }
     ListSemanticUnderstandingTasks:
       type: object
       required: [entries, total_count]
@@ -222,7 +223,7 @@ components:
         total_count: { type: integer, format: int64 }
     SemanticUnderstandingTaskSummary:
       type: object
-      required: [id, scope, catalog_id, agent_id, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time, update_time]
+      required: [id, scope, catalog_id, agent_id, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time]
       properties:
         id: { type: string }
         scope: { type: string, enum: [resource, catalog] }
@@ -237,7 +238,7 @@ components:
         confidence_threshold: { type: number, format: double }
         confidence: { type: number, format: double }
         applied: { type: boolean }
-        applied_time: { type: integer, format: int64 }
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }
-        update_time: { type: integer, format: int64 }
+        start_time: { type: integer, format: int64 }
+        finish_time: { type: integer, format: int64 }

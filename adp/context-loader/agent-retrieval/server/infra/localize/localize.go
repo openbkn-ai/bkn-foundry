@@ -11,6 +11,8 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"log"
 	"strings"
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
@@ -32,7 +34,11 @@ var (
 
 	defaultLang = "zh_CN"
 	//go:embed locales/*.json
-	locales embed.FS
+	locales         embed.FS
+	loadMessageFile = func(bundle *i18n.Bundle, resources fs.FS, path string) error {
+		_, err := bundle.LoadMessageFileFS(resources, path)
+		return err
+	}
 )
 
 // I18nTranslator 翻译器
@@ -43,22 +49,44 @@ type I18nTranslator struct {
 
 // NewI18nTranslator 新建翻译器
 func NewI18nTranslator(lang string) *I18nTranslator {
+	return newI18nTranslator(lang, locales)
+}
+
+func newI18nTranslator(lang string, resources fs.FS) *I18nTranslator {
 	lang = normalizeLanguageKey(lang)
 	lt, ok := langMap[lang]
 	if !ok {
-		lt = language.SimplifiedChinese
+		lt = langMap[defaultLang]
+	}
+	return newTranslator(lt, resources)
+}
+
+func newTranslator(requested language.Tag, resources fs.FS) *I18nTranslator {
+	active := requested
+	bundle := newBundle(active)
+	if err := loadLocale(bundle, resources, active); err != nil {
+		log.Printf("WARN: cannot load i18n resource for %s: %v; falling back to %s", active, err, langMap[defaultLang])
+		active = langMap[defaultLang]
+		bundle = newBundle(active)
+		if err := loadLocale(bundle, resources, active); err != nil {
+			log.Printf("WARN: cannot load fallback i18n resource for %s: %v; using message IDs", active, err)
+		}
 	}
 	tr := &I18nTranslator{
-		current: lt,
-	}
-	bundle := i18n.NewBundle(tr.current)
-	bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
-	_, err := bundle.LoadMessageFileFS(locales, fmt.Sprintf("locales/%s.json", lt.String()))
-	if err != nil {
-		panic(err)
+		current: active,
 	}
 	tr.loc = i18n.NewLocalizer(bundle, tr.current.String())
 	return tr
+}
+
+func newBundle(lang language.Tag) *i18n.Bundle {
+	bundle := i18n.NewBundle(lang)
+	bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
+	return bundle
+}
+
+func loadLocale(bundle *i18n.Bundle, resources fs.FS, lang language.Tag) error {
+	return loadMessageFile(bundle, resources, fmt.Sprintf("locales/%s.json", lang.String()))
 }
 
 func normalizeLanguageKey(lang string) string {

@@ -58,7 +58,7 @@ func (ci aesCipher) Encrypt(encryptedData string) (string, error) {
 	}
 }
 
-// CBC方式解密
+// decryptCBC decrypts data in CBC mode.
 func (ci aesCipher) decryptCBC(encryptedData string) (string, error) {
 	encrypted, err := base64.StdEncoding.DecodeString(encryptedData)
 	if err != nil {
@@ -77,14 +77,14 @@ func (ci aesCipher) decryptCBC(encryptedData string) (string, error) {
 	return string(decryptedData), nil
 }
 
-// pkcs5方式解除填充
+// pkcs5UnPadding removes PKCS#5 padding.
 func (ci aesCipher) pkcs5UnPadding(decryptedData []byte) []byte {
 	length := len(decryptedData)
 	unpadding := int(decryptedData[length-1])
 	return decryptedData[:(length - unpadding)]
 }
 
-// ECB方式加密
+// encryptECB encrypts data in ECB mode.
 func (ci aesCipher) encryptECB(data string) (string, error) {
 	cipherText := []byte(data)
 	key := []byte(ci.key)
@@ -107,7 +107,7 @@ func (ci aesCipher) encryptECB(data string) (string, error) {
 	return b, nil
 }
 
-// ECB方式解密
+// decryptECB decrypts data in ECB mode.
 func (ci aesCipher) decryptECB(encryptedData string) (string, error) {
 	encrypted, err := base64.StdEncoding.DecodeString(encryptedData)
 	if err != nil {

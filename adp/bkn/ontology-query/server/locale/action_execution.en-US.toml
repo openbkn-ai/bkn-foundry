@@ -2,49 +2,49 @@
 [OntologyQuery.ActionExecution.InvalidParameter]
 Description = "Invalid request parameter"
 Solution = "Please check if the parameters are correct."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.ActionTypeNotFound]
 Description = "Action type not found"
 Solution = "Please check if the action type ID is correct."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.ExecutionNotFound]
 Description = "Execution record not found"
 Solution = "Please check if the execution ID is correct."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.DuplicateExecution]
 Description = "Duplicate execution detected"
 Solution = "An in-flight execution already exists for the same action type, instance set, and dynamic_params within the duplicate window. Please wait for it to complete or query the existing execution."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.GetActionTypeFailed]
 Description = "Failed to get action type"
 Solution = "Please try again. If the error occurs again, please submit a ticket or contact technical support."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.CreateExecutionFailed]
 Description = "Failed to create execution record"
 Solution = "Please try again. If the error occurs again, please submit a ticket or contact technical support."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.ExecuteToolFailed]
 Description = "Tool execution failed"
 Solution = "Please check the tool configuration and try again."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.ExecuteMCPFailed]
 Description = "MCP execution failed"
 Solution = "Please check the MCP configuration and try again."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.QueryExecutionsFailed]
 Description = "Failed to query execution logs"
 Solution = "Please try again. If the error occurs again, please submit a ticket or contact technical support."
-ErrorLink = "N/A"
+ErrorLink = ""
 
 [OntologyQuery.ActionExecution.CancelExecutionFailed]
 Description = "Failed to cancel execution"
 Solution = "Please try again. If the error occurs again, please submit a ticket or contact technical support."
-ErrorLink = "N/A"
+ErrorLink = ""

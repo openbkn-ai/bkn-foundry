@@ -4,7 +4,13 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+	"math/big"
+)
+
+var maxSafeTOONInteger = big.NewInt(9007199254740991)
 
 // VegaRawQueryReq vega 原始 SQL 查询请求（只读）。
 // Query 为 MySQL 方言 SQL，表名用 {{.resource_id}} 占位符引用，由 vega 解析成真实表名。
@@ -24,23 +30,101 @@ type VegaPagingRequest struct {
 }
 
 type VegaPagingResponse struct {
-	NextCursor   *string `json:"next_cursor"`
-	ExpiresAtSec *int64  `json:"expires_at_sec"`
+	NextCursor   *string `json:"next_cursor" toon:"next_cursor"`
+	ExpiresAtSec *int64  `json:"expires_at_sec" toon:"expires_at_sec"`
 }
 
 // VegaColumn vega 查询返回的列信息。
 type VegaColumn struct {
-	Name string `json:"name"`
-	Type string `json:"type,omitempty"`
+	Name string `json:"name" toon:"name"`
+	Type string `json:"type,omitempty" toon:"type,omitempty"`
 }
 
 // VegaRawQueryResp vega 原始查询响应。
 type VegaRawQueryResp struct {
-	Columns    []VegaColumn        `json:"columns"`
-	Entries    []map[string]any    `json:"entries"`
-	TotalCount *int64              `json:"total_count,omitempty"`
-	Warnings   []string            `json:"warnings,omitempty"`
-	Paging     *VegaPagingResponse `json:"paging,omitempty"`
+	Columns    []VegaColumn        `json:"columns" toon:"columns"`
+	Entries    []map[string]any    `json:"entries" toon:"entries"`
+	TotalCount *int64              `json:"total_count,omitempty" toon:"total_count,omitempty"`
+	Warnings   []string            `json:"warnings,omitempty" toon:"warnings,omitempty"`
+	Paging     *VegaPagingResponse `json:"paging,omitempty" toon:"paging,omitempty"`
+}
+
+// TOONValue returns a shallow response copy whose dynamic entries are safe for
+// toon-go to encode. The original response remains unchanged for JSON output
+// and MCP structuredContent.
+func (r *VegaRawQueryResp) TOONValue() any {
+	if r == nil {
+		return r
+	}
+
+	var entries []map[string]any
+	for i, entry := range r.Entries {
+		value, changed := toonSafeValue(entry)
+		if !changed {
+			continue
+		}
+		if entries == nil {
+			entries = make([]map[string]any, len(r.Entries))
+			copy(entries, r.Entries)
+		}
+		entries[i] = value.(map[string]any)
+	}
+	if entries == nil {
+		return r
+	}
+
+	copy := *r
+	copy.Entries = entries
+	return &copy
+}
+
+// toonSafeValue copies only branches that contain integer json.Number values
+// outside the IEEE 754 safe range. toon-go currently normalizes json.Number
+// through float64, so those values must be rendered as strings.
+func toonSafeValue(value any) (any, bool) {
+	switch v := value.(type) {
+	case json.Number:
+		integer, ok := new(big.Int).SetString(v.String(), 10)
+		if ok && new(big.Int).Abs(integer).Cmp(maxSafeTOONInteger) > 0 {
+			return v.String(), true
+		}
+		return v, false
+	case []any:
+		var clone []any
+		for i, item := range v {
+			converted, changed := toonSafeValue(item)
+			if !changed {
+				continue
+			}
+			if clone == nil {
+				clone = make([]any, len(v))
+				copy(clone, v)
+			}
+			clone[i] = converted
+		}
+		if clone != nil {
+			return clone, true
+		}
+	case map[string]any:
+		var clone map[string]any
+		for key, item := range v {
+			converted, changed := toonSafeValue(item)
+			if !changed {
+				continue
+			}
+			if clone == nil {
+				clone = make(map[string]any, len(v))
+				for originalKey, originalValue := range v {
+					clone[originalKey] = originalValue
+				}
+			}
+			clone[key] = converted
+		}
+		if clone != nil {
+			return clone, true
+		}
+	}
+	return value, false
 }
 
 // VegaListResourcesReq vega 资源列表查询入参（数据层直查，脱离本体）。

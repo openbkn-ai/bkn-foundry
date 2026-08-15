@@ -1,94 +1,99 @@
 [VegaBackend.BuildTask.NotFound]
 Description = "Build task not found"
 Solution = "Please check if the build task ID exists"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.ResourceID]
 Description = "Invalid resource ID"
 Solution = "Please check if the resource ID is provided and exists"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.Mode]
 Description = "Invalid build task mode"
 Solution = "Mode must be one of: streaming, batch"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.BuildKeyFields]
 Description = "Invalid batch build key fields"
-Solution = "Configure at least one build_key_fields field from the resource schema in index_config"
-ErrorLink = "No solution"
+Solution = "Configure at least one unique build_key_fields field that exists in the resource schema and has a supported type"
+ErrorLink = ""
+
+[VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields]
+Description = "Resource contains field types unsupported for index builds"
+Solution = "Resolve fields with type other before creating an index build task"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.Analyzer]
 Description = "Unavailable full-text analyzer"
 Solution = "Choose an analyzer installed in OpenSearch, or update the affected field to use the resource default"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.EmbeddingModel]
 Description = "Missing embedding model for vector field"
 Solution = "Set config.embedding_model on the vector feature or index_config.default_embedding_model on the resource"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "Invalid build task state transition"
 Solution = "Check current task status; start requires status in {stopped, failed}; stop requires status in {pending, running}"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.HasRunningExecution]
 Description = "Build task has running execution and cannot be deleted"
 Solution = "Stop the task before deleting it"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.ActiveIndexInUse]
 Description = "Build task index is currently the resource's active local index"
 Solution = "Pass delete_active_index=true to confirm deleting the active local index, or keep the default protection"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.CreateFailed]
 Description = "Failed to create build task"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.ValidateAnalyzerFailed]
 Description = "Failed to validate full-text analyzer"
 Solution = "Check the OpenSearch connection and try again"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.GetFailed]
 Description = "Failed to get build task"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.Exist]
 Description = "Build task already exists"
 Solution = "Please check if the resource already has a build task"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.Running]
 Description = "Build task is running"
 Solution = "Please wait for the task to complete or stop before operating"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidStatus]
 Description = "Invalid build task status"
 Solution = "Please check the status value"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidExecuteType]
 Description = "Invalid build task execute type"
 Solution = "Please check the execute type value"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.UpdateFailed]
 Description = "Failed to update build task"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.DeleteFailed]
 Description = "Failed to delete build task"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.GetAccountNamesFailed]
 Description = "Failed to get account names"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""

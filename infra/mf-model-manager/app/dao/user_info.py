@@ -2,6 +2,7 @@ import json
 
 import requests
 
+from app.commons.locale import internal_request_headers
 from app.logs.stand_log import StandLogger
 from app.mydb.my_pymysql_pool import connect_execute_close_db
 
@@ -12,7 +13,10 @@ def user(user_id, **kwargs):
         user_cache = kwargs.get('user_cache', {})
         if user_id in user_cache:
             return user_cache[user_id]
-        response = requests.get(f"http://kg-user-rbac:6900/api/rbac/v1/user?field=userId&value={user_id}")
+        response = requests.get(
+            f"http://kg-user-rbac:6900/api/rbac/v1/user?field=userId&value={user_id}",
+            headers=internal_request_headers(),
+        )
         # response = requests.get(f"http://10.4.134.232:6900/api/rbac/v1/user?field=userId&value={user_id}")
         response = json.loads(response.text)
         response = response['res']

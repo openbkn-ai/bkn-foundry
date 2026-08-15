@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -28,6 +29,12 @@ const maxResourceParentBatch = 1000
 // the first honest reconciliation the largest response the service ever sends.
 const defaultResourceParentPageSize = 500
 
+// maxPreviewFlips caps the sample a dry run returns. The TOTAL is always exact,
+// so a reviewer reads "500 shown of 4128" rather than a list that quietly
+// implies it is the whole story — a truncated report that looks complete is
+// worse than no report, because it invites approving a widening nobody saw.
+const maxPreviewFlips = 500
+
 // registerResourceParents mounts the instance-level hierarchy writes under
 // /api/safe/v1/authz. bkn-safe cannot derive which catalog a table belongs to —
 // it only ever saw opaque "type:id" object keys — so the owning module pushes
@@ -40,7 +47,7 @@ const defaultResourceParentPageSize = 500
 // hangs under a catalog I own" would inherit the admin console from a catalog
 // grant. Declaring the hierarchy in the seed and the membership over HTTP keeps
 // the shape trusted while the data stays owned by the module that knows it.
-func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
+func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 	// PUT /resource-parents — upsert a batch of (resource -> parent) rows.
 	//
 	//	{ resource_type, parent_type, items:[{resource_id, parent_id}] }
@@ -61,13 +68,11 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 			return
 		}
 		if err := checkDeclaredHierarchy(c.Request.Context(), db, req.ResourceType, req.ParentType); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		if len(req.Items) > maxResourceParentBatch {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "items exceeds the per-request cap of " + strconv.Itoa(maxResourceParentBatch),
-			})
+			replyPublicErrorDetails(c, http.StatusBadRequest, gin.H{"field": "items", "max_items": maxResourceParentBatch})
 			return
 		}
 		rows := make([]model.ResourceParent, 0, len(req.Items))
@@ -76,11 +81,11 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 			// parent (or one instance inherit from every parent) — the hierarchy is
 			// a membership fact about concrete instances only.
 			if it.ResourceID == "*" || it.ParentID == "*" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": `resource_id and parent_id must be concrete ids (not "*")`})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			if req.ResourceType == req.ParentType && it.ResourceID == it.ParentID {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "a resource cannot be its own parent: " + it.ResourceID})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			rows = append(rows, model.ResourceParent{
@@ -90,6 +95,38 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 		}
 		if len(rows) == 0 {
 			c.Status(http.StatusNoContent)
+			return
+		}
+		// dry_run answers "who would gain what" and writes nothing. Recording
+		// ownership is the moment inheritance starts applying, and that is a
+		// widening — whoever holds a grant on a catalog begins to reach the tables
+		// inside it. An allow-only engine has nothing to stage, so the review has
+		// to happen BEFORE the write; there is no flag afterwards to hold it back.
+		if c.Query("dry_run") == "true" {
+			links := make(map[string]string, len(rows))
+			for _, r := range rows {
+				links[r.ResourceID] = r.ParentID
+			}
+			flips, total, err := e.PreviewOwnership(req.ResourceType, req.ParentType, links, maxPreviewFlips)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			changes := make([]gin.H, 0, len(flips))
+			for _, f := range flips {
+				changes = append(changes, gin.H{
+					"accessor_id": f.AccessorID,
+					"resource_id": f.ResourceID,
+					"operation":   f.Operation,
+					// "grant" or "revoke": re-pointing a resource at another parent
+					// takes access away from the old parent's holders, and a caller
+					// that keys "safe to push" on the total must see those too.
+					"direction": f.Direction,
+				})
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"changes": changes, "total": total, "truncated": total > len(changes),
+			})
 			return
 		}
 		if err := db.WithContext(c.Request.Context()).Clauses(clause.OnConflict{
@@ -113,9 +150,7 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 			return
 		}
 		if len(req.ResourceIDs) > maxResourceParentBatch {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "resource_ids exceeds the per-request cap of " + strconv.Itoa(maxResourceParentBatch),
-			})
+			replyPublicErrorDetails(c, http.StatusBadRequest, gin.H{"field": "resource_ids", "max_items": maxResourceParentBatch})
 			return
 		}
 		if len(req.ResourceIDs) == 0 {
@@ -139,7 +174,7 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 	g.GET("/resource-parents", func(c *gin.Context) {
 		rtype := c.Query("resource_type")
 		if rtype == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "resource_type required"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		q := db.WithContext(c.Request.Context()).Model(&model.ResourceParent{}).
@@ -159,9 +194,7 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 		if v := c.Query("limit"); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n <= 0 || n > maxResourceParentBatch {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error": "limit must be an integer in 1.." + strconv.Itoa(maxResourceParentBatch),
-				})
+				replyPublicErrorDetails(c, http.StatusBadRequest, gin.H{"field": "limit", "min": 1, "max": maxResourceParentBatch})
 				return
 			}
 			limit = n
@@ -170,7 +203,7 @@ func registerResourceParents(g *gin.RouterGroup, db *gorm.DB) {
 		if v := c.Query("offset"); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "offset must be a non-negative integer"})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			}
 			offset = n

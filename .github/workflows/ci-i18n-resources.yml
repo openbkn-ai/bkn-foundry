@@ -1,0 +1,60 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+name: ci-i18n-resources
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'comm-go/i18n/**'
+      - 'adp/**/locale/**/*.toml'
+      - 'adp/**/server/infra/localize/locales/**'
+      - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
+      - 'infra/**/app/commons/i18n/**'
+      - 'tools/check_i18n_catalogs.py'
+      - 'tools/test_check_i18n_catalogs.py'
+      - '.github/workflows/ci-i18n-resources.yml'
+  pull_request:
+    paths:
+      - 'comm-go/i18n/**'
+      - 'adp/**/locale/**/*.toml'
+      - 'adp/**/server/infra/localize/locales/**'
+      - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
+      - 'infra/**/app/commons/i18n/**'
+      - 'tools/check_i18n_catalogs.py'
+      - 'tools/test_check_i18n_catalogs.py'
+      - '.github/workflows/ci-i18n-resources.yml'
+
+concurrency:
+  group: ci-i18n-resources-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate i18n resources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: comm-go/go.mod
+          cache: true
+
+      - name: Validate Go locale catalogs
+        working-directory: comm-go
+        run: go test ./i18n
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate Python locale catalogs
+        run: |
+          python3 -m unittest tools/test_check_i18n_catalogs.py
+          python3 tools/check_i18n_catalogs.py

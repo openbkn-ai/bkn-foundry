@@ -148,105 +148,105 @@ func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) List(ctx, params any)
 }
 
 // MarkCancelled mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) MarkCancelled(ctx context.Context, id, failureDetail string, updateTime int64) (bool, error) {
+func (m *MockSemanticUnderstandingTaskAccess) MarkCancelled(ctx context.Context, id, failureDetail string, finishTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCancelled", ctx, id, failureDetail, updateTime)
+	ret := m.ctrl.Call(m, "MarkCancelled", ctx, id, failureDetail, finishTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkCancelled indicates an expected call of MarkCancelled.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCancelled(ctx, id, failureDetail, updateTime any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCancelled(ctx, id, failureDetail, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCancelled), ctx, id, failureDetail, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCancelled), ctx, id, failureDetail, finishTime)
 }
 
 // MarkCancelledByCatalogID mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, updateTime int64) error {
+func (m *MockSemanticUnderstandingTaskAccess) MarkCancelledByCatalogID(ctx context.Context, tx *sql.Tx, catalogID, failureDetail string, finishTime int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCancelledByCatalogID", ctx, tx, catalogID, failureDetail, updateTime)
+	ret := m.ctrl.Call(m, "MarkCancelledByCatalogID", ctx, tx, catalogID, failureDetail, finishTime)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // MarkCancelledByCatalogID indicates an expected call of MarkCancelledByCatalogID.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCancelledByCatalogID(ctx, tx, catalogID, failureDetail, updateTime any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCancelledByCatalogID(ctx, tx, catalogID, failureDetail, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelledByCatalogID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCancelledByCatalogID), ctx, tx, catalogID, failureDetail, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelledByCatalogID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCancelledByCatalogID), ctx, tx, catalogID, failureDetail, finishTime)
 }
 
 // MarkCompleted mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) MarkCompleted(ctx context.Context, id, resultJSON string, confidence float64, confidenceDetailJSON string, updateTime int64) (bool, error) {
+func (m *MockSemanticUnderstandingTaskAccess) MarkCompleted(ctx context.Context, tx *sql.Tx, id, resultJSON string, confidence float64, confidenceDetailJSON string, finishTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCompleted", ctx, id, resultJSON, confidence, confidenceDetailJSON, updateTime)
+	ret := m.ctrl.Call(m, "MarkCompleted", ctx, tx, id, resultJSON, confidence, confidenceDetailJSON, finishTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkCompleted indicates an expected call of MarkCompleted.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCompleted(ctx, id, resultJSON, confidence, confidenceDetailJSON, updateTime any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkCompleted(ctx, tx, id, resultJSON, confidence, confidenceDetailJSON, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCompleted", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCompleted), ctx, id, resultJSON, confidence, confidenceDetailJSON, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCompleted", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkCompleted), ctx, tx, id, resultJSON, confidence, confidenceDetailJSON, finishTime)
 }
 
 // MarkFailed mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) MarkFailed(ctx context.Context, id, failureDetail string, updateTime int64) (bool, error) {
+func (m *MockSemanticUnderstandingTaskAccess) MarkFailed(ctx context.Context, id, failureDetail string, finishTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkFailed", ctx, id, failureDetail, updateTime)
+	ret := m.ctrl.Call(m, "MarkFailed", ctx, id, failureDetail, finishTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkFailed indicates an expected call of MarkFailed.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkFailed(ctx, id, failureDetail, updateTime any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkFailed(ctx, id, failureDetail, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkFailed), ctx, id, failureDetail, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkFailed), ctx, id, failureDetail, finishTime)
 }
 
 // MarkRunning mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id string, updateTime int64) (bool, error) {
+func (m *MockSemanticUnderstandingTaskAccess) MarkRunning(ctx context.Context, id string, startTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkRunning", ctx, id, updateTime)
+	ret := m.ctrl.Call(m, "MarkRunning", ctx, id, startTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkRunning indicates an expected call of MarkRunning.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkRunning(ctx, id, updateTime any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) MarkRunning(ctx, id, startTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkRunning), ctx, id, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).MarkRunning), ctx, id, startTime)
 }
 
 // SetAgentTaskID mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) SetAgentTaskID(ctx context.Context, id, agentTaskID string, updateTime int64) (bool, error) {
+func (m *MockSemanticUnderstandingTaskAccess) SetAgentTaskID(ctx context.Context, id, agentTaskID string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetAgentTaskID", ctx, id, agentTaskID, updateTime)
+	ret := m.ctrl.Call(m, "SetAgentTaskID", ctx, id, agentTaskID)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SetAgentTaskID indicates an expected call of SetAgentTaskID.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) SetAgentTaskID(ctx, id, agentTaskID, updateTime any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) SetAgentTaskID(ctx, id, agentTaskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAgentTaskID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).SetAgentTaskID), ctx, id, agentTaskID, updateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAgentTaskID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).SetAgentTaskID), ctx, id, agentTaskID)
 }
 
 // SetApplied mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) SetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, appliedTime int64, applyDetailJSON string) (bool, error) {
+func (m *MockSemanticUnderstandingTaskAccess) SetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetApplied", ctx, tx, id, applied, appliedTime, applyDetailJSON)
+	ret := m.ctrl.Call(m, "SetApplied", ctx, tx, id, applied, applyDetailJSON)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SetApplied indicates an expected call of SetApplied.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) SetApplied(ctx, tx, id, applied, appliedTime, applyDetailJSON any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) SetApplied(ctx, tx, id, applied, applyDetailJSON any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).SetApplied), ctx, tx, id, applied, appliedTime, applyDetailJSON)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).SetApplied), ctx, tx, id, applied, applyDetailJSON)
 }

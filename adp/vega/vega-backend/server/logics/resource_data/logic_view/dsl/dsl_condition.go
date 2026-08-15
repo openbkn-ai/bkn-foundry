@@ -153,7 +153,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionWithOpr(ctx context.Contex
 	case filter_condition.OperationKnnVector:
 		return c.ConvertFilterConditionKnnVector(ctx, condition, fieldsMap)
 	default:
-		return nil, fmt.Errorf("operation %s is not supported", condition.GetOperation())
+		return nil, filter_condition.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelOpenSearch)
 	}
 }
 

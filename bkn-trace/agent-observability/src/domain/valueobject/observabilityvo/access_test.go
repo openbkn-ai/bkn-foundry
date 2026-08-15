@@ -46,6 +46,14 @@ func TestInactiveAccountHasNoObservabilityCapabilities(t *testing.T) {
 	}
 }
 
+func TestArchiveManagementIsAServiceSideAdministratorCapability(t *testing.T) {
+	admin := CapabilitiesFor(evidencevo.AccessProfile{TenantID: "tenant-a", AccountActive: true, TenantActive: true, Roles: []string{"admin"}})
+	user := CapabilitiesFor(evidencevo.AccessProfile{TenantID: "tenant-a", AccountActive: true, TenantActive: true, Roles: []string{"normal_user"}})
+	if !admin.ObservabilityArchiveManage || user.ObservabilityArchiveManage {
+		t.Fatalf("archive capability must be server-derived for administrators only: admin=%+v user=%+v", admin, user)
+	}
+}
+
 func TestOperationAuditContractUsesSixProductModules(t *testing.T) {
 	want := []string{
 		"domain_knowledge_network",

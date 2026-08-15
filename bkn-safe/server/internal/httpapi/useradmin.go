@@ -51,7 +51,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		// Validate departments BEFORE creating the user, so an unknown id fails
 		// the request without leaving an orphaned user behind.
 		if err := dir.DepartmentsExist(ctx, req.DepartmentIDs); errors.Is(err, directory.ErrUnknownDepartment) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		} else if err != nil {
 			serverError(c, err)
@@ -139,7 +139,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		// refuse to disable it (other edits like rename are fine). The frontend
 		// hides the control, but the API must not rely on that.
 		if id == seed.AdminUserID && req.Enabled != nil && !*req.Enabled {
-			c.JSON(http.StatusForbidden, gin.H{"error": "built-in admin user cannot be disabled"})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		fields := map[string]any{}
@@ -159,13 +159,13 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 			fields["account_type"] = *req.AccountType
 		}
 		if len(fields) == 0 && req.DepartmentIDs == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no updatable fields provided"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		// Validate departments up-front so a bad id fails before any write lands.
 		if req.DepartmentIDs != nil {
 			if err := dir.DepartmentsExist(ctx, *req.DepartmentIDs); errors.Is(err, directory.ErrUnknownDepartment) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				replyPublicError(c, http.StatusBadRequest)
 				return
 			} else if err != nil {
 				serverError(c, err)
@@ -175,7 +175,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		if len(fields) > 0 {
 			err := users.UpdateUser(ctx, id, fields)
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				replyPublicError(c, http.StatusNotFound)
 				return
 			}
 			if err != nil {
@@ -186,7 +186,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		if req.DepartmentIDs != nil {
 			err := dir.SetUserDepartments(ctx, id, *req.DepartmentIDs)
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				replyPublicError(c, http.StatusNotFound)
 				return
 			}
 			if err != nil {
@@ -204,12 +204,12 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		// Defense in depth: never delete the built-in admin (deleting the only
 		// super-admin locks everyone out). The frontend hides the control too.
 		if id == seed.AdminUserID {
-			c.JSON(http.StatusForbidden, gin.H{"error": "built-in admin user cannot be deleted"})
+			replyPublicError(c, http.StatusForbidden)
 			return
 		}
 		err := users.DeleteUser(c.Request.Context(), id)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			replyPublicError(c, http.StatusNotFound)
 			return
 		}
 		if err != nil {
@@ -244,13 +244,13 @@ func registerSelfServiceAuth(r *gin.Engine, users *auth.UserStore) {
 		// Password-strength rules are intentionally not enforced yet; only
 		// reject a no-op change (new == old).
 		if req.NewPassword == req.OldPassword {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "new password must differ from current"})
+			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
 		err := users.ChangePassword(c.Request.Context(), req.Account, req.OldPassword, req.NewPassword)
 		if err != nil {
 			if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid account or password"})
+				replyPublicError(c, http.StatusUnauthorized)
 				return
 			}
 			serverError(c, err)

@@ -1,6 +1,6 @@
 package sqlx
 
-// DBConfig 数据库配置信息
+// DBConfig contains database connection settings.
 type DBConfig struct {
 	User             string `yaml:"user_name"`
 	Password         string `yaml:"user_pwd"`

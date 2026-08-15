@@ -20,8 +20,10 @@ const (
 	BuildTaskModeStreaming string = "streaming" // 流式
 	BuildTaskModeBatch     string = "batch"     // 批量
 
-	BuildTaskSortCreateTime string = "create_time"
-	BuildTaskSortUpdateTime string = "update_time"
+	BuildTaskSortCreateTime       string = "create_time"
+	BuildTaskSortStartTime        string = "start_time"
+	BuildTaskSortFinishTime       string = "finish_time"
+	BuildTaskSortLastProgressTime string = "last_progress_time"
 
 	BuildTaskExecuteTypeIncremental string = "incremental" // 增量
 	BuildTaskExecuteTypeFull        string = "full"        // 全量
@@ -36,8 +38,10 @@ const (
 // BUILD_TASK_SORT is a whitelist of supported sort values. Values are unused;
 // the data access layer owns the mapping from API fields to database columns.
 var BUILD_TASK_SORT = map[string]string{
-	BuildTaskSortCreateTime: "",
-	BuildTaskSortUpdateTime: "",
+	BuildTaskSortCreateTime:       "",
+	BuildTaskSortStartTime:        "",
+	BuildTaskSortFinishTime:       "",
+	BuildTaskSortLastProgressTime: "",
 }
 
 var ConnectorClassMapping = map[string]string{
@@ -47,22 +51,24 @@ var ConnectorClassMapping = map[string]string{
 
 // BuildTask represents a build task entity.
 type BuildTask struct {
-	ID              string                `json:"id"`
-	ResourceID      string                `json:"resource_id"`
-	Status          string                `json:"status"`
-	Mode            string                `json:"mode"`                   // 任务模式：streaming/batch
-	ExecuteType     string                `json:"execute_type,omitempty"` // batch 执行类型：incremental/full；streaming 不适用
-	TotalCount      int64                 `json:"total_count"`            // 总数
-	SyncedCount     int64                 `json:"synced_count"`           // 已同步数
-	VectorizedCount int64                 `json:"vectorized_count"`       // 已做向量数
-	SyncedMark      string                `json:"synced_mark"`            // 同步标记
-	ErrorMsg        string                `json:"error_msg,omitempty"`
-	FailureDetail   string                `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
-	Creator         AccountInfo           `json:"creator"`
-	CreateTime      int64                 `json:"create_time"`
-	UpdateTime      int64                 `json:"update_time"`
-	IndexConfig     *BuildTaskIndexConfig `json:"index_config,omitempty"` // 创建 task 时从 resource 派生的索引配置快照
-	CatalogID       string                `json:"catalog_id"`
+	ID               string                `json:"id"`
+	ResourceID       string                `json:"resource_id"`
+	Status           string                `json:"status"`
+	Mode             string                `json:"mode"`                   // 任务模式：streaming/batch
+	ExecuteType      string                `json:"execute_type,omitempty"` // batch 执行类型：incremental/full；streaming 不适用
+	TotalCount       int64                 `json:"total_count"`            // 总数
+	SyncedCount      int64                 `json:"synced_count"`           // 已同步数
+	VectorizedCount  int64                 `json:"vectorized_count"`       // 已做向量数
+	SyncedMark       string                `json:"synced_mark"`            // 同步标记
+	ErrorMsg         string                `json:"error_msg,omitempty"`
+	FailureDetail    string                `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
+	Creator          AccountInfo           `json:"creator"`
+	CreateTime       int64                 `json:"create_time"`
+	StartTime        int64                 `json:"start_time,omitempty"`
+	FinishTime       int64                 `json:"finish_time,omitempty"`
+	LastProgressTime int64                 `json:"last_progress_time,omitempty"`
+	IndexConfig      *BuildTaskIndexConfig `json:"index_config,omitempty"` // 创建 task 时从 resource 派生的索引配置快照
+	CatalogID        string                `json:"catalog_id"`
 	// 以下关联字段仅用于响应展示，不落库；由 service 按当前任务集合批量补齐。
 	ResourceName string `json:"resource_name,omitempty"`
 	CatalogName  string `json:"catalog_name,omitempty"`
@@ -76,23 +82,25 @@ type BuildTask struct {
 // Index configuration snapshots and detailed partial-failure diagnostics are
 // available from GetByID.
 type BuildTaskSummary struct {
-	ID              string       `json:"id"`
-	ResourceID      string       `json:"resource_id"`
-	ResourceName    string       `json:"resource_name,omitempty"`
-	CatalogID       string       `json:"catalog_id"`
-	CatalogName     string       `json:"catalog_name,omitempty"`
-	Status          string       `json:"status"`
-	Mode            string       `json:"mode"`
-	ExecuteType     string       `json:"execute_type,omitempty"`
-	TotalCount      int64        `json:"total_count"`
-	SyncedCount     int64        `json:"synced_count"`
-	VectorizedCount int64        `json:"vectorized_count"`
-	SyncedMark      string       `json:"synced_mark"`
-	ErrorMsg        string       `json:"error_msg,omitempty"`
-	Creator         AccountInfo  `json:"creator"`
-	CreateTime      int64        `json:"create_time"`
-	UpdateTime      int64        `json:"update_time"`
-	IndexHealth     *IndexHealth `json:"index_health,omitempty"`
+	ID               string       `json:"id"`
+	ResourceID       string       `json:"resource_id"`
+	ResourceName     string       `json:"resource_name,omitempty"`
+	CatalogID        string       `json:"catalog_id"`
+	CatalogName      string       `json:"catalog_name,omitempty"`
+	Status           string       `json:"status"`
+	Mode             string       `json:"mode"`
+	ExecuteType      string       `json:"execute_type,omitempty"`
+	TotalCount       int64        `json:"total_count"`
+	SyncedCount      int64        `json:"synced_count"`
+	VectorizedCount  int64        `json:"vectorized_count"`
+	SyncedMark       string       `json:"synced_mark"`
+	ErrorMsg         string       `json:"error_msg,omitempty"`
+	Creator          AccountInfo  `json:"creator"`
+	CreateTime       int64        `json:"create_time"`
+	StartTime        int64        `json:"start_time,omitempty"`
+	FinishTime       int64        `json:"finish_time,omitempty"`
+	LastProgressTime int64        `json:"last_progress_time,omitempty"`
+	IndexHealth      *IndexHealth `json:"index_health,omitempty"`
 
 	// IndexConfig is loaded only to derive IndexHealth and is never serialized.
 	IndexConfig *BuildTaskIndexConfig `json:"-"`

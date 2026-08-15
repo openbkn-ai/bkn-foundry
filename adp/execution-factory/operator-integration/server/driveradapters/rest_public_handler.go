@@ -5,10 +5,12 @@ package driveradapters
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/common"
 	sandboxdriver "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/sandbox"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -28,10 +30,14 @@ type restPublicHandler struct {
 	AIGenerationHandler   common.AIGenerationHandler
 	Logger                interfaces.Logger
 	businessDomainService interfaces.IBusinessDomainService
+	auditStore            *operationaudit.Store
+	auditQueryStore       operationAuditQueryStore
+	auditUserManagement   interfaces.UserManagement
 }
 
 // NewRestPublicHandler 创建restHandler实例
 func NewRestPublicHandler() interfaces.HTTPRouterInterface {
+	auditStore := operationaudit.NewStore(db.NewDBPool())
 	return &restPublicHandler{
 		Hydra:                 drivenadapters.NewHydra(),
 		AppKeys:               drivenadapters.NewAppKeyVerifier(),
@@ -46,13 +52,23 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 		AIGenerationHandler:   common.NewAIGenerationHandler(),
 		Logger:                config.NewConfigLoader().GetLogger(),
 		businessDomainService: business_domain.NewBusinessDomainService(),
+		auditStore:            auditStore,
+		auditQueryStore:       auditStore,
 	}
 }
 
 // RegisterPublic 注册公共路由
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
-	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareIntrospectVerify(r.Hydra, r.AppKeys))
+	mws = append(mws,
+		middlewareRequestLog(r.Logger),
+		middlewareTrace,
+		middlewareTraceContext,
+		sharedrest.LanguageMiddleware(),
+		sharedrest.PrivateNoCacheMiddleware(),
+		middlewareIntrospectVerify(r.Hydra, r.AppKeys),
+		OperationAudit(r.auditStore),
+	)
 	engine.Use(mws...)
 	// 算子注册相关接口
 	r.OperatorRestHandler.RegisterPublic(engine)
@@ -62,6 +78,8 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	r.MCPRestHandler.RegisterPublic(engine)
 	// Skill 相关接口
 	r.SkillRestHandler.RegisterPublic(engine)
+	engine.GET("/operation-audits", r.ListOperationAudits)
+	engine.GET("/operation-audits/:event_id", r.GetOperationAudit)
 	// 沙箱运行时只读观测接口（超管可见，见 #326）
 	r.SandboxHandler.RegisterPublic(engine)
 	// 导入导出

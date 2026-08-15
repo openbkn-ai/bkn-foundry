@@ -34,21 +34,21 @@ func RequireAdmin(v TokenVerifier, e *authz.Enforcer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tok := bearerToken(c)
 		if tok == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			abortPublicError(c, http.StatusUnauthorized)
 			return
 		}
 		sub, err := v.VerifyToken(c.Request.Context(), tok)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or inactive token"})
+			abortPublicError(c, http.StatusUnauthorized)
 			return
 		}
 		ok, err := e.CanAdmin(sub)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			abortInternalError(c)
 			return
 		}
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not authorized for admin operations"})
+			abortPublicError(c, http.StatusForbidden)
 			return
 		}
 		c.Set(ctxAccessorID, sub)
@@ -72,16 +72,16 @@ func RequirePermission(e *authz.Enforcer, resourceType, op string) gin.HandlerFu
 func authorizePermission(c *gin.Context, e *authz.Enforcer, resourceType, op string) bool {
 	sub := c.GetString(ctxAccessorID)
 	if sub == "" {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing authenticated accessor"})
+		abortPublicError(c, http.StatusUnauthorized)
 		return false
 	}
 	ok, err := e.Check(sub, resourceType, "*", op)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		abortInternalError(c)
 		return false
 	}
 	if !ok {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not authorized for " + resourceType + ":" + op})
+		abortPublicError(c, http.StatusForbidden)
 		return false
 	}
 	return true
@@ -112,15 +112,13 @@ func RequireAnyPermission(e *authz.Enforcer, points ...PermissionPoint) gin.Hand
 	return func(c *gin.Context) {
 		sub := c.GetString(ctxAccessorID)
 		if sub == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing authenticated accessor"})
+			abortPublicError(c, http.StatusUnauthorized)
 			return
 		}
-		names := make([]string, 0, len(points))
 		for i, p := range points {
-			names = append(names, p.String())
 			ok, err := e.Check(sub, p.ResourceType, "*", p.Op)
 			if err != nil {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				abortInternalError(c)
 				return
 			}
 			if !ok {
@@ -134,8 +132,7 @@ func RequireAnyPermission(e *authz.Enforcer, points ...PermissionPoint) gin.Hand
 			c.Next()
 			return
 		}
-		c.AbortWithStatusJSON(http.StatusForbidden,
-			gin.H{"error": "not authorized for any of " + strings.Join(names, ", ")})
+		abortPublicError(c, http.StatusForbidden)
 	}
 }
 
@@ -146,12 +143,12 @@ func RequireUser(v TokenVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tok := bearerToken(c)
 		if tok == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			abortPublicError(c, http.StatusUnauthorized)
 			return
 		}
 		sub, err := v.VerifyToken(c.Request.Context(), tok)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or inactive token"})
+			abortPublicError(c, http.StatusUnauthorized)
 			return
 		}
 		c.Set(ctxAccessorID, sub)

@@ -59,6 +59,20 @@ func TestDiscoverTaskServiceCreateRequestsDispatchAfterPersistence(t *testing.T)
 	}
 }
 
+func TestDiscoverTaskServiceInternalUpdateProgress(t *testing.T) {
+	service, dta, _ := newTestDiscoverTaskService(t)
+	dta.EXPECT().UpdateProgress(gomock.Any(), "task-1", 70, "resources reconciled", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ int, _ string, lastProgressTime int64) (bool, error) {
+			assert.Positive(t, lastProgressTime)
+			return true, nil
+		})
+
+	updated, err := service.InternalUpdateProgress(context.Background(), "task-1", 70, "resources reconciled")
+
+	require.NoError(t, err)
+	assert.True(t, updated)
+}
+
 func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 	t.Run("get enriches creator name", func(t *testing.T) {
 		service, dta, ums := newTestDiscoverTaskService(t)

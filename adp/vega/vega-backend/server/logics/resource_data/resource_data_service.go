@@ -3,6 +3,7 @@ package resource_data
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -151,6 +152,13 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		fieldMap[name] = prop
 	}
 
+	// 表资源没建本地索引时，全文检索无处可落，在这里就拒掉并说明原因。
+	if err := validateFulltextConditions(resource, params.FilterCondCfg); err != nil {
+		otellog.LogError(ctx, "Full-text condition rejected", err)
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
+
 	// 向量检索的条件带的是查询文本与源字段名，在这里换成向量与物理向量字段。
 	if err := rds.resolveVectorConditions(ctx, resource, params.FilterCondCfg); err != nil {
 		otellog.LogError(ctx, "Resolve vector condition failed", err)
@@ -199,6 +207,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		data, total, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query table data failed", err)
+			// QueryData 已经分好型的错误原样上抛。无条件重包成 500 会把它在
+			// 里面判出来的 400（算子不支持）抹平，那几处映射也就等于没写。
+			var httpErr *rest.HTTPError
+			if errors.As(err, &httpErr) {
+				return nil, 0, httpErr
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -210,6 +224,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		data, total, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query index data failed", err)
+			// QueryData 已经分好型的错误原样上抛。无条件重包成 500 会把它在
+			// 里面判出来的 400（算子不支持）抹平，那几处映射也就等于没写。
+			var httpErr *rest.HTTPError
+			if errors.As(err, &httpErr) {
+				return nil, 0, httpErr
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -371,6 +391,10 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
+			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails(unsupported.Error())
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 		}
@@ -390,6 +414,10 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := indexConnector.ExecuteQuery(ctx, resource.SourceIdentifier, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
+			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails(unsupported.Error())
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(fmt.Sprintf("failed to execute query: %v", err))
 		}
@@ -411,6 +439,12 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 		result, err := fc.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Fileset query failed", err)
+			// 与表/索引两条分支同样的分型：anyshare 未实现的算子是请求侧的问题，
+			// 调用方换个算子就能过；一律包成 500 会让 ontology-query 判成依赖故障。
+			if unsupported, ok := filter_condition.AsUnsupportedOperationError(err); ok {
+				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+					WithErrorDetails(unsupported.Error())
+			}
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 				WithErrorDetails(err.Error())
 		}

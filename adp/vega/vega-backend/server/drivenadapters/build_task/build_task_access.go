@@ -54,7 +54,9 @@ func buildTaskColumns() []string {
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
-		"f_update_time",
+		"f_start_time",
+		"f_finish_time",
+		"f_last_progress_time",
 	}
 }
 
@@ -75,7 +77,9 @@ func buildTaskSummaryColumns() []string {
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
-		"f_update_time",
+		"f_start_time",
+		"f_finish_time",
+		"f_last_progress_time",
 	}
 }
 
@@ -109,7 +113,9 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		&creatorID,
 		&creatorType,
 		&buildTask.CreateTime,
-		&buildTask.UpdateTime,
+		&buildTask.StartTime,
+		&buildTask.FinishTime,
+		&buildTask.LastProgressTime,
 	)
 	if err != nil {
 		return nil, err
@@ -143,7 +149,9 @@ func scanBuildTaskSummary(scanner buildTaskScanner) (*interfaces.BuildTaskSummar
 		&creatorID,
 		&creatorType,
 		&task.CreateTime,
-		&task.UpdateTime,
+		&task.StartTime,
+		&task.FinishTime,
+		&task.LastProgressTime,
 	)
 	if err != nil {
 		return nil, err
@@ -197,7 +205,9 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 			buildTask.Creator.ID,
 			buildTask.Creator.Type,
 			buildTask.CreateTime,
-			buildTask.UpdateTime,
+			buildTask.StartTime,
+			buildTask.FinishTime,
+			buildTask.LastProgressTime,
 		).ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
@@ -286,9 +296,9 @@ func (bta *buildTaskAccess) GetByCatalogID(ctx context.Context, catalogID string
 }
 
 func (bta *buildTaskAccess) SetProgress(
-	ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, updateTime int64,
+	ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, lastProgressTime int64,
 ) (bool, error) {
-	updateColumns := map[string]any{"f_update_time": updateTime}
+	updateColumns := map[string]any{"f_last_progress_time": lastProgressTime}
 	if progress.TotalCount != nil {
 		updateColumns["f_total_count"] = *progress.TotalCount
 	}
@@ -313,10 +323,12 @@ func (bta *buildTaskAccess) SetProgress(
 	})
 }
 
-func (bta *buildTaskAccess) MarkPending(ctx context.Context, id string, reset bool, updateTime int64) (bool, error) {
+func (bta *buildTaskAccess) MarkPending(ctx context.Context, id string, reset bool) (bool, error) {
 	updateColumns := map[string]any{
-		"f_status":      interfaces.BuildTaskStatusPending,
-		"f_update_time": updateTime,
+		"f_status":             interfaces.BuildTaskStatusPending,
+		"f_start_time":         int64(0),
+		"f_finish_time":        int64(0),
+		"f_last_progress_time": int64(0),
 	}
 	if reset {
 		updateColumns["f_total_count"] = int64(0)
@@ -335,25 +347,24 @@ func (bta *buildTaskAccess) MarkPending(ctx context.Context, id string, reset bo
 	})
 }
 
-func (bta *buildTaskAccess) MarkRunning(ctx context.Context, id string, updateTime int64) (bool, error) {
+func (bta *buildTaskAccess) MarkRunning(ctx context.Context, id string, startTime int64) (bool, error) {
 	return bta.update(ctx, nil, map[string]any{
-		"f_status":      interfaces.BuildTaskStatusRunning,
-		"f_error_msg":   "",
-		"f_update_time": updateTime,
+		"f_status":     interfaces.BuildTaskStatusRunning,
+		"f_error_msg":  "",
+		"f_start_time": startTime,
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusPending})
 }
 
-func (bta *buildTaskAccess) MarkStopping(ctx context.Context, id string, updateTime int64) (bool, error) {
+func (bta *buildTaskAccess) MarkStopping(ctx context.Context, id string) (bool, error) {
 	return bta.update(ctx, nil, map[string]any{
-		"f_status":      interfaces.BuildTaskStatusStopping,
-		"f_update_time": updateTime,
+		"f_status": interfaces.BuildTaskStatusStopping,
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusRunning})
 }
 
-func (bta *buildTaskAccess) MarkStopped(ctx context.Context, id string, updateTime int64) (bool, error) {
+func (bta *buildTaskAccess) MarkStopped(ctx context.Context, id string, finishTime int64) (bool, error) {
 	return bta.update(ctx, nil, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusStopped,
-		"f_update_time": updateTime,
+		"f_finish_time": finishTime,
 	}, map[string]any{
 		"f_id": id,
 		"f_status": []string{
@@ -364,29 +375,29 @@ func (bta *buildTaskAccess) MarkStopped(ctx context.Context, id string, updateTi
 }
 
 func (bta *buildTaskAccess) MarkCompleted(
-	ctx context.Context, tx *sql.Tx, id string, updateTime int64,
+	ctx context.Context, tx *sql.Tx, id string, finishTime int64,
 ) (bool, error) {
 	return bta.update(ctx, tx, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusCompleted,
-		"f_update_time": updateTime,
+		"f_finish_time": finishTime,
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusRunning})
 }
 
-func (bta *buildTaskAccess) MarkFailed(ctx context.Context, id, detail string, updateTime int64) (bool, error) {
-	return bta.markTerminal(ctx, id, interfaces.BuildTaskStatusFailed, detail, updateTime)
+func (bta *buildTaskAccess) MarkFailed(ctx context.Context, id, detail string, finishTime int64) (bool, error) {
+	return bta.markTerminal(ctx, id, interfaces.BuildTaskStatusFailed, detail, finishTime)
 }
 
-func (bta *buildTaskAccess) MarkCancelled(ctx context.Context, id, detail string, updateTime int64) (bool, error) {
-	return bta.markTerminal(ctx, id, interfaces.BuildTaskStatusCancelled, detail, updateTime)
+func (bta *buildTaskAccess) MarkCancelled(ctx context.Context, id, detail string, finishTime int64) (bool, error) {
+	return bta.markTerminal(ctx, id, interfaces.BuildTaskStatusCancelled, detail, finishTime)
 }
 
 func (bta *buildTaskAccess) markTerminal(
-	ctx context.Context, id, status, detail string, updateTime int64,
+	ctx context.Context, id, status, detail string, finishTime int64,
 ) (bool, error) {
 	return bta.update(ctx, nil, map[string]any{
 		"f_status":      status,
 		"f_error_msg":   detail,
-		"f_update_time": updateTime,
+		"f_finish_time": finishTime,
 	}, map[string]any{
 		"f_id": id,
 		"f_status": []string{
@@ -398,12 +409,12 @@ func (bta *buildTaskAccess) markTerminal(
 }
 
 func (bta *buildTaskAccess) MarkCancelledByCatalogID(
-	ctx context.Context, tx *sql.Tx, catalogID, message string, updateTime int64,
+	ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64,
 ) error {
 	_, err := bta.update(ctx, tx, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusCancelled,
 		"f_error_msg":   message,
-		"f_update_time": updateTime,
+		"f_finish_time": finishTime,
 	}, map[string]any{
 		"f_catalog_id": catalogID,
 		"f_status":     interfaces.BuildTaskStatusPending,
@@ -536,8 +547,12 @@ func buildOrderByClause(sort, direction string) string {
 	switch sort {
 	case interfaces.BuildTaskSortCreateTime:
 		return "f_create_time " + dir
-	case interfaces.BuildTaskSortUpdateTime:
-		return "f_update_time " + dir
+	case interfaces.BuildTaskSortStartTime:
+		return "f_start_time " + dir
+	case interfaces.BuildTaskSortFinishTime:
+		return "f_finish_time " + dir
+	case interfaces.BuildTaskSortLastProgressTime:
+		return "f_last_progress_time " + dir
 	default:
 		return "f_create_time DESC"
 	}

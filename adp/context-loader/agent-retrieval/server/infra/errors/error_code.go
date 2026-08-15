@@ -30,6 +30,7 @@ const (
 const (
 	ErrExtMCPInstanceAlreadyExists = "MCPInstanceAlreadyExists" // MCP实例已存在
 	ErrExtMCPInstanceNotFound      = "MCPInstanceNotFound"      // MCP实例不存在
+	ErrExtMCPInfoBuildFailed       = "MCPInfoBuildFailed"       // MCP 信息构建失败
 )
 
 // 业务知识网络行动召回拓展错误码定义

@@ -93,6 +93,7 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 			},
 			SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
 				PerTypeInstanceLimit: *req.MaxInstancesPerType,
+				InstanceRerankMode:   instanceRerankModeFromFlag(req.Rerank),
 			},
 		},
 	}, nil
@@ -154,4 +155,15 @@ func objectTypesOfNodes(objectTypes, nodes []any) []any {
 		return nil
 	}
 	return kept
+}
+
+// instanceRerankModeFromFlag 把工具面的开关映射成精排档位。
+//
+// 工具参数只给开/关：shadow 是拿线上流量取证用的运维档，对 Agent 没有意义，
+// 留给 kn_search 的 retrieval_config 走。
+func instanceRerankModeFromFlag(rerank *bool) string {
+	if rerank != nil && *rerank {
+		return InstanceRerankModeOn
+	}
+	return InstanceRerankModeOff
 }

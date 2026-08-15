@@ -31,6 +31,8 @@ paths:
         as success.
 
         Successful responses are normalized to `{ "status": "ok", "id": "..." }`.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
         required: true
         content:
@@ -55,6 +57,9 @@ paths:
       responses:
         '200':
           description: Test connection succeeded
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
@@ -66,12 +71,33 @@ paths:
                     id: "1234567890123456789"
         '400':
           description: Test connection failed or request parameters are invalid
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Authentication failed
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
         '500':
           description: Internal service error
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
@@ -88,6 +114,8 @@ paths:
         `default=true` marks the model as the default model and clears the
         previous default. `default=false` clears the default flag from the
         specified model. The response includes the resulting default state.
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
         required: true
         content:
@@ -106,6 +134,9 @@ paths:
       responses:
         '200':
           description: Default model state updated
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
@@ -118,18 +149,44 @@ paths:
                     default: false
         '400':
           description: Invalid request or model does not exist
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
         '403':
           description: Current user is not allowed to edit the default model
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Authentication failed
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
         '500':
           description: Internal service error
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
@@ -151,6 +208,7 @@ paths:
         exists in `t_llm_model`, so non-current or stale model operation records
         are excluded from the overview.
       parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
         - name: start_time
           in: query
           required: true
@@ -174,6 +232,9 @@ paths:
       responses:
         '200':
           description: Monitor overview returned
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
@@ -241,17 +302,58 @@ paths:
                           type: string
         '400':
           description: Missing or invalid date range
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Authentication failed
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
         '500':
           description: Internal service error
+          headers:
+            Content-Language:
+              $ref: '#/components/headers/ContentLanguage'
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoCache'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
 components:
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: Preferred response language. Supports zh-CN and en-US.
+      schema:
+        type: string
+        example: en-US
+  headers:
+    ContentLanguage:
+      description: Language used for a localized error response.
+      schema:
+        type: string
+        enum: [zh-CN, en-US]
+    PrivateNoCache:
+      description: Authenticated response cache policy.
+      schema:
+        type: string
+        example: private, no-cache
   securitySchemes:
     BearerAuth:
       type: http

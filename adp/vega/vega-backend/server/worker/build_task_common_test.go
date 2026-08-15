@@ -26,8 +26,9 @@ func TestUpdateResourceIndexName(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		resource := &interfaces.Resource{ID: "r1"}
 
-		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
-			assert.Equal(t, "new-index", got.LocalIndexName)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", "new-index").DoAndReturn(func(_ context.Context, _ *sql.Tx, id, indexName string) error {
+			assert.Equal(t, "r1", id)
+			assert.Equal(t, "new-index", indexName)
 			return nil
 		})
 
@@ -47,8 +48,9 @@ func TestUpdateResourceIndexName(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
 
-		rs.EXPECT().InternalUpdate(gomock.Any(), nil, resource).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
-			assert.Equal(t, "new-index", got.LocalIndexName)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", "new-index").DoAndReturn(func(_ context.Context, _ *sql.Tx, id, indexName string) error {
+			assert.Equal(t, "r1", id)
+			assert.Equal(t, "new-index", indexName)
 			return errors.New("update failed")
 		})
 
@@ -76,9 +78,10 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		rs.EXPECT().InternalUpdate(gomock.Any(), txMatcher, resource).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
-				assert.Equal(t, "new-index", got.LocalIndexName)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, id, indexName string) error {
+				assert.Equal(t, "r1", id)
+				assert.Equal(t, "new-index", indexName)
 				return nil
 			})
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(true, nil)
@@ -107,7 +110,7 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		rs.EXPECT().InternalUpdate(gomock.Any(), txMatcher, resource).Return(nil)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").Return(nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(false, nil)
 		mock.ExpectRollback()
 		ts.EXPECT().InternalMarkStopped(gomock.Any(), "t1").Return(true, nil)
@@ -116,6 +119,48 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "old-index", resource.LocalIndexName)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("does not write stale resource snapshot when build completes", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ts := vmock.NewMockBuildTaskService(ctrl)
+		staleBuildResource := &interfaces.Resource{
+			ID:               "r1",
+			Name:             "supply_chain.material_entity",
+			SourceIdentifier: "supply_chain.material_entity",
+			Description:      "source material description",
+			SchemaDefinition: []*interfaces.Property{{
+				Name:                "material_id",
+				DisplayName:         "material_id",
+				Description:         "source material identifier",
+				OriginalDescription: "source material identifier",
+			}},
+		}
+
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		oldDB := logics.DB
+		logics.DB = db
+		defer func() { logics.DB = oldDB }()
+
+		mock.ExpectBegin()
+		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		rs.EXPECT().InternalUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, id, indexName string) error {
+				assert.Equal(t, "r1", id)
+				assert.Equal(t, "new-index", indexName)
+				return nil
+			},
+		)
+		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "build-task-1").Return(true, nil)
+		mock.ExpectCommit()
+
+		require.NoError(t, completeBuildTaskWithoutEmbedding(context.Background(), staleBuildResource, rs, ts, "build-task-1", "new-index"))
+		assert.Equal(t, "new-index", staleBuildResource.LocalIndexName)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

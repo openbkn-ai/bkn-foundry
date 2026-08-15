@@ -16,6 +16,61 @@ from app.mydb.ConnectUtil import redis_util, get_redis_util
 from app.utils.permission_manager import PermissionManager, permission_manager
 
 
+# 小模型类型常量，与 t_small_model.f_model_type 取值一致。
+RERANKER_MODEL_TYPE = "reranker"
+
+# 默认模型是管理员随时可改的**指针**，不是某个具体模型的配置。按名字查到的配置缓存
+# 一天没问题，指针缓存一天就会出现「换了默认、一天之内仍按旧的调」——#552 记的正是
+# 这个坑。所以默认路径用短 TTL。
+DEFAULT_MODEL_CACHE_TTL_SECONDS = 60
+MODEL_CACHE_TTL_SECONDS = 3600 * 24
+
+
+def _model_cache_ttl(is_default):
+    return DEFAULT_MODEL_CACHE_TTL_SECONDS if is_default else MODEL_CACHE_TTL_SECONDS
+
+
+# #842 之前各服务硬编码的兜底名字：context-loader 猜 "reranker"、vega 猜 "embedding"
+# （#296）。存量库里 f_default 全是 0——「设为默认」是后加的能力，没人点过就没人置位，
+# 也没有任何迁移回填它。若默认解析取不到就直接 400，存量环境升级当天精排即静默退回
+# 原序（三处调用方都是优雅降级，只打一条 warn）。
+#
+# 所以默认解析落空时，按老约定的名字再兜一次，命中就打 warn 指路。等日志里不再出现
+# 这条 warn，这一跳就可以删掉。
+LEGACY_DEFAULT_MODEL_NAMES = {
+    RERANKER_MODEL_TYPE: "reranker",
+    "embedding": "embedding",
+}
+
+
+def _load_small_model(is_default, model_type, model_name, model_id):
+    """按「有没有指定模型」分流：指定了按名字/ID 查，没指定取该类型的系统默认。"""
+    if not is_default:
+        return small_model_dao.get_model_info_by_name_id(model_name, model_id)
+
+    model_info = small_model_dao.get_default_by_type(model_type)
+    if model_info:
+        return model_info
+
+    legacy_name = LEGACY_DEFAULT_MODEL_NAMES.get(model_type)
+    if not legacy_name:
+        return model_info
+
+    model_info = small_model_dao.get_model_info_by_name_id(legacy_name, None)
+    if model_info:
+        StandLogger.warn(
+            f"{model_type} 未配置默认小模型，暂按旧命名约定回退到 {legacy_name}；"
+            f"请在模型管理中为该类型勾选默认模型")
+    return model_info
+
+
+def _model_missing_error(is_default):
+    """区分「你指定的模型不存在」与「管理员没配默认模型」——两者的处理方式完全不同。"""
+    if is_default:
+        return ModelFactory_DefaultSmallModel_NotExist
+    return ModelFactory_ExternalSmallModel_Used_NameNotExist
+
+
 async def add_model(request: logics.AddExternalSmallModel, userId, language, role):
     try:
         model_id = str(worker.get_id())
@@ -442,13 +497,17 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
     try:
         model_name = request.model
         model_id = request.model_id
-        if not model_name and not model_id:
-            error_dict = ModelFactory_Router_ParamError_ParamMissing_Error
-            error_dict['detail'] = "model或者model_id至少需要传递一个"
-            return JSONResponse(status_code=400, content=error_dict)
         query = request.query
         documents = request.documents
-        if model_name:
+        # 都不传即「用模型管理里勾选的默认 reranker」，与大模型侧一致
+        # （llm_controller 的 default_model_3ed523 哨兵 + get_data_from_default_model）。
+        # 在此之前这里直接 400，逼得调用方必须填名字，于是各服务只能硬编码一个猜出来的
+        # 名字兜底（context-loader 猜 "reranker"、vega 猜 "embedding"），注册名一改就
+        # 全线 NameNotExist —— 见 #842 与 #296。
+        is_default = not model_name and not model_id
+        if is_default:
+            cache_key = f"dip:model-api:small-model:default:{RERANKER_MODEL_TYPE}:list"
+        elif model_name:
             cache_key = f"dip:model-api:small-model:{model_name}:list"
         else:
             cache_key = f"dip:model-api:small-model:{model_id}:list"
@@ -463,20 +522,23 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
                 # 缓存解析失败，回退到数据库查询
-                model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
+                model_info = _load_small_model(is_default, RERANKER_MODEL_TYPE, model_name, model_id)
                 if len(model_info) == 0:
-                    return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                    return JSONResponse(status_code=400, content=_model_missing_error(is_default))
                 # 重新设置缓存
-                await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
+                await redis_util.set_str(key=cache_key, value=str(model_info),
+                                         expire=_model_cache_ttl(is_default))
         else:
             # 缓存不存在或非预期类型，从数据库获取
-            model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
+            model_info = _load_small_model(is_default, RERANKER_MODEL_TYPE, model_name, model_id)
             if len(model_info) == 0:
-                return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                return JSONResponse(status_code=400, content=_model_missing_error(is_default))
             # 设置缓存
-            await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
+            await redis_util.set_str(key=cache_key, value=str(model_info),
+                                     expire=_model_cache_ttl(is_default))
 
         model_info = model_info[0]
+        model_name = model_info["f_model_name"]
         config_info = json.loads(model_info["f_model_config"])
         adapter = model_info["f_adapter"]
         model_id = model_info["f_model_id"]

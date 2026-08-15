@@ -234,21 +234,29 @@ func TestGeneratedSwaggerContainsEveryManagedLifecycleRoute(t *testing.T) {
 	}
 }
 
-func TestGeneratedSwaggerUsesBasePathRelativeTraceRoutes(t *testing.T) {
+func TestGeneratedSwaggerDoesNotPublishRemovedBusinessProvenanceRoutes(t *testing.T) {
 	t.Parallel()
 	document := parseSwagger(t, []byte(generated.SwaggerInfo.ReadDoc()))
 	for _, path := range []string{
 		"/traces",
 		"/traces/{trace_id}",
-		"/business-provenance/requests/{request_id}/evidence-chain",
-		"/business-provenance/requests/{request_id}/business-graph",
-		"/business-provenance/requests/{request_id}/snapshot-preview",
 	} {
 		if _, exists := document.Paths[path]; !exists {
 			t.Errorf("generated Swagger is missing relative trace route %s", path)
 		}
 	}
 	for _, path := range []string{
+		"/business-provenance/conversations", "/business-provenance/interactions",
+		"/business-provenance/interactions/{interaction_id}",
+		"/business-provenance/requests", "/business-provenance/requests/{request_id}",
+		"/business-provenance/requests/{request_id}/traces",
+		"/business-provenance/requests/{request_id}/evidence-chain",
+		"/business-provenance/requests/{request_id}/business-graph",
+		"/business-provenance/requests/{request_id}/snapshot-preview",
+		"/business-provenance/traces/{trace_id}/evidence-chain",
+		"/business-provenance/traces/{trace_id}/business-graph",
+		"/business-provenance/traces/{trace_id}/snapshot-preview",
+		"/business-provenance/evidence-nodes/{node_id}",
 		"/traces/_search", "/traces/by-conversation", "/traces/by-request",
 		"/traces/by-request/business-graph", "/traces/by-request/snapshot-preview",
 		"/traces/{trace_id}/trace-graph", "/evidence/by-trace", "/trace-executions", "/evidence-nodes/{node_id}",

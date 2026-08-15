@@ -98,6 +98,10 @@ spec:
               value: {{ .Values.businessResolver.bknBaseURL | quote }}
             - name: BKN_TRACE_VEGA_RESOLVER_URL
               value: {{ .Values.businessResolver.vegaBaseURL | quote }}
+            - name: BKN_TRACE_EXECUTION_FACTORY_URL
+              value: {{ .Values.businessResolver.executionFactoryURL | quote }}
+            - name: BKN_TRACE_MODEL_MANAGER_URL
+              value: {{ .Values.businessResolver.modelManagerURL | quote }}
             - name: BKN_TRACE_RESOLVER_TIMEOUT
               value: {{ .Values.businessResolver.timeout | quote }}
             {{- end }}
@@ -141,6 +145,15 @@ spec:
               value: {{ .Values.observability.sourceTimeout | quote }}
             - name: BKN_OBSERVABILITY_MAX_CONCURRENT_SOURCES
               value: {{ .Values.observability.maxConcurrentSources | quote }}
+            {{- $archive := default (dict) .Values.observability.archive }}
+            {{- if and $archive.ossGatewayURL $archive.storageID }}
+            - name: BKN_OBSERVABILITY_ARCHIVE_OSS_GATEWAY_URL
+              value: {{ $archive.ossGatewayURL | quote }}
+            - name: BKN_OBSERVABILITY_ARCHIVE_STORAGE_ID
+              value: {{ $archive.storageID | quote }}
+            - name: BKN_OBSERVABILITY_ARCHIVE_PREFIX
+              value: {{ $archive.prefix | quote }}
+            {{- end }}
             {{- if .Values.observability.sourceCoverage.enabled }}
             - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT
               value: {{ required "observability.sourceCoverage.metricsEndpoint is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.metricsEndpoint | quote }}

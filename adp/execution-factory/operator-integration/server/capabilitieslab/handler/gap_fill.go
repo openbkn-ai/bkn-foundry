@@ -64,7 +64,7 @@ func (h *CapabilitiesHandler) UpdateSkillPackage(c *gin.Context) {
 	bd := h.businessDomain(c)
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		writeBadRequest(c, "file is required")
+		writeFileRequired(c)
 		return
 	}
 	defer file.Close()

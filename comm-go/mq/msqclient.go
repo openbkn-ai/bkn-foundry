@@ -37,7 +37,7 @@ type OpenBKNMQClient interface {
 	Close()
 }
 
-// region 客户端连接可选参数定义
+// Client connection options.
 
 type ClientOpt func(client OpenBKNMQClient) error
 
@@ -148,9 +148,9 @@ func ShareConn(sharedConn bool) ClientOpt {
 
 // endregion
 
-// region Sub 函数可选参数
+// Subscription options.
 type subOption struct {
-	ackAsync bool // 异步确认, 先确认再消费消息, 默认值: false
+	ackAsync bool // Acknowledge before consuming a message. Disabled by default.
 }
 
 type SubOpt func(opt *subOption) error
@@ -182,11 +182,11 @@ func NewOpenBKNMQClient(pubServer string, pubPort int, subServer string, subPort
 		err := fmt.Errorf("unknown msq type %v", msqType)
 		return nil, err
 	} else {
-		// 检查是否传入了 ShareConn 选项
+		// Detect whether the caller provided the ShareConn option.
 		hasShareConnOpt := false
 		for i := range opts {
-			// 我们无法直接比较函数，但可以通过函数的字符串表示来近似判断
-			// 这不是100%准确，但在大多数情况下足够用了
+			// Function values are not comparable; their type names provide a practical
+			// approximation for this option check.
 			optStr := fmt.Sprintf("%T", opts[i])
 			if strings.Contains(optStr, "ShareConn") {
 				hasShareConnOpt = true
@@ -195,9 +195,8 @@ func NewOpenBKNMQClient(pubServer string, pubPort int, subServer string, subPort
 		}
 
 		client := fn(pubServer, pubPort, subServer, subPort)
-		// 如果没有传入 ShareConn 选项，则添加默认值
+		// Enable shared connections by default when the option is omitted.
 		if !hasShareConnOpt {
-			// 默认启用共享连接
 			if err := ShareConn(true)(client); err != nil {
 				return nil, err
 			}
@@ -223,7 +222,7 @@ type OpenBKNMQInfo struct {
 	Auth        *AuthOpts `json:"auth,omitempty" yaml:"auth,omitempty"`
 }
 
-// Auth 信息
+// AuthOpts contains authentication settings.
 type AuthOpts struct {
 	Username  string `json:"username" yaml:"username"`
 	Password  string `json:"password" yaml:"password"`
@@ -246,7 +245,7 @@ func NewOpenBKNMQClientFromFile(configFile string) (OpenBKNMQClient, error) {
 		return nil, err
 	}
 	var opts []ClientOpt
-	// 默认启用共享连接
+	// Enable shared connections by default.
 	opts = append(opts, ShareConn(true))
 	if info.Auth != nil {
 		opts = append(opts, AuthMechanism(info.Auth.Mechanism), UserInfo(info.Auth.Username, info.Auth.Password))

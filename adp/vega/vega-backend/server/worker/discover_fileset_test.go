@@ -43,8 +43,8 @@ func TestReconcileFilesetResources(t *testing.T) {
 			})
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusNew).Return(nil)
 
-		result, items, err := dh.reconcileFilesetResources(context.Background(), &interfaces.Catalog{ID: "catalog-1"},
-			[]*interfaces.FilesetMeta{{ID: "fs-1", Name: "Docs", DisplayPath: "/team/docs"}}, nil, &actions)
+		result, items, err := dh.reconcileFilesetResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1"},
+			[]*interfaces.FilesetMeta{{ID: "fs-1", Name: "Docs", DisplayPath: "/team/docs"}}, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, 1, result.NewCount)
@@ -62,14 +62,14 @@ func TestReconcileFilesetResources(t *testing.T) {
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
 		rs.EXPECT().UpdateStatus(gomock.Any(), "r1", interfaces.ResourceStatusStale, "").Return(nil)
 
-		result, items, err := dh.reconcileFilesetResources(context.Background(), &interfaces.Catalog{ID: "catalog-1"},
+		result, items, err := dh.reconcileFilesetResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "catalog-1"},
 			nil,
 			[]*interfaces.Resource{{
 				ID:               "r1",
 				SourceIdentifier: "/team/docs",
 				Category:         interfaces.ResourceCategoryFileset,
 				Status:           interfaces.ResourceStatusActive,
-			}}, &actions)
+			}})
 
 		require.NoError(t, err)
 		assert.Equal(t, 1, result.StaleCount)
@@ -103,7 +103,7 @@ func TestEnrichFilesetMetadata(t *testing.T) {
 			})
 
 		result := &interfaces.DiscoverResult{}
-		err := dh.enrichFilesetMetadata(context.Background(), []filesetDiscoverItem{{
+		err := dh.enrichFilesetMetadata(context.Background(), &interfaces.DiscoverTask{}, []filesetDiscoverItem{{
 			resource: resource,
 			meta: &interfaces.FilesetMeta{
 				ID:             "fs-1",
@@ -111,7 +111,7 @@ func TestEnrichFilesetMetadata(t *testing.T) {
 				SourceMetadata: map[string]any{"owner": "team-a"},
 				Columns:        []interfaces.FilesetColumnMeta{{Name: "title", Type: "string"}},
 			},
-		}}, result)
+		}}, result, &discoverTaskReconcileProgress{lastProgress: 95})
 
 		require.NoError(t, err)
 	})

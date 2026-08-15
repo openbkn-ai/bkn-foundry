@@ -121,6 +121,33 @@ func (c *Client) Search(ctx context.Context, index string, query []byte) ([]byte
 	return body, nil
 }
 
+// DeleteByQuery is used only after an archive bundle has been verified. The
+// caller provides a frozen identity filter; it must never be a moving cutoff.
+func (c *Client) DeleteByQuery(ctx context.Context, index string, query []byte) error {
+	requestURL := fmt.Sprintf("%s/%s/_delete_by_query?conflicts=proceed", c.baseURL, strings.TrimLeft(index, "/"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(query))
+	if err != nil {
+		return fmt.Errorf("create opensearch delete-by-query request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	response, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute opensearch delete-by-query request: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("read opensearch delete-by-query response: %w", err)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("opensearch delete-by-query failed with status %d: %s", response.StatusCode, string(body))
+	}
+	return nil
+}
+
 func (c *Client) IndexDocument(ctx context.Context, index string, documentID string, body []byte) ([]byte, error) {
 	requestURL := fmt.Sprintf("%s/%s/_doc/%s", c.baseURL, strings.TrimLeft(index, "/"), url.PathEscape(strings.TrimLeft(documentID, "/")))
 	return c.putDocument(ctx, requestURL, body)

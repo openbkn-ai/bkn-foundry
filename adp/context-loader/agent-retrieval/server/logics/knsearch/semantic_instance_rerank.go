@@ -254,30 +254,3 @@ func orderDelta(before, after []*interfaces.KnSearchNode, k int) (float64, int) 
 	}
 	return spearman, changed
 }
-
-// deploymentRetrievalConfig 把部署级的实例精排设置摊成一份 base 配置。
-//
-// 读的是 s.config（构造期注入的 loader），不是在包级纯函数里现读文件——那样单测
-// 环境没有 /sysvol/config 就 panic，而配置读取本不该是纯函数的职责。
-func (s *localSearchImpl) deploymentRetrievalConfig() *interfaces.KnSearchRetrievalConfig {
-	if s == nil || s.config == nil {
-		return nil
-	}
-	conceptSearch := s.config.ConceptSearchConfig
-
-	mode := normalizeRerankMode(conceptSearch.InstanceRerankMode)
-	model := conceptSearch.InstanceRerankModel
-	if model == "" {
-		// 留空则沿用关系精排那个模型名；两级精排用同一个 reranker 是常态。
-		model = conceptSearch.RerankModel
-	}
-	if mode == "" && model == "" {
-		return nil
-	}
-	return &interfaces.KnSearchRetrievalConfig{
-		SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
-			InstanceRerankMode:  mode,
-			InstanceRerankModel: model,
-		},
-	}
-}

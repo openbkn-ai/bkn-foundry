@@ -69,15 +69,19 @@ func NewProvider(auth Authenticator, hydra *HydraAdmin, users UserLookup) *Provi
 // redirect target. On bad credentials it returns ErrInvalidCredentials. When the
 // user must change their password first it returns ErrMustChangePassword without
 // accepting the login — the caller drives the change-password flow.
-func (p *Provider) Login(ctx context.Context, challenge, account, password string, remember bool) (redirectTo string, err error) {
+func (p *Provider) Login(ctx context.Context, challenge, account, password string, remember bool) (redirectTo string, user *model.User, err error) {
 	u, err := p.auth.Verify(ctx, account, password)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if u.MustChangePassword {
-		return "", ErrMustChangePassword
+		return "", nil, ErrMustChangePassword
 	}
-	return p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)
+	redirectTo, err = p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)
+	if err != nil {
+		return "", nil, err
+	}
+	return redirectTo, u, nil
 }
 
 // ChangePassword re-verifies the current password, sets the new one (clearing
@@ -85,15 +89,19 @@ func (p *Provider) Login(ctx context.Context, challenge, account, password strin
 // first-login change in one step. There is no server session, so the old
 // password is re-entered and re-verified rather than trusted from the prior
 // login POST. Returns hydra's redirect target.
-func (p *Provider) ChangePassword(ctx context.Context, challenge, account, oldPassword, newPassword string, remember bool) (redirectTo string, err error) {
+func (p *Provider) ChangePassword(ctx context.Context, challenge, account, oldPassword, newPassword string, remember bool) (redirectTo string, user *model.User, err error) {
 	u, err := p.auth.Verify(ctx, account, oldPassword)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if err := p.users.SetPassword(ctx, u.ID, newPassword); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)
+	redirectTo, err = p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)
+	if err != nil {
+		return "", nil, err
+	}
+	return redirectTo, u, nil
 }
 
 // ConsentInfo returns the consent request (client + requested scope) for

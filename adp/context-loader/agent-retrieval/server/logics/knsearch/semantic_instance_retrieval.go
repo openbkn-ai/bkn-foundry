@@ -209,7 +209,7 @@ func (s *localSearchImpl) retrieveInstancesFused(
 
 	var nodes []*interfaces.KnSearchNode
 	if anyScored {
-		nodes = fuseByRRF(live, rrfK(config))
+		nodes = fuseByRRF(live, rrfK(config), channelWeights(config))
 	} else {
 		// 源库直查路径没有 _score，响应顺序是库的自然序，名次无意义。
 		// 退回本地兜底打分——0/0.3/0.5/0.85 那套分档本来就是为这条路设计的。
@@ -546,15 +546,46 @@ func rrfK(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) int {
 	return 60
 }
 
+// channelWeights 解析各通道权重。knn 取 knn_weight，match 取 1-knn_weight，
+// 其余通道（将来若有）按等权处理。
+//
+// 越界值钳制到 [0,1] 而不是报错：配错一个数不该让整条检索链失败，何况这个旋钮
+// 目前没有召回率实验支撑（同 #708），更不该有硬性失败路径。
+func channelWeights(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) map[string]float64 {
+	w := 0.5
+	if config != nil && config.KnnWeight != nil {
+		w = *config.KnnWeight
+	}
+	if w < 0 {
+		w = 0
+	}
+	if w > 1 {
+		w = 1
+	}
+	return map[string]float64{
+		channelKnn:   w,
+		channelMatch: 1 - w,
+	}
+}
+
+// weightOf 取某通道的权重；未登记的通道按等权 0.5 处理。
+func weightOf(weights map[string]float64, channel string) float64 {
+	if v, ok := weights[channel]; ok {
+		return v
+	}
+	return 0.5
+}
+
 // fuseByRRF 按 Reciprocal Rank Fusion 融合多路召回：
 //
-//	score = Σ 1/(k + rank_i) × (k+1)
+//	score = Σ w_i/(k + rank_i) × 2(k+1)
 //
 // 用名次而不是分数，是因为两路的分根本不同量纲：knn 分在 0~1，BM25 无上界且跨索引
 // 不可比。归一化加权和也能凑合，但 min-max 在候选少、分数集中时噪声很大（top1 恒为
 // 1.0），且权重要按知识网络手调；RRF 只有一个常数，跨网不用调。
 //
-// 乘 (k+1) 只是换量纲：任意一路的第 1 名恰好得 1.0，两路都第 1 得 2.0。这样跨对象
+// 乘 2(k+1) 只是换量纲：**等权（默认 0.5）时**任意一路的第 1 名恰好得 1.0，两路都
+// 第 1 得 2.0——与不带权重的旧式 Σ1/(k+rank)×(k+1) 逐位相同。这样跨对象
 // 类比较有一个稳定的锚——「在自己能发的通道里排第 1」在哪个对象类都是 1.0，不受
 // 该类发了几路影响；两路都命中的实例高出一截，那是真信号。同时量级与无 _score
 // 路径的本地兜底打分（0~0.85）相当，两条路径的结果汇进同一个池子做全局比例过滤时
@@ -563,7 +594,11 @@ func rrfK(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) int {
 // 不要再除以通道数：那样做会把「双通道对象类里只被一路命中的实例」压到单通道
 // 对象类同名次实例的一半（VM 实测 0.5 vs 1.0），偏置只是换了个方向。缺席另一路
 // 本身已经通过「少加一项」体现了，不需要再罚一次。
-func fuseByRRF(outcomes []channelOutcome, k int) []*interfaces.KnSearchNode {
+//
+// 权重偏离 0.5 之后，上面那个跨类锚点会跟着倾斜：调高向量权重，没有向量字段的
+// 对象类整体被压低。那是调用方声明的偏好带来的结果，不是缺陷——但也正因如此，
+// 默认值必须留在 0.5。
+func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*interfaces.KnSearchNode {
 	if len(outcomes) == 0 {
 		return nil
 	}
@@ -596,12 +631,13 @@ func fuseByRRF(outcomes []channelOutcome, k int) []*interfaces.KnSearchNode {
 				// 只把原始召回分取较大者留作观测。
 				e.node.RecallScore = node.RecallScore
 			}
-			e.score += 1 / float64(k+rank+1)
+			e.score += weightOf(weights, o.name) / float64(k+rank+1)
 		}
 	}
 
 	fused := make([]*interfaces.KnSearchNode, 0, len(order))
-	norm := float64(k + 1)
+	// 2(k+1)：等权时把「某一路第 1 名」拉回 1.0，与不带权重的老公式对齐。
+	norm := 2 * float64(k+1)
 	for _, key := range order {
 		e := byKey[key]
 		e.node.Score = e.score * norm

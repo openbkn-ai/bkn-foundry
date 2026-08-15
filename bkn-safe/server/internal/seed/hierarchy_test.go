@@ -13,13 +13,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-// TestSeedDeclaresResourceUnderCatalog pins the operation MAPPING, which is the
-// part that is easy to get wrong and dangerous when wrong. Inheriting by name
-// would let "modify" on a catalog — rename the catalog — reach every table
-// inside it; the mapping sends the table's write verbs to resource_manage
-// instead. authorize deliberately maps to nothing: a catalog grant must not turn
-// into the right to re-grant every table under it (#800).
-func TestSeedDeclaresResourceUnderCatalog(t *testing.T) {
+// TestSeedDeclaresNoHierarchyForResources pins the hierarchy DORMANT.
+//
+// The mechanism below (declaration, climb, enumeration) works and is kept, but
+// the catalog/resource pair no longer uses it: vega resolves the fallback at its
+// own decision point, where the resource row it is judging already carries
+// catalog_id (#817). Nothing has to reach bkn-safe, and with no declaration the
+// climb never fires — so this asserts the ABSENCE, which is the thing a future
+// edit could silently undo.
+func TestSeedDeclaresNoHierarchyForResources(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -29,47 +31,22 @@ func TestSeedDeclaresResourceUnderCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var rt model.ResourceType
-	if err := db.First(&rt, "id = ?", "resource").Error; err != nil {
-		t.Fatalf("load resource type: %v", err)
+	var types []model.ResourceType
+	if err := db.Where("parent_type_id <> ''").Find(&types).Error; err != nil {
+		t.Fatalf("load resource types: %v", err)
 	}
-	if rt.ParentTypeID != "catalog" {
-		t.Errorf("resource.parent_type = %q, want catalog", rt.ParentTypeID)
-	}
-
-	var catalogType model.ResourceType
-	if err := db.First(&catalogType, "id = ?", "catalog").Error; err != nil {
-		t.Fatalf("load catalog type: %v", err)
-	}
-	if catalogType.ParentTypeID != "" {
-		t.Errorf("catalog.parent_type = %q, want empty (catalog is a root)", catalogType.ParentTypeID)
+	for _, rt := range types {
+		t.Errorf("resource type %q declares parent %q — the shipped catalog declares no hierarchy, "+
+			"and adding one turns the climb back on for every decision on that type", rt.ID, rt.ParentTypeID)
 	}
 
-	want := map[string]string{
-		"view_detail": "view_detail",
-		"query_data":  "query_data",
-		"modify":      "resource_manage",
-		"delete":      "resource_manage",
-		"task_manage": "task_manage",
-		"authorize":   "", // no second-hand granting through the parent
-		// create is judged against the wildcard object resource:* (the table does
-		// not exist yet), and a wildcard id can never have an ownership row, so an
-		// inheritance mapping here would be one that can never fire. Creating a
-		// table is judged at the call site against catalog/resource_manage instead.
-		"create": "",
-	}
 	var ops []model.Operation
-	if err := db.Where("resource_type_id = ?", "resource").Find(&ops).Error; err != nil {
-		t.Fatalf("load resource operations: %v", err)
+	if err := db.Where("parent_operation_id <> ''").Find(&ops).Error; err != nil {
+		t.Fatalf("load operations: %v", err)
 	}
-	got := make(map[string]string, len(ops))
 	for _, op := range ops {
-		got[op.ID] = op.ParentOperationID
-	}
-	for op, parentOp := range want {
-		if got[op] != parentOp {
-			t.Errorf("resource/%s inherits from catalog/%q, want %q", op, got[op], parentOp)
-		}
+		t.Errorf("operation %s/%s maps to %q on a parent, but no type declares a parent",
+			op.ResourceTypeID, op.ID, op.ParentOperationID)
 	}
 }
 
@@ -148,5 +125,66 @@ func TestValidateHierarchyAcceptsShippedCatalog(t *testing.T) {
 	}
 	if err := validateHierarchy(c); err != nil {
 		t.Fatalf("shipped catalog.json declares an invalid hierarchy: %v", err)
+	}
+}
+
+// TestSeedMigratesLegacyOperationSpelling: 知识网络与流式数据管道上的「数据查询」
+// 原本拼作 data_query，而目录/资源侧是 query_data。统一成后者时，角色授权会随种子
+// 重建自动跟上，但管理员在**单个对象**上发过的授权带的还是旧拼写——不迁移的话，
+// 用户的体验是「我发过的权限凭空消失了」。
+func TestSeedMigratesLegacyOperationSpelling(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 升级前的对象级授权：管理员在某个知识网络上发过 data_query。
+	const user = "u-1"
+	mustNoErrSeed(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "data_query"))
+	mustNoErrSeed(t, e.GrantObjectPermission(user, "stream_data_pipeline", "p-1", "data_query"))
+	// 同名但不同类型的授权不该被动到：catalog 侧从来就叫 query_data。
+	mustNoErrSeed(t, e.GrantObjectPermission(user, "catalog", "c-1", "query_data"))
+
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ rtype, id string }{
+		{"knowledge_network", "kn-1"},
+		{"stream_data_pipeline", "p-1"},
+	} {
+		ok, err := e.Check(user, tc.rtype, tc.id, "query_data")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Errorf("%s/%s: 旧拼写的对象级授权没有迁移过来，用户会以为权限被吞了", tc.rtype, tc.id)
+		}
+		stale, err := e.Check(user, tc.rtype, tc.id, "data_query")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stale {
+			t.Errorf("%s/%s: 旧拼写还在，等于同一件事有两个名字", tc.rtype, tc.id)
+		}
+	}
+
+	// 幂等：再跑一次不该有任何变化。
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := e.Check(user, "catalog", "c-1", "query_data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("catalog 侧本来就是 query_data，不该被迁移逻辑碰到")
+	}
+}
+
+func mustNoErrSeed(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

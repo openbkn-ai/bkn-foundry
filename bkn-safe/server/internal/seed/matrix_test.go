@@ -44,7 +44,7 @@ func TestRoleResourceMatrix(t *testing.T) {
 			"agent":             "use",
 			"catalog":           "view_detail",
 			"resource":          "view_detail",
-			"knowledge_network": "data_query",
+			"knowledge_network": "query_data",
 			"tool_box":          "execute",
 			"mcp":               "execute",
 			"operator":          "execute",

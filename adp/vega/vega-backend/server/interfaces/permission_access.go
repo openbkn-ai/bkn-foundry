@@ -36,6 +36,12 @@ const (
 	OPERATION_TYPE_AUTHORIZE   = "authorize"
 	OPERATION_TYPE_TASK_MANAGE = "task_manage"
 
+	// OPERATION_TYPE_QUERY_DATA 是「能取这张表的数据」，与 view_detail（只看结构）
+	// 分开。OPERATION_TYPE_RESOURCE_MANAGE 是数据目录上的「管理目录下的数据表」。
+	// 两者都在权限词表里（#801），这里补上常量供判定使用。
+	OPERATION_TYPE_QUERY_DATA      = "query_data"
+	OPERATION_TYPE_RESOURCE_MANAGE = "resource_manage"
+
 	// 更新资源名称的topic
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
 )

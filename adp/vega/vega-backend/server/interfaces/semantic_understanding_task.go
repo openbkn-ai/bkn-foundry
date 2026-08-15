@@ -20,7 +20,8 @@ const (
 	SemanticUnderstandingApplyModeForce     string = "force"
 
 	SemanticUnderstandingTaskSortCreateTime string = "create_time"
-	SemanticUnderstandingTaskSortUpdateTime string = "update_time"
+	SemanticUnderstandingTaskSortStartTime  string = "start_time"
+	SemanticUnderstandingTaskSortFinishTime string = "finish_time"
 
 	SemanticUnderstandingResourceAgentID string = "resource-semantic-understanding"
 	SemanticUnderstandingCatalogAgentID  string = "catalog-semantic-understanding"
@@ -40,7 +41,8 @@ var (
 
 	SEMANTIC_UNDERSTANDING_TASK_SORT = map[string]string{
 		SemanticUnderstandingTaskSortCreateTime: "",
-		SemanticUnderstandingTaskSortUpdateTime: "",
+		SemanticUnderstandingTaskSortStartTime:  "",
+		SemanticUnderstandingTaskSortFinishTime: "",
 	}
 )
 
@@ -65,11 +67,11 @@ type SemanticUnderstandingTask struct {
 	ConfidenceDetailJSON string      `json:"confidence_detail_json,omitempty"`
 	ApplyDetailJSON      string      `json:"apply_detail_json,omitempty"`
 	Applied              bool        `json:"applied"`
-	AppliedTime          int64       `json:"applied_time,omitempty"`
 	FailureDetail        string      `json:"failure_detail,omitempty"`
 	Creator              AccountInfo `json:"creator"`
 	CreateTime           int64       `json:"create_time"`
-	UpdateTime           int64       `json:"update_time"`
+	StartTime            int64       `json:"start_time,omitempty"`
+	FinishTime           int64       `json:"finish_time,omitempty"`
 }
 
 // SemanticUnderstandingTaskSummary is the lightweight representation returned
@@ -88,10 +90,10 @@ type SemanticUnderstandingTaskSummary struct {
 	ConfidenceThreshold float64     `json:"confidence_threshold"`
 	Confidence          float64     `json:"confidence"`
 	Applied             bool        `json:"applied"`
-	AppliedTime         int64       `json:"applied_time,omitempty"`
 	Creator             AccountInfo `json:"creator"`
 	CreateTime          int64       `json:"create_time"`
-	UpdateTime          int64       `json:"update_time"`
+	StartTime           int64       `json:"start_time,omitempty"`
+	FinishTime          int64       `json:"finish_time,omitempty"`
 }
 
 type SemanticUnderstandingSamplePolicy struct {

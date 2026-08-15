@@ -189,6 +189,21 @@ func (mr *MockDiscoverTaskServiceMockRecorder) InternalMarkRunning(ctx, id any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkRunning", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalMarkRunning), ctx, id)
 }
 
+// InternalUpdateProgress mocks base method.
+func (m *MockDiscoverTaskService) InternalUpdateProgress(ctx context.Context, id string, progress int, message string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalUpdateProgress", ctx, id, progress, message)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalUpdateProgress indicates an expected call of InternalUpdateProgress.
+func (mr *MockDiscoverTaskServiceMockRecorder) InternalUpdateProgress(ctx, id, progress, message any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateProgress", reflect.TypeOf((*MockDiscoverTaskService)(nil).InternalUpdateProgress), ctx, id, progress, message)
+}
+
 // List mocks base method.
 func (m *MockDiscoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	m.ctrl.T.Helper()

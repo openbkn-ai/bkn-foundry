@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"vega-backend/common"
+	"vega-backend/common/operationaudit"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics/auth"
@@ -44,23 +45,26 @@ type RestHandler interface {
 }
 
 type restHandler struct {
-	appSetting *common.AppSetting
-	as         interfaces.AuthService
-	bts        interfaces.BuildTaskService
-	cs         interfaces.CatalogService
-	cts        interfaces.ConnectorTypeService
-	ds         interfaces.DatasetService
-	dss        interfaces.DiscoverScheduleService
-	dts        interfaces.DiscoverTaskService
-	hcss       interfaces.CatalogHealthCheckScheduleService
-	lim        interfaces.LocalIndexManager
-	rds        interfaces.ResourceDataService
-	rs         interfaces.ResourceService
-	suts       interfaces.SemanticUnderstandingTaskService
+	appSetting      *common.AppSetting
+	auditRecorder   operationAuditRecorder
+	auditQueryStore operationAuditQueryStore
+	as              interfaces.AuthService
+	bts             interfaces.BuildTaskService
+	cs              interfaces.CatalogService
+	cts             interfaces.ConnectorTypeService
+	ds              interfaces.DatasetService
+	dss             interfaces.DiscoverScheduleService
+	dts             interfaces.DiscoverTaskService
+	hcss            interfaces.CatalogHealthCheckScheduleService
+	lim             interfaces.LocalIndexManager
+	rds             interfaces.ResourceDataService
+	rs              interfaces.ResourceService
+	suts            interfaces.SemanticUnderstandingTaskService
 }
 
 // NewRestHandler creates a new RestHandler.
 func NewRestHandler(appSetting *common.AppSetting) RestHandler {
+	auditStore := operationaudit.NewStore(appSetting)
 	as := auth.NewAuthService(appSetting)
 	cs := catalog.NewCatalogService(appSetting)
 	cts := connector_type.NewConnectorTypeService(appSetting)
@@ -75,19 +79,21 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 
 	return &restHandler{
-		appSetting: appSetting,
-		as:         as,
-		bts:        bts,
-		cs:         cs,
-		cts:        cts,
-		ds:         ds,
-		dss:        dss,
-		dts:        dts,
-		hcss:       hcss,
-		lim:        lim,
-		rds:        rds,
-		rs:         rs,
-		suts:       suts,
+		appSetting:      appSetting,
+		auditRecorder:   auditStore,
+		auditQueryStore: auditStore,
+		as:              as,
+		bts:             bts,
+		cs:              cs,
+		cts:             cts,
+		ds:              ds,
+		dss:             dss,
+		dts:             dts,
+		hcss:            hcss,
+		lim:             lim,
+		rds:             rds,
+		rs:              rs,
+		suts:            suts,
 	}
 }
 
@@ -97,6 +103,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(middleware.TracingMiddleware())
 	c.Use(r.TraceContextMiddleware())
 	c.Use(r.LanguageMiddleware())
+	c.Use(r.OperationAudit())
 
 	c.GET("/health", r.HealthCheck)
 
@@ -104,6 +111,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1 := c.Group("/api/vega-backend/v1")
 	apiV1.Use(rest.PrivateNoCacheMiddleware())
 	{
+		apiV1.GET("/operation-audits", r.ListOperationAudits)
+		apiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
+
 		// Catalog APIs - External
 		catalogs := apiV1.Group("/catalogs")
 		{
@@ -353,6 +363,7 @@ func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Vi
 		rest.ReplyError(c, httpErr)
 		return visitor, err
 	}
+	c.Set(operationAuditVisitorKey, visitor)
 
 	return visitor, nil
 }

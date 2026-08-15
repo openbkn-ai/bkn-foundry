@@ -14,7 +14,7 @@ const (
 	builderRole    = "network-builder-role"
 )
 
-var knOps = []string{"view_detail", "create", "modify", "delete", "data_query", "authorize", "task_manage"}
+var knOps = []string{"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage"}
 
 // opsOf indexes a filter result by resource id.
 func opsOf(t *testing.T, got []FilteredResource) map[string][]string {
@@ -69,7 +69,7 @@ func TestFilterResourceOpsVisibility(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "u-1"
 	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail"))
-	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "data_query"))
+	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "query_data"))
 	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-2", "view_detail"))
 
 	refs := []ResourceRef{
@@ -89,12 +89,12 @@ func TestFilterResourceOpsVisibility(t *testing.T) {
 	})
 
 	t.Run("multiple visibility ops are conjunctive", func(t *testing.T) {
-		got, err := e.FilterResourceOps(user, refs, []string{"view_detail", "data_query"}, knOps)
+		got, err := e.FilterResourceOps(user, refs, []string{"view_detail", "query_data"}, knOps)
 		if err != nil {
 			t.Fatalf("filter: %v", err)
 		}
 		if len(got) != 1 || got[0].ID != "kn-1" {
-			t.Fatalf("got %v, want kn-1 only (kn-2 lacks data_query)", got)
+			t.Fatalf("got %v, want kn-1 only (kn-2 lacks query_data)", got)
 		}
 	})
 

@@ -36,7 +36,8 @@ func (m *mockLogger) WithFields(fields map[string]interface{}) interfaces.Logger
 
 // mockHTTPClient 测试用的mock HTTP客户端
 type mockHTTPClient struct {
-	handlerFunc func(ctx context.Context, method, url string, header map[string]string, body interface{}) (int, interface{}, error)
+	handlerFunc         func(ctx context.Context, method, url string, header map[string]string, body interface{}) (int, interface{}, error)
+	postNoUnmarshalFunc func(ctx context.Context, url string, header map[string]string, body interface{}) (int, []byte, error)
 }
 
 func (m *mockHTTPClient) Get(ctx context.Context, rawURL string, params url.Values, header map[string]string) (statusCode int, resp interface{}, err error) {
@@ -60,6 +61,9 @@ func (m *mockHTTPClient) GetNoUnmarshal(ctx context.Context, rawURL string, para
 }
 
 func (m *mockHTTPClient) PostNoUnmarshal(ctx context.Context, url string, header map[string]string, body interface{}) (statusCode int, resp []byte, err error) {
+	if m.postNoUnmarshalFunc != nil {
+		return m.postNoUnmarshalFunc(ctx, url, header, body)
+	}
 	return 200, nil, nil
 }
 

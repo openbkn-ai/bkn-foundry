@@ -13,10 +13,12 @@ import (
 )
 
 /*
-	我们在跨服务调用时一般使用otelgin中的Middleware去获取上游调用者的SpanContext, 避免链路断开.
-	但它会产生一条Span, 且不可显示设置Span的Status.
-	为克服这一缺陷, 所以我们基于otelgin, 实现了TracingMiddleware, 以获取上游调用者的SpanContext.
-	otelgin: https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/instrumentation/github.com/gin-gonic/gin/otelgin/gintrace.go
+Cross-service calls commonly use otelgin middleware to extract the upstream
+SpanContext. That middleware creates an additional span and does not expose
+explicit status control. TracingMiddleware only extracts and propagates the
+upstream context to avoid that behavior.
+
+otelgin reference: https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/instrumentation/github.com/gin-gonic/gin/otelgin/gintrace.go
 */
 
 func TracingMiddleware() gin.HandlerFunc {

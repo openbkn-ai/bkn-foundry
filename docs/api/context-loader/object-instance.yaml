@@ -283,6 +283,14 @@ components:
           default: 5
           minimum: 1
           description: 每个对象类最多返回几条实例。
+        rerank:
+          type: boolean
+          default: false
+          description: |
+            是否对召回结果做语义精排。默认关。开启后由 cross-encoder 逐条判断相关性并
+            **重排返回顺序**（`score` 不变，见响应说明），能分辨名次融合分不出的语义差异。
+            代价是多一次模型调用（约 100~400ms），且要求部署里注册了精排小模型；
+            模型不可用时自动退回原顺序，不报错。
         include_object_types:
           type: boolean
           default: true

@@ -1,4 +1,4 @@
 [VegaBackend.IndexCapability.InternalError.Unavailable]
 Description = "Full-text analyzer capability is unavailable"
 Solution = "Restore OpenSearch connectivity and restart Vega"
-ErrorLink = "None"
+ErrorLink = ""

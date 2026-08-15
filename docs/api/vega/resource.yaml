@@ -406,7 +406,7 @@ components:
         type:
           description: |
             VEGA 统一类型，取值见 [vega-backend/CLAUDE.md]:
-            integer / unsigned_integer / float / decimal / string / text /
+            integer / unsigned integer / float / decimal / string / text /
             date / datetime / time / boolean / binary / json / vector
           type: string
         display_name:

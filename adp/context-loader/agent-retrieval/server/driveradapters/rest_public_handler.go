@@ -25,6 +25,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	infrarest "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	logicsSkills "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
@@ -52,6 +54,8 @@ type restPublicHandler struct {
 	// ServicePort 用于推导沙箱回访本服务的地址（见 PTC 工具包端点）。
 	ServicePort int
 }
+
+var buildMCPInfo = mcp.BuildMCPInfo
 
 // NewRestPublicHandler 创建restHandler实例
 // servicePort 用于推导沙箱回访地址；沙箱在集群内，走不了浏览器侧的网关地址。
@@ -189,10 +193,17 @@ const (
 )
 
 // replyMCPInfo 输出某个 MCP 端点的自描述文档。
+//
+// 两个 info 端点（/mcp/info 与 /mcp/ptc/info）共用这一份实现，差别只在 endpoint。
 func (r *restPublicHandler) replyMCPInfo(c *gin.Context, endpoint string) {
-	info, err := mcp.BuildMCPInfo(endpoint)
+	info, err := buildMCPInfo(endpoint)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if r.Logger != nil {
+			r.Logger.Errorf("BuildMCPInfo failed: %v", err)
+		}
+		sharedrest.MarkLocalizedCacheableResponse(c)
+		infrarest.ReplyError(c, infraerrors.NewHTTPError(
+			c.Request.Context(), http.StatusInternalServerError, infraerrors.ErrExtMCPInfoBuildFailed, nil))
 		return
 	}
 	c.JSON(http.StatusOK, info)

@@ -12,14 +12,14 @@ import (
 )
 
 const (
-	// 毫秒时间字符串
+	// RFC3339 timestamp with millisecond precision.
 	RFC3339Milli = "2006-01-02T15:04:05.999Z07:00"
 )
 
 /*
-	AnyRobot希望后端API统一时间输出格式为RFC3339Milli.
-	Golang的标准库time.Time的输出格式因值的不同会存在差异, 可能是RFC3339/RFC3339Nano/其它.
-	因此我们定义Time类型, 覆写MarshalJSON, UnmarshalJSON等方法, 实现期望效果.
+Time provides a stable RFC3339Milli JSON representation for backend APIs.
+time.Time can otherwise serialize with RFC3339 or RFC3339Nano precision
+depending on its value, so this type controls JSON marshaling explicitly.
 */
 
 type Time time.Time

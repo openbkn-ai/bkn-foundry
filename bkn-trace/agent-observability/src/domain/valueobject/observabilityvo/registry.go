@@ -8,6 +8,7 @@ import "sort"
 var registeredEventCategories = map[string]string{
 	"login.succeeded":             CategoryAccessUser,
 	"login.failed":                CategoryAccessUser,
+	"logout.succeeded":            CategoryAccessUser,
 	"token.exchanged":             CategoryAccessUser,
 	"resource.read":               CategoryAccessUser,
 	"authorization.decided":       CategoryAuditSecurity,

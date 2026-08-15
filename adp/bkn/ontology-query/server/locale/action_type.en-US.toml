@@ -2,34 +2,34 @@
 [OntologyQuery.ActionType.InvalidParameter]
 Description = "Invalid Request Paramter"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [OntologyQuery.ActionType.InvalidParameter.DynamicParams]
 Description = "Invalid DynamicParams"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None" 
+ErrorLink = ""
 
 [OntologyQuery.ActionType.InvalidParameter.IgnoringStoreCache]
 Description = "Invalid Ignoring Store Cache"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [OntologyQuery.ActionType.InvalidParameter.IncludeTypeInfo]
 Description = "Invalid IncludeTypeInfo"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None" 
+ErrorLink = ""
 
 [OntologyQuery.ActionType.ActionTypeNotFound]
 Description = "The Object Type Does Not Exist"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = "None" 
+ErrorLink = ""
 
 [OntologyQuery.ActionType.InternalError]
 Description = "Internal Error"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = "None" 
+ErrorLink = ""
 
 [OntologyQuery.ActionType.InternalError.GetActionTypesByIDFailed]
 Description = "Get Object Types By ID Failed"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = "None" 
+ErrorLink = ""

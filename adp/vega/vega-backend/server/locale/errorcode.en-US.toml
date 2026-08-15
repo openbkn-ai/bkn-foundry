@@ -1,270 +1,304 @@
 [VegaBackend.InvalidParameter.Name]
 Description = "Invalid name"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Tag]
 Description = "Invalid tag"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Description]
 Description = "Invalid description"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.RequestBody]
 Description = "Invalid request body"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.ResourceType]
 Description = "Invalid resource_type parameter"
 Solution = "resource_type must be one of: mariadb, opensearch, postgresql"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.StreamSize]
 Description = "Invalid stream_size parameter"
 Solution = "stream_size must be between 100 and 10000, default is 10000"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Limit]
 Description = "Invalid limit parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Offset]
 Description = "Invalid offset parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Sort]
 Description = "Invalid sort parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Aggregation]
 Description = "Invalid aggregation parameter"
 Solution = "Please check the aggregation parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.GroupBy]
 Description = "Invalid group by parameter"
 Solution = "Please check the group by parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.OrderBy]
 Description = "Invalid order by parameter"
 Solution = "Please check the order by parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Having]
 Description = "Invalid having parameter"
 Solution = "Please check the having parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.CalendarInterval]
 Description = "Invalid calendar interval parameter"
 Solution = "Calendar interval must be one of: minute, hour, day, week, month, quarter, year"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Direction]
 Description = "Invalid direction parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.ID]
 Description = "Invalid ID parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.OverrideMethod]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Format]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.FilterCondition]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.FilterConditionValue]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.FilterConditionValueFrom]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.NullParameter.FilterConditionName]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.NullParameter.FilterConditionValue]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.NullParameter.FilterConditionOperation]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.CountExceeded.FilterConditionSubConds]
 Description = "Invalid parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.UnsupportFilterConditionOperation]
 Description = "Unsupported filter condition operation"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InvalidRequestHeader.ContentType]
 Description = "Content-Type header is not supported"
 Solution = "Please check the request header"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.BeginTransactionFailed]
 Description = "Failed to begin transaction"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.CommitTransactionFailed]
 Description = "Failed to commit transaction"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.MarshalDataFailed]
 Description = "Failed to marshal data"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.UnMarshalDataFailed]
 Description = "Failed to unmarshal data"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.CheckPermissionFailed]
 Description = "Failed to check permission"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.CreateResourcesFailed]
 Description = "Failed to create resource permissions"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.DeleteResourcesFailed]
 Description = "Failed to delete resource permissions"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.FilterResourcesFailed]
 Description = "Failed to filter resource permissions"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.InternalError.UpdateResourceFailed]
 Description = "Failed to update resource permission"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 # Query module error codes
 [VegaBackend.Query.InvalidParameter]
 Description = "Invalid query parameter"
 Solution = "Please check request parameters"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.InvalidParameter.LimitExceeded]
 Description = "limit cannot exceed 10000"
 Solution = "Please adjust limit parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.InvalidParameter.JoinTableNotInTables]
 Description = "Join alias not in tables"
 Solution = "Please check joins configuration"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.InvalidParameter.QueryTimeout]
 Description = "Invalid query_timeout_sec parameter"
 Solution = "query_timeout_sec must be between 1 and 3600"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.CursorResourceChanged]
 Description = "The resource changed after cursor creation"
 Solution = "Please restart the query"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.CatalogNotFound]
 Description = "Catalog not found"
 Solution = "Please check catalog_id"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.ResourceNotFound]
 Description = "Resource not found"
 Solution = "Please check resource_id"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.SessionExpired]
 Description = "Query session expired"
 Solution = "Please re-execute the query"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.MultiCatalogNotSupported]
 Description = "Multi-catalog JOIN not supported yet"
 Solution = "Planned with Trino/DuckDB"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.ConcurrencyLimitExceeded]
 Description = "Query concurrency limit exceeded"
 Solution = "Please try again later"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.CursorSessionLimitExceeded]
 Description = "Cursor session limit exceeded"
 Solution = "Please try again later"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Query.ExecuteFailed]
 Description = "Query execution failed"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Extensions.InvalidFormat]
 Description = "Invalid extensions format"
 Solution = "Check key/value length and non-empty keys"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Extensions.QuotaExceeded]
 Description = "Root extensions count exceeds limit"
 Solution = "Reduce the number of extension entries"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Extensions.PropertyQuotaExceeded]
 Description = "Property extensions count exceeds limit"
 Solution = "Reduce extensions on that field"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Extensions.ReservedKey]
 Description = "Extensions key uses reserved prefix"
 Solution = "Do not use keys with the vega_ prefix"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Extensions.MismatchedQueryPairs]
 Description = "extension_key and extension_value query params are invalid"
 Solution = "Pass paired, equal-length, non-empty values"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Extensions.TooManyFilterPairs]
 Description = "Too many extension filter pairs"
 Solution = "Reduce the number of filter pairs"
-ErrorLink = "None"
+ErrorLink = ""
+[VegaBackend.OperationAudit.InvalidRange]
+Description = "The operation-audit time range is invalid."
+Solution = "Provide a valid RFC3339 time range no longer than 30 days."
+ErrorLink = ""
+
+[VegaBackend.OperationAudit.InvalidBeforeTime]
+Description = "The operation-audit cursor time is invalid."
+Solution = "Provide before_time in RFC3339 format."
+ErrorLink = ""
+
+[VegaBackend.OperationAudit.MissingScope]
+Description = "The operation-audit scope is incomplete."
+Solution = "Provide x-tenant-id and x-business-domain headers."
+ErrorLink = ""
+
+[VegaBackend.OperationAudit.AccessDenied]
+Description = "You are not permitted to view operation-audit records."
+Solution = "Request an admin, audit, or super_admin role."
+ErrorLink = ""
+
+[VegaBackend.OperationAudit.ServiceUnavailable]
+Description = "The operation-audit service is unavailable."
+Solution = "Try again later."
+ErrorLink = ""
+
+[VegaBackend.OperationAudit.QueryFailed]
+Description = "The operation-audit query failed."
+Solution = "Try again later or contact an administrator."
+ErrorLink = ""
+
+[VegaBackend.OperationAudit.NotFound]
+Description = "The operation-audit event was not found."
+Solution = "Check the event_id and scope."
+ErrorLink = ""

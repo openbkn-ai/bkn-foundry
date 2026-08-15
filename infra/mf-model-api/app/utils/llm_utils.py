@@ -15,6 +15,7 @@ from llmadapter.schema import HumanMessage, AIMessage
 
 from app.commons.errors import ModelError, LLMParamError, ModelTimeoutError, \
     ModelFactory_ModelController_Model_Error_Error
+from app.commons.locale import platform_openai_error
 from app.controller.model_audit_controller import add_llm_model_call_log
 from app.core.config import base_config
 from app.dao.llm_model_dao import llm_model_dao
@@ -126,6 +127,11 @@ def _is_terminal_model_chunk(chunk):
     if not isinstance(chunk, str):
         return False
     return chunk.strip() in {"[DONE]", "data: [DONE]"}
+
+
+def _platform_stream_error(code, error_type):
+    """Build an OpenAI-compatible error frame for errors owned by this service."""
+    return platform_openai_error(code, error_type)
 
 
 async def emit_model_fact_before_terminal(
@@ -273,8 +279,8 @@ class OpenAIClientRequest(BKNTraceModelMixin):
     async def chat_completion(self, messages, user_id, func_module, cache=False):  # 写一版直接请求url的，便于传入工具
         if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
             return openai_error.with_http_status(
-                openai_error.build_error("千循大模型只支持最后一条消息role为user",
-                                         error_type="invalid_request_error"),
+                _platform_stream_error(
+                    "ModelFactory.Stream.InvalidMessageRole", "invalid_request_error"),
                 400)
         start_time = time.time()
         params = {
@@ -350,9 +356,8 @@ class OpenAIClientRequest(BKNTraceModelMixin):
 
     async def chat_completion_stream_openai(self, messages, user_id, return_info, func_module, cache=False):
         if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-            yield openai_error.error_frame(openai_error.build_error(
-                "千循大模型只支持最后一条消息role为user",
-                error_type="invalid_request_error"))
+            yield openai_error.error_frame(_platform_stream_error(
+                "ModelFactory.Stream.InvalidMessageRole", "invalid_request_error"))
             return
         retry_time = 3
         while retry_time > 0:
@@ -500,8 +505,8 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                                 # yield "--end--"
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = openai_error.from_exception(
-                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
+                    error_dict = _platform_stream_error(
+                        "ModelFactory.Stream.ModelConnectionFailed", "api_connection_error")
                     yield openai_error.error_frame(error_dict)
                     StandLogger.error(
                         f"connect failed, model={self.api_model}: {e}")
@@ -534,8 +539,8 @@ class OpenAIClientRequest(BKNTraceModelMixin):
                     error_category="internal_error",
                 )
                 # 先把合规错误帧送出去，调用方才有话可说；再抛，保留可观测性
-                yield openai_error.error_frame(openai_error.build_error(
-                    "模型服务内部错误", error_type="server_error"))
+                yield openai_error.error_frame(_platform_stream_error(
+                    "ModelFactory.Stream.InternalError", "server_error"))
                 raise e
 
 def prompt(ai_system, ai_user, ai_assistant, ai_history):
@@ -845,16 +850,16 @@ class BaiduTianchenClient(BKNTraceModelMixin):
             # 注意 try 在 while 外面（709 行），这里没有回到循环的路径——原来
             # retry_time > 0 时只 sleep 完就让生成器结束，客户端拿到一个 200、
             # 零帧、无 [DONE] 的哑流。无论还剩几次都发帧再断。
-            error_dict = openai_error.from_exception(
-                e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
+            error_dict = _platform_stream_error(
+                "ModelFactory.Stream.ModelConnectionFailed", "api_connection_error")
             yield openai_error.error_frame(error_dict)
             StandLogger.error(
                 f"connect failed, model={self.api_model}: {e}")
             return
         except Exception as e:
             StandLogger.error(f"internal error, model={self.api_model}: {e}")
-            yield openai_error.error_frame(openai_error.build_error(
-                "模型服务内部错误", error_type="server_error"))
+            yield openai_error.error_frame(_platform_stream_error(
+                "ModelFactory.Stream.InternalError", "server_error"))
             raise e
 
     async def chat_completion_stream(self, messages, user_id, return_info, cache=False):
@@ -1224,8 +1229,8 @@ class BaiduClient(BKNTraceModelMixin):
                         return
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = openai_error.from_exception(
-                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
+                    error_dict = _platform_stream_error(
+                        "ModelFactory.Stream.ModelConnectionFailed", "api_connection_error")
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
@@ -1245,8 +1250,8 @@ class BaiduClient(BKNTraceModelMixin):
                         f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                yield openai_error.error_frame(openai_error.build_error(
-                    "模型服务内部错误", error_type="server_error"))
+                yield openai_error.error_frame(_platform_stream_error(
+                    "ModelFactory.Stream.InternalError", "server_error"))
                 return
 
     async def chat_completion_stream(self, messages, user_id, return_info, cache=False):
@@ -1388,9 +1393,8 @@ class OtherClient(BKNTraceModelMixin):
             try:
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
                     return openai_error.with_http_status(
-                        openai_error.build_error(
-                            "千循大模型只支持最后一条消息role为user",
-                            error_type="invalid_request_error"),
+                        _platform_stream_error(
+                            "ModelFactory.Stream.InvalidMessageRole", "invalid_request_error"),
                         400)
                 start_time = time.time()
                 params = {
@@ -1500,9 +1504,8 @@ class OtherClient(BKNTraceModelMixin):
             try:
                 chunk_id = ""
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-                    yield openai_error.error_frame(openai_error.build_error(
-                        "千循大模型只支持最后一条消息role为user",
-                        error_type="invalid_request_error"))
+                    yield openai_error.error_frame(_platform_stream_error(
+                        "ModelFactory.Stream.InvalidMessageRole", "invalid_request_error"))
                     return
                 token_len = 0
                 params = {
@@ -1761,8 +1764,8 @@ class OtherClient(BKNTraceModelMixin):
                         output_tokens=0, first_time=0.0, total_time=0.0,
                         status="failed")
                     await add_llm_model_call_log(log_info)
-                    error_dict = openai_error.from_exception(
-                        e, f"大模型: {self.api_model} 连接失败，请检查该服务是否可用")
+                    error_dict = _platform_stream_error(
+                        "ModelFactory.Stream.ModelConnectionFailed", "api_connection_error")
                     yield openai_error.error_frame(error_dict)
                     StandLogger.error(
                         f"connect failed, model={self.api_model}: {e}")
@@ -1790,8 +1793,8 @@ class OtherClient(BKNTraceModelMixin):
                         f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
                         f'"prompt_tokens":0,"completion_tokens":0,'
                         f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
-                yield openai_error.error_frame(openai_error.build_error(
-                    "模型服务内部错误", error_type="server_error"))
+                yield openai_error.error_frame(_platform_stream_error(
+                    "ModelFactory.Stream.InternalError", "server_error"))
                 return
 
     async def chat_completion_stream(self, messages, user_id, return_info, model_data):

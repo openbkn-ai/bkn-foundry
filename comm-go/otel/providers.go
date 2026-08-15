@@ -19,13 +19,13 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// Providers 保存所有 provider，便于服务退出时统一关闭。
+// Providers holds all providers so services can shut them down together.
 type Providers struct {
 	TracerProvider *sdktrace.TracerProvider
 	LoggerProvider *sdklog.LoggerProvider
 }
 
-// Shutdown 按顺序优雅关闭所有 provider。
+// Shutdown gracefully closes all providers in order.
 func (p *Providers) Shutdown(ctx context.Context) {
 	if p.TracerProvider != nil {
 		if err := p.TracerProvider.Shutdown(ctx); err != nil {

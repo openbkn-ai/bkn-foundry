@@ -205,7 +205,7 @@ func (r *KnowledgeReranker) rerankByVector(ctx context.Context, req *interfaces.
 		}
 	}
 
-	// 调用向量重排服务（req.VectorModel 为空时下游回退默认 reranker）
+	// 调用向量重排服务（req.VectorModel 为空即用模型管理配置的默认 reranker，见 #842）
 	resp, err := r.mfModelClient.Rerank(ctx, question, documents, req.VectorModel)
 	if err != nil {
 		r.logger.WithContext(ctx).Errorf("[KnowledgeReranker#rerankByVector] Rerank service failed: %v", err)

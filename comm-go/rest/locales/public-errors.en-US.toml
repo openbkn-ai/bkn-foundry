@@ -1,0 +1,48 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+["Public.BadRequest"]
+Description = "Invalid request parameters."
+Solution = "Check the request parameters and try again."
+ErrorLink = ""
+
+["Public.Unauthorized"]
+Description = "Authentication failed."
+Solution = "Provide valid authentication credentials."
+ErrorLink = ""
+
+["Public.Forbidden"]
+Description = "You do not have permission to perform this operation."
+Solution = "Contact an administrator to obtain the required permission."
+ErrorLink = ""
+
+["Public.NotFound"]
+Description = "The requested resource was not found."
+Solution = "Check that the resource identifier is correct."
+ErrorLink = ""
+
+["Public.MethodNotAllowed"]
+Description = "The request method is not supported."
+Solution = "Use a request method supported by this API."
+ErrorLink = ""
+
+["Public.Conflict"]
+Description = "The request conflicts with the current resource state."
+Solution = "Refresh the resource state and try again."
+ErrorLink = ""
+
+["Public.InternalServerError"]
+Description = "An internal server error occurred."
+Solution = "Try again later."
+ErrorLink = ""
+
+["Public.NotImplemented"]
+Description = "The server does not implement this request."
+Solution = "Confirm the API capability and try again."
+ErrorLink = ""
+
+["Public.ServiceUnavailable"]
+Description = "The service is temporarily unavailable."
+Solution = "Try again later."
+ErrorLink = ""
