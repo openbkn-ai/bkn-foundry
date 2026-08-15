@@ -235,9 +235,9 @@ func TestOperationAuditErrorsAreLocalized(t *testing.T) {
 				t.Fatalf("Cache-Control = %q, want private, no-cache", got)
 			}
 			var body struct {
-				ErrorCode    string         `json:"error_code"`
-				Description  string         `json:"description"`
-				ErrorDetails map[string]any `json:"error_details"`
+				ErrorCode    string `json:"error_code"`
+				Description  string `json:"description"`
+				ErrorDetails any    `json:"error_details"`
 			}
 			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 				t.Fatalf("decode error response: %v", err)
@@ -246,7 +246,8 @@ func TestOperationAuditErrorsAreLocalized(t *testing.T) {
 				t.Errorf("error = %#v, want code=%q description=%q", body, test.wantCode, test.wantDescription)
 			}
 			if test.wantCode == berrors.BknBackend_OperationAudit_InvalidRange {
-				if body.ErrorDetails["format"] != "RFC3339" || body.ErrorDetails["max_duration"] != "720h0m0s" {
+				details, ok := body.ErrorDetails.(map[string]any)
+				if !ok || details["format"] != "RFC3339" || details["max_duration"] != "720h0m0s" {
 					t.Errorf("error_details = %#v, want stable range details", body.ErrorDetails)
 				}
 			}
