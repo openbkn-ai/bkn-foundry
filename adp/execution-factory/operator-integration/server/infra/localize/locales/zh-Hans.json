@@ -200,7 +200,7 @@
         "Common": "请联系管理员",
         "BadRequest": "请检查参数是否正确",
         "OperationAuditAuthenticationRequired": "请登录后重试。",
-        "OperationAuditAccessDenied": "请申请 administrator、audit 或 super_admin 角色。",
+        "OperationAuditAccessDenied": "请申请 admin、audit 或 super_admin 角色。",
         "OperationAuditInvalidRange": "请提供不超过 30 天的有效 RFC3339 时间范围。",
         "OperationAuditInvalidBeforeTime": "请使用 RFC3339 格式提供 before_time。",
         "OperationAuditMissingScope": "请提供 x-tenant-id 和 x-business-domain 请求头。",
