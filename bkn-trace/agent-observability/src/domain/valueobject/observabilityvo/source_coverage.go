@@ -3,8 +3,9 @@ package observabilityvo
 import "time"
 
 const (
-	SourceCoverageHealthy  = "healthy"
-	SourceCoverageDegraded = "degraded"
+	SourceCoverageHealthy                      = "healthy"
+	SourceCoverageDegraded                     = "degraded"
+	SourceReasonPartialManagementAuditCoverage = "partial_management_audit_coverage"
 )
 
 // SourceCoverage is the durable collection-coverage fact for a log source.

@@ -44,7 +44,7 @@ func (client *Client) Metadata() observabilityvo.SourceStatus {
 		}
 	}
 	return observabilityvo.SourceStatus{
-		SourceID: sourceID, Status: "degraded", Reason: "partial_management_audit_coverage", Reliability: "best_effort",
+		SourceID: sourceID, Status: "degraded", Reason: observabilityvo.SourceReasonPartialManagementAuditCoverage, Reliability: "best_effort",
 		CollectionMethod: "source_adapter", CoveredModules: []string{"domain_knowledge_network"},
 		CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin},
 	}

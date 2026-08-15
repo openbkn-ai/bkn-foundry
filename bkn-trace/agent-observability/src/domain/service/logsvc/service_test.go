@@ -17,6 +17,27 @@ type fakeSource struct {
 	err     error
 }
 
+type partialCountSource struct {
+	record observabilityvo.LogRecord
+}
+
+func (source partialCountSource) ID() string { return "partial-count" }
+
+func (source partialCountSource) Metadata() observabilityvo.SourceStatus {
+	return observabilityvo.SourceStatus{
+		SourceID: source.ID(), Status: "healthy", Reliability: "best_effort",
+		CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin},
+	}
+}
+
+func (source partialCountSource) Search(context.Context, observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
+	return observabilityvo.SourcePage{
+		Records:       validTestRecords([]observabilityvo.LogRecord{source.record}),
+		Count:         201,
+		CountAccuracy: "partial",
+	}, nil
+}
+
 type capturingSource struct {
 	query observabilityvo.LogQuery
 }
@@ -175,7 +196,7 @@ type partialCoverageSource struct {
 func (source *partialCoverageSource) Metadata() observabilityvo.SourceStatus {
 	return observabilityvo.SourceStatus{
 		SourceID: source.id, Status: observabilityvo.SourceCoverageDegraded,
-		Reason: "partial_management_audit_coverage", Reliability: "best_effort",
+		Reason: observabilityvo.SourceReasonPartialManagementAuditCoverage, Reliability: "best_effort",
 		CountAccuracy: "partial", Categories: append([]string(nil), source.categories...),
 	}
 }
@@ -511,7 +532,7 @@ func TestSourcesReportsReachablePartialCoverageSourceAsHealthy(t *testing.T) {
 	if err != nil || len(statuses) != 1 {
 		t.Fatalf("source health query failed: statuses=%+v err=%v", statuses, err)
 	}
-	if statuses[0].Status != "healthy" || statuses[0].Reason != "partial_management_audit_coverage" {
+	if statuses[0].Status != "healthy" || statuses[0].Reason != observabilityvo.SourceReasonPartialManagementAuditCoverage {
 		t.Fatalf("reachable source must be healthy while retaining its partial coverage note: %+v", statuses[0])
 	}
 }
@@ -799,6 +820,19 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 	second, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20, Cursor: first.NextCursor})
 	if err != nil || len(second.Records) != 1 || second.Records[0].LogID != "visible" {
 		t.Fatalf("next source page was not reachable: result=%+v err=%v", second, err)
+	}
+}
+
+func TestListPreservesPaginationForPartiallyProjectedSourceCounts(t *testing.T) {
+	record := observabilityvo.LogRecord{
+		LogID: "audit-visible", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
+		TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+	}
+	result, err := NewWithCursorKey([]Source{partialCountSource{record: record}}, []byte("test-cursor-signing-key")).List(
+		context.Background(), activeProfile("admin-a", "super_admin"), observabilityvo.LogQuery{Limit: 20},
+	)
+	if err != nil || result.NextCursor == "" {
+		t.Fatalf("partial upstream count must keep the source pageable: result=%+v err=%v", result, err)
 	}
 }
 

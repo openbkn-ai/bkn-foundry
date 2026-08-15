@@ -89,8 +89,8 @@ func TestSearchExcludesLegacyAccessRowsFromManagementAuditResults(t *testing.T) 
 	if len(page.Records) != 1 || page.Records[0].LogID != "bkn-safe-admin:audit-user" {
 		t.Fatalf("legacy access row must not be exposed as a management audit record: %+v", page.Records)
 	}
-	if page.Count != 1 || page.CountAccuracy != "partial" {
-		t.Fatalf("management audit count must describe the normalized result set: %+v", page)
+	if page.Count != 2 || page.CountAccuracy != "partial" {
+		t.Fatalf("management audit count must retain the upstream pagination signal: %+v", page)
 	}
 }
 

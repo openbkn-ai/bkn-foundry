@@ -109,14 +109,13 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		records = append(records, projectAuditLog(entry, query.AuthorizedTenantID))
 	}
 	countAccuracy := "exact"
-	count := payload.Total
-	if count != int64(len(records)) {
+	if payload.Total != int64(len(records)) {
 		// The upstream total includes legacy rows outside this source's explicit
-		// management-audit scope. Report the normalized lower bound instead of
-		// letting those rows make the combined result appear unavailable.
-		count, countAccuracy = int64(len(records)), "partial"
+		// management-audit scope. Keep it as the pagination signal while marking
+		// the total inexact, so later management rows remain reachable.
+		countAccuracy = "partial"
 	}
-	return observabilityvo.SourcePage{Records: records, Count: count, CountAccuracy: countAccuracy}, nil
+	return observabilityvo.SourcePage{Records: records, Count: payload.Total, CountAccuracy: countAccuracy}, nil
 }
 
 func onlyFailedOutcomes(outcomes []string) bool {
