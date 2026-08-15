@@ -93,7 +93,9 @@ services:
   # Reaches hydra admin over the compose network (hydra:4445); the browser is
   # redirected to 127.0.0.1:3000 (published), shared by host curl and provider.
   safe:
-    build: .
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile
     depends_on:
       mariadb:
         condition: service_healthy
