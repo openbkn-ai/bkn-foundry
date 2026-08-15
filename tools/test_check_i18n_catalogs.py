@@ -3,6 +3,7 @@
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +55,50 @@ class TestPythonCatalogValidation(unittest.TestCase):
 
         self.assertTrue(any("missing error codes: ErrorCode.Invalid" in error for error in errors))
         self.assertTrue(any("placeholders differ" in error for error in errors))
+
+    def test_json_catalog_rejects_recursive_key_and_placeholder_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            baseline = directory / "zh-Hans.json"
+            translated = directory / "en-US.json"
+            baseline.write_text(json.dumps({"nested": {"message": "参数 %s", "other": "有效"}}), encoding="utf-8")
+            translated.write_text(json.dumps({"nested": {"message": "Parameter %d"}, "unexpected": "??"}), encoding="utf-8")
+
+            errors = catalog_check.validate_json_catalog_pair("test-json", baseline, translated)
+
+        self.assertTrue(any("missing keys: nested.other" in error for error in errors))
+        self.assertTrue(any("unexpected keys: unexpected" in error for error in errors))
+        self.assertTrue(any("placeholders differ" in error for error in errors))
+        self.assertTrue(any("invalid placeholder value ??" in error for error in errors))
+
+    def test_mcp_catalog_rejects_machine_identifier_and_invalid_overlays(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            schemas = Path(temporary_directory)
+            locale = schemas / "locales" / "en-US"
+            locale.mkdir(parents=True)
+            (schemas / "tools_meta.json").write_text(
+                json.dumps({"example": {"name": "example", "title": "示例", "group_title": "分组", "description": "描述"}}),
+                encoding="utf-8",
+            )
+            (schemas / "example.json").write_text(
+                json.dumps({"input_schema": {"properties": {"field": {"description": "说明"}}}}),
+                encoding="utf-8",
+            )
+            (locale / "tools_meta.json").write_text(
+                json.dumps({"example": {"name": "renamed", "title": "Example", "group_title": "Examples", "description": "Description"}}),
+                encoding="utf-8",
+            )
+            (locale / "schema_descriptions.json").write_text(
+                json.dumps({"example": {"input_schema.properties.missing.description": "??"}}),
+                encoding="utf-8",
+            )
+            (locale / "instructions.txt").write_text("", encoding="utf-8")
+
+            errors = catalog_check.validate_mcp_locale_resources(schemas)
+
+        self.assertTrue(any("must not change the machine identifier" in error for error in errors))
+        self.assertTrue(any("instructions.txt must not be empty" in error for error in errors))
+        self.assertTrue(any("does not exist" in error for error in errors))
 
 
 if __name__ == "__main__":

@@ -10,15 +10,21 @@ on:
     paths:
       - 'comm-go/i18n/**'
       - 'adp/**/locale/**/*.toml'
+      - 'adp/**/server/infra/localize/locales/**'
+      - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
       - 'infra/**/app/commons/i18n/**'
       - 'tools/check_i18n_catalogs.py'
+      - 'tools/test_check_i18n_catalogs.py'
       - '.github/workflows/ci-i18n-resources.yml'
   pull_request:
     paths:
       - 'comm-go/i18n/**'
       - 'adp/**/locale/**/*.toml'
+      - 'adp/**/server/infra/localize/locales/**'
+      - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
       - 'infra/**/app/commons/i18n/**'
       - 'tools/check_i18n_catalogs.py'
+      - 'tools/test_check_i18n_catalogs.py'
       - '.github/workflows/ci-i18n-resources.yml'
 
 concurrency:

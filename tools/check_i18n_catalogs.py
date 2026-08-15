@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import ast
+import json
+import re
 import string
 import sys
 from collections import Counter
@@ -27,6 +29,22 @@ PYTHON_CATALOGS = (
         REPOSITORY_ROOT / "infra/mf-model-manager/app/commons/i18n/en_us.py",
     ),
 )
+JSON_CATALOGS = (
+    (
+        "context-loader",
+        REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/infra/localize/locales/zh-Hans.json",
+        REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/infra/localize/locales/en-US.json",
+    ),
+    (
+        "execution-factory",
+        REPOSITORY_ROOT / "adp/execution-factory/operator-integration/server/infra/localize/locales/zh-Hans.json",
+        REPOSITORY_ROOT / "adp/execution-factory/operator-integration/server/infra/localize/locales/en-US.json",
+    ),
+)
+MCP_SCHEMAS_DIRECTORY = REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas"
+
+PERCENT_PLACEHOLDER = re.compile(r"(?<!%)%(?:[-+#0 ]*\d*(?:\.\d+)?[bcdeEfFgGosxXqTUv])")
+GO_TEMPLATE_PLACEHOLDER = re.compile(r"{{\s*([^{}]+?)\s*}}")
 
 
 def node_name(node: ast.AST) -> str:
@@ -92,7 +110,139 @@ def placeholders(value: str) -> Counter[str]:
         if field_name == "" or field_name.isdecimal():
             raise ValueError(f"positional placeholder is not allowed in {value!r}")
         fields[field_name] += 1
+    fields.update(f"printf:{match.group(0)}" for match in PERCENT_PLACEHOLDER.finditer(value))
+    fields.update(f"template:{match.group(1)}" for match in GO_TEMPLATE_PLACEHOLDER.finditer(value))
     return fields
+
+
+def validate_text(path: str, value: str) -> str | None:
+    if not value.strip():
+        return f"{path} must not be empty"
+    if "??" in value:
+        return f"{path} contains an invalid placeholder value ??"
+    return None
+
+
+def load_json_catalog(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"{path}: cannot parse JSON catalog: {error}") from error
+
+
+def flatten_json_strings(value: Any, path: str = "") -> dict[str, str]:
+    if isinstance(value, str):
+        return {path: value}
+    if not isinstance(value, dict):
+        raise ValueError(f"{path or '<root>'}: expected an object or string")
+    result: dict[str, str] = {}
+    for key, child in value.items():
+        if not isinstance(key, str):
+            raise ValueError(f"{path or '<root>'}: object keys must be strings")
+        child_path = f"{path}.{key}" if path else key
+        result.update(flatten_json_strings(child, child_path))
+    return result
+
+
+def validate_json_catalog_pair(name: str, baseline_path: Path, translated_path: Path) -> list[str]:
+    baseline = flatten_json_strings(load_json_catalog(baseline_path))
+    translated = flatten_json_strings(load_json_catalog(translated_path))
+    errors: list[str] = []
+    missing = sorted(set(baseline) - set(translated))
+    unexpected = sorted(set(translated) - set(baseline))
+    if missing:
+        errors.append(f"{name}: {translated_path} is missing keys: {', '.join(missing)}")
+    if unexpected:
+        errors.append(f"{name}: {translated_path} has unexpected keys: {', '.join(unexpected)}")
+    for catalog_path, catalog in ((baseline_path, baseline), (translated_path, translated)):
+        for key, value in sorted(catalog.items()):
+            if error := validate_text(f"{catalog_path}:{key}", value):
+                errors.append(f"{name}: {error}")
+    for key in sorted(set(baseline) & set(translated)):
+        if not key.startswith("template."):
+            try:
+                expected, actual = placeholders(baseline[key]), placeholders(translated[key])
+            except ValueError as error:
+                errors.append(f"{name}: {key}: {error}")
+                continue
+            if expected != actual:
+                errors.append(f"{name}: {key} placeholders differ: expected {dict(expected)}, got {dict(actual)}")
+    return errors
+
+
+def get_json_path(value: Any, path: str) -> Any:
+    current = value
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            raise ValueError(f"path {path!r} does not exist")
+        current = current[part]
+    return current
+
+
+def validate_mcp_locale_resources(schemas_directory: Path, locale: str = "en-US") -> list[str]:
+    errors: list[str] = []
+    locale_directory = schemas_directory / "locales" / locale
+    try:
+        base_tools = load_json_catalog(schemas_directory / "tools_meta.json")
+        translated_tools = load_json_catalog(locale_directory / "tools_meta.json")
+        instructions = (locale_directory / "instructions.txt").read_text(encoding="utf-8")
+        descriptions = load_json_catalog(locale_directory / "schema_descriptions.json")
+    except (OSError, ValueError) as error:
+        return [f"mcp: {error}"]
+    if not isinstance(base_tools, dict) or not isinstance(translated_tools, dict):
+        return ["mcp: tools_meta.json must contain objects"]
+    static_tools = {
+        tool_key for tool_key in base_tools if (schemas_directory / f"{tool_key}.json").exists()
+    }
+    missing = sorted(static_tools - set(translated_tools))
+    unexpected = sorted(set(translated_tools) - set(base_tools))
+    if missing:
+        errors.append(f"mcp: localized tools_meta.json is missing tools: {', '.join(missing)}")
+    if unexpected:
+        errors.append(f"mcp: localized tools_meta.json has unexpected tools: {', '.join(unexpected)}")
+    for tool_key in sorted(static_tools & set(translated_tools)):
+        localized = translated_tools[tool_key]
+        if not isinstance(localized, dict):
+            errors.append(f"mcp: {tool_key} localized metadata must be an object")
+            continue
+        if "name" in localized and localized["name"] != base_tools[tool_key].get("name"):
+            errors.append(f"mcp: {tool_key}.name must not change the machine identifier")
+        for field in ("title", "group_title", "description"):
+            value = localized.get(field)
+            if not isinstance(value, str):
+                errors.append(f"mcp: {tool_key}.{field} must be a string")
+            elif error := validate_text(f"{tool_key}.{field}", value):
+                errors.append(f"mcp: {error}")
+    if error := validate_text("instructions.txt", instructions):
+        errors.append(f"mcp: {error}")
+    if not isinstance(descriptions, dict):
+        return errors + ["mcp: schema_descriptions.json must contain an object"]
+    for tool_key, values in descriptions.items():
+        if tool_key not in base_tools:
+            errors.append(f"mcp: schema descriptions reference unknown tool {tool_key}")
+            continue
+        if not isinstance(values, dict):
+            errors.append(f"mcp: schema descriptions for {tool_key} must be an object")
+            continue
+        try:
+            schema = load_json_catalog(schemas_directory / f"{tool_key}.json")
+        except ValueError as error:
+            errors.append(f"mcp: {error}")
+            continue
+        for path, text in values.items():
+            if not isinstance(text, str):
+                errors.append(f"mcp: {tool_key}.{path} must be a string")
+                continue
+            if error := validate_text(f"{tool_key}.{path}", text):
+                errors.append(f"mcp: {error}")
+            try:
+                original = get_json_path(schema, path)
+            except ValueError as error:
+                errors.append(f"mcp: {tool_key}: {error}")
+            else:
+                if not isinstance(original, str):
+                    errors.append(f"mcp: {tool_key}.{path} must overlay a string field")
+    return errors
 
 
 def validate_catalog_pair(name: str, baseline_path: Path, translated_path: Path) -> list[str]:
@@ -135,7 +285,16 @@ def validate_catalog_pair(name: str, baseline_path: Path, translated_path: Path)
 def main() -> int:
     errors: list[str] = []
     for catalog in PYTHON_CATALOGS:
-        errors.extend(validate_catalog_pair(*catalog))
+        try:
+            errors.extend(validate_catalog_pair(*catalog))
+        except ValueError as error:
+            errors.append(str(error))
+    for catalog in JSON_CATALOGS:
+        try:
+            errors.extend(validate_json_catalog_pair(*catalog))
+        except ValueError as error:
+            errors.append(str(error))
+    errors.extend(validate_mcp_locale_resources(MCP_SCHEMAS_DIRECTORY))
     if errors:
         print("i18n catalog validation failed:", file=sys.stderr)
         print("\n".join(f"- {error}" for error in errors), file=sys.stderr)
