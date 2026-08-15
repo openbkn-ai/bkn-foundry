@@ -201,11 +201,15 @@ def validate_mcp_locale_resources(schemas_directory: Path, locale: str = "en-US"
     if unexpected:
         errors.append(f"mcp: localized tools_meta.json has unexpected tools: {', '.join(unexpected)}")
     for tool_key in sorted(static_tools & set(translated_tools)):
+        base = base_tools[tool_key]
+        if not isinstance(base, dict):
+            errors.append(f"mcp: {tool_key} base metadata must be an object")
+            continue
         localized = translated_tools[tool_key]
         if not isinstance(localized, dict):
             errors.append(f"mcp: {tool_key} localized metadata must be an object")
             continue
-        if "name" in localized and localized["name"] != base_tools[tool_key].get("name"):
+        if "name" in localized and localized["name"] != base.get("name"):
             errors.append(f"mcp: {tool_key}.name must not change the machine identifier")
         for field in ("title", "group_title", "description"):
             value = localized.get(field)
@@ -294,7 +298,10 @@ def main() -> int:
             errors.extend(validate_json_catalog_pair(*catalog))
         except ValueError as error:
             errors.append(str(error))
-    errors.extend(validate_mcp_locale_resources(MCP_SCHEMAS_DIRECTORY))
+    try:
+        errors.extend(validate_mcp_locale_resources(MCP_SCHEMAS_DIRECTORY))
+    except ValueError as error:
+        errors.append(str(error))
     if errors:
         print("i18n catalog validation failed:", file=sys.stderr)
         print("\n".join(f"- {error}" for error in errors), file=sys.stderr)

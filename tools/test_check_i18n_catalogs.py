@@ -100,6 +100,24 @@ class TestPythonCatalogValidation(unittest.TestCase):
         self.assertTrue(any("instructions.txt must not be empty" in error for error in errors))
         self.assertTrue(any("does not exist" in error for error in errors))
 
+    def test_mcp_catalog_reports_non_object_base_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            schemas = Path(temporary_directory)
+            locale = schemas / "locales" / "en-US"
+            locale.mkdir(parents=True)
+            (schemas / "tools_meta.json").write_text(json.dumps({"example": "invalid"}), encoding="utf-8")
+            (schemas / "example.json").write_text(json.dumps({}), encoding="utf-8")
+            (locale / "tools_meta.json").write_text(
+                json.dumps({"example": {"title": "Example", "group_title": "Examples", "description": "Description"}}),
+                encoding="utf-8",
+            )
+            (locale / "schema_descriptions.json").write_text(json.dumps({}), encoding="utf-8")
+            (locale / "instructions.txt").write_text("Instructions", encoding="utf-8")
+
+            errors = catalog_check.validate_mcp_locale_resources(schemas)
+
+        self.assertEqual(errors, ["mcp: example base metadata must be an object"])
+
 
 if __name__ == "__main__":
     unittest.main()
