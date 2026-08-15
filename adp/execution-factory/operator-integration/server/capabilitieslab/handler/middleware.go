@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 const (
@@ -76,16 +77,31 @@ func writeError(c *gin.Context, status int, code, message string) {
 	})
 }
 
+func writeLocalizedError(c *gin.Context, status int, code string) {
+	sharedrest.MarkLocalizedCacheableResponse(c)
+	writeError(c, status, code, capabilitiesLabErrorMessage(sharedrest.GetLanguageByCtx(c.Request.Context()), code))
+}
+
 func writeBadGateway(c *gin.Context, message string) {
 	writeError(c, http.StatusBadGateway, "upstream_error", message)
 }
 
 func writeBadRequest(c *gin.Context, message string) {
-	writeError(c, http.StatusBadRequest, "invalid_request", message)
+	_ = message
+	writeLocalizedError(c, http.StatusBadRequest, capabilitiesLabInvalidRequest)
 }
 
 func writeNotFound(c *gin.Context, message string) {
-	writeError(c, http.StatusNotFound, "not_found", message)
+	_ = message
+	writeLocalizedError(c, http.StatusNotFound, capabilitiesLabNotFound)
+}
+
+func writeFileRequired(c *gin.Context) {
+	writeLocalizedError(c, http.StatusBadRequest, capabilitiesLabFileRequired)
+}
+
+func writeFeatureDisabled(c *gin.Context) {
+	writeLocalizedError(c, http.StatusNotFound, capabilitiesLabFeatureDisabled)
 }
 
 type APIErrorResponse struct {

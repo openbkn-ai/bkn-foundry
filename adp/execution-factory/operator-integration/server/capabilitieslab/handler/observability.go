@@ -5,7 +5,6 @@
 package handler
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -59,7 +58,7 @@ func FeatureGateMiddleware(features config.FeatureFlags) gin.HandlerFunc {
 			return
 		}
 
-		writeError(c, http.StatusNotFound, "feature_disabled", "feature is disabled")
+		writeFeatureDisabled(c)
 		c.Abort()
 	}
 }
