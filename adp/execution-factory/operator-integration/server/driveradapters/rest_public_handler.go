@@ -31,10 +31,13 @@ type restPublicHandler struct {
 	Logger                interfaces.Logger
 	businessDomainService interfaces.IBusinessDomainService
 	auditStore            *operationaudit.Store
+	auditQueryStore       operationAuditQueryStore
+	auditUserManagement   interfaces.UserManagement
 }
 
 // NewRestPublicHandler 创建restHandler实例
 func NewRestPublicHandler() interfaces.HTTPRouterInterface {
+	auditStore := operationaudit.NewStore(db.NewDBPool())
 	return &restPublicHandler{
 		Hydra:                 drivenadapters.NewHydra(),
 		AppKeys:               drivenadapters.NewAppKeyVerifier(),
@@ -49,7 +52,8 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 		AIGenerationHandler:   common.NewAIGenerationHandler(),
 		Logger:                config.NewConfigLoader().GetLogger(),
 		businessDomainService: business_domain.NewBusinessDomainService(),
-		auditStore:            operationaudit.NewStore(db.NewDBPool()),
+		auditStore:            auditStore,
+		auditQueryStore:       auditStore,
 	}
 }
 

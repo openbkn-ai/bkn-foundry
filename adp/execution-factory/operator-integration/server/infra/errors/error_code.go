@@ -228,3 +228,14 @@ const (
 const (
 	NoneErrorLink = "None"
 )
+
+// Operation audit query error codes.
+const (
+	ErrExtOperationAuditAuthenticationRequired ErrorCode = "OperationAuditAuthenticationRequired"
+	ErrExtOperationAuditAccessDenied           ErrorCode = "OperationAuditAccessDenied"
+	ErrExtOperationAuditInvalidRange           ErrorCode = "OperationAuditInvalidRange"
+	ErrExtOperationAuditInvalidBeforeTime      ErrorCode = "OperationAuditInvalidBeforeTime"
+	ErrExtOperationAuditMissingScope           ErrorCode = "OperationAuditMissingScope"
+	ErrExtOperationAuditQueryFailed            ErrorCode = "OperationAuditQueryFailed"
+	ErrExtOperationAuditNotFound               ErrorCode = "OperationAuditNotFound"
+)
