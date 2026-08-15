@@ -1,124 +1,124 @@
 [VegaBackend.Catalog.InvalidParameter]
 Description = "Invalid catalog parameter"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InvalidParameter.Type]
 Description = "Invalid catalog type"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InvalidParameter.Name]
 Description = "Invalid catalog name"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InvalidParameter.ID]
 Description = "Request body is missing the 'id' field"
 Solution = "Include the 'id' field in the body and make it equal to the path parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InvalidParameter.ConnectorType]
 Description = "Invalid connector type"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InvalidParameter.ConnectorConfig]
 Description = "Invalid connector config"
 Solution = "Please check the parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.LengthExceeded.Name]
 Description = "Catalog name length exceeded"
 Solution = "Please shorten the name"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.LengthExceeded.Description]
 Description = "Catalog description length exceeded"
 Solution = "Please shorten the description"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.EnabledFieldNotAllowed]
 Description = "Catalog enabled state cannot be modified via PUT /catalogs/{id}"
 Solution = "Use POST /catalogs/{id}/enable or /disable to change enabled state"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.GetAccountNamesFailed]
 Description = "Failed to get account names"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.NotFound]
 Description = "Catalog not found"
 Solution = "Please check the catalog ID"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.NameExists]
 Description = "Catalog name already exists"
 Solution = "Please use a different name"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.IDMismatch]
 Description = "Catalog id in the request body does not match the path"
 Solution = "Make the 'id' field in the body equal to the path parameter"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.IDExists]
 Description = "Catalog ID already exists"
 Solution = "Please use a different ID"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.HasAssets]
 Description = "Catalog has assets and cannot be deleted"
 Solution = "Please delete all assets in the catalog first"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.IsDisabled]
 Description = "Catalog is disabled"
 Solution = "Please enable the catalog first"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError]
 Description = "Catalog internal error"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.CreateFailed]
 Description = "Failed to create catalog"
 Solution = "Please contact administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.CreateResourcesFailed]
 Description = "Failed to create catalog resource permissions"
 Solution = "Please contact administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.GetFailed]
 Description = "Failed to get catalog"
 Solution = "Please contact administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.UpdateFailed]
 Description = "Failed to update catalog"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.DeleteFailed]
 Description = "Failed to delete catalog"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.TestConnectionFailed]
 Description = "Failed to test catalog connection"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InternalError.EncryptFailed]
 Description = "Failed to entrypt config"
 Solution = "Please contact the administrator"
-ErrorLink = "None"
+ErrorLink = ""
 
 [VegaBackend.Catalog.InvalidParameter.SensitiveFieldNotEncrypted]
 Description = "Sensitive field is not properly encrypted"
 Solution = "Please encrypt the sensitive field with the public key before submitting"
-ErrorLink = "None"
+ErrorLink = ""

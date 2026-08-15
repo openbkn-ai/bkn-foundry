@@ -2,169 +2,169 @@
 [BknBackend.CountExceeded.TagTotal]
 Description = "Number of Tags Exceed 5"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.DataTagName]
 Description = "Invalid Data Tag Name"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.Direction]
 Description = "Invalid Sort Direction"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.Condition]
 Description = "Invalid Condition"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.ID]
 Description = "Invalid ID"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.ImportMode]
 Description = "Invalid Import Mode"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.Mode]
 Description = "Invalid Mode"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.Limit]
 Description = "Invalid Pagination Limit"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.OperationAudit.InvalidRange]
 Description = "The operation-audit time range is invalid."
 Solution = "Provide a valid RFC3339 time range no longer than 30 days."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.OperationAudit.InvalidBeforeTime]
 Description = "The operation-audit pagination time is invalid."
 Solution = "Provide a valid RFC3339 before_time parameter."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.OperationAudit.MissingScope]
 Description = "The operation-audit query scope is missing."
 Solution = "Provide the tenant and business-domain identifiers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.OperationAudit.AccessDenied]
 Description = "You are not permitted to view operation-audit records."
 Solution = "Check the access scope or contact an administrator."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.OperationAudit.ServiceUnavailable]
 Description = "The operation-audit service is temporarily unavailable."
 Solution = "Try again later."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.OperationAudit.QueryFailed]
 Description = "The operation-audit query failed."
 Solution = "Try again later; contact an administrator if the problem persists."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.OperationAudit.NotFound]
 Description = "The operation-audit event was not found."
 Solution = "Check that the event identifier is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.ModuleType]
 Description = "Invalid Module Name"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.Offset]
 Description = "Invalid Offset"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.OverrideMethod]
 Description = "Invalid Override Method"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.RequestBody]
 Description = "Request Body Is Empty"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.Sort]
 Description = "Invalid Sort Type"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidParameter.ConditionValue]
 Description = "Invalid Condition Value"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.NullParameter.ConditionName]
 Description = "Condition Name Is Empty"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.NullParameter.ConditionOperation]
 Description = "Condition Operation Is Empty"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.UnsupportConditionOperation]
 Description = "Unsupported Condition Operation"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.CountExceeded.Conditions]
 Description = "The Number Of Conditions Exceeds The Limit"
 Solution = "Please check whether the parameter is correct."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InvalidRequestHeader.ContentType]
 Description = "Invalid ContentType"
 Solution = "Please check the Http Header."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.CheckPermissionFailed]
 Description = "An internal server error occurred while check permission"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.CreateResourcesFailed]
 Description = "An internal server error occurred while create resources"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.DeleteResourcesFailed]
 Description = "An internal server error occurred while delete resources"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.FilterResourcesFailed]
 Description = "An internal server error occurred while filter resources"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.UpdateResourceFailed]
 Description = "An internal server error occurred while update resource name"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.MQPublishMsgFailed]
 Description = "An internal server error occurred while mq publish message"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.MarshalDataFailed]
 Description = "An internal server error occurred while marshaling data"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""
 
 [BknBackend.InternalError.UnMarshalDataFailed]
 Description = "An internal server error occurred while unMarshaling data"
 Solution = "Please try this operation again, if the error occurs again, submit the work order or contact technical support engineers."
-ErrorLink = "None"
+ErrorLink = ""

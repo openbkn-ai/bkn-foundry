@@ -1,304 +1,304 @@
 [VegaBackend.InvalidParameter.Name]
 Description = "无效的名称"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Tag]
 Description = "无效的标签"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Description]
 Description = "无效的描述"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.RequestBody]
 Description = "无效的请求体"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.ResourceType]
 Description = "无效的resource_type参数"
 Solution = "resource_type必须是mariadb、opensearch或postgresql之一"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.StreamSize]
 Description = "无效的stream_size参数"
 Solution = "stream_size必须在100到10000之间，默认值为10000"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Limit]
 Description = "无效的分页限制参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Offset]
 Description = "无效的分页偏移参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Sort]
 Description = "无效的排序参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Aggregation]
 Description = "无效的聚合参数"
 Solution = "请检查聚合参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.GroupBy]
 Description = "无效的分组参数"
 Solution = "请检查分组参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.OrderBy]
 Description = "无效的聚合排序参数"
 Solution = "请检查排序参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Having]
 Description = "无效的Having参数"
 Solution = "请检查Having参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.CalendarInterval]
 Description = "无效的日历间隔参数"
 Solution = "日历间隔必须是 minute, hour, day, week, month, quarter, year 之一"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Direction]
 Description = "无效的排序方向参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.ID]
 Description = "无效的ID参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.OverrideMethod]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.Format]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.FilterCondition]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.FilterConditionValue]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidParameter.FilterConditionValueFrom]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.NullParameter.FilterConditionName]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.NullParameter.FilterConditionValue]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.NullParameter.FilterConditionOperation]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.CountExceeded.FilterConditionSubConds]
 Description = "无效的参数"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.UnsupportFilterConditionOperation]
 Description = "不支持的过滤器操作符"
 Solution = "请检查参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InvalidRequestHeader.ContentType]
 Description = "不支持的Content-Type请求头"
 Solution = "请检查请求头"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.BeginTransactionFailed]
 Description = "开启事务失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.CommitTransactionFailed]
 Description = "提交事务失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.MarshalDataFailed]
 Description = "序列化数据失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.UnMarshalDataFailed]
 Description = "反序列化数据失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.CheckPermissionFailed]
 Description = "权限检查失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.CreateResourcesFailed]
 Description = "创建资源权限失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.DeleteResourcesFailed]
 Description = "删除资源权限失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.FilterResourcesFailed]
 Description = "过滤资源权限失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.InternalError.UpdateResourceFailed]
 Description = "更新资源权限失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 # Query 模块错误码
 [VegaBackend.Query.InvalidParameter]
 Description = "查询参数非法"
 Solution = "请检查请求参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.InvalidParameter.LimitExceeded]
 Description = "limit 不能超过 10000"
 Solution = "请调整 limit 参数"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.InvalidParameter.JoinTableNotInTables]
 Description = "JOIN 中的表别名不在 tables 中"
 Solution = "请检查 joins 配置"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.InvalidParameter.QueryTimeout]
 Description = "query_timeout_sec 参数非法"
 Solution = "query_timeout_sec 必须在 1 到 3600 之间"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.CursorResourceChanged]
 Description = "cursor 创建后资源已变更"
 Solution = "请重新发起查询"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.CatalogNotFound]
 Description = "Catalog 不存在"
 Solution = "请检查 catalog_id"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.ResourceNotFound]
 Description = "Resource 不存在"
 Solution = "请检查 resource_id"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.SessionExpired]
 Description = "查询 session 已过期"
 Solution = "请重新执行查询"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.MultiCatalogNotSupported]
 Description = "暂不支持多数据源 JOIN"
 Solution = "计划使用 Trino/DuckDB 实现"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.ConcurrencyLimitExceeded]
 Description = "查询并发数超过限制"
 Solution = "请稍后重试"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.CursorSessionLimitExceeded]
 Description = "Cursor session 数量超过限制"
 Solution = "请稍后重试"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Query.ExecuteFailed]
 Description = "执行查询失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Extensions.InvalidFormat]
 Description = "extensions 格式不合法"
 Solution = "请检查 key/value 长度与是否为空"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Extensions.QuotaExceeded]
 Description = "根级 extensions 条数超过上限"
 Solution = "请减少 extensions 条目"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Extensions.PropertyQuotaExceeded]
 Description = "字段 extensions 条数超过上限"
 Solution = "请减少该字段的 extensions 条目"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Extensions.ReservedKey]
 Description = "extensions 的 key 使用了保留前缀"
 Solution = "请勿使用 vega_ 前缀的 key"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Extensions.MismatchedQueryPairs]
 Description = "extension_key 与 extension_value 查询参数不合法"
 Solution = "请成对传入且数量一致、非空"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.Extensions.TooManyFilterPairs]
 Description = "扩展筛选条件组数超过上限"
 Solution = "请减少筛选组数"
-ErrorLink = "暂无"
+ErrorLink = ""
 [VegaBackend.OperationAudit.InvalidRange]
 Description = "操作审计查询时间范围无效。"
 Solution = "请提供不超过 30 天的有效 RFC3339 时间范围。"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.OperationAudit.InvalidBeforeTime]
 Description = "操作审计游标时间无效。"
 Solution = "请使用 RFC3339 格式提供 before_time。"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.OperationAudit.MissingScope]
 Description = "操作审计查询范围不完整。"
 Solution = "请提供 x-tenant-id 和 x-business-domain 请求头。"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.OperationAudit.AccessDenied]
 Description = "您没有查看操作审计记录的权限。"
 Solution = "请申请 administrator、audit 或 super_admin 角色。"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.OperationAudit.ServiceUnavailable]
 Description = "操作审计服务暂不可用。"
 Solution = "请稍后重试。"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.OperationAudit.QueryFailed]
 Description = "操作审计查询失败。"
 Solution = "请稍后重试或联系管理员。"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.OperationAudit.NotFound]
 Description = "未找到操作审计事件。"
 Solution = "请检查 event_id 和查询范围。"
-ErrorLink = "暂无"
+ErrorLink = ""

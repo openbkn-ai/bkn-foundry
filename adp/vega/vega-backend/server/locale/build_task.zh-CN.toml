@@ -1,99 +1,99 @@
 [VegaBackend.BuildTask.NotFound]
 Description = "构建任务不存在"
 Solution = "请检查构建任务ID是否存在"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.ResourceID]
 Description = "资源ID无效"
 Solution = "请检查 resource_id 是否提供且存在"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.Mode]
 Description = "构建任务模式无效"
 Solution = "mode 必须为 streaming / batch 之一"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.BuildKeyFields]
 Description = "批量构建键无效"
 Solution = "请在资源 index_config 中配置至少一个不重复、存在于 schema 且类型受支持的 build_key_fields 字段"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields]
 Description = "资源包含不支持索引构建的字段类型"
 Solution = "请处理 type 为 other 的字段后再创建索引构建任务"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.Analyzer]
 Description = "全文分词器不可用"
 Solution = "请选择 OpenSearch 已安装的分词器，或将受影响字段改为使用资源默认分词器"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidParameter.EmbeddingModel]
 Description = "向量字段缺少嵌入模型"
 Solution = "请为向量特征配置 config.embedding_model，或在资源上配置 index_config.default_embedding_model"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidStateTransition]
 Description = "构建任务状态转移非法"
 Solution = "检查当前状态；start 要求 status 为 stopped 或 failed；stop 要求 status 为 pending 或 running"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.HasRunningExecution]
 Description = "构建任务正在运行，无法删除"
 Solution = "请先停止任务再删除"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.ActiveIndexInUse]
 Description = "构建任务索引是资源当前生效的本地索引"
 Solution = "如确认要删除当前生效的本地索引，请传入 delete_active_index=true；否则保持默认保护"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.CreateFailed]
 Description = "创建构建任务失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.ValidateAnalyzerFailed]
 Description = "校验全文分词器失败"
 Solution = "请检查 OpenSearch 连接后重试"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.GetFailed]
 Description = "获取构建任务失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.Exist]
 Description = "构建任务已存在"
 Solution = "请检查资源是否已存在构建任务"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.Running]
 Description = "构建任务正在运行"
 Solution = "请等待任务完成或停止后再操作"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidStatus]
 Description = "无效的构建任务状态"
 Solution = "请检查状态值"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InvalidExecuteType]
 Description = "无效的构建任务执行类型"
 Solution = "请检查执行类型值"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.UpdateFailed]
 Description = "更新构建任务失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.DeleteFailed]
 Description = "删除构建任务失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.BuildTask.InternalError.GetAccountNamesFailed]
 Description = "获取账户名称失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""

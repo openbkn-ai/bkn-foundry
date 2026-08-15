@@ -1,59 +1,59 @@
 [VegaBackend.DiscoverSchedule.NotFound]
 Description = "采集调度不存在"
 Solution = "请检查调度 ID 是否存在"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InvalidCronExpr]
 Description = "cron 表达式非法"
 Solution = "请提供合法的 5 字段 cron 表达式，且相邻两次触发至少间隔 1 小时"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InvalidStrategies]
 Description = "采集策略非法"
 Solution = "strategy 必须是 [full_sync, create_only, cleanup_only] 之一；空值表示 full_sync"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InvalidTimeRange]
 Description = "采集调度时间范围非法"
 Solution = "start_time 和 end_time 必须大于等于 0；end_time 为 0 表示无结束时间，否则 start_time 必须小于等于 end_time"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.IdMismatch]
 Description = "请求体中的 id 与 path 中的 id 不一致"
 Solution = "请保持两者一致或省略 body.id"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.CatalogMismatch]
 Description = "不能修改已有调度的 catalog_id"
 Solution = "catalog_id 为只读字段；如需在其它 catalog 下调度，请新建一条"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed]
 Description = "PUT 请求不允许修改 enabled 字段"
 Solution = "请使用 POST /discover-schedules/{id}/enable 或 /disable 切换状态"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.GetFailed]
 Description = "获取采集调度失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.CreateFailed]
 Description = "创建采集调度失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.UpdateFailed]
 Description = "更新采集调度失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.DeleteFailed]
 Description = "删除采集调度失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed]
 Description = "获取账户名称失败"
 Solution = "请联系管理员"
-ErrorLink = "暂无"
+ErrorLink = ""

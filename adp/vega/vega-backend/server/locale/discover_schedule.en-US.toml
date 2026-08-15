@@ -1,59 +1,59 @@
 [VegaBackend.DiscoverSchedule.NotFound]
 Description = "Discover schedule not found"
 Solution = "Please check if the schedule ID exists"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InvalidCronExpr]
 Description = "Invalid cron expression"
 Solution = "Please provide a valid 5-field cron expression with at least 1 hour between adjacent executions"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InvalidStrategies]
 Description = "Invalid discover strategy"
 Solution = "Strategy must be one of [full_sync, create_only, cleanup_only]; empty means full_sync"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InvalidTimeRange]
 Description = "Invalid discover schedule time range"
 Solution = "start_time and end_time must be greater than or equal to 0; end_time may be 0 for no end time, otherwise start_time must be less than or equal to end_time"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.IdMismatch]
 Description = "Body id does not match path id"
 Solution = "Either omit body.id or set it equal to the path id"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.CatalogMismatch]
 Description = "Cannot change catalog_id of an existing schedule"
 Solution = "catalog_id is read-only; create a new schedule under the target catalog instead"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed]
 Description = "PUT request must not change the 'enabled' field"
 Solution = "Use POST /discover-schedules/{id}/enable or /disable to change enabled state"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.GetFailed]
 Description = "Failed to get discover schedule"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.CreateFailed]
 Description = "Failed to create discover schedule"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.UpdateFailed]
 Description = "Failed to update discover schedule"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.DeleteFailed]
 Description = "Failed to delete discover schedule"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
 
 [VegaBackend.DiscoverSchedule.InternalError.GetAccountNamesFailed]
 Description = "Failed to get account names"
 Solution = "Please contact the administrator"
-ErrorLink = "No solution"
+ErrorLink = ""
