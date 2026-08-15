@@ -33,24 +33,27 @@ func NewNotLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Vie
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
 	}
+	literal, err := ParseLikeValue(OperationNotLike, val)
+	if err != nil {
+		return nil, err
+	}
 
 	return &NotLikeCond{
 		mCfg:             cfg,
-		mValue:           val,
+		mValue:           literal,
 		mFilterFieldName: getFilterFieldName(cfg.Field, fieldsMap, false),
 	}, nil
 }
 
 func (cond *NotLikeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, words []string) ([]*VectorResp, error)) (string, error) {
-	valPattern := fmt.Sprintf(".*%s.*", cond.mCfg.Value)
-	v := fmt.Sprintf("%q", valPattern)
+	v := fmt.Sprintf("%q", LikeContainsPattern(cond.mValue))
 
 	dslStr := fmt.Sprintf(`
 					{
 						"bool": {
 							"must_not": [
 								{
-									"regexp": {
+									"wildcard": {
 										"%s": %v
 									}
 								}
@@ -62,20 +65,22 @@ func (cond *NotLikeCond) Convert(ctx context.Context, vectorizer func(ctx contex
 }
 
 func (cond *NotLikeCond) Convert2SQL(ctx context.Context) (string, error) {
-	v := cond.mCfg.Value
-	vStr, ok := v.(string)
-	if ok {
-		v = Special.Replace(fmt.Sprintf("%v", vStr))
-	}
-
-	vStr = fmt.Sprintf("%v", v)
-	sqlStr := fmt.Sprintf(`"%s" NOT LIKE '%s'`, cond.mFilterFieldName, "%"+vStr+"%")
+	sqlStr := fmt.Sprintf(`"%s" NOT LIKE '%s'`, cond.mFilterFieldName, "%"+Special.Replace(cond.mValue)+"%")
 
 	return sqlStr, nil
 }
 
 // convertNotLikeCondToDatasetFilterCondition converts NotLikeCond to dataset filter condition format
 func convertNotLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, error) {
+	// 同 like：这条路不构造 NotLikeCond，值直接透传给 vega，契约校验要在这里也做一次
+	val, ok := cfg.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
+	}
+	if _, err := ParseLikeValue(OperationNotLike, val); err != nil {
+		return nil, fmt.Errorf("property '%s': %w", cfg.Field, err)
+	}
+
 	return map[string]any{
 		"field":      cfg.Field,
 		"operation":  "not_like",

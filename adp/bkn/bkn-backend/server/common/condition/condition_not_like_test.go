@@ -133,9 +133,9 @@ func TestNotLikeCond_Convert(t *testing.T) {
 			So(dsl, ShouldNotBeEmpty)
 			So(dsl, ShouldContainSubstring, "bool")
 			So(dsl, ShouldContainSubstring, "must_not")
-			So(dsl, ShouldContainSubstring, "regexp")
+			So(dsl, ShouldContainSubstring, "wildcard")
 			So(dsl, ShouldContainSubstring, "field1")
-			So(dsl, ShouldContainSubstring, ".*test.*")
+			So(dsl, ShouldContainSubstring, "*test*")
 		})
 	})
 }
