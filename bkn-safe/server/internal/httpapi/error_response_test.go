@@ -23,8 +23,8 @@ func TestRequireUserLocalizesAuthenticationFailure(t *testing.T) {
 		description string
 		errorLink   string
 	}{
-		{name: "Chinese", language: "zh-CN", description: "认证失败。", errorLink: "暂无"},
-		{name: "English", language: "en-US", description: "Authentication failed.", errorLink: "None"},
+		{name: "Chinese", language: "zh-CN", description: "认证失败。", errorLink: ""},
+		{name: "English", language: "en-US", description: "Authentication failed.", errorLink: ""},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			router := gin.New()
