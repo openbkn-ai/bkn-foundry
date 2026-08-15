@@ -47,6 +47,29 @@ func TestValidateLocaleDirRequiresDeclaredLocales(t *testing.T) {
 	}
 }
 
+func TestValidateLocaleDirAllowsOnlyEmptyErrorLink(t *testing.T) {
+	dir := writeLocaleFiles(t, map[string]string{
+		"errors.zh-CN.toml": "[Error]\nDescription = '请求失败'\nSolution = '请重试'\nErrorLink = ''\n",
+		"errors.en-US.toml": "[Error]\nDescription = 'Request failed'\nSolution = 'Try again'\nErrorLink = ''\n",
+	})
+
+	if err := ValidateLocaleDir(dir, "zh-CN", "zh-CN", "en-US"); err != nil {
+		t.Fatalf("expected an empty ErrorLink to be allowed, got %v", err)
+	}
+}
+
+func TestValidateLocaleDirRejectsEmptyRequiredMessage(t *testing.T) {
+	dir := writeLocaleFiles(t, map[string]string{
+		"errors.zh-CN.toml": "[Error]\nDescription = ''\nSolution = '请重试'\nErrorLink = ''\n",
+		"errors.en-US.toml": "[Error]\nDescription = ''\nSolution = 'Try again'\nErrorLink = ''\n",
+	})
+
+	err := ValidateLocaleDir(dir, "zh-CN", "zh-CN", "en-US")
+	if err == nil || !strings.Contains(err.Error(), "Error.Description is an empty string") {
+		t.Fatalf("expected an empty description to be rejected, got %v", err)
+	}
+}
+
 func TestTranslateFallsBackWithoutFatal(t *testing.T) {
 	dir := writeLocaleFiles(t, map[string]string{
 		"errors.zh-CN.toml": "[Error]\nDescription = '请求失败：{{ .name }}'\nSolution = '请重试'\n",

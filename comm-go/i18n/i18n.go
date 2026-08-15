@@ -174,7 +174,7 @@ func normalizeLocale(raw string) string {
 func flattenMessages(messages map[string]*Message, messageID string, raw interface{}) error {
 	switch value := raw.(type) {
 	case string:
-		if value == "" {
+		if value == "" && !strings.HasSuffix(messageID, ".ErrorLink") {
 			return fmt.Errorf("messageId %s is an empty string", messageID)
 		}
 		if _, ok := messages[messageID]; ok {

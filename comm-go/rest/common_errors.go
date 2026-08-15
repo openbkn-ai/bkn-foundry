@@ -6,9 +6,16 @@
 
 package rest
 
-// 系统默认错误
+import (
+	_ "embed"
+
+	"github.com/BurntSushi/toml"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+)
+
+// System default error codes.
 const (
-	// 公共错误码
 	PublicError_BadRequest          = "Public.BadRequest"
 	PublicError_Unauthorized        = "Public.Unauthorized"
 	PublicError_Forbidden           = "Public.Forbidden"
@@ -20,133 +27,80 @@ const (
 	PublicError_ServiceUnavailable  = "Public.ServiceUnavailable"
 )
 
-var (
-	PublicErrorI18n = map[string]map[string]BaseError{
-		PublicError_BadRequest: {
-			"zh-CN": {
-				ErrorCode:   PublicError_BadRequest,
-				Description: "参数错误",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_BadRequest,
-				Description: "bad request",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_Unauthorized: {
-			"zh-CN": {
-				ErrorCode:   PublicError_Unauthorized,
-				Description: "认证失败",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_Unauthorized,
-				Description: "authorized failed",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_Forbidden: {
-			"zh-CN": {
-				ErrorCode:   PublicError_Forbidden,
-				Description: "权限错误",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_Forbidden,
-				Description: "permission error",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_NotFound: {
-			"zh-CN": {
-				ErrorCode:   PublicError_NotFound,
-				Description: "对象不存在",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_NotFound,
-				Description: "not found",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_MethodNotAllowed: {
-			"zh-CN": {
-				ErrorCode:   PublicError_MethodNotAllowed,
-				Description: "不支持的mtehod方法",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_MethodNotAllowed,
-				Description: "method not allowed",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_Conflict: {
-			"zh-CN": {
-				ErrorCode:   PublicError_Conflict,
-				Description: "资源冲突",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_Conflict,
-				Description: "conflict",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_InternalServerError: {
-			"zh-CN": {
-				ErrorCode:   PublicError_InternalServerError,
-				Description: "内部错误",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_InternalServerError,
-				Description: "internal server error",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_NotImplemented: {
-			"zh-CN": {
-				ErrorCode:   PublicError_NotImplemented,
-				Description: "服务端未实现请求方法",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_NotImplemented,
-				Description: "not implemented",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
-		PublicError_ServiceUnavailable: {
-			"zh-CN": {
-				ErrorCode:   PublicError_ServiceUnavailable,
-				Description: "服务端暂时不可用",
-				Solution:    "暂无",
-				ErrorLink:   "暂无",
-			},
-			"en-US": {
-				ErrorCode:   PublicError_ServiceUnavailable,
-				Description: "service unavailable",
-				Solution:    "None",
-				ErrorLink:   "None",
-			},
-		},
+var publicErrorCodes = []string{
+	PublicError_BadRequest,
+	PublicError_Unauthorized,
+	PublicError_Forbidden,
+	PublicError_NotFound,
+	PublicError_MethodNotAllowed,
+	PublicError_Conflict,
+	PublicError_InternalServerError,
+	PublicError_NotImplemented,
+	PublicError_ServiceUnavailable,
+}
+
+var publicErrorLocales = []Language{SimplifiedChinese, AmericanEnglish}
+
+//go:embed locales/public-errors.zh-CN.toml
+var publicErrorsChinese []byte
+
+//go:embed locales/public-errors.en-US.toml
+var publicErrorsEnglish []byte
+
+type publicErrorMessage struct {
+	Description string
+	Solution    string
+	ErrorLink   string
+}
+
+// PublicErrorI18n is loaded from resources embedded in comm-go. Embedding keeps
+// the public HTTP error catalog available in every consumer image.
+var PublicErrorI18n = loadPublicErrorI18n()
+
+func loadPublicErrorI18n() map[string]map[string]BaseError {
+	resources := map[Language][]byte{
+		SimplifiedChinese: publicErrorsChinese,
+		AmericanEnglish:   publicErrorsEnglish,
 	}
-)
+	parsed := make(map[Language]map[string]publicErrorMessage, len(resources))
+	for lang, contents := range resources {
+		messages := make(map[string]publicErrorMessage)
+		if err := toml.Unmarshal(contents, &messages); err != nil {
+			logger.Warnf("load embedded public error locale %s: %v", lang, err)
+			continue
+		}
+		parsed[lang] = messages
+	}
+
+	errors := make(map[string]map[string]BaseError, len(publicErrorCodes))
+	for _, code := range publicErrorCodes {
+		errors[code] = make(map[string]BaseError, len(publicErrorLocales))
+		for _, lang := range publicErrorLocales {
+			message, ok := parsed[lang][code]
+			if !ok || message.Description == "" || message.Solution == "" {
+				logger.Warnf("embedded public error locale missing message: locale=%s error_code=%s", lang, code)
+				message = fallbackPublicError(lang)
+			}
+			errors[code][lang] = BaseError{
+				ErrorCode:   code,
+				Description: message.Description,
+				Solution:    message.Solution,
+				ErrorLink:   message.ErrorLink,
+			}
+		}
+	}
+	return errors
+}
+
+func fallbackPublicError(lang Language) publicErrorMessage {
+	if lang == AmericanEnglish {
+		return publicErrorMessage{
+			Description: "Request failed.",
+			Solution:    "See the request details or contact an administrator.",
+		}
+	}
+	return publicErrorMessage{
+		Description: "请求失败。",
+		Solution:    "请查看请求详情或联系管理员。",
+	}
+}
