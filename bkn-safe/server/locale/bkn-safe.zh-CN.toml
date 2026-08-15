@@ -5,7 +5,7 @@
 [BknSafe.InvalidRequest]
 Description = "请求参数无效。"
 Solution = "请检查请求参数。"
-ErrorLink = "??"
+ErrorLink = "暂无"
 
 [BknSafe.Unauthorized]
 Description = "认证失败。"
