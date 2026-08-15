@@ -127,7 +127,10 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
 		{"network-builder manages skill", networkBuilder, "skill", "s1", "publish", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
-		{"normal-user can query knowledge", normalUser, "knowledge_network", "kn1", "query_data", true},
+		// The data surface defaults to nothing (#513); capabilities are unchanged.
+		{"normal-user cannot query knowledge by default", normalUser, "knowledge_network", "kn1", "query_data", false},
+		{"normal-user cannot view a catalog by default", normalUser, "catalog", "c1", "view_detail", false},
+		{"normal-user cannot view a data resource by default", normalUser, "resource", "r1", "view_detail", false},
 		{"normal-user can execute skill", normalUser, "skill", "s1", "execute", true},
 		{"normal-user can use agent", normalUser, "agent", "a1", "use", true},
 		{"normal-user cannot create catalog", normalUser, "catalog", "x", "create", false},
@@ -353,7 +356,10 @@ func TestApplyReconcilesCurrentSeedRoleGrants(t *testing.T) {
 	} else if ok {
 		t.Fatal("stale current-role grant still allows admin-user create")
 	}
-	if ok, err := e.Check(user, "catalog", "c1", "view_detail"); err != nil {
+	// Assert the rebuild half with a grant the role actually holds: the data
+	// surface is gone (#513), so using catalog here would test the revocation
+	// instead, which is another test's job.
+	if ok, err := e.Check(user, "skill", "s1", "execute"); err != nil {
 		t.Fatal(err)
 	} else if !ok {
 		t.Fatal("normal_user desired grant was not restored after reconcile")
@@ -413,11 +419,17 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 	}
 }
 
-// TestSeedGrantsKeepResourceReadBehaviour guards the compatibility promise of
-// #801: today a normal user reading a table also reads its rows through the
-// single view_detail verb. Splitting the verb must not silently take that away,
-// so the seed grants query_data alongside view_detail.
-func TestSeedGrantsKeepResourceReadBehaviour(t *testing.T) {
+// TestSeedRevokesNormalUserDataGrants pins #513: the ordinary role holds no
+// data grant at all, so an object grant is finally the thing that decides.
+//
+// The point is not tidiness. In an allow-only engine a type-wide allow cannot be
+// narrowed by an object grant, so as long as normal_user held resource:* every
+// per-object configuration an administrator made was dead on arrival.
+//
+// The capability surface stays: tools, models and agents leak no data through a
+// type-wide grant, and revoking those would only leave a platform where a signed-in
+// user cannot invoke a model.
+func TestSeedRevokesNormalUserDataGrants(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -431,28 +443,65 @@ func TestSeedGrantsKeepResourceReadBehaviour(t *testing.T) {
 		normalUser     = "b5f9ac3e-992c-4bbd-8126-95e87e51c46e"
 		networkBuilder = "1572fb82-526f-11f0-bde6-e674ec8dde71"
 	)
-
 	user := "u-normal"
 	if err := e.AssignRole(user, normalUser); err != nil {
 		t.Fatal(err)
 	}
-	for _, op := range []string{"view_detail", "query_data"} {
-		allowed, err := e.Check(user, "resource", "res-1", op)
+
+	// The data surface: not one grant should be left.
+	for _, tc := range []struct{ rtype, op string }{
+		{"catalog", "view_detail"},
+		{"resource", "view_detail"},
+		{"resource", "query_data"},
+		{"knowledge_network", "view_detail"},
+		{"knowledge_network", "query_data"},
+	} {
+		allowed, err := e.Check(user, tc.rtype, "x-1", tc.op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if allowed {
+			t.Errorf("normal_user still holds %s/%s by default — object grants stay overridden by it", tc.rtype, tc.op)
+		}
+	}
+
+	// Granted explicitly, it must be visible — otherwise revoking the wildcard
+	// leaves no working path to see anything at all.
+	if err := e.GrantObjectPermission(user, "catalog", "c-1", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	allowed, err := e.Check(user, "catalog", "c-1", "view_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !allowed {
+		t.Error("an explicit catalog grant still does not grant access — the convergence would leave no usable path")
+	}
+
+	// The capability surface is untouched: revoking it buys no safety and leaves a
+	// signed-in user unable to invoke a model.
+	for _, tc := range []struct{ rtype, op string }{
+		{"skill", "execute"},
+		{"tool_box", "execute"},
+		{"large_model", "execute"},
+		{"small_model", "execute"},
+		{"agent", "use"},
+	} {
+		allowed, err := e.Check(user, tc.rtype, "x-1", tc.op)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !allowed {
-			t.Errorf("normal_user lost resource %q after the split", op)
+			t.Errorf("normal_user lost the capability %s/%s — that is not convergence, it is an unusable platform", tc.rtype, tc.op)
 		}
 	}
 
-	// The builder must keep creating tables across the upgrade: vega still
-	// judges resource+create until it switches to catalog+resource_manage.
+	// The builder is unaffected: it creates tables through its own grants.
 	builder := "u-builder"
 	if err := e.AssignRole(builder, networkBuilder); err != nil {
 		t.Fatal(err)
 	}
-	allowed, err := e.Check(builder, "resource", "res-1", "create")
+	allowed, err = e.Check(builder, "resource", "res-1", "create")
 	if err != nil {
 		t.Fatal(err)
 	}

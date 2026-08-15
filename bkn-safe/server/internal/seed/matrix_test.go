@@ -40,16 +40,16 @@ func TestRoleResourceMatrix(t *testing.T) {
 	}
 	roleAllowed := map[string]map[string]string{
 		networkBuilder: repOp,
+		// The data types (catalog / resource / knowledge_network) are absent on
+		// purpose: the ordinary role holds no data grant, and visibility comes
+		// only from an explicit grant (#513).
 		normalUser: {
-			"agent":             "use",
-			"catalog":           "view_detail",
-			"resource":          "view_detail",
-			"knowledge_network": "query_data",
-			"tool_box":          "execute",
-			"mcp":               "execute",
-			"operator":          "execute",
-			"skill":             "execute",
-			"small_model":       "execute",
+			"agent":       "use",
+			"tool_box":    "execute",
+			"mcp":         "execute",
+			"operator":    "execute",
+			"skill":       "execute",
+			"small_model": "execute",
 		},
 	}
 	allTypes := make([]string, 0, len(repOp))
