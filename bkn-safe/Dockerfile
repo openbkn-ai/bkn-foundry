@@ -31,6 +31,7 @@ RUN apk add --no-cache ca-certificates curl \
     && addgroup -g $GID -S bkn && adduser -u $UID -S bkn -G bkn
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin/bkn-safe /opt/bkn-safe/bkn-safe
+COPY --from=builder --chown=$UID:$GID /go/src/locale /opt/bkn-safe/locale
 
 WORKDIR /opt/bkn-safe
 USER $UID

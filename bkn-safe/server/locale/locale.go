@@ -6,15 +6,23 @@
 package locale
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
-// Register loads the catalog from the package directory so tests and deployed
-// binaries use the same resources independent of the process working directory.
+// Register loads resources bundled next to the deployed binary, with the source
+// directory retained as a fallback for local development and tests.
 func Register() {
+	if executable, err := os.Executable(); err == nil {
+		deployedDir := filepath.Join(filepath.Dir(executable), "locale")
+		if entries, readErr := os.ReadDir(deployedDir); readErr == nil && len(entries) > 0 {
+			i18n.RegisterI18n(deployedDir)
+			return
+		}
+	}
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		return
