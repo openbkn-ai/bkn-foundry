@@ -68,8 +68,14 @@ paths:
         没有相关度语义，因此响应里的 `_score` 会被剥掉，避免调用方误以为结果按相关度
         排序。只有查询里含 `knn` 或 `match` 这类真正打分的算子时才保留 `_score`。
 
-        **不生效的字段**：请求体里的 `sort` 与 `need_total` 不被本接口接受（服务端
-        请求结构体没有这两个字段，绑定时即丢弃），排序与总数行为按下游默认。
+        **排序**：`sort` 可选，多字段按数组顺序依次比较（前一个相等才看后一个）。
+        不传时的默认序**不保证语义**——既不是「最新」也不是「最相关」，因此
+        「最近的 N 条」「金额最高的 N 个」必须显式传 `sort`，不能靠 `limit` 截默认序。
+        `field` 是否属于该对象类由 ontology-query 校验，非法字段或非法 `direction`
+        返回 400 并透传原因。
+
+        **总数**：响应的 `total_count` 恒定返回，无需请求方开启，值为满足过滤条件的
+        实例总数，不受 `limit` 限制。判断「一共多少条」读它即可，不必翻页累加。
       parameters:
         - name: kn_id
           in: query
@@ -355,6 +361,13 @@ components:
           items:
             type: string
           description: 指定返回的属性字段；不传返回全部属性。
+        sort:
+          type: array
+          items:
+            $ref: '#/components/schemas/SortSpec'
+          description: |
+            排序字段，按数组顺序依次比较。不传时默认序不保证语义，需要「最新 /
+            最大 / 最小的前 N 条」时必须显式指定。
         search_after:
           type: array
           items: {}
@@ -365,6 +378,21 @@ components:
           type: integer
           description: |
             偏移翻页：适用于资源（vega 表源）路径，可跳页。与 `search_after` 互斥。
+
+    SortSpec:
+      type: object
+      description: 单个排序字段。
+      required:
+        - field
+        - direction
+      properties:
+        field:
+          type: string
+          description: 排序字段，必须是该对象类的属性名。
+        direction:
+          type: string
+          enum: [asc, desc]
+          description: 排序方向。
 
     FlatFilter:
       type: object
@@ -439,7 +467,9 @@ components:
         total_count:
           type: integer
           format: int64
-          description: 命中总数；下游未返回时该字段不出现。
+          description: |
+            满足过滤条件的实例总数，不受 `limit` 限制。恒定返回（服务端对下游固定
+            开启 `need_total`），仅在总数为 0 时因 `omitempty` 不出现。
         search_after:
           type: array
           items: {}

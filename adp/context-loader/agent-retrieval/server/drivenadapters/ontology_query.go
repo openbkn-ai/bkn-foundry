@@ -37,8 +37,14 @@ var (
 )
 
 const (
-	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-types/:ot_id?include_type_info=true
-	queryObjectInstancesURI = "/in/v1/knowledge-networks/%s/object-types/%s?include_type_info=%v&include_logic_params=%v"
+	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-types/:ot_id
+	//
+	// Query parameters are assembled with url.Values at call time rather than baked
+	// into this format string: the set is no longer fixed (exclude_system_properties
+	// repeats, ignoring_store_cache is conditional), and ot_id reaches us straight
+	// from an agent, so an unescaped "?" or "&" in it would smuggle parameters into
+	// the downstream request — the same hazard queryMetricDataURI documents below.
+	queryObjectInstancesURI = "/in/v1/knowledge-networks/%s/object-types/%s"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-types/:ot_id/properties
 	queryLogicPropertiesURI = "/in/v1/knowledge-networks/%s/object-types/%s/properties"
 	// https://{host}:{port}/api/ontology-query/v1/knowledge-networks/:kn_id/action-types/:at_id
@@ -106,12 +112,27 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	// Expand the flat `filters` sugar into a nested condition before forwarding.
 	expandFilters(req)
 
-	uri := fmt.Sprintf(queryObjectInstancesURI, req.KnID, req.OtID, req.IncludeTypeInfo, req.IncludeLogicParams)
-	url := fmt.Sprintf("%s%s", o.baseURL, uri)
+	// need_total is a body field, not a query parameter, and it is not optional here:
+	// without it ontology-query omits total_count, leaving the caller able to tell
+	// "is there a next page" but not "how many matched at all".
+	req.NeedTotal = true
+
+	uri := fmt.Sprintf(queryObjectInstancesURI, url.PathEscape(req.KnID), url.PathEscape(req.OtID))
+	query := url.Values{}
+	query.Set("include_type_info", strconv.FormatBool(req.IncludeTypeInfo))
+	query.Set("include_logic_params", strconv.FormatBool(req.IncludeLogicParams))
+	if req.IgnoringStoreCache {
+		query.Set("ignoring_store_cache", "true")
+	}
+	for _, prop := range req.ExcludeSystemProperties {
+		query.Add("exclude_system_properties", prop)
+	}
+	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
+
 	header := common.GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
-	_, respBody, err := o.httpClient.Post(ctx, url, header, req)
+	_, respBody, err := o.httpClient.Post(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#QueryObjectInstances] QueryObjectInstances request failed, err: %v", err)
 		err = classifyQueryError(ctx, err)

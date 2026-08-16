@@ -131,11 +131,14 @@
     "input_schema.properties.filters.items.properties.op.description": "Filter operator, same rules as condition.operation: comparison operators come from the property type (like/not_like/regex only on string-like types), match requires condition_operations to contain match. exist/not_exist (no value) and knn (needs limit_key/limit_value) cannot be expressed here - use condition.",
     "input_schema.properties.filters.items.properties.value.description": "Filter value; array for in/not_in, [min, max] (both ends inclusive) for range/out_range.",
     "input_schema.properties.limit.description": "Maximum number of instances to return.",
+    "input_schema.properties.sort.description": "Sort fields, compared in array order (the next one only breaks ties in the previous). Without it the server default order carries no semantics - it is neither newest-first nor most-relevant - so questions like \"the 5 most recent\" or \"the 3 largest\" must pass sort explicitly instead of relying on limit to truncate the default order. field must be a property of this object type; confirm it with search_schema or get_object_types first.",
+    "input_schema.properties.sort.items.properties.field.description": "Sort field (object type property name).",
+    "input_schema.properties.sort.items.properties.direction.description": "Sort direction.",
     "input_schema.properties.search_after.description": "Cursor returned by the previous page. Use it to fetch the next page.",
     "input_schema.properties.offset.description": "Legacy offset. Prefer search_after when available.",
     "input_schema.properties.properties.description": "Optional selected property names to return.",
     "output_schema.properties.datas.description": "Object instances returned by the query.",
-    "output_schema.properties.total_count.description": "Total count if available.",
+    "output_schema.properties.total_count.description": "Total number of instances matching the filter, independent of limit. Always returned - read it instead of accumulating page sizes.",
     "output_schema.properties.search_after.description": "Cursor for the next page."
   },
   "run_sql": {
