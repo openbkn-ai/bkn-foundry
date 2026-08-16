@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from app.commons.locale import reset_effective_locale, set_effective_locale
 from app.utils import openai_error
 
 
@@ -14,6 +15,7 @@ UPSTREAM_FLAT = '{"code":50508,"message":"System is too busy now. Please try aga
 UPSTREAM_OPENAI = ('{"error":{"message":"Service is too busy. We advise users to temporarily '
                    'switch to alternative LLM API service providers.","type":"service_unavailable_error",'
                    '"param":null,"code":"service_unavailable_error"}}')
+ZH_CONNECTION_FAILED = "无法连接到模型服务。"
 
 
 class TestFromUpstream:
@@ -45,30 +47,38 @@ class TestFromUpstream:
 
     def test_empty_body_falls_back(self):
         body = openai_error.from_upstream("", 502)
-        assert body["error"]["message"] == "模型服务调用失败"
+        assert body["error"]["message"] == ZH_CONNECTION_FAILED
+
+    def test_empty_body_fallback_uses_effective_english_locale(self):
+        token = set_effective_locale("en-US")
+        try:
+            body = openai_error.from_upstream("", 502)
+        finally:
+            reset_effective_locale(token)
+        assert body["error"]["message"] == "The model service could not be reached."
 
     def test_unknown_dict_shape_does_not_leak_whole_body(self):
         """形态未知的 body 常带回显请求/内部 trace id/网关节点名，不整段外泄"""
         body = openai_error.from_upstream(
             {"trace_id": "abc", "node": "gw-internal-3",
              "request": {"api_key": "sk-secret"}}, 500)
-        assert body["error"]["message"] == "模型服务调用失败"
+        assert body["error"]["message"] == ZH_CONNECTION_FAILED
         assert "sk-secret" not in json.dumps(body)
         assert "gw-internal-3" not in json.dumps(body)
 
     def test_empty_upstream_message_falls_back(self):
         body = openai_error.from_upstream(
             '{"error":{"message":"","code":"x"}}', 500)
-        assert body["error"]["message"] == "模型服务调用失败"
+        assert body["error"]["message"] == ZH_CONNECTION_FAILED
 
     def test_html_error_page_falls_back(self):
         body = openai_error.from_upstream(
             "<html><head><title>502 Bad Gateway</title></head></html>", 502)
-        assert body["error"]["message"] == "模型服务调用失败"
+        assert body["error"]["message"] == ZH_CONNECTION_FAILED
 
     def test_overlong_plain_body_falls_back(self):
         body = openai_error.from_upstream("x" * 900, 500)
-        assert body["error"]["message"] == "模型服务调用失败"
+        assert body["error"]["message"] == ZH_CONNECTION_FAILED
 
     def test_accepts_dict(self):
         body = openai_error.from_upstream({"detail": "boom"}, 500)

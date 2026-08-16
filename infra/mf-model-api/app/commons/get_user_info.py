@@ -48,7 +48,7 @@ async def get_username_by_ids(user_ids):
         ]
     }
     
-    # 存储最终的用户信息
+    # Accumulate resolved user and application names.
     final_user_infos = {}
     
     for i in range(2):
@@ -65,14 +65,14 @@ async def get_username_by_ids(user_ids):
                         effective_ids = [user_id for user_id in user_ids if user_id not in invalid_ids]
                         payload["user_ids"] = effective_ids
                         
-                        # 如果有无效ID，调用应用名称接口
+                        # Resolve invalid user IDs through the application-name endpoint.
                         if invalid_ids:
                             app_payload = {
                                 "method": "GET",
                                 "app_ids": invalid_ids
                             }
                             
-                            # 调用应用名称接口
+                            # Query application names.
                             async with session.post(
                                     user_management_app_url,
                                     json=app_payload,
@@ -80,19 +80,19 @@ async def get_username_by_ids(user_ids):
                                 if app_response.status == 200:
                                     app_res = await app_response.text()
                                     app_result = json.loads(app_res)
-                                    # 获取应用名称信息
+                                    # Merge application names into the result.
                                     app_names = app_result.get("app_names", [])
                                     for app_info in app_names:
                                         final_user_infos[app_info['id']] = app_info['name']
                                 elif app_response.status == 400:
                                     app_res = await app_response.text()
                                     app_result = json.loads(app_res)
-                                    # 处理400错误，排除无效的应用ID
+                                    # Exclude invalid application IDs reported by a 400 response.
                                     invalid_app_ids = app_result.get("detail", {}).get("ids", [])
                                     valid_app_ids = [app_id for app_id in invalid_ids if app_id not in invalid_app_ids]
                                     
                                     if valid_app_ids:
-                                        # 重新调用应用名称接口，只包含有效的应用ID
+                                        # Retry the application-name request with valid IDs only.
                                         app_payload["app_ids"] = valid_app_ids
                                         async with session.post(
                                                 user_management_app_url,
@@ -105,7 +105,7 @@ async def get_username_by_ids(user_ids):
                                                 for app_info in app_names:
                                                     final_user_infos[app_info['id']] = app_info['name']
                                 else:
-                                    # 其他错误状态，抛出异常
+                                    # Treat all other statuses as dependency failures.
                                     raise Exception("user-management app service error,please check")
                         
                         continue
@@ -114,7 +114,7 @@ async def get_username_by_ids(user_ids):
                     res = await response.text()
                     result = json.loads(res)
                     user_infos = {info['id']: info['name'] for info in result}
-                    # 合并用户信息和应用信息
+                    # Merge user and application identity results.
                     final_user_infos.update(user_infos)
                     return final_user_infos
 

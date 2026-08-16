@@ -62,7 +62,7 @@ class RedisClient(object):
                 if model == "read":
                     redis_con = await sentinel.slave_for(self.redis_master_name, username=self.redis_user,
                                                          password=self.redis_passwd, db=db)
-                # 验证连接
+                # Validate the connection.
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
@@ -78,19 +78,19 @@ class RedisClient(object):
                     pool = redis_async.ConnectionPool(host=self.redis_write_ip, port=self.redis_write_port, db=db,
                                                       password=self.redis_write_passwd)
                     redis_con = redis_async.StrictRedis(connection_pool=pool)
-                # 验证连接
+                # Validate the connection.
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
                 StandLogger.error(f"Redis连接失败 - master-slave模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
                 raise Exception(f"connect redis error:{str(e)}")
         else:
-            # standalone 单机模式
+            # Standalone mode.
             try:
                 pool = redis_async.ConnectionPool(host=self.redis_ip, port=self.redis_port, db=db,
                                                   password=self.redis_passwd, username=self.redis_user if self.redis_user else None)
                 redis_con = redis_async.StrictRedis(connection_pool=pool)
-                # 验证连接
+                # Validate the connection.
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
@@ -112,7 +112,7 @@ class RedisClient(object):
                 if model == "read":
                     redis_con = await sentinel.slave_for(self.redis_master_name, username=self.redis_user,
                                                          password=self.redis_passwd, db=db)
-                # 验证连接
+                # Validate the connection.
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
@@ -128,19 +128,19 @@ class RedisClient(object):
                     pool = redis_async.ConnectionPool(host=self.redis_write_ip, port=self.redis_write_port, db=db,
                                                       password=self.redis_write_passwd)
                     redis_con = redis_async.StrictRedis(connection_pool=pool)
-                # 验证连接
+                # Validate the connection.
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
                 StandLogger.error(f"Redis连接失败 - {model}模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
                 raise Exception(f"connect redis error:{str(e)}")
         else:
-            # standalone 单机模式
+            # Standalone mode.
             try:
                 pool = redis_async.ConnectionPool(host=self.redis_ip, port=self.redis_port, db=db,
                                                   password=self.redis_passwd, username=self.redis_user if self.redis_user else None)
                 redis_con = redis_async.StrictRedis(connection_pool=pool)
-                # 验证连接
+                # Validate the connection.
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
@@ -165,7 +165,7 @@ class ConnectUtil:
                 await instance._init_connection_pools()
                 if instance.read_conn is None or instance.write_conn is None:
                     StandLogger.error(f"Redis连接创建失败: read_conn={instance.read_conn}, write_conn={instance.write_conn}")
-                    raise Exception("Redis连接创建失败")
+                    raise Exception("Redis connection creation failed")
                 instance._initialized = True
                 StandLogger.info(f"Redis连接池创建成功: read_conn={instance.read_conn}, write_conn={instance.write_conn}")
                 cls._instance = instance
@@ -179,21 +179,21 @@ class ConnectUtil:
         self._last_health_check = 0
 
     async def _init_connection_pools(self):
-        """初始化高性能Redis连接池"""
+        """Initialize the Redis connection pools."""
         try:
             redis_client = self.__class__._redis_client
             
             if redis_client.redis_cluster_mode == "sentinel":
-                # 哨兵模式：使用哨兵连接
+                # Use Sentinel-managed connections.
                 await self._init_sentinel_connection_pools(redis_client)
             elif redis_client.redis_cluster_mode == "master-slave":
-                # 主从模式：使用主从连接
+                # Use separate primary and replica connections.
                 await self._init_master_slave_connection_pools(redis_client)
             else:
-                # 默认模式：使用单机连接
+                # Use a standalone connection.
                 await self._init_default_connection_pools(redis_client)
             
-            # 预热连接池 - 建立初始连接
+            # Warm the pools by establishing initial connections.
             await self._warmup_connections()
             
             StandLogger.info("Redis高性能连接池初始化成功")
@@ -203,9 +203,9 @@ class ConnectUtil:
             raise e
 
     async def _init_sentinel_connection_pools(self, redis_client):
-        """初始化哨兵模式的连接池"""
+        """Initialize Sentinel-mode connections."""
         try:
-            # 创建哨兵连接
+            # Create the Sentinel client.
             sentinel = Sentinel_async([(redis_client.redis_ip, redis_client.redis_port)], 
                                     password=redis_client.redis_sentinel_password,
                                     sentinel_kwargs={
@@ -213,7 +213,7 @@ class ConnectUtil:
                                         "username": redis_client.redis_sentinel_user
                                     })
             
-            # 获取主节点连接（写操作）
+            # Resolve the primary for writes.
             master_redis = await sentinel.master_for(
                 redis_client.redis_master_name, 
                 username=redis_client.redis_user,
@@ -228,7 +228,7 @@ class ConnectUtil:
                 decode_responses=False
             )
             
-            # 获取从节点连接（读操作）
+            # Resolve a replica for reads.
             slave_redis = await sentinel.slave_for(
                 redis_client.redis_master_name, 
                 username=redis_client.redis_user,
@@ -253,39 +253,39 @@ class ConnectUtil:
             raise e
 
     async def _init_master_slave_connection_pools(self, redis_client):
-        """初始化主从模式的连接池"""
+        """Initialize primary/replica connection pools."""
         try:
-            # 创建读连接池 - 高性能配置
+            # Create the read pool.
             self.__class__._read_pool = redis_async.ConnectionPool(
                 host=redis_client.redis_read_ip,
                 port=redis_client.redis_read_port,
                 db=self.db,
                 password=redis_client.redis_read_passwd,
-                max_connections=50,  # 最大连接数
+                max_connections=50,  # Maximum connections.
                 retry_on_timeout=True,
                 socket_keepalive=True,
-                socket_connect_timeout=3,  # 减少连接超时时间
-                socket_timeout=2,  # 减少操作超时时间
-                health_check_interval=30,  # 健康检查间隔
-                decode_responses=False  # 保持二进制格式，提高性能
+                socket_connect_timeout=3,  # Connection timeout.
+                socket_timeout=2,  # Operation timeout.
+                health_check_interval=30,  # Health-check interval.
+                decode_responses=False  # Retain bytes to avoid decode overhead.
             )
             
-            # 创建写连接池 - 高性能配置
+            # Create the write pool.
             self.__class__._write_pool = redis_async.ConnectionPool(
                 host=redis_client.redis_write_ip,
                 port=redis_client.redis_write_port,
                 db=self.db,
                 password=redis_client.redis_write_passwd,
-                max_connections=30,  # 写操作连接数可以少一些
+                max_connections=30,  # Writes need fewer connections.
                 retry_on_timeout=True,
                 socket_keepalive=True,
-                socket_connect_timeout=3,  # 减少连接超时时间
-                socket_timeout=2,  # 减少操作超时时间
+                socket_connect_timeout=3,  # Connection timeout.
+                socket_timeout=2,  # Operation timeout.
                 health_check_interval=30,
                 decode_responses=False
             )
             
-            # 创建Redis客户端实例
+            # Create Redis client instances.
             self.read_conn = redis_async.StrictRedis(connection_pool=self.__class__._read_pool)
             self.write_conn = redis_async.StrictRedis(connection_pool=self.__class__._write_pool)
             
@@ -296,24 +296,24 @@ class ConnectUtil:
             raise e
 
     async def _init_default_connection_pools(self, redis_client):
-        """初始化默认模式的连接池（单机模式）"""
+        """Initialize a standalone Redis connection pool."""
         try:
-            # 创建连接池 - 高性能配置
+            # Create the standalone pool.
             self.__class__._read_pool = redis_async.ConnectionPool(
                 host=redis_client.redis_ip,
                 port=redis_client.redis_port,
                 db=self.db,
                 password=redis_client.redis_passwd,
-                max_connections=50,  # 最大连接数
+                max_connections=50,  # Maximum connections.
                 retry_on_timeout=True,
                 socket_keepalive=True,
-                socket_connect_timeout=3,  # 减少连接超时时间
-                socket_timeout=2,  # 减少操作超时时间
-                health_check_interval=30,  # 健康检查间隔
-                decode_responses=False  # 保持二进制格式，提高性能
+                socket_connect_timeout=3,  # Connection timeout.
+                socket_timeout=2,  # Operation timeout.
+                health_check_interval=30,  # Health-check interval.
+                decode_responses=False  # Retain bytes to avoid decode overhead.
             )
             
-            # 创建Redis客户端实例（读写使用同一个连接池）
+            # Use the same client and pool for reads and writes.
             self.read_conn = redis_async.StrictRedis(connection_pool=self.__class__._read_pool)
             self.write_conn = redis_async.StrictRedis(connection_pool=self.__class__._read_pool)
             
@@ -324,16 +324,16 @@ class ConnectUtil:
             raise e
 
     async def _warmup_connections(self):
-        """预热连接池，建立初始连接"""
+        """Warm the pool by establishing initial connections."""
         try:
             redis_client = self.__class__._redis_client
             
             if redis_client.redis_cluster_mode == "sentinel":
-                # 哨兵模式：直接ping连接
+                # Ping Sentinel-managed clients directly.
                 await self.read_conn.ping()
                 await self.write_conn.ping()
             else:
-                # 主从模式和默认模式：预热连接池
+                # Warm primary/replica and standalone pools.
                 if self.__class__._read_pool:
                     for _ in range(min(5, self.__class__._read_pool.max_connections)):
                         await self.read_conn.ping()
@@ -347,9 +347,9 @@ class ConnectUtil:
             StandLogger.warn(f"Redis连接池预热失败: {str(e)}")
 
     async def _check_connection_health(self):
-        """检查连接健康状态"""
+        """Check connection health."""
         current_time = time.time()
-        # 每30秒检查一次连接健康状态
+        # Check at most once every 30 seconds.
         if current_time - self._last_health_check > 30:
             try:
                 await self.read_conn.ping()
@@ -359,11 +359,11 @@ class ConnectUtil:
             except Exception as e:
                 StandLogger.warn(f"Redis连接健康检查失败: {str(e)}")
                 self._connection_healthy = False
-                # 不立即重连，让业务逻辑决定是否重连
+                # Let the calling operation decide whether to reconnect.
         return self._connection_healthy
 
     async def _reconnect(self):
-        """重新建立redis连接 - 仅在必要时调用"""
+        """Re-establish Redis connections when required."""
         if self._connection_healthy:
             return
             
@@ -372,12 +372,12 @@ class ConnectUtil:
         old_write_conn = self.write_conn
         
         try:
-            # 重新初始化连接池
+            # Initialize replacement pools.
             await self._init_connection_pools()
             self._connection_healthy = True
             StandLogger.info("Redis连接重建成功")
             
-            # 关闭旧连接
+            # Close old clients after the replacement succeeds.
             if old_read_conn:
                 try:
                     await old_read_conn.close()
@@ -391,13 +391,13 @@ class ConnectUtil:
                     
         except Exception as e:
             StandLogger.error(f"Redis重连失败: {str(e)}")
-            # 如果重连失败，恢复旧连接
+            # Restore the old clients if reconnection fails.
             self.read_conn = old_read_conn
             self.write_conn = old_write_conn
             raise e
 
     async def close(self):
-        """关闭Redis连接"""
+        """Close Redis connections."""
         if self.read_conn:
             await self.read_conn.close()
         if self.write_conn:
@@ -419,7 +419,7 @@ class ConnectUtil:
                     raise e
 
     async def set_if_absent(self, key: str, value: Union[str, int, float] = 1, expire: int | None = None) -> bool:
-        """SETNX 语义，已存在返回 False；设置成功可选过期时间"""
+        """Set a key with SETNX semantics and an optional expiration."""
         for i in range(3):
             try:
                 # Redis-py: set(name, value, ex=None, px=None, nx=False, xx=False)
@@ -434,7 +434,7 @@ class ConnectUtil:
                     raise e
 
     async def _set_expire(self, key: str, expire: int = None) -> bool:
-        """内部方法：设置key过期时间"""
+        """Set a key expiration internally."""
         if expire is not None:
             return await self.write_conn.expire(key, expire)
         return True
@@ -510,16 +510,16 @@ class ConnectUtil:
                     raise e
 
     async def get_str(self, key: str) -> Union[str, None]:
-        """高性能Redis GET操作，带智能重试和连接健康检查"""
-        # 先检查连接健康状态
+        """Read a Redis value with retries and connection health checks."""
+        # Check connection health before reading.
         await self._check_connection_health()
         
         for i in range(3):
             try:
-                # 使用更短的超时时间，避免长时间等待
+                # Use a short deadline to avoid blocking callers.
                 result = await asyncio.wait_for(
                     self.read_conn.get(key), 
-                    timeout=2.0  # 2秒超时
+                    timeout=2.0  # Two-second timeout.
                 )
                 return result
             except asyncio.TimeoutError:
@@ -530,13 +530,13 @@ class ConnectUtil:
                     await self._reconnect()
                 else:
                     StandLogger.error(f"Redis GET操作最终超时: key={key}")
-                    raise Exception(f"Redis GET操作超时: {key}")
+                    raise Exception(f"Redis GET operation timed out: {key}")
             except Exception as e:
                 StandLogger.warn(f"Redis GET操作失败 (尝试 {i+1}/3): {str(e)}")
                 if i < 2:
-                    # 标记连接不健康
+                    # Mark the connection unhealthy.
                     self._connection_healthy = False
-                    await asyncio.sleep(0.1 * (i + 1))  # 递增延迟
+                    await asyncio.sleep(0.1 * (i + 1))  # Incremental backoff.
                     await self._reconnect()
                 else:
                     StandLogger.error(f"Redis GET操作最终失败: key={key}, error={str(e)}")
@@ -544,21 +544,21 @@ class ConnectUtil:
 
     async def delete_str(self, key: str | list[str]) -> bool:
         """
-        删除一个或多个 Redis key
-        :param key: 单个 key 或 key 列表
-        :return: 是否删除成功
+        Delete one or more Redis keys.
+        :param key: one key or a list of keys
+        :return: whether any key was deleted
         """
         if isinstance(key, str):
             key = [key]
         for i in range(3):
             try:
-                # 使用 pipeline 批量删除
+                # Delete multiple keys through a pipeline.
                 async with self.write_conn.pipeline(transaction=True) as pipe:
                     for k in key:
                         if await self.exists(k):
                             pipe.delete(k)
                     results = await pipe.execute()
-                # 只要有一个 key 删除成功就返回 True
+                # Report success when at least one key was deleted.
                 return any(result > 0 for result in results)
             except Exception as e:
                 if i < 2:
@@ -619,7 +619,7 @@ class ConnectUtil:
 
 async def get_redis_util():
     """
-    获取已初始化的redis_util实例
+    Return the initialized Redis utility singleton.
     """
     global redis_util
     if redis_util is None:
@@ -639,22 +639,22 @@ class MyKafkaClient(object):
         self.topic_name = topic_name
         self.admin_client = None
         
-        # 异步发送相关属性
-        self._message_queue = Queue(maxsize=10000)  # 消息队列，限制大小防止内存溢出
+        # Asynchronous producer state.
+        self._message_queue = Queue(maxsize=10000)  # Bound memory use.
         self._producer_thread = None
         self._shutdown_event = threading.Event()
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="kafka-producer")
         self._is_async_running = False
         
-        # 初始化时检查并创建topic
+        # Ensure the topic exists during initialization.
         self._init_admin_client()
         self._check_and_create_topic()
         
-        # 启动异步生产者线程
+        # Start the asynchronous producer thread.
         self._start_async_producer()
 
     def _init_admin_client(self):
-        """初始化AdminClient"""
+        """Initialize the Kafka AdminClient."""
         self.admin_client = AdminClient({
             'bootstrap.servers': '{}:{}'.format(base_config.KAFKAHOST, base_config.KAFKAPORT),
             'security.protocol': 'sasl_plaintext',
@@ -665,25 +665,25 @@ class MyKafkaClient(object):
         })
 
     def _check_and_create_topic(self):
-        """检查topic是否存在，如果不存在则创建"""
+        """Create the Kafka topic when it does not exist."""
         try:
-            # 获取集群元数据
+            # Read cluster metadata.
             metadata = self.admin_client.list_topics(timeout=10)
             
-            # 检查topic是否存在
+            # Check whether the topic already exists.
             if self.topic_name not in metadata.topics:
-                # 创建topic
+                # Define the topic.
                 new_topic = NewTopic(
                     topic=self.topic_name,
-                    num_partitions=3,  # 设置分区数为3
-                    replication_factor=1  # 设置副本因子为1
+                    num_partitions=3,  # Three partitions.
+                    replication_factor=1  # One replica.
                 )
                 
-                # 创建topic
+                # Submit topic creation.
                 fs = self.admin_client.create_topics([new_topic])
                 for topic, f in fs.items():
                     try:
-                        f.result()  # 等待创建完成
+                        f.result()  # Wait for completion.
                         StandLogger.info(f"Topic {topic} created successfully")
                     except Exception as e:
                         StandLogger.error(f"Failed to create topic {topic}: {e}")
@@ -693,7 +693,7 @@ class MyKafkaClient(object):
             StandLogger.error(f"Error checking/creating topic: {e}")
 
     def connect_producer(self):
-        """连接生产者"""
+        """Connect the Kafka producer."""
         if self.producer is None:
             self.producer = Producer({
                 'bootstrap.servers': '{}:{}'.format(base_config.KAFKAHOST, base_config.KAFKAPORT),
@@ -702,15 +702,15 @@ class MyKafkaClient(object):
                 'sasl.mechanism': 'PLAIN',
                 'sasl.username': base_config.KAFKAUSER,
                 'sasl.password': base_config.KAFKAPASS,
-                'acks': 1,  # 确认leader分区收到消息
-                'queue.buffering.max.messages': 100000,  # 增加队列缓冲区大小
-                'queue.buffering.max.kbytes': 102400,   # 增加队列缓冲区大小(KB)
-                'batch.num.messages': 1000,             # 批量发送的消息数量
-                'linger.ms': 5                          # 批量发送等待时间(ms)
+                'acks': 1,  # Confirm receipt by the leader partition.
+                'queue.buffering.max.messages': 100000,  # Buffered message limit.
+                'queue.buffering.max.kbytes': 102400,   # Buffer size in KiB.
+                'batch.num.messages': 1000,             # Messages per batch.
+                'linger.ms': 5                          # Batch delay in milliseconds.
             })
 
     def connect_consumer(self, group_id='quota_data_group'):
-        """连接消费者"""
+        """Connect the Kafka consumer."""
         if self.consumer is None:
             self.consumer = Consumer({
                 'bootstrap.servers': '{}:{}'.format(base_config.KAFKAHOST, base_config.KAFKAPORT),
@@ -720,15 +720,15 @@ class MyKafkaClient(object):
                 'sasl.username': base_config.KAFKAUSER,
                 'sasl.password': base_config.KAFKAPASS,
                 'group.id': group_id,
-                'auto.offset.reset': 'latest',  # 改为latest或使用一个新的消费者组ID
+                'auto.offset.reset': 'latest',  # Start at the latest offset for a new group.
                 'enable.auto.commit': True,
                 'auto.commit.interval.ms': 1000
             })
-            # 订阅topic
+            # Subscribe to the topic.
             self.consumer.subscribe([self.topic_name])
 
     def _start_async_producer(self):
-        """启动异步生产者线程"""
+        """Start the asynchronous producer thread."""
         if not self._is_async_running:
             self._producer_thread = threading.Thread(
                 target=self._async_producer_worker,
@@ -740,19 +740,19 @@ class MyKafkaClient(object):
             StandLogger.info("Kafka异步生产者线程已启动")
 
     def _async_producer_worker(self):
-        """异步生产者工作线程"""
-        # 在独立线程中初始化producer
+        """Run the asynchronous producer worker."""
+        # Initialize the producer in its worker thread.
         self.connect_producer()
         
         while not self._shutdown_event.is_set():
             try:
-                # 非阻塞获取消息，超时1秒
+                # Poll the queue with a one-second timeout.
                 try:
                     message_data = self._message_queue.get(timeout=1.0)
                 except Empty:
                     continue
                 
-                # 发送消息
+                # Send the message.
                 self.producer.produce(
                     self.topic_name,
                     key=message_data.get('key'),
@@ -760,27 +760,27 @@ class MyKafkaClient(object):
                     callback=message_data.get('callback', self._delivery_callback)
                 )
                 
-                # 批量轮询，提高效率
+                # Poll delivery callbacks in batches.
                 self.producer.poll(0.1)
                 
-                # 标记任务完成
+                # Mark the queued task complete.
                 self._message_queue.task_done()
                 
             except Exception as e:
                 StandLogger.error(f"异步生产者工作线程错误: {e}")
-                time.sleep(0.1)  # 错误时短暂休眠
+                time.sleep(0.1)  # Brief delay after an error.
 
     def produce_async(self, value, key=None, callback=None):
-        """真正异步非阻塞发送消息到Kafka"""
+        """Queue a Kafka message without blocking."""
         try:
-            # 将消息放入队列，非阻塞
+            # Prepare the queued message.
             message_data = {
                 'value': value,
                 'key': key,
                 'callback': callback
             }
             
-            # 非阻塞放入队列，如果队列满了则记录警告但不阻塞
+            # Drop and warn rather than block when the queue is full.
             try:
                 self._message_queue.put_nowait(message_data)
             except:
@@ -794,12 +794,12 @@ class MyKafkaClient(object):
             return False
 
     def produce_async_with_future(self, value, key=None):
-        """异步发送消息并返回Future对象，可以获取发送结果"""
+        """Queue a message and return a Future for its delivery result."""
         future = concurrent.futures.Future()
         
         def delivery_callback(err, msg):
             if err:
-                future.set_exception(Exception(f"Kafka消息发送失败: {err}"))
+                future.set_exception(Exception(f"Kafka message delivery failed: {err}"))
             else:
                 future.set_result({
                     'topic': msg.topic(),
@@ -809,30 +809,30 @@ class MyKafkaClient(object):
         
         success = self.produce_async(value, key, delivery_callback)
         if not success:
-            future.set_exception(Exception("消息队列已满，无法发送"))
+            future.set_exception(Exception("Kafka message queue is full"))
         
         return future
 
     def _delivery_callback(self, err, msg):
-        """消息发送回调函数"""
+        """Handle Kafka delivery completion."""
         if err:
             StandLogger.error(f'Message delivery failed: {err}')
         else:
             StandLogger.info(f'Message delivered to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}')
 
     def flush_producer(self, timeout=10):
-        """刷新生产者队列，确保所有消息都被发送"""
+        """Flush the producer queue."""
         if self.producer is not None:
             return self.producer.flush(timeout)
         return 0
 
     def consume_messages(self, timeout=1.0):
-        """从Kafka消费消息"""
+        """Consume one message from Kafka."""
         if self.consumer is None:
             self.connect_consumer()
         
         try:
-            # 轮询消息
+            # Poll for one message.
             msg = self.consumer.poll(timeout)
             
             if msg is None:
@@ -842,7 +842,7 @@ class MyKafkaClient(object):
                 StandLogger.error(f'Consumer error: {msg.error()}')
                 return None
             
-            # 返回消息内容
+            # Return the decoded message content.
             return {
                 'key': msg.key(),
                 'value': msg.value(),
@@ -855,7 +855,7 @@ class MyKafkaClient(object):
             return None
 
     def consume_batch(self, num_messages: int = 500, timeout: float = 1.0):
-        """批量消费消息，返回统一结构的列表"""
+        """Consume a batch and return normalized records."""
         if self.consumer is None:
             self.connect_consumer()
         try:
@@ -880,34 +880,34 @@ class MyKafkaClient(object):
             return []
 
     def close_producer(self):
-        """关闭生产者连接"""
+        """Close the producer connection."""
         if self.producer is not None:
             self.flush_producer()
             self.producer = None
 
     def close_consumer(self):
-        """关闭消费者连接"""
+        """Close the consumer connection."""
         if self.consumer is not None:
             self.consumer.close()
             self.consumer = None
 
     def shutdown_async_producer(self):
-        """优雅关闭异步生产者"""
+        """Shut down the asynchronous producer gracefully."""
         if self._is_async_running:
             StandLogger.info("正在关闭Kafka异步生产者...")
             self._shutdown_event.set()
             
-            # 等待队列中的消息处理完成
+            # Wait for queued messages to finish.
             self._message_queue.join()
             
-            # 等待线程结束
+            # Wait for the worker thread to stop.
             if self._producer_thread and self._producer_thread.is_alive():
                 self._producer_thread.join(timeout=5)
             
-            # 关闭线程池
+            # Shut down the thread pool.
             self._thread_pool.shutdown(wait=True)
             
-            # 最后刷新producer
+            # Flush the producer once more.
             if self.producer is not None:
                 self.flush_producer()
                 self.producer = None
@@ -916,7 +916,7 @@ class MyKafkaClient(object):
             StandLogger.info("Kafka异步生产者已关闭")
 
     def get_queue_status(self):
-        """获取队列状态信息"""
+        """Return producer queue status."""
         return {
             'queue_size': self._message_queue.qsize(),
             'queue_maxsize': self._message_queue.maxsize,
@@ -925,9 +925,9 @@ class MyKafkaClient(object):
         }
 
     def get_redis_pool_status(self):
-        """获取Redis连接池状态信息"""
+        """Return Redis pool status."""
         if not self._instance:
-            return {'error': 'Redis连接池未初始化'}
+            return {'error': 'Redis connection pool is not initialized'}
         
         status = {
             'connection_healthy': self._instance._connection_healthy,
@@ -954,11 +954,11 @@ class MyKafkaClient(object):
         
         return status
 
-# 全局redis_util实例
+# Process-wide Redis utility instance.
 redis_util = None
 
-# 计量后端为 kafka 时才实例化（MyKafkaClient 构造时会连 broker 建 topic，
-# 无 Kafka 环境下会阻塞 10s 并刷错误日志）；redis 后端见 app/utils/metering_producer.py
+# Instantiate Kafka only for the Kafka metering backend. Its constructor connects
+# to a broker and creates the topic; the Redis path lives in metering_producer.py.
 if resolve_metering_backend() == 'kafka':
     kafka_client = MyKafkaClient()
 else:

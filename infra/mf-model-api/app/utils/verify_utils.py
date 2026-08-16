@@ -12,16 +12,16 @@ from app.logs.stand_log import StandLogger
 
 @func_set_timeout(30)
 async def llm_test(series, config, llm_id, user_id, model_type):
-    message = [AIMessage(content="你是")]
-    content = "测试连接失败，请重新检查信息"
-    prompt = "你是"
-    # 区分openai和其他模型
+    message = [AIMessage(content="Hello")]
+    content = "Connection test failed. Check the configuration and try again."
+    prompt = "Hello"
+    # Handle OpenAI and other providers separately.
     if series == 'openai':
         try:
             try:
                 if "api_key" not in config.keys():
-                    LLMTestError['description'] = "api_key 参数缺失"
-                    LLMTestError['detail'] = "openai大模型需要 api_key"
+                    LLMTestError['description'] = "api_key is missing."
+                    LLMTestError['detail'] = "OpenAI-compatible models require api_key."
                     return JSONResponse(status_code=500, content=LLMTestError)
                 llm = llm_factory.create_llm(llm_type="openai",
                                              api_type="azure",
@@ -49,12 +49,12 @@ async def llm_test(series, config, llm_id, user_id, model_type):
         except Exception as e:
             print(e)
             if isinstance(e.args[0], MaxRetryError):
-                content = "无法访问该链接，请检查该链接是否可以访问"
+                content = "The configured URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
             error_dict["detail"] = str(e.args[0])
             error_dict["description"] = error_dict["solution"] = content
             if not isinstance(e.args[0], MaxRetryError):
-                error_dict["description"] = "模型配置错误，请检查模型信息"
+                error_dict["description"] = "Model configuration is invalid."
             # if error_dict["detail"].strip(" ") != "":
             #     error_dict["description"] = error_dict["detail"]
             # if len(error_dict["description"]) > 500:
@@ -66,7 +66,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             params = {
                 "messages": [
                     {
-                        "content": "你好",
+                        "content": "Hello",
                         "role": "user"
                     }
                 ],
@@ -90,14 +90,14 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             return JSONResponse(status_code=200, content=content)
         except Exception as e:
             print(e)
-            content = "测试连接失败，请重新检查信息"
+            content = "Connection test failed. Check the configuration and try again."
             if isinstance(e.args[0], MaxRetryError):
-                content = "无法访问该链接，请检查该链接是否可以访问"
+                content = "The configured URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
             error_dict["detail"] = str(e.args[0])
             error_dict["description"] = error_dict["solution"] = content
             if not isinstance(e.args[0], MaxRetryError):
-                error_dict["description"] = "模型配置错误，请检查模型信息"
+                error_dict["description"] = "Model configuration is invalid."
             return JSONResponse(status_code=400, content=error_dict)
     elif series.lower() == "baidu":
         headers = {
@@ -117,7 +117,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
         params = {
             "messages": [
                 {
-                    "content": "你好",
+                    "content": "Hello",
                     "role": "user"
                 }
             ]
@@ -137,7 +137,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             "messages": [
                 {
                     "role": "user",
-                    "content": "你好"
+                    "content": "Hello"
                 }
             ]
         }
@@ -156,7 +156,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             params = {
                 "messages": [
                     {
-                        "content": "你好",
+                        "content": "Hello",
                         "role": "user"
                     }
                 ],
@@ -181,7 +181,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                             error_dict["detail"] = await response.text()
                         except Exception as e:
                             StandLogger.error(str(e))
-                        error_dict["description"] = "模型配置错误，请检查模型信息"
+                        error_dict["description"] = "Model configuration is invalid."
                         return JSONResponse(status_code=400, content=error_dict)
                     async for chunk in response.content:
                         chunk = chunk.decode('utf-8')
@@ -214,12 +214,12 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                     return JSONResponse(status_code=200, content=content)
         except Exception as e:
             StandLogger.error(str(e))
-            content = "测试连接失败，请重新检查信息"
+            content = "Connection test failed. Check the configuration and try again."
             if isinstance(e.args[0], MaxRetryError):
-                content = "无法访问该链接，请检查该链接是否可以访问"
+                content = "The configured URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
             error_dict["detail"] = str(e.args[0])
             error_dict["description"] = error_dict["solution"] = content
             if not isinstance(e.args[0], MaxRetryError):
-                error_dict["description"] = "模型配置错误，请检查模型信息"
+                error_dict["description"] = "Model configuration is invalid."
             return JSONResponse(status_code=400, content=error_dict)

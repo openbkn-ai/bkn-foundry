@@ -15,18 +15,18 @@ class TestIdWorker:
 
     def test_init_invalid_worker_id(self):
         """测试无效的worker_id"""
-        with pytest.raises(ValueError, match="worker_id值越界"):
+        with pytest.raises(ValueError, match="worker_id is out of range"):
             IdWorker(datacenter_id=1, worker_id=32, sequence=0)
         
-        with pytest.raises(ValueError, match="worker_id值越界"):
+        with pytest.raises(ValueError, match="worker_id is out of range"):
             IdWorker(datacenter_id=1, worker_id=-1, sequence=0)
 
     def test_init_invalid_datacenter_id(self):
         """测试无效的datacenter_id"""
-        with pytest.raises(ValueError, match="datacenter_id值越界"):
+        with pytest.raises(ValueError, match="datacenter_id is out of range"):
             IdWorker(datacenter_id=32, worker_id=1, sequence=0)
         
-        with pytest.raises(ValueError, match="datacenter_id值越界"):
+        with pytest.raises(ValueError, match="datacenter_id is out of range"):
             IdWorker(datacenter_id=-1, worker_id=1, sequence=0)
 
     def test_gen_timestamp(self):

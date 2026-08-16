@@ -13,15 +13,15 @@ class ModelConf(BaseModel):
 
 
 class AddModelUsedAudit(BaseModel):
-    model_id: StrictStr = Field(description="模型id", default="")
-    user_id: StrictStr = Field(description="用户id", default="")
-    input_tokens: StrictInt = Field(description="使用tokens量", default=0)
-    output_tokens: StrictInt = Field(description="输出tokens量", default=0)
-    resourece_type: StrictStr = Field(description="资源类型", default="unknown")
-    func_module: StrictStr = Field(description="调用模块", default="unknown")
-    total_time: StrictFloat = Field(description="调用总时间", default=0.0)
-    first_time: StrictFloat = Field(description="首字时间", default=0.0)
-    status: StrictStr = Field(description="调用状态", default="failed")
+    model_id: StrictStr = Field(description="Model ID", default="")
+    user_id: StrictStr = Field(description="User ID", default="")
+    input_tokens: StrictInt = Field(description="Input token count", default=0)
+    output_tokens: StrictInt = Field(description="Output token count", default=0)
+    resourece_type: StrictStr = Field(description="Resource type", default="unknown")
+    func_module: StrictStr = Field(description="Calling module", default="unknown")
+    total_time: StrictFloat = Field(description="Total invocation time", default=0.0)
+    first_time: StrictFloat = Field(description="Time to first token", default=0.0)
+    status: StrictStr = Field(description="Invocation status", default="failed")
 
 class ConfIdList(BaseModel):
     conf_id_list: List
@@ -33,16 +33,19 @@ class ModelIdList(BaseModel):
 
 class Message(BaseModel):
     role: StrictStr = Field(description="", regex=r'^(user|assistant|system|tool)$')
-    # OpenAI 规范：assistant 消息带 tool_calls 时 content 可为 null
+    # OpenAI permits null content for assistant messages that contain tool_calls.
     content: Optional[Union[StrictStr, List[Dict[str, Union[str, Dict[str, str]]]]]] = Field(default=None)
     tool_calls: List[dict] = Field(default=None)
     tool_call_id: StrictStr = Field(default=None)
 
     @validator('content', pre=True, always=True, check_fields=False)
     def coerce_null_content(cls, v):
-        """null → ""：下游拼接/计量（prompt_str += content、message + ""）不容忍 None。
-        在校验层归一，覆盖所有读取路径与所有路由；controller 里逐条改容易漏
-        （曾漏掉 messages[-1]["content"] 的快照读，直接 TypeError 成 500）。"""
+        """Normalize null to an empty string for downstream concatenation and metering.
+
+        Normalizing at validation covers every route and read path. A previous
+        controller-only fix missed the messages[-1]["content"] snapshot and
+        allowed a TypeError to surface as a 500 response.
+        """
         return "" if v is None else v
 
     @validator('content', check_fields=False)
@@ -101,9 +104,9 @@ class LLMUsedOpenAI(BaseModel):
     presence_penalty: confloat(ge=-2, le=2) = Field(default=0)
     frequency_penalty: confloat(ge=-2, le=2) = Field(default=0)
     max_tokens: conint(ge=10) = Field(default=1024)
-    # OpenAI 官方已弃用 max_tokens 改名 max_completion_tokens，新版 SDK / langchain-openai
-    # (>=0.2 的 ChatOpenAI) 只发新名——此前被 pydantic 静默丢弃，调用方设的输出上限从未
-    # 到达模型，恒落 max_tokens 默认 1024。兼容收新名，root_validator 里映射到 max_tokens。
+    # OpenAI deprecated max_tokens in favor of max_completion_tokens. New SDKs
+    # and langchain-openai >=0.2 send only the new field. Map it here so Pydantic
+    # does not discard the caller's output limit and silently use 1024.
     max_completion_tokens: Optional[conint(ge=10)] = Field(default=None)
     messages: List[Message]
     response_format: Dict = Field(default={})
@@ -117,8 +120,8 @@ class LLMUsedOpenAI(BaseModel):
 
     @root_validator(skip_on_failure=True)
     def map_max_completion_tokens(cls, values):
-        # 新名优先：显式传了 max_completion_tokens 就覆盖 max_tokens（含其默认值），
-        # 下游各 series 分支只读 max_tokens，一处映射全链生效。
+        # An explicit max_completion_tokens value takes precedence. Downstream
+        # providers read max_tokens, so one mapping covers every provider branch.
         mct = values.get("max_completion_tokens")
         if mct:
             values["max_tokens"] = mct
@@ -192,13 +195,13 @@ class PromptRunPara(BaseModel):
     type: constr()
 
 
-# 添加外部小模型请求体
+# Request body for adding an external small model.
 class AddExternalSmallModel(BaseModel):
-    model_name: StrictStr = Field(description="模型名称")
-    model_type: StrictStr = Field(description="模型类型", regex=r'^(reranker|embedding)$')
-    model_config: Optional[dict] = Field(default={}, description="第三方模型服务配置")
-    adapter: Optional[bool] = Field(default=False, description="是否开启适配服务")
-    adapter_code: Optional[StrictStr] = Field(default=None, description="适配代码")
+    model_name: StrictStr = Field(description="Model name")
+    model_type: StrictStr = Field(description="Model type", regex=r'^(reranker|embedding)$')
+    model_config: Optional[dict] = Field(default={}, description="Third-party model service configuration")
+    adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
+    adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
 
     @root_validator
     def validate_mutually_exclusive_groups(cls, values):
@@ -207,9 +210,9 @@ class AddExternalSmallModel(BaseModel):
         adapter_code = values.get('adapter_code')
 
         if model_config and (adapter or adapter_code):
-            raise ValueError("model_config和adapter/adapter_code不能同时设置")
+            raise ValueError("model_config and adapter/adapter_code cannot be set together")
         if not model_config and not (adapter or adapter_code):
-            raise ValueError("必须设置model_config或adapter/adapter_code中的一组")
+            raise ValueError("set either model_config or adapter/adapter_code")
         return values
 
     @validator('model_config', pre=False)
@@ -228,12 +231,12 @@ class AddExternalSmallModel(BaseModel):
 
 
 class TestSmallModel(BaseModel):
-    model_id: Optional[StrictStr] = Field(None, description="配置id", min_length=19, max_length=19)
-    model_name: Optional[StrictStr] = Field(default="", description="模型名称")
-    model_type: Optional[StrictStr] = Field(default="", description="模型类型", regex=r'^(reranker|embedding)$')
-    model_config: Optional[dict] = Field(default={}, description="第三方模型服务配置")
-    adapter: Optional[bool] = Field(default=False, description="是否开启适配服务")
-    adapter_code: Optional[StrictStr] = Field(default=None, description="适配代码")
+    model_id: Optional[StrictStr] = Field(None, description="Configuration ID", min_length=19, max_length=19)
+    model_name: Optional[StrictStr] = Field(default="", description="Model name")
+    model_type: Optional[StrictStr] = Field(default="", description="Model type", regex=r'^(reranker|embedding)$')
+    model_config: Optional[dict] = Field(default={}, description="Third-party model service configuration")
+    adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
+    adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
 
     @root_validator
     def check_fields(cls, values):
@@ -243,16 +246,16 @@ class TestSmallModel(BaseModel):
             adapter = values.get('adapter', False)
             adapter_code = values.get('adapter_code')
             if model_config and (adapter or adapter_code):
-                raise ValueError("model_config和adapter/adapter_code不能同时设置")
+                raise ValueError("model_config and adapter/adapter_code cannot be set together")
             if not model_config and not (adapter or adapter_code):
-                raise ValueError("必须设置model_config或adapter/adapter_code中的一组")
-            # 如果没有提供model_id，则必须提供其他三个字段
+                raise ValueError("set either model_config or adapter/adapter_code")
+            # Without model_id, the identifying model fields are required.
             required_fields = ['model_name', 'model_type']
             for field in required_fields:
                 if values.get(field) is None:
                     raise RequestValidationError([{"loc": ('body', field), "type": "value_error.missing"}])
         else:
-            # 如果提供了model_id，则其他字段可以为None
+            # With model_id, the other model fields may be omitted.
             pass
         return values
 
@@ -266,12 +269,12 @@ class TestSmallModel(BaseModel):
 
 
 class EditExternalSmallModel(BaseModel):
-    model_id: StrictStr = Field(description="配置id", min_length=19, max_length=19)
-    model_name: StrictStr = Field(description="模型名称")
-    model_type: StrictStr = Field(description="模型类型", regex=r'^(reranker|embedding)$')
-    model_config: Optional[dict] = Field(default={}, description="第三方模型服务配置")
-    adapter: Optional[bool] = Field(default=False, description="是否开启适配服务")
-    adapter_code: Optional[StrictStr] = Field(default=None, description="适配代码")
+    model_id: StrictStr = Field(description="Configuration ID", min_length=19, max_length=19)
+    model_name: StrictStr = Field(description="Model name")
+    model_type: StrictStr = Field(description="Model type", regex=r'^(reranker|embedding)$')
+    model_config: Optional[dict] = Field(default={}, description="Third-party model service configuration")
+    adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
+    adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
 
     @root_validator
     def validate_mutually_exclusive_groups(cls, values):
@@ -280,9 +283,9 @@ class EditExternalSmallModel(BaseModel):
         adapter_code = values.get('adapter_code')
 
         if model_config and (adapter or adapter_code):
-            raise ValueError("model_config和adapter/adapter_code不能同时设置")
+            raise ValueError("model_config and adapter/adapter_code cannot be set together")
         if not model_config and not (adapter or adapter_code):
-            raise ValueError("必须设置model_config或adapter/adapter_code中的一组")
+            raise ValueError("set either model_config or adapter/adapter_code")
         return values
 
     @validator('model_config', pre=False)
@@ -295,16 +298,16 @@ class EditExternalSmallModel(BaseModel):
 
 
 class UsedReranker(BaseModel):
-    model: Optional[StrictStr] = Field(description="模型名称")
-    query: StrictStr = Field(description="需要排序的问题")
-    documents: list = Field(description="排序的内容列表")
-    model_id: Optional[StrictStr] = Field(description="模型id", default="")
+    model: Optional[StrictStr] = Field(description="Model name")
+    query: StrictStr = Field(description="Query to rank against")
+    documents: list = Field(description="Documents to rank")
+    model_id: Optional[StrictStr] = Field(description="Model ID", default="")
 
 
 class UsedEmbedding(BaseModel):
-    model: Optional[StrictStr] = Field(description="模型名称")
-    input: list = Field(description="向量化的内容列表")
-    model_id: Optional[StrictStr] = Field(description="模型id", default="")
+    model: Optional[StrictStr] = Field(description="Model name")
+    input: list = Field(description="Content to embed")
+    model_id: Optional[StrictStr] = Field(description="Model ID", default="")
 
 class AuthInfo(BaseModel):
     userid: Optional[str]

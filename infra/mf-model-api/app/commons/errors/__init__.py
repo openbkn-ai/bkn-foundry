@@ -1,10 +1,10 @@
-# 完整的报错信息,例子
+# Legacy error envelopes. Client-facing localization is applied by locale middleware.
 
 DataBaseError = {
     'code': 'ModelFactory.Mydb.DataBase.ParameterError',
-    'description': '数据库错误',
-    'detail': '数据库无法连接',
-    'solution': '请检查数据库及登录信息',
+    'description': 'Database access failed.',
+    'detail': 'Model Factory cannot access the database right now.',
+    'solution': 'Retry later or contact an administrator.',
     'link': ''}
 LLMSourceError = {
     'code': 'ModelFactory.ConnectController.LLMSource.ParameterError',
@@ -20,9 +20,9 @@ LLMUsedError = {
     'link': ''}
 LLMParamError = {
     'code': 'ModelFactory.ConnectController.LLMUsed.ParameterError',
-    'description': '配置错误',
-    'detail': '当前模型配置信息错误，无法连接',
-    'solution': '请检查大模型的配置信息',
+    'description': 'Model configuration is invalid.',
+    'detail': 'The current model configuration cannot complete the request.',
+    'solution': 'Check the large model configuration.',
     'link': ''}
 LLMRemoveError = {
     'code': 'ModelFactory.ConnectController.LLMRemove.ParameterError',
@@ -82,9 +82,9 @@ LLMCheckError = {
     'link': ''}
 LLMTestError = {
     'code': 'ModelFactory.ConnectController.LLMTest.ParameterError',
-    'description': '参数错误',
-    'detail': '该模型不存在',
-    'solution': '请检查输入信息',
+    'description': 'Model connection test failed.',
+    'detail': 'The current configuration could not connect to the large model service.',
+    'solution': 'Check the large model configuration and service availability.',
     'link': ''}
 PromptItemSourceError = {
     'code': 'ModelFactory.PromptController.PromptItemSource.ParameterError',
@@ -293,9 +293,9 @@ PromptDefaultLLMError = {
 
 ModelError = {
     'code': 'ModelFactory.LLM.Error',
-    'description': '查询或前缀提示符太长，',
-    'detail': '模型配置信息中的 max_tokens 数值过大',
-    'solution': '可以减少前缀提示符，或缩小最大令牌，或切换到具有更大令牌限制大小的模型。',
+    'description': 'Model context limit exceeded.',
+    'detail': 'The request content and maximum output tokens exceed the model context limit.',
+    'solution': 'Shorten the request, reduce maximum output tokens, or select a model with a larger context.',
     'link': ''
 }
 BatchAddPromptError = {
@@ -307,9 +307,9 @@ BatchAddPromptError = {
 }
 ModelTimeoutError = {
     'code': 'ModelFactory.LLM.ModelTimeoutError',
-    'description': '模型请求超时，请重试',
-    'detail': '模型请求超时，请重试',
-    'solution': '模型请求超时，请重试',
+    'description': 'Model request timed out.',
+    'detail': 'The model service did not complete the request in time.',
+    'solution': 'Try again later.',
     'link': ''
 }
 ModelFactory_BenchmarkController_AddBenchmarkConfig_RepeatedNames_Error = {
@@ -328,30 +328,30 @@ ModelFactory_BenchmarkController_AddBenchmarkConfig_UnknownError_Error = {
 }
 ModelFactory_MyPymysqlPool_Connection_ConnectError_Error = {
     "code": "ModelFactory.MyPymysqlPool.Connection.ConnectError",
-    "description": "数据库连接错误",
-    "detail": "数据库连接错误",
-    "solution": "请联系开发人员",
+    "description": "Database connection failed.",
+    "detail": "Model Factory cannot connect to the database right now.",
+    "solution": "Retry later or contact an administrator.",
     "link": ""
 }
 ModelFactory_Router_ParamError_ParamMissing_Error = {
     "code": "ModelFactory.Router.ParamError.ParamMissing",
-    "description": "参数缺失",
-    "detail": "参数缺失",
-    "solution": "请检查填写的参数是否正确。",
+    "description": "Required parameter is missing.",
+    "detail": "A required parameter is missing.",
+    "solution": "Provide the required parameter and try again.",
     "link": ""
 }
 ModelFactory_Router_ParamError_FormatError_Error = {
     "code": "ModelFactory.Router.ParamError.FormatError",
-    "description": "由于参数格式错误，修改失败",
-    "detail": "由于参数格式错误，修改失败",
-    "solution": "请检查输入内容格式是否符合要求",
+    "description": "Request parameter is invalid.",
+    "detail": "The request parameter format is invalid.",
+    "solution": "Check that the input matches the API documentation.",
     "link": ""
 }
 ModelFactory_Router_ParamError_TypeError_Error = {
     "code": "ModelFactory.Router.ParamError.TypeError",
-    "description": "参数类型错误",
-    "detail": "参数类型错误",
-    "solution": "请检查填写的参数是否正确。",
+    "description": "Parameter type is invalid.",
+    "detail": "The request parameter type is invalid.",
+    "solution": "Check that the parameter type matches the API documentation.",
     "link": ""
 }
 ModelFactory_BenchmarkController_EditBenchmarkConfig_RepeatedNames_Error = {
@@ -937,23 +937,23 @@ ModelFactory_ModelUsedAuditController_GetModelArchivingList_OssNotAvailable_Erro
 }
 ModelFactory_ModelController_Model_ConnectError_Error = {
     "code": "ModelFactory.ModelController.Model.ConnectError",
-    "description": "模型连接异常",
-    "detail": "模型连接异常",
-    "solution": "请检查模型配置信息",
+    "description": "Model service connection failed.",
+    "detail": "The specified large model service could not be reached.",
+    "solution": "Check the model configuration and service availability.",
     "link": ""
 }
 ModelFactory_ModelController_Model_Error_Error = {
     "code": "ModelFactory.ModelController.Model.Error",
-    "description": "大模型调用发生错误",
-    "detail": "模型异常",
-    "solution": "请检查配置信息",
+    "description": "Model invocation failed.",
+    "detail": "The model service could not complete the request.",
+    "solution": "Check the model configuration and try again.",
     "link": ""
 }
 ModelFactory_ModelController_TestModel_Error_Error = {
     "code": "ModelFactory.ModelController.TestModel.Error",
-    "description": "测试连接失败",
-    "detail": "",
-    "solution": "请检查模型配置信息",
+    "description": "Model connection test failed.",
+    "detail": "The current configuration could not connect to the model service.",
+    "solution": "Check the model configuration and service availability.",
     "link": ""
 }
 
@@ -1064,9 +1064,9 @@ ModelFactory_SmallModelRouter_ModelApiDoc_ParamError = {
 }
 ModelFactory_SmallModelController_ModelApiDoc_ModelNotFoundError = {
     'code': 'ModelFactory.SmallModelController.ModelApiDoc.ModelNotFoundError',
-    'description': '输入的模型id不存在',
-    'detail': '输入的模型id不存在',
-    'solution': '请检查填写的模型id。',
+    'description': 'Model not found.',
+    'detail': 'The specified model ID does not exist.',
+    'solution': 'Check the model ID and try again.',
     'link': ''
 }
 ModelFactory_SmallModelController_ModelApiDoc_UnknownError = {
@@ -1141,9 +1141,9 @@ ModelFactory_CotController_WriteCot_UnknownError = {
 }
 ModelFactory_ExternalSmallModel_UnknownError = {
     'code': 'ModelFactory.ExternalSmallModel.UnknownError',
-    'description': '未知错误',
-    'detail': 'detail',
-    'solution': '请联系开发人员',
+    'description': 'Small model request failed.',
+    'detail': 'The small model request could not be completed.',
+    'solution': 'Retry later or contact an administrator.',
     'link': ''
 }
 ModelFactory_ExternalSmallModel_AddModel_RepeatedNames_Error = {
@@ -1169,16 +1169,16 @@ ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error = {
 }
 ModelFactory_ExternalSmallModel_Used_NameNotExist = {
     "code": "ModelFactory.ExternalSmallModel.Used.NameNotExist",
-    "description": "模型名称或者模型id不存在",
-    "detail": "模型名称或者模型id不存在",
-    "solution": "请输入正确的模型名称或模型id",
+    "description": "Model not found.",
+    "detail": "The specified model name or model ID does not exist.",
+    "solution": "Check the model name or model ID and try again.",
     "link": ""
 }
 ModelFactory_ExternalSmallModel_Used_ConnectError = {
     "code": "ModelFactory.ExternalSmallModel.Used.ConnectError",
-    "description": "模型连接失败",
-    "detail": "模型连接失败",
-    "solution": "请检查模型配置",
+    "description": "Model service connection failed.",
+    "detail": "The specified small model service could not be reached.",
+    "solution": "Check the model configuration and service availability.",
     "link": ""
 }
 ModelFactory_ExternalSmallModel_Used_ModelError = {
@@ -1204,23 +1204,23 @@ IdValueIsEmpty = {
 }
 UnauthorizedError = {
     "code": "Unauthorized",
-    "description": "token无效或已过期",
-    "detail": "token无效或已过期",
-    "solution": "请检查token",
+    "description": "Authentication failed.",
+    "detail": "The access token is invalid or has expired.",
+    "solution": "Obtain a valid access token and try again.",
     "link": ""
 }
 HydraServiceError = {
     "code": "HydraServiceError",
-    "description": "调用hrdra服务异常",
-    "detail": "调用hrdra服务异常",
-    "solution": "请检查hrdra服务状态",
+    "description": "Authentication service is unavailable.",
+    "detail": "The access token could not be validated.",
+    "solution": "Retry later or contact an administrator.",
     "link": ""
 }
 BknSafeServiceError = {
     "code": "BknSafeServiceError",
-    "description": "调用bkn-safe服务异常",
-    "detail": "调用bkn-safe服务异常",
-    "solution": "请检查bkn-safe服务状态",
+    "description": "AppKey service is unavailable.",
+    "detail": "The AppKey could not be validated.",
+    "solution": "Retry later or contact an administrator.",
     "link": ""
 }
 UserManagementError = {
@@ -1232,9 +1232,9 @@ UserManagementError = {
 }
 NotPermissionError = {
     "code": "NotPermission",
-    "description": "没有操作权限",
-    "detail": "没有操作权限",
-    "solution": "请联系管理员分配相应权限",
+    "description": "Permission denied.",
+    "detail": "The current identity cannot perform this operation.",
+    "solution": "Ask an administrator to grant the required permission.",
     "link": ""
 }
 DeletePermissionResuorceError = {
@@ -1246,23 +1246,23 @@ DeletePermissionResuorceError = {
 }
 ModelQuotaControllerUserModelConfigNoLeftSpaceError = {
     "code": "ModelNager.ModelQuotaController.UserModelConfig.NoLeftSpace",
-    "description": "大模型剩余额度不足",
-    "detail": "本月额度已达上限，请联系管理员增加大模型使用额度后再试。",
-    "solution": "请联系管理员增加额度",
+    "description": "Model quota exceeded.",
+    "detail": "The monthly model usage quota has been reached.",
+    "solution": "Ask an administrator to increase the quota and try again.",
     "link": ""
 }
 ModelFactory_DefaultSmallModel_NotExist = {
     "code": "ModelFactory.ExternalSmallModel.Used.DefaultNotExist",
-    "description": "管理员没有配置该类型的默认小模型",
-    "detail": "管理员没有配置该类型的默认小模型",
-    "solution": "请在模型管理中为该类型设置默认小模型",
+    "description": "Default small model is not configured.",
+    "detail": "An administrator has not configured a default small model for this type.",
+    "solution": "Configure a default small model in model management and try again.",
     "link": ""
 }
 
 ModelFactory_DedaultModel_NotExist = {
     "code": "ModelFactory.ExternalSmallModel.Used.NameNotExist",
-    "description": "管理员没有配置默认大模型",
-    "detail": "管理员没有配置默认大模型",
-    "solution": "请联系管理员",
+    "description": "Default large model is not configured.",
+    "detail": "An administrator has not configured a default large model.",
+    "solution": "Ask an administrator to configure a default large model.",
     "link": ""
 }

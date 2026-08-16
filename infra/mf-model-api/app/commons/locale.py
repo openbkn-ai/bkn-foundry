@@ -75,9 +75,10 @@ def platform_error_message(code: str) -> str:
     """Return a localized message for an error owned by mf-model-api."""
     from app.commons.i18n import lookup_error_message
 
-    message = lookup_error_message(code, get_effective_locale())
+    locale = get_effective_locale()
+    message = lookup_error_message(code, locale)
     if not message:
-        return "Request failed." if get_effective_locale() == ENGLISH_LOCALE else "请求失败。"
+        message = lookup_error_message("ModelFactory.InternalError", locale)
     return message.get("detail") or message.get("description", "")
 
 
@@ -104,7 +105,7 @@ def localized_error_content(
     if message:
         for field in ("description", "detail", "solution"):
             if field == "detail":
-                localized[field] = _localize_detail(message, content.get(field))
+                localized[field] = _localize_detail(code, message, content.get(field), locale)
             elif field in message and message[field]:
                 localized[field] = message[field]
         return localized, True
@@ -138,7 +139,7 @@ def _localized_openai_error(content: Dict[str, Any], locale: str) -> Tuple[Dict[
     envelope = {
         "code": code,
         "description": error.get("message", ""),
-        "detail": error.get("message", ""),
+        "detail": _structured_openai_detail(error),
     }
     localized, changed = localized_error_content(envelope, locale)
     if not changed:
@@ -152,22 +153,40 @@ def _contains_chinese(value: Any) -> bool:
     return isinstance(value, str) and any("\u4e00" <= char <= "\u9fff" for char in value)
 
 
-def _localize_detail(message: Dict[str, str], detail: Any) -> Any:
+def _localize_detail(code: str, message: Dict[str, str], detail: Any, locale: str) -> Any:
     template = message.get("detail_template")
     if template and isinstance(detail, str):
         parameter = _parameter_name_from_detail(detail)
         if parameter:
             return template.format(parameter=parameter)
-        return message.get("detail") or detail
-    return detail if isinstance(detail, str) and detail else message.get("detail")
+        return message.get("detail") or message.get("description") or ""
+    # A framework validation reason is already safe, structured client text.
+    # Other legacy details may contain internal exception strings or text in the
+    # service's historical default language, so the locale catalog owns them.
+    if (code == "ModelFactory.Router.ParamError.FormatError"
+            and locale == ENGLISH_LOCALE
+            and isinstance(detail, str) and detail and not _contains_chinese(detail)):
+        return detail
+    return message.get("detail") or ""
 
 
 def _parameter_name_from_detail(detail: str) -> str:
     text = detail.strip()
-    if text.endswith(" 参数缺失"):
-        return text[:-len(" 参数缺失")].strip()
     _, separator, value = text.partition(":")
     return value.strip() if separator else ""
+
+
+def _structured_openai_detail(error: Dict[str, Any]) -> Any:
+    parameter = error.get("param")
+    template_codes = {
+        "ModelFactory.Router.ParamError.ParamMissing",
+        "ModelFactory.Router.ParamError.TypeError",
+        "ParamMissing",
+        "ParamTypeError",
+    }
+    if error.get("code") in template_codes and isinstance(parameter, str) and parameter.strip():
+        return f"parameter: {parameter.strip()}"
+    return error.get("message", "")
 
 
 def _is_framework_http_error(content: Dict[str, Any], status_code: int) -> bool:
@@ -175,24 +194,18 @@ def _is_framework_http_error(content: Dict[str, Any], status_code: int) -> bool:
 
 
 def _localized_framework_http_error(status_code: int, locale: str) -> Dict[str, str]:
-    messages = {
-        404: {
-            "zh-CN": ("资源不存在", "请求的资源不存在。", "请检查资源标识后重试。"),
-            "en-US": ("Resource not found.", "The requested resource does not exist.",
-                      "Check the resource identifier and try again."),
-        },
-        405: {
-            "zh-CN": ("请求方法不被允许", "当前资源不支持该请求方法。", "请检查请求方法后重试。"),
-            "en-US": ("Method not allowed.", "The requested resource does not support this HTTP method.",
-                      "Check the request method and try again."),
-        },
-    }
-    description, detail, solution = messages[status_code][locale]
+    from app.commons.i18n import lookup_error_message
+
+    message_key = {
+        404: "ModelFactory.HTTP.NotFound",
+        405: "ModelFactory.HTTP.MethodNotAllowed",
+    }[status_code]
+    message = lookup_error_message(message_key, locale) or {}
     return {
         "code": f"HTTP_{status_code}",
-        "description": description,
-        "detail": detail,
-        "solution": solution,
+        "description": message.get("description", ""),
+        "detail": message.get("detail", ""),
+        "solution": message.get("solution", ""),
         "link": "",
     }
 

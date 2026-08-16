@@ -1,16 +1,16 @@
 class ParamValidationErrors(object):
-    """参数校验类错误码"""
+    """Parameter-validation error codes."""
     ParamMissing = "ParamMissing"
     ParamTypeError = "ParamTypeError"
 
 
 class PermissionErrors(object):
-    """权限类错误码"""
+    """Authorization error codes."""
     Unauthorized = "Unauthorized"
     Forbidden = "Forbidden"
 
 
 class BusinessLogicErrors(object):
-    """业务逻辑类错误码"""
+    """Business-logic error codes."""
     InvalidOperation = "InvalidOperation"
     ResourceNotFound = "ResourceNotFound"

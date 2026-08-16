@@ -93,6 +93,7 @@ class TestCommonFunctions:
             'x-account-type': 'admin',
             'accept-language': 'en-US'
         }
+        request.scope = {"state": {"effective_locale": "en-US"}}
 
         userId, language, role = await get_user_info(request)
 

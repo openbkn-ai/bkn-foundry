@@ -1,8 +1,11 @@
-"""测试 routers 模块"""
+"""Router tests."""
+import json
+import re
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
+from app.interfaces.logics import UsedEmbedding
 from app.routers.llm_router import llm_route, health_route
 
 
@@ -146,4 +149,18 @@ class TestAPIDocumentation:
         # 健康检查端点通常标记为不在schema中
         # 这里只验证schema有效
         assert "paths" in schema
+
+    def test_public_chat_schema_descriptions_are_english(self, client):
+        schema = client.get("/openapi.json").json()
+        operation = schema["paths"]["/chat/completions"]["post"]
+        request_schema = schema["components"]["schemas"]["LLMUsedOpenAI"]
+        embedding_schema = UsedEmbedding.schema()
+        rendered = json.dumps(
+            {"operation": operation, "request_schema": request_schema,
+             "embedding_schema": embedding_schema},
+            ensure_ascii=False,
+        )
+
+        assert re.search(r"[\u4e00-\u9fff]", rendered) is None
+        assert embedding_schema["properties"]["input"]["description"] == "Content to embed"
 

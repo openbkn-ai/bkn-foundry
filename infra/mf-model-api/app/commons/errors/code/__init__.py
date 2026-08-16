@@ -1,4 +1,4 @@
-# 业务状态码，举例
+# Business status-code examples.
 Mydb = 'ModelFactory.Mydb.DataBase'
 Model = 'ModelFactory.LLM.Error'
 LLMSource = 'ModelFactory.ConnectController.LLMSource'

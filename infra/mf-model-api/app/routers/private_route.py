@@ -9,11 +9,11 @@ from app.utils.common import get_user_info
 private_route = APIRouter()
 
 
-# 大模型调用内部接口
+# Internal large-model invocation endpoint.
 @private_route.post("/chat/completions")
 async def llm_used_openai2(request: LLMUsedOpenAI, head_request: Request):
     '''
-    openai风格大模型调用接口
+    Invoke a large model through an OpenAI-compatible API.
     ---
     operationId: llm_used_openai
     requestBody:
@@ -29,32 +29,32 @@ async def llm_used_openai2(request: LLMUsedOpenAI, head_request: Request):
                     model:
                         type: string
                         format: string
-                        description: '需要调用的模型的名称'
+                        description: 'Name of the model to invoke'
                         example: 'deepseek-chat'
                     top_p:
                         type: float
                         format: float
-                        description: '核采样，取值0-1，默认为1'
+                        description: 'Nucleus sampling value from 0 to 1; defaults to 1'
                         example: 0.7
                     temperature:
                         type: float
                         format: float
-                        description: '模型在做出下一个词预测时的确定性和随机性程度。取值0-2，默认为1'
+                        description: 'Sampling temperature from 0 to 2; defaults to 1'
                         example: 0
                     presence_penalty:
                         type: float
                         format: float
-                        description: '话题新鲜度，取值-2~2，默认为0'
+                        description: 'Presence penalty from -2 to 2; defaults to 0'
                         example: 0
                     frequency_penalty:
                         type: float
                         format: float
-                        description: '频率惩罚度，取值-2~2，默认为0'
+                        description: 'Frequency penalty from -2 to 2; defaults to 0'
                         example: 0
                     max_tokens:
                         type: integer
                         format: integer
-                        description: '单次回复限制，取值10-该模型最大tokens数，默认为1000'
+                        description: 'Maximum response tokens, from 10 to the model limit; defaults to 1000'
                         example: 1000
                     messages:
                         type: object
@@ -62,20 +62,20 @@ async def llm_used_openai2(request: LLMUsedOpenAI, head_request: Request):
                             role:
                                 type: string
                                 format: string
-                                description: '角色：system, assistant, user'
+                                description: 'Message role: system, assistant, or user'
                                 example: 'user'
                             content:
                                 type: string
                                 format: string
-                                description: '对话内容'
-                                example: '你是谁'
+                                description: 'Message content'
+                                example: 'Who are you?'
                     stream:
                         type: boolean
-                        description: '是否流式返回，默认为否'
+                        description: 'Whether to stream the response; defaults to false'
                         example: true
                     top_k:
                         type: integer
-                        description: '取值大于等于1或者为-1，默认为1',
+                        description: 'Value greater than or equal to 1, or -1; defaults to 1',
                         example: 1
 
     '''
@@ -85,7 +85,7 @@ async def llm_used_openai2(request: LLMUsedOpenAI, head_request: Request):
     return await used_model_openai(request.dict(), userId, language, func_module, dict(headers))
 
 
-# reranker模型调用内部接口
+# Internal reranker invocation endpoint.
 @private_route.post("/small-model/reranker")
 async def model_used(request: logics.UsedReranker, head_request: Request):
     userId, language, role = await get_user_info(head_request)
@@ -94,7 +94,7 @@ async def model_used(request: logics.UsedReranker, head_request: Request):
     return await small_model_controller.reranker_model_used(request, userId, language, role, func_module)
 
 
-# embedding模型调用内部接口
+# Internal embedding invocation endpoints.
 @private_route.post("/small-model/embedding")
 async def model_used(request: logics.UsedEmbedding, head_request: Request):
     userId, language, role = await get_user_info(head_request)

@@ -16,6 +16,7 @@ from app.commons.locale import (
     is_authenticated_public_api_path,
     is_business_api_path,
     is_openai_compat_path,
+    localized_error_content,
 )
 from app.core.config import base_config, server_info, observability_config
 from app.logs import log_init, sys_log
@@ -38,29 +39,32 @@ def conf_init(app):
 
 async def start_event():
     await write_log(msg='系统启动')
-    # 在应用启动时调用
+    # Initialize required infrastructure when the application starts.
     try:
         await get_redis_util()
     except Exception as e:
         raise e
-    # 初始化可观测模块
+    # Initialize observability integrations.
     init_observability(server_info, observability_config)
 
 
 async def shutdown_event():
     await write_log(msg='系统关闭')
-    # 关闭可观测模块
+    # Shut down observability integrations.
     shutdown_observability()
 
 
-# 用户自助签发的 AppKey 前缀(bkn-safe 签发),与 bkn-safe auth.KeyPrefix 保持一致
+# Prefix for self-service AppKeys issued by bkn-safe. Keep this aligned with auth.KeyPrefix.
 APP_KEY_PREFIX = "bak_"
 
 
 async def _verify_app_key(token):
-    """AppKey(bak_ 前缀)走 bkn-safe 内部校验接口 /api/safe/v1/api-keys/introspect,
-    响应形如 OAuth2 introspection:任何失败均为 200 {active:false}。
-    校验通过返回 (user_id, role);无效或 BKN_SAFE_URL 未配置(fail-closed)返回错误响应。"""
+    """Validate a bak_ AppKey through bkn-safe's introspection endpoint.
+
+    The endpoint follows OAuth2 introspection semantics and represents every
+    validation failure as HTTP 200 with ``active: false``. A valid key returns
+    ``(user_id, role)``; an invalid key or missing BKN_SAFE_URL fails closed.
+    """
     bkn_safe_url = os.getenv("BKN_SAFE_URL", "")
     if not bkn_safe_url:
         return JSONResponse(
@@ -93,7 +97,7 @@ async def _verify_app_key(token):
             content=UnauthorizedError
         )
     user_id = result.get("sub", "")
-    # bkn-safe account_type: "app"=应用账户,其余按用户处理,与 hydra 路径的 role 口径一致
+    # Treat account_type=app as an application identity; all other values are users.
     role = "app" if result.get("account_type", "") == "app" else "user"
     return user_id, role
 
@@ -105,7 +109,7 @@ async def auth_middleware(request: Request, call_next):
     elif path.startswith("/api/private"):
         pass
     elif not base_config.AUTH_ENABLED:
-        # 权限控制关闭：跳过 token 校验，注入匿名用户 ID 保证审计日志有值
+        # With authorization disabled, inject an anonymous identity for audit correlation.
         user_id = request.headers.get("x-account-id", base_config.ANONYMOUS_USER_ID)
         request.scope['headers'].append((b"x-account-id", user_id.encode()))
         request.scope['headers'].append((b"x-account-type", b"user"))
@@ -117,7 +121,7 @@ async def auth_middleware(request: Request, call_next):
                 content=UnauthorizedError
             )
         token = auth_header[7:]
-        # 凭据二选一:bak_ 前缀的 AppKey 交给 bkn-safe 校验,其余 bearer token 走 hydra 内省
+        # Validate bak_ AppKeys with bkn-safe and all other bearer tokens with Hydra.
         if token.startswith(APP_KEY_PREFIX):
             verified = await _verify_app_key(token)
             if isinstance(verified, JSONResponse):
@@ -170,7 +174,7 @@ async def auth_middleware(request: Request, call_next):
 class RequestSizeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         content_length = request.headers.get('content-length')
-        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10M限制
+        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10 MiB limit
             return JSONResponse(
                 status_code=413,
                 content={"detail": "Payload too large"}
@@ -183,14 +187,13 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     if not is_business_api_path(request.url.path):
         return PlainTextResponse("Internal Server Error", status_code=500)
     locale = getattr(request.state, "effective_locale", get_effective_locale())
-    content = {
+    content, _ = localized_error_content({
         "code": "ModelFactory.InternalError",
-        "description": "Request failed." if locale == "en-US" else "请求失败。",
-        "detail": "The request could not be completed." if locale == "en-US" else "请求无法完成。",
-        "solution": "See the request details or contact an administrator."
-        if locale == "en-US" else "请查看请求详情或联系管理员。",
+        "description": "Request failed.",
+        "detail": "The request could not be completed.",
+        "solution": "Retry later or contact an administrator.",
         "link": "",
-    }
+    }, locale)
     if is_openai_compat_path(request.url.path):
         content = openai_error.from_envelope(content, 500)
     return JSONResponse(
@@ -257,19 +260,19 @@ def create_app():
                   on_startup=[start_event],
                   on_shutdown=[shutdown_event])
 
-    # 添加请求体大小检查中间件
+    # Add request body size validation.
     # app.add_middleware(RequestSizeMiddleware)
-    # 添加鉴权中间件
+    # Add authentication middleware.
     app.add_middleware(BaseHTTPMiddleware, dispatch=auth_middleware)
     # Added after auth so this ASGI middleware is outermost: it also decorates auth failures.
     app.add_middleware(LocaleResponseMiddleware)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
-    # 初始化日志
+    # Initialize logging.
     log_init()
-    # 加载配置
+    # Load runtime configuration.
     conf_init(app)
-    # 初始化路由配置
+    # Register application routes.
     router_init(app)
     install_locale_openapi(app)
     return app

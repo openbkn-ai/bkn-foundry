@@ -1,14 +1,14 @@
-"""
-计量记录生产端：按 METERING_BACKEND 选择 Kafka 或 Redis Stream 传输。
+"""Produce metering records through Kafka or Redis Stream.
 
-失败语义与原 Kafka 路径一致：记日志返回 False，不阻塞模型调用。
+Transport failures retain the Kafka path's behavior: log the failure, return
+False, and do not block the model invocation.
 """
 import asyncio
 
 from app.core.config import base_config, resolve_metering_backend
 from app.logs.stand_log import StandLogger
 
-# stream 名沿用原 Kafka topic 名，便于运维排查与后续统一治理
+# Reuse the Kafka topic name for operational consistency across transports.
 METERING_STREAM = 'tenant_a.dip.model_manager.quota_data'
 
 _backend = resolve_metering_backend()
@@ -33,7 +33,7 @@ async def _get_redis_conn():
 
 
 async def produce_metering_record(value: bytes, key: bytes = None) -> bool:
-    """发送一条计量记录，返回是否成功入队/入流。"""
+    """Send one metering record and report whether it was queued."""
     global _redis_conn
     if _backend == 'kafka':
         from app.mydb.ConnectUtil import kafka_client
@@ -55,7 +55,7 @@ async def produce_metering_record(value: bytes, key: bytes = None) -> bool:
         )
         return True
     except Exception as e:
-        # 与 Kafka 路径同级降级：丢弃并告警，不影响模型调用；连接可能已坏，下次重建
+        # Match Kafka degradation: discard and warn without failing the model call.
         _redis_conn = None
         StandLogger.warn(f"写入计量 Redis Stream 失败，丢弃消息: {e}")
         return False

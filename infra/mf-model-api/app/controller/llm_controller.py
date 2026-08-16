@@ -11,17 +11,12 @@ from app.utils import log_redact, openai_error
 from sse_starlette import EventSourceResponse
 import time
 
-eng_dict = {
-    "名称已存在，请修改": "Name already exists, please modify",
-    "名称已被其他用户占用，请修改": "The name is already taken by another user, please change it"
-}
-
 
 def openai_error_response(error_body, status, headers=None):
-    """OpenAI 兼容面上的错误响应：body 必须是 {"error": {...}}。
+    """Return an OpenAI-compatible {"error": {...}} response.
 
-    上游状态码由 llm_utils 通过私有键带过来（有就用，没有就用传入的 status），
-    序列化前 pop 掉，不会漏进 body。
+    llm_utils carries an upstream status in a private key when available. Pop
+    that key before serialization so implementation metadata cannot leak.
     """
     resolved = openai_error.pop_http_status(error_body, status)
     retry_after = openai_error.pop_retry_after(error_body)
@@ -33,7 +28,7 @@ def openai_error_response(error_body, status, headers=None):
 
 
 def envelope_error_response(envelope, status, headers=None):
-    """内部 envelope（参数/权限/配额等）翻成 OpenAI 错误体后再出门。"""
+    """Convert an internal parameter, permission, or quota envelope to OpenAI format."""
     return openai_error_response(
         openai_error.from_envelope(envelope, status), status, headers)
 
@@ -60,7 +55,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
     else:
         cache_key = f"dip:model-api:llm:{model_id}:list"
     try:
-        # 确保 redis_util 已初始化
+        # Lazily initialize the Redis client.
         global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
@@ -70,14 +65,14 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
         StandLogger.info_log(f"从redis中获取llm配置耗时：{t2 - t1}s")
         if res is not None and isinstance(res, (str, bytes)):
             try:
-                # 使用json.loads替代eval()，更安全且性能更好
+                # Parse cached JSON without executing arbitrary expressions.
                 import json
                 if isinstance(res, bytes):
                     res = res.decode('utf-8')
                 model_info = json.loads(res)
             except (json.JSONDecodeError, ValueError) as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res[:100]}...")
-                # 缓存解析失败，回退到数据库查询
+                # Fall back to the database when cached data is invalid.
                 if not is_default:
                     model_info = llm_model_dao.get_data_from_model_list_by_name_id(model_name, model_id)
                 else:
@@ -87,10 +82,10 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                         return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 400)
                     else:
                         return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
-                # 重新设置缓存，使用JSON格式
+                # Refresh the cache with valid JSON.
                 await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
         else:
-            # 缓存不存在或非预期类型，从数据库获取
+            # Query the database when the cache is missing or has an unexpected type.
             if not is_default:
                 model_info = llm_model_dao.get_data_from_model_list_by_name_id(model_name, model_id)
             else:
@@ -100,7 +95,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                     return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 400)
                 else:
                     return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
-            # 设置缓存，使用JSON格式
+            # Cache the database result as JSON.
             import json
             await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
     except Exception as e:
@@ -134,14 +129,14 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 model_quota_info = eval(res)
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={quota_cache_key}, value={res}")
-                # 缓存解析失败，回退到数据库查询
+                # Fall back to the database when cached quota data is invalid.
                 model_quota_info = llm_model_dao.get_quota_by_user_and_model(user_id, model_id)
-                # 重新设置缓存
+                # Refresh the quota cache.
                 await redis_util.set_str(key=quota_cache_key, value=str(model_quota_info), expire=300)
         else:
-            # 缓存不存在或非预期类型，从数据库获取
+            # Query the database when quota data is absent or malformed.
             model_quota_info = llm_model_dao.get_quota_by_user_and_model(user_id, model_id)
-            # 设置缓存
+            # Cache the quota result.
             await redis_util.set_str(key=quota_cache_key, value=str(model_quota_info), expire=300)
         if len(model_quota_info) == 0 or model_quota_info[0]["remaining_input_tokens"] <= 0 or model_quota_info[0][
             "remaining_output_tokens"] <= 0:
@@ -150,7 +145,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
 
     if request["max_tokens"] > context_size * 1000:
         error_dict = ModelFactory_Router_ParamError_FormatError_Error.copy()
-        error_dict["detail"] = f"max_tokens超过最大值{context_size}k"
+        error_dict["detail"] = f"max_tokens exceeds the maximum value of {context_size}k"
         return envelope_error_response(error_dict, 400)
     messages = request["messages"]
     message = messages[len(messages) - 1]["content"]
@@ -160,8 +155,8 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
             messages[i].pop("tool_calls")
         if messages[i]["tool_call_id"] is None:
             messages[i].pop("tool_call_id")
-        # OpenAI 规范允许 assistant+tool_calls 的 content 为 null；内部统一空串，
-        # 下游拼接/计量（prompt_str += content）不容忍 None
+        # OpenAI permits null content for assistant messages with tool_calls.
+        # Normalize it because downstream concatenation and metering require strings.
         if messages[i]["content"] is None:
             messages[i]["content"] = ""
         tmp_item = {

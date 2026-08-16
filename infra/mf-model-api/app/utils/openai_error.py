@@ -1,33 +1,34 @@
-"""OpenAI 兼容面（/v1/chat/completions）的错误契约。
+"""Error contract for the OpenAI-compatible /v1/chat/completions endpoint.
 
-该路由对外声明为 OpenAI 兼容，客户端（@ai-sdk/openai-compatible、openai-python、
-LangChain）解析响应时用的是 ``union(chunkSchema, errorSchema)``：要么顶层有
-``choices``，要么顶层有 ``error``。模型工厂自家的 envelope
-（``{code, description, detail, solution, link}``）两边都不匹配，客户端会抛
-TypeValidationError 并把整个原始 body 冒给终端用户（#620）。
+Clients such as @ai-sdk/openai-compatible, openai-python, and LangChain parse
+responses as ``union(chunkSchema, errorSchema)``: the top level must contain
+either ``choices`` or ``error``. The Model Factory envelope
+``{code, description, detail, solution, link}`` matches neither shape and can
+cause clients to expose the raw body through a TypeValidationError (#620).
 
-所以这个面上所有失败出口——SSE 帧和 JSON body——都必须是
-``{"error": {"message", "type", "param", "code"}}``；上游本来就给了合规 error
-体的，原样透传，不再套一层。
+Every failure path, including SSE frames and JSON bodies, must therefore use
+``{"error": {"message", "type", "param", "code"}}``. Preserve a compliant
+upstream error object instead of wrapping it again.
 """
 
 import json
 
 DEFAULT_ERROR_TYPE = "server_error"
 
-# 非 JSON 上游 body 直接当 message 的长度上限，超了就走固定文案
+# Maximum safe length for a plain-text upstream body used as a message.
 _MAX_PLAIN_MESSAGE = 500
 
-# 上游这些状态码属于瞬态，值得退避重试；其余（4xx 参数/鉴权类）重试没有意义
+# Retry transient upstream failures; other 4xx failures are not retryable.
 RETRYABLE_STATUS = (429, 502, 503, 504)
 
-# 只有真正描述「调用方这次请求本身有问题」的 4xx 才透传。
-# 401/403/404 不在其中：它们描述的是「本服务 ↔ 模型厂商」那一层的认证结果，
-# 透出去会被调用方读成自己的凭据/权限出了问题（本服务自己的 403 表示
-# 「无该模型 execute 权限」，同一端点上两种含义分不开），一律收敛成 502。
+# Pass through only 4xx statuses that describe a problem with the caller's
+# request. Upstream 401/403/404 statuses describe this service's provider
+# credentials or routing, not the caller's identity. Normalize them to 502 so
+# they cannot be confused with this service's own authentication and permission
+# responses.
 _PASSTHROUGH_STATUS = (400, 408, 413, 422, 429)
 
-# 上游这几个码属于「依赖侧的认证/寻址问题」，对调用方而言就是网关后面出了事
+# Provider authentication and routing failures are dependency failures to callers.
 _DEPENDENCY_AUTH_STATUS = (401, 403, 404)
 
 _TYPE_BY_STATUS = {
@@ -47,7 +48,7 @@ _TYPE_BY_STATUS = {
 
 
 def error_type_for_status(status):
-    """上游状态码推 OpenAI error type；status 为空表示压根没连上。"""
+    """Map an upstream status to an OpenAI error type; None means no connection."""
     if status is None:
         return "api_connection_error"
     if status in _TYPE_BY_STATUS:
@@ -60,12 +61,12 @@ def error_type_for_status(status):
 
 
 def http_status_for(status):
-    """上游状态码映射成本服务的响应状态码。
+    """Map an upstream status to the status returned by this service.
 
-    401/403/404 描述的是本服务与模型厂商之间的认证结果，不能透传——调用方会
-    读成自己的凭据/权限出了问题，被踢去重新登录，而真正该做的是运维换供应商
-    key。这类收敛成 502「网关后面的依赖有问题」，真实原因留在 `error.type`
-    里给排障的人看。
+    Do not pass through provider 401/403/404 responses. A caller would interpret
+    them as its own credential or permission failure, while an operator must fix
+    the provider credential. Normalize them to 502 and retain the diagnostic
+    category in ``error.type``.
     """
     if status is None:
         return 502
@@ -86,7 +87,7 @@ def is_retryable(status):
 
 def build_error(message, *, error_type=DEFAULT_ERROR_TYPE,
                 code=None, param=None):
-    """造一个 OpenAI 形状的错误体。"""
+    """Build an OpenAI-compatible error object."""
     return {
         "error": {
             "message": message if isinstance(message, str) else str(message),
@@ -98,7 +99,7 @@ def build_error(message, *, error_type=DEFAULT_ERROR_TYPE,
 
 
 def _loads(payload):
-    """上游 body 可能是 str/bytes/dict，统一成 dict；解不出来返回 None。"""
+    """Decode a str, bytes, or dict upstream body; return None when it is not JSON."""
     if isinstance(payload, dict):
         return payload
     if isinstance(payload, (bytes, bytearray)):
@@ -115,18 +116,25 @@ def _loads(payload):
     return parsed if isinstance(parsed, dict) else None
 
 
-def from_upstream(payload, status=None, fallback="模型服务调用失败"):
-    """把上游错误 body 归一成 OpenAI 错误体。
+def _localized_owned_message(code):
+    from app.commons.locale import platform_error_message
 
-    上游已经是 ``{"error": {...}}`` 的，补齐缺省字段后原样透传——那本来就是
-    调用方要的东西，再包一层只会让人 JSON.parse 两次。
+    return platform_error_message(code)
+
+
+def from_upstream(payload, status=None, fallback=None):
+    """Normalize an upstream error body to the OpenAI error shape.
+
+    Preserve an existing ``{"error": {...}}`` object after filling required
+    fields. Wrapping it again would require callers to parse JSON twice.
     """
+    fallback = fallback or _localized_owned_message("ModelFactory.Stream.ModelConnectionFailed")
     error_type = error_type_for_status(status)
     data = _loads(payload)
 
     if data is None:
         text = payload.strip() if isinstance(payload, str) else ""
-        # 非 JSON 的 body 可能是网关的 HTML 错误页或一大段堆栈，别原样端给用户
+        # A non-JSON body may be an HTML gateway page or a stack trace.
         if not text or text.startswith("<") or len(text) > _MAX_PLAIN_MESSAGE:
             text = fallback
         return build_error(text, error_type=error_type)
@@ -153,17 +161,17 @@ def from_upstream(payload, status=None, fallback="模型服务调用失败"):
                 value, error_type=error_type,
                 code=data.get("code") or data.get("error_code"))
 
-    # 一个已知字段都没命中：上游 body 形态未知，可能带回显请求、内部 trace id、
-    # 网关节点名。不整段外泄，只给固定文案；原文由调用处落日志。
+    # Unknown upstream bodies may contain echoed requests, internal IDs, or
+    # gateway node names. Return a fixed localized message and log the raw body
+    # only at the call site.
     return build_error(fallback, error_type=error_type, code=data.get("code"))
 
 
 def from_envelope(envelope, status):
-    """把模型工厂自家的 envelope 翻成 OpenAI 错误体。
+    """Convert a Model Factory envelope to the OpenAI error shape.
 
-    原来的 ``code``（如 ``ModelFactory.ExternalSmallModel.Used.NameNotExist``）
-    落到 OpenAI 的 ``code`` 字段上，机器可读的身份不丢；``solution``/``link``
-    这类只对模型工厂控制台有意义的字段不进兼容面。
+    Preserve the stable machine-readable code. Console-specific fields such as
+    ``solution`` and ``link`` are intentionally omitted.
     """
     if not isinstance(envelope, dict):
         return build_error(str(envelope),
@@ -174,30 +182,31 @@ def from_envelope(envelope, status):
         if isinstance(value, str) and value.strip():
             message = value
             break
-    return build_error(message or "模型服务调用失败",
+    return build_error(message or _localized_owned_message("ModelFactory.Stream.ModelConnectionFailed"),
                        error_type=error_type_for_status(status),
                        code=envelope.get("code"))
 
 
 def from_exception(exc, message=None):
-    """连不上上游（超时/DNS/TLS）时的错误体。"""
-    return build_error(message or str(exc) or "模型服务连接失败",
+    """Build a safe localized error for an upstream timeout, DNS, or TLS failure."""
+    return build_error(message or _localized_owned_message("ModelFactory.Stream.ModelConnectionFailed"),
                        error_type="api_connection_error")
 
 
 def is_error(payload):
-    """判断一个已解析的响应体是不是错误体。"""
+    """Return whether a decoded response uses the OpenAI error shape."""
     return isinstance(payload, dict) and isinstance(payload.get("error"), dict)
 
 
-# OpenAI 错误体本身不带 HTTP 状态码，而上游状态码只在 llm_utils 的 aiohttp 层可见。
-# 这两个私有键是把它带到 controller 出口的通道，序列化成响应前一定被 pop 掉。
+# OpenAI error objects do not carry HTTP status. These private keys transport
+# status metadata from the aiohttp layer to the controller and are removed
+# before serialization.
 _HTTP_STATUS_KEY = "_http_status"
 _RETRY_AFTER_KEY = "_retry_after"
 
 
-# 只有「等一会儿真能好」的结果才配 Retry-After。502 是依赖侧鉴权/寻址问题
-# （上游 401/403/404 收敛而来），重试到天亮也没用，不能诱导调用方退避重试。
+# Emit Retry-After only for transient failures. A normalized 502 represents a
+# provider credential or routing problem and retrying cannot resolve it.
 _RETRY_AFTER_STATUS = (429, 503)
 
 
@@ -222,7 +231,7 @@ def pop_retry_after(error_body):
 
 
 def public_copy(payload):
-    """剥掉私有键的副本。BKN Trace evidence 会持久化，别把内部传参落进去。"""
+    """Copy a payload without private transport metadata."""
     if not isinstance(payload, dict):
         return payload
     return {k: v for k, v in payload.items()
@@ -230,12 +239,12 @@ def public_copy(payload):
 
 
 def error_frame(error_body):
-    """错误体 -> SSE data 帧载荷。"""
+    """Serialize an error object as an SSE data payload."""
     return json.dumps(error_body, ensure_ascii=False)
 
 
 def is_error_frame(chunk):
-    """SSE 帧是不是错误帧（trace 收尾判定用）。"""
+    """Return whether an SSE chunk contains an OpenAI error object."""
     if isinstance(chunk, (bytes, bytearray)):
         try:
             chunk = chunk.decode("utf-8", errors="ignore")
@@ -252,7 +261,7 @@ def is_error_frame(chunk):
 
 
 def retry_after_seconds(status, response_headers=None):
-    """上游给了 Retry-After 就跟随；没给则对限流/不可用类给个保守默认值。"""
+    """Use upstream Retry-After or a conservative default for transient failures."""
     if response_headers:
         raw = (response_headers.get("Retry-After")
                or response_headers.get("retry-after"))
