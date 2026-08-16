@@ -224,6 +224,6 @@ func (h *aiGenerationHandler) GetPromptTemplate(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	sharedrest.MarkLocalizedResponse(c)
+	sharedrest.MarkLocalizedCacheableResponse(c)
 	rest.ReplyOK(c, http.StatusOK, promptTemplate)
 }
