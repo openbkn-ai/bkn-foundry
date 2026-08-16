@@ -326,36 +326,6 @@ func TestValidateBuildTaskSchemaFeatures(t *testing.T) {
 			},
 			wantErr: "must not set ref_property",
 		},
-		// 从没被 PUT 过的存量资源，库里仍是自引用形状。抹平之后必须能建索引，否则
-		// 「push 清掉 condition_operations -> 重建索引 -> 恢复」这条路仍然是断的。
-		{
-			name:     "accepts legacy self-referencing fulltext feature",
-			category: interfaces.ResourceCategoryTable,
-			schema: []*interfaces.Property{{
-				Name: "title", Type: interfaces.DataType_Text,
-				Features: []interfaces.PropertyFeature{{FeatureName: "title_fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "title"}},
-			}},
-		},
-		{
-			// keyword 的 ref 类型要求是 string，text 字段上的自引用 keyword 特征
-			// 在抹平前会撞上 ref 类型校验，抹平后按「特征作用于属性自身」通过
-			name:     "accepts legacy self-referencing keyword feature on a text field",
-			category: interfaces.ResourceCategoryTable,
-			schema: []*interfaces.Property{{
-				Name: "title", Type: interfaces.DataType_Text,
-				Features: []interfaces.PropertyFeature{{FeatureName: "title.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title"}},
-			}},
-		},
-		{
-			// 入口严、存量宽：写入侧对 dataset 的 ref_property 仍然 400（#837 之前就是），
-			// 但库里若已有这种行（迁移或直接写库留下的），构建不该因此建不起来
-			name:     "accepts legacy self-referencing feature on a dataset",
-			category: interfaces.ResourceCategoryDataset,
-			schema: []*interfaces.Property{{
-				Name: "content", Type: interfaces.DataType_Text,
-				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "content"}},
-			}},
-		},
 		{
 			name:     "rejects feature unsupported by property type",
 			category: interfaces.ResourceCategoryTable,
@@ -491,4 +461,73 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 func workerAccountFromCtx(ctx context.Context) (interfaces.AccountInfo, bool) {
 	ai, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	return ai, ok
+}
+
+// 从没被 PUT 过的存量资源，库里仍是自引用形状。构建入口抹平之后必须能建索引，否则
+// 「push 清掉 condition_operations -> 重建索引 -> 恢复」这条路仍然是断的。
+func TestBuildLocalIndexSchemaNormalizesLegacySelfReference(t *testing.T) {
+	// schema 里的 fulltext 特征必须同时在构建任务的 index config 里声明，与自引用无关
+	fulltextTask := func(field string) *interfaces.BuildTask {
+		return &interfaces.BuildTask{
+			ID: "t1",
+			IndexConfig: &interfaces.BuildTaskIndexConfig{
+				Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+					field: {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		category string
+		task     *interfaces.BuildTask
+		props    []*interfaces.Property
+	}{
+		{
+			name:     "fulltext feature referencing its own text field",
+			category: interfaces.ResourceCategoryTable,
+			task:     fulltextTask("title"),
+			props: []*interfaces.Property{{
+				Name: "title", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureName: "title_fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "title"}},
+			}},
+		},
+		{
+			// keyword 的 ref 类型要求是 string，text 字段上的自引用 keyword 特征
+			// 在抹平前会撞上 ref 类型校验，抹平后按「特征作用于属性自身」通过
+			name:     "keyword feature referencing its own text field",
+			category: interfaces.ResourceCategoryTable,
+			task:     &interfaces.BuildTask{ID: "t1"},
+			props: []*interfaces.Property{{
+				Name: "title", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureName: "title.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title"}},
+			}},
+		},
+		{
+			// 入口严、存量宽：写入侧对 dataset 的 ref_property 仍然 400（#837 之前就是），
+			// 但库里若已有这种行（迁移或直接写库留下的），构建不该因此建不起来
+			name:     "any self-reference on a dataset",
+			category: interfaces.ResourceCategoryDataset,
+			task:     fulltextTask("content"),
+			props: []*interfaces.Property{{
+				Name: "content", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureName: "content_fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "content"}},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := &interfaces.Resource{Category: tt.category, SchemaDefinition: tt.props}
+
+			schema, err := buildLocalIndexSchema(tt.task, res)
+
+			require.NoError(t, err)
+			require.Len(t, schema, 1)
+			assert.Empty(t, schema[0].Features[0].RefProperty)
+			// 只动深拷贝，资源行留给下一次更新自愈
+			assert.Equal(t, tt.props[0].Name, res.SchemaDefinition[0].Features[0].RefProperty)
+		})
+	}
 }
