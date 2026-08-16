@@ -30,6 +30,27 @@ func (source partialCountSource) Metadata() observabilityvo.SourceStatus {
 	}
 }
 
+type filteredCountSource struct {
+	lastPosition observabilityvo.SourcePosition
+}
+
+func (source *filteredCountSource) ID() string { return "filtered-count" }
+
+func (source *filteredCountSource) Metadata() observabilityvo.SourceStatus {
+	return observabilityvo.SourceStatus{
+		SourceID: source.ID(), Status: "healthy", Reliability: "best_effort",
+		CountAccuracy: "partial", Categories: []string{observabilityvo.CategoryAuditAdmin},
+	}
+}
+
+func (source *filteredCountSource) Search(_ context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
+	if query.PageBefore != nil {
+		return observabilityvo.SourcePage{CountAccuracy: "partial"}, nil
+	}
+	position := source.lastPosition
+	return observabilityvo.SourcePage{Count: 1, CountAccuracy: "partial", LastPosition: &position}, nil
+}
+
 func (source partialCountSource) Search(context.Context, observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	return observabilityvo.SourcePage{
 		Records:       validTestRecords([]observabilityvo.LogRecord{source.record}),
@@ -833,6 +854,21 @@ func TestListPreservesPaginationForPartiallyProjectedSourceCounts(t *testing.T) 
 	)
 	if err != nil || result.NextCursor == "" {
 		t.Fatalf("partial upstream count must keep the source pageable: result=%+v err=%v", result, err)
+	}
+}
+
+func TestListAdvancesWhenSourceFiltersItsWholePage(t *testing.T) {
+	position := observabilityvo.SourcePosition{EventTimestamp: time.Now().UTC(), SourceID: "filtered-count", LogID: "legacy-logout"}
+	service := NewWithCursorKey([]Source{&filteredCountSource{lastPosition: position}}, []byte("test-cursor-signing-key"))
+	profile := activeProfile("admin-a", "super_admin")
+
+	first, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20})
+	if err != nil || first.NextCursor == "" || first.Count != 0 || first.CountExact {
+		t.Fatalf("filtered source page must advance without exposing its raw count: result=%+v err=%v", first, err)
+	}
+	second, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 20, Cursor: first.NextCursor})
+	if err != nil || second.NextCursor != "" || second.Count != 0 {
+		t.Fatalf("source cursor must advance past an all-filtered page: result=%+v err=%v", second, err)
 	}
 }
 

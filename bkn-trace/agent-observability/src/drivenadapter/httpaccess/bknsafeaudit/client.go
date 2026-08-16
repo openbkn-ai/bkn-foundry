@@ -108,6 +108,11 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		}
 		records = append(records, projectAuditLog(entry, query.AuthorizedTenantID))
 	}
+	var lastPosition *observabilityvo.SourcePosition
+	if len(payload.Logs) > 0 {
+		last := payload.Logs[len(payload.Logs)-1]
+		lastPosition = &observabilityvo.SourcePosition{EventTimestamp: last.CreatedAt, SourceID: sourceID, LogID: last.ID}
+	}
 	countAccuracy := "exact"
 	if payload.Total != int64(len(records)) {
 		// The upstream total includes legacy rows outside this source's explicit
@@ -115,7 +120,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		// the total inexact, so later management rows remain reachable.
 		countAccuracy = "partial"
 	}
-	return observabilityvo.SourcePage{Records: records, Count: payload.Total, CountAccuracy: countAccuracy}, nil
+	return observabilityvo.SourcePage{Records: records, LastPosition: lastPosition, Count: payload.Total, CountAccuracy: countAccuracy}, nil
 }
 
 func onlyFailedOutcomes(outcomes []string) bool {

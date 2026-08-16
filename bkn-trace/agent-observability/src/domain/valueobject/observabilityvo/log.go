@@ -111,7 +111,10 @@ func (query LogQuery) IsAssociatedDrilldown() bool {
 }
 
 type SourcePage struct {
-	Records       []LogRecord
+	Records []LogRecord
+	// LastPosition advances the source cursor even when the adapter filters all
+	// raw records on this page. It is cursor metadata, never a public log record.
+	LastPosition  *SourcePosition
 	NextCursor    string
 	Count         int64
 	CountAccuracy string
