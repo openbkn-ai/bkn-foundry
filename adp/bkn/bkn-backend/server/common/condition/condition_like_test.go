@@ -254,6 +254,13 @@ func TestParseLikeValue(t *testing.T) {
 			So(literal, ShouldEqual, "吹塑风管")
 		})
 
+		// _ 在改动前每条路上都是字面量，拒它是误伤：带下划线的检索词太常见
+		Convey("bare underscore stays a literal", func() {
+			literal, err := ParseLikeValue(OperationLike, "object_type")
+			So(err, ShouldBeNil)
+			So(literal, ShouldEqual, "object_type")
+		})
+
 		Convey("escaped wildcards become literals", func() {
 			literal, err := ParseLikeValue(OperationLike, `50\%`)
 			So(err, ShouldBeNil)
@@ -270,7 +277,7 @@ func TestParseLikeValue(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "literal substring")
 			So(err.Error(), ShouldContainSubstring, "[regex]")
 
-			_, err = ParseLikeValue(OperationNotLike, "a_b")
+			_, err = ParseLikeValue(OperationNotLike, "b%")
 			So(err, ShouldNotBeNil)
 		})
 	})

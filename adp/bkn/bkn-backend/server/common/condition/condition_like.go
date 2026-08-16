@@ -87,12 +87,13 @@ func convertLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, erro
 
 // ParseLikeValue 校验并解析 like / not_like 的值，返回要匹配的字面子串。
 //
-// like 的契约是「子串包含」，不是 SQL LIKE 模式：% 和 _ 不作通配符解释。此前各条路
-// 的处理并不一致——DSL 路径把值原样塞进 .*value.* 正则，SQL 路径连两端的 % 都不补，
-// 而下游 vega 的 SQL 连接器又会把 % 转义成字面量，于是 "%foo%" 这种 SQL 写法在任何
-// 一条路上都恒返回空集且不报错。
+// like 的契约是「子串包含」，不是 SQL LIKE 模式。此前各条路对 % 的处理并不一致——DSL
+// 路径把值原样塞进 .*value.* 正则，SQL 路径连两端的 % 都不补，而下游 vega 的 SQL 连接器
+// 又会把 % 转义成字面量，于是 "%foo%" 这种 SQL 写法在任何一条路上都恒返回空集且不报错。
+// 因此未转义的 % 显式报错，指向 regex；要匹配字面量写 \%。
 //
-// 因此显式拒绝未转义的 % 与 _：需要模式匹配用 regex，需要匹配字面量则写 \% \_。
+// _ 不在拒绝之列：改动前每条路都把它当字面量（Special.Replace 转义成 \_，DSL 的 .* 正则
+// 里也不是元字符），不存在 % 那种「静默空集」，而检索词里带下划线极常见。
 // 与 vega 的 filter_condition.ParseLikeValue 同一套规则。
 func ParseLikeValue(operation, value string) (string, error) {
 	var literal strings.Builder
@@ -109,11 +110,11 @@ func ParseLikeValue(operation, value string) (string, error) {
 			escaped = false
 		case r == '\\':
 			escaped = true
-		case r == '%' || r == '_':
+		case r == '%':
 			return "", fmt.Errorf(
-				"condition [%s] value is matched as a literal substring, so the wildcard '%s' is not supported; "+
-					"use operation [regex] for pattern matching, or escape it as '\\%s' to match the character itself",
-				operation, string(r), string(r))
+				"condition [%s] value is matched as a literal substring, so the wildcard '%%' is not supported; "+
+					"use operation [regex] for pattern matching, or escape it as '\\%%' to match the character itself",
+				operation)
 		default:
 			literal.WriteRune(r)
 		}
