@@ -245,7 +245,7 @@ func Test_rewriteRangeCond(t *testing.T) {
 					},
 				},
 			}
-			result, err := rewriteRangeCond(cfg)
+			result, err := rewriteRangeCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, "mapped_age")
@@ -263,7 +263,7 @@ func Test_rewriteRangeCond(t *testing.T) {
 					Name: "",
 				},
 			}
-			result, err := rewriteRangeCond(cfg)
+			result, err := rewriteRangeCond(context.Background(), cfg)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

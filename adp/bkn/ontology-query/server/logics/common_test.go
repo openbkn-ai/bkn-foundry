@@ -144,7 +144,7 @@ func Test_MapSortFieldsForDataView(t *testing.T) {
 				{Field: interfaces.SORT_FIELD_SCORE, Direction: interfaces.DESC_DIRECTION},
 				{Field: "foo", Direction: interfaces.ASC_DIRECTION},
 			}
-			out, err := MapSortFieldsForDataView(in, objectType)
+			out, err := MapSortFieldsForDataView(context.Background(), in, objectType)
 			So(err, ShouldBeNil)
 			So(len(out), ShouldEqual, 2)
 			So(out[0].Field, ShouldEqual, interfaces.SORT_FIELD_SCORE)
@@ -154,7 +154,7 @@ func Test_MapSortFieldsForDataView(t *testing.T) {
 
 		Convey("rejects unknown sort field", func() {
 			in := []*interfaces.SortParams{{Field: "unknown", Direction: interfaces.ASC_DIRECTION}}
-			_, err := MapSortFieldsForDataView(in, objectType)
+			_, err := MapSortFieldsForDataView(context.Background(), in, objectType)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "unknown")
 		})
@@ -168,20 +168,20 @@ func Test_MapSortFieldsForDataView(t *testing.T) {
 				},
 			}
 			in := []*interfaces.SortParams{{Field: "x", Direction: interfaces.ASC_DIRECTION}}
-			_, err := MapSortFieldsForDataView(in, ot)
+			_, err := MapSortFieldsForDataView(context.Background(), in, ot)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "mapped_field")
 		})
 
 		Convey("empty sort returns empty", func() {
-			out, err := MapSortFieldsForDataView(nil, objectType)
+			out, err := MapSortFieldsForDataView(context.Background(), nil, objectType)
 			So(err, ShouldBeNil)
 			So(out, ShouldBeNil)
 		})
 
 		Convey("rejects nil sort entry", func() {
 			in := []*interfaces.SortParams{nil}
-			_, err := MapSortFieldsForDataView(in, objectType)
+			_, err := MapSortFieldsForDataView(context.Background(), in, objectType)
 			So(err, ShouldNotBeNil)
 		})
 	})

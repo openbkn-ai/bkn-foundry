@@ -25,6 +25,7 @@ import (
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
+	"ontology-query/locale"
 	"ontology-query/logics"
 	"ontology-query/logics/action_logs"
 	"ontology-query/logics/object_type"
@@ -106,7 +107,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("当前请求执行的行动类[%s]所需的动态参数未完整传入，缺少参数 %s，请在请求的 dynamic_params 中填充", actionType.ATName, logics.FormatMissingParamNames(missing)))
+			WithErrorDetails(locale.ValidationDetail(ctx, "ActionDynamicParamsMissing", map[string]any{
+				"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
+			}))
 	}
 
 	// Get instances based on action type configuration and request parameters
@@ -433,7 +436,7 @@ func (s *actionSchedulerService) invokeActionSource(ctx context.Context, actionT
 		result, err := ExecuteTool(ctx, s.aoAccess, actionType, params)
 		return params, result, err
 	case interfaces.ActionSourceTypeMCP:
-		// MCP 工具自带入参 schema，未在行动类声明的 dynamic_params 也要透传
+		// MCP tools define their own input schema, so forward dynamic_params not declared by the action type.
 		params = buildMCPParameters(params, dynamicParams)
 		result, err := ExecuteMCP(ctx, s.aoAccess, actionType, params)
 		return params, result, err
@@ -452,7 +455,9 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 	result := interfaces.ObjectExecutionResult{
 		ObjectSystemInfo: interfaces.ObjectSystemInfo{
 			InstanceIdentity: map[string]any{},
-			Display:          fmt.Sprintf("%d 个目标实例合并为 1 次调用", len(req.Instances)),
+			Display: locale.ValidationDetail(ctx, "ActionInstancesMerged", map[string]any{
+				"count": len(req.Instances),
+			}),
 		},
 		Targets:   req.Instances,
 		StartTime: startTime,

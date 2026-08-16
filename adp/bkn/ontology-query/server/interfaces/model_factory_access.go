@@ -25,17 +25,17 @@ type SmallModel struct {
 	MaxTokens    int    `json:"max_tokens"`
 }
 
-// ModelFactoryAccess 定义模型工厂相关的访问接口
+// ModelFactoryAccess defines the model-factory access interface.
 //
 //go:generate mockgen -source ../interfaces/model_factory_access.go -destination ../interfaces/mock/mock_model_factory_access.go
 type ModelFactoryAccess interface {
-	// GetVector 根据输入字符串数组获取对应的向量数组
-	// 参数：
-	//   - ctx: 上下文对象
-	//   - texts: 输入字符串数组
-	// 返回：
-	//   - [][]float32: 等长的向量数组，每个向量对应一个输入字符串
-	//   - error: 错误信息
+	// GetVector returns one vector for each input string.
+	// Parameters:
+	//   - ctx: request context
+	//   - texts: input strings
+	// Returns:
+	//   - [][]float32: an equally sized vector slice, one vector per input string
+	//   - error: any retrieval error
 	GetVector(ctx context.Context, model *SmallModel, words []string) ([]cond.VectorResp, error)
 
 	GetModelByID(ctx context.Context, modelID string) (*SmallModel, error)

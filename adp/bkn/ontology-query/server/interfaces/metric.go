@@ -18,7 +18,7 @@ const (
 	MetricTypeDerived   = "derived"
 	MetricTypeComposite = "composite"
 
-	// 同环比\占比类型
+	// Period-over-period and proportion types.
 	METRICS_SAMEPERIOD string = "sameperiod"
 	METRICS_PROPORTION string = "proportion"
 
@@ -34,15 +34,15 @@ const (
 
 	MetricHavingFieldValue = "__value"
 
-	// 聚合/时序别名字段，与 Vega Resource 聚合结果约定一致；resource 聚合 alias 为 __value。
+	// Aggregation/time-series alias aligned with Vega Resource results; resource aggregation uses __value.
 	VALUE_FIELD = "__value"
 	TIME_FIELD  = "__time"
 
-	// 同环比 metrics.sameperiod_config.method
+	// metrics.sameperiod_config.method values.
 	METRICS_SAMEPERIOD_METHOD_GROWTH_VALUE = "growth_value"
 	METRICS_SAMEPERIOD_METHOD_GROWTH_RATE  = "growth_rate"
 
-	// 同环比计算的时间粒度
+	// Calendar granularity for period-over-period calculations.
 	METRICS_SAMEPERIOD_TIME_GRANULARITY_DAY     string = "day"
 	METRICS_SAMEPERIOD_TIME_GRANULARITY_MONTH   string = "month"
 	METRICS_SAMEPERIOD_TIME_GRANULARITY_QUARTER string = "quarter"
@@ -59,7 +59,7 @@ const (
 )
 
 var (
-	// ValidMetricUnitTypes / ValidMetricModelUnits 与 bkn-backend、OpenAPI MetricModel 对齐。
+	// ValidMetricUnitTypes and ValidMetricModelUnits align with bkn-backend and the OpenAPI MetricModel.
 	ValidMetricUnitTypes = map[string]struct{}{
 		"numUnit":          {},
 		"storeUnit":        {},
@@ -178,7 +178,7 @@ type MetricTimeWindow struct {
 }
 
 // MetricQueryRequest is POST .../metrics/{metric_id}/data body (DESIGN §3.3.1, appendix B.3; ontology-query.yaml MetricQueryRequestBody).
-// order_by / having 与 calculation_formula 内同名块同构（附录 B.1）；metrics 与 uniquery Metrics / §3.3.1.1 一致。
+// order_by and having mirror the corresponding calculation_formula blocks (Appendix B.1); metrics aligns with uniquery Metrics section 3.3.1.1.
 type MetricQueryRequest struct {
 	Time               *MetricTimeWindow `json:"time,omitempty"`
 	Condition          *cond.CondCfg     `json:"condition,omitempty"`

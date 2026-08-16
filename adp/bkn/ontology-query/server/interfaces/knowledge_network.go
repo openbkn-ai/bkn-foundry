@@ -19,7 +19,7 @@ var (
 	}
 )
 
-// 基于起点、方向和路径长度获取对象子图的请求体
+// Request body for retrieving an object subgraph by source, direction, and path length.
 type SubGraphQueryBaseOnSource struct {
 	ConceptGroups     []string       `json:"concept_groups,omitempty"`
 	SourceObjecTypeId string         `json:"source_object_type_id"`
@@ -40,7 +40,7 @@ type SubGraphQueryBaseOnSource struct {
 	BatchQueryState
 }
 
-// 基于路径查子图的请求体
+// Path-based subgraph query request body.
 type SubGraphQueryBaseOnTypePath struct {
 	Paths  QueryRelationTypePaths
 	KNID   string
@@ -48,7 +48,7 @@ type SubGraphQueryBaseOnTypePath struct {
 	CommonQueryParameters
 }
 
-// 基于一组对象实例组织关系子图的请求体
+// Request body for building a relationship subgraph from object instances.
 type SubGraphQueryBaseOnObjects struct {
 	Entries []InputObjectInstance `json:"entries"`
 	KNID    string                `json:"-"`
@@ -56,7 +56,7 @@ type SubGraphQueryBaseOnObjects struct {
 	CommonQueryParameters
 }
 
-// 输入的对象实例
+// Input object instance.
 type InputObjectInstance struct {
 	ObjectTypeID     string         `json:"object_type_id"`
 	InstanceIdentity map[string]any `json:"_instance_identity"`
@@ -67,33 +67,33 @@ type QueryRelationTypePaths struct {
 }
 
 type QueryRelationTypePath struct {
-	ObjectTypes []ObjectTypeWithKeyField `json:"object_types"` // key是对象类id
+	ObjectTypes []ObjectTypeWithKeyField `json:"object_types"` // The key is the object-type ID.
 	Edges       []TypeEdge               `json:"relation_types"`
-	Limit       int                      `json:"limit"` // 当前路径返回的数量
-	// ObjectTypes   []ObjectTypeWithKeyField `json:"-"`     // key是对象类id
+	Limit       int                      `json:"limit"` // Number of results returned for the current path.
+	// ObjectTypes   []ObjectTypeWithKeyField `json:"-"`     // The key is the object-type ID.
 }
 
 // type ObjectTypeInRequestPath struct {
 // 	OTID      string   `json:"id"`
-// 	Condition *CondCfg `json:"condition,omitempty"` // 对起点对象类的过滤条件
-// 	PageQuery          // 对路径起点对象类的排序和limit
+// 	Condition *CondCfg `json:"condition,omitempty"` // Filter for the starting object type.
+// 	PageQuery          // Sorting and limit for the path's starting object type.
 // }
 
-// 路径配额管理策略
+// Path quota management policy.
 type PathQuotaManager struct {
-	TotalLimit         int64    `json:"-"` // 总路径数量限制，当前是全局配置 1w
-	GlobalCount        int64    `json:"-"` // 全局已经添加了的对象路径数量
-	UsedQuota          sync.Map `json:"-"` // 已使用配额
-	RequestPathTypeNum int      `json:"-"` // 当前请求的概念路径的数量
+	TotalLimit         int64    `json:"-"` // Total path limit, currently configured globally as 10,000.
+	GlobalCount        int64    `json:"-"` // Number of object paths added globally.
+	UsedQuota          sync.Map `json:"-"` // Consumed quota.
+	RequestPathTypeNum int      `json:"-"` // Number of conceptual paths in the current request.
 }
 
-// 批量查询的中间状态
+// Intermediate state for batched queries.
 type BatchQueryState struct {
 	Visited   map[string]bool `json:"-"`
 	BatchSize int             `json:"-"`
 }
 
-// 对象子图的返回体
+// Object subgraph response body.
 type ObjectSubGraph struct {
 	Objects           map[string]ObjectInfoInSubgraph `json:"objects"`
 	IsolatedObjects   map[string]ObjectInfoInSubgraph `json:"isolated_objects,omitempty"`
@@ -104,7 +104,7 @@ type ObjectSubGraph struct {
 	OverallMs         int64                           `json:"overall_ms"`
 }
 
-// 基于路径查询的返回体
+// Path-based query response body.
 type PathsEntries struct {
 	Entries []ObjectSubGraph `json:"entries"`
 }
@@ -115,7 +115,7 @@ type ObjectSystemInfo struct {
 	Display          any            `json:"_display"`
 }
 
-// 在对象子图中的对象信息
+// Object information in an object subgraph.
 type ObjectInfoInSubgraph struct {
 	ObjectSystemInfo
 	ObjectTypeId   string         `json:"object_type_id"`
@@ -123,13 +123,13 @@ type ObjectInfoInSubgraph struct {
 	Properties     map[string]any `json:"properties"`
 }
 
-// 由关系实例组成的路径
+// Path composed of relationship instances.
 type RelationPath struct {
 	Relations []Relation `json:"relations"`
 	Length    int        `json:"length"`
 }
 
-// 关系实例
+// Relationship instance.
 type Relation struct {
 	RelationTypeId   string `json:"relation_type_id"`
 	RelationTypeName string `json:"relation_type_name"`
@@ -137,13 +137,13 @@ type Relation struct {
 	TargetObjectId   string `json:"target_object_id"`
 }
 
-// 从本体引擎中获取到的概念路径
+// Conceptual path returned by the ontology engine.
 type RelationTypePath struct {
 	ObjectTypes []ObjectTypeWithKeyField `json:"object_types"`
 	TypeEdges   []TypeEdge               `json:"relation_types"`
 	Length      int                      `json:"length"`
 
-	ID int `json:"-"` // 概念路径id，为后续对象路径配额限制使用
+	ID int `json:"-"` // Conceptual-path ID used by subsequent object-path quota enforcement.
 }
 
 type TypeEdge struct {
@@ -156,13 +156,13 @@ type TypeEdge struct {
 
 type LevelObject struct {
 	ObjectID   string
-	ObjectUK   map[string]any // 对象主键
+	ObjectUK   map[string]any // Object primary key.
 	ObjectData map[string]any
 	ObjectType *ObjectType
-	PathFrom   string // 记录从哪个对象来的，用于构建路径
+	PathFrom   string // Origin object used to construct the path.
 }
 
 type LevelObjectWithPath struct {
 	LevelObject
-	Paths []RelationPath // 从起点到当前对象的所有路径
+	Paths []RelationPath // All paths from the starting object to the current object.
 }

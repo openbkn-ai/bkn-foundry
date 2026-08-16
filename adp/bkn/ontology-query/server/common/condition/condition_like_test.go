@@ -152,7 +152,7 @@ func Test_rewriteLikeCond(t *testing.T) {
 					},
 				},
 			}
-			result, err := rewriteLikeCond(cfg)
+			result, err := rewriteLikeCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, "mapped_name")
@@ -169,7 +169,7 @@ func Test_rewriteLikeCond(t *testing.T) {
 					Name: "",
 				},
 			}
-			result, err := rewriteLikeCond(cfg)
+			result, err := rewriteLikeCond(context.Background(), cfg)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

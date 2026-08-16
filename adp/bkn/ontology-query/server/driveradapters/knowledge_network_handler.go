@@ -28,8 +28,8 @@ import (
 // 基于起点、方向和路径长度获取对象子图（内部）
 func (r *restHandler) GetObjectsSubgraphByIn(c *gin.Context) {
 	logger.Debug("Handler GetObjectsSubgraphByIn Start")
-	// 内部接口 user_id从header中取，跳过用户有效认证，后面在权限校验时就会校验这个用户是否有权限，无效用户无权限
-	// 自行构建一个visitor
+	// Internal endpoints read user_id from the header and defer authorization to the permission check.
+	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
 	// 查询类型，默认是以起点扩展子图。
 	queryType := c.DefaultQuery("query_type", "")
@@ -48,7 +48,7 @@ func (r *restHandler) GetObjectsSubgraphByEx(c *gin.Context) {
 
 	defer span.End()
 
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -77,7 +77,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	// 设置 trace 的相关 api 的属性
@@ -86,7 +86,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	// 记录接口调用参数： c.Request.RequestURI, body
 	otellog.LogInfo(ctx, fmt.Sprintf("对象子图查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	span.SetAttributes(attr.Key("kn_id").String(knID))
 
@@ -128,7 +128,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 
-	//接收绑定参数
+	// Bind request parameters.
 	query := interfaces.SubGraphQueryBaseOnSource{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
@@ -198,7 +198,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	// 设置 trace 的相关 api 的属性
@@ -207,7 +207,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	// 记录接口调用参数： c.Request.RequestURI, body
 	otellog.LogInfo(ctx, fmt.Sprintf("对象子图查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	span.SetAttributes(attr.Key("kn_id").String(knID))
 
@@ -249,7 +249,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 		return
 	}
 
-	//接收绑定参数
+	// Bind request parameters.
 	paths := interfaces.QueryRelationTypePaths{}
 	err = c.ShouldBindJSON(&paths)
 	if err != nil {
@@ -313,7 +313,7 @@ func (r *restHandler) GetObjectsSubgraphByObjectsByEx(c *gin.Context) {
 
 	defer span.End()
 
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -341,7 +341,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	// 设置 trace 的相关 api 的属性
@@ -350,7 +350,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	// 记录接口调用参数： c.Request.RequestURI, body
 	otellog.LogInfo(ctx, fmt.Sprintf("基于一组对象实例组织关系子图查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	span.SetAttributes(attr.Key("kn_id").String(knID))
 
@@ -381,7 +381,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 		return
 	}
 
-	//接收绑定参数
+	// Bind request parameters.
 	query := interfaces.SubGraphQueryBaseOnObjects{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {

@@ -34,7 +34,7 @@ type modelFactoryAccess struct {
 	mfAPIUrl     string
 }
 
-// NewModelFactoryAccess 创建模型工厂访问实例
+// NewModelFactoryAccess creates a model factory access instance.
 func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactoryAccess {
 	mfAccessOnce.Do(func() {
 		mfAccess = &modelFactoryAccess{
@@ -49,7 +49,7 @@ func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactor
 }
 
 // GetVector 根据输入字符串数组获取对应的向量数组
-// 参数：
+// Parameters:
 //   - ctx: 上下文对象
 //   - texts: 输入字符串数组
 //
@@ -69,10 +69,10 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, model *interfaces.
 		return []cond.VectorResp{}, nil
 	}
 
-	// 构建请求URL
+	// Build the request URL.
 	httpUrl := fmt.Sprintf("%s/small-model/embeddings", mfa.mfAPIUrl)
 
-	// 设置请求头
+	// Set request headers.
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
@@ -109,7 +109,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, model *interfaces.
 			"input":    currentWords,
 		}
 
-		// 发送POST请求获取向量
+		// Send the POST request to retrieve vectors.
 		respCode, result, err := mfa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
 		logger.Debugf("post [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
 
@@ -123,7 +123,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, model *interfaces.
 			return nil, fmt.Errorf("get vector request failed with status code: %d, %s", respCode, result)
 		}
 
-		// 解析响应数据
+		// Parse the response data.
 		var response struct {
 			Data []cond.VectorResp `json:"data"`
 		}
@@ -133,7 +133,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, model *interfaces.
 			return nil, fmt.Errorf("unmarshal vector response failed: %w", err)
 		}
 
-		// 检查返回的向量数量是否与输入文本数量一致
+		// Verify that the returned vector count matches the input text count.
 		if len(response.Data) != len(currentWords) {
 			logger.Errorf("Vector count mismatch: expected %d, got %d", len(currentWords), len(response.Data))
 			return nil, fmt.Errorf("vector count mismatch: expected %d, got %d", len(currentWords), len(response.Data))
@@ -149,21 +149,21 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetModelByID")
 	defer span.End()
 
-	// 构建请求URL
+	// Build the request URL.
 	httpUrl := fmt.Sprintf("%s/small-model/get?model_id=%s", mfa.mfManagerUrl, modelID)
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
-	// 设置请求头
+	// Set request headers.
 	headers := map[string]string{
 		"Content-Type":                      "application/json",
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
 
-	// 发送GET请求获取模型
+	// Send the GET request to retrieve the model.
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
 
@@ -181,7 +181,7 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 		return nil, fmt.Errorf("get model request failed with status code: %d, %s", respCode, result)
 	}
 
-	// 解析响应数据
+	// Parse the response data.
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
 		logger.Errorf("Unmarshal model response failed: %v", err)

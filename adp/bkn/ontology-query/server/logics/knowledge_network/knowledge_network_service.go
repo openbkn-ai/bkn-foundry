@@ -24,6 +24,7 @@ import (
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
+	"ontology-query/locale"
 	"ontology-query/logics"
 	"ontology-query/logics/object_type"
 )
@@ -703,7 +704,7 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 				ObjectType: startObjects.ObjectType,
 				ObjectUK:   startObjectUK,
 				ObjectData: startObjectData,
-				PathFrom:   "", // 起点对象没有来源
+				PathFrom:   "", // A starting object has no origin.
 			},
 			Paths: []interfaces.RelationPath{initialPath},
 		})
@@ -786,7 +787,7 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 
 	if len(conditions) > 1 {
 		nextObjectQuery.ActualCondition = &cond.CondCfg{
-			Operation: "or", // 多个对象之间是 OR 关系
+			Operation: "or", // Combine multiple objects with OR.
 			SubConds:  conditions,
 		}
 	} else if len(conditions) == 1 {
@@ -796,7 +797,7 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 	// 把对象类身上配置的过滤条件加上
 	if objectType.ActualCondition != nil {
 		nextObjectQuery.ActualCondition = &cond.CondCfg{
-			Operation: "and", // 多个对象之间是 OR 关系
+			Operation: "and", // Combine object constraints with AND.
 			SubConds:  []*cond.CondCfg{nextObjectQuery.ActualCondition, objectType.ActualCondition},
 		}
 	}
@@ -943,7 +944,7 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 		// 视图为空，返回异常，不请求
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("当前关系类[%s]是通过视图关联,视图ID为空,请检查关系类的配置", edge.RelationType.RTName))
+			WithErrorDetails(locale.ValidationDetail(ctx, "RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName}))
 	}
 
 	// 视图到目标对象的映射关系
@@ -1292,7 +1293,9 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 		}
 		if !exists {
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound).WithErrorDetails(fmt.Sprintf("对象类型[%s]不存在", otID))
+				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound).WithErrorDetails(
+				locale.ValidationDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}),
+			)
 		}
 		objectTypeMap[otID] = &objectType
 

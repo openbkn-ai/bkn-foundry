@@ -24,7 +24,7 @@ import (
 	"ontology-query/version"
 )
 
-// ServerSetting server配置项
+// ServerSetting contains server configuration.
 type ServerSetting struct {
 	RunMode                  string        `mapstructure:"runMode"`
 	HttpPort                 int           `mapstructure:"httpPort"`
@@ -37,7 +37,7 @@ type ServerSetting struct {
 	FilteredCrossJoinMaxEdgeExpand int `mapstructure:"filteredCrossJoinMaxEdgeExpand"`
 }
 
-// AppSetting app配置项
+// AppSetting contains application configuration.
 type AppSetting struct {
 	ServerSetting ServerSetting             `mapstructure:"server"`
 	LogSetting    logger.LogSetting         `mapstructure:"log"`
@@ -63,7 +63,7 @@ type AppSetting struct {
 }
 
 const (
-	// ConfigFile 配置文件信息
+	// ConfigFile contains configuration-file information.
 	configPath string = "./config/"
 	configName string = "ontology-query-config"
 	configType string = "yaml"
@@ -88,7 +88,7 @@ var (
 	APP_LOCATION *time.Location
 )
 
-// NewSetting 读取服务配置
+// NewSetting reads service configuration.
 func NewSetting() *AppSetting {
 	settingOnce.Do(func() {
 		appSetting = &AppSetting{}
@@ -99,7 +99,7 @@ func NewSetting() *AppSetting {
 	return appSetting
 }
 
-// 初始化配置
+// Initialize configuration.
 func initSetting(vp *viper.Viper) {
 	logger.Infof("Init Setting From File %s%s.%s", configPath, configName, configType)
 
@@ -116,7 +116,7 @@ func initSetting(vp *viper.Viper) {
 	})
 }
 
-// 读取配置文件
+// Read the configuration file.
 func loadSetting(vp *viper.Viper) {
 	logger.Infof("Load Setting File %s%s.%s", configPath, configName, configType)
 
@@ -188,11 +188,11 @@ func SetOpenSearchSetting() {
 	}
 }
 
-// GetAuthEnabled 获取认证开关状态
-// 通过环境变量 AUTH_ENABLED 控制，默认 true（安全优先）
+// GetAuthEnabled returns whether authentication is enabled.
+// It is controlled by AUTH_ENABLED and defaults to true for security.
 func GetAuthEnabled() bool {
 	envVal := os.Getenv("AUTH_ENABLED")
-	// 仅当显式设置为 false 或 0 时禁用认证
+	// Disable authentication only when explicitly set to false or 0.
 	return envVal != "false" && envVal != "0"
 }
 

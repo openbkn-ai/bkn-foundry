@@ -50,11 +50,11 @@ func (cond *NotEmptyCond) Convert2SQL(ctx context.Context) (string, error) {
 	return sqlStr, nil
 }
 
-func rewriteNotEmptyCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteNotEmptyCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
 	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("非空值[not_empty]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "not_empty", "field": cfg.Name})
 	}
 
 	return &CondCfg{

@@ -25,7 +25,7 @@ type RegexCond struct {
 func NewRegexCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty) (Condition, error) {
 	_, ok := fieldsMap[cfg.Name]
 	if !ok {
-		return nil, fmt.Errorf(errFmtUnknownObjectTypeProperty, cfg.Name)
+		return nil, validationError(ctx, "ConditionFieldNotFound", map[string]any{"field": cfg.Name})
 	}
 
 	if !dtype.DataType_IsString(cfg.NameField.Type) {
@@ -65,11 +65,11 @@ func (cond *RegexCond) Convert2SQL(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-func rewriteRegexCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteRegexCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
 	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("正则过滤[regex]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "regex", "field": cfg.Name})
 	}
 	return &CondCfg{
 		Name:        cfg.NameField.MappedField.Name,

@@ -85,10 +85,10 @@ func (cond *BeforeCond) Convert2SQL(ctx context.Context) (string, error) {
 	return sqlStr, nil
 }
 
-func rewriteBeforeCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteBeforeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField == nil || cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("过滤条件 [before] 使用的字段「%s」在对象类数据属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "before", "field": cfg.Name})
 	}
 	return &CondCfg{
 		Name:        cfg.NameField.MappedField.Name,

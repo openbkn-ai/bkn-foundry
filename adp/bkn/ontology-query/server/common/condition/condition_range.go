@@ -115,11 +115,11 @@ func (cond *RangeCond) Convert2SQL(ctx context.Context) (string, error) {
 	return sqlStr, nil
 }
 
-func rewriteRangeCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteRangeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
 	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("范围内过滤[range]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "range", "field": cfg.Name})
 	}
 	return &CondCfg{
 		Name:        cfg.NameField.MappedField.Name,

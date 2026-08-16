@@ -8,35 +8,33 @@ package condition
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	dtype "ontology-query/interfaces/data_type"
+	"ontology-query/locale"
 )
 
 const MaxSubCondition = 100
 
-// Filter field names in API are object-type data property names (not view column names).
-const (
-	errFmtUnknownObjectTypeProperty = "过滤字段「%s」不是对象类的数据属性名；请使用对象类中已定义的数据属性作为 field"
-	errFmtBinaryPropertyNoFilter    = "过滤字段「%s」为 binary 类型，不支持过滤"
-	errFmtMissingViewMappedField    = "属性「%s」未配置视图映射字段(mapped_field)，无法通过数据视图查询"
-)
+func validationError(ctx context.Context, name string, templateData map[string]any) error {
+	return errors.New(locale.ValidationDetail(ctx, name, templateData))
+}
 
-// sql的字符串转义
+// SQL string escaping.
 var Special = strings.NewReplacer(`\`, `\\\\`, `'`, `\'`, `%`, `\%`, `_`, `\_`)
 
 //go:generate mockgen -source ../condition/condition.go -destination ../condition/mock/mock_condition.go
 type Condition interface {
 	Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error)
-	Convert2SQL(ctx context.Context) (string, error) // 把condition转成sql的where条件
+	Convert2SQL(ctx context.Context) (string, error) // Convert the condition to an SQL WHERE clause.
 
 	// RewriteCond(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (*CondCfg, error)
 }
 
-// 将过滤条件拼接到 dsl 请求的 query 部分
+// NewCondition appends filter conditions to the query section of a DSL request.
 func NewCondition(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*DataProperty) (cond Condition, err error) {
 	if cfg == nil {
 		return nil, nil
@@ -58,18 +56,18 @@ func NewCondition(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 }
 
 func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*DataProperty) (cond Condition, err error) {
-	// multi_match之外的才校验
+	// Validate all operators except multi_match.
 	if cfg.Operation != OperationMultiMatch {
-		// 判断除 * 之外的字段权限
+		// Validate fields other than *.
 		if cfg.Name != AllField {
 			field, ok := fieldsMap[cfg.Name]
 			if !ok {
-				return nil, fmt.Errorf(errFmtUnknownObjectTypeProperty, cfg.Name)
+				return nil, validationError(ctx, "ConditionFieldNotFound", map[string]any{"field": cfg.Name})
 			}
 
-			// 如果字段类型是 binary 类型，则不支持过滤
+			// Binary fields do not support filtering.
 			if field.Type == dtype.DATATYPE_BINARY {
-				return nil, fmt.Errorf(errFmtBinaryPropertyNoFilter, cfg.Name)
+				return nil, validationError(ctx, "BinaryFieldUnsupported", map[string]any{"field": cfg.Name})
 			}
 
 			cfg.NameField = field
@@ -139,7 +137,7 @@ func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsM
 		cond, err = NewBetweenCond(ctx, cfg, fieldsMap)
 
 	default:
-		return nil, fmt.Errorf("not support condition's operation: %s", cfg.Operation)
+		return nil, validationError(ctx, "UnsupportedConditionOperation", map[string]any{"operation": cfg.Operation})
 	}
 	if err != nil {
 		return nil, err
@@ -149,28 +147,28 @@ func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsM
 }
 
 func getFilterFieldName(name string, fieldsMap map[string]*DataProperty, isFullTextQuery bool) string {
-	// 全文检索允许字段为 "*"
+	// Full-text search permits the * field.
 	if name == AllField {
 		return name
 	}
 
-	// 如果字段为 __id, 转化为 open search内置字段 _id
+	// Convert __id to the OpenSearch built-in _id field.
 	if name == MetaField_ID {
 		return OS_MetaField_ID
 	}
 
-	// 如果是脱敏字段，字段添加后缀 _desensitize
+	// Add the _desensitize suffix for desensitized fields.
 	desensitizeFieldName := name + DESENSITIZE_FIELD_SUFFIX
 
 	fieldInfo, ok1 := fieldsMap[name]
 	_, ok2 := fieldsMap[desensitizeFieldName]
 	if ok1 && ok2 {
-		// 脱敏字段
+		// Desensitized field.
 		name = desensitizeFieldName
 	}
 
-	// 全文检索情况下，text 类型的字段不需要添加 keyword 后缀
-	// 精确查询情况下，text 类型的字段配了keyword索引，则给字段名加上后缀 .keyword
+	// Text fields do not need the keyword suffix for full-text search.
+	// Add .keyword for exact queries on text fields with a keyword index.
 	if !isFullTextQuery && ok1 &&
 		fieldInfo.Type == dtype.DATATYPE_TEXT &&
 		fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.KeywordConfig.Enabled {
@@ -180,7 +178,7 @@ func getFilterFieldName(name string, fieldsMap map[string]*DataProperty, isFullT
 	return name
 }
 
-// 转换成 keyword
+// wrapKeyWordFieldName converts a field path to its keyword field.
 func wrapKeyWordFieldName(fields ...string) string {
 	for _, field := range fields {
 		if field == "" {
@@ -192,7 +190,7 @@ func wrapKeyWordFieldName(fields ...string) string {
 	return strings.Join(fields, ".") + "." + dtype.KEYWORD_SUFFIX
 }
 
-// 把本体对属性的过滤条件重写为视图的过滤条件
+// RewriteCondition rewrites an ontology-property condition as a data-view condition.
 func RewriteCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty,
 	vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (viewCfg *CondCfg, err error) {
 
@@ -261,94 +259,94 @@ func PromoteLegacyLeafWithSubConds(cfg *CondCfg) *CondCfg {
 func rewriteCondWithOpr(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty,
 	vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (viewCfg *CondCfg, err error) {
 
-	// multi_match之外的才校验
+	// Validate all operators except multi_match.
 	if cfg.Operation != OperationMultiMatch {
-		// 判断除 * 之外的字段权限
+		// Validate fields other than *.
 		if cfg.Name != AllField {
 			field, ok := fieldsMap[cfg.Name]
 			if !ok {
-				return nil, fmt.Errorf(errFmtUnknownObjectTypeProperty, cfg.Name)
+				return nil, validationError(ctx, "ConditionFieldNotFound", map[string]any{"field": cfg.Name})
 			}
 
-			// 如果字段类型是 binary 类型，则不支持过滤
+			// Binary fields do not support filtering.
 			if field.Type == dtype.DATATYPE_BINARY {
-				return nil, fmt.Errorf(errFmtBinaryPropertyNoFilter, cfg.Name)
+				return nil, validationError(ctx, "BinaryFieldUnsupported", map[string]any{"field": cfg.Name})
 			}
 
 			cfg.NameField = field
 			if field.MappedField.Name == "" {
-				return nil, fmt.Errorf(errFmtMissingViewMappedField, cfg.Name)
+				return nil, validationError(ctx, "ViewMappedFieldRequired", map[string]any{"field": cfg.Name})
 			}
 		}
 	}
 
 	switch cfg.Operation {
 	case OperationEq:
-		viewCfg, err = rewriteEqCond(cfg)
+		viewCfg, err = rewriteEqCond(ctx, cfg)
 	case OperationNotEq:
-		viewCfg, err = rewriteNotEqCond(cfg)
+		viewCfg, err = rewriteNotEqCond(ctx, cfg)
 	case OperationGt:
-		viewCfg, err = rewriteGtCond(cfg)
+		viewCfg, err = rewriteGtCond(ctx, cfg)
 	case OperationGte:
-		viewCfg, err = rewriteGteCond(cfg)
+		viewCfg, err = rewriteGteCond(ctx, cfg)
 	case OperationLt:
-		viewCfg, err = rewriteLtCond(cfg)
+		viewCfg, err = rewriteLtCond(ctx, cfg)
 	case OperationLte:
-		viewCfg, err = rewriteLteCond(cfg)
+		viewCfg, err = rewriteLteCond(ctx, cfg)
 	case OperationIn:
-		viewCfg, err = rewriteInCond(cfg)
+		viewCfg, err = rewriteInCond(ctx, cfg)
 	case OperationNotIn:
-		viewCfg, err = rewriteNotInCond(cfg)
+		viewCfg, err = rewriteNotInCond(ctx, cfg)
 	case OperationLike:
-		viewCfg, err = rewriteLikeCond(cfg)
+		viewCfg, err = rewriteLikeCond(ctx, cfg)
 	case OperationNotLike:
-		viewCfg, err = rewriteNotLikeCond(cfg)
+		viewCfg, err = rewriteNotLikeCond(ctx, cfg)
 	case OperationRange:
-		viewCfg, err = rewriteRangeCond(cfg)
+		viewCfg, err = rewriteRangeCond(ctx, cfg)
 	case OperationOutRange:
-		viewCfg, err = rewriteOutRangeCond(cfg)
+		viewCfg, err = rewriteOutRangeCond(ctx, cfg)
 	case OperationExist:
-		viewCfg, err = rewriteExistCond(cfg)
+		viewCfg, err = rewriteExistCond(ctx, cfg)
 	case OperationNotExist:
-		viewCfg, err = rewriteNotExistCond(cfg)
+		viewCfg, err = rewriteNotExistCond(ctx, cfg)
 	case OperationRegex:
-		viewCfg, err = rewriteRegexCond(cfg)
+		viewCfg, err = rewriteRegexCond(ctx, cfg)
 	case OperationMatch:
-		viewCfg, err = rewriteMatchCond(cfg)
+		viewCfg, err = rewriteMatchCond(ctx, cfg)
 	case OperationMatchPhrase:
-		viewCfg, err = rewriteMatchPhraseCond(cfg)
+		viewCfg, err = rewriteMatchPhraseCond(ctx, cfg)
 	case OperationKNN:
 		viewCfg, err = rewriteKnnCond(ctx, cfg, vectorizer)
 	case OperationMultiMatch:
-		viewCfg, err = rewriteMultiMatchCond(cfg, fieldsMap)
+		viewCfg, err = rewriteMultiMatchCond(ctx, cfg, fieldsMap)
 	case OperationPrefix:
-		viewCfg, err = rewritePrefixCond(cfg)
+		viewCfg, err = rewritePrefixCond(ctx, cfg)
 	case OperationNotPrefix:
-		viewCfg, err = rewriteNotPrefixCond(cfg)
+		viewCfg, err = rewriteNotPrefixCond(ctx, cfg)
 	case OperationNull:
-		viewCfg, err = rewriteNullCond(cfg)
+		viewCfg, err = rewriteNullCond(ctx, cfg)
 	case OperationNotNull:
-		viewCfg, err = rewriteNotNullCond(cfg)
+		viewCfg, err = rewriteNotNullCond(ctx, cfg)
 	case OperationContain:
-		viewCfg, err = rewriteContainCond(cfg)
+		viewCfg, err = rewriteContainCond(ctx, cfg)
 	case OperationNotContain:
-		viewCfg, err = rewriteNotContainCond(cfg)
+		viewCfg, err = rewriteNotContainCond(ctx, cfg)
 	case OperationTrue:
-		viewCfg, err = rewriteTrueCond(cfg)
+		viewCfg, err = rewriteTrueCond(ctx, cfg)
 	case OperationFalse:
-		viewCfg, err = rewriteFalseCond(cfg)
+		viewCfg, err = rewriteFalseCond(ctx, cfg)
 	case OperationBefore:
-		viewCfg, err = rewriteBeforeCond(cfg)
+		viewCfg, err = rewriteBeforeCond(ctx, cfg)
 	case OperationCurrent:
-		viewCfg, err = rewriteCurrentCond(cfg)
+		viewCfg, err = rewriteCurrentCond(ctx, cfg)
 	case OperationBetween:
-		viewCfg, err = rewriteBetweenCond(cfg)
+		viewCfg, err = rewriteBetweenCond(ctx, cfg)
 	case OperationEmpty:
-		viewCfg, err = rewriteEmptyCond(cfg)
+		viewCfg, err = rewriteEmptyCond(ctx, cfg)
 	case OperationNotEmpty:
-		viewCfg, err = rewriteNotEmptyCond(cfg)
+		viewCfg, err = rewriteNotEmptyCond(ctx, cfg)
 	default:
-		return nil, fmt.Errorf("not support condition's operation: %s", cfg.Operation)
+		return nil, validationError(ctx, "UnsupportedConditionOperation", map[string]any{"operation": cfg.Operation})
 	}
 	if err != nil {
 		return nil, err

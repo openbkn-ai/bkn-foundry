@@ -172,7 +172,7 @@ func Test_rewriteNotEqCond(t *testing.T) {
 					},
 				},
 			}
-			result, err := rewriteNotEqCond(cfg)
+			result, err := rewriteNotEqCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, "mapped_name")
@@ -190,7 +190,7 @@ func Test_rewriteNotEqCond(t *testing.T) {
 					Name: "",
 				},
 			}
-			result, err := rewriteNotEqCond(cfg)
+			result, err := rewriteNotEqCond(context.Background(), cfg)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

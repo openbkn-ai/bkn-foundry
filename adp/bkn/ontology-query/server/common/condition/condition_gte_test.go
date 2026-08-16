@@ -170,7 +170,7 @@ func Test_rewriteGteCond(t *testing.T) {
 					},
 				},
 			}
-			result, err := rewriteGteCond(cfg)
+			result, err := rewriteGteCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, "mapped_age")
@@ -188,7 +188,7 @@ func Test_rewriteGteCond(t *testing.T) {
 					Name: "",
 				},
 			}
-			result, err := rewriteGteCond(cfg)
+			result, err := rewriteGteCond(context.Background(), cfg)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

@@ -6,7 +6,7 @@
 
 package interfaces
 
-type contextKey string // 自定义专属的key类型
+type contextKey string // Private context key type.
 
 const (
 	CONTENT_TYPE_NAME = "Content-Type"
@@ -17,62 +17,62 @@ const (
 	HTTP_HEADER_ACCOUNT_TYPE    = "x-account-type"
 	HTTP_HEADER_BUSINESS_DOMAIN = "x-business-domain"
 
-	ACCOUNT_INFO_KEY    contextKey = "x-account-info"    // 避免直接使用string
-	BUSINESS_DOMAIN_KEY contextKey = "x-business-domain" // 业务域ID
+	ACCOUNT_INFO_KEY    contextKey = "x-account-info"    // Avoid using an untyped string as a context key.
+	BUSINESS_DOMAIN_KEY contextKey = "x-business-domain" // Business-domain ID.
 
 	SERVICE_NAME = "ontology-query"
 
-	// 默认的分支
+	// Default branch.
 	MAIN_BRANCH = "main"
 
-	// 指标数据查询是否包含模型信息
+	// Whether metric data queries include model information.
 	DEFAULT_INCLUDE_TYPE_INFO    = "false"
 	DEFAULT_INCLUDE_LOGIC_PARAMS = "false"
 
-	// 参数来源
+	// Parameter sources.
 	VALUE_FROM_INPUT    = "input"
 	VALUE_FROM_PROPERTY = "property"
 
-	// 属性类型
+	// Property types.
 	PROPERTY_TYPE_METRIC = "metric"
 
-	// 排序方向
+	// Sort directions.
 	DESC_DIRECTION = "desc"
 	ASC_DIRECTION  = "asc"
 
-	// 得分排序字段
+	// Score sort field.
 	SORT_FIELD_SCORE = "_score"
 
-	// 最大路径数(探索子图时，探索的最大路径数)
+	// Maximum number of paths explored by a subgraph query.
 	MAX_PATHS = 2000
 
-	// 默认的路径查询数量 - 基于路径查询时
+	// Default result count for path-based queries.
 	DEFAULT_PATHS = 2000
 
-	// 路径子图查询
+	// Path-based subgraph query type.
 	QUERY_TYPE_RELATION_TYPE_PATH = "relation_path"
 
-	// limit的最大值
+	// Maximum limit value.
 	MAX_LIMIT = 10000
 
-	// 对象类的对象实例检索时，默认的查询数量
+	// Default result count for object-type instance searches.
 	DEFAULT_OBJECT_LIMIT = 10
 
-	// 子图查询时，节点对象类的对象实例的默认查询数量
+	// Default instance count per node object type in subgraph queries.
 	DEFAULT_LIMIT = 1000
 
-	// 算子的执行模式 execution_mode
+	// Operator execution_mode values.
 	OPERATOR_EXECUTION_MODE_SYNC = "sync"
 
-	// 边的方向
+	// Edge directions.
 	DIRECTION_FORWARD       = "forward"
 	DIRECTION_BACKWARD      = "backward"
 	DIRECTION_BIDIRECTIONAL = "bidirectional"
 
-	// search after默认的limit大小
+	// Default limit for search_after queries.
 	SearchAfter_Limit = 10000
 
-	// 对象类的对象数据查询使用缓存（持久化）数据的默认值
+	// Default use of cached persistent data for object-type queries.
 	DEFAULT_IGNORING_STORE_CACHE = "false"
 )
 
@@ -106,12 +106,12 @@ type AccountInfo struct {
 }
 
 type PageQuery struct {
-	// 分页信息
+	// Pagination information.
 	NeedTotal bool `json:"need_total"`
 	Limit     int  `json:"limit"`
-	// Offset 偏移翻页：仅资源（vega 表源）路径生效；与 search_after 互斥（传了 search_after 时被忽略）。
+	// Offset pagination applies only to resource-backed Vega tables and is ignored when search_after is provided.
 	Offset int `json:"offset"`
-	// UseSearchAfter bool          `json:"use_search_after"` // 业务知识网络只提供search after的方式，不需要提供这个参数
+	// UseSearchAfter bool          `json:"use_search_after"` // Business knowledge networks only expose search_after, so this option is unnecessary.
 	Sort []*SortParams `json:"sort"`
 	SearchAfterParams
 }

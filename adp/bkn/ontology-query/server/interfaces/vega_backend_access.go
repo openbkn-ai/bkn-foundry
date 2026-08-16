@@ -42,7 +42,7 @@ type ResourceDataQueryParams struct {
 
 	Aggregation map[string]any   `json:"aggregation,omitempty"`
 	GroupBy     []map[string]any `json:"group_by,omitempty"`
-	// OrderBy     []map[string]any `json:"order_by,omitempty"` // 同 sort
+	// OrderBy     []map[string]any `json:"order_by,omitempty"` // Equivalent to sort.
 	Having map[string]any `json:"having,omitempty"`
 }
 

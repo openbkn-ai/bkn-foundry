@@ -165,7 +165,7 @@ func Test_rewriteRegexCond(t *testing.T) {
 					},
 				},
 			}
-			result, err := rewriteRegexCond(cfg)
+			result, err := rewriteRegexCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, "mapped_name")
@@ -182,7 +182,7 @@ func Test_rewriteRegexCond(t *testing.T) {
 					Name: "",
 				},
 			}
-			result, err := rewriteRegexCond(cfg)
+			result, err := rewriteRegexCond(context.Background(), cfg)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

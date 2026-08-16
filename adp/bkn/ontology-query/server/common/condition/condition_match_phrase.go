@@ -22,7 +22,7 @@ func NewMatchPhraseCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fie
 
 	name := getFilterFieldName(cfg.Name, fieldsMap, true)
 	var fields []string
-	// 如果指定*查询，并且视图的字段范围为部分字段，那么将查询的字段替换成视图的字段列表
+	// When querying * against a view with a partial field scope, replace it with the view field list.
 	if name == AllField {
 		// fields = make([]string, 0, len(fieldsMap))
 		// for fieldName := range fieldsMap {
@@ -80,7 +80,7 @@ func (cond *MatchPhraseCond) Convert2SQL(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-func rewriteMatchPhraseCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteMatchPhraseCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
 	// 过滤条件中的属性字段换成映射的视图字段
 	fieldName := ""
@@ -88,7 +88,7 @@ func rewriteMatchPhraseCond(cfg *CondCfg) (*CondCfg, error) {
 		fieldName = AllField
 	} else {
 		if cfg.NameField.Name == "" {
-			return nil, fmt.Errorf("短语匹配过滤[match_phrase]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+			return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "match_phrase", "field": cfg.Name})
 		}
 		fieldName = cfg.NameField.MappedField.Name
 	}

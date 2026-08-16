@@ -18,7 +18,7 @@ import (
 	lib_common "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 )
 
-// string 转 []string
+// Convert a string to []string.
 func StringToStringSlice(str string) []string {
 	if str == "" {
 		return []string{}
@@ -36,7 +36,7 @@ func StringToStringSlice(str string) []string {
 }
 
 const (
-	oneGiB = 1024 * 1024 * 1024 //1073741824.0 定义1GB的字节数
+	oneGiB = 1024 * 1024 * 1024 // 1073741824.0 bytes in one GiB.
 
 	CALENDAR_STEP_MINUTE  string = "minute"
 	CALENDAR_STEP_HOUR    string = "hour"
@@ -48,7 +48,7 @@ const (
 )
 
 func BytesToGiB(bytes int64) float64 {
-	return math.Round(float64(bytes)/oneGiB*100) / 100 // 四舍五入到小数点后两位
+	return math.Round(float64(bytes)/oneGiB*100) / 100 // Round to two decimal places.
 }
 
 func GiBToBytes(gib int64) int64 {
@@ -71,7 +71,7 @@ func AnyToFloat64(value any) (float64, error) {
 	case reflect.String:
 		return strconv.ParseFloat(v.String(), 64)
 	default:
-		return 0, fmt.Errorf("无法将类型 %T 转换为 float64", value)
+		return 0, fmt.Errorf("cannot convert type %T to float64", value)
 	}
 }
 
@@ -89,7 +89,7 @@ func AnyToInt64(value any) (int64, error) {
 	case reflect.String:
 		return strconv.ParseInt(v.String(), 10, 64)
 	default:
-		return 0, fmt.Errorf("无法将类型 %T 转换为 int64", value)
+		return 0, fmt.Errorf("cannot convert type %T to int64", value)
 	}
 }
 

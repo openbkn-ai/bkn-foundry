@@ -8,7 +8,6 @@ package object_type
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -17,6 +16,7 @@ import (
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
+	"ontology-query/locale"
 	"ontology-query/logics"
 )
 
@@ -135,13 +135,14 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 	if !ok || def == nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			oerrors.OntologyQuery_Metric_NotFound).
-			WithErrorDetails(fmt.Sprintf("KN 指标[%s]不存在", logicProp.DataSource.ID))
+			WithErrorDetails(locale.ValidationDetail(ctx, "KNMetricNotFound", map[string]any{"metricID": logicProp.DataSource.ID}))
 	}
 	if strings.TrimSpace(def.ScopeRef) != strings.TrimSpace(otID) {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("指标[%s]的 scope_ref[%s]须等于对象类[%s]",
-				logicProp.DataSource.ID, def.ScopeRef, otID))
+			WithErrorDetails(locale.ValidationDetail(ctx, "MetricScopeMismatch", map[string]any{
+				"metricID": logicProp.DataSource.ID, "scopeRef": def.ScopeRef, "objectTypeID": otID,
+			}))
 	}
 
 	metricQuery := buildMetricQueryRequestFromLogicProperty(filters, metricParams, start, end, isInstant, step)

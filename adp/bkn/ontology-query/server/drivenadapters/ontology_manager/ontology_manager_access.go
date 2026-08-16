@@ -132,7 +132,7 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		return emptyObjectType, false, nil
 	}
 
-	// 处理返回结果 result
+	// Process the response result.
 	// var objectTypes []interfaces.ObjectType
 	var response struct {
 		ObjectTypes []interfaces.ObjectType `json:"entries"`
@@ -310,7 +310,7 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		return nil, nil
 	}
 
-	// 处理返回结果 result
+	// Process the response result.
 	// var typePaths []interfaces.RelationTypePath
 	var response struct {
 		TypePaths []interfaces.RelationTypePath `json:"entries"`
@@ -453,7 +453,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		return emptyRelationType, false, nil
 	}
 
-	// 处理返回结果 result
+	// Process the response result.
 	// var relationTypes []interfaces.RelationType
 	var response struct {
 		RelationTypes []interfaces.RelationType `json:"entries"`

@@ -10,7 +10,7 @@ import (
 	"context"
 )
 
-// 基于起点、方向和路径长度获取对象子图的请求体
+// Request body for retrieving an object subgraph by source, direction, and path length.
 type PathsQueryBaseOnSource struct {
 	ConceptGroups     []string `json:"concept_groups,omitempty"`
 	SourceObjecTypeId string   `json:"source_object_type_id"`
@@ -21,13 +21,13 @@ type PathsQueryBaseOnSource struct {
 	// IncludeTypeInfo bool   `json:"-"`
 }
 
-// 关系类列表查询参数
+// Relationship-type list query parameters.
 type RelationTypesQuery struct {
-	// 单个对象类型ID查询（向后兼容）
+	// Query by one object-type ID for backward compatibility.
 	SourceObjectTypeID string `json:"source_object_type_id,omitempty"`
 	TargetObjectTypeID string `json:"target_object_type_id,omitempty"`
 
-	// 多个对象类型ID查询（新增）
+	// Query by multiple object-type IDs.
 	SourceObjectTypeIDs []string `json:"source_object_type_ids,omitempty"`
 	TargetObjectTypeIDs []string `json:"target_object_type_ids,omitempty"`
 }

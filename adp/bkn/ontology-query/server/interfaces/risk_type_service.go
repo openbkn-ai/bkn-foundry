@@ -8,7 +8,7 @@ package interfaces
 
 import "context"
 
-// RiskTypeEvalResult 风险评估结果
+// RiskTypeEvalResult contains a risk assessment result.
 type RiskTypeEvalResult struct {
 	Allow   bool
 	Message string
@@ -16,8 +16,8 @@ type RiskTypeEvalResult struct {
 
 //go:generate mockgen -source risk_type_service.go -destination mock/mock_risk_type_service.go
 type RiskTypeService interface {
-	// Evaluate 对 ActionType 进行风险评估
+	// Evaluate assesses the risk of an ActionType.
 	Evaluate(ctx context.Context, actionType *ActionType, knID string, branch string) (*RiskTypeEvalResult, error)
-	// MustAllow 若风险评估返回 disallow 则返回错误
+	// MustAllow returns an error when risk assessment denies the action.
 	MustAllow(ctx context.Context, actionType *ActionType, knID string, branch string) error
 }

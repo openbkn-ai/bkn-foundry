@@ -75,7 +75,7 @@ const (
 
 var (
 	OperationMap = map[string]struct{}{
-		"=":                  {}, // 兼容filter中定义的等于是 =
+		"=":                  {}, // Accept = as the equality operator for filter compatibility.
 		OperationAnd:         {},
 		OperationOr:          {},
 		OperationEq:          {},
@@ -125,12 +125,12 @@ var (
 
 	// match_type
 	MatchTypeMap = map[string]bool{
-		"best_fields":   true, // 哪个字段匹配最好就用那个字段的分数
-		"most_fields":   true, // 多个字段的分数累加
-		"cross_fields":  true, // 将多个字段视为一个大的组合字段来匹配
-		"phrase":        true, // 要求查询词按完全相同的顺序出现在字段中
-		"phrase_prefix": true, // 除最后一个词外按顺序匹配，最后一个词进行前缀匹配
-		"bool_prefix":   true, // 将查询词作为前缀进行布尔查询,不要求词顺序紧密相邻
+		"best_fields":   true, // Use the score of the best-matching field.
+		"most_fields":   true, // Combine scores from multiple fields.
+		"cross_fields":  true, // Treat multiple fields as one combined field.
+		"phrase":        true, // Require query terms in the exact same order.
+		"phrase_prefix": true, // Match terms in order and prefix-match the final term.
+		"bool_prefix":   true, // Boolean prefix matching without requiring adjacent ordered terms.
 	}
 )
 
@@ -147,7 +147,7 @@ type Filter struct {
 }
 
 type CondCfg struct {
-	ObjectTypeID string     `json:"object_type_id,omitempty" mapstructure:"object_type_id"` // 行动条件需要标记是哪个行动类的
+	ObjectTypeID string     `json:"object_type_id,omitempty" mapstructure:"object_type_id"` // Identifies the action type for an action condition.
 	Name         string     `json:"field,omitempty" mapstructure:"field"`
 	Operation    string     `json:"operation,omitempty" mapstructure:"operation"`
 	SubConds     []*CondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
@@ -208,13 +208,13 @@ type DataProperty struct {
 	MappedField Field `json:"mapped_field"`
 
 	IndexConfig         *IndexConfig `json:"index_config,omitempty"`
-	ConditionOperations []string     `json:"condition_operations,omitempty"` // 字符串类型的字段支持的操作集
+	ConditionOperations []string     `json:"condition_operations,omitempty"` // Operations supported by a string field.
 }
 
 type Field struct {
-	Name        string `json:"name"` // 技术名
+	Name        string `json:"name"` // Technical name.
 	Type        string `json:"type"`
-	DisplayName string `json:"display_name"` // 显示名
+	DisplayName string `json:"display_name"` // Display name.
 }
 
 type IndexConfig struct {

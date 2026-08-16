@@ -31,7 +31,7 @@ func NewLtCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProp
 
 }
 
-// 注：由于term是包含操作，而不是等值比较，如果field的值是数组的话，无法做到精确相等。
+// Note: term performs containment rather than equality, so exact equality is not possible when a field value is an array.
 func (cond *LtCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
 	v := cond.mCfg.Value
 	vStr, ok := v.(string)
@@ -61,11 +61,11 @@ func (cond *LtCond) Convert2SQL(ctx context.Context) (string, error) {
 	return sqlStr, nil
 }
 
-func rewriteLtCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteLtCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
 	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("大于[>]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "<", "field": cfg.Name})
 	}
 	return &CondCfg{
 		Name:        cfg.NameField.MappedField.Name,

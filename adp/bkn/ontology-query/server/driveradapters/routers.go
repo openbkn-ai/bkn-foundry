@@ -99,7 +99,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1 := c.Group("/api/ontology-query/in/v1")
 	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
-		// 业务知识网络
+		// Knowledge networks.
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.GetObjectsInObjectTypeByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id/properties", r.verifyJsonContentType(), r.GetObjectsPropertiesByIn)
 		// 基于起点、方向和路径长度获取对象子图
@@ -121,9 +121,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	logger.Info("RestHandler RegisterPublic")
 }
 
-// HealthCheck 健康检查
+// HealthCheck reports service health.
 func (r *restHandler) HealthCheck(c *gin.Context) {
-	// 返回服务信息
+	// Return service information.
 	rest.ReplyOK(c, http.StatusOK, gin.H{
 		"ServerName":    version.ServerName,
 		"ServerVersion": version.ServerVersion,
@@ -136,7 +136,7 @@ func (r *restHandler) HealthCheck(c *gin.Context) {
 // verifyJsonContentType middleware
 func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		//拦截请求，判断ContentType是否为XXX
+		// Reject requests whose Content-Type is not application/json.
 		if c.ContentType() != interfaces.CONTENT_TYPE_JSON {
 			httpErr := rest.NewHTTPError(c, http.StatusNotAcceptable, oerrors.OntologyQuery_InvalidRequestHeader_ContentType).
 				WithErrorDetails(fmt.Sprintf("Content-Type header [%s] is not supported, expected is [application/json].", c.ContentType()))
@@ -146,7 +146,7 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 			return
 		}
 
-		//执行后续操作
+		// Continue with the next handler.
 		c.Next()
 	}
 }
@@ -184,7 +184,7 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 	}
 }
 
-// 校验oauth
+// Verify OAuth credentials.
 func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
 	visitor, err := r.as.VerifyToken(ctx, c)
 	if err != nil {

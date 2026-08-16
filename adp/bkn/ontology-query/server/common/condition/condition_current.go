@@ -38,7 +38,7 @@ func NewCurrentCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Dat
 		return nil, fmt.Errorf("condition [current] right value should be string")
 	}
 
-	// 验证 unit 值
+	// Validate the unit value.
 	validUnits := map[string]bool{
 		"year":   true,
 		"month":  true,
@@ -113,10 +113,10 @@ func (cond *CurrentCond) Convert2SQL(ctx context.Context) (string, error) {
 	return sqlStr, nil
 }
 
-func rewriteCurrentCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteCurrentCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("当前[current]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "current", "field": cfg.Name})
 	}
 	return &CondCfg{
 		Name:        cfg.NameField.MappedField.Name,

@@ -28,8 +28,8 @@ import (
 // 基于对象类的对象数据查询(内部)
 func (r *restHandler) GetActionsInActionTypeByIn(c *gin.Context) {
 	logger.Debug("Handler GetActionsInActionTypeByIn Start")
-	// 内部接口 user_id从header中取，跳过用户有效认证，后面在权限校验时就会校验这个用户是否有权限，无效用户无权限
-	// 自行构建一个visitor
+	// Internal endpoints read user_id from the header and defer authorization to the permission check.
+	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
 	r.GetActionsInActionType(c, visitor)
 }
@@ -41,7 +41,7 @@ func (r *restHandler) GetActionsInActionTypeByEx(c *gin.Context) {
 
 	defer span.End()
 
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -61,7 +61,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	// 设置 trace 的相关 api 的属性
@@ -70,11 +70,11 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	// 记录接口调用参数： c.Request.RequestURI, body
 	otellog.LogInfo(ctx, fmt.Sprintf("行动数据查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	span.SetAttributes(attr.Key("kn_id").String(knID))
 
-	//获取参数字符串
+	// Read the ID list.
 	otID := c.Param("at_id")
 	span.SetAttributes(attr.Key("at_id").String(otID))
 
@@ -115,7 +115,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		return
 	}
 	// instant query 参数， time（即start 和 end），isInstantQuery, interval = 1
-	//接收绑定参数
+	// Bind request parameters.
 	query := interfaces.ActionQuery{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {

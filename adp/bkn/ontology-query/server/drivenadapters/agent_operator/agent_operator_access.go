@@ -34,11 +34,11 @@ type agentOperatorAccess struct {
 }
 
 type integrationError struct {
-	Code        string      `json:"code"`        // 错误码
-	Description string      `json:"description"` // 错误描述
-	Detail      interface{} `json:"detail"`      // 详细内容
-	Solution    interface{} `json:"solution"`    // 错误解决方案
-	Link        interface{} `json:"link"`        // 错误链接
+	Code        string      `json:"code"`        // Error code
+	Description string      `json:"description"` // Error description
+	Detail      interface{} `json:"detail"`      // Error details
+	Solution    interface{} `json:"solution"`    // Suggested resolution
+	Link        interface{} `json:"link"`        // Error link
 }
 
 type executionResult struct {

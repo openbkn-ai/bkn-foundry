@@ -79,7 +79,7 @@ func Test_rewriteExistCond(t *testing.T) {
 					},
 				},
 			}
-			result, err := rewriteExistCond(cfg)
+			result, err := rewriteExistCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, "mapped_name")
@@ -93,7 +93,7 @@ func Test_rewriteExistCond(t *testing.T) {
 					Name: "",
 				},
 			}
-			result, err := rewriteExistCond(cfg)
+			result, err := rewriteExistCond(context.Background(), cfg)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

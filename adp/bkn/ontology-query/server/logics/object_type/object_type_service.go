@@ -29,6 +29,7 @@ import (
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
+	"ontology-query/locale"
 	"ontology-query/logics"
 	"ontology-query/logics/metric"
 )
@@ -119,37 +120,39 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		}
 	}
 
-	// 排序字段非空时，排序字段必须是对象类的数据属性, _score
+	// Sort fields must be object-type data properties or _score.
 	if len(query.Sort) > 0 {
 		for _, sp := range query.Sort {
 			if _, exists := indexPropMap[sp.Field]; !exists {
 				return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("排序字段[%s]不是对象类的数据属性", sp.Field))
+					WithErrorDetails(locale.ValidationDetail(ctx, "SortPropertyInvalid", map[string]any{"field": sp.Field}))
 			}
 		}
 	}
-	// 指定的属性集需在对象类的数据属性中存在
+	// Requested properties must exist in the object type.
 	if len(query.Properties) > 0 {
 		for _, prop := range query.Properties {
 			if _, exists := propMap[prop]; !exists {
 				return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("指定的属性[%s]不是对象类的数据属性", prop))
+					WithErrorDetails(locale.ValidationDetail(ctx, "PropertyNotFound", map[string]any{"property": prop}))
 			}
 		}
 	}
 
-	// 对于数据属性的查询的参数校验
+	// Validate data-property query parameters.
 	if query.ObjectQueryInfo != nil {
-		// 唯一标识包含主键字段
+		// Every identity must contain the primary-key fields.
 		for i, instanceIdentity := range query.ObjectQueryInfo.InstanceIdentity {
 			for _, key := range objectType.PrimaryKeys {
 				if _, exist := instanceIdentity[key]; !exist {
 					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("第%d个对象的实例标识字段[%s]不能为空", i+1, key))
+						WithErrorDetails(locale.ValidationDetail(ctx, "InstanceIdentityFieldRequired", map[string]any{
+							"index": i + 1, "field": key,
+						}))
 				}
 			}
 		}
-		// 属性列表包含对象类的数据属性和逻辑属性
+		// The property list may contain data or logic properties.
 		logicPropMap := make(map[string]bool)
 		for _, prop := range objectType.LogicProperties {
 			logicPropMap[prop.Name] = true
@@ -157,7 +160,7 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		for _, prop := range query.ObjectQueryInfo.Properties {
 			if _, exist := propMap[prop]; !exist && !logicPropMap[prop] {
 				return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("属性查询的属性[%s]不是对象类的属性", prop))
+					WithErrorDetails(locale.ValidationDetail(ctx, "PropertyQueryPropertyNotFound", map[string]any{"property": prop}))
 			}
 		}
 	}
@@ -341,7 +344,7 @@ func downstreamErrorCode(statusCode int) string {
 func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string) error {
 
-	resourceSort, err := logics.MapSortFieldsForDataView(query.Sort, objectType)
+	resourceSort, err := logics.MapSortFieldsForDataView(ctx, query.Sort, objectType)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(err.Error())
@@ -437,23 +440,23 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	return nil
 }
 
-// 从对象类索引中获取对象数据
+// getObjectsFromObjectIndex retrieves object data from the object-type index.
 func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	objectType interfaces.ObjectType, resps *interfaces.Objects, indexPropMap map[string]string) error {
 
 	objects := []map[string]any{}
 
-	// 构造 DSL 过滤条件
+	// Build the DSL filter condition.
 	conditionDslStr := "{}"
 	if query.ActualCondition != nil {
 		condtion, err := cond.NewCondition(ctx, query.ActualCondition, 1, logics.TransferPropsToPropMap(objectType.DataProperties))
 		if err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails(fmt.Sprintf("解析或校验过滤条件失败：%s", err.Error()))
+				WithErrorDetails(locale.ValidationDetail(ctx, "QueryConditionInvalid", map[string]any{"error": err.Error()}))
 		}
 
-		// 转换到dsl
+		// Convert the condition to DSL.
 		conditionDslStr, err = condtion.Convert(ctx, logics.MemoizeVectorizer(
 			func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
 				return ots.handlerVector(ctx, property, word)
@@ -461,7 +464,7 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 		if err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_InvalidParameter_Condition).
-				WithErrorDetails(fmt.Sprintf("将过滤条件转换为 OpenSearch DSL 失败：%s", err.Error()))
+				WithErrorDetails(locale.ValidationDetail(ctx, "ConditionToDSLFailed", map[string]any{"error": err.Error()}))
 		}
 
 	}
@@ -470,7 +473,7 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 	if err != nil {
 		return err
 	}
-	// 请求opensearch
+	// Query OpenSearch.
 	osHits, err := ots.osa.SearchData(ctx, objectType.Status.Index, dsl)
 	if err != nil {
 		logger.Errorf("SearchData error: %s", err.Error())
@@ -479,7 +482,7 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 			WithErrorDetails(fmt.Sprintf("search data from opensearch error: %s", err.Error()))
 	}
 
-	// 根据NeedTotal参数决定是否查询total
+	// Decide whether to query the total based on NeedTotal.
 	if query.NeedTotal {
 		total, err := ots.GetTotal(ctx, objectType.Status.Index, dsl)
 		if err != nil {
@@ -596,7 +599,7 @@ func (ots *objectTypeService) handlerVector(ctx context.Context, property *cond.
 	if model == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
 			oerrors.OntologyQuery_ObjectType_SmallModelNotFound).
-			WithErrorDetails(fmt.Sprintf("小模型[%s]不存在", property.IndexConfig.VectorConfig.ModelID))
+			WithErrorDetails(locale.ValidationDetail(ctx, "SmallModelNotFound", map[string]any{"modelID": property.IndexConfig.VectorConfig.ModelID}))
 	}
 	if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -710,7 +713,11 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 					resultValue, err := ots.processLogicProperty(ctx, query.KNID, query.Branch, query.ObjectTypeID,
 						propName, propValue, logicProp, query.DynamicParams)
 					if err != nil {
-						errChan <- fmt.Errorf("对象[%d]的逻辑属性[%s]处理失败: %w", objIndex, propName, err)
+						detail := locale.ValidationDetail(ctx, "LogicPropertyProcessFailed", map[string]any{
+							"index":    objIndex,
+							"property": propName,
+						})
+						errChan <- fmt.Errorf("%s: %w", detail, err)
 						return
 					}
 
@@ -788,12 +795,12 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	if err != nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(fmt.Sprintf("属性[%s]的动态参数解析失败: %v", propName, err))
+			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{"property": propName}))
 	}
 	if err = sonic.Unmarshal(paramBytes, &metricParams); err != nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(fmt.Sprintf("属性[%s]的动态参数解析失败: %v", propName, err))
+			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{"property": propName}))
 	}
 
 	if metricParams.Start != nil {
@@ -821,7 +828,9 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 			if !paramExist {
 				return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-					WithErrorDetails(fmt.Sprintf("指标属性[%s]所需的动态参数[%s]为空", propName, paramK))
+					WithErrorDetails(locale.ValidationDetail(ctx, "MetricDynamicParamRequired", map[string]any{
+						"property": propName, "parameter": paramK,
+					}))
 			}
 			operation := "=="
 			for _, configParam := range logicProp.Parameters {
@@ -853,8 +862,9 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 	if _, dynamicParamExist := dynamicParams[propName]; !dynamicParamExist && len(toolValue.DynamicParams) > 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]所需的动态参数为空，需要参数%v，请在请求中填充动态参数",
-				propName, toolValue.DynamicParams))
+			WithErrorDetails(locale.ValidationDetail(ctx, "LogicPropertyDynamicParamsRequired", map[string]any{
+				"property": propName, "parameters": toolValue.DynamicParams,
+			}))
 	}
 
 	toolRequest := generateToolExecutionRequest(logicProp.Parameters, toolValue.Parameters, dynamicParams[propName])
@@ -869,8 +879,9 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).
-			WithErrorDetails(fmt.Sprintf("当前请求的逻辑属性[%s]的工具箱[%s]工具[%s]执行失败，error:%v",
-				propName, logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, err))
+			WithErrorDetails(locale.ValidationDetail(ctx, "ToolExecutionFailed", map[string]any{
+				"property": propName, "toolbox": logicProp.DataSource.BoxID, "tool": logicProp.DataSource.ToolID,
+			}))
 	}
 
 	if logicProp.DataSource.ResultPath != "" {

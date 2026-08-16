@@ -7,17 +7,26 @@
 package locale
 
 import (
+	"context"
 	"log"
 	"os"
 	"path"
 	"runtime"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 var (
 	localeDir = "/locale"
 )
+
+const validationDetailPrefix = "OntologyQuery.Validation.Detail."
+
+// ValidationDetail renders a request-validation detail using the effective request locale.
+func ValidationDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), validationDetailPrefix+name, templateData)
+}
 
 func Register() {
 	var abPath string

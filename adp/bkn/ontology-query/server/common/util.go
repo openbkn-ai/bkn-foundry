@@ -29,7 +29,7 @@ func CE[T any](condition bool, trueVal, falseVal T) T {
 
 // 给字符串加双引号
 func QuotationMark(s string) string {
-	if strings.HasPrefix(s, "\"") || strings.HasSuffix(s, "\"") { //防止拼接过情况
+	if strings.HasPrefix(s, "\"") || strings.HasSuffix(s, "\"") { // Avoid quoting a value that has already been joined.
 		return s
 	}
 	return "\"" + s + "\""

@@ -21,7 +21,7 @@ type ToolExecutionRequest struct {
 	Body    map[string]any `json:"body,omitempty"`
 	Query   map[string]any `json:"query,omitempty"`
 	Path    map[string]any `json:"path,omitempty"`
-	Timeout int64          `json:"timeout,omitempty"` // 超时时间，单位秒
+	Timeout int64          `json:"timeout,omitempty"` // Timeout in seconds.
 }
 
 //go:generate mockgen -source ../interfaces/agent_operator_access.go -destination ../interfaces/mock/mock_agent_operator_access.go

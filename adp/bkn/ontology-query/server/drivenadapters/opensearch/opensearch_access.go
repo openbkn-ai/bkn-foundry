@@ -48,40 +48,40 @@ func NewOpenSearchAccess(appSetting *common.AppSetting) interfaces.OpenSearchAcc
 	return osAccess
 }
 
-// CreateIndex 创建指定名称和配置的索引
-// 根据提供的索引名称和body配置创建新的OpenSearch索引
-// 参数：
-//   - ctx: 上下文对象，用于控制请求生命周期
-//   - indexName: 要创建的索引名称
-//   - body: 索引配置，包括settings和mappings等
+// CreateIndex creates an index with the specified name and configuration.
+// It creates an OpenSearch index from the provided index name and body configuration.
+// Parameters:
+//   - ctx: Context that controls the request lifecycle.
+//   - indexName: Name of the index to create.
+//   - body: Index configuration, including settings and mappings.
 //
-// 返回：创建成功返回nil，失败返回具体错误信息
+// Returns nil on success or the underlying error on failure.
 func (o *openSearchAccess) CreateIndex(ctx context.Context, indexName string, body any) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateIndex")
 	defer span.End()
 
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
-	// 将body转换为JSON字节
+	// Encode body as JSON bytes.
 	bodyBytes, err := sonic.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("failed to marshal index body: %w", err)
 	}
 
-	// 创建索引请求
+	// Create the index request.
 	req := opensearchapi.IndicesCreateRequest{
 		Index: indexName,
 		Body:  bytes.NewBuffer(bodyBytes),
 	}
 
-	// 执行创建索引请求
+	// Execute the index request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return fmt.Errorf("failed to create index %s: %w", indexName, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	// 检查响应状态
+	// Check the response status.
 	if res.IsError() {
 		return fmt.Errorf("create index %s failed: %s, %s", indexName, res.Status(), res.String())
 	}
@@ -89,23 +89,23 @@ func (o *openSearchAccess) CreateIndex(ctx context.Context, indexName string, bo
 	return nil
 }
 
-// IndexExists 检查指定索引是否存在
-// 通过发送索引存在性检查请求来确定指定的索引是否已存在于OpenSearch中
-// 参数：
-//   - ctx: 上下文对象，用于控制请求生命周期
-//   - indexName: 要检查的索引名称
+// IndexExists checks whether the specified index exists.
+// It checks whether the index already exists in OpenSearch.
+// Parameters:
+//   - ctx: Context that controls the request lifecycle.
+//   - indexName: Name of the index to check.
 //
-// 返回：索引存在返回true，不存在返回false；发生错误时返回false和错误信息
-// 示例：
+// Returns true when the index exists, false when it does not, or false with an error on failure.
+// Example:
 //
 //	exists, err := client.IndexExists(ctx, "my-index")
 //	if err != nil {
-//	    // 处理错误
+//	    // Handle the error.
 //	}
 //	if exists {
-//	    // 索引已存在，可以跳过创建步骤
+//	    // The index exists; creation can be skipped.
 //	} else {
-//	    // 索引不存在，需要创建
+//	    // The index does not exist and must be created.
 //	}
 func (o *openSearchAccess) IndexExists(ctx context.Context, indexName string) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "IndexExists")
@@ -113,22 +113,22 @@ func (o *openSearchAccess) IndexExists(ctx context.Context, indexName string) (b
 
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
-	// 创建索引存在性检查请求
+	// Create the index-existence request.
 	req := opensearchapi.IndicesExistsRequest{
 		Index: []string{indexName},
 	}
 
-	// 执行请求
+	// Execute the request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return false, fmt.Errorf("failed to check index existence: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	// 根据响应状态码判断索引是否存在
-	// 200 - 索引存在
-	// 404 - 索引不存在
-	// 其他状态码 - 错误
+	// Determine index existence from the response status code.
+	// 200 - index exists.
+	// 404 - index does not exist.
+	// Other status codes - error.
 	switch res.StatusCode {
 	case 200:
 		return true, nil
@@ -145,19 +145,19 @@ func (o *openSearchAccess) DeleteIndex(ctx context.Context, indexName string) er
 
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
-	// 创建删除索引请求
+	// Create the delete-index request.
 	req := opensearchapi.IndicesDeleteRequest{
 		Index: []string{indexName},
 	}
 
-	// 执行删除索引请求
+	// Execute the delete-index request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return fmt.Errorf("failed to delete index %s: %w", indexName, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	// 检查响应状态
+	// Check the response status.
 	if res.IsError() {
 		return fmt.Errorf("delete index %s failed: %s, %s", indexName, res.Status(), res.String())
 	}
@@ -165,16 +165,16 @@ func (o *openSearchAccess) DeleteIndex(ctx context.Context, indexName string) er
 	return nil
 }
 
-// InsertData 向指定索引写入数据，并指定文档ID
-// 将单个文档数据插入到指定的OpenSearch索引中
-// 参数：
-//   - ctx: 上下文对象，用于控制请求生命周期
-//   - indexName: 目标索引名称
-//   - id: 文档的唯一标识符
-//   - data: 要插入的文档数据，可以是任意可序列化的结构体或map
+// InsertData writes data to an index with the specified document ID.
+// It inserts one document into the specified OpenSearch index.
+// Parameters:
+//   - ctx: Context that controls the request lifecycle.
+//   - indexName: Target index name.
+//   - id: Unique document identifier.
+//   - data: Document data to insert; any serializable struct or map.
 //
-// 返回：插入成功返回nil，失败返回具体错误信息
-// 注意：数据插入后会立即刷新索引，使数据立即可搜索
+// Returns nil on success or the underlying error on failure.
+// The index is refreshed after insertion so data is immediately searchable.
 func (o *openSearchAccess) InsertData(ctx context.Context, indexName string, docID string, data any) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "InsertData")
 	defer span.End()
@@ -183,21 +183,21 @@ func (o *openSearchAccess) InsertData(ctx context.Context, indexName string, doc
 		attr.Key("index_name").String(indexName),
 		attr.Key("doc_id").String(docID))
 
-	// 将数据编码为JSON
+	// Encode data as JSON.
 	jsonData, err := sonic.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	// 创建索引请求，指定文档ID
+	// Create the index request with the document ID.
 	req := opensearchapi.IndexRequest{
 		Index:      indexName,
 		DocumentID: docID,
 		Body:       bytes.NewReader(jsonData),
-		Refresh:    "true", // 立即刷新，使数据可搜索
+		Refresh:    "true", // Refresh immediately so data is searchable.
 	}
 
-	// 执行请求
+	// Execute the request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return fmt.Errorf("failed to insert data with ID: %w", err)
@@ -211,18 +211,18 @@ func (o *openSearchAccess) InsertData(ctx context.Context, indexName string, doc
 	return nil
 }
 
-// BulkInsertData 批量写入数据到指定索引
-// 高效地将多个文档批量插入到指定的OpenSearch索引中
-// 使用批量API可以显著提高大量数据的插入效率，比单条插入性能提升10-100倍
-// 参数：
-//   - ctx: 上下文对象，用于控制请求生命周期
-//   - indexName: 目标索引名称
-//   - dataList: 文档数据列表，每个元素必须包含"id"字段作为文档ID
+// BulkInsertData writes data to an index in batches.
+// It efficiently inserts multiple documents into the specified OpenSearch index.
+// The bulk API significantly improves large-volume insertion throughput over individual inserts.
+// Parameters:
+//   - ctx: Context that controls the request lifecycle.
+//   - indexName: Target index name.
+//   - dataList: Document data list; every item must contain an "id" field as its document ID.
 //
-// 返回：批量插入成功返回nil，失败返回具体错误信息
-// 注意：数据插入后会立即刷新索引，使数据立即可搜索
-// 性能：建议单次批量插入的文档数量控制在合理范围内（如1000-5000条）
-// 示例：
+// Returns nil on success or the underlying error on failure.
+// The index is refreshed after insertion so data is immediately searchable.
+// Performance: keep each bulk insertion within a reasonable document count, such as 1000-5000.
+// Example:
 //
 //	dataList := []any{
 //	  map[string]interface{}{"id": "doc1", "title": "文档1"},
@@ -241,7 +241,7 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 	var buf bytes.Buffer
 
 	for _, data := range dataList {
-		// 准备元数据
+		// Prepare metadata.
 		meta := map[string]any{
 			"index": map[string]any{
 				"_index": indexName,
@@ -249,7 +249,7 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 			},
 		}
 
-		// 写入元数据行
+		// Write the metadata line.
 		metaJSON, err := sonic.Marshal(meta)
 		if err != nil {
 			return fmt.Errorf("failed to marshal bulk metadata: %w", err)
@@ -257,7 +257,7 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 		buf.Write(metaJSON)
 		buf.WriteByte('\n')
 
-		// 写入数据行
+		// Write the data line.
 		dataJSON, err := sonic.Marshal(data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal bulk data: %w", err)
@@ -266,13 +266,13 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 		buf.WriteByte('\n')
 	}
 
-	// 创建批量请求
+	// Create the bulk request.
 	req := opensearchapi.BulkRequest{
 		Body:    &buf,
 		Refresh: "true",
 	}
 
-	// 执行请求
+	// Execute the request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return fmt.Errorf("failed to bulk insert data: %w", err)
@@ -305,16 +305,16 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 	return nil
 }
 
-// SearchData 搜索指定索引中的数据
-// 根据提供的查询条件在指定索引中执行搜索操作
-// 支持复杂的查询DSL，包括全文搜索、过滤、聚合等
-// 参数：
-//   - ctx: 上下文对象，用于控制请求生命周期
-//   - indexName: 要搜索的索引名称
-//   - query: 查询条件，可以是OpenSearch查询DSL的任意结构
+// SearchData searches data in the specified index.
+// It searches the specified index using the provided query.
+// It supports complex query DSL, including full-text search, filters, and aggregations.
+// Parameters:
+//   - ctx: Context that controls the request lifecycle.
+//   - indexName: Name of the index to search.
+//   - query: Query condition in any valid OpenSearch query-DSL structure.
 //
-// 返回：搜索结果列表，每个元素是一个文档的完整内容；失败返回错误信息
-// 示例：
+// Returns complete documents in a result list or an error on failure.
+// Example:
 //
 //	query := map[string]interface{}{
 //	  "query": map[string]interface{}{
@@ -327,20 +327,20 @@ func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, que
 
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
-	// 将查询条件编码为JSON
+	// Encode the query as JSON.
 	queryJSON, err := sonic.Marshal(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query: %w", err)
 	}
 	logger.Debug(string(queryJSON))
 
-	// 创建搜索请求
+	// Create the search request.
 	req := opensearchapi.SearchRequest{
 		Index: []string{indexName},
 		Body:  bytes.NewReader(queryJSON),
 	}
 
-	// 执行请求
+	// Execute the request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search data: %w", err)
@@ -351,7 +351,7 @@ func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, que
 		return nil, fmt.Errorf("search data failed: %s, %s", res.Status(), res.String())
 	}
 
-	// 解析响应
+	// Parse the response.
 	var searchResult struct {
 		Hits struct {
 			Hits []struct {
@@ -367,7 +367,7 @@ func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, que
 		return nil, fmt.Errorf("failed to decode search response: %w", err)
 	}
 
-	// 提取搜索结果
+	// Extract search results.
 	results := make([]interfaces.Hit, 0, len(searchResult.Hits.Hits))
 	for _, hit := range searchResult.Hits.Hits {
 		results = append(results, hit)
@@ -376,16 +376,16 @@ func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, que
 	return results, nil
 }
 
-// DeleteData 删除指定索引中的单条数据
-// 根据文档ID从指定索引中删除单个文档
-// 如果文档不存在（404错误），不会返回错误
-// 参数：
-//   - ctx: 上下文对象，用于控制请求生命周期
-//   - indexName: 目标索引名称
-//   - id: 要删除的文档ID
+// DeleteData deletes one document from the specified index.
+// It deletes one document from the specified index by document ID.
+// A missing document (404) is not treated as an error.
+// Parameters:
+//   - ctx: Context that controls the request lifecycle.
+//   - indexName: Target index name.
+//   - id: Document ID to delete.
 //
-// 返回：删除成功返回nil，失败返回具体错误信息
-// 注意：删除操作会立即刷新索引，使删除结果立即可见
+// Returns nil on success or the underlying error on failure.
+// The index is refreshed after deletion so the result is immediately visible.
 func (o *openSearchAccess) DeleteData(ctx context.Context, indexName string, docID string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "DeleteData")
 	defer span.End()
@@ -397,7 +397,7 @@ func (o *openSearchAccess) DeleteData(ctx context.Context, indexName string, doc
 	req := opensearchapi.DeleteRequest{
 		Index:      indexName,
 		DocumentID: docID,
-		Refresh:    "true", // 立即刷新，使删除操作立即可见
+		Refresh:    "true", // Refresh immediately so deletions are visible.
 	}
 
 	res, err := req.Do(ctx, o.client)
@@ -407,7 +407,7 @@ func (o *openSearchAccess) DeleteData(ctx context.Context, indexName string, doc
 	defer func() { _ = res.Body.Close() }()
 
 	if res.IsError() {
-		// 404错误表示文档不存在，不视为错误
+		// A 404 means the document does not exist and is not treated as an error.
 		if res.StatusCode == 404 {
 			return nil
 		}
@@ -417,18 +417,18 @@ func (o *openSearchAccess) DeleteData(ctx context.Context, indexName string, doc
 	return nil
 }
 
-// BulkDeleteData 批量删除指定索引中的数据
-// 高效地批量删除指定索引中的多个文档
-// 使用批量API可以显著提高大量数据的删除效率
-// 参数：
-//   - ctx: 上下文对象，用于控制请求生命周期
-//   - indexName: 目标索引名称
-//   - idList: 要删除的文档ID列表
+// BulkDeleteData deletes data from an index in batches.
+// It efficiently deletes multiple documents from the specified index.
+// The bulk API significantly improves large-volume deletion throughput.
+// Parameters:
+//   - ctx: Context that controls the request lifecycle.
+//   - indexName: Target index name.
+//   - idList: List of document IDs to delete.
 //
-// 返回：批量删除成功返回nil，失败返回具体错误信息
-// 注意：删除操作会立即刷新索引，使删除结果立即可见
-// 性能：建议单次批量删除的文档数量控制在合理范围内（如1000-5000条）
-// 容错：如果某个ID对应的文档不存在，不会影响其他文档的删除
+// Returns nil on success or the underlying error on failure.
+// The index is refreshed after deletion so the result is immediately visible.
+// Performance: keep each bulk deletion within a reasonable document count, such as 1000-5000.
+// Fault tolerance: a missing document for one ID does not affect deletion of other documents.
 func (o *openSearchAccess) BulkDeleteData(ctx context.Context, indexName string, docIDs []string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "BulkDeleteData")
 	defer span.End()
@@ -436,14 +436,14 @@ func (o *openSearchAccess) BulkDeleteData(ctx context.Context, indexName string,
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
 	if len(docIDs) == 0 {
-		return nil // 空列表直接返回，避免不必要的网络请求
+		return nil // Return immediately for an empty list to avoid an unnecessary network request.
 	}
 
 	var buf bytes.Buffer
 
-	// 构建批量删除请求，每行包含删除操作元数据
+	// Build the bulk-delete request, with delete metadata on each line.
 	for _, docID := range docIDs {
-		// 创建删除操作元数据（delete操作）
+		// Create delete-operation metadata.
 		action := map[string]interface{}{
 			"delete": map[string]interface{}{
 				"_index": indexName,
@@ -451,7 +451,7 @@ func (o *openSearchAccess) BulkDeleteData(ctx context.Context, indexName string,
 			},
 		}
 
-		// 写入操作元数据行
+		// Write the operation metadata line.
 		actionBytes, err := sonic.Marshal(action)
 		if err != nil {
 			return fmt.Errorf("failed to marshal delete action: %w", err)
@@ -460,20 +460,20 @@ func (o *openSearchAccess) BulkDeleteData(ctx context.Context, indexName string,
 		buf.WriteByte('\n')
 	}
 
-	// 创建批量请求，设置立即刷新使删除结果立即可见
+	// Create the bulk request and refresh immediately so deletions are visible.
 	req := opensearchapi.BulkRequest{
 		Body:    &buf,
-		Refresh: "true", // 立即刷新，使删除操作立即可见
+		Refresh: "true", // Refresh immediately so deletions are visible.
 	}
 
-	// 执行批量删除请求
+	// Execute the bulk-delete request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return fmt.Errorf("failed to bulk delete data: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	// 检查响应状态
+	// Check the response status.
 	if res.IsError() {
 		return fmt.Errorf("bulk delete data failed: %s, %s", res.Status(), res.String())
 	}
@@ -487,13 +487,13 @@ func (o *openSearchAccess) Count(ctx context.Context, indexName string, query an
 
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
-	// 将查询条件编码为JSON
+	// Encode the query as JSON.
 	queryJSON, err := sonic.Marshal(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal query: %w", err)
 	}
 
-	// 创建搜索请求
+	// Create the search request.
 	ignoreUnavailable := true
 	req := opensearchapi.CountRequest{
 		Index:             []string{indexName},
@@ -501,7 +501,7 @@ func (o *openSearchAccess) Count(ctx context.Context, indexName string, query an
 		IgnoreUnavailable: &ignoreUnavailable,
 	}
 
-	// 执行请求
+	// Execute the request.
 	res, err := req.Do(ctx, o.client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to Count: %w", err)
@@ -512,7 +512,7 @@ func (o *openSearchAccess) Count(ctx context.Context, indexName string, query an
 		return nil, fmt.Errorf("Count failed: %s, %s", res.Status(), res.String())
 	}
 
-	// 解析响应
+	// Parse the response.
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {

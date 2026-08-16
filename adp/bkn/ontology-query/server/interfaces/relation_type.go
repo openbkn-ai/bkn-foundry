@@ -19,17 +19,17 @@ type RelationType struct {
 	SourceObjectTypeID string `json:"source_object_type_id"`
 	TargetObjectTypeID string `json:"target_object_type_id"`
 	Type               string `json:"type"`
-	MappingRules       any    `json:"mapping_rules"` // 根据type来决定是不同的映射方式，direct对应的结构体是[]Mapping
+	MappingRules       any    `json:"mapping_rules"` // Mapping shape depends on type; direct uses []Mapping.
 }
 
-// 间接关联
+// Indirect relationship.
 type InDirectMapping struct {
 	BackingDataSource  *ResourceInfo `json:"backing_data_source"`
 	SourceMappingRules []Mapping     `json:"source_mapping_rules"`
 	TargetMappingRules []Mapping     `json:"target_mapping_rules"`
 }
 
-// 直接关联
+// Direct relationship.
 type Mapping struct {
 	SourceProp SimpleProperty `json:"source_property"`
 	TargetProp SimpleProperty `json:"target_property"`

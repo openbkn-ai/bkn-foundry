@@ -23,6 +23,7 @@ import (
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
+	"ontology-query/locale"
 	"ontology-query/logics"
 )
 
@@ -86,10 +87,10 @@ func mergeConditions(a, b *cond.CondCfg) *cond.CondCfg {
 func mapDataPropertyToResourceField(propName string, propMap map[string]*cond.DataProperty) (string, error) {
 	prop, ok := propMap[propName]
 	if !ok {
-		return "", fmt.Errorf("属性[%s]不是对象类的数据属性", propName)
+		return "", fmt.Errorf("property %q is not an object-type data property", propName)
 	}
 	if prop.MappedField.Name == "" {
-		return "", fmt.Errorf("属性[%s]未配置映射列(mapped_field)，无法下推到 resource", propName)
+		return "", fmt.Errorf("property %q has no mapped_field and cannot be pushed down to the resource", propName)
 	}
 	return prop.MappedField.Name, nil
 }
@@ -336,7 +337,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		// 拼上时间趋势的分组聚合
 		gb = append(gb, map[string]any{
 			"property":          trend.timeResField,
-			"calendar_interval": trend.step, // 日历步长
+			"calendar_interval": trend.step, // Calendar interval.
 		})
 	}
 	if len(gb) > 0 {
@@ -396,7 +397,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 // handlerVector resolves text to vectors for condition rewrite (same role as object_type_service).
 func (s *metricQueryService) handlerVector(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
 	if property == nil || property.IndexConfig == nil {
-		return nil, fmt.Errorf("vector 条件需要属性索引配置")
+		return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "VectorIndexRequired", nil))
 	}
 	model, err := s.mfa.GetModelByID(ctx, property.IndexConfig.VectorConfig.ModelID)
 	if err != nil {
@@ -407,7 +408,7 @@ func (s *metricQueryService) handlerVector(ctx context.Context, property *cond.D
 	if model == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
 			oerrors.OntologyQuery_ObjectType_SmallModelNotFound).
-			WithErrorDetails(fmt.Sprintf("小模型[%s]不存在", property.IndexConfig.VectorConfig.ModelID))
+			WithErrorDetails(locale.ValidationDetail(ctx, "SmallModelNotFound", map[string]any{"modelID": property.IndexConfig.VectorConfig.ModelID}))
 	}
 	if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -1374,7 +1375,7 @@ func correctingTime(query *interfaces.MetricQueryRequest, zoneLocation *time.Loc
 	startTime := time.UnixMilli(*query.Time.Start)
 	endTime := time.UnixMilli(*query.Time.End)
 
-	// 日历步长：趋势（instant=false）也必须走此分支。误用 ParseDuration("day") 得 step=0 会产生错误时间轴。
+	// Calendar interval.：趋势（instant=false）也必须走此分支。误用 ParseDuration("day") 得 step=0 会产生错误时间轴。
 	if cal, ok := normalizeMetricCalendarStep(*query.Time.Step); ok {
 		return alignCalendarRangeMillis(startTime, endTime, cal, zoneLocation)
 	}

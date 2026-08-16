@@ -97,7 +97,7 @@ type ActionExecution struct {
 	StartTime            int64                   `json:"start_time"`                       // execution start time (Unix milliseconds)
 	EndTime              int64                   `json:"end_time,omitempty"`               // execution end time (Unix milliseconds)
 	DurationMs           int64                   `json:"duration_ms,omitempty"`            // execution duration in milliseconds
-	ActionTypeSnapshot   map[string]any          `json:"action_type_snapshot,omitempty"`   // 执行时的行动类配置快照（与 manager 返回一致）
+	ActionTypeSnapshot   map[string]any          `json:"action_type_snapshot,omitempty"`   // Action-type configuration snapshot captured at execution time, matching the manager response.
 	InstanceIdentityHash string                  `json:"instance_identity_hash,omitempty"` // fingerprint of instances + dynamic_params for duplicate detection
 }
 

@@ -40,11 +40,11 @@ func (cond *ExistCond) Convert2SQL(ctx context.Context) (string, error) {
 	return fmt.Sprintf(`"%s" IS NOT NULL`, cond.mfieldName), nil
 }
 
-func rewriteExistCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteExistCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
 	// 过滤条件中的属性字段换成映射的视图字段
 	if cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("存在[exist]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "exist", "field": cfg.Name})
 	}
 
 	return &CondCfg{

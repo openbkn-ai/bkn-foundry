@@ -713,7 +713,7 @@ func Test_RewriteCondition(t *testing.T) {
 			result, err := RewriteCondition(ctx, cfg, fieldsMap, vectorizer)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			So(err.Error(), ShouldContainSubstring, "不是对象类的数据属性名")
+			So(err.Error(), ShouldContainSubstring, "不是对象类的数据属性")
 		})
 
 		Convey("失败 - 未配置视图映射列", func() {

@@ -23,7 +23,7 @@ func NewMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 
 	name := getFilterFieldName(cfg.Name, fieldsMap, true)
 	var fields []string
-	// 如果指定*查询，并且视图的字段范围为部分字段，那么将查询的字段替换成视图的字段列表
+	// When querying * against a view with a partial field scope, replace it with the view field list.
 	if name == AllField {
 		// * 只针对text字段和配了全文索引的属性做全文检索
 		for _, fieldInfo := range fieldsMap {
@@ -86,7 +86,7 @@ func (cond *MatchCond) Convert2SQL(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-func rewriteMatchCond(cfg *CondCfg) (*CondCfg, error) {
+func rewriteMatchCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
 	// 过滤条件中的属性字段换成映射的视图字段
 	fieldName := ""
@@ -94,7 +94,7 @@ func rewriteMatchCond(cfg *CondCfg) (*CondCfg, error) {
 		fieldName = AllField
 	} else {
 		if cfg.NameField.Name == "" {
-			return nil, fmt.Errorf("全文匹配过滤[match]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+			return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "match", "field": cfg.Name})
 		}
 		fieldName = cfg.NameField.MappedField.Name
 	}

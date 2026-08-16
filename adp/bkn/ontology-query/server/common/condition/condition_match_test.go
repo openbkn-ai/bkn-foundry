@@ -159,7 +159,7 @@ func Test_rewriteMatchCond(t *testing.T) {
 					},
 				},
 			}
-			result, err := rewriteMatchCond(cfg)
+			result, err := rewriteMatchCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, "mapped_text")
@@ -173,7 +173,7 @@ func Test_rewriteMatchCond(t *testing.T) {
 					Value: "test",
 				},
 			}
-			result, err := rewriteMatchCond(cfg)
+			result, err := rewriteMatchCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
 			So(result.Name, ShouldEqual, AllField)
@@ -190,7 +190,7 @@ func Test_rewriteMatchCond(t *testing.T) {
 					Name: "",
 				},
 			}
-			result, err := rewriteMatchCond(cfg)
+			result, err := rewriteMatchCond(context.Background(), cfg)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 		})

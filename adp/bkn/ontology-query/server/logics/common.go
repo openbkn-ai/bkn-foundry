@@ -28,6 +28,7 @@ import (
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
 	dtype "ontology-query/interfaces/data_type"
+	"ontology-query/locale"
 )
 
 // 构建视图的默认的排序
@@ -61,7 +62,7 @@ func BuildViewSort(objectType interfaces.ObjectType) []*interfaces.SortParams {
 
 // MapSortFieldsForDataView maps sort fields from object-type data property names to view column names
 // (MappedField.Name) for virtualized data-view queries. SORT_FIELD_SCORE is passed through unchanged.
-func MapSortFieldsForDataView(sort []*interfaces.SortParams, objectType interfaces.ObjectType) ([]*interfaces.SortParams, error) {
+func MapSortFieldsForDataView(ctx context.Context, sort []*interfaces.SortParams, objectType interfaces.ObjectType) ([]*interfaces.SortParams, error) {
 	if len(sort) == 0 {
 		return sort, nil
 	}
@@ -72,7 +73,7 @@ func MapSortFieldsForDataView(sort []*interfaces.SortParams, objectType interfac
 	out := make([]*interfaces.SortParams, len(sort))
 	for i, sp := range sort {
 		if sp == nil {
-			return nil, fmt.Errorf("排序配置不能为空")
+			return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "SortConfigRequired", nil))
 		}
 		field := sp.Field
 		if field == interfaces.SORT_FIELD_SCORE {
@@ -81,10 +82,10 @@ func MapSortFieldsForDataView(sort []*interfaces.SortParams, objectType interfac
 		}
 		viewField, ok := propNameToViewField[field]
 		if !ok {
-			return nil, fmt.Errorf("排序字段[%s]不是对象类的数据属性", field)
+			return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "SortPropertyInvalid", map[string]any{"field": field}))
 		}
 		if viewField == "" {
-			return nil, fmt.Errorf("排序字段[%s]未配置视图映射列(mapped_field)，无法在数据视图上排序", field)
+			return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "SortMappedFieldRequired", map[string]any{"field": field}))
 		}
 		out[i] = &interfaces.SortParams{Field: viewField, Direction: sp.Direction}
 	}
@@ -345,7 +346,7 @@ func BuildCondition(viewQuery *interfaces.ViewQuery, mappingRules []interfaces.M
 		// 多个字段关联，则构造多个过滤条件，在上层用and连接
 		conditions = append(conditions, &cond.CondCfg{
 			Name:      targetName, // 注意正向反向的差别
-			Operation: "==",       // 关联时只有等于的关系
+			Operation: "==",       // Relationships only support equality here.
 			ValueOptCfg: cond.ValueOptCfg{
 				ValueFrom: "const",
 				Value:     currentObjectData[sourceName], // 从起点对象中获取的起点属性

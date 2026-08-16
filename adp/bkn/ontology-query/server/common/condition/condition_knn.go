@@ -100,7 +100,7 @@ func (cond *KnnCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 		subDSL = fmt.Sprintf(subDSL, subCondStr)
 	}
 
-	// limit_key 和 limit_value 未给时，填入默认值
+	// Use default values when limit_key and limit_value are omitted.
 	key := cond.mCfg.RemainCfg["limit_key"]
 	value := cond.mCfg.RemainCfg["limit_value"]
 	if key == nil || key == "" {
@@ -133,7 +133,7 @@ func rewriteKnnCond(ctx context.Context, cfg *CondCfg,
 	vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (*CondCfg, error) {
 
 	if cfg.NameField.Name == "" {
-		return nil, fmt.Errorf("向量过滤[knn]操作符使用的过滤字段[%s]在对象类的属性中不存在", cfg.Name)
+		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "knn", "field": cfg.Name})
 	}
 
 	// 资源字段的向量能力由 Vega Resource schema/features 与构建状态决定。
