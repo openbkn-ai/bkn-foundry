@@ -279,6 +279,14 @@ func (g *logicViewDSLGenerator) buildDSLQuery(ctx context.Context, view *interfa
 // 构造过滤条件
 func (g *logicViewDSLGenerator) buildDSLCondition(ctx context.Context, filters *interfaces.FilterCondCfg,
 	fieldMap map[string]*interfaces.Property) (map[string]any, error) {
+	// filters 来自视图定义里存的节点配置，是服务端数据、调用方改不了。新的 like 契约拒绝
+	// 未转义的 %，直接套到存量定义上会让一次升级把视图查废，因此按老行为改写并告警。
+	if rewritten := filter_condition.EscapeLegacyLikeWildcards(filters); rewritten > 0 {
+		logger.Warnf("%d stored like/not_like condition(s) in this logic view use '%%' as a wildcard; "+
+			"matched as a literal. Escape it as '\\%%' or switch the condition to [regex] in the view definition.",
+			rewritten)
+	}
+
 	// 将过滤条件拼接到 dsl 的 query 中
 	filterCond, err := filter_condition.NewFilterCondition(ctx, filters, fieldMap)
 	if err != nil {

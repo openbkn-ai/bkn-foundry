@@ -606,3 +606,49 @@ func mustSQLCondition(t *testing.T, cfg *interfaces.FilterCondCfg, fields map[st
 	require.NoError(t, err)
 	return cond
 }
+
+// 存量 composite 视图的节点过滤条件也存在视图定义里，调用方改不了。新的 like 契约不能
+// 让这类视图升级后恒定查询失败——按老行为（% 当字面量）改写，而不是报错。
+func TestBuildFilterSQLRewritesLegacyLikeWildcards(t *testing.T) {
+	generator := NewlogicDefinitionSQLGenerator(testSQLView())
+	fields := testSQLConditionFieldMap()
+
+	t.Run("stored like with unescaped wildcards still builds", func(t *testing.T) {
+		filters := &interfaces.FilterCondCfg{
+			Name:      "name",
+			Operation: filter_condition.OperationLike,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     "%abc%",
+			},
+		}
+
+		sqlizer, _, err := generator.buildFilterSQL(context.Background(), filters, fields)
+
+		require.NoError(t, err)
+		require.NotNil(t, sqlizer)
+		sqlText, sqlArgs, err := sqlizer.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t, "`name` LIKE ?", sqlText)
+		// 与改动前一致：% 落成字面量
+		assert.Equal(t, []any{`%\%abc\%%`}, sqlArgs)
+	})
+
+	t.Run("stored condition tree is rewritten in place", func(t *testing.T) {
+		filters := &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationAnd,
+			SubConds: []*interfaces.FilterCondCfg{
+				{
+					Name:        "name",
+					Operation:   filter_condition.OperationLike,
+					ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "a%"},
+				},
+			},
+		}
+
+		_, _, err := generator.buildFilterSQL(context.Background(), filters, fields)
+
+		require.NoError(t, err)
+		assert.Equal(t, `a\%`, filters.SubConds[0].Value)
+	})
+}
