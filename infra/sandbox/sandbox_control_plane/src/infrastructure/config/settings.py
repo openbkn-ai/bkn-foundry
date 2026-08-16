@@ -125,6 +125,11 @@ class Settings(BaseSettings):
     max_extracted_file_count: int = Field(default=10000, ge=1)
     max_extracted_total_size_mb: int = Field(default=512, ge=1)
     disable_bwrap: bool = Field(default=False)  # 禁用 Bubblewrap（本地开发环境）
+    # sandbox_sdk.bkn 回访 BKN 用的集群内 MCP 地址。它是部署配置而非密钥，因此由
+    # 控制面注入一次，不必每个调用方都在 event 里传。留空则要求调用方自己传 mcp。
+    # 令牌走的是另一条路：只认 event，绝不落环境变量——会话池化复用，env 会把上一个
+    # 调用方的凭据留在容器里。
+    bkn_sandbox_mcp_url: str = Field(default="")
     control_plane_url: str | None = Field(
         default=None
     )  # Control Plane URL for executor callback (None = auto-generate from namespace)

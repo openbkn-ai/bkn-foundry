@@ -265,6 +265,12 @@ class K8sScheduler(IContainerScheduler):
                 ]
             )
 
+        # sandbox_sdk.bkn 的 MCP 地址。部署级常量，注入一次即可；调用方在 event 里
+        # 传 mcp 时以 event 为准（见 sandbox_sdk/bkn.py 的 _mcp_url）。
+        bkn_mcp_url = get_settings().bkn_sandbox_mcp_url.strip()
+        if bkn_mcp_url:
+            env_vars.append(V1EnvVar(name="BKN_SANDBOX_MCP_URL", value=bkn_mcp_url))
+
         # 添加 PYTHONPATH 环境变量以支持依赖导入
         if has_dependencies:
             # 依赖安装到本地 /opt/sandbox-venv
