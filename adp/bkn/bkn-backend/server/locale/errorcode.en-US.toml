@@ -171,6 +171,8 @@ ErrorLink = ""
 
 [BknBackend.Validation.Detail]
 ImportMode = "import_mode must be one of overwrite, normal, or ignore."
+AccountInfoMissing = "Account information is unavailable. Please sign in again."
+PermissionDenied = "You do not have permission to perform this operation."
 DataTagNameLength = "The data tag name exceeds the maximum length of {{.limit}}."
 DataTagNameInvalidCharacters = "The data tag name contains invalid characters: {{.characters}}."
 OffsetMin = "offset must be greater than or equal to {{.min}}."

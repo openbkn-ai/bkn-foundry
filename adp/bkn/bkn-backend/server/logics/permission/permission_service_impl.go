@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -23,6 +24,10 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 )
+
+func localizedPermissionDetail(ctx context.Context, key string) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
+}
 
 type PermissionServiceImpl struct {
 	appSetting *common.AppSetting
@@ -56,7 +61,8 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
 		otellog.LogError(ctx, "CheckPermission missing account ID or type", httpErr)
 		return httpErr
 	}
@@ -77,7 +83,8 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 		return httpErr
 	}
 	if !ok {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
 		otellog.LogError(ctx, "CheckPermission denied", httpErr)
 		return httpErr
 	}
@@ -95,7 +102,8 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
 		otellog.LogError(ctx, "CreateResources missing account ID or type", httpErr)
 		return httpErr
 	}
@@ -175,7 +183,8 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
 		otellog.LogError(ctx, "FilterResources missing account ID or type", httpErr)
 		return nil, httpErr
 	}

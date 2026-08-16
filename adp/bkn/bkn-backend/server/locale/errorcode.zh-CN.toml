@@ -171,6 +171,8 @@ ErrorLink = ""
 
 [BknBackend.Validation.Detail]
 ImportMode = "import_mode 必须为 overwrite、normal 或 ignore。"
+AccountInfoMissing = "帐户信息不可用，请重新登录。"
+PermissionDenied = "您没有执行此操作的权限。"
 DataTagNameLength = "数据标签名称长度不能超过 {{.limit}}。"
 DataTagNameInvalidCharacters = "数据标签名称包含无效字符：{{.characters}}。"
 OffsetMin = "offset 必须大于或等于 {{.min}}。"

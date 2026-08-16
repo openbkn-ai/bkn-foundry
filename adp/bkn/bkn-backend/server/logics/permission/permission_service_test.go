@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -116,9 +117,12 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 		resource := interfaces.PermissionResource{Type: "kn", ID: "kn1"}
 		ops := []string{"read"}
 
-		Convey("Failed: missing account info in context\n", func() {
-			err := svc.CheckPermission(context.Background(), resource, ops)
-			So(err, ShouldNotBeNil)
+		Convey("Failed: missing account info in context uses the Chinese catalog", func() {
+			err := svc.CheckPermission(rest.WithLanguage(context.Background(), rest.SimplifiedChinese), resource, ops)
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "\u5e10\u6237\u4fe1\u606f\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002")
 		})
 
 		Convey("Success: pa returns true\n", func() {
@@ -129,12 +133,15 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Failed: pa returns false (forbidden)\n", func() {
-			ctx := withAccountInfo(context.Background(), "u1", "user")
+		Convey("Failed: pa returns false uses the English permission detail", func() {
+			ctx := rest.WithLanguage(withAccountInfo(context.Background(), "u1", "user"), rest.AmericanEnglish)
 			pa.EXPECT().CheckPermission(gomock.Any(), gomock.Any()).Return(false, nil)
 
 			err := svc.CheckPermission(ctx, resource, ops)
-			So(err, ShouldNotBeNil)
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "You do not have permission to perform this operation.")
 		})
 
 		Convey("Failed: pa returns error\n", func() {
