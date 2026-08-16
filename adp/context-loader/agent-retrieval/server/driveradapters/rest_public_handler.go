@@ -171,6 +171,14 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 		r.replyMCPInfo(c, mcpEndpointURL(c.Request))
 		return
 	case strings.HasPrefix(path, ptcPathPrefix):
+		// 总闸关着时按「没编译进来」处理，报 404 而不是 503：503 等于向任何探测者
+		// 承认这里本该有一条执行通道，只是眼下不可用。与 /kn/execute_skill 关闭时
+		// 根本不注册路由是同一个取向。
+		if !ptcExecutionEnabled() {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		// 闸是开的却没装配起来，那是故障，得让它看得见。
 		if r.PTCMCPHandler == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "PTC MCP endpoint is unavailable"})
 			return
@@ -238,11 +246,27 @@ func requestScheme(req *http.Request) string {
 	return scheme
 }
 
+// ptcExecutionEnabled 本部署是否允许经工具面执行命令。
+//
+// PTC 的 run_code / run_shell 是一条沙箱执行通道，且比 execute_skill 更宽——后者
+// 只能跑已注册技能的入口命令，这两个跑的是调用方现写的任意 Python 与 shell。因此
+// 它必须服从同一道总闸：一个从没设过 EXECUTE_SKILL_ENABLED 的存量部署，其「本部署
+// 没有命令执行能力」的约定不能因为升级就被悄悄推翻。
+//
+// 复用既有开关而不是新开一个：这是同一条部署级策略，拆成两个旋钮只会让运维以为
+// 关掉一个就够了。
+func ptcExecutionEnabled() bool {
+	return logicsSkills.ExecuteEnabled()
+}
+
 // newPTCMCPHandlerOrNil 装配 PTC MCP 端点，失败只记日志并返回 nil。
 //
 // PTC 依赖内嵌的工具元数据渲染工具包，读失败时不该把整个服务拖垮——主工具面
 // 与全部 REST 端点与它无关。该路由随后返回 503，故障是可见的。
 func newPTCMCPHandlerOrNil(logger interfaces.Logger) http.Handler {
+	if !ptcExecutionEnabled() {
+		return nil
+	}
 	handler, err := mcp.NewPTCMCPHandler()
 	if err != nil {
 		if logger != nil {

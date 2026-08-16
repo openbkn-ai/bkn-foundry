@@ -166,6 +166,15 @@ paths:
 
         调用顺序：先 `bkn_start_interaction` 拿 `conversation_id` 与 `interaction_id`，
         之后每次调用都带 `bkn_context`，结束时 `bkn_finish_interaction`。
+
+        **默认不启用。** `run_code` / `run_shell` 是沙箱执行通道，且比 `execute_skill`
+        更宽（后者只能跑已注册技能的入口命令），因此服从同一道部署级总闸
+        `EXECUTE_SKILL_ENABLED`（默认关）。未开启时本端点返回 404，与「没编译进来」
+        无异——503 等于向探测者承认这里本该有一条执行通道。
+
+        注意 `GET /mcp/ptc/toolkit` 与 `GET /mcp/ptc/info` **不受该开关影响**：它们只是
+        文档，不执行任何东西。自建前端拿工具包后是自己去打执行工厂，那侧另有算子类型上
+        的 `execute` 权限判定。
       requestBody:
         required: true
         content:
@@ -186,8 +195,10 @@ paths:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: 执行总闸 `EXECUTE_SKILL_ENABLED` 未开启（默认）；本端点视同不存在
         '503':
-          description: PTC 端点装配失败（内嵌工具元数据读取失败）；`/mcp` 与 REST 端点不受影响
+          description: 总闸已开但端点装配失败（内嵌工具元数据读取失败）；`/mcp` 与 REST 端点不受影响
           content:
             application/json:
               schema:

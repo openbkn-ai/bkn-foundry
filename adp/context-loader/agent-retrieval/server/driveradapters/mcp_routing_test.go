@@ -55,6 +55,9 @@ func newRoutingProbe(t *testing.T) (*gin.Engine, *string) {
 }
 
 func TestMCPRoutingDispatch(t *testing.T) {
+	// 本用例测的是分流顺序，不是执行总闸；闸另有专门用例。
+	t.Setenv("EXECUTE_SKILL_ENABLED", "true")
+
 	cases := []struct {
 		method string
 		path   string
@@ -88,6 +91,8 @@ func TestMCPRoutingDispatch(t *testing.T) {
 // 不能一起拖垮。
 func TestPTCRouteFailsClosedWithoutHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	// 闸开着但装配失败——那是故障，要 503；闸关着是另一回事，见 TestPTCRouteHonorsExecutionGate。
+	t.Setenv("EXECUTE_SKILL_ENABLED", "true")
 	var mcpHit bool
 	handler := &restPublicHandler{
 		MCPHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -114,5 +119,84 @@ func TestPTCRouteFailsClosedWithoutHandler(t *testing.T) {
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/mcp/", nil))
 	if !mcpHit {
 		t.Fatal("PTC 装配失败不应影响主 MCP 端点")
+	}
+}
+
+// run_code / run_shell 是一条沙箱执行通道，且比 execute_skill 更宽——后者只能跑
+// 已注册技能的入口命令，这两个跑的是调用方现写的任意 Python 与 shell。所以它必须
+// 服从同一道总闸 EXECUTE_SKILL_ENABLED（默认关），否则一个从没设过它的存量部署
+// 升级后，凭 bearer 令牌就白拿了命令执行能力。
+func TestPTCRouteHonorsExecutionGate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// 默认（未设环境变量）即为关闭。
+	t.Setenv("EXECUTE_SKILL_ENABLED", "")
+	t.Setenv("MCP_EXECUTE_SKILL_ENABLED", "")
+	if ptcExecutionEnabled() {
+		t.Fatal("未设环境变量时执行总闸应为关")
+	}
+	// 关闭时不该装配出 handler 来。
+	if newPTCMCPHandlerOrNil(nil) != nil {
+		t.Fatal("总闸关闭时不应装配 PTC 端点")
+	}
+
+	var ptcHit, mcpHit bool
+	handler := &restPublicHandler{
+		MCPHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			mcpHit = true
+			w.WriteHeader(http.StatusOK)
+		}),
+		// 即便有人把 handler 塞了进来，闸关着也不能放行。
+		PTCMCPHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			ptcHit = true
+			w.WriteHeader(http.StatusOK)
+		}),
+	}
+	engine := gin.New()
+	engine.Any("/api/agent-retrieval/v1/mcp/*path", handler.handleMCP)
+
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/mcp/ptc", nil))
+	// 404 而不是 503：503 等于向探测者承认这里本该有一条执行通道。
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("总闸关闭时应返回 404，得到 %d", recorder.Code)
+	}
+	if ptcHit {
+		t.Fatal("总闸关闭时不应走到 PTC handler")
+	}
+	if mcpHit {
+		t.Fatal("总闸关闭时不应回落到主 MCP Server")
+	}
+
+	// 打开后恢复正常。
+	t.Setenv("EXECUTE_SKILL_ENABLED", "true")
+	if !ptcExecutionEnabled() {
+		t.Fatal("EXECUTE_SKILL_ENABLED=true 时总闸应为开")
+	}
+	recorder = httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/agent-retrieval/v1/mcp/ptc", nil))
+	if !ptcHit || recorder.Code != http.StatusOK {
+		t.Fatalf("总闸打开后应正常放行，code=%d hit=%v", recorder.Code, ptcHit)
+	}
+}
+
+// 工具包与 info 是文档，不执行任何东西，所以不随总闸关闭——studio 的 PTC 模式自己
+// 打执行工厂（那侧有 #345 的 execute 权限判定），把这两个也关掉会平白弄坏它。
+func TestPTCToolkitNotGatedByExecutionSwitch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("EXECUTE_SKILL_ENABLED", "")
+	t.Setenv("MCP_EXECUTE_SKILL_ENABLED", "")
+
+	engine, hit := newRoutingProbe(t)
+	for _, path := range []string{
+		"/api/agent-retrieval/v1/mcp/ptc/toolkit",
+		"/api/agent-retrieval/v1/mcp/toolkit",
+	} {
+		*hit = ""
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if *hit != "toolkit" {
+			t.Fatalf("%s 不应受执行总闸影响，落到了 %q", path, *hit)
+		}
 	}
 }
