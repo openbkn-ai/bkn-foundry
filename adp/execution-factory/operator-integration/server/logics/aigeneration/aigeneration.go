@@ -1,6 +1,6 @@
-// Package aigeneration 智能生成服务
+// Package aigeneration implements AI-assisted function generation.
 // @file aigeneration.go
-// @description: 智能生成服务
+// @description: AI-assisted function generation
 package aigeneration
 
 import (
@@ -11,13 +11,15 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// aiGenerationService 智能生成服务
+// aiGenerationService implements AI-assisted generation.
 type aiGenerationService struct {
 	Logger           interfaces.Logger
 	MFModelAPIClient interfaces.MFModelAPIClient
@@ -30,7 +32,7 @@ var (
 	agInstance interfaces.AIGenerationService
 )
 
-// NewAIGenerationService 创建新的智能生成服务
+// NewAIGenerationService returns the shared AI generation service.
 func NewAIGenerationService() interfaces.AIGenerationService {
 	agOnce.Do(func() {
 		promptLoader, err := NewPromptLoader()
@@ -57,7 +59,7 @@ func (ag *aiGenerationService) generateChatCompletionParams(ctx context.Context,
 		return nil, err
 	}
 	chatCompletionReq := &interfaces.ChatCompletionReq{
-		Model:            ag.LLMConfig.Model, // 大模型名称传空，使用默认大模型
+		Model:            ag.LLMConfig.Model, // An empty model name selects the default model.
 		MaxTokens:        ag.LLMConfig.MaxTokens,
 		Temperature:      ag.LLMConfig.Temperature,
 		TopK:             ag.LLMConfig.TopK,
@@ -74,9 +76,10 @@ func (ag *aiGenerationService) generateChatCompletionParams(ctx context.Context,
 	var userPrompt string
 	switch req.Type {
 	case interfaces.PythonFunctionGenerator:
-		// 默认函数内容描述
+		// Supply a default function request when the caller omits one.
 		if req.Query == "" {
-			req.Query = "根据输入参数和输出参数，生成符合标准的Python函数代码"
+			tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
+			req.Query = tr.Trans("prompt.default_function_request")
 		}
 		userPrompt = promptTemplate.FormatUserPrompt(req.Query, req.Inputs, req.Outputs)
 	case interfaces.MetadataParamGenerator:
@@ -89,7 +92,7 @@ func (ag *aiGenerationService) generateChatCompletionParams(ctx context.Context,
 	return chatCompletionReq, nil
 }
 
-// AIGenerate 智能生成
+// FunctionAIGenerate generates a complete response.
 func (ag *aiGenerationService) FunctionAIGenerate(ctx context.Context, req *interfaces.FunctionAIGenerateReq) (resp *interfaces.FunctionAIGeneratResp, err error) {
 	chatCompletionReq, err := ag.generateChatCompletionParams(ctx, req)
 	if err != nil {
@@ -123,7 +126,7 @@ func (ag *aiGenerationService) FunctionAIGenerate(ctx context.Context, req *inte
 	return resp, nil
 }
 
-// AIGenerateStream 智能生成流式返回
+// FunctionAIGenerateStream streams generated response chunks.
 func (ag *aiGenerationService) FunctionAIGenerateStream(ctx context.Context, req *interfaces.FunctionAIGenerateReq) (respChan chan string, errChan chan error, err error) {
 	chatCompletionReq, err := ag.generateChatCompletionParams(ctx, req)
 	if err != nil {
@@ -136,7 +139,7 @@ func (ag *aiGenerationService) FunctionAIGenerateStream(ctx context.Context, req
 	return respChan, errChan, nil
 }
 
-// 获取当前提示词模板
+// GetPromptTemplate returns the active prompt template.
 func (ag *aiGenerationService) GetPromptTemplate(ctx context.Context, tempType interfaces.PromptTemplateType) (*interfaces.PromptTemplate, error) {
 	return ag.PromptLoader.GetTemplate(ctx, tempType)
 }

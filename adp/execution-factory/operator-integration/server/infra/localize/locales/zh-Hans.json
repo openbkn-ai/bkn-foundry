@@ -11,6 +11,21 @@
         "model_train": "模型训练",
         "system": "系统工具"
     },
+    "capabilities_lab": {
+        "invalid_request": "请求参数无效。",
+        "not_found": "未找到资源。",
+        "file_required": "缺少必需的文件。",
+        "feature_disabled": "该功能未启用。"
+    },
+    "detail": {
+        "openapi_error_item": "错误%d：%s"
+    },
+    "prompt": {
+        "python_function_description": "Python函数生成Prompt模板",
+        "python_function_user_template": "函数内容描述:%s; inputs:%v; outputs:%v;",
+        "metadata_parameter_description": "元数据参数生成Prompt模板",
+        "default_function_request": "根据输入参数和输出参数，生成符合标准的Python函数代码"
+    },
     "audit_log": {
         "operator_create": "创建算子“%s”成功",
         "operator_edit": "编辑算子“%s”成功",

@@ -6,17 +6,17 @@ import (
 	"strings"
 )
 
-// Result 转换结果
+// Result describes a schema conversion result.
 type Result struct {
 	Success bool           `json:"success"`
 	Data    map[string]any `json:"data,omitempty"`
 	Error   string         `json:"error,omitempty"`
 }
 
-// SimpleConverter 处理简化OpenAPI格式的转换器
+// SimpleConverter converts the simplified OpenAPI representation used by this service.
 type SimpleConverter struct{}
 
-// SimpleOpenAPI 简化OpenAPI格式
+// SimpleOpenAPI is the simplified OpenAPI representation used by this service.
 type SimpleOpenAPI struct {
 	Parameters   []Parameter  `json:"parameters,omitempty"`
 	RequestBody  *RequestBody `json:"request_body,omitempty"`
@@ -28,7 +28,7 @@ type SimpleOpenAPI struct {
 	ExternalDocs any          `json:"external_docs,omitempty"`
 }
 
-// Parameter 参数定义
+// Parameter defines an OpenAPI parameter.
 type Parameter struct {
 	Name        string         `json:"name"`
 	In          string         `json:"in"`
@@ -37,70 +37,70 @@ type Parameter struct {
 	Schema      map[string]any `json:"schema"`
 }
 
-// RequestBody 请求体定义
+// RequestBody defines an OpenAPI request body.
 type RequestBody struct {
 	Description string             `json:"description,omitempty"`
 	Content     map[string]Content `json:"content"`
 	Required    bool               `json:"required"`
 }
 
-// Content 内容定义
+// Content defines an OpenAPI media type payload.
 type Content struct {
 	Schema   map[string]any            `json:"schema"`
 	Examples map[string]map[string]any `json:"examples,omitempty"`
 }
 
-// Response 响应定义
+// Response defines an OpenAPI response.
 type Response struct {
 	StatusCode  string             `json:"status_code"`
 	Description string             `json:"description"`
 	Content     map[string]Content `json:"content"`
 }
 
-// Components 组件定义
+// Components contains reusable OpenAPI schemas.
 type Components struct {
 	Schemas map[string]map[string]any `json:"schemas"`
 }
 
-// NewSimpleConverter 创建简化转换器实例
+// NewSimpleConverter creates a simplified OpenAPI converter.
 func NewSimpleConverter() *SimpleConverter {
 	return &SimpleConverter{}
 }
 
-// ConvertFromBytes 从字节数组转换简化OpenAPI格式
+// ConvertFromBytes converts a JSON-encoded simplified OpenAPI document.
 func (c *SimpleConverter) ConvertFromBytes(data []byte) *Result {
 	var simpleOpenAPI SimpleOpenAPI
 	if err := json.Unmarshal(data, &simpleOpenAPI); err != nil {
 		return &Result{
 			Success: false,
-			Error:   fmt.Sprintf("解析JSON失败: %v", err),
+			Error:   fmt.Sprintf("failed to parse JSON: %v", err),
 		}
 	}
 
 	return c.convertSimpleOpenAPI(&simpleOpenAPI)
 }
 
-// ConvertFromString 从字符串转换简化OpenAPI格式
+// ConvertFromString converts a JSON string containing a simplified OpenAPI document.
 func (c *SimpleConverter) ConvertFromString(jsonStr string) *Result {
 	return c.ConvertFromBytes([]byte(jsonStr))
 }
 
-// convertSimpleOpenAPI 转换简化OpenAPI格式
+// convertSimpleOpenAPI converts a simplified OpenAPI document into an MCP input schema.
 func (c *SimpleConverter) convertSimpleOpenAPI(simple *SimpleOpenAPI) *Result {
-	// 构建properties
+	// Build top-level parameter groups.
 	properties := map[string]any{}
 
-	headers := c.extractParameters(simple.Parameters, "header", "HTTP 请求头参数")
+	headers := c.extractParameters(simple.Parameters, "header", "HTTP header parameters")
 	if headers != nil {
 		properties["header"] = headers
 	}
 
-	query := c.extractParameters(simple.Parameters, "query", "URL 查询字符串参数")
+	query := c.extractParameters(simple.Parameters, "query", "URL query parameters")
 	if query != nil {
 		properties["query"] = query
 	}
 
-	path := c.extractParameters(simple.Parameters, "path", "URL 路径参数")
+	path := c.extractParameters(simple.Parameters, "path", "URL path parameters")
 	if path != nil {
 		properties["path"] = path
 	}
@@ -110,18 +110,18 @@ func (c *SimpleConverter) convertSimpleOpenAPI(simple *SimpleOpenAPI) *Result {
 		properties["body"] = body
 	}
 
-	// 构建标准JSON Schema格式
+	// Build the standard JSON Schema shape.
 	result := map[string]any{
 		"type":       "object",
 		"properties": properties,
 	}
 
-	// 添加$defs（而不是components）
+	// Add $defs instead of OpenAPI components.
 	if simple.Components != nil && len(simple.Components.Schemas) > 0 {
-		// 转换components.schemas为$defs格式
+		// Convert components.schemas into $defs.
 		defs := make(map[string]any)
 		for name, schema := range simple.Components.Schemas {
-			// 递归处理schema中的$ref引用
+			// Rewrite schema references recursively.
 			defs[name] = c.processSchemaRefs(schema)
 		}
 		result["$defs"] = defs
@@ -133,9 +133,8 @@ func (c *SimpleConverter) convertSimpleOpenAPI(simple *SimpleOpenAPI) *Result {
 	}
 }
 
-// extractParameters 提取指定类型的参数
-// inType: 参数类型 (header/query/path)
-// description: 该类型参数组的描述
+// extractParameters extracts parameters of the requested location.
+// inType is one of header, query, or path; description labels the parameter group.
 func (c *SimpleConverter) extractParameters(params []Parameter, inType, description string) map[string]any {
 	props := map[string]any{}
 	required := []string{}
@@ -170,18 +169,18 @@ func (c *SimpleConverter) extractParameters(params []Parameter, inType, descript
 	return obj
 }
 
-// extractRequestBody 提取请求体
+// extractRequestBody extracts the JSON request body schema.
 func (c *SimpleConverter) extractRequestBody(reqBody *RequestBody) map[string]any {
 	if reqBody == nil {
 		return nil
 	}
 
-	// 获取JSON内容
+	// Read the JSON media type.
 	if content, ok := reqBody.Content["application/json"]; ok {
 		schema := c.convertSchema(content.Schema)
-		// 如果没有 description，补充默认描述
+		// Add a default description when the source schema has none.
 		if _, hasDesc := schema["description"]; !hasDesc {
-			schema["description"] = "Request Body 参数"
+			schema["description"] = "Request body parameters"
 		}
 		return schema
 	}
@@ -189,18 +188,18 @@ func (c *SimpleConverter) extractRequestBody(reqBody *RequestBody) map[string]an
 	return nil
 }
 
-// convertSchema 转换Schema
+// convertSchema converts a schema and rewrites its references.
 func (c *SimpleConverter) convertSchema(schema map[string]any) map[string]any {
 	if schema == nil {
 		return map[string]any{
 			"type": "object",
 		}
 	}
-	// 处理schema中的$ref引用
+	// Rewrite $ref values throughout the schema.
 	return c.processSchemaRefs(schema)
 }
 
-// processSchemaRefs 递归处理schema中的$ref引用，将components/schemas/改为$defs/
+// processSchemaRefs recursively rewrites components/schemas references to $defs.
 func (c *SimpleConverter) processSchemaRefs(schema map[string]any) map[string]any {
 	if schema == nil {
 		return nil
@@ -209,19 +208,19 @@ func (c *SimpleConverter) processSchemaRefs(schema map[string]any) map[string]an
 	for key, value := range schema {
 		switch v := value.(type) {
 		case string:
-			// 如果是$ref字段，转换引用路径
+			// Rewrite reference paths only for $ref fields.
 			if key == "$ref" {
-				// 将 #/components/schemas/ 替换为 #/$defs/
+				// Replace #/components/schemas/ with #/$defs/.
 				refStr := c.convertRefPath(v)
 				result[key] = refStr
 			} else {
 				result[key] = v
 			}
 		case map[string]any:
-			// 递归处理嵌套的map
+			// Process nested objects recursively.
 			result[key] = c.processSchemaRefs(v)
 		case []any:
-			// 处理数组中的每个元素
+			// Process every object contained in an array.
 			processedArray := make([]any, len(v))
 			for i, item := range v {
 				if itemMap, ok := item.(map[string]any); ok {
@@ -238,31 +237,31 @@ func (c *SimpleConverter) processSchemaRefs(schema map[string]any) map[string]an
 	return result
 }
 
-// convertRefPath 转换引用路径
+// convertRefPath rewrites an OpenAPI component reference for JSON Schema.
 func (c *SimpleConverter) convertRefPath(refPath string) string {
-	// 将 #/components/schemas/ 替换为 #/$defs/
+	// Replace components/schemas with $defs for local references.
 	if refPath != "" && refPath[0] == '#' {
-		// 替换 components/schemas 为 $defs
+		// Keep non-component path segments unchanged.
 		refPath = strings.ReplaceAll(refPath, "/components/schemas/", "/$defs/")
 	}
 	return refPath
 }
 
-// ToJSONString 将转换结果转换为JSON字符串
+// ToJSONString serializes a successful conversion result.
 func (c *SimpleConverter) ToJSONString(result *Result) (string, error) {
 	if !result.Success {
-		return "", fmt.Errorf("转换失败: %s", result.Error)
+		return "", fmt.Errorf("conversion failed: %s", result.Error)
 	}
 
 	out, err := json.MarshalIndent(result.Data, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("JSON序列化失败: %v", err)
+		return "", fmt.Errorf("failed to serialize JSON: %v", err)
 	}
 
 	return string(out), nil
 }
 
-// GetSchemaInfo 获取Schema信息
+// GetSchemaInfo returns a compact schema summary.
 func (c *SimpleConverter) GetSchemaInfo(result *Result) map[string]any {
 	if !result.Success {
 		return map[string]any{
@@ -291,7 +290,7 @@ func (c *SimpleConverter) GetSchemaInfo(result *Result) map[string]any {
 		}
 		info["schemas"] = schemaList
 	} else {
-		// 如果没有$defs，设置默认值
+		// Return stable empty values when the schema has no $defs.
 		info["schema_count"] = 0
 		info["schemas"] = []string{}
 	}

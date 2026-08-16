@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/aigeneration"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // AIGenerationHandler AI生成处理接口
@@ -223,5 +224,6 @@ func (h *aiGenerationHandler) GetPromptTemplate(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	sharedrest.MarkLocalizedResponse(c)
 	rest.ReplyOK(c, http.StatusOK, promptTemplate)
 }

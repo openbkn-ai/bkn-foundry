@@ -145,7 +145,7 @@ func TestExtractRequestBody(t *testing.T) {
 			result := converter.extractRequestBody(reqBody)
 
 			So(result, ShouldNotBeNil)
-			So(result["description"], ShouldEqual, "Request Body 参数")
+			So(result["description"], ShouldEqual, "Request body parameters")
 			So(result["type"], ShouldEqual, "object")
 		})
 
@@ -263,16 +263,16 @@ func TestConvertSimpleOpenAPI(t *testing.T) {
 
 			// 验证各参数组的 description
 			header := properties["header"].(map[string]any)
-			So(header["description"], ShouldEqual, "HTTP 请求头参数")
+			So(header["description"], ShouldEqual, "HTTP header parameters")
 
 			query := properties["query"].(map[string]any)
-			So(query["description"], ShouldEqual, "URL 查询字符串参数")
+			So(query["description"], ShouldEqual, "URL query parameters")
 
 			path := properties["path"].(map[string]any)
-			So(path["description"], ShouldEqual, "URL 路径参数")
+			So(path["description"], ShouldEqual, "URL path parameters")
 
 			body := properties["body"].(map[string]any)
-			So(body["description"], ShouldEqual, "Request Body 参数")
+			So(body["description"], ShouldEqual, "Request body parameters")
 		})
 
 		Convey("验证 $defs 和 $ref 转换", func() {
@@ -358,7 +358,7 @@ func TestConvertFromBytes(t *testing.T) {
 			result := converter.ConvertFromBytes(jsonData)
 
 			So(result.Success, ShouldBeFalse)
-			So(result.Error, ShouldContainSubstring, "解析JSON失败")
+			So(result.Error, ShouldContainSubstring, "failed to parse JSON")
 		})
 	})
 }
@@ -432,7 +432,7 @@ func TestToJSONString(t *testing.T) {
 
 			So(err, ShouldNotBeNil)
 			So(jsonStr, ShouldBeEmpty)
-			So(err.Error(), ShouldContainSubstring, "转换失败")
+			So(err.Error(), ShouldContainSubstring, "conversion failed")
 		})
 	})
 }

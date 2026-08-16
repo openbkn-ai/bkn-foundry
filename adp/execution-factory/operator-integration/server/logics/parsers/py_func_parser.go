@@ -9,11 +9,11 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-python/gpython/ast"
 	"github.com/go-python/gpython/parser"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 const (
@@ -22,13 +22,14 @@ const (
 	handlerFuncName   = "handler"
 )
 
-// 解析不了时的兜底判定。放宽而不是收紧：沙箱跑得动的代码不能被这里挡死。
+// Fallback detection for syntax the bundled parser cannot read. It is deliberately
+// permissive so code supported by the sandbox is not rejected here.
 var (
 	handlerEntryPattern = regexp.MustCompile(`def\s+handler\s*\(`)
 	toolEntryPattern    = regexp.MustCompile(`(?m)^\s*@(?:\w+\.)?tool\b`)
 )
 
-// pythonFunctionParser Python 函数解析器
+// pythonFunctionParser parses Python function metadata.
 type pythonFunctionParser struct {
 	Logger    interfaces.Logger
 	Validator interfaces.Validator
@@ -48,12 +49,12 @@ func (p *pythonFunctionParser) validate(ctx context.Context, inputValue any) (in
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "input content is empty")
 		return
 	}
-	// Code 校验
+	// Validate the function source.
 	if input.Code == "" {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "python function code is empty")
 		return
 	}
-	// 校验参数定义
+	// Validate parameter definitions.
 	err = p.Validator.ValidatorStruct(ctx, input)
 	if err != nil {
 		return
@@ -70,35 +71,34 @@ func (p *pythonFunctionParser) validate(ctx context.Context, inputValue any) (in
 	return
 }
 
-// hasEntryPoint 判断代码是否有入口函数。
+// hasEntryPoint reports whether the source defines a supported entry point.
 //
-// 两种写法：@tool 装饰的普通函数（沙箱 SDK 把 event 解包成形参），或
-// handler(event)（AWS Lambda 风格）。判定必须与沙箱执行期一致 —— 保存时放行、
-// 执行时找不到入口,或者反过来保存时拒掉沙箱支持的写法,两种都是错的。
+// The sandbox accepts either a regular function decorated with @tool (the sandbox SDK
+// expands event into arguments) or an AWS Lambda-style handler(event). Validation must
+// agree with runtime behavior in both directions.
 //
-// 因此和沙箱一样按 AST 判断,并且只认来自 sandbox_sdk 的 tool：tool 也是
-// LangChain 的装饰器名,还可能是用户自己的函数名,只比对名字会误判。
+// AST detection therefore recognizes tool only when imported from sandbox_sdk. Other
+// libraries and user code may use the same name and must not be treated as entry points.
 func hasEntryPoint(code string) bool {
 	mod, err := parser.ParseString(code, "exec")
 	if err != nil {
-		// gpython 只到 Python 3.4 级语法,f-string、async def、PEP 526 注解
-		// （pydantic 模型的类体写法）都解析不了。这些代码在沙箱里跑得好好的,
-		// 判成「没有入口」会把它们挡在保存之外,而且报错原因还是错的。
-		// 解析不了时退回宽松正则。
+		// gpython supports syntax only through Python 3.4, so it cannot parse f-strings,
+		// async functions, or PEP 526 annotations such as Pydantic model fields. These are
+		// valid in the sandbox; fall back to permissive patterns instead of rejecting them.
 		return entryPatternFallback(code)
 	}
 	return moduleHasEntryPoint(mod)
 }
 
-// entryPatternFallback 只看形状不看来源,会把别的库的 @tool 也算成入口。
-// 相比之下漏放行的代价更大 —— 这里放行了,执行期至多报「找不到入口」;
-// 这里拒了,用户根本存不进去。
+// entryPatternFallback checks syntax shape rather than import origin and may accept
+// another library's @tool. A false positive can still be diagnosed by the runtime,
+// whereas a false negative prevents the user from saving otherwise valid code.
 func entryPatternFallback(code string) bool {
 	return handlerEntryPattern.MatchString(code) || toolEntryPattern.MatchString(code)
 }
 
 func moduleHasEntryPoint(mod ast.Ast) bool {
-	// 先收集 sandbox_sdk 绑定的名字
+	// Collect names bound to sandbox_sdk first.
 	sdkToolNames := map[string]bool{}   // from sandbox_sdk import tool [as x]
 	sdkModuleNames := map[string]bool{} // import sandbox_sdk [as x]
 	ast.Walk(mod, func(node ast.Ast) bool {
@@ -153,7 +153,7 @@ func moduleHasEntryPoint(mod ast.Ast) bool {
 	return found
 }
 
-// isSandboxSDKTool 判断一个装饰器表达式是否是 sandbox_sdk 的 tool。
+// isSandboxSDKTool reports whether a decorator expression refers to sandbox_sdk.tool.
 func isSandboxSDKTool(expr ast.Expr, sdkToolNames, sdkModuleNames map[string]bool) bool {
 	switch e := expr.(type) {
 	case *ast.Call:
@@ -161,12 +161,11 @@ func isSandboxSDKTool(expr ast.Expr, sdkToolNames, sdkModuleNames map[string]boo
 		return isSandboxSDKTool(e.Func, sdkToolNames, sdkModuleNames)
 	case *ast.Name:
 		id := string(e.Id)
-		// @tool，且 tool 来自 sandbox_sdk
+		// A bare @tool imported from sandbox_sdk.
 		if sdkToolNames[id] {
 			return true
 		}
-		// gpython 把 @sandbox_sdk.tool 归约成一个 Name（Id 含点），
-		// 不像 CPython 那样给出 Attribute
+		// Unlike CPython, gpython represents @sandbox_sdk.tool as a Name whose ID contains a dot.
 		if base, attr, ok := strings.Cut(id, "."); ok {
 			return attr == toolDecoratorName && sdkModuleNames[base]
 		}
@@ -182,7 +181,7 @@ func isSandboxSDKTool(expr ast.Expr, sdkToolNames, sdkModuleNames map[string]boo
 	return false
 }
 
-// 检查是否包含入口函数
+// checkRegexpHandler validates that the source has a supported entry point.
 func checkRegexpHandler(ctx context.Context, code string) (err error) {
 	if hasEntryPoint(code) {
 		return nil
@@ -192,13 +191,13 @@ func checkRegexpHandler(ctx context.Context, code string) (err error) {
 }
 
 // func checAstkHandler(ctx context.Context, code string) (err error) {
-// 	// 解析Python代码
+// 	// Parse the Python source.
 // 	mod, err := parser.ParseString(code, py.ExecMode)
 // 	if err != nil {
 // 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("parse python code failed: %v", err))
 // 		return
 // 	}
-// 	// 检查是否包含入口函数handler
+// 	// Check for a handler entry point.
 // 	var hasHandler bool
 // 	ast.Walk(mod, func(node ast.Ast) bool {
 // 		n, ok := node.(*ast.FunctionDef)
@@ -213,9 +212,9 @@ func checkRegexpHandler(ctx context.Context, code string) (err error) {
 // 	return
 // }
 
-// Parse 解析 Python 函数
+// Parse converts Python function input into persisted metadata.
 func (p *pythonFunctionParser) Parse(ctx context.Context, inputValue any) (metadatas []interfaces.IMetadataDB, err error) {
-	// 记录可观测性
+	// Record the operation span.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	input, err := p.validate(ctx, inputValue)
@@ -248,15 +247,15 @@ func (p *pythonFunctionParser) Parse(ctx context.Context, inputValue any) (metad
 	return
 }
 
-// GetAllContent 获取所有内容
+// GetAllContent returns the complete generated API contract.
 func (p *pythonFunctionParser) GetAllContent(ctx context.Context, inputValue any) (content any, err error) {
 	input, err := p.validate(ctx, inputValue)
 	if err != nil {
 		return nil, err
 	}
-	// 与保存路径用同一套入口判定,含解析失败时的兜底。
-	// 不在这里因为 gpython 解析不了就报语法错 —— 它只到 Python 3.4,
-	// f-string 之类沙箱跑得动的代码会被误判。真正的语法错由沙箱执行时报出。
+	// Use the same entry-point detection as the persistence path, including its parser
+	// fallback. Syntax supported by the sandbox but not gpython must not be rejected here;
+	// the sandbox remains responsible for reporting actual syntax errors.
 	if err = checkRegexpHandler(ctx, input.Code); err != nil {
 		return
 	}
@@ -264,7 +263,7 @@ func (p *pythonFunctionParser) GetAllContent(ctx context.Context, inputValue any
 	return
 }
 
-// 将input\output转换成 PathItemContent
+// convertToPathItemContent converts function inputs and outputs into an API contract.
 func convertToPathItemContent(input *interfaces.FunctionInput) (result *interfaces.PathItemContent) {
 	result = &interfaces.PathItemContent{
 		Path:        interfaces.GetAOIFuncExecPath(),
@@ -274,150 +273,149 @@ func convertToPathItemContent(input *interfaces.FunctionInput) (result *interfac
 		Description: input.Description,
 		APISpec:     &interfaces.APISpec{},
 	}
-	// 添加超时时间参数
+	// Add infrastructure parameters declared by the public contract.
 	result.APISpec.Parameters = createParameter()
-	// 根据处理输入参数创建请求体
+	// Build the request body from the declared inputs.
 	result.APISpec.RequestBody = createRequestBody(input.Inputs)
-	// 处理输出参数
+	// Build responses from the declared outputs.
 	result.APISpec.Responses = createResponseBody(input.Outputs)
 	return
 }
 
-// 构造Parameter参数
+// createParameter returns infrastructure parameters exposed in the API contract.
 //
-// api_spec 只描述用户声明的契约。执行超时是沙箱的基础设施开关,曾经作为
-// query 参数写进这里,结果 Agent 把它当成一个可选业务入参去推断,按 schema
-// 渲染参数表的界面也会把它和真实入参并列展示,还要用户为它选固定值或动态输入。
+// api_spec describes only the user-declared contract. Execution timeout is a sandbox
+// infrastructure option. Exposing it as a query parameter caused agents and schema-driven
+// UIs to treat it as an optional business input.
 //
-// 执行侧仍然接受 query 里的 timeout（见 FunctionExecuteProxyReq），
-// 只是不再宣告成工具契约的一部分。
+// The execution endpoint still accepts timeout in the query string (see
+// FunctionExecuteProxyReq), but it is no longer advertised as part of the tool contract.
 func createParameter() []*interfaces.Parameter {
 	return make([]*interfaces.Parameter, 0)
 }
 
-// 构造请求体结构
+// createRequestBody builds the request-body schema.
 func createRequestBody(inputs []*interfaces.ParameterDef) *interfaces.RequestBody {
-	// 创建schema定义
+	// Build the object schema.
 	requestBodySchema := openapi3.NewObjectSchema()
 	if len(inputs) > 0 {
 		for _, input := range inputs {
 			propertySchema := createParameterSchema(input)
 			requestBodySchema.Properties[input.Name] = openapi3.NewSchemaRef("", propertySchema)
-			// 设置必填字段
+			// Record required fields.
 			if input.Required {
 				requestBodySchema.Required = append(requestBodySchema.Required, input.Name)
 			}
 		}
 	}
-	// 创建请求体
+	// Build the request body.
 	requestBody := &interfaces.RequestBody{
-		Description: "函数输入参数",
+		Description: "Function input parameters",
 		Content:     openapi3.NewContentWithJSONSchema(requestBodySchema),
 		Required:    true,
 	}
 	return requestBody
 }
 
-// 处理输出参数
-// 根据处理输出参数创建响应体
+// createResponseBody builds response schemas from the declared outputs.
 func createResponseBody(outputs []*interfaces.ParameterDef) []*interfaces.Response {
-	// 创建schema定义
+	// Build the successful response schema.
 	responseSchema := openapi3.NewObjectSchema()
 	responseSchema.Properties["stdout"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "标准输出流内容",
+		Description: "Standard output stream content",
 	})
 	responseSchema.Properties["stderr"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "标准错误流内容",
+		Description: "Standard error stream content",
 	})
 
 	resultSchema := &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeObject},
-		Description: "Handler 函数返回的业务结果: any or null",
+		Description: "Business result returned by the handler: any value or null",
 		Properties:  make(openapi3.Schemas),
 	}
 	for _, output := range outputs {
 		propertySchema := createParameterSchema(output)
 		resultSchema.Properties[output.Name] = openapi3.NewSchemaRef("", propertySchema)
-		// 设置必填字段
+		// Record required fields.
 		if output.Required {
 			resultSchema.Required = append(resultSchema.Required, output.Name)
 		}
 	}
 	responseSchema.Properties["result"] = openapi3.NewSchemaRef("", resultSchema)
-	// 添加指标
+	// Add execution metrics.
 	metricsSchema := &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeObject},
-		Description: "指标",
+		Description: "Execution metrics",
 		Properties:  make(openapi3.Schemas),
 	}
 	metricsSchema.Properties["duration_ms"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeNumber},
-		Description: "执行总耗时（毫秒）",
+		Description: "Total execution duration (milliseconds)",
 	})
 	metricsSchema.Properties["memory_peak_mb"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeNumber},
-		Description: "峰值内存占用（MB）",
+		Description: "Peak memory usage (MB)",
 	})
 	metricsSchema.Properties["cpu_time_ms"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeNumber},
-		Description: "CPU 时间（毫秒）",
+		Description: "CPU time (milliseconds)",
 	})
 	responseSchema.Properties["metrics"] = openapi3.NewSchemaRef("", metricsSchema)
-	// 添加错误响应体
+	// Add the error response schema.
 	errSchema := &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeObject},
-		Description: "失败详情",
+		Description: "Failure details",
 		Properties:  map[string]*openapi3.SchemaRef{},
 	}
 	errSchema.Properties["code"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "错误码",
+		Description: "Error code",
 	})
 	errSchema.Properties["description"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "错误描述",
+		Description: "Error description",
 	})
 	errSchema.Properties["detail"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeObject},
-		Description: "错误详情",
+		Description: "Error details",
 	})
 	errSchema.Properties["solution"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "错误解决办法",
+		Description: "Error solution",
 	})
 	errSchema.Properties["link"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "错误链接",
+		Description: "Error link",
 	})
-	// 创建响应体
+	// Build the response list.
 	responseBody := []*interfaces.Response{
 		{
 			StatusCode:  "200",
-			Description: "成功",
+			Description: "Success",
 			Content:     openapi3.NewContentWithJSONSchema(responseSchema),
 		},
 		{
 			StatusCode:  "400",
-			Description: "参数校验失败",
+			Description: "Parameter validation failed",
 			Content:     openapi3.NewContentWithJSONSchema(errSchema),
 		},
 		{
 			StatusCode:  "404",
-			Description: "资源不存在",
+			Description: "Resource not found",
 			Content:     openapi3.NewContentWithJSONSchema(errSchema),
 		},
 		{
 			StatusCode:  "500",
-			Description: "函数执行失败",
+			Description: "Function execution failed",
 			Content:     openapi3.NewContentWithJSONSchema(errSchema),
 		},
 	}
 	return responseBody
 }
 
-// mapTypeToOpenAPI 将参数类型映射到OpenAPI类型
+// mapTypeToOpenAPI maps a function parameter type to an OpenAPI type.
 func mapTypeToOpenAPI(paramType string) *openapi3.Types {
 	switch strings.ToLower(paramType) {
 	case "string":
@@ -446,35 +444,35 @@ func createParameterSchema(param *interfaces.ParameterDef) *openapi3.Schema {
 		Description: param.Description,
 	}
 
-	// 设置默认值
+	// Preserve the default value.
 	if param.Default != nil {
 		propertySchema.Default = param.Default
 	}
-	// 设置枚举值
+	// Preserve enum values.
 	if len(param.Enum) > 0 {
 		propertySchema.Enum = param.Enum
 	}
-	// 设置示例值
+	// Preserve the example value.
 	if param.Example != nil {
 		propertySchema.Example = param.Example
 	}
-	// 处理嵌套参数
+	// Convert nested parameters.
 	if len(param.SubParameters) > 0 {
 		switch param.Type {
 		case interfaces.ParameterTypeObject:
-			// Object类型：SubParameters定义对象的属性
+			// Object sub-parameters define object properties.
 			propertySchema.Properties = make(openapi3.Schemas)
 			for _, subParam := range param.SubParameters {
 				subPropertySchema := createParameterSchema(subParam)
 				propertySchema.Properties[subParam.Name] = openapi3.NewSchemaRef("", subPropertySchema)
-				// 子对象的必填字段需要添加到父对象的Required数组中
+				// Required child fields belong to the parent object's required list.
 				if subParam.Required {
 					propertySchema.Required = append(propertySchema.Required, subParam.Name)
 				}
 			}
 
 		case interfaces.ParameterTypeArray:
-			// Array类型：SubParameters只包含一个元素，定义数组元素的结构
+			// An array has one sub-parameter that defines its item schema.
 			subParam := param.SubParameters[0]
 			if subParam.Description == "" {
 				subParam.Description = param.Description

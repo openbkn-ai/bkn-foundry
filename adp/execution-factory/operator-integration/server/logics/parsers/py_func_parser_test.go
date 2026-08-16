@@ -77,6 +77,23 @@ func TestFunctionToOpenAPISchema(t *testing.T) {
 	})
 }
 
+func TestGeneratedFunctionSchemaUsesEnglishServiceDescriptions(t *testing.T) {
+	schema := convertToPathItemContent(&interfaces.FunctionInput{})
+	if got := schema.APISpec.RequestBody.Description; got != "Function input parameters" {
+		t.Fatalf("request body description = %q", got)
+	}
+	if got := schema.APISpec.Responses[0].Description; got != "Success" {
+		t.Fatalf("success response description = %q", got)
+	}
+	responseSchema := schema.APISpec.Responses[0].Content["application/json"].Schema.Value
+	if got := responseSchema.Properties["stdout"].Value.Description; got != "Standard output stream content" {
+		t.Fatalf("stdout description = %q", got)
+	}
+	if got := responseSchema.Properties["metrics"].Value.Description; got != "Execution metrics" {
+		t.Fatalf("metrics description = %q", got)
+	}
+}
+
 func TestCheckHandler(t *testing.T) {
 	Convey("TestCheckHandler: 检查是否包含入口函数handler", t, func() {
 		code := `def handler(event):

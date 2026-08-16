@@ -8,12 +8,14 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 )
 
 const (
-	errorTypeLoadFailed       = "OpenAPILoadFailed"       // OpenAPI规范加载失败
-	errorTypeValidationFailed = "OpenAPIValidationFailed" // OpenAPI规范验证失败
+	errorTypeLoadFailed       = "OpenAPILoadFailed"       // The OpenAPI document could not be loaded.
+	errorTypeValidationFailed = "OpenAPIValidationFailed" // The OpenAPI document failed validation.
 	elementTypeLen            = 2
 )
 
@@ -25,60 +27,62 @@ var (
 	fieldRegex     = regexp.MustCompile(`field\s*["']([^"']+)["']`)
 )
 
-// parseOpenAPILoadError 解析OpenAPI加载错误
+// parseOpenAPILoadError maps an OpenAPI loading failure to a public error.
 func parseOpenAPILoadError(ctx context.Context, originalErr error) *errors.HTTPError {
 	if originalErr == nil {
 		return nil
 	}
-	errorCode, errorParams, errorDetails := extractErrorInfo(originalErr, errorTypeLoadFailed)
+	errorCode, errorParams, errorDetails := extractErrorInfo(ctx, originalErr, errorTypeLoadFailed)
 	return errors.NewHTTPError(ctx, http.StatusBadRequest, errorCode, errorDetails, errorParams...)
 }
 
-// parseOpenAPIValidationError 解析OpenAPI验证错误
+// parseOpenAPIValidationError maps an OpenAPI validation failure to a public error.
 func parseOpenAPIValidationError(ctx context.Context, originalErr error) *errors.HTTPError {
 	if originalErr == nil {
 		return nil
 	}
-	errorCode, errorParams, errorDetails := extractErrorInfo(originalErr, errorTypeValidationFailed)
+	errorCode, errorParams, errorDetails := extractErrorInfo(ctx, originalErr, errorTypeValidationFailed)
 	return errors.NewHTTPError(ctx, http.StatusBadRequest, errorCode, errorDetails, errorParams...)
 }
 
-// extractErrorInfo 提取错误信息，返回错误码、参数和错误详情
-func extractErrorInfo(err error, errorType string) (errors.ErrorCode, []interface{}, interface{}) {
-	// 检查是否是MultiError类型
+// extractErrorInfo returns the stable code, description parameters, and diagnostic details.
+func extractErrorInfo(ctx context.Context, err error, errorType string) (errors.ErrorCode, []interface{}, interface{}) {
+	// Preserve all entries from a MultiError.
 	if multiErr, ok := err.(*openapi3.MultiError); ok {
-		return handleMultiError(multiErr, errorType)
+		return handleMultiError(ctx, multiErr, errorType)
 	}
 
-	// 单个错误处理
+	// Handle a single error directly.
 	return handleSingleError(err, errorType)
 }
 
-// handleMultiError 处理MultiError类型，返回最外层错误码，其他错误在详情中补充
-func handleMultiError(multiErr *openapi3.MultiError, errorType string) (errors.ErrorCode, []interface{}, interface{}) {
+// handleMultiError uses the first entry as the primary code and includes every entry in details.
+func handleMultiError(ctx context.Context, multiErr *openapi3.MultiError, errorType string) (errors.ErrorCode, []interface{}, interface{}) {
 	var (
 		mainErrorCode errors.ErrorCode
 		mainParams    []interface{}
 		errorDetails  []string
 	)
 
-	// 遍历所有子错误
+	tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
+
+	// Iterate over every nested error.
 	for i, subErr := range *multiErr {
 		if subErr != nil {
 			subErrorCode, subParams, subErrorDetails := handleSingleError(subErr, errorType)
 
-			// 第一个错误作为主错误码
+			// Use the first error as the primary error code.
 			if i == 0 {
 				mainErrorCode = subErrorCode
 				mainParams = subParams
 			}
 
-			// 所有错误都添加到详情中
-			errorDetails = append(errorDetails, fmt.Sprintf("错误%d: %s", i+1, subErrorDetails))
+			// Include every nested error in the client-visible details.
+			errorDetails = append(errorDetails, fmt.Sprintf(tr.Trans("detail.openapi_error_item"), i+1, subErrorDetails))
 		}
 	}
 
-	// 如果没有找到主错误码，使用默认错误码
+	// Use the default code when the collection has no usable entry.
 	if mainErrorCode == "" {
 		mainErrorCode = getDefaultErrorCode(errorType)
 	}
@@ -86,7 +90,7 @@ func handleMultiError(multiErr *openapi3.MultiError, errorType string) (errors.E
 	return mainErrorCode, mainParams, errorDetails
 }
 
-// getDefaultErrorCode 获取默认错误码
+// getDefaultErrorCode returns the fallback code for a parser stage.
 func getDefaultErrorCode(errorType string) errors.ErrorCode {
 	switch errorType {
 	case errorTypeLoadFailed:
@@ -98,11 +102,11 @@ func getDefaultErrorCode(errorType string) errors.ErrorCode {
 	}
 }
 
-// handleSingleError 处理单个错误
+// handleSingleError maps one parser error to its public representation.
 func handleSingleError(err error, errorType string) (errors.ErrorCode, []interface{}, interface{}) {
 	errStr := err.Error()
 
-	// 根据错误类型获取对应的错误码、参数和详细错误信息
+	// Select a code and parameters while preserving the original diagnostic.
 	var errorCode errors.ErrorCode
 	var errorParams []interface{}
 	errorDetails := errStr
@@ -118,7 +122,7 @@ func handleSingleError(err error, errorType string) (errors.ErrorCode, []interfa
 	return errorCode, errorParams, errorDetails
 }
 
-// extractElement 从错误信息中提取具体元素
+// extractElement extracts an element name from a parser error.
 func extractElement(errStr string, regex *regexp.Regexp) string {
 	matches := regex.FindStringSubmatch(errStr)
 	if len(matches) > 1 {
@@ -127,7 +131,7 @@ func extractElement(errStr string, regex *regexp.Regexp) string {
 	return ""
 }
 
-// getGenericErrorCodeAndParams 获取通用错误码和参数
+// getGenericErrorCodeAndParams maps generic parser errors.
 func getGenericErrorCodeAndParams(errStr string) (errors.ErrorCode, []interface{}) {
 	field := extractElement(errStr, fieldRegex)
 
@@ -147,20 +151,20 @@ func getGenericErrorCodeAndParams(errStr string) (errors.ErrorCode, []interface{
 	return errors.ErrExtOpenAPIInvalidSpecificationOperation, nil
 }
 
-// getValidationErrorCodeAndParams 获取验证阶段的错误码和参数（简化版本）
+// getValidationErrorCodeAndParams maps OpenAPI validation errors.
 func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interface{}) {
 	if strings.Contains(errStr, "invalid components") {
 		return errors.ErrExtOpenAPIInvalidComponent, nil
 	}
 
-	// 处理 "invalid info" 错误
+	// Handle an invalid info object.
 	if strings.Contains(errStr, "invalid info") {
 		return errors.ErrExtOpenAPIInvalidSpecificationInvalid, []interface{}{"info"}
 	}
 
-	// 处理 "must be an object" 错误
+	// Handle values that must be objects.
 	if strings.Contains(errStr, "must be an object") {
-		// 提取具体的元素名称
+		// Identify the affected element.
 		if strings.Contains(errStr, "info") {
 			return errors.ErrExtOpenAPIInvalidSpecificationInvalid, []interface{}{"info"}
 		}
@@ -171,15 +175,15 @@ func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interfa
 			return errors.ErrExtOpenAPIInvalidPath, nil
 		}
 
-		// 通用处理
+		// Fall back to the generic required-field error.
 		return errors.ErrExtOpenAPIInvalidSpecificationRequired, nil
 	}
 
-	// 处理 "value of openapi must be a non-empty string" 错误
+	// Handle an empty OpenAPI version.
 	if strings.Contains(errStr, "value of openapi must be a non-empty string") {
 		return errors.ErrExtOpenAPIInvalidSpecificationRequired, []interface{}{"openapi"}
 	}
-	// 1. Schema相关错误（最高优先级）
+	// 1. Schema errors have the highest priority.
 	if strings.Contains(errStr, "schema") {
 		schema := extractElement(errStr, schemaRegex)
 		if schema != "" {
@@ -194,7 +198,7 @@ func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interfa
 		return errors.ErrExtOpenAPIInvalidSchemaValue, nil
 	}
 
-	// 2. 参数相关错误
+	// 2. Parameter errors.
 	if strings.Contains(errStr, "parameter") {
 		parameter := extractElement(errStr, parameterRegex)
 		if parameter != "" {
@@ -209,7 +213,7 @@ func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interfa
 		return errors.ErrExtOpenAPIInvalidParameterValue, nil
 	}
 
-	// 3. 响应相关错误
+	// 3. Response errors.
 	if strings.Contains(errStr, "response") {
 		response := extractElement(errStr, responseRegex)
 		if response != "" {
@@ -221,12 +225,12 @@ func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interfa
 		return errors.ErrExtOpenAPIInvalidResponseSchema, nil
 	}
 
-	// 4. 路径相关错误
+	// 4. Path errors.
 	if strings.Contains(errStr, "path") {
 		return errors.ErrExtOpenAPIInvalidPath, nil
 	}
 
-	// 5. 操作相关错误
+	// 5. Operation errors.
 	if strings.Contains(errStr, "operation") {
 		operation := extractElement(errStr, operationRegex)
 		if operation != "" {
@@ -235,7 +239,7 @@ func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interfa
 		return errors.ErrExtOpenAPIInvalidSpecificationOperation, nil
 	}
 
-	// 6. 通用验证错误
+	// 6. Generic validation errors.
 	field := extractElement(errStr, fieldRegex)
 	if field != "" {
 		if strings.Contains(errStr, "required") {
@@ -252,6 +256,6 @@ func getValidationErrorCodeAndParams(errStr string) (errors.ErrorCode, []interfa
 		}
 	}
 
-	// 7. 默认错误
+	// 7. Default validation error.
 	return errors.ErrExtOpenAPIInvalidSpecification, nil
 }

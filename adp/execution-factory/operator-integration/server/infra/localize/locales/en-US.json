@@ -11,6 +11,21 @@
         "model_train": "Model Training",
         "system": "System"
     },
+    "capabilities_lab": {
+        "invalid_request": "Invalid request parameters.",
+        "not_found": "Resource not found.",
+        "file_required": "A required file is missing.",
+        "feature_disabled": "This feature is disabled."
+    },
+    "detail": {
+        "openapi_error_item": "Error %d: %s"
+    },
+    "prompt": {
+        "python_function_description": "Prompt template for Python function generation",
+        "python_function_user_template": "Function description: %s; inputs: %v; outputs: %v;",
+        "metadata_parameter_description": "Prompt template for metadata parameter generation",
+        "default_function_request": "Generate standards-compliant Python function code from the input and output parameters"
+    },
     "audit_log": {
         "operator_create": "Create operator '%s' successfully",
         "operator_edit": "Edit operator '%s' successfully",

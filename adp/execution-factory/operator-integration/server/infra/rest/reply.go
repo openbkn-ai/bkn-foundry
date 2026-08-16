@@ -1,6 +1,6 @@
-// Package rest 响应处理
+// Package rest provides HTTP response helpers.
 // @file rest.go
-// @description: 响应处理
+// @description: HTTP response handling
 package rest
 
 import (
@@ -24,7 +24,7 @@ const (
 	ContentTypeJSON = "application/json"
 )
 
-// ReplyOK 响应成功
+// ReplyOK writes a successful JSON response.
 func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	var (
 		bodyStr string
@@ -46,7 +46,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	c.String(statusCode, bodyStr)
 }
 
-// ReplyError 响应错误
+// ReplyError writes an error response.
 func ReplyError(c *gin.Context, err error) {
 	if err != nil {
 		errWithStack := errorwrap.WithStack(err)
@@ -87,7 +87,7 @@ func ReplyError(c *gin.Context, err error) {
 	c.String(httpCode, body)
 }
 
-// ExHTTPError 依赖服务的错误码
+// ExHTTPError preserves an error response owned by a dependency.
 type ExHTTPError struct {
 	HTTPCode int
 	Body     []byte
@@ -97,9 +97,9 @@ func (e *ExHTTPError) Error() string {
 	return string(e.Body)
 }
 
-// ReplyWithExecutionMode 根据执行模式处理响应
+// ReplyWithExecutionMode writes a response according to the requested execution mode.
 func ReplyWithExecutionMode(c *gin.Context, resp interface{}, err error) {
-	// 判断流式响应模式
+	// Select the response transport for streaming requests.
 	ctx := c.Request.Context()
 	executionMode := common.GetExecutionModeFromCtx(ctx)
 	streamingMode, _ := common.GetStreamingModeFromCtx(ctx)
@@ -114,10 +114,12 @@ func ReplyWithExecutionMode(c *gin.Context, resp interface{}, err error) {
 			case *ExHTTPError:
 				c.SSEvent("error", e)
 			case *myErr.HTTPError:
+				sharedrest.MarkLocalizedResponse(c)
 				c.SSEvent("error", e)
 			default:
-				err = myErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
-				c.SSEvent("error", e)
+				localizedErr := myErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+				sharedrest.MarkLocalizedResponse(c)
+				c.SSEvent("error", localizedErr)
 			}
 			return
 		case interfaces.StreamingModeHTTP:
