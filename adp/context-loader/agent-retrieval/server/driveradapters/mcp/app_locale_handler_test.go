@@ -14,6 +14,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -43,6 +44,32 @@ func TestLocalizedMCPHandlerPinsLocaleToSession(t *testing.T) {
 	handler.ServeHTTP(followupRecorder, followup)
 	if got := followupRecorder.Body.String(); got != "en-session" {
 		t.Fatalf("follow-up response = %q, want session-pinned English handler", got)
+	}
+}
+
+func TestLocalizedMCPHandlerPinsRequestContextLocaleToSession(t *testing.T) {
+	localeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(server.HeaderKeySessionID, "en-session")
+		_, _ = w.Write([]byte(common.GetLanguageFromCtx(r.Context())))
+	})
+	handler := &localizedMCPHandler{
+		handlers: map[string]http.Handler{
+			defaultMCPLocale: localeHandler,
+			"en-US":          localeHandler,
+		},
+	}
+
+	initialize := httptest.NewRequest(http.MethodPost, endpointPath, nil)
+	initialize.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	handler.ServeHTTP(httptest.NewRecorder(), initialize)
+
+	followup := httptest.NewRequest(http.MethodPost, endpointPath, nil)
+	followup.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+	followup.Header.Set(server.HeaderKeySessionID, "en-session")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, followup)
+	if got := response.Body.String(); got != "en-US" {
+		t.Fatalf("request context locale = %q, want session-pinned en-US", got)
 	}
 }
 

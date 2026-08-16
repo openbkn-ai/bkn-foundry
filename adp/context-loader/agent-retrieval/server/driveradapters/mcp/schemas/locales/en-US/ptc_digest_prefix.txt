@@ -1,1 +1,3 @@
 The following BKN capabilities are already in scope and can be called directly. Complete inspection, retrieval, and aggregation in one script, then print only the useful result. Tool failures raise ToolError; inspect the returned error before changing parameters or tools.
+
+## Available functions

@@ -1,0 +1,1 @@
+Session context returned by bkn_start_interaction.

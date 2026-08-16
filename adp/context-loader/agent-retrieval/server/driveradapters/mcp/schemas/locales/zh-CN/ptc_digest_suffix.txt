@@ -1,2 +1,137 @@
 
-在同一段脚本内完成探查、取数和聚合，只输出最终需要的结论。失败时查看 ToolError 的内容后修正参数或工具选择。
+## 一段脚本解决整个问题
+
+每发起一次 run_code 就是一次往返。先跑一次看结构、再跑一次取数、再跑一次聚合，
+与逐个调用工具没有区别——探查与求解要用变量串在同一段脚本里：
+
+```python
+kn = "<当前知识网络 id>"
+
+# 1) 先拿结构，结果直接喂给下一步，不要单独跑一轮回来看
+detail = get_kn_detail(kn_id=kn)
+ot = next(o for o in detail.get("object_types", []) if "进球" in o.get("name", ""))
+fields = [p.get("name") for p in
+          get_object_types(kn_id=kn, ids=[ot["id"]])["object_types"][0].get("data_properties", [])]
+
+# 2) 用刚拿到的真实字段名过滤，不要按语义猜
+team_field = next(f for f in fields if "team" in f)
+rows = query_object_instance(kn_id=kn, ot_id=ot["id"], limit=1000)
+
+# 3) 聚合也在这里做完，只 print 结论
+import collections
+top = collections.Counter(r.get(team_field) for r in rows.get("datas", [])).most_common(3)
+print(top)
+```
+
+## 能下推的聚合一律下推
+
+计数、求和、分组、排序、Top-N 这类，**优先写一条 `run_sql`**，让数据库算完只回结果，
+不要用 `query_object_instance` 把行拉进沙箱再统计——那既慢又受 `limit` 截断，
+统计口径会悄悄错。
+
+```python
+# 对：一条 SQL 回三行
+run_sql(sql="SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name ORDER BY c DESC LIMIT 3")
+
+# 错：拉 5000 行回来自己数，还可能没拉全
+rows = query_object_instance(kn_id=kn, ot_id="goals", limit=5000)
+```
+
+沙箱里的 pandas、numpy、scipy、sqlite3 与全部标准库，留给 SQL 表达不了的部分：
+跨数据源关联、非 SQL 数据源、按中间结果分支、扇出。那些才是代码模式真正的用武之地。
+
+## 一次执行同时产出答案与依据
+
+多跑一轮，最常见的原因不是想不出解法，而是**对数据口径有误解**：以为只有男足却混着女足，
+以为球队名唯一却有 West Germany 与 Germany 两条。这类问题撞上一次修一次，就变成了
+一轮一次调用。
+
+对策是在**同一段脚本里**把你依赖的口径先打出来，再给答案：
+
+```python
+print("取值范围:", run_sql(sql="SELECT DISTINCT tournament_name FROM {{.<resource_id>}}")["entries"][:20])
+print("答案:", run_sql(sql="SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name ORDER BY c DESC LIMIT 5")["entries"])
+```
+
+这样即使口径判断错了，你也已经拿到了改对它所需的全部信息，下一轮直接给最终答案，
+而不是再花一轮"看一眼"。
+
+不确定的地方用代码兜住而不是回到对话：取值一律 `.get()`，可能失败的分支用
+try/except 包住并 print 出关键中间信息，让一次执行既拿到答案、又带回排查线索。
+
+## 执行 shell 命令
+
+另有一个 `run_shell` 工具，和这里共用工作目录，用来单独看一眼环境或文件
+（`ls`、`wc`、`head`）。
+
+但**只要 shell 是解题过程的一环，就写在这段脚本里**，用 `subprocess` 调，
+不要为它单开一轮——那就退回一次调用一轮了：
+
+```python
+import subprocess
+r = subprocess.run("wc -l rows.jsonl && head -c 300 rows.jsonl",
+                   shell=True, capture_output=True, text=True)
+print(r.stdout or r.stderr)          # 非零退出时诊断在 stderr 里
+```
+
+`curl`、`jq`、`awk`、`sort` 这类都在。但凡 Python 能直接做的（读文件、
+统计、JSON 处理）就别绕 shell，省一层引号转义。
+
+## 工作目录与大结果
+
+回到你面前的只有 stdout，因此**不要把大结果打印出来**：写进文件，再打印行数、字段名、
+头部若干行这类足以判断下一步的信息。需要细看时读取文件的某一段，而不是整份倒出来。
+
+脚本启动时当前目录已经切到本次会话专属的工作目录（`WORKDIR` 变量指向它），
+**直接用相对路径读写**。不要写 `/workspace/xxx` 的绝对路径：那是所有会话共用的
+根目录，会和别人撞名。
+
+```python
+import json, pathlib
+rows = query_object_instance(kn_id=kn, ot_id=ot_id, limit=5000).get("datas", [])
+pathlib.Path("rows.json").write_text(json.dumps(rows, ensure_ascii=False))
+print(f"{len(rows)} 行已落盘，字段：{sorted(rows[0])[:12] if rows else []}")
+print(json.dumps(rows[:3], ensure_ascii=False)[:600])   # 只看头部三行
+```
+
+文件在同一对话的多次执行之间是保留的，下一段脚本可以直接接着用，不必重新取数：
+
+```python
+import json, pathlib
+p = pathlib.Path("rows.json")
+rows = json.loads(p.read_text()) if p.exists() else query_object_instance(...)["datas"]
+```
+
+`exists()` 判断还是要写：换了对话、或者上一段脚本在落盘前就失败了，文件就不在。
+
+`run_shell` 落在同一个目录里，两个工具看到的是同一批文件。
+
+## 参数写不准时
+
+完整 schema 在每个函数的 docstring 里，**在同一段脚本里** `help(fn)` 自查后接着往下写，
+不要为了看文档单独跑一轮：
+
+```python
+help(query_object_instance)
+```
+
+特别是 `condition` 的 `operation`：`match` / `knn` 能否使用取决于该属性的
+`condition_operations`（见 `get_object_types` 返回），从 `type` 推不出来。
+
+## 错误处理
+
+调用失败抛 `ToolError`，message 为服务端原文的 JSON，形如：
+
+```json
+{"error":{"code":"...","message":"...","required_action":"...","retryable":false}}
+```
+
+**先读 `retryable` 再决定下一步。** 为 false 表示同样的请求再发一次仍会失败——
+换参数、换工具，或者把这条错误原样 print 出来交回，不要重试。原地重试三次只是把
+同一个失败抄三遍，既拖慢一轮又什么都没换来。
+
+`required_action` 有值时按它做（例如提示先查某个工具）。属于参数写错的（字段名
+不存在、算子不支持），在同一段脚本里改完接着跑，不必回到对话轮次。
+
+不要用 `try/except` + `pass` 把错误吞掉：你看不到的东西没法修，而调用方只会
+收到一段没有解释的空输出。

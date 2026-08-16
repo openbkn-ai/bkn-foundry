@@ -1,0 +1,5 @@
+{
+  "code_required": "The code parameter is required.",
+  "command_required": "The command parameter is required.",
+  "unsupported_tool_wrap": "Unsupported PTC tool wrapper: %s."
+}

@@ -1,0 +1,1 @@
+会话上下文，取自 bkn_start_interaction 的返回。

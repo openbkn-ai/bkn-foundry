@@ -1,0 +1,5 @@
+{
+  "code_required": "缺少 code 参数。",
+  "command_required": "缺少 command 参数。",
+  "unsupported_tool_wrap": "不支持的 PTC 工具封装方式：%s。"
+}

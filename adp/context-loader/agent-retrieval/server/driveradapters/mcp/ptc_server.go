@@ -100,11 +100,11 @@ func newPTCMCPServerForLocale(
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 
 	for _, tool := range toolkit.Tools {
-		input := ptcToolInputSchemaWithContext(tool.InputSchema)
+		input := ptcToolInputSchemaWithContext(tool.InputSchema, localeBundle.PTCResource("ptc_bkn_context_description.txt"))
 		mcpServer.AddTool(
 			newToolWithSchemas(ToolMeta{Name: tool.Name, Description: tool.Description, Title: tool.Name}, input,
 				json.RawMessage(localeBundle.PTCResource("ptc_output_schema.json"))),
-			handlePTCExecute(executor, toolkit, tool),
+			handlePTCExecuteForLocale(executor, toolkit, tool, localeBundle),
 		)
 	}
 	return mcpServer, nil
@@ -114,7 +114,7 @@ func newPTCMCPServerForLocale(
 //
 // The toolkit schema is used by Studio, where the frontend manages the session.
 // MCP clients must provide bkn_context themselves, so it is added here.
-func ptcToolInputSchemaWithContext(raw json.RawMessage) json.RawMessage {
+func ptcToolInputSchemaWithContext(raw json.RawMessage, contextDescription string) json.RawMessage {
 	var schema map[string]any
 	if err := json.Unmarshal(raw, &schema); err != nil {
 		return raw
@@ -125,7 +125,7 @@ func ptcToolInputSchemaWithContext(raw json.RawMessage) json.RawMessage {
 	}
 	properties["bkn_context"] = map[string]any{
 		"type":        "object",
-		"description": "会话上下文，取自 bkn_start_interaction 的返回。",
+		"description": contextDescription,
 		"properties": map[string]any{
 			"conversation_id": map[string]any{"type": "string"},
 			"interaction_id":  map[string]any{"type": "string"},
@@ -147,6 +147,12 @@ func ptcToolInputSchemaWithContext(raw json.RawMessage) json.RawMessage {
 func handlePTCExecute(
 	executor interfaces.DrivenOperatorIntegration, toolkit *PTCToolkit, tool PTCTool,
 ) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return handlePTCExecuteForLocale(executor, toolkit, tool, loadMCPLocaleBundle(defaultMCPLocale))
+}
+
+func handlePTCExecuteForLocale(
+	executor interfaces.DrivenOperatorIntegration, toolkit *PTCToolkit, tool PTCTool, locale *mcpLocaleBundle,
+) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		timeout := int(req.GetFloat("timeout", ptcDefaultTimeout))
 		if timeout <= 0 {
@@ -157,7 +163,7 @@ func handlePTCExecute(
 		}
 		businessContext := ptcBusinessContextArg(req)
 
-		code, apiErr := buildPTCCode(toolkit, tool, req, businessContext)
+		code, apiErr := buildPTCCode(locale, toolkit, tool, req, businessContext)
 		if apiErr != "" {
 			return mcp.NewToolResultError(apiErr), nil
 		}
@@ -197,13 +203,13 @@ func handlePTCExecute(
 // buildPTCCode turns model input into the full script sent to the sandbox.
 // Its assembly modes correspond one-to-one with PTCTool.Wrap values.
 func buildPTCCode(
-	toolkit *PTCToolkit, tool PTCTool, req mcp.CallToolRequest, businessContext map[string]any,
+	locale *mcpLocaleBundle, toolkit *PTCToolkit, tool PTCTool, req mcp.CallToolRequest, businessContext map[string]any,
 ) (string, string) {
 	switch tool.Wrap {
 	case ptcWrapHandler:
 		code := strings.TrimRight(getStringArg(req, "code", ""), "\n")
 		if strings.TrimSpace(code) == "" {
-			return "", "code is required"
+			return "", locale.PTCError("code_required")
 		}
 		var body strings.Builder
 		for _, line := range strings.Split(code, "\n") {
@@ -218,14 +224,14 @@ func buildPTCCode(
 	case ptcWrapCdWorkdir:
 		command := strings.TrimSpace(getStringArg(req, "command", ""))
 		if command == "" {
-			return "", "command is required"
+			return "", locale.PTCError("command_required")
 		}
 		// run_shell shares the run_code work directory. The directory name only
 		// contains [A-Za-z0-9_-], so it can be embedded safely in the command.
 		workdir := ptcWorkdir(businessContext)
 		return fmt.Sprintf("mkdir -p %s && cd %s\n%s", workdir, workdir, command), ""
 	default:
-		return "", "unsupported tool wrap: " + tool.Wrap
+		return "", locale.PTCError("unsupported_tool_wrap", tool.Wrap)
 	}
 }
 

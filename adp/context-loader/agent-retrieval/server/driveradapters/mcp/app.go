@@ -123,6 +123,10 @@ func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		handler = h.handlers[defaultMCPLocale]
 	}
 
+	// All tool handlers read the effective locale from request context. Pin it
+	// to the session value so a later Accept-Language header cannot make tool
+	// results disagree with the session's initialized catalog.
+	r = r.WithContext(common.SetLanguageToCtx(r.Context(), common.Language(locale)))
 	handler.ServeHTTP(w, r)
 	if initializedSessionID := w.Header().Get(server.HeaderKeySessionID); initializedSessionID != "" {
 		h.sessionLocales.Store(initializedSessionID, mcpSessionLocale{locale: locale, lastUsed: now})

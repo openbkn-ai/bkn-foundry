@@ -285,12 +285,31 @@ func TestPTCExecuteRejectsEmptyInput(t *testing.T) {
 	}
 }
 
+func TestPTCExecuteUsesPinnedLocaleForValidationError(t *testing.T) {
+	handler := handlePTCExecuteForLocale(
+		&fakeExecutor{}, ptcTestToolkit(t), ptcToolByName(t, "run_code"), loadMCPLocaleBundle("en-US"),
+	)
+	result, err := handler(common.SetLanguageToCtx(context.Background(), "zh-CN"), ptcCallRequest("run_code", map[string]any{
+		"code":        "   ",
+		"bkn_context": map[string]any{"conversation_id": "c", "interaction_id": "i"},
+	}))
+	if err != nil {
+		t.Fatalf("unexpected transport error: %v", err)
+	}
+	content, ok := result.Content[0].(mcp.TextContent)
+	if !ok || content.Text != "The code parameter is required." {
+		t.Fatalf("localized validation error = %#v", result.Content)
+	}
+}
+
 // MCP 客户端没有 studio 那层前端替它管会话，bkn_context 必须出现在入参 schema 里，
 // 且是必填——否则模型不会传，每次调用都被生命周期守卫拦下。
 func TestPTCSchemaRequiresBusinessContext(t *testing.T) {
 	for _, tool := range ptcTestToolkit(t).Tools {
 		var schema map[string]any
-		if err := json.Unmarshal(ptcToolInputSchemaWithContext(tool.InputSchema), &schema); err != nil {
+		if err := json.Unmarshal(ptcToolInputSchemaWithContext(
+			tool.InputSchema, loadMCPLocaleBundle(defaultMCPLocale).PTCResource("ptc_bkn_context_description.txt"),
+		), &schema); err != nil {
 			t.Fatalf("%s: schema 不是合法 JSON: %v", tool.Name, err)
 		}
 		properties, _ := schema["properties"].(map[string]any)

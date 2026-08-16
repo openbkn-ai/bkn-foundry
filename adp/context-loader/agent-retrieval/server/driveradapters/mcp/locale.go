@@ -172,6 +172,26 @@ func (b *mcpLocaleBundle) PTCResource(name string) string {
 	return string(data)
 }
 
+func (b *mcpLocaleBundle) PTCHints(toolName string) []string {
+	var hints map[string][]string
+	if err := json.Unmarshal([]byte(b.PTCResource("ptc_hints.json")), &hints); err != nil {
+		panic("cannot parse PTC hints: " + err.Error())
+	}
+	return hints[toolName]
+}
+
+func (b *mcpLocaleBundle) PTCError(key string, params ...any) string {
+	var messages map[string]string
+	if err := json.Unmarshal([]byte(b.PTCResource("ptc_errors.json")), &messages); err != nil {
+		panic("cannot parse PTC errors: " + err.Error())
+	}
+	message, ok := messages[key]
+	if !ok {
+		panic("PTC error message not found: " + key)
+	}
+	return fmt.Sprintf(message, params...)
+}
+
 // ToolMeta returns the tool's metadata for the bundle's locale.
 //
 // A locale file translates; it does not re-model. So the localized entry

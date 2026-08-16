@@ -1,0 +1,8 @@
+{
+  "run_sql": [
+    "Use {{.<resource_id>}} as the table placeholder. Get the ID from search_schema.data_source.id",
+    "or from list_resources.resource_id; never use the literal string 'resource_id'.",
+    "Use physical column names. Submit one SELECT statement only; CTE and UNION are unsupported.",
+    "run_sql(sql=\"SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name\")"
+  ]
+}

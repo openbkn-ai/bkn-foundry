@@ -1,0 +1,8 @@
+{
+  "run_sql": [
+    "表名必须写成 {{.<resource_id>}} 占位符，id 取自 search_schema 的 data_source.id",
+    "或 list_resources 的 resource_id；不可原样写 'resource_id' 字面量。",
+    "列名用物理列名。仅单条 SELECT，无 CTE/UNION。",
+    "run_sql(sql=\"SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name\")"
+  ]
+}
