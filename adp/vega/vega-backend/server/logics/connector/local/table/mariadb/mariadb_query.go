@@ -361,12 +361,14 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 		return "", fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
 
-	// Determine the field expression used in the HAVING clause
+	// Determine the field expression used in the HAVING clause. The alias comes straight
+	// from the request body and is not validated, so a reserved word passes SELECT — which
+	// quotes it — and then fails HAVING with a 1064 unless it is quoted here too.
 	var fieldExpr string
 	if having.Field == "count(*)" {
 		fieldExpr = "COUNT(*)"
 	} else {
-		fieldExpr = aggAlias
+		fieldExpr = quoteColumnName(aggAlias)
 	}
 
 	var op string

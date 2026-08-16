@@ -30,13 +30,19 @@ func TestBuildHavingCondition(t *testing.T) {
 			name:     "equal numeric alias",
 			having:   &interfaces.HavingClause{Field: "__value", Operation: "==", Value: 10},
 			aggAlias: "total",
-			want:     "total = 10",
+			want:     "`total` = 10",
 		},
 		{
 			name:     "not equal string alias",
 			having:   &interfaces.HavingClause{Field: "__value", Operation: "!=", Value: "ok"},
 			aggAlias: "status_count",
-			want:     "status_count <> 'ok'",
+			want:     "`status_count` <> 'ok'",
+		},
+		{
+			name:     "reserved word alias is quoted",
+			having:   &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: 3},
+			aggAlias: "key",
+			want:     "`key` >= 3",
 		},
 		{
 			name:   "count star uses count expression",
@@ -47,13 +53,13 @@ func TestBuildHavingCondition(t *testing.T) {
 			name:     "in string list quotes values",
 			having:   &interfaces.HavingClause{Field: "__value", Operation: "in", Value: []string{"a", "b"}},
 			aggAlias: "total",
-			want:     "total IN ('a', 'b')",
+			want:     "`total` IN ('a', 'b')",
 		},
 		{
 			name:     "range uses placeholders",
 			having:   &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{1, 3}},
 			aggAlias: "total",
-			want:     "total BETWEEN ? AND ?",
+			want:     "`total` BETWEEN ? AND ?",
 		},
 		{
 			name:       "rejects unsupported field",
