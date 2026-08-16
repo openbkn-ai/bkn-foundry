@@ -347,6 +347,8 @@ func TestValidateBuildTaskSchemaFeatures(t *testing.T) {
 			}},
 		},
 		{
+			// 入口严、存量宽：写入侧对 dataset 的 ref_property 仍然 400（#837 之前就是），
+			// 但库里若已有这种行（迁移或直接写库留下的），构建不该因此建不起来
 			name:     "accepts legacy self-referencing feature on a dataset",
 			category: interfaces.ResourceCategoryDataset,
 			schema: []*interfaces.Property{{

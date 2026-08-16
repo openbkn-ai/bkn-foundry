@@ -256,10 +256,9 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	// 归一化排在类目校验之前，所以 dataset 请求里的自引用不再撞上「ref_property 只有
-	// original 资源支持」。这是有意放宽：存量 dataset 也可能是自引用形状，静默抹平比
-	// 让它连更新都做不了更可取；指向别的字段仍然是 400（见上一条用例）。
-	t.Run("ValidateResourceRequest normalizes a dataset self-referencing feature", func(t *testing.T) {
+	// dataset 的 ref_property 在 #837 之前就是 400，归一化只对原始资源生效，不能顺手把
+	// 这条也放宽——那属于本次回归之外的行为变更。
+	t.Run("ValidateResourceRequest still rejects a dataset self-referencing feature", func(t *testing.T) {
 		req := baseReq([]*interfaces.Property{
 			{
 				Name: "content",
@@ -270,8 +269,10 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 			},
 		})
 
-		require.NoError(t, ValidateResourceRequest(ctx, req))
-		assert.Empty(t, req.SchemaDefinition[0].Features[0].RefProperty)
+		err := ValidateResourceRequest(ctx, req)
+
+		require.Error(t, err)
+		assert.Equal(t, "content", req.SchemaDefinition[0].Features[0].RefProperty)
 	})
 
 	t.Run("ValidateResourceRequest rejects invalid table feature", func(t *testing.T) {

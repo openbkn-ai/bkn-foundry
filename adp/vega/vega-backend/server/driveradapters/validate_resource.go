@@ -21,10 +21,6 @@ import (
 )
 
 func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
-	// 存量资源的自引用 ref_property 在这里抹平。库里读出来的 schema 由 logics 层做同样的
-	// 归一化，两侧必须一致，否则更新会被判成 build 相关变更而清空 LocalIndexName。
-	resourcelogic.NormalizeSelfReferencingFeatures(req.SchemaDefinition)
-
 	if err := validateResourceRequestBase(ctx, req); err != nil {
 		return err
 	}
@@ -63,6 +59,11 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 		}
 		return validateSchemaProperties(ctx, req.SchemaDefinition, false)
 	default:
+		// 只有原始资源支持 ref_property，也只有它们的存量数据里会有自引用形状，因此归一化
+		// 只在这一支做：dataset 的 ref_property 在 #837 之前就是 400，放宽它属于本次回归
+		// 之外的行为变更。库里读出来的 schema 由 logics 层做同样的归一化，两侧必须一致，
+		// 否则更新会被判成 build 相关变更而清空 LocalIndexName。
+		resourcelogic.NormalizeSelfReferencingFeatures(req.SchemaDefinition)
 		return validateSchemaProperties(ctx, req.SchemaDefinition, true)
 	}
 }
