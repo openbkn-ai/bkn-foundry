@@ -80,6 +80,21 @@ func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreUnavailable(t *testing.T
 	}
 }
 
+func TestMCPResourceLicenseHeaderIsNotExposed(t *testing.T) {
+	resources := fstest.MapFS{
+		"schemas/locales/zh-CN/ptc_instructions.txt": &fstest.MapFile{Data: []byte(`/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ */
+PTC instructions`)},
+	}
+
+	if got := mustReadMCPResource(resources, defaultMCPLocale, "ptc_instructions.txt"); got != "PTC instructions" {
+		t.Fatalf("resource = %q, want license header stripped", got)
+	}
+}
+
 func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) {
 	resources := fstest.MapFS{
 		"schemas/locales/zh-CN/instructions.txt":         &fstest.MapFile{Data: []byte("Chinese baseline instructions")},

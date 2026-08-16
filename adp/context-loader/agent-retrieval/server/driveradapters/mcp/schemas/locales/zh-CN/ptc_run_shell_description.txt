@@ -1,3 +1,9 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 在沙箱里执行一条 shell 命令，返回 stdout 与 stderr。
 
 只用于查看环境与文件。不要用它取 BKN 数据；知识网络、对象类、实例和 SQL 都应通过 run_code 中提供的函数调用。

@@ -1,3 +1,9 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 下列 BKN 能力已在作用域内，直接调用即可，无需 import。
 只有 stdout 会返回给你——中间结果不进上下文，因此请在脚本内完成过滤与聚合，
 只 print 你真正需要的内容。调用失败抛 `ToolError`。

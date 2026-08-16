@@ -1,3 +1,9 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 ContextLoader 知识网络查询工具集使用指南。
 
 探索顺序：

@@ -1,3 +1,9 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 This endpoint provides two execution tools: run_code (Python) and run_shell (shell).
 
 All BKN capabilities, including knowledge networks, object types, instance queries, and SQL, are available as functions in the run_code sandbox. Use the signatures in the run_code description and solve the complete task in one script: inspect, retrieve, and aggregate data there, then print only the conclusion. Do not use one call for one small step.

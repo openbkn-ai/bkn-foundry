@@ -1,1 +1,7 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 {"type":"object","properties":{"command":{"type":"string","description":"Shell command executed by sh -c. Pipes and && are supported."},"timeout":{"type":"integer","default":60,"description":"Execution timeout in seconds."}},"required":["command"]}

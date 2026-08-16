@@ -1,3 +1,9 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 {
   "code_required": "缺少 code 参数。",
   "command_required": "缺少 command 参数。",

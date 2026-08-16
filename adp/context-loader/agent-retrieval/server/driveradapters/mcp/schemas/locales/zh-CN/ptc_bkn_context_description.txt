@@ -1,1 +1,7 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 会话上下文，取自 bkn_start_interaction 的返回。

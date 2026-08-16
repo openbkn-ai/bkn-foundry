@@ -1,3 +1,9 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
 {
   "run_sql": [
     "表名必须写成 {{.<resource_id>}} 占位符，id 取自 search_schema 的 data_source.id",

@@ -56,35 +56,34 @@ func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBu
 	if normalized == defaultMCPLocale {
 		return bundle
 	}
-	base := fmt.Sprintf("schemas/locales/%s", normalized)
-	if data, err := fs.ReadFile(resources, base+"/instructions.txt"); err != nil {
+	if content, err := readMCPResource(resources, normalized, "instructions.txt"); err != nil {
 		log.Printf("WARN: cannot load MCP locale instructions for %s: %v; using baseline", normalized, err)
-	} else if strings.TrimSpace(string(data)) == "" {
+	} else if strings.TrimSpace(content) == "" {
 		log.Printf("WARN: MCP locale instructions for %s are empty; using baseline", normalized)
 	} else {
-		bundle.instructions = string(data)
+		bundle.instructions = content
 	}
-	if data, err := fs.ReadFile(resources, base+"/ptc_instructions.txt"); err != nil {
+	if content, err := readMCPResource(resources, normalized, "ptc_instructions.txt"); err != nil {
 		log.Printf("WARN: cannot load PTC MCP locale instructions for %s: %v; using baseline", normalized, err)
-	} else if strings.TrimSpace(string(data)) == "" {
+	} else if strings.TrimSpace(content) == "" {
 		log.Printf("WARN: PTC MCP locale instructions for %s are empty; using baseline", normalized)
 	} else {
-		bundle.ptcInstructions = string(data)
+		bundle.ptcInstructions = content
 	}
-	if data, err := fs.ReadFile(resources, base+"/tools_meta.json"); err != nil {
+	if content, err := readMCPResource(resources, normalized, "tools_meta.json"); err != nil {
 		log.Printf("WARN: cannot load MCP locale tool metadata for %s: %v; using baseline", normalized, err)
 	} else {
-		if err := json.Unmarshal(data, &bundle.toolMeta); err != nil {
+		if err := json.Unmarshal([]byte(content), &bundle.toolMeta); err != nil {
 			log.Printf("WARN: cannot parse MCP locale tool metadata for %s: %v; using baseline", normalized, err)
 			bundle.toolMeta = nil
 		} else if bundle.toolMeta == nil {
 			log.Printf("WARN: MCP locale tool metadata for %s is empty; using baseline", normalized)
 		}
 	}
-	if data, err := fs.ReadFile(resources, base+"/schema_descriptions.json"); err != nil {
+	if content, err := readMCPResource(resources, normalized, "schema_descriptions.json"); err != nil {
 		log.Printf("WARN: cannot load MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
 	} else {
-		if err := json.Unmarshal(data, &bundle.schemaDescriptions); err != nil {
+		if err := json.Unmarshal([]byte(content), &bundle.schemaDescriptions); err != nil {
 			log.Printf("WARN: cannot parse MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
 			bundle.schemaDescriptions = nil
 		} else if bundle.schemaDescriptions == nil {
@@ -112,16 +111,40 @@ func mustReadMCPStaticResource(resource string) string {
 }
 
 func mustReadMCPResource(resources fs.FS, locale, resource string) string {
-	path := fmt.Sprintf("schemas/locales/%s/%s", locale, resource)
-	data, err := fs.ReadFile(resources, path)
+	content, err := readMCPResource(resources, locale, resource)
 	if err != nil {
 		panic("cannot load MCP baseline resource: " + err.Error())
 	}
-	instructions := strings.TrimSpace(string(data))
+	instructions := strings.TrimSpace(content)
 	if instructions == "" {
 		panic("MCP baseline resource must not be empty")
 	}
 	return instructions
+}
+
+func readMCPResource(resources fs.FS, locale, resource string) (string, error) {
+	path := fmt.Sprintf("schemas/locales/%s/%s", locale, resource)
+	data, err := fs.ReadFile(resources, path)
+	if err != nil {
+		return "", err
+	}
+	return stripMCPResourceLicenseHeader(string(data)), nil
+}
+
+func stripMCPResourceLicenseHeader(content string) string {
+	if !strings.HasPrefix(content, "/*") {
+		return content
+	}
+
+	end := strings.Index(content, "*/")
+	if end == -1 {
+		return content
+	}
+	header := content[:end+2]
+	if !strings.Contains(header, "Copyright") || !strings.Contains(header, "openbkn.ai") {
+		return content
+	}
+	return strings.TrimLeft(content[end+2:], "\r\n")
 }
 
 func mcpLocaleFromEnv() string {
@@ -164,12 +187,11 @@ func (b *mcpLocaleBundle) PTCResource(name string) string {
 	if b.locale == defaultMCPLocale {
 		return base
 	}
-	path := fmt.Sprintf("schemas/locales/%s/%s", b.locale, name)
-	data, err := fs.ReadFile(schemasFS, path)
-	if err != nil || strings.TrimSpace(string(data)) == "" {
+	content, err := readMCPResource(schemasFS, b.locale, name)
+	if err != nil || strings.TrimSpace(content) == "" {
 		return base
 	}
-	return string(data)
+	return content
 }
 
 func (b *mcpLocaleBundle) PTCHints(toolName string) []string {
