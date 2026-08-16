@@ -225,6 +225,24 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
+	// 别名与 schema 属性同名时，排序必须认聚合别名而不是那个属性的源列
+	t.Run("sorting by an aggregate alias that shadows a property uses the alias", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},
+			Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "created"},
+			Sort:        []*interfaces.SortField{{Field: "created", Direction: interfaces.DESC_DIRECTION}},
+			Limit:       20,
+		}, fieldMap, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT `key`, COUNT(`id`) AS `created` FROM `yanfeng_kb`.`fact` GROUP BY `key` "+
+				"ORDER BY `created` DESC LIMIT 20 OFFSET 0",
+			sql)
+	})
+
 	t.Run("output_fields already selected as an alias are not duplicated", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy:      []*interfaces.GroupByItem{{Property: "key"}},

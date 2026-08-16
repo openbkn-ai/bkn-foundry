@@ -234,8 +234,15 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			dir = "DESC"
 		}
 
-		// 检查是否是 GROUP BY 字段且使用了 calendar_interval
+		// 排序字段先按 SELECT 里的别名认：别名与某个属性同名时，调用方指的是聚合结果，
+		// 再去 schema 解析会拿到那个属性的源列，MariaDB 默认 sql_mode 不含
+		// ONLY_FULL_GROUP_BY，不报错而是按任意行的值排序，错得无声无息。
 		sortField := quoteColumnName(originalName(sortItem.Field))
+		if aggAlias != "" && sortItem.Field == aggAlias {
+			sortField = quoteColumnName(aggAlias)
+		}
+
+		// 检查是否是 GROUP BY 字段且使用了 calendar_interval
 		for _, groupByItem := range params.GroupBy {
 			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
 				// 使用完整的 date_format 表达式
