@@ -1260,7 +1260,7 @@ ModelFactory_DefaultSmallModel_NotExist = {
 }
 
 ModelFactory_DedaultModel_NotExist = {
-    "code": "ModelFactory.ExternalSmallModel.Used.NameNotExist",
+    "code": "ModelFactory.LLM.DefaultNotExist",
     "description": "Default large model is not configured.",
     "detail": "An administrator has not configured a default large model.",
     "solution": "Ask an administrator to configure a default large model.",

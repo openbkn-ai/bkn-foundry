@@ -26,6 +26,7 @@ error_messages = {
     "ModelFactory.Router.ParamError.FormatError": {
         "description": "Request parameter is invalid.",
         "detail": "The request parameter format is invalid.",
+        "max_tokens_detail_template": "max_tokens exceeds the maximum value of {limit}.",
         "solution": "Check that the input format matches the API documentation.",
     },
     "ModelFactory.Router.ParamError.TypeError": {
@@ -88,6 +89,11 @@ error_messages = {
         "description": "Default small model is not configured.",
         "detail": "An administrator has not configured a default small model for this type.",
         "solution": "Configure a default small model in model management and try again.",
+    },
+    "ModelFactory.LLM.DefaultNotExist": {
+        "description": "Default large model is not configured.",
+        "detail": "An administrator has not configured a default large model.",
+        "solution": "Ask an administrator to configure a default large model.",
     },
     "ModelFactory.ExternalSmallModel.Used.ConnectError": {
         "description": "Model service connection failed.",

@@ -154,6 +154,11 @@ def _contains_chinese(value: Any) -> bool:
 
 
 def _localize_detail(code: str, message: Dict[str, str], detail: Any, locale: str) -> Any:
+    if code == "ModelFactory.Router.ParamError.FormatError" and isinstance(detail, str):
+        detail_kind, separator, value = detail.partition(":")
+        template = message.get("max_tokens_detail_template")
+        if detail_kind.strip() == "max_tokens_limit" and separator and value.strip() and template:
+            return template.format(limit=value.strip())
     template = message.get("detail_template")
     if template and isinstance(detail, str):
         parameter = _parameter_name_from_detail(detail)

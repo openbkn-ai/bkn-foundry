@@ -145,7 +145,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
 
     if request["max_tokens"] > context_size * 1000:
         error_dict = ModelFactory_Router_ParamError_FormatError_Error.copy()
-        error_dict["detail"] = f"max_tokens exceeds the maximum value of {context_size}k"
+        error_dict["detail"] = f"max_tokens_limit: {context_size}k"
         return envelope_error_response(error_dict, 400)
     messages = request["messages"]
     message = messages[len(messages) - 1]["content"]

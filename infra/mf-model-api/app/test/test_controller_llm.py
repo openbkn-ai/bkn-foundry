@@ -69,6 +69,7 @@ class TestUsedModelOpenai:
                 result = await used_model_openai(request, "user1", "zh", "test")
                 assert isinstance(result, JSONResponse)
                 assert result.status_code == 400
+                assert json.loads(result.body)["error"]["code"] == "ModelFactory.LLM.DefaultNotExist"
 
     @pytest.mark.asyncio
     async def test_max_tokens_exceeds_limit(self, valid_request, mock_model_data):
@@ -85,6 +86,8 @@ class TestUsedModelOpenai:
                 result = await used_model_openai(request, "user1", "zh", "test")
                 assert isinstance(result, JSONResponse)
                 assert result.status_code == 400
+                assert json.loads(result.body)["error"]["code"] == \
+                    "ModelFactory.Router.ParamError.FormatError"
 
     @pytest.mark.asyncio
     async def test_quota_check_no_space(self, valid_request, mock_model_data):

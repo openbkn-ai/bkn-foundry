@@ -55,6 +55,23 @@ MESSAGES = [{"role": "user", "content": "hi"}]
 
 class TestStreamErrorFrame:
     @pytest.mark.asyncio
+    async def test_legacy_stream_logs_raw_connection_error_before_returning_safe_body(self):
+        session_cm = AsyncMock()
+        session_cm.__aenter__ = AsyncMock(
+            side_effect=llm_utils.aiohttp.ClientConnectionError("connection refused"))
+        session_cm.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.object(llm_utils.aiohttp, 'ClientSession', return_value=session_cm), \
+                patch.object(llm_utils.asyncio, 'sleep', new_callable=AsyncMock), \
+                patch.object(llm_utils.StandLogger, 'error') as error_log:
+            chunks = await _collect(_other_client().chat_completion_stream(
+                MESSAGES, "user1", False, {}))
+
+        assert len(chunks) == 1
+        assert json.loads(chunks[0])["code"] == "ModelFactory.ModelController.Model.Error"
+        assert any("connection refused" in str(call.args[0]) for call in error_log.call_args_list)
+
+    @pytest.mark.asyncio
     async def test_upstream_busy_yields_openai_error_frame(self):
         """上游 503 忙：发合规错误帧，不发 envelope"""
         session_cm, session = _mock_session(503, BUSY_BODY)

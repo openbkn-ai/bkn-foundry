@@ -7,6 +7,11 @@ import unittest
 from unittest import mock
 
 from app.commons.i18n import get_error_message
+from app.commons.errors import (
+    ModelFactory_DedaultModel_NotExist,
+    ModelFactory_ExternalSmallModel_Used_NameNotExist,
+    ModelFactory_Router_ParamError_FormatError_Error,
+)
 from app.commons.errors.codes import ParamValidationErrors
 from app.commons.locale import (
     LocaleResponseMiddleware,
@@ -130,6 +135,29 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         self.assertEqual(english["detail"],
                          "An administrator has not configured a default small model for this type.")
         self.assertEqual(chinese["detail"], "管理员尚未配置该类型的默认小模型。")
+
+    def test_default_large_model_error_is_distinct_and_localized(self):
+        self.assertNotEqual(
+            ModelFactory_DedaultModel_NotExist["code"],
+            ModelFactory_ExternalSmallModel_Used_NameNotExist["code"],
+        )
+
+        english, _ = localized_error_content(ModelFactory_DedaultModel_NotExist, "en-US")
+        chinese, _ = localized_error_content(ModelFactory_DedaultModel_NotExist, "zh-CN")
+
+        self.assertEqual(english["code"], "ModelFactory.LLM.DefaultNotExist")
+        self.assertEqual(english["detail"], "An administrator has not configured a default large model.")
+        self.assertEqual(chinese["detail"], "管理员尚未配置默认大模型。")
+
+    def test_max_tokens_limit_keeps_the_dynamic_value_in_both_locales(self):
+        source = ModelFactory_Router_ParamError_FormatError_Error.copy()
+        source["detail"] = "max_tokens_limit: 4096k"
+
+        english, _ = localized_error_content(source, "en-US")
+        chinese, _ = localized_error_content(source, "zh-CN")
+
+        self.assertEqual(english["detail"], "max_tokens exceeds the maximum value of 4096k.")
+        self.assertEqual(chinese["detail"], "max_tokens 超过最大值 4096k。")
 
     def test_catalog_hides_internal_database_detail_in_both_locales(self):
         source = {

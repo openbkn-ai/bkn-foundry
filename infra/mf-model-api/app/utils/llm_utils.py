@@ -958,6 +958,7 @@ class BaiduTianchenClient(BKNTraceModelMixin):
                 if retry_time <= 0:
                     error_dict = _platform_envelope_error("ModelFactory.ModelController.Model.Error")
                     yield json.dumps(error_dict, ensure_ascii=False)
+                    StandLogger.error(str(e))
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     return
                 else:
@@ -1360,6 +1361,7 @@ class BaiduClient(BKNTraceModelMixin):
                 if retry_time <= 0:
                     error_dict = _platform_envelope_error("ModelFactory.ModelController.Model.Error")
                     yield json.dumps(error_dict, ensure_ascii=False)
+                    StandLogger.error(str(e))
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     return
                 else:
@@ -1943,6 +1945,7 @@ class OtherClient(BKNTraceModelMixin):
                 if retry_time <= 0:
                     error_dict = _platform_envelope_error("ModelFactory.ModelController.Model.Error")
                     yield json.dumps(error_dict, ensure_ascii=False)
+                    StandLogger.error(str(e))
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     return
                 else:

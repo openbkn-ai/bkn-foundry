@@ -26,6 +26,7 @@ error_messages = {
     "ModelFactory.Router.ParamError.FormatError": {
         "description": "请求参数错误",
         "detail": "输入参数格式不符合要求。",
+        "max_tokens_detail_template": "max_tokens 超过最大值 {limit}。",
         "solution": "请检查输入格式是否符合 API 文档要求。",
     },
     "ModelFactory.Router.ParamError.TypeError": {
@@ -88,6 +89,11 @@ error_messages = {
         "description": "默认小模型未配置",
         "detail": "管理员尚未配置该类型的默认小模型。",
         "solution": "请在模型管理中配置默认小模型后重试。",
+    },
+    "ModelFactory.LLM.DefaultNotExist": {
+        "description": "默认大模型未配置",
+        "detail": "管理员尚未配置默认大模型。",
+        "solution": "请联系管理员配置默认大模型。",
     },
     "ModelFactory.ExternalSmallModel.Used.ConnectError": {
         "description": "模型服务连接失败",
