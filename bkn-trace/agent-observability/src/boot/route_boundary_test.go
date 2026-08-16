@@ -74,17 +74,19 @@ func TestPublicTypedTraceListRouteIsRegistered(t *testing.T) {
 		}),
 		nil,
 	)
-	request := httptest.NewRequest(http.MethodGet, APIBasePath+"/traces", nil)
-	request.Header.Set("x-account-id", "user-1")
-	request.Header.Set("x-account-type", "user")
-	request.Header.Set("x-tenant-id", "tenant-1")
-	request.Header.Set("x-business-domain", "domain-1")
-	response := httptest.NewRecorder()
+	for _, path := range []string{APIBasePath + "/traces", APIBasePath + "/traces/"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("x-account-id", "user-1")
+		request.Header.Set("x-account-type", "user")
+		request.Header.Set("x-tenant-id", "tenant-1")
+		request.Header.Set("x-business-domain", "domain-1")
+		response := httptest.NewRecorder()
 
-	app.server.ServeHTTP(response, request)
+		app.server.ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("typed GET /traces route = %d, want 200: %s", response.Code, response.Body.String())
+		if response.Code != http.StatusOK {
+			t.Fatalf("typed GET %s = %d, want 200: %s", path, response.Code, response.Body.String())
+		}
 	}
 }
 

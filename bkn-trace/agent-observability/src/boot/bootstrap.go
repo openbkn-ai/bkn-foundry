@@ -466,6 +466,10 @@ func newAppWithArchive(
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc(APIBasePath+"/traces/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimSuffix(r.URL.Path, "/") == APIBasePath+"/traces" {
+			readAuth(evidenceHandler.ListTraceExecutions)(w, r)
+			return
+		}
 		if strings.HasSuffix(strings.TrimSuffix(r.URL.Path, "/"), "/trace-graph") {
 			http.NotFound(w, r)
 			return
