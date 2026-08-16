@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -58,6 +59,9 @@ const (
 	toolKeyGetSkillContent          = "get_skill_content"
 	toolKeyReadSkillFile            = "read_skill_file"
 	toolKeyExecuteSkill             = "execute_skill"
+	// Keep locale tracking aligned with the bounded lifetime of mcp-go's
+	// in-memory session state.
+	mcpSessionIdleTTL = 30 * time.Minute
 )
 
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
@@ -78,7 +82,12 @@ func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.
 
 type localizedMCPHandler struct {
 	handlers       map[string]http.Handler
-	sessionLocales sync.Map // Mcp-Session-Id -> normalized locale
+	sessionLocales sync.Map // Mcp-Session-Id -> mcpSessionLocale
+}
+
+type mcpSessionLocale struct {
+	locale   string
+	lastUsed time.Time
 }
 
 func newLocalizedMCPHandler(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
@@ -99,58 +108,50 @@ func newMCPStreamableHTTPHandler(srv *server.MCPServer, path string) http.Handle
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			return common.CopyRequestScopedValues(r.Context(), ctx)
 		}),
+		server.WithSessionIdleTTL(mcpSessionIdleTTL),
 		server.WithEndpointPath(path),
 	)
 }
 
 func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.Header.Get(server.HeaderKeySessionID)
-	locale := h.localeForRequest(r, sessionID)
+	now := time.Now()
+	h.cleanupExpiredSessionLocales(now)
+	locale := h.localeForRequest(r, sessionID, now)
 	handler, ok := h.handlers[locale]
 	if !ok {
 		handler = h.handlers[defaultMCPLocale]
 	}
 
-	response := &mcpLocaleResponseWriter{ResponseWriter: w}
-	handler.ServeHTTP(response, r)
-	if initializedSessionID := response.Header().Get(server.HeaderKeySessionID); initializedSessionID != "" {
-		h.sessionLocales.Store(initializedSessionID, locale)
+	handler.ServeHTTP(w, r)
+	if initializedSessionID := w.Header().Get(server.HeaderKeySessionID); initializedSessionID != "" {
+		h.sessionLocales.Store(initializedSessionID, mcpSessionLocale{locale: locale, lastUsed: now})
 	}
-	if r.Method == http.MethodDelete && sessionID != "" && response.status >= http.StatusOK && response.status < http.StatusMultipleChoices {
+	if r.Method == http.MethodDelete && sessionID != "" {
 		h.sessionLocales.Delete(sessionID)
 	}
 }
 
-func (h *localizedMCPHandler) localeForRequest(r *http.Request, sessionID string) string {
+func (h *localizedMCPHandler) localeForRequest(r *http.Request, sessionID string, now time.Time) string {
 	if sessionID != "" {
 		if value, ok := h.sessionLocales.Load(sessionID); ok {
-			return value.(string)
+			session := value.(mcpSessionLocale)
+			session.lastUsed = now
+			h.sessionLocales.Store(sessionID, session)
+			return session.locale
 		}
 	}
 	return normalizeMCPLocale(string(sharedrest.ResolveLanguage(r.Header.Get(sharedrest.AcceptLanguageHeader))))
 }
 
-type mcpLocaleResponseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *mcpLocaleResponseWriter) WriteHeader(status int) {
-	w.status = status
-	w.ResponseWriter.WriteHeader(status)
-}
-
-func (w *mcpLocaleResponseWriter) Write(data []byte) (int, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	return w.ResponseWriter.Write(data)
-}
-
-func (w *mcpLocaleResponseWriter) Flush() {
-	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
-	}
+func (h *localizedMCPHandler) cleanupExpiredSessionLocales(now time.Time) {
+	h.sessionLocales.Range(func(key, value any) bool {
+		session, ok := value.(mcpSessionLocale)
+		if !ok || now.Sub(session.lastUsed) >= mcpSessionIdleTTL {
+			h.sessionLocales.Delete(key)
+		}
+		return true
+	})
 }
 
 // newMCPServer assembles the tool surface. Split out of NewMCPHandler so tests

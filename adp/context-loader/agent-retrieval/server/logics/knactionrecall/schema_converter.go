@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -139,22 +140,22 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 	properties := map[string]any{
 		"header": map[string]any{
 			"type":        "object",
-			"description": "HTTP header parameters",
+			"description": infraerrors.LocalizedDetail(ctx, "ActionParamHeader"),
 			"properties":  make(map[string]any),
 		},
 		"path": map[string]any{
 			"type":        "object",
-			"description": "URL path parameters",
+			"description": infraerrors.LocalizedDetail(ctx, "ActionParamPath"),
 			"properties":  make(map[string]any),
 		},
 		"query": map[string]any{
 			"type":        "object",
-			"description": "URL query parameters",
+			"description": infraerrors.LocalizedDetail(ctx, "ActionParamQuery"),
 			"properties":  make(map[string]any),
 		},
 		"body": map[string]any{
 			"type":        "object",
-			"description": "Request body parameters",
+			"description": infraerrors.LocalizedDetail(ctx, "ActionParamBody"),
 			"properties":  make(map[string]any),
 		},
 	}
@@ -226,7 +227,7 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 							if props, ok := bodyProps["properties"].(map[string]any); ok {
 								props["request_body"] = map[string]any{
 									"type":        "object",
-									"description": "Request body parameters.",
+									"description": infraerrors.LocalizedDetail(ctx, "ActionParamBody"),
 								}
 							}
 						}
@@ -279,7 +280,7 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 	if len(resultProps) == 0 {
 		resultProps["body"] = map[string]any{
 			"type":        "object",
-			"description": "Request body parameters.",
+			"description": infraerrors.LocalizedDetail(ctx, "ActionParamBody"),
 			"properties":  make(map[string]any),
 		}
 	}
@@ -660,7 +661,7 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToFunctionCall(ctx context.C
 	if props, ok := resolvedSchema["properties"].(map[string]any); ok {
 		if bodyProp, ok := props["body"].(map[string]any); ok {
 			if _, hasDesc := bodyProp["description"]; !hasDesc {
-				bodyProp["description"] = "Request body parameters."
+				bodyProp["description"] = infraerrors.LocalizedDetail(ctx, "ActionParamBody")
 			}
 		}
 	}
@@ -788,7 +789,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 	// 3. 构造 dynamic_params schema
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
-		"description": "Action execution dynamic parameters",
+		"description": infraerrors.LocalizedDetail(ctx, "ActionDynamicParams"),
 		"properties":  dynamicProperties,
 	}
 	if len(dynamicRequired) > 0 {
@@ -796,7 +797,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 	}
 
 	// 4. 包装顶层行动驱动结构
-	return s.wrapActionDriverParameters(dynamicParamsSchema), nil
+	return s.wrapActionDriverParameters(ctx, dynamicParamsSchema), nil
 }
 
 // convertMCPSchemaToActionDriver 将 MCP Schema 转换为行动驱动请求结构
@@ -840,7 +841,7 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.C
 	// 构造 dynamic_params schema：使用解析后的 MCP schema 作为 dynamic_params
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
-		"description": "Action execution dynamic parameters",
+		"description": infraerrors.LocalizedDetail(ctx, "ActionDynamicParams"),
 	}
 	if props, ok := resolvedSchema["properties"].(map[string]any); ok {
 		dynamicParamsSchema["properties"] = props
@@ -852,22 +853,22 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.C
 	}
 
 	// 包装顶层行动驱动结构
-	return s.wrapActionDriverParameters(dynamicParamsSchema), nil
+	return s.wrapActionDriverParameters(ctx, dynamicParamsSchema), nil
 }
 
 // wrapActionDriverParameters 统一包装顶层行动驱动请求参数结构
 // 最外层固定为 dynamic_params + _instance_identities
-func (s *knActionRecallServiceImpl) wrapActionDriverParameters(dynamicParamsSchema map[string]any) map[string]any {
+func (s *knActionRecallServiceImpl) wrapActionDriverParameters(ctx context.Context, dynamicParamsSchema map[string]any) map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"dynamic_params": dynamicParamsSchema,
 			"_instance_identities": map[string]any{
 				"type":        "array",
-				"description": "Target instance identities. When empty, the action driver scans by condition. To target instances explicitly, provide dynamic property key-value pairs, for example [{\"id\": \"123\"}, {\"name\": \"test_instance\"}].",
+				"description": infraerrors.LocalizedDetail(ctx, "ActionInstanceIdentities"),
 				"items": map[string]any{
 					"type":                 "object",
-					"description":          "An instance identity object containing dynamic property key-value pairs.",
+					"description":          infraerrors.LocalizedDetail(ctx, "ActionInstanceIdentity"),
 					"additionalProperties": map[string]any{},
 				},
 			},

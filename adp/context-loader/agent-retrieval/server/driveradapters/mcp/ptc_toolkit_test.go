@@ -282,7 +282,7 @@ func TestPTCToolkitVersionCoversToolTable(t *testing.T) {
 	toolkit := ptcTestToolkit(t)
 	baseline := toolkit.Version
 
-	original := ptcRunShellDescription
+	original := loadMCPLocaleBundle(defaultMCPLocale).PTCResource("ptc_run_shell_description.txt")
 	if !strings.Contains(original, "run_code") {
 		t.Fatal("前置条件变了：run_shell 描述里不再提到 run_code")
 	}

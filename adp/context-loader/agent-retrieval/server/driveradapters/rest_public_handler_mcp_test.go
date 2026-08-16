@@ -47,7 +47,9 @@ func TestMCPInfoBuildFailureIsLocalized(t *testing.T) {
 
 func TestPTCToolkitBuildFailureIsLocalized(t *testing.T) {
 	previous := buildPTCToolkit
-	buildPTCToolkit = func(string, int) (*mcp.PTCToolkit, error) { return nil, errors.New("embedded schema is invalid") }
+	buildPTCToolkit = func(string, int, string) (*mcp.PTCToolkit, error) {
+		return nil, errors.New("embedded schema is invalid")
+	}
 	t.Cleanup(func() { buildPTCToolkit = previous })
 	gin.SetMode(gin.TestMode)
 
@@ -71,6 +73,30 @@ func TestPTCToolkitBuildFailureIsLocalized(t *testing.T) {
 				t.Fatalf("unexpected error body: %s", response.Body.String())
 			}
 		})
+	}
+}
+
+func TestPTCToolkitUsesRequestLocale(t *testing.T) {
+	previous := buildPTCToolkit
+	var receivedLocale string
+	buildPTCToolkit = func(_ string, _ int, locale string) (*mcp.PTCToolkit, error) {
+		receivedLocale = locale
+		return &mcp.PTCToolkit{Digest: locale}, nil
+	}
+	t.Cleanup(func() { buildPTCToolkit = previous })
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	engine.Use(sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware())
+	handler := &restPublicHandler{}
+	engine.GET("/mcp/*path", handler.handleMCP)
+	request := httptest.NewRequest(http.MethodGet, "/mcp/ptc/toolkit", nil)
+	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || receivedLocale != "en-US" || !contains(response.Body.String(), `"digest":"en-US"`) {
+		t.Fatalf("unexpected response: status=%d locale=%q body=%s", response.Code, receivedLocale, response.Body.String())
 	}
 }
 

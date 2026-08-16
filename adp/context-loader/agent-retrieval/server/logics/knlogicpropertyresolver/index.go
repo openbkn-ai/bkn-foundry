@@ -756,5 +756,6 @@ func (s *knLogicPropertyResolverService) buildGenerationFailedError(
 	}
 
 	return errors.DefaultHTTPError(ctx, http.StatusInternalServerError,
-		fmt.Sprintf("%s: %s", errors.LocalizedDetail(ctx, "LogicPropertyGenerationFailed"), errorMsg))
+		fmt.Sprintf("DYNAMIC_PARAMS_GENERATION_FAILED: %s: %s",
+			errors.LocalizedDetail(ctx, "LogicPropertyGenerationFailed"), errorMsg))
 }

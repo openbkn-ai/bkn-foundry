@@ -43,6 +43,9 @@ func TestLogicPropertyErrorsLocalizeOwnedMessages(t *testing.T) {
 			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, tt.failedWant) {
 				t.Fatalf("generation error details = %q, want localized text %q", got, tt.failedWant)
 			}
+			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, "DYNAMIC_PARAMS_GENERATION_FAILED") {
+				t.Fatalf("generation error details lost stable discriminator: %q", got)
+			}
 			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, "provider timeout") {
 				t.Fatalf("generation error details lost upstream diagnostic: %q", got)
 			}

@@ -3,8 +3,10 @@ package knactionrecall
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -26,7 +28,7 @@ func TestConvertMCPSchemaToFunctionCall(t *testing.T) {
 		logger: &mockLogger{},
 	}
 
-	ctx := context.Background()
+	ctx := common.SetLanguageToCtx(context.Background(), "en-US")
 
 	// Case 1: Simple Schema
 	inputJSON := `{
@@ -93,7 +95,7 @@ func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 		logger: &mockLogger{},
 	}
 
-	ctx := context.Background()
+	ctx := common.SetLanguageToCtx(context.Background(), "en-US")
 
 	// Case 1: body 存在但通过 $ref 引用，引用的 schema 没有 description
 	// 期望：自动添加默认描述 "Request Body参数"
@@ -975,7 +977,7 @@ func TestWrapActionDriverParameters(t *testing.T) {
 		"properties": map[string]any{"foo": map[string]any{"type": "string"}},
 	}
 
-	result := service.wrapActionDriverParameters(dynamicParamsSchema)
+	result := service.wrapActionDriverParameters(context.Background(), dynamicParamsSchema)
 
 	if result["type"] != "object" {
 		t.Errorf("Expected type object, got %v", result["type"])
@@ -992,6 +994,55 @@ func TestWrapActionDriverParameters(t *testing.T) {
 	ii := props["_instance_identities"].(map[string]any)
 	if ii["type"] != "array" {
 		t.Errorf("Expected _instance_identities type array, got %v", ii["type"])
+	}
+}
+
+func TestActionDriverSchemaDescriptionsUseRequestLocale(t *testing.T) {
+	service := &knActionRecallServiceImpl{logger: &mockLogger{}}
+	for _, tt := range []struct {
+		locale           string
+		dynamicParam     string
+		instanceIDs      string
+		instanceIdentity string
+	}{
+		{
+			locale:           "zh-CN",
+			dynamicParam:     "行动执行动态参数。",
+			instanceIDs:      "目标实例标识列表。",
+			instanceIdentity: "包含动态属性键值对的实例标识对象。",
+		},
+		{
+			locale:           "en-US",
+			dynamicParam:     "Action execution dynamic parameters.",
+			instanceIDs:      "Target instance identities.",
+			instanceIdentity: "An instance identity object containing dynamic property key-value pairs.",
+		},
+	} {
+		t.Run(tt.locale, func(t *testing.T) {
+			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
+			result, err := service.convertMCPSchemaToActionDriver(ctx, map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"region": map[string]any{"type": "string"},
+				},
+			})
+			if err != nil {
+				t.Fatalf("convert MCP schema: %v", err)
+			}
+			properties := result["properties"].(map[string]any)
+			dynamicParams := properties["dynamic_params"].(map[string]any)
+			if description := dynamicParams["description"].(string); !strings.HasPrefix(description, tt.dynamicParam) {
+				t.Fatalf("dynamic_params description = %q, want prefix %q", description, tt.dynamicParam)
+			}
+			instanceIDs := properties["_instance_identities"].(map[string]any)
+			if description := instanceIDs["description"].(string); !strings.HasPrefix(description, tt.instanceIDs) {
+				t.Fatalf("_instance_identities description = %q, want prefix %q", description, tt.instanceIDs)
+			}
+			identity := instanceIDs["items"].(map[string]any)
+			if description := identity["description"].(string); description != tt.instanceIdentity {
+				t.Fatalf("instance identity description = %q, want %q", description, tt.instanceIdentity)
+			}
+		})
 	}
 }
 

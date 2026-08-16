@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/server"
 
@@ -42,6 +43,31 @@ func TestLocalizedMCPHandlerPinsLocaleToSession(t *testing.T) {
 	handler.ServeHTTP(followupRecorder, followup)
 	if got := followupRecorder.Body.String(); got != "en-session" {
 		t.Fatalf("follow-up response = %q, want session-pinned English handler", got)
+	}
+}
+
+func TestLocalizedMCPHandlerReleasesAndExpiresSessionLocale(t *testing.T) {
+	handler := &localizedMCPHandler{
+		handlers: map[string]http.Handler{
+			defaultMCPLocale: markerMCPHandler("zh-session"),
+			"en-US":          markerMCPHandler("en-session"),
+		},
+	}
+	handler.sessionLocales.Store("expired", mcpSessionLocale{
+		locale: "en-US", lastUsed: time.Now().Add(-mcpSessionIdleTTL),
+	})
+
+	request := httptest.NewRequest(http.MethodDelete, endpointPath, nil)
+	request.Header.Set(server.HeaderKeySessionID, "en-session")
+	response := httptest.NewRecorder()
+	handler.sessionLocales.Store("en-session", mcpSessionLocale{locale: "en-US", lastUsed: time.Now()})
+	handler.ServeHTTP(response, request)
+
+	if _, ok := handler.sessionLocales.Load("en-session"); ok {
+		t.Fatal("DELETE did not release the session locale")
+	}
+	if _, ok := handler.sessionLocales.Load("expired"); ok {
+		t.Fatal("expired session locale was not pruned")
 	}
 }
 

@@ -131,7 +131,9 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 // handlePTCToolkit returns the PTC toolkit for GET .../mcp/toolkit.
 // Its contents change with the tool surface; clients cache it by version.
 func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
-	toolkit, err := buildPTCToolkit(publicEndpointURL(c.Request, mcpPath), r.ServicePort)
+	toolkit, err := buildPTCToolkit(
+		publicEndpointURL(c.Request, mcpPath), r.ServicePort, common.GetLanguageFromCtx(c.Request.Context()),
+	)
 	if err != nil {
 		if r.Logger != nil {
 			r.Logger.Errorf("BuildPTCToolkit failed: %v", err)
@@ -144,7 +146,7 @@ func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
 	c.JSON(http.StatusOK, toolkit)
 }
 
-var buildPTCToolkit = mcp.BuildPTCToolkit
+var buildPTCToolkit = mcp.BuildPTCToolkitForLocale
 
 // handleMCP dispatches requests inside the MCP catch-all route.
 //

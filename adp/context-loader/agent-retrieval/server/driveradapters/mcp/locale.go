@@ -98,6 +98,19 @@ func mustReadMCPInstructions(resources fs.FS, locale string) string {
 	return mustReadMCPResource(resources, locale, "instructions.txt")
 }
 
+func mustReadMCPStaticResource(resource string) string {
+	path := fmt.Sprintf("schemas/%s", resource)
+	data, err := fs.ReadFile(schemasFS, path)
+	if err != nil {
+		panic("cannot load MCP static resource: " + err.Error())
+	}
+	content := string(data)
+	if strings.TrimSpace(content) == "" {
+		panic("MCP static resource must not be empty: " + path)
+	}
+	return content
+}
+
 func mustReadMCPResource(resources fs.FS, locale, resource string) string {
 	path := fmt.Sprintf("schemas/locales/%s/%s", locale, resource)
 	data, err := fs.ReadFile(resources, path)

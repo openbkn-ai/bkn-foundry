@@ -13,7 +13,7 @@ import (
 	"sync"
 )
 
-//go:embed schemas/*.json schemas/locales/*/*.json schemas/locales/*/*.txt
+//go:embed schemas/*.json schemas/*.py schemas/locales/*/*.json schemas/locales/*/*.txt
 var schemasFS embed.FS
 
 // ToolMeta defines tool metadata: the wire identity (name, description) plus
