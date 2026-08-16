@@ -110,9 +110,11 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams, fieldMap map[string]*interfaces.Property,
 	condition sq.Sqlizer) (sq.SelectBuilder, error) {
 
-	// 源字段名：属性名找不到时按原样当列名用
+	// 源字段名：属性名找不到、或属性没带 original_name 时，按原样当列名用。
+	// 构建任务补出来的向量字段就只有 Name 没有 OriginalName（appendTaskEmbeddingVectorFields），
+	// 不兜底会拼出空标识符。
 	originalName := func(property string) string {
-		if field, ok := fieldMap[property]; ok {
+		if field, ok := fieldMap[property]; ok && field.OriginalName != "" {
 			return field.OriginalName
 		}
 		return property
