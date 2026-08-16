@@ -10,7 +10,7 @@ import "bkn-backend/interfaces/data_type"
 
 const (
 	MAX_PROPERTY_NUM = 1000
-	// 逻辑属性类型
+	// Logical property types.
 	LOGIC_PROPERTY_TYPE_METRIC = "metric"
 	LOGIC_PROPERTY_TYPE_TOOL   = "tool"
 )
@@ -21,7 +21,7 @@ var (
 		"update_time": "f_update_time",
 	}
 
-	// 主键的属性的类型只能是: integer, unsigned integer, string, text
+	// Primary key property types can only be integer, unsigned integer, string, or text.
 	ValidPrimaryKeyTypes = map[string]bool{
 		data_type.DATATYPE_INTEGER:          true,
 		data_type.DATATYPE_UNSIGNED_INTEGER: true,
@@ -29,7 +29,7 @@ var (
 		data_type.DATATYPE_TEXT:             true,
 	}
 
-	//  标题的属性的类型支持： integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean
+	// Display property types support integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, and boolean.
 	ValidDisplayKeyTypes = map[string]bool{
 		data_type.DATATYPE_INTEGER:          true,
 		data_type.DATATYPE_UNSIGNED_INTEGER: true,
@@ -44,13 +44,13 @@ var (
 		data_type.DATATYPE_BOOLEAN:          true,
 	}
 
-	// 逻辑资源类型需有效，当前支持 metric, tool
+	// Logical resource types must be valid. metric and tool are currently supported.
 	ValidLogicSourceTypes = map[string]bool{
 		LOGIC_PROPERTY_TYPE_METRIC: true,
 		LOGIC_PROPERTY_TYPE_TOOL:   true,
 	}
 
-	// 有效的属性类型：integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, ip。
+	// Valid property types are integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, and ip.
 	ValidDataPropertyTypes = map[string]bool{
 		data_type.DATATYPE_INTEGER:          true,
 		data_type.DATATYPE_UNSIGNED_INTEGER: true,
@@ -102,12 +102,12 @@ type ObjectType struct {
 
 	ModuleType string `json:"module_type" mapstructure:"module_type"`
 
-	PropertyMap  map[string]string `json:"-"` // 以属性名为key，显示名为value的map
+	PropertyMap  map[string]string `json:"-"` // Map from property name to display name
 	IfNameModify bool              `json:"-"`
 
-	// 向量
+	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`
-	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
+	Score  *float64  `json:"_score,omitempty"` // OpenSearch score used by concept search
 }
 
 type ObjectTypeStatus struct {
@@ -138,7 +138,7 @@ type DataProperty struct {
 
 	IndexConfig *IndexConfig `json:"index_config,omitempty" mapstructure:"index_config,omitempty"`
 
-	ConditionOperations []string `json:"condition_operations,omitempty"` // 字符串类型的字段支持的操作集
+	ConditionOperations []string `json:"condition_operations,omitempty"` // Operations supported by string fields
 }
 
 type LogicProperty struct {
@@ -153,21 +153,21 @@ type LogicProperty struct {
 }
 
 type Field struct {
-	Name        string  `json:"name" mapstructure:"name"`                                     // 技术名
-	Type        string  `json:"type,omitempty" mapstructure:"type,omitempty"`                 // 字段类型
-	DisplayName string  `json:"display_name,omitempty" mapstructure:"display_name,omitempty"` // 显示名
-	Comment     *string `json:"comment,omitempty"`                                            // 从视图中获取到的字段的备注信息
+	Name        string  `json:"name" mapstructure:"name"`                                     // Technical name
+	Type        string  `json:"type,omitempty" mapstructure:"type,omitempty"`                 // Field type
+	DisplayName string  `json:"display_name,omitempty" mapstructure:"display_name,omitempty"` // Display name
+	Comment     *string `json:"comment,omitempty"`                                            // Field comment from the view
 }
 
 type Parameter struct {
 	Name        string  `json:"name" mapstructure:"name"`
-	Type        string  `json:"type" mapstructure:"type"`                               // 参数类型
-	Source      string  `json:"source,omitempty" mapstructure:"source,omitempty"`       // 来源类型
-	Operation   string  `json:"operation,omitempty" mapstructure:"operation,omitempty"` // 指标属性的操作符。
+	Type        string  `json:"type" mapstructure:"type"`                               // Parameter type
+	Source      string  `json:"source,omitempty" mapstructure:"source,omitempty"`       // Source type
+	Operation   string  `json:"operation,omitempty" mapstructure:"operation,omitempty"` // Operator for a metric property
 	ValueFrom   string  `json:"value_from,omitempty" mapstructure:"value_from,omitempty"`
 	Value       any     `json:"value,omitempty" mapstructure:"value,omitempty"`
 	IfSystemGen *bool   `json:"if_system_generate,omitempty" mapstructure:"if_system_generate,omitempty"`
-	Comment     *string `json:"comment,omitempty" mapstructure:"comment,omitempty"` // 参数备注，指标实时读取赋值
+	Comment     *string `json:"comment,omitempty" mapstructure:"comment,omitempty"` // Parameter comment supplied by the metric read
 	Required    bool    `json:"required,omitempty" mapstructure:"required,omitempty"`
 	Default     any     `json:"default,omitempty" mapstructure:"default,omitempty"`
 }
@@ -200,17 +200,17 @@ type SimpleProperty struct {
 	DisplayName string `json:"display_name" mapstructure:"display_name"`
 }
 
-// 对象类的分页查询
+// Object type pagination query.
 type ObjectTypesQueryParams struct {
 	PaginationQueryParameters
 	NamePattern string
 	Tag         string
 	Branch      string
 	KNID        string
-	OTIDS       []string // 按对象类id过滤
+	OTIDS       []string // Filter by object type IDs
 }
 
-// 检索的对象列表
+// Object search list.
 type ObjectTypes struct {
 	Entries    []*ObjectType `json:"entries"`
 	TotalCount int64         `json:"total_count,omitempty"`

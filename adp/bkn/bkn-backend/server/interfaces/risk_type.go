@@ -7,14 +7,14 @@
 package interfaces
 
 const (
-	// 内置风险评估函数信息
+	// Built-in risk-assessment function information.
 	BuiltinToolBoxID         = "bkn-internal_risk-assessment"
 	BuiltinToolBoxName       = "BKN风险评估工具"
 	BuiltinToolConfigVersion = "0.5.0"
 	BuiltinToolToolID        = "bkn_common_risk_assessment_tool"
 )
 
-// RiskType 风险类
+// RiskType represents a risk type.
 type RiskType struct {
 	RTID       string `json:"id" mapstructure:"id"`
 	RTName     string `json:"name" mapstructure:"name"`
@@ -29,10 +29,10 @@ type RiskType struct {
 	ModuleType string      `json:"module_type" mapstructure:"module_type"`
 
 	Vector []float32 `json:"_vector,omitempty"`
-	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
+	Score  *float64  `json:"_score,omitempty"` // OpenSearch relevance score used for concept searches.
 }
 
-// RiskTypesQueryParams 风险类查询参数
+// RiskTypesQueryParams contains risk-type query parameters.
 type RiskTypesQueryParams struct {
 	PaginationQueryParameters
 	NamePattern string
@@ -48,7 +48,7 @@ var (
 	}
 )
 
-// RiskTypes 风险类列表
+// RiskTypes is a list of risk types.
 type RiskTypes struct {
 	Entries    []*RiskType `json:"entries"`
 	TotalCount int64       `json:"total_count,omitempty"`

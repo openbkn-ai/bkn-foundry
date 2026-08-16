@@ -17,6 +17,7 @@ import (
 	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -54,7 +55,7 @@ func NewObjectTypeAccess(appSetting *common.AppSetting) interfaces.ObjectTypeAcc
 	return otAccess
 }
 
-// 根据ID获取对象类存在性
+// Get object type existence by ID.
 func (ota *objectTypeAccess) CheckObjectTypeExistByID(ctx context.Context, knID string, branch string, otID string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckObjectTypeExistByID")
 	defer span.End()
@@ -64,7 +65,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByID(ctx context.Context, knID 
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_name").
 		From(OT_TABLE_NAME).
@@ -77,7 +78,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByID(ctx context.Context, knID 
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
@@ -95,7 +96,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByID(ctx context.Context, knID 
 	return name, true, nil
 }
 
-// 根据名称获取对象类存在性
+// Get object type existence by name.
 func (ota *objectTypeAccess) CheckObjectTypeExistByName(ctx context.Context, knID string, branch string, name string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckObjectTypeExistByName")
 	defer span.End()
@@ -105,7 +106,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByName(ctx context.Context, knI
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select("f_id").
 		From(OT_TABLE_NAME).
 		Where(sq.Eq{"f_kn_id": knID}).
@@ -117,7 +118,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByName(ctx context.Context, knI
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var otID string
@@ -137,7 +138,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByName(ctx context.Context, knI
 	return otID, true, nil
 }
 
-// 创建对象类
+// Create an object type.
 func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateObjectType")
 	defer span.End()
@@ -147,28 +148,28 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(objectType.Tags)
 
-	// 2.0 序列化数据来源
+	// 2.0 Serialize the data source.
 	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal DataSource, err", err)
 		return err
 	}
-	// 2.1 序列化数据属性
+	// 2.1 Serialize data properties.
 	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal DataProperties, err", err)
 		return err
 	}
-	// 2.2 序列化逻辑属性
+	// 2.2 Serialize logical properties.
 	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal LogicProperties, err", err)
 		return err
 	}
-	// 2.3 序列化主键数组
+	// 2.3 Serialize the primary key array.
 	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal PrimaryKeys, err", err)
@@ -227,7 +228,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
@@ -244,7 +245,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 	return nil
 }
 
-// 创建对象类状态
+// Object type creation status.
 func (ota *objectTypeAccess) CreateObjectTypeStatus(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateObjectTypeStatus")
 	defer span.End()
@@ -274,7 +275,7 @@ func (ota *objectTypeAccess) CreateObjectTypeStatus(ctx context.Context, tx *sql
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
@@ -291,7 +292,7 @@ func (ota *objectTypeAccess) CreateObjectTypeStatus(ctx context.Context, tx *sql
 	return nil
 }
 
-// 查询对象类列表。查主线的当前版本为true的对象类
+// Query current object types on the main branch.
 func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListObjectTypes")
 	defer span.End()
@@ -336,7 +337,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 
 	builder := processQueryCondition(query, subBuilder)
 
-	//排序
+	// Sort.
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("ot.%s %s", query.Sort, query.Direction))
 	}
@@ -353,7 +354,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		return []*interfaces.ObjectType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var rows *sql.Rows
@@ -417,31 +418,31 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化datasource
+		// 2.0 Deserialize the data source.
 		err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// 2.1 反序列化DataProperties
+		// 2.1 Deserialize data properties.
 		err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// 2.2 反序列化LogicProperties
+		// 2.2 Deserialize logical properties.
 		err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// 2.3 反序列化主键
+		// 2.3 Deserialize primary keys.
 		err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
@@ -474,7 +475,7 @@ func (ota *objectTypeAccess) GetObjectTypesTotal(ctx context.Context, query inte
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
@@ -497,7 +498,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"ot.f_id",
 		"ot.f_name",
@@ -539,7 +540,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	objectType := interfaces.ObjectType{
@@ -594,37 +595,39 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]不存在: %v", otID, err))
+			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx),
+				"BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound",
+				map[string]any{"objectTypeID": otID}))
 	} else if err != nil {
 		common.LogSafeError(ctx, "Row scan error", err)
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// Convert a tag string to an array.
 	objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-	// 2.0 反序列化datasource
+	// 2.0 Deserialize the data source.
 	err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 		return nil, err
 	}
 
-	// 2.1 反序列化DataProperties
+	// 2.1 Deserialize data properties.
 	err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 		return nil, err
 	}
 
-	// 2.2 反序列化LogicProperties
+	// 2.2 Deserialize logical properties.
 	err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 		return nil, err
 	}
 
-	// 2.3 反序列化主键
+	// 2.3 Deserialize primary keys.
 	err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
@@ -644,7 +647,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"ot.f_id",
 		"ot.f_name",
@@ -683,7 +686,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		ToSql()
 
 		// if len(cgIds) > 0 {
-		// 	// 子查询：获取指定概念组中的概念ID（object_type类型）
+		// 	// Subquery: retrieve object type concept IDs in the specified concept group.
 		// 	subQueryBuilder := sq.Select("cgr.f_concept_id").
 		// 		From("t_concept_group_relation AS cgr").
 		// 		Join(OT_TABLE_NAME + " AS ot ON cgr.f_concept_id = ot.f_id AND cgr.f_branch = ot.f_branch AND cgr.f_kn_id = ot.f_kn_id").
@@ -697,7 +700,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		// 	// if query.Branch != "" {
 		// 	// 	subBuilder = subBuilder.Where(sq.Eq{fmt.Sprintf("%s%s", fieldPrefix, "f_branch"): query.Branch})
 		// 	// } else {
-		// 	// 	// 查主线分支的业务知识网络
+		// 	// 	// Query business knowledge networks on the main branch.
 		// 	// 	subBuilder = subBuilder.Where(sq.Eq{fmt.Sprintf("%s%s", fieldPrefix, "f_branch"): interfaces.MAIN_BRANCH})
 		// 	// }
 		// }
@@ -707,7 +710,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		return []*interfaces.ObjectType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var rows *sql.Rows
@@ -772,31 +775,31 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化datasource
+		// 2.0 Deserialize the data source.
 		err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// 2.1 反序列化DataProperties
+		// 2.1 Deserialize data properties.
 		err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// 2.2 反序列化LogicProperties
+		// 2.2 Deserialize logical properties.
 		err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return []*interfaces.ObjectType{}, err
 		}
 
-		// 2.3 反序列化主键
+		// 2.3 Deserialize primary keys.
 		err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
@@ -819,27 +822,27 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(objectType.Tags)
-	// 2.0 序列化数据来源
+	// 2.0 Serialize the data source.
 	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
 	if err != nil {
 		logger.Errorf("Failed to marshal DataSource, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
-	// 2.1 序列化数据属性
+	// 2.1 Serialize data properties.
 	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
 	if err != nil {
 		logger.Errorf("Failed to marshal DataProperties, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
-	// 2.2 序列化逻辑属性
+	// 2.2 Serialize logical properties.
 	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
 	if err != nil {
 		logger.Errorf("Failed to marshal LogicProperties, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
-	// 2.3 序列化主键数组
+	// 2.3 Serialize the primary key array.
 	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
 	if err != nil {
 		logger.Errorf("Failed to marshal PrimaryKeys, err: %v", common.SafeErrorSummary(err))
@@ -873,7 +876,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
@@ -887,7 +890,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -895,7 +898,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 	}
 
 	if RowsAffected != 1 {
-		// 影响行数不等于1不报错，更新操作已经发生
+		// Do not return an error when affected rows are not one because the update has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Update object type affected unexpected row count: object_type_id=%s, rows=%d",
 			objectType.OTID, RowsAffected))
 	}
@@ -913,7 +916,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// 2.1 序列化数据属性
+	// 2.1 Serialize data properties.
 	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
 	if err != nil {
 		logger.Errorf("Failed to marshal DataProperties, err: %v", common.SafeErrorSummary(err))
@@ -937,7 +940,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -946,7 +949,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -954,7 +957,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 	}
 
 	if RowsAffected != 1 {
-		// 影响行数不等于1不报错，更新操作已经发生
+		// Do not return an error when affected rows are not one because the update has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Update object type affected unexpected row count: object_type_id=%s, rows=%d",
 			objectType.OTID, RowsAffected))
 	}
@@ -987,7 +990,7 @@ func (ota *objectTypeAccess) DeleteObjectTypesByIDs(ctx context.Context, tx *sql
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
@@ -1001,7 +1004,7 @@ func (ota *objectTypeAccess) DeleteObjectTypesByIDs(ctx context.Context, tx *sql
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -1009,7 +1012,7 @@ func (ota *objectTypeAccess) DeleteObjectTypesByIDs(ctx context.Context, tx *sql
 	}
 
 	if RowsAffected != int64(len(otIDs)) {
-		// 影响行数不等于删除的对象类数量不报错，删除操作已经发生
+		// Do not return an error when affected rows differ from deleted object type count because deletion has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Delete object types affected unexpected row count: requested_count=%d, rows=%d",
 			len(otIDs), RowsAffected))
 	}
@@ -1043,7 +1046,7 @@ func (ota *objectTypeAccess) DeleteObjectTypeStatusByIDs(ctx context.Context, tx
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
@@ -1057,7 +1060,7 @@ func (ota *objectTypeAccess) DeleteObjectTypeStatusByIDs(ctx context.Context, tx
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -1065,7 +1068,7 @@ func (ota *objectTypeAccess) DeleteObjectTypeStatusByIDs(ctx context.Context, tx
 	}
 
 	if RowsAffected != int64(len(otIDs)) {
-		// 影响行数不等于删除的对象类数量不报错，删除操作已经发生
+		// Do not return an error when affected rows differ from deleted object type count because deletion has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Delete object types affected unexpected row count: requested_count=%d, rows=%d",
 			len(otIDs), RowsAffected))
 	}
@@ -1093,7 +1096,7 @@ func (ota *objectTypeAccess) DeleteObjectTypesByKnID(ctx context.Context, tx *sq
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
@@ -1107,7 +1110,7 @@ func (ota *objectTypeAccess) DeleteObjectTypesByKnID(ctx context.Context, tx *sq
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -1137,7 +1140,7 @@ func (ota *objectTypeAccess) DeleteObjectTypeStatusByKnID(ctx context.Context, t
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
@@ -1151,7 +1154,7 @@ func (ota *objectTypeAccess) DeleteObjectTypeStatusByKnID(ctx context.Context, t
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -1172,7 +1175,7 @@ func (ota *objectTypeAccess) GetObjectTypeIDsByKnID(ctx context.Context, knID st
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id",
 	).From(OT_TABLE_NAME).
@@ -1184,7 +1187,7 @@ func (ota *objectTypeAccess) GetObjectTypeIDsByKnID(ctx context.Context, knID st
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ota.db.Query(sqlStr, vals...)
@@ -1221,7 +1224,7 @@ func (ota *objectTypeAccess) UpdateObjectTypeStatus(ctx context.Context, tx *sql
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//更新
+	// Update.
 	sqlStr, vals, err := sq.Update(OT_STATUS_TABLE_NAME).
 		Set("f_incremental_key", otStatus.IncrementalKey).
 		Set("f_incremental_value", otStatus.IncrementalValue).
@@ -1239,7 +1242,7 @@ func (ota *objectTypeAccess) UpdateObjectTypeStatus(ctx context.Context, tx *sql
 		return err
 	}
 
-	// 执行更新
+	// Execute the update.
 	if tx != nil {
 		_, err = tx.Exec(sqlStr, vals...)
 	} else {
@@ -1254,10 +1257,10 @@ func (ota *objectTypeAccess) UpdateObjectTypeStatus(ctx context.Context, tx *sql
 	return nil
 }
 
-// 拼接 sql 过滤条件
+// Build SQL filter conditions.
 func processQueryCondition(query interfaces.ObjectTypesQueryParams, subBuilder sq.SelectBuilder) sq.SelectBuilder {
 	if query.NamePattern != "" {
-		// 模糊查询，名称或id进行模糊查询，匹配任一即可
+		// Fuzzy-match name or ID; either match is sufficient.
 		subBuilder = subBuilder.Where(sq.Expr("(instr(ot.f_name, ?) > 0 OR instr(ot.f_id, ?) > 0)", query.NamePattern, query.NamePattern))
 	}
 
@@ -1272,7 +1275,7 @@ func processQueryCondition(query interfaces.ObjectTypesQueryParams, subBuilder s
 	if query.Branch != "" {
 		subBuilder = subBuilder.Where(sq.Eq{"ot.f_branch": query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		subBuilder = subBuilder.Where(sq.Eq{"ot.f_branch": interfaces.MAIN_BRANCH})
 	}
 
@@ -1292,7 +1295,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id",
 		"f_name",
@@ -1324,7 +1327,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ota.db.Query(sqlStr, vals...)
@@ -1374,31 +1377,31 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		objectType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化datasource
+		// 2.0 Deserialize the data source.
 		err = sonic.Unmarshal(dataSourceBytes, &objectType.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
-		// 2.1 反序列化DataProperties
+		// 2.1 Deserialize data properties.
 		err = sonic.Unmarshal(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
-		// 2.2 反序列化LogicProperties
+		// 2.2 Deserialize logical properties.
 		err = sonic.Unmarshal(logicPropertiesBytes, &objectType.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return map[string]*interfaces.ObjectType{}, err
 		}
 
-		// 2.3 反序列化主键
+		// 2.3 Deserialize primary keys.
 		err = sonic.Unmarshal(primaryKeysBytes, &objectType.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)

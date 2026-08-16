@@ -69,7 +69,7 @@ func (server *mgrService) start() {
 		panic(err)
 	}
 
-	// 创建gin.engine 并注册 API
+	// Create the Gin engine and register APIs.
 	engine := gin.New()
 
 	server.restHandler.RegisterPublic(engine)
@@ -81,12 +81,12 @@ func (server *mgrService) start() {
 		server.traceOutbox.Start()
 	}
 
-	// 监听中断信号（SIGINT、SIGTERM）
+	// Listen for interrupt signals (SIGINT and SIGTERM).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	// 在收到信号的时候，会自动触发 ctx 的 Done ，这个 stop 是不再捕获注册的信号的意思，算是一种释放资源。
+	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
 	defer stop()
 
-	// 初始化 http 服务
+	// Initialize the HTTP service.
 	s := &http.Server{
 		Addr:           ":" + strconv.Itoa(server.appSetting.ServerSetting.HttpPort),
 		Handler:        engine,
@@ -95,7 +95,7 @@ func (server *mgrService) start() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	// 启动 http 服务
+	// Start the HTTP service.
 	go func() {
 		err := s.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
@@ -107,11 +107,11 @@ func (server *mgrService) start() {
 
 	<-ctx.Done()
 
-	// 设置系统最后处理时间
+	// Set the system's last processed time.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// 停止 http 服务
+	// Stop the HTTP service.
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
@@ -131,22 +131,22 @@ func (server *mgrService) start() {
 }
 
 func main() {
-	// 开启 pprof
+	// Enable pprof.
 	// go func() {
 	// 	http.ListenAndServe("0.0.0.0:6060", nil)
 	// }()
 
 	logger.Info("Server Initializing")
 
-	// 初始化服务配置
+	// Initialize service configuration.
 	appSetting := common.NewSetting()
 	logger.Info("Server Init Setting Success")
 
-	// 设置错误码语言
+	// Configure error-code locales.
 	rest.SetLang(appSetting.ServerSetting.Language)
 	logger.Info("Server Set Language Success")
 
-	// 设置 gin 运行模式
+	// Configure Gin run mode.
 	gin.SetMode(appSetting.ServerSetting.RunMode)
 	logger.Infof("Server RunMode: %s", appSetting.ServerSetting.RunMode)
 
@@ -157,7 +157,7 @@ func main() {
 		logger.Fatalf("Failed to initialize OpenTelemetry provider: %v", err)
 	}
 
-	// 初始化数据库连接
+	// Initialize the database connection.
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
 	outboxDB, err := bkntrace.OpenProducerOutboxDB(appSetting.DBSetting)
@@ -183,7 +183,7 @@ func main() {
 
 	audit.Init(&appSetting.MQSetting)
 
-	// Set顺序按字母升序排序
+	// Sort Set entries in ascending alphabetical order.
 	if common.GetAuthEnabled() {
 		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 		logics.SetPermissionAccess(permission.MaybeShadow(permission.NewPermissionAccess(appSetting)))
@@ -205,7 +205,7 @@ func main() {
 	logics.SetRiskTypeAccess(risk_type.NewRiskTypeAccess(appSetting))
 	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
 
-	// 创建并启动服务
+	// Create and start the service.
 	server := &mgrService{
 		appSetting:     appSetting,
 		otelProviders:  otelProviders,

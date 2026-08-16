@@ -254,7 +254,7 @@ func adpHavingToBKN(h *interfaces.MetricHaving) *bknsdk.MetricHaving {
 	}
 }
 
-// ToADPObjectType 将 BKN ObjectType 转换为 ADP ObjectType
+// ToADPObjectType converts a BKN ObjectType to an ADP ObjectType.
 func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *interfaces.ObjectType {
 	adpObj := &interfaces.ObjectType{
 		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -272,7 +272,7 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 		Branch: branch,
 	}
 
-	// 转换 DataSource
+	// Convert DataSource.
 	if bknObj.DataSource != nil {
 		adpObj.DataSource = &interfaces.ResourceInfo{
 			ID:   bknObj.DataSource.ID,
@@ -281,7 +281,7 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 		}
 	}
 
-	// 转换 DataProperties
+	// Convert DataProperties.
 	for _, dp := range bknObj.DataProperties {
 		adpDP := &interfaces.DataProperty{
 			Name:        dp.Name,
@@ -299,7 +299,7 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 		adpObj.DataProperties = append(adpObj.DataProperties, adpDP)
 	}
 
-	// 转换 LogicProperties
+	// Convert LogicProperties.
 	for _, lp := range bknObj.LogicProperties {
 		adpLP := &interfaces.LogicProperty{
 			Name:        lp.Name,
@@ -343,7 +343,7 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 	return adpObj
 }
 
-// ToBKNObjectType 将 ADP ObjectType 转换为 BKN ObjectType
+// ToBKNObjectType converts an ADP ObjectType to a BKN ObjectType.
 func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 	bknObj := &bknsdk.BknObjectType{
 		BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{
@@ -359,7 +359,7 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 		IncrementalKey: adpObj.IncrementalKey,
 	}
 
-	// 转换 DataSource
+	// Convert DataSource.
 	if adpObj.DataSource != nil {
 		bknObj.DataSource = &bknsdk.ResourceInfo{
 			ID:   adpObj.DataSource.ID,
@@ -368,7 +368,7 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 		}
 	}
 
-	// 转换 DataProperties
+	// Convert DataProperties.
 	for _, adpDP := range adpObj.DataProperties {
 		dp := &bknsdk.DataProperty{
 			Name:        adpDP.Name,
@@ -384,7 +384,7 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 		bknObj.DataProperties = append(bknObj.DataProperties, dp)
 	}
 
-	// 转换 LogicProperties
+	// Convert LogicProperties.
 	for _, adpLP := range adpObj.LogicProperties {
 		lp := &bknsdk.LogicProperty{
 			Name:        adpLP.Name,
@@ -434,7 +434,7 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 	return bknObj
 }
 
-// ToADPRelationType 将 BKN RelationType 转换为 ADP RelationType
+// ToADPRelationType converts a BKN RelationType to an ADP RelationType.
 func ToADPRelationType(knID string, branch string, bknRel *bknsdk.BknRelationType) *interfaces.RelationType {
 	relType := &interfaces.RelationType{
 		RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
@@ -449,12 +449,12 @@ func ToADPRelationType(knID string, branch string, bknRel *bknsdk.BknRelationTyp
 		Branch: branch,
 	}
 
-	// 转换 Endpoint
+	// Convert Endpoint.
 	relType.SourceObjectTypeID = bknRel.Endpoint.Source
 	relType.TargetObjectTypeID = bknRel.Endpoint.Target
 	relType.Type = bknRel.Endpoint.Type
 
-	// 转换 MappingRules
+	// Convert MappingRules.
 	if bknRel.MappingRules != nil {
 		switch rules := bknRel.MappingRules.(type) {
 		case bknsdk.DirectMappingRule:
@@ -509,7 +509,7 @@ func ToADPRelationType(knID string, branch string, bknRel *bknsdk.BknRelationTyp
 	return relType
 }
 
-// ToBKNRelationType 将 ADP RelationType 转换为 BKN RelationType
+// ToBKNRelationType converts an ADP RelationType to a BKN RelationType.
 func ToBKNRelationType(adpRel *interfaces.RelationType) *bknsdk.BknRelationType {
 	bknRel := &bknsdk.BknRelationType{
 		BknRelationTypeFrontmatter: bknsdk.BknRelationTypeFrontmatter{
@@ -527,7 +527,7 @@ func ToBKNRelationType(adpRel *interfaces.RelationType) *bknsdk.BknRelationType 
 		},
 	}
 
-	// 转换 MappingRules
+	// Convert MappingRules.
 	if adpRel.MappingRules != nil {
 		switch rules := adpRel.MappingRules.(type) {
 		case []interfaces.Mapping:
@@ -576,7 +576,7 @@ func ToBKNRelationType(adpRel *interfaces.RelationType) *bknsdk.BknRelationType 
 	return bknRel
 }
 
-// ToADPActionType 将 BKN ActionType 转换为 ADP ActionType
+// ToADPActionType converts a BKN ActionType to an ADP ActionType.
 func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType) *interfaces.ActionType {
 	adpAction := &interfaces.ActionType{
 		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -609,7 +609,7 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 		})
 	}
 
-	// 转换 Affect
+	// Convert Affect.
 	if bknAction.AffectObject != nil {
 		adpAction.Affect = &interfaces.ActionAffect{
 			ObjectTypeID: bknAction.AffectObject.ObjectType,
@@ -617,12 +617,12 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 		}
 	}
 
-	// 转换 Condition
+	// Convert Condition.
 	if bknAction.TriggerCondition != nil {
 		adpAction.Condition = toADPActionCondCfg(bknAction.TriggerCondition)
 	}
 
-	// 转换 ActionSource
+	// Convert ActionSource.
 	if bknAction.ActionSource != nil {
 		adpAction.ActionSource = interfaces.ActionSource{
 			Type:     bknAction.ActionSource.Type,
@@ -633,7 +633,7 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 		}
 	}
 
-	// 转换 Parameters
+	// Convert Parameters.
 	for _, param := range bknAction.Parameters {
 		adpAction.Parameters = append(adpAction.Parameters, interfaces.Parameter{
 			Name:        param.Name,
@@ -647,7 +647,7 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 		})
 	}
 
-	// 转换 Schedule
+	// Convert Schedule.
 	if bknAction.Schedule != nil {
 		adpAction.Schedule = interfaces.Schedule{
 			Type:       bknAction.Schedule.Type,
@@ -658,7 +658,7 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 	return adpAction
 }
 
-// ToBKNActionType 将 ADP ActionType 转换为 BKN ActionType
+// ToBKNActionType converts an ADP ActionType to a BKN ActionType.
 func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 	bknAction := &bknsdk.BknActionType{
 		BknActionTypeFrontmatter: bknsdk.BknActionTypeFrontmatter{
@@ -697,12 +697,12 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 			Description: adpAction.Affect.Comment,
 		}
 	}
-	// 转换 Condition
+	// Convert Condition.
 	if adpAction.Condition != nil {
 		bknAction.TriggerCondition = toBKNActionCondCfg(adpAction.Condition)
 	}
 
-	// 转换 ActionSource
+	// Convert ActionSource.
 	if adpAction.ActionSource.Type != "" {
 		bknAction.ActionSource = &bknsdk.ActionSource{
 			Type:     adpAction.ActionSource.Type,
@@ -713,7 +713,7 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 		}
 	}
 
-	// 转换 Parameters
+	// Convert Parameters.
 	for _, adpParam := range adpAction.Parameters {
 		param := bknsdk.Parameter{
 			Name:      adpParam.Name,
@@ -732,7 +732,7 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 		bknAction.Parameters = append(bknAction.Parameters, param)
 	}
 
-	// 转换 Schedule
+	// Convert Schedule.
 	if adpAction.Schedule.Type != "" {
 		bknAction.Schedule = &bknsdk.Schedule{
 			Type:       adpAction.Schedule.Type,
@@ -743,7 +743,7 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 	return bknAction
 }
 
-// ToADPRiskType 将 BKN RiskType 转换为 ADP RiskType
+// ToADPRiskType converts a BKN RiskType to an ADP RiskType.
 func ToADPRiskType(knID string, branch string, bknRisk *bknsdk.BknRiskType) *interfaces.RiskType {
 	adpRisk := &interfaces.RiskType{
 		RTID:   bknRisk.ID,
@@ -760,7 +760,7 @@ func ToADPRiskType(knID string, branch string, bknRisk *bknsdk.BknRiskType) *int
 	return adpRisk
 }
 
-// ToBKNRiskType 将 ADP RiskType 转换为 BKN RiskType
+// ToBKNRiskType converts an ADP RiskType to a BKN RiskType.
 func ToBKNRiskType(adpRisk *interfaces.RiskType) *bknsdk.BknRiskType {
 	bknRisk := &bknsdk.BknRiskType{
 		BknRiskTypeFrontmatter: bknsdk.BknRiskTypeFrontmatter{
@@ -776,7 +776,7 @@ func ToBKNRiskType(adpRisk *interfaces.RiskType) *bknsdk.BknRiskType {
 	return bknRisk
 }
 
-// ToADPConceptGroup 将 BKN ConceptGroup 转换为 ADP ConceptGroup
+// ToADPConceptGroup converts a BKN ConceptGroup to an ADP ConceptGroup.
 func ToADPConceptGroup(knID string, branch string, bknCG *bknsdk.BknConceptGroup) *interfaces.ConceptGroup {
 	adpCG := &interfaces.ConceptGroup{
 		CGID:   bknCG.ID,
@@ -793,7 +793,7 @@ func ToADPConceptGroup(knID string, branch string, bknCG *bknsdk.BknConceptGroup
 	return adpCG
 }
 
-// ToBKNConceptGroup 将 ADP ConceptGroup 转换为 BKN ConceptGroup
+// ToBKNConceptGroup converts an ADP ConceptGroup to a BKN ConceptGroup.
 func ToBKNConceptGroup(adpCG *interfaces.ConceptGroup) *bknsdk.BknConceptGroup {
 	bknCG := &bknsdk.BknConceptGroup{
 		BknConceptGroupFrontmatter: bknsdk.BknConceptGroupFrontmatter{
@@ -810,7 +810,7 @@ func ToBKNConceptGroup(adpCG *interfaces.ConceptGroup) *bknsdk.BknConceptGroup {
 	return bknCG
 }
 
-// toADPCondCfg 将 BKN CondCfg 转换为 ADP CondCfg
+// toADPCondCfg converts a BKN CondCfg to an ADP CondCfg.
 func toADPCondCfg(bknCond *bknsdk.CondCfg) *cond.CondCfg {
 	if bknCond == nil {
 		return nil
@@ -832,7 +832,7 @@ func toADPCondCfg(bknCond *bknsdk.CondCfg) *cond.CondCfg {
 	return adpCond
 }
 
-// toADPCondCfg 将 BKN CondCfg 转换为 ADP CondCfg
+// toADPCondCfg converts a BKN CondCfg to an ADP CondCfg.
 func toADPActionCondCfg(bknCond *bknsdk.ActionCondCfg) *interfaces.ActionCondCfg {
 	if bknCond == nil {
 		return nil
@@ -855,7 +855,7 @@ func toADPActionCondCfg(bknCond *bknsdk.ActionCondCfg) *interfaces.ActionCondCfg
 	return adpCond
 }
 
-// toBKNCondCfg 将 ADP CondCfg 转换为 BKN CondCfg
+// toBKNCondCfg converts an ADP CondCfg to a BKN CondCfg.
 func toBKNCondCfg(adpCond *cond.CondCfg) *bknsdk.CondCfg {
 	if adpCond == nil {
 		return nil
@@ -875,7 +875,7 @@ func toBKNCondCfg(adpCond *cond.CondCfg) *bknsdk.CondCfg {
 	return bknCond
 }
 
-// toBKNCondCfg 将 ADP CondCfg 转换为 BKN CondCfg
+// toBKNCondCfg converts an ADP CondCfg to a BKN CondCfg.
 func toBKNActionCondCfg(adpCond *interfaces.ActionCondCfg) *bknsdk.ActionCondCfg {
 	if adpCond == nil {
 		return nil

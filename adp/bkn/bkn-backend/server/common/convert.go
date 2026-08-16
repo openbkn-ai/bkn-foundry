@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// string 转 []string
+// Convert a string to []string.
 func StringToStringSlice(str string) []string {
 	if str == "" {
 		return []string{}
@@ -29,18 +29,18 @@ func StringToStringSlice(str string) []string {
 }
 
 const (
-	oneGiB = 1024 * 1024 * 1024 //1073741824.0 定义1GB的字节数
+	oneGiB = 1024 * 1024 * 1024 // 1073741824.0 bytes in one GiB.
 )
 
 func BytesToGiB(bytes int64) float64 {
-	return math.Round(float64(bytes)/oneGiB*100) / 100 // 四舍五入到小数点后两位
+	return math.Round(float64(bytes)/oneGiB*100) / 100 // Round to two decimal places.
 }
 
 func GiBToBytes(gib int64) int64 {
 	return gib * oneGiB
 }
 
-// 对字符串数组去重
+// Deduplicate a string slice.
 func DuplicateSlice(strSlice []string) []string {
 	keys := make(map[string]struct{})
 	list := make([]string, 0, len(strSlice))

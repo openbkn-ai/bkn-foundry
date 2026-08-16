@@ -21,7 +21,7 @@ import (
 	bmock "bkn-backend/interfaces/mock"
 )
 
-// setGinMode 设置 Gin 为测试模式并返回恢复函数
+// setGinMode sets Gin to test mode and returns a restore function.
 func setGinMode() func() {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)

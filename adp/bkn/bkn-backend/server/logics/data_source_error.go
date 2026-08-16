@@ -8,9 +8,9 @@ package logics
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "bkn-backend/errors"
@@ -19,11 +19,15 @@ import (
 // UnsupportedObjectTypeDataSourceError returns a client-facing 400 for invalid object-type bindings.
 func UnsupportedObjectTypeDataSourceError(ctx context.Context, otID, dsType string) *rest.HTTPError {
 	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-		WithErrorDetails(fmt.Sprintf("object_type[%s] data_source.type must be resource, got %q", otID, dsType))
+		WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx),
+			"BknBackend.ObjectType.InvalidParameter.Detail.DataSourceTypeNotSupported",
+			map[string]any{"objectType": otID, "type": dsType}))
 }
 
 // UnsupportedRelationBackingDataSourceError returns a client-facing 400 for invalid relation backing bindings.
 func UnsupportedRelationBackingDataSourceError(ctx context.Context, rtID, dsType string) *rest.HTTPError {
 	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-		WithErrorDetails(fmt.Sprintf("relation_type[%s] backing data_source.type must be resource, got %q", rtID, dsType))
+		WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx),
+			"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceTypeInvalid",
+			map[string]any{"expected": "resource", "actual": dsType}))
 }

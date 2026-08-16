@@ -6,7 +6,7 @@
 
 package errors
 
-// 业务知识网络错误码
+// Business knowledge network error codes.
 const (
 	// 400
 	BknBackend_KnowledgeNetwork_Duplicated_Name                    = "BknBackend.KnowledgeNetwork.Duplicated.Name"

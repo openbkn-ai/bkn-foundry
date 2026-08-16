@@ -146,6 +146,7 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidCronExpression)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "Cron 表达式无效。")
 		})
 
 		Convey("Failed when GetActionTypesByIDs returns error\n", func() {
@@ -178,6 +179,7 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_ActionTypeNotFound)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "行动类 at_missing 不存在。")
 		})
 
 		Convey("Failed when asa.CreateSchedule returns error\n", func() {
@@ -278,7 +280,7 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 
 func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 	Convey("Test UpdateScheduleStatus\n", t, func() {
-		ctx := context.Background()
+		ctx := rest.WithLanguage(context.Background(), rest.AmericanEnglish)
 		svc, mockCtrl, asa, _ := newTestService(t)
 		defer mockCtrl.Finish()
 
@@ -310,6 +312,7 @@ func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidStatus)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "status must be active or inactive; received unknown.")
 		})
 
 		Convey("Failed when GetSchedule returns error\n", func() {

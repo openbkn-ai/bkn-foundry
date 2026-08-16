@@ -207,8 +207,8 @@ func Test_knowledgeNetworkAccess_CreateKN(t *testing.T) {
 	})
 }
 
-// Test_NewKNAccess 跳过测试，因为NewKNAccess需要实际的数据库连接
-// 在单元测试中使用MockNewKNAccess代替
+// Test_NewKNAccess is skipped because NewKNAccess requires a real database connection.
+// Unit tests use MockNewKNAccess instead.
 // func Test_NewKNAccess(t *testing.T) {
 // 	Convey("test NewKNAccess\n", t, func() {
 // 		appSetting := &common.AppSetting{
@@ -225,7 +225,7 @@ func Test_knowledgeNetworkAccess_CreateKN(t *testing.T) {
 // 			access := NewKNAccess(appSetting)
 // 			So(access, ShouldNotBeNil)
 //
-// 			// 第二次调用应该返回同一个实例（单例模式）
+// 			// The second call should return the same instance (singleton pattern).
 // 			access2 := NewKNAccess(appSetting)
 // 			So(access2, ShouldEqual, access)
 // 		})
@@ -955,7 +955,7 @@ func Test_knowledgeNetworkAccess_ProcessConceptGroupRelationsQueryCondition(t *t
 func Test_knowledgeNetworkAccess_GetNeighborPathsBatch(t *testing.T) {
 	Convey("test GetNeighborPathsBatch", t, func() {
 		appSetting := &common.AppSetting{}
-		// 使用 QueryMatcherRegexp 来匹配复杂的 SQL
+		// Use QueryMatcherRegexp to match complex SQL.
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 		kna := &knowledgeNetworkAccess{
 			appSetting: appSetting,
@@ -971,7 +971,7 @@ func Test_knowledgeNetworkAccess_GetNeighborPathsBatch(t *testing.T) {
 		Convey("GetNeighborPathsBatch forward direction query error", func() {
 			query.Direction = interfaces.DIRECTION_FORWARD
 			expectedErr := errors.New("query error")
-			// 匹配包含 forward 和 rt.f_source_object_type_id 的 SQL
+			// Match SQL containing forward and rt.f_source_object_type_id.
 			smock.ExpectQuery(`.*forward.*rt\.f_source_object_type_id.*`).WillReturnError(expectedErr)
 
 			result, err := kna.GetNeighborPathsBatch(testCtx, otIDs, query)
@@ -986,7 +986,7 @@ func Test_knowledgeNetworkAccess_GetNeighborPathsBatch(t *testing.T) {
 		Convey("GetNeighborPathsBatch backward direction query error", func() {
 			query.Direction = interfaces.DIRECTION_BACKWARD
 			expectedErr := errors.New("query error")
-			// 匹配包含 backward 和 rt.f_target_object_type_id 的 SQL
+			// Match SQL containing backward and rt.f_target_object_type_id.
 			smock.ExpectQuery(`.*backward.*rt\.f_target_object_type_id.*`).WillReturnError(expectedErr)
 
 			result, err := kna.GetNeighborPathsBatch(testCtx, otIDs, query)
@@ -1001,7 +1001,7 @@ func Test_knowledgeNetworkAccess_GetNeighborPathsBatch(t *testing.T) {
 		Convey("GetNeighborPathsBatch bidirectional direction query error", func() {
 			query.Direction = interfaces.DIRECTION_BIDIRECTIONAL
 			expectedErr := errors.New("query error")
-			// 匹配包含 UNION ALL 的 SQL
+			// Match SQL containing UNION ALL.
 			smock.ExpectQuery(`.*UNION ALL.*`).WillReturnError(expectedErr)
 
 			result, err := kna.GetNeighborPathsBatch(testCtx, otIDs, query)

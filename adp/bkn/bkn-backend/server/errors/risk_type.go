@@ -6,7 +6,7 @@
 
 package errors
 
-// 风险类错误码
+// Risk-type error codes.
 const (
 	// 400
 	BknBackend_RiskType_Duplicated_IDInFile       = "BknBackend.RiskType.Duplicated.IDInFile"

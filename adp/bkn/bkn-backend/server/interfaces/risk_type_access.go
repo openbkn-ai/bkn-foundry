@@ -11,7 +11,7 @@ import (
 	"database/sql"
 )
 
-// RiskTypeAccess 风险类数据访问接口
+// RiskTypeAccess defines the risk-type data access interface.
 //
 //go:generate mockgen -source risk_type_access.go -destination mock/mock_risk_type_access.go
 type RiskTypeAccess interface {

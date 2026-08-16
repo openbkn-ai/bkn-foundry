@@ -6,7 +6,7 @@
 
 package errors
 
-// 概念分组错误码
+// Concept-group error codes.
 const (
 	// 400
 	BknBackend_ConceptGroup_Duplicated_Name                    = "BknBackend.ConceptGroup.Duplicated.Name"

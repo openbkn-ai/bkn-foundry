@@ -25,7 +25,7 @@ func NewMatchPhraseCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fie
 
 	name := getFilterFieldName(cfg.Field, fieldsMap, true)
 	var fields []string
-	// 如果指定*查询，并且视图的字段范围为部分字段，那么将查询的字段替换成视图的字段列表
+	// When querying * against a view with a partial field scope, replace it with the view field list.
 	if name == AllField {
 		// fields = make([]string, 0, len(fieldsMap))
 		// for fieldName := range fieldsMap {
@@ -85,7 +85,7 @@ func (cond *MatchPhraseCond) Convert2SQL(ctx context.Context) (string, error) {
 func convertMatchPhraseCondToDatasetFilterCondition(cfg *CondCfg, fieldsMap map[string]*ViewField) (map[string]any, error) {
 	name := getFilterFieldName(cfg.Field, fieldsMap, true)
 	var fields []string
-	// 如果指定*查询，并且视图的字段范围为部分字段，那么将查询的字段替换成视图的字段列表
+	// When querying * against a view with a partial field scope, replace it with the view field list.
 	if name == AllField {
 		// fields = make([]string, 0, len(fieldsMap))
 		// for fieldName := range fieldsMap {

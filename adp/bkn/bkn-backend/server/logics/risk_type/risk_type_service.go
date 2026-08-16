@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -47,6 +48,10 @@ type riskTypeService struct {
 	uma        interfaces.UserMgmtAccess
 	vba        interfaces.VegaBackendAccess
 	mfs        interfaces.ModelFactoryService
+}
+
+func riskTypeInvalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail."+name, templateData)
 }
 
 func NewRiskTypeService(appSetting *common.AppSetting) interfaces.RiskTypeService {
@@ -177,7 +182,8 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, riskTypes []*interfaces.RiskType) (createList, updateList []*interfaces.RiskType, err error) {
 	if mode != interfaces.ImportMode_Normal && mode != interfaces.ImportMode_Ignore && mode != interfaces.ImportMode_Overwrite {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			berrors.BknBackend_InvalidParameter_ImportMode).WithErrorDetails("invalid import_mode")
+			berrors.BknBackend_InvalidParameter_ImportMode).
+			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil))
 	}
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "handleRiskTypeImportMode")
@@ -207,7 +213,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 				if idExist {
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeIDExisted).
-						WithErrorDetails(fmt.Sprintf("RiskType ID '%s' already exists", rt.RTID))
+						WithErrorDetails(riskTypeInvalidParameterDetail(ctx, "RiskTypeIDAlreadyExists", map[string]any{"riskTypeID": rt.RTID}))
 				}
 				if nameExist {
 					errDetails := fmt.Sprintf("risk type name '%s' already exists", rt.RTName)
@@ -282,7 +288,7 @@ func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.
 			berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// limit = -1 则返回所有
+	// Return all results when limit is -1.
 	if query.Limit != -1 {
 		if query.Offset < 0 || query.Offset >= len(list) {
 			span.SetStatus(codes.Ok, "")
@@ -545,9 +551,10 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 				return result, nil
 			})
 		if err != nil {
+			logger.Errorf("convert risk type condition to filter condition failed: %v", err)
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_RiskType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("failed to convert condition to filter condition, %s", err.Error()))
+				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
 	}
 

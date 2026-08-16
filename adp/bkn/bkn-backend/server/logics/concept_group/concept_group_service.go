@@ -113,14 +113,14 @@ func (cgs *conceptGroupService) CheckConceptGroupExistByName(ctx context.Context
 	return cgID, exist, nil
 }
 
-// 创建概念分组
+// Create concept groups.
 func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.Tx,
 	conceptGroup *interfaces.ConceptGroup, mode string, strictMode bool) (string, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create concept group")
 	defer span.End()
 
-	// 判断userid是否有创建概念分组的权限（策略决策）
+	// Check whether the user ID can create concept groups through policy evaluation.
 	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   conceptGroup.KNID,
@@ -130,7 +130,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 	}
 
 	currentTime := time.Now().UnixMilli()
-	// 若提交的模型id为空，生成分布式ID
+	// Generate a distributed ID when the submitted model ID is empty.
 	if conceptGroup.CGID == "" {
 		conceptGroup.CGID = xid.New().String()
 	}
@@ -166,7 +166,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 	conceptGroup.BKNRawContent = bknsdk.SerializeConceptGroup(bknCG, bknOtMap)
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -175,11 +175,11 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 				WithErrorDetails(err.Error())
 		}
 
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "CreateConceptGroup Transaction Commit Failed", err)
@@ -195,13 +195,13 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		}()
 	}
 
-	// 处理导入模式
+	// Process import mode.
 	isCreate, isUpdate, err := cgs.handleConceptGroupImportMode(ctx, mode, conceptGroup)
 	if err != nil {
 		return "", err
 	}
 
-	// 处理创建情况
+	// Process creation.
 	if isCreate {
 		err = cgs.cga.CreateConceptGroup(ctx, tx, conceptGroup)
 		if err != nil {
@@ -223,7 +223,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 					WithErrorDetails(err.Error())
 			}
 
-			//  导入部分：处理分组与本体对象的关系
+			// Import path: process group-to-concept relationships.
 			_, err = cgs.AddObjectTypesToConceptGroup(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID, otIDs, mode, strictMode)
 			if err != nil {
 				logger.Errorf("AddObjectTypesToConceptGroup error: %s", err.Error())
@@ -257,7 +257,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		}
 	}
 
-	// 处理更新情况
+	// Process updates.
 	if isUpdate {
 		err = cgs.UpdateConceptGroup(ctx, tx, conceptGroup, strictMode)
 		if err != nil {
@@ -269,7 +269,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		}
 
 		if len(conceptGroup.ObjectTypes) > 0 {
-			// 写入对象类
+			// Persist object types.
 			_, err = cgs.ots.CreateObjectTypes(ctx, tx, conceptGroup.ObjectTypes, mode, false, strictMode)
 			if err != nil {
 				logger.Errorf("CreateObjectTypes error: %s", err.Error())
@@ -278,8 +278,8 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 					berrors.BknBackend_ConceptGroup_InternalError_CreateObjectTypesFailed).
 					WithErrorDetails(err.Error())
 			}
-			//  导入部分：处理分组与本体对象的关系,只创建本分组与当前对象类的关系
-			//  更新分组话，需要做个全量同步
+			// Import path: create only relationships between this group and current object types.
+			// Updating groups requires full synchronization.
 			_, err = cgs.AddObjectTypesToConceptGroup(ctx, tx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID, otIDs, mode, strictMode)
 			if err != nil {
 				logger.Errorf("AddObjectTypesToConceptGroup error: %s", err.Error())
@@ -366,9 +366,9 @@ func (cgs *conceptGroupService) ValidateConceptGroups(ctx context.Context, knID 
 			return err
 		}
 		if strictMode {
-			// 与 CreateConceptGroup 落库路径对齐：嵌套概念同步做依赖预检
+			// Align with CreateConceptGroup persistence: preflight dependencies for nested concept synchronization.
 			if len(cg.ObjectTypes) > 0 {
-				// 与 CreateObjectTypes(strict) 一致：数据视图/逻辑属性/绑定概念分组等，而非仅 ID 是否在库
+				// Align with CreateObjectTypes strict validation: validate data views, logical properties, and bound concept groups rather than only persisted IDs.
 				if err := cgs.ots.ValidateObjectTypes(ctx, knID, branch, cg.ObjectTypes, strictMode, effectiveBatch, mode); err != nil {
 					return err
 				}
@@ -396,7 +396,7 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询概念分组列表")
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -405,7 +405,7 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		return []*interfaces.ConceptGroup{}, 0, err
 	}
 
-	//获取概念分组列表
+	// Get the concept group list.
 	conceptGroups, err := cgs.cga.ListConceptGroups(ctx, query)
 	if err != nil {
 		logger.Errorf("ListConceptGroups error: %s", err.Error())
@@ -441,7 +441,7 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// 分组列表为每个组生成本体对象统计信息
+	// Generate concept statistics for every group in the list.
 	for _, conceptGroup := range conceptGroups {
 		otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,
 			conceptGroup.Branch, []string{conceptGroup.CGID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
@@ -470,11 +470,11 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID string, branch string,
 	cgID string, mode string) (*interfaces.ConceptGroup, error) {
 
-	// 获取概念分组
+	// Get concept groups.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询概念分组[%s]信息", knID))
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -483,7 +483,7 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		return &interfaces.ConceptGroup{}, err
 	}
 
-	// 获取模型基本信息
+	// Get basic model information.
 	conceptGroup, err := cgs.cga.GetConceptGroupByID(ctx, knID, branch, cgID)
 	if err != nil {
 		logger.Errorf("GetConceptGroupByID error: %s", err.Error())
@@ -517,11 +517,11 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).WithErrorDetails(err.Error())
 	}
 
-	// 对象类不为空时才找对应的关系类
+	// Find related relation types only when object types are present.
 	if len(otIDs) > 0 {
 		objectTypes, _, err := cgs.ots.ListObjectTypes(ctx, nil, interfaces.ObjectTypesQueryParams{
 			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1, // 等于-1，把数据库中查询到的都返回
+				Limit: -1, // -1 returns every entry found in storage.
 			},
 			KNID:   conceptGroup.KNID,
 			Branch: conceptGroup.Branch,
@@ -565,11 +565,11 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 }
 
 func (cgs *conceptGroupService) GetConceptGroupIDsByKnID(ctx context.Context, knID string, branch string) ([]string, error) {
-	// 获取概念分组
+	// Get concept groups.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询概念分组[%s]信息", knID))
 	defer span.End()
 
-	// 获取模型基本信息
+	// Get basic model information.
 	cgIDs, err := cgs.cga.GetConceptGroupIDsByKnID(ctx, knID, branch)
 	if err != nil {
 		logger.Errorf("GetConceptGroupIDsByKnID error: %s", err.Error())
@@ -584,14 +584,14 @@ func (cgs *conceptGroupService) GetConceptGroupIDsByKnID(ctx context.Context, kn
 	return cgIDs, nil
 }
 
-// 获取概念分组的统计信息
+// Get concept group statistics.
 func (cgs *conceptGroupService) GetStatByConceptGroup(ctx context.Context, conceptGroup *interfaces.ConceptGroup) (*interfaces.Statistics, error) {
-	// 获取概念分组
+	// Get concept groups.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询概念分组[%s]信息", conceptGroup.KNID))
 	defer span.End()
 
-	//  数量从对象类、概念对象关系、概念分组表中联合查询得到
-	// 获取概念分组下的对象类、关系类、行动类的数量
+	// Counts are obtained by joining object types, concept-object relationships, and concept groups.
+	// Get counts of object, relation, and action types in a concept group.
 
 	otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,
 		conceptGroup.Branch, []string{conceptGroup.CGID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
@@ -623,7 +623,7 @@ func (cgs *conceptGroupService) getStatByObjectTypeIDs(ctx context.Context,
 		}, nil
 	}
 
-	// 关系类数量
+	// Relation type count.
 	rtCnt, err := cgs.rta.GetRelationTypesTotal(ctx, interfaces.RelationTypesQueryParams{
 		KNID:                conceptGroup.KNID,
 		Branch:              conceptGroup.Branch,
@@ -639,7 +639,7 @@ func (cgs *conceptGroupService) getStatByObjectTypeIDs(ctx context.Context,
 			berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// 行动类数量
+	// Action type count.
 	atCnt, err := cgs.ata.GetActionTypesTotal(ctx, interfaces.ActionTypesQueryParams{
 		KNID:          conceptGroup.KNID,
 		Branch:        conceptGroup.Branch,
@@ -664,12 +664,12 @@ func (cgs *conceptGroupService) getStatByObjectTypeIDs(ctx context.Context,
 	return statistics, nil
 }
 
-// 更新概念分组
+// Update concept groups.
 func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *interfaces.ConceptGroup, strictMode bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update concept group")
 	defer span.End()
 
-	// 判断userid是否有创建概念分组的权限（策略决策）
+	// Check whether the user ID can create concept groups through policy evaluation.
 	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   conceptGroup.KNID,
@@ -691,7 +691,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 	}
 	conceptGroup.Updater = accountInfo
 
-	currentTime := time.Now().UnixMilli() // 概念分组的update_time是int类型
+	currentTime := time.Now().UnixMilli() // Concept group update_time uses an integer type.
 	conceptGroup.UpdateTime = currentTime
 
 	otIDs, err := cgs.cga.GetConceptIDsByConceptGroupIDs(ctx, conceptGroup.KNID,
@@ -707,11 +707,11 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 			WithErrorDetails(err.Error())
 	}
 
-	// 对象类不为空时才找对应的关系类
+	// Find related relation types only when object types are present.
 	if len(otIDs) > 0 {
 		objectTypes, _, err := cgs.ots.ListObjectTypes(ctx, nil, interfaces.ObjectTypesQueryParams{
 			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1, // 等于-1，把数据库中查询到的都返回
+				Limit: -1, // -1 returns every entry found in storage.
 			},
 			KNID:   conceptGroup.KNID,
 			Branch: conceptGroup.Branch,
@@ -732,7 +732,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 	conceptGroup.BKNRawContent = bknsdk.SerializeConceptGroup(bknCG, bknOtMaps)
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -740,11 +740,11 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "UpdateConceptGroup Transaction Commit Failed", err)
@@ -760,7 +760,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 		}()
 	}
 
-	// 更新模型信息
+	// Update model information.
 	err = cgs.cga.UpdateConceptGroup(ctx, tx, conceptGroup)
 	if err != nil {
 		logger.Errorf("UpdateConceptGroup error: %s", err.Error())
@@ -789,7 +789,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete concept group by id")
 	defer span.End()
 
-	// 判断userid是否有删除概念分组的权限
+	// Check whether the user ID can delete concept groups.
 	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -799,7 +799,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 	}
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -809,11 +809,11 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		}
 	}
 
-	// 0.1 异常时
+	// 0.1 On failure.
 	defer func() {
 		switch err {
 		case nil:
-			// 提交事务
+			// Commit the transaction.
 			err = tx.Commit()
 			if err != nil {
 				otellog.LogError(ctx, "DeleteConceptGroup Transaction Commit Failed", err)
@@ -828,7 +828,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		}
 	}()
 
-	// 删除概念分组
+	// Delete concept groups.
 	rowsAffect, err := cgs.cga.DeleteConceptGroupByID(ctx, tx, knID, branch, cgID)
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupsByIDs error: %s", err.Error())
@@ -843,7 +843,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		otellog.LogWarn(ctx, fmt.Sprintf("DeleteConceptGroupByID number %v not equal %v!", rowsAffect, 1))
 	}
 
-	// 删除组下所有的绑定关系
+	// Delete all bindings under the group.
 	cgrsRowsAffect, err := cgs.cga.DeleteObjectTypesFromGroup(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 		KNID:        knID,
 		Branch:      branch,
@@ -871,7 +871,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 	return nil
 }
 
-// 内部方法，删除概念分组，不检查权限，tx必须传入
+// Internal method. Deletes concept groups without permission checks; tx is required.
 func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete concept group by knID")
 	defer span.End()
@@ -883,7 +883,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 			WithErrorDetails("missing transaction")
 	}
 
-	// 删除概念分组
+	// Delete concept groups.
 	rowsAffect, err := cgs.cga.DeleteConceptGroupsByKnID(ctx, tx, knID, branch)
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
@@ -894,7 +894,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 	logger.Infof("DeleteConceptGroupsByKnID: Rows affected is %v, request delete knID is %s in knowledge network [%s] branch [%s]!",
 		rowsAffect, knID, knID, branch)
 
-	// 删除组下所有的绑定关系
+	// Delete all bindings under the group.
 	rowsAffect, err = cgs.cga.DeleteConceptGroupRelationsByKnID(ctx, tx, knID, branch)
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupRelationsByKnID error: %s", err.Error())
@@ -909,12 +909,12 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 	return nil
 }
 
-// 更新知识网络详情
+// Update knowledge network details.
 func (cgs *conceptGroupService) UpdateConceptGroupDetail(ctx context.Context, knID string, branch string, cgID string, detail string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("Update concept group detail[%s]", knID))
 	defer span.End()
 
-	// 更新知识网络详情
+	// Update knowledge network details.
 	err := cgs.cga.UpdateConceptGroupDetail(ctx, knID, branch, cgID, detail)
 	if err != nil {
 		logger.Errorf("UpdateConceptGroupDetail error: %s", err.Error())
@@ -938,20 +938,20 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 	isCreate = false
 	isUpdate = false
 
-	// 校验单个ConceptGroup的导入模式逻辑
+	// Validate import mode for a single ConceptGroup.
 	idExist := false
 	_, idExist, err = cgs.CheckConceptGroupExistByID(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID)
 	if err != nil {
 		return false, false, err
 	}
 
-	// 校验请求体与现有模型名称的重复性
+	// Validate conflicts between the request and existing model names.
 	existID, nameExist, err := cgs.CheckConceptGroupExistByName(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGName)
 	if err != nil {
 		return false, false, err
 	}
 
-	// 根据mode来区别，若是ignore，就从结果集中忽略，若是overwrite，就调用update，若是normal就报错。
+	// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
 	if idExist || nameExist {
 		switch mode {
 		case interfaces.ImportMode_Normal:
@@ -977,11 +977,11 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 			}
 
 		case interfaces.ImportMode_Ignore:
-			// 存在重复的就跳过，不创建也不更新
+			// Skip duplicates without creating or updating.
 			return false, false, nil
 		case interfaces.ImportMode_Overwrite:
 			if idExist && nameExist {
-				// 如果 id 和名称都存在，但是存在的名称对应的视图 id 和当前视图 id 不一样，则报错
+				// Return an error when both ID and name exist but the named view has a different ID.
 				if existID != conceptGroup.CGID {
 					errDetails := fmt.Sprintf("Concept group ID '%s' and name '%s' already exist in knowledge network [%s] branch [%s], but the exist concept group id is '%s'",
 						conceptGroup.CGID, conceptGroup.CGName, conceptGroup.KNID, conceptGroup.Branch, existID)
@@ -991,19 +991,19 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 						berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
 						WithErrorDetails(errDetails)
 				} else {
-					// 如果 id 和名称、度量名称都存在，存在的名称对应的模型 id 和当前模型 id 一样，则覆盖更新
+					// Overwrite when ID, name, and metric name exist and the named model ID matches the current model ID.
 					isUpdate = true
 					return isCreate, isUpdate, nil
 				}
 			}
 
-			// id 已存在，且名称不存在，覆盖更新
+			// Overwrite when the ID exists and the name does not.
 			if idExist && !nameExist {
 				isUpdate = true
 				return isCreate, isUpdate, nil
 			}
 
-			// 如果 id 不存在，name 存在，报错
+			// Return an error when the ID does not exist but the name exists.
 			if !idExist && nameExist {
 				errDetails := fmt.Sprintf("Concept Group ID '%s' does not exist, but name '%s' already exists in knowledge network [%s] branch [%s]",
 					conceptGroup.CGID, conceptGroup.CGName, conceptGroup.KNID, conceptGroup.Branch)
@@ -1014,12 +1014,12 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 					WithErrorDetails(errDetails)
 			}
 
-			// 如果 id 不存在，name不存在，度量名称不存在，不需要做什么，创建
+			// Create when ID, name, and metric name do not exist.
 			// if !idExist && !nameExist {}
 		}
 	}
 
-	// 默认情况：需要创建
+	// Default behavior is creation.
 	isCreate = true
 	return isCreate, isUpdate, nil
 }
@@ -1093,7 +1093,7 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 	return nil
 }
 
-// 添加对象类到指定概念分组中
+// Add object types to the specified concept group.
 func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context, tx *sql.Tx, knID string, branch string,
 	cgID string, otIDs []interfaces.ID, importMode string, strictMode bool) ([]string, error) {
 
@@ -1102,7 +1102,7 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 
 	var err error
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -1110,11 +1110,11 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "AddObjectTypesToConceptGroup Transaction Commit Failed", err)
@@ -1130,7 +1130,7 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 		}()
 	}
 
-	// id去重后再查
+	// De-duplicate IDs before querying.
 	otIDArr := interfaces.GetUniqueIDs(otIDs)
 
 	// 1. When strictMode is true, validate all object type IDs exist in the KN/branch
@@ -1158,7 +1158,7 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 
 	currentTime := time.Now().UnixMilli()
 
-	// 2. 校验对象类是否已经在分组中，若存在对象类已在分组中，报错
+	// 2. Return an error when an object type is already in the group.
 	cgRelations, err := cgs.cga.ListConceptGroupRelations(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 		PaginationQueryParameters: interfaces.PaginationQueryParameters{
 			Limit: -1,
@@ -1184,7 +1184,7 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 	if len(cgRelations) > 0 {
 		switch importMode {
 		case interfaces.ImportMode_Normal:
-			// normal 请求下，关系已存在，报错
+			// In normal mode, return an error when the relation exists.
 			errStr := fmt.Sprintf("Exists some object types in the concept group [%s] knowledge network [%s] branch [%s], expect relations num is [%d], actual relations num is [%d]",
 				cgID, knID, branch, len(otIDs), len(cgRelations))
 			logger.Errorf(errStr)
@@ -1194,22 +1194,22 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 				berrors.BknBackend_ConceptGroup_ConceptGroupRelationExisted).WithErrorDetails(errStr)
 
 		case interfaces.ImportMode_Ignore, interfaces.ImportMode_Overwrite:
-			// ignore 和 override 下，忽略重复（冲突）的关系，添加新的关系
-			// 2. 计算需要添加(不冲突)的分组
+			// In ignore and override modes, skip duplicate relations and add new ones.
+			// 2. Calculate non-conflicting groups to add.
 			existingGroupIDs := make(map[string]bool)
 
-			// 已建立关系的对象类
+			// Object types with existing relationships.
 			for _, rel := range cgRelations {
 				existingGroupIDs[rel.ConceptID] = true
 			}
 
-			// 当前请求期望建立关系的对象类
+			// Object types requested to establish relationships.
 			newGroupIDs := make(map[string]bool)
 			for _, otID := range otIDArr {
 				newGroupIDs[otID] = true
 			}
 
-			// 计算差异
+			// Calculate differences.
 			for groupID := range newGroupIDs {
 				if !existingGroupIDs[groupID] {
 					groupsToAdd = append(groupsToAdd, groupID)
@@ -1220,7 +1220,7 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 		groupsToAdd = otIDArr
 	}
 
-	// 3. 组装对应关系，保存对应关系数据
+	// 3. Build and persist relationship records.
 	otCGIDs := []string{}
 	for _, otID := range groupsToAdd {
 		cgRelationID := xid.New().String()
@@ -1250,14 +1250,14 @@ func (cgs *conceptGroupService) AddObjectTypesToConceptGroup(ctx context.Context
 	return otCGIDs, nil
 }
 
-// 获取分组与对象类的关系
+// Get group-to-object type relationships.
 func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 	query interfaces.ConceptGroupRelationsQueryParams) ([]interfaces.ConceptGroupRelation, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询概念与分组的关系列表")
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -1266,7 +1266,7 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 		return []interfaces.ConceptGroupRelation{}, err
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	tx, err := cgs.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
@@ -1274,11 +1274,11 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 			berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
-	// 0.1 异常时
+	// 0.1 On failure.
 	defer func() {
 		switch err {
 		case nil:
-			// 提交事务
+			// Commit the transaction.
 			err = tx.Commit()
 			if err != nil {
 				otellog.LogError(ctx, "ListConceptGroupRelations Transaction Commit Failed", err)
@@ -1293,7 +1293,7 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 		}
 	}()
 
-	//获取概念分组列表
+	// Get the concept group list.
 	cgrArr, err := cgs.cga.ListConceptGroupRelations(ctx, tx, query)
 	if err != nil {
 		logger.Errorf("ListConceptGroupRelations error: %s", err.Error())
@@ -1307,18 +1307,18 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 		return []interfaces.ConceptGroupRelation{}, nil
 	}
 
-	// limit = -1,则返回所有
+	// Return all entries when limit is -1.
 	if query.Limit == -1 {
 		span.SetStatus(codes.Ok, "")
 		return cgrArr, nil
 	}
-	// 分页
-	// 检查起始位置是否越界
+	// Paginate results.
+	// Check whether the start offset is out of range.
 	if query.Offset < 0 || query.Offset >= len(cgrArr) {
 		span.SetStatus(codes.Ok, "")
 		return []interfaces.ConceptGroupRelation{}, nil
 	}
-	// 计算结束位置
+	// Calculate the end offset.
 	end := query.Offset + query.Limit
 	if end > len(cgrArr) {
 		end = len(cgrArr)
@@ -1331,12 +1331,12 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 
 }
 
-// 从概念分组中移除对象类
+// Remove object types from the concept group.
 func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, tx *sql.Tx, knID string, branch string, cgID string, otIDs []string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete concept group relations")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -1346,7 +1346,7 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 	}
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -1354,11 +1354,11 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "DeleteObjectTypesFromGroup Transaction Commit Failed", err)
@@ -1374,7 +1374,7 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 		}()
 	}
 
-	// 删除对象类与分组的绑定关系
+	// Delete object type-to-group bindings.
 	rowsAffect, err := cgs.cga.DeleteObjectTypesFromGroup(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 		KNID:        knID,
 		Branch:      branch,

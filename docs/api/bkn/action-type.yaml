@@ -8,18 +8,18 @@ paths:
     get:
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: name_pattern
-          description: 根据络名称模糊查询，默认为空
+          description: Fuzzy match by name. Defaults to empty.
           schema:
             type: string
           in: query
         - name: sort
-          description: 排序类型，默认是update_time
+          description: Sort type. Defaults to update_time.
           schema:
             enum:
               - update_time
@@ -28,8 +28,8 @@ paths:
           in: query
         - name: direction
           description: |-
-            排序结果方向，可选asc、desc。
-            默认desc
+            Sort direction. Supported values are asc and desc.
+            Defaults to desc.
           schema:
             enum:
               - asc
@@ -37,28 +37,28 @@ paths:
             type: string
           in: query
         - name: offset
-          description: "开始响应的项目的偏移量\t\n范围需大于等于0，默认值0"
+          description: "Offset of the first returned item. Must be greater than or equal to 0. Defaults to 0."
           schema:
             format: int64
             type: integer
           in: query
         - name: limit
           description: |-
-            每页最多可返回的项目数；
-            分页可选1-1000，-1表示不分页；
-            默认值10
+            Maximum number of items returned per page.
+            Pagination accepts 1 through 1000, and -1 disables pagination.
+            Defaults to 10.
           schema:
             format: int64
             type: integer
           in: query
         - name: tag
-          description: 根据标签精准查询，默认为空.
+          description: Exact match by tag. Defaults to empty.
           schema:
             type: string
           in: query
         - name: action_type
           description: |-
-            **查询过滤**：按行动分类枚举筛选（与响应体中 `action_type` / `action_intent` 取值域相同）。
+            Query filter: filter by action category enum using the same value domain as action_type and action_intent in the response.
           schema:
             enum:
               - add
@@ -68,12 +68,12 @@ paths:
           in: query
           required: false
         - name: object_type_id
-          description: 绑定对象类
+          description: Bound object type
           schema:
             type: string
           in: query
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -85,7 +85,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListActionTypes"
           description: ok
-      summary: 获取行动类列表
+      summary: List action types
     post:
       requestBody:
         content:
@@ -175,13 +175,13 @@ paths:
         required: true
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: import_mode
-          description: 导入模式，可选normal、ignore、overwrite，默认为normal
+          description: Import mode. Supported values are normal, ignore, and overwrite. Defaults to normal.
           schema:
             enum:
               - normal
@@ -190,13 +190,13 @@ paths:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为true。为true时，需校验绑定对象类、影响对象类等依赖是否存在；为false时，依赖不存在不报错
+          description: Whether to strictly validate dependencies. Defaults to true. When true, validates dependencies such as bound and affected object types. When false, missing dependencies do not cause an error.
           schema:
             type: boolean
             default: true
           in: query
         - name: x-http-method-override
-          description: 重载请求头
+          description: Request override header
           schema:
             enum:
               - POST
@@ -205,7 +205,7 @@ paths:
           in: header
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -334,7 +334,7 @@ paths:
                         IfNameModify: false
                         module_type: action_type
                     next_cursor: cursor-action-types-2
-          description: "重载GET, 检索行动类"
+          description: "GET override for action type retrieval"
         "201":
           content:
             application/json:
@@ -343,10 +343,10 @@ paths:
                 items:
                   $ref: "#/components/schemas/ID"
           description: ok
-      summary: 创建或检索行动类
+      summary: Create or retrieve action types
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: Business knowledge network ID
         schema:
           type: string
         in: path
@@ -361,24 +361,24 @@ paths:
         required: true
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: at_id
-          description: 行动类ID
+          description: Action type ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: Branch. Uses main when omitted.
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true。为 true 时校验绑定的对象类、影响对象类等是否存在；为 false 时不做该校验
+          description: Whether to strictly validate dependencies. Defaults to true. When true, validates bound and affected object types and other dependencies. When false, skips validation.
           schema:
             type: boolean
             default: true
@@ -386,21 +386,21 @@ paths:
       responses:
         "204":
           description: ok
-      summary: 修改行动类
+      summary: Update an action type
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: Business knowledge network ID
         in: path
         required: true
       - name: at_id
-        description: 行动类ID
+        description: Action type ID
         in: path
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types/{at_ids}:
     get:
       parameters:
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -412,17 +412,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/ActionTypeDetails"
           description: ok
-      summary: 获取行动类详情
+      summary: Get action type details
     delete:
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: at_ids
-          description: 行动类ID
+          description: Action type ID
           schema:
             type: array
             items:
@@ -430,24 +430,24 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
           in: query
       responses:
         "204":
-          description: 删除成功
-      summary: 删除行动类
+          description: Deletion succeeded
+      summary: Delete an action type
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: Business knowledge network ID
         schema:
           type: string
         in: path
         required: true
       - name: at_ids
-        description: 行动类ID
+        description: Action type ID
         schema:
           type: array
           items:
@@ -456,33 +456,33 @@ paths:
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-types/validation:
     post:
-      summary: 校验行动类
+      summary: Validate action types
       description: |
-        仅校验行动类依赖存在性，不写库。校验绑定对象类、影响对象类等依赖是否存在。
+        Validates only action type dependency existence and does not persist data. It validates dependencies such as bound and affected object types.
 
-        **响应**：HTTP 200 时 `valid`/`detail` 同其它 validate 接口；参数与鉴权错误为非 2xx。
+        Response: HTTP 200 with valid and detail follows the other validation APIs. Parameter and authentication errors are non-2xx.
 
-        **内部接口**：`POST /api/bkn-backend/in/v1/.../action-types/validation`；Header 解析访问者，无 OAuth。
+        Internal API: the corresponding internal path resolves the caller from headers and does not use OAuth.
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: Branch. Uses main when omitted.
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true
+          description: Whether to strictly validate dependencies. Defaults to true.
           schema:
             type: boolean
             default: true
           in: query
         - name: import_mode
-          description: 与创建行动类接口一致；用于行动类 ID/名称与落库冲突的校验语义（normal / ignore / overwrite）。
+          description: Matches action type creation and validates conflicts with persisted action type IDs or names using normal, ignore, or overwrite.
           schema:
             type: string
             enum: [normal, ignore, overwrite]
@@ -497,12 +497,12 @@ paths:
               properties:
                 entries:
                   type: array
-                  description: 待校验的行动类列表，结构与创建接口一致
+                  description: Action types to validate. Uses the same structure as the creation API.
                   items:
                     type: object
       responses:
         "200":
-          description: 已返回校验结果（通过与否均可能为 200）
+          description: Validation result returned. Both pass and fail can return 200.
           content:
             application/json:
               schema:
@@ -514,26 +514,26 @@ paths:
                     type: boolean
                   detail:
                     type: string
-                    description: 当 valid 为 false 时的说明（error.Error()）
+                    description: Explanation when valid is false
         "400":
-          description: 请求参数错误等；业务校验未通过见 200 + valid:false
+          description: Invalid request parameters and similar errors. Business validation failures use 200 with valid=false.
 components:
   schemas:
     BasicInfo:
-      description: 资源的基本信息，包含id和名称
+      description: Basic resource information containing ID and name
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 资源ID
+          description: Resource ID
           type: string
         name:
-          description: 资源名称
+          description: Resource name
           type: string
     ConceptTypeResponse:
-      description: 对象类、关系类、行动类的查询返回结构
+      description: Query response structure for object types, relation types, and action types
       required:
         - id
         - name
@@ -541,28 +541,28 @@ components:
       type: object
       properties:
         id:
-          description: 概念id
+          description: Concept ID
           type: string
         name:
-          description: 概念名称
+          description: Concept name
           type: string
         tags:
-          description: 标签
+          description: Tags
           type: array
           items:
             type: string
         groups:
-          description: 所属概念分组ID
+          description: Owning concept group ID
           type: array
           items:
             type: string
     Object:
-      description: json，字段不定
+      description: JSON object with variable fields
       type: object
     ExpectedImpactOperation:
       description: |
-        契约中的预期操作语义；**与 `action_intent`、`action_type` 同一枚举**（add / modify / delete）。
-        `impact_contracts[].expected_operation` 必填；`affect.expected_operation` 若填写则须合法。
+        Expected operation semantics in the contract. It uses the same add, modify, and delete enum as action_intent and action_type.
+        impact_contracts[].expected_operation is required; affect.expected_operation must be valid when present.
       type: string
       enum:
         - add
@@ -570,48 +570,47 @@ components:
         - delete
     ImpactContractItem:
       description: |
-        行动影响契约的单条声明（结构化元数据）；与运行时 JSON、`t_action_type.f_impact_contracts` 序列化形状一致。**平台据契约做完整性等校验但不将其当作执行编排依据。** 参阅 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §7。
+        One action impact contract declaration as structured metadata. Its shape matches the runtime JSON and t_action_type.f_impact_contracts serialization. The platform validates completeness against the contract but does not use it for execution orchestration. See the action type design section 7.
       type: object
       properties:
         object_type_id:
-          description: 受影响对象类 ID
+          description: Affected object type ID
           type: string
         expected_operation:
           $ref: "#/components/schemas/ExpectedImpactOperation"
         description:
-          description: 可读说明（风险提示文案等）
+          description: Human-readable explanation, such as risk guidance
           type: string
         affected_fields:
-          description: 预期牵涉的数据属性名列表
+          description: Expected involved data property name list
           type: array
           items:
             type: string
     Affect:
       deprecated: true
       description: |
-        **[已废弃]** 请使用 `impact_contracts`（`ImpactContractItem` 数组）声明影响面。仅存单行影响时的兼容写法仍可能被服务端接受并折合为一元数组。
-        详见 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §5.9、§7.5。
+        Deprecated. Use impact_contracts, an ImpactContractItem array, to declare impact scope. A compatibility single-line impact can still be accepted and converted to a one-item array. See action type design sections 5.9 and 7.5.
       type: object
       properties:
         comment:
-          description: 影响描述
+          description: Impact description
           type: string
         object_type_id:
-          description: 影响的对象类ID
+          description: Affected object type ID
           type: string
         expected_operation:
           allOf:
             - $ref: "#/components/schemas/ExpectedImpactOperation"
           description: |
-            若填写须为 add / modify / delete 之一（与行动类 `action_intent` 一致）。
-            仅提交 `affect` 且服务端折行生成 `impact_contracts` 时，**仍以 `action_type` 写入契约行的 expected_operation**；本字段可省略。
+            When present, it must be add, modify, or delete, consistent with action_intent.
+            When only affect is submitted and the server converts it to impact_contracts, action_type is still used to write expected_operation for the contract item. This field may be omitted.
         affected_fields:
-          description: 预期牵涉的数据属性名列表（与 `impact_contracts[].affected_fields` 对齐）
+          description: Expected involved data property name list, aligned with impact_contracts[].affected_fields
           type: array
           items:
             type: string
     Schedule:
-      description: 执行频率配置项
+      description: Execution frequency configuration
       required:
         - time_type
         - frequency
@@ -620,16 +619,16 @@ components:
       type: object
       properties:
         type:
-          description: 执行类型。枚举，支持配置固定频率(FIX_RATE)和配置crontab表达式（CRON）
+          description: Execution type. Supports a fixed frequency (FIX_RATE) or a cron expression (CRON).
           enum:
             - FIX_RATE
             - CRON
           type: string
         expression:
           description: |-
-            执行表达式。
+            Execution expression.
 
-            1.固定频率指以固定周期执行持久化，frequency=< time_durations >，用一个数字，后面跟时间单位来定义。时间单位可以是如下之一：m - 分钟； h - 小时； d - 天
+            1. Fixed frequency persists execution at a fixed interval. Set frequency=<time_durations> as a number followed by a unit: m for minutes, h for hours, or d for days.
           type: string
     ID:
       description: id
@@ -641,7 +640,7 @@ components:
           description: id
           type: string
     Branch:
-      description: 分支信息
+      description: Branch information
       required:
         - base_version
         - comment
@@ -652,42 +651,42 @@ components:
       type: object
       properties:
         id:
-          description: 分支ID
+          description: Branch ID
           type: string
         name:
-          description: 分支名称
+          description: Branch name
           type: string
         tags:
-          description: 标签
+          description: Tags
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         base_version:
-          description: 来源版本
+          description: Source version
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
     ListActionTypes:
-      description: 行动类列表
+      description: Action type list
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: Entry list
           type: array
           items:
             $ref: "#/components/schemas/ActionType"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
     ToolSource:
-      description: 工具资源
+      description: Tool resource
       required:
         - type
         - tool_id
@@ -695,28 +694,28 @@ components:
       type: object
       properties:
         type:
-          description: 资源类型
+          description: Resource type
           enum:
             - tool
           type: string
         box_id:
-          description: 工具箱ID
+          description: Toolbox ID
           type: string
         tool_id:
-          description: 工具ID
+          description: Tool ID
           type: string
     ConceptGroup:
-      description: 概念分组
+      description: Concept group
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 概念分组ID
+          description: Concept group ID
           type: string
         name:
-          description: 概念分组名称
+          description: Concept group name
           type: string
     SimpleObjectType:
       description: ""
@@ -728,47 +727,46 @@ components:
       type: object
       properties:
         id:
-          description: 对象类id
+          description: Object type ID
           type: string
         name:
-          description: 对象类名称
+          description: Object type name
           type: string
         icon:
-          description: 对象类图标
+          description: Object type icon
           type: string
         color:
-          description: 对象类颜色
+          description: Object type color
           type: string
         branch:
-          description: 所属分支
+          description: Owning branch
           type: string
     AffectDetail:
       deprecated: true
       description: |
-        **[已废弃]** 列表/详情中为兼容回填的单行影响；推荐使用响应中的 `impact_contracts`。
-        详见 `docs/design/bkn/features/action_type_rebuild/DESIGN.md` §7.5。
+        Deprecated. A single-line impact is backfilled for list and detail compatibility. Prefer impact_contracts in responses. See action type design section 7.5.
       required:
         - object_type_id
       type: object
       properties:
         comment:
-          description: 影响描述
+          description: Impact description
           type: string
         object_type_id:
-          description: 影响的对象类ID
+          description: Affected object type ID
           type: string
         expected_operation:
           allOf:
             - $ref: "#/components/schemas/ExpectedImpactOperation"
-          description: 若存在须为合法枚举（与 `action_intent` / `action_type` 一致）。
+          description: When present, it must be a valid enum consistent with action_intent and action_type.
         affected_fields:
-          description: 预期牵涉的数据属性名列表
+          description: Expected involved data property name list
           type: array
           items:
             type: string
         object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 对象类信息
+          description: Object type information
     override:
       oneOf:
         - type: object
@@ -779,124 +777,124 @@ components:
           x-http-method-override:POST: "#/components/schemas/ReqActionTypes"
           x-http-method-override:GET: "#/components/schemas/override--get"
         propertyName: x-http-method-override
-      description: post 重载批量创建、行动类检索接口
+      description: POST override for batch creation and action type retrieval
       type: object
     override--get:
       oneOf:
         - $ref: "#/components/schemas/FirstQueryWithCursor"
         - $ref: "#/components/schemas/PageTurnQueryWithCursor"
-      description: 行动类检索请求体
+      description: Action type retrieval request body
       type: object
     Sort:
-      description: 排序字段。默认按 _score 倒序排序
+      description: Sort field. Defaults to descending _score order.
       required:
         - field
         - direction
       type: object
       properties:
         field:
-          description: 排序字段
+          description: Sort field
           type: string
         direction:
-          description: 排序方向
+          description: Sort direction
           enum:
             - desc
             - asc
           type: string
     ActionTypeSearchResponse:
-      description: 行动类检索返回结果
+      description: Action type retrieval response
       required:
         - type
         - entries
       type: object
       properties:
         entries:
-          description: 对象实例数据
+          description: Object instance data
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
         next_cursor:
-          description: 不透明续页游标；下一页将其作为 cursor 传回。
+          description: Opaque continuation cursor. Send it back as cursor for the next page.
           type: string
     Parameter:
-      description: 工具参数
+      description: Tool parameters
       required:
         - name
         - value_from
       type: object
       properties:
         name:
-          description: 参数名称
+          description: Parameter name
           type: string
         type:
-          description: 参数类型
+          description: Parameter type
           type: string
         source:
-          description: 参数来源
+          description: Parameter source
           type: string
         value_from:
-          description: 值来源
+          description: Value source
           enum:
             - property
             - input
             - const
           type: string
         value:
-          description: 参数值。value_from=property时，填入的是对象类的数据属性名称；value_from=input时，不设置此字段
+          description: Parameter value. For value_from=property, provide the object type data property name. For value_from=input, omit this field.
           type: string
     ActionTypeDetails:
-      description: 行动类详情
+      description: Action type details
       required:
         - entries
       type: object
       properties:
         entries:
-          description: 行动类详情
+          description: Action type details
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
     ReqActionTypes:
-      description: 批量创建请求体
+      description: Batch creation request body
       required:
         - entries
       type: object
       properties:
         entries:
-          description: 行动类信息
+          description: Action type information
           type: array
           items:
             $ref: "#/components/schemas/ReqActionType"
     FirstQueryWithCursor:
-      description: 行动类检索第一次请求
+      description: First action type retrieval request
       required:
         - condition
         - limit
       type: object
       properties:
         concept_groups:
-          description: 概念分组ID数组
+          description: Concept group ID array
           type: array
           items:
             type: string
         condition:
           $ref: "#/components/schemas/Condition"
-          description: 行动类检索条件
+          description: Action type retrieval condition
         sort:
-          description: 排序字段，默认使用 _score 排序，排序方向为 desc
+          description: Sort field. Defaults to _score with descending direction.
           type: array
           items:
             $ref: "#/components/schemas/Sort"
         limit:
-          description: 返回的数量，默认值 10。范围 1-10000
+          description: Returned item count. Defaults to 10 and ranges from 1 to 10000.
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: Whether total count is required. Defaults to false.
           type: boolean
     PageTurnQueryWithCursor:
-      description: 分页查询的后续分页查询请求
+      description: Subsequent paginated query request
       required:
         - limit
         - cursor
@@ -904,29 +902,29 @@ components:
       type: object
       properties:
         concept_groups:
-          description: 概念分组ID数组
+          description: Concept group ID array
           type: array
           items:
             type: string
         condition:
           $ref: "#/components/schemas/Condition"
-          description: 过滤条件
+          description: Filter condition
         sort:
-          description: 排序字段，默认使用 _score 排序，排序方向为 desc
+          description: Sort field. Defaults to _score with descending direction.
           type: array
           items:
             $ref: "#/components/schemas/Sort"
         limit:
-          description: 返回的数量，默认值 10。范围 1-10000
+          description: Returned item count. Defaults to 10 and ranges from 1 to 10000.
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: Whether total count is required. Defaults to false.
           type: boolean
         cursor:
-          description: 上次响应返回的 next_cursor。
+          description: next_cursor returned by the previous response.
           type: string
     MCPSource:
-      description: MCP资源
+      description: MCP resource
       required:
         - type
         - mcp_id
@@ -934,7 +932,7 @@ components:
       type: object
       properties:
         type:
-          description: 资源类型
+          description: Resource type
           enum:
             - mcp
           type: string
@@ -942,10 +940,10 @@ components:
           description: MCP ID
           type: string
         tool_name:
-          description: 工具名称
+          description: Tool name
           type: string
     ReqActionType:
-      description: 行动类创建信息
+      description: Action type creation information
       required:
         - action_type
         - groups
@@ -959,32 +957,32 @@ components:
       type: object
       properties:
         id:
-          description: 行动类ID
+          description: Action type ID
           type: string
         name:
-          description: 行动类名称
+          description: Action type name
           type: string
         tags:
-          description: 标签。
+          description: Tags。
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         action_type:
           deprecated: true
           description: |
-            **[已废弃]** 请优先使用 `action_intent`（枚举 `add`/`modify`/`delete`）。可同时出现但须与 `action_intent` 一致；仅填其一可由服务端回填。
+            Deprecated. Prefer action_intent with add, modify, or delete. Both fields may be present but must agree; when only one is provided, the server can backfill the other.
           enum:
             - add
             - modify
@@ -992,27 +990,27 @@ components:
           type: string
         action_intent:
           description: |
-            **推荐**：与历史 `action_type` 同枚举；对应列 `f_action_intent`。参阅 DESIGN §1.3。
+            Recommended. Uses the same enum as legacy action_type and maps to f_action_intent. See design section 1.3.
           enum:
             - add
             - modify
             - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: Object type ID bound to the action type
           type: string
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 行动条件
+          description: Action condition
         affect:
           deprecated: true
           description: |
-            **[已废弃]** 请使用 `impact_contracts`。除「仅单行 affect、由服务端折行」外，勿与 `impact_contracts` 同时提交。
+            Deprecated. Use impact_contracts. Do not submit it together with affect except for the server-converted single-line affect compatibility case.
           allOf:
             - $ref: "#/components/schemas/Affect"
         impact_contracts:
           description: |
-            影响契约数组；列 `f_impact_contracts`（JSON）。与 `affect` 勿混写。
+            Impact contract array stored in f_impact_contracts as JSON. Do not mix it with affect.
           type: array
           items:
             $ref: "#/components/schemas/ImpactContractItem"
@@ -1020,17 +1018,17 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ToolSource"
             - $ref: "#/components/schemas/MCPSource"
-          description: 绑定的行动的资源
+          description: Resource bound to the action
         parameters:
-          description: 行动资源参数
+          description: Action resource parameters
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 行动监听参数配置
+          description: Action listener parameter configuration
     UpdateActionType:
-      description: 行动类更新信息
+      description: Action type update information
       required:
         - action_type
         - groups
@@ -1044,54 +1042,54 @@ components:
       type: object
       properties:
         name:
-          description: 行动类名称
+          description: Action type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         action_type:
           deprecated: true
           description: |
-            **[已废弃]** 请优先使用 `action_intent`；双写须一致。
+            Deprecated. Prefer action_intent; dual writes must agree.
           enum:
             - add
             - modify
             - delete
           type: string
         action_intent:
-          description: 推荐；列 `f_action_intent`。
+          description: Recommended field stored in f_action_intent.
           enum:
             - add
             - modify
             - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: Object type ID bound to the action type
           type: string
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 行动条件
+          description: Action condition
         affect:
           deprecated: true
-          description: "**[已废弃]** 使用 `impact_contracts`。"
+          description: "Deprecated. Use impact_contracts."
           allOf:
             - $ref: "#/components/schemas/Affect"
         impact_contracts:
-          description: 列 `f_impact_contracts`（JSON）。
+          description: Stored in f_impact_contracts as JSON.
           type: array
           items:
             $ref: "#/components/schemas/ImpactContractItem"
@@ -1099,17 +1097,17 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ToolSource"
             - $ref: "#/components/schemas/MCPSource"
-          description: 绑定的行动的资源
+          description: Resource bound to the action
         parameters:
-          description: 行动资源参数
+          description: Action resource parameters
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 行动监听参数配置
+          description: Action listener parameter configuration
     ActionTypeDetail:
-      description: 行动类
+      description: Action type
       required:
         - action_type
         - comment
@@ -1133,62 +1131,62 @@ components:
       type: object
       properties:
         id:
-          description: 行动类ID
+          description: Action type ID
           type: string
         name:
-          description: 行动类名称
+          description: Action type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         action_type:
           deprecated: true
-          description: "**[已废弃]** 与 `action_intent` 等价；读侧二者通常同时返回。"
+          description: "Deprecated. Equivalent to action_intent; both are usually returned for reads."
           enum:
             - add
             - modify
             - delete
           type: string
         action_intent:
-          description: 服务端返回的意图（`f_action_intent`）。
+          description: Intent returned by the server from f_action_intent.
           enum:
             - add
             - modify
             - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: Object type ID bound to the action type
           type: string
         object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 行动类所绑定的对象类名称.
+          description: Object type bound to the action type.
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 行动条件
+          description: Action condition
         affect:
           deprecated: true
-          description: "**[已废弃]** 单行影响视图；等价见 `impact_contracts`。"
+          description: "Deprecated. Single-line impact view; see impact_contracts for the equivalent data."
           allOf:
             - $ref: "#/components/schemas/AffectDetail"
         impact_contracts:
-          description: 契约数组（`f_impact_contracts`）。
+          description: Contract array from f_impact_contracts.
           type: array
           items:
             $ref: "#/components/schemas/ImpactContractItem"
@@ -1196,34 +1194,34 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ToolSource"
             - $ref: "#/components/schemas/MCPSource"
-          description: 绑定的行动的资源
+          description: Resource bound to the action
         parameters:
-          description: 行动资源参数
+          description: Action resource parameters
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 行动监听参数配置
+          description: Action listener parameter configuration
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
         module_type:
-          description: 模块类型
+          description: Module type
           enum:
             - action_type
           type: string
     ActionType:
-      description: 行动类
+      description: Action type
       required:
         - action_type
         - comment
@@ -1247,55 +1245,55 @@ components:
       type: object
       properties:
         id:
-          description: 行动类ID
+          description: Action type ID
           type: string
         name:
-          description: 行动类名称
+          description: Action type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         action_type:
           deprecated: true
-          description: "**[已废弃]** 请读 `action_intent`。"
+          description: "Deprecated. Read action_intent instead."
           enum:
             - add
             - modify
             - delete
           type: string
         action_intent:
-          description: 意图字段（与 `action_type` 回填一致）。
+          description: Intent field, consistent with action_type backfill.
           enum:
             - add
             - modify
             - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: Object type ID bound to the action type
           type: string
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 行动条件
+          description: Action condition
         affect:
           deprecated: true
-          description: "**[已废弃]** 见 `impact_contracts`。"
+          description: "Deprecated. See impact_contracts."
           allOf:
             - $ref: "#/components/schemas/Affect"
         impact_contracts:
@@ -1306,34 +1304,34 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ToolSource"
             - $ref: "#/components/schemas/MCPSource"
-          description: 绑定的行动的资源
+          description: Resource bound to the action
         parameters:
-          description: 行动资源参数
+          description: Action resource parameters
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 行动监听参数配置
+          description: Action listener parameter configuration
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
         module_type:
-          description: 模块类型
+          description: Module type
           enum:
             - action_type
           type: string
         object_type:
-          description: 行动所属对象类的概要信息
+          description: Summary information for the object type owned by the action
           type: object
           properties:
             id:
@@ -1347,24 +1345,24 @@ components:
             color:
               type: string
     condition_or:
-      description: or 的过滤条件
+      description: OR filter condition
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: Filter operator
           enum:
             - or
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Nested filter conditions
           type: array
           items:
             $ref: "#/components/schemas/Condition"
     condition_eq:
-      description: 等于过滤条件
+      description: Equality filter condition
       required:
         - field
         - operation
@@ -1372,21 +1370,21 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，等于支持的字段类型：数值、字符串
+          description: Filter field. Equality supports numeric and string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - ==
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     condition_not_eq:
-      description: 不等于的过滤条件
+      description: Inequality filter condition
       required:
         - field
         - operation
@@ -1394,21 +1392,21 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不等于支持的字段类型：数值、字符串
+          description: Filter field. Inequality supports numeric and string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - "!="
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     condition_in:
-      description: 包含过滤条件
+      description: Contains filter condition
       required:
         - field
         - operation
@@ -1416,23 +1414,23 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，包含支持所有类型
+          description: Filter field. Contains supports all field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - in
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     condition_like:
-      description: like过滤
+      description: Like filter
       required:
         - field
         - operation
@@ -1440,22 +1438,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，相似支持的字段类型：字符串
+          description: Filter field. Like supports string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - like
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_not_like:
-      description: not_like过滤
+      description: Not-like filter
       required:
         - field
         - operation
@@ -1463,22 +1461,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不相似支持的字段类型：字符串
+          description: Filter field. Not-like supports string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - not_like
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_regex:
-      description: regex过滤
+      description: Regular expression filter
       required:
         - field
         - operation
@@ -1486,22 +1484,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，正则支持的字段类型：字符串
+          description: Filter field. Regular expression supports string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - regex
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_multi_match:
-      description: 多字段全文匹配
+      description: Multi-field full-text match
       required:
         - operation
         - value
@@ -1509,22 +1507,20 @@ components:
       properties:
         fields:
           description:
-            "过滤字段数组，多字段全文匹配支持的字段类型：字符串。为空时，用opensearch中 index.default_field\
-            \ 配置的字段进行查询。当需要对所有字段进行匹配时，此参数传 [\"*\"]. 可支持的字段有：name, comment, detail,\
-            \ *"
+            "Filter field array. Multi-field full-text matching supports string fields. When empty, the query uses the OpenSearch index.default_field configuration. Use a wildcard array to match all fields."
           type: array
           items:
             type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - multi_match
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
         match_type:
-          description: 全文匹配类型，默认是 best_fields
+          description: Full-text match type. Defaults to best_fields.
           enum:
             - best_fields
             - most_fields
@@ -1534,7 +1530,7 @@ components:
             - bool_prefix
           type: string
     condition_not_in:
-      description: not_in过滤条件
+      description: Not-in filter condition
       required:
         - field
         - operation
@@ -1542,23 +1538,23 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不包含支持所有类型
+          description: Filter field. Not-in supports all field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - not_in
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     condition_match_phrase:
-      description: "match_phrase 过滤，支持单个字段和*, * 表示全部字段"
+      description: "Match-phrase filter. Supports a single field or * for all fields."
       required:
         - field
         - operation
@@ -1566,22 +1562,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，短语匹配支持的字段类型：字符串
+          description: Filter field. Phrase matching supports string field types.
           enum:
             - name
             - comment
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - match_phrase
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_match:
-      description: "match 过滤，支持单个字段和*, * 表示全部字段"
+      description: "Match filter. Supports a single field or * for all fields."
       required:
         - field
         - operation
@@ -1589,22 +1585,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，全文匹配支持的字段类型：字符串
+          description: Filter field. Full-text matching supports string field types.
           enum:
             - name
             - comment
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - match
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_knn:
-      description: 'knn 过滤，支持单个字段和*, * 表示"_vector"'
+      description: 'KNN filter. Supports a single field or * for _vector.'
       required:
         - field
         - operation
@@ -1612,22 +1608,21 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，概念索引是内部生成，不对外暴露，所以knn过滤时，field 传 * 即可
+          description: Filter field. Concept indexes are generated internally and not exposed, so use * for field in KNN filtering.
           enum:
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - knn
           type: string
         value:
-          description: 过滤值。当limit_key为k时，limit_value为整型；当limit_key为max_distance和min_score时，limit_value为浮点型
+          description: Filter value. When limit_key is k, limit_value is an integer. When limit_key is max_distance or min_score, limit_value is a floating-point value.
           type: number
         limit_key:
           description:
-            "执行径向搜索时使用的过滤和评分行为, k:返回最相似的limit_value个结果；max_distance:返回距\
-            离小于等于limit_value的结果；min_score：返回相似度分数大于等于limit_value的结果。默认值为k"
+            "Filter and scoring behavior for radial search. k returns the closest limit_value results; max_distance returns results within limit_value distance; min_score returns results with scores at least limit_value. Defaults to k."
           enum:
             - k
             - max_distance
@@ -1635,28 +1630,28 @@ components:
           type: string
           default: k
         limit_value:
-          description: "执行径向搜索使用的值。默认值为100"
+          description: "Value used for radial search. Defaults to 100."
           type: number
           default: 100
         sub_conditions:
-          description: knn下的子查询
+          description: Nested query for KNN
           type: array
           items:
             $ref: "#/components/schemas/Condition"
     condition_and:
-      description: and的过滤条件
+      description: AND filter condition
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: Filter operator
           enum:
             - and
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Nested filter conditions
           type: array
           items:
             $ref: "#/components/schemas/Condition"
@@ -1676,41 +1671,41 @@ components:
         - $ref: "#/components/schemas/condition_knn"
         - $ref: "#/components/schemas/condition_multi_match"
     action_condition_and:
-      description: and的过滤条件
+      description: AND filter condition
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: Filter operator
           enum:
             - and
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Nested filter conditions
           type: array
           items:
             $ref: "#/components/schemas/ActionCondition"
     action_condition_or:
-      description: or 的过滤条件
+      description: OR filter condition
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: Filter operator
           enum:
             - or
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Nested filter conditions
           type: array
           items:
             $ref: "#/components/schemas/ActionCondition"
     action_condition_eq:
-      description: 等于过滤条件
+      description: Equality filter condition
       required:
         - object_type_id
         - operation
@@ -1719,20 +1714,20 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为数值、字符串
+          description: Filter field, which is an object type property name. Supports numeric and string property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - ==
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     action_condition_not_eq:
-      description: 不等于的过滤条件
+      description: Inequality filter condition
       required:
         - object_type_id
         - field
@@ -1741,20 +1736,20 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为数值、字符串
+          description: Filter field, which is an object type property name. Supports numeric and string property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - "!="
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     action_condition_gt:
-      description: 大于的过滤条件
+      description: Greater-than filter condition
       required:
         - object_type_id
         - field
@@ -1763,20 +1758,20 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为数值、字符串
+          description: Filter field, which is an object type property name. Supports numeric and string property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - ">"
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     action_condition_lt:
-      description: 小于的过滤条件
+      description: Less-than filter condition
       required:
         - object_type_id
         - field
@@ -1785,20 +1780,20 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为数值、字符串
+          description: Filter field, which is an object type property name. Supports numeric and string property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - <
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     action_condition_gte:
-      description: 大于等于的过滤条件
+      description: Greater-than-or-equal filter condition
       required:
         - object_type_id
         - field
@@ -1807,20 +1802,20 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为数值、字符串
+          description: Filter field, which is an object type property name. Supports numeric and string property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - ">="
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     action_condition_lte:
-      description: 大于等于的过滤条件
+      description: Greater-than-or-equal filter condition
       required:
         - object_type_id
         - field
@@ -1829,20 +1824,20 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为数值、字符串
+          description: Filter field, which is an object type property name. Supports numeric and string property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - <=
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     action_condition_in:
-      description: 包含过滤条件
+      description: Contains filter condition
       required:
         - object_type_id
         - field
@@ -1851,22 +1846,22 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为所有类型
+          description: Filter field, which is an object type property name. Supports all property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - in
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     action_condition_not_in:
-      description: 不包含过滤条件
+      description: Not-contains filter condition
       required:
         - object_type_id
         - field
@@ -1875,25 +1870,23 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为所有类型
+          description: Filter field, which is an object type property name. Supports all property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - not_in
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     action_condition_out_range:
       description:
-        "范围外过滤。右侧值为长度为2的数组，边界为左闭右开, 即 [ value[0],  value[1] )。此种情况下，符合过\
-        滤条件的值的区间为 (-inf, value[0] ) & [ value[1], +inf )，即左侧指定字段＜value[0] 或 ≥value[1]\
-        \ 的值。"
+        "Out-of-range filter. The right-hand value is a two-element array with an inclusive lower bound and exclusive upper bound. Matching values are below the first value or greater than or equal to the second value."
       required:
         - object_type_id
         - field
@@ -1902,22 +1895,22 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为时间类型、数值
+          description: Filter field, which is an object type property name. Supports time and numeric property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - range
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     action_condition_exist:
-      description: 存在过滤
+      description: Exists filter
       required:
         - object_type_id
         - field
@@ -1925,18 +1918,18 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为所有类型
+          description: Filter field, which is an object type property name. Supports all property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - exist
           type: string
     action_condition_range:
-      description: 范围内过滤。右侧值为长度为 2 的数组，边界为左闭右开
+      description: In-range filter. The right-hand value is a two-element array with an inclusive lower bound and exclusive upper bound.
       required:
         - object_type_id
         - field
@@ -1945,22 +1938,22 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为时间类型、数值
+          description: Filter field, which is an object type property name. Supports time and numeric property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - range
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     action_condition_not_exist:
-      description: 不存在过滤
+      description: Not-exists filter
       required:
         - object_type_id
         - field
@@ -1968,13 +1961,13 @@ components:
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 过滤字段，即对象类的属性名称。支持的属性类型为所有类型
+          description: Filter field, which is an object type property name. Supports all property types.
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - not_exist
           type: string

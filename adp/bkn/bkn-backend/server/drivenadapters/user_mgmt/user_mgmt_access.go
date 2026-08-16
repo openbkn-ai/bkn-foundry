@@ -39,7 +39,7 @@ type userMgmtAccess struct {
 	bknSafeURL        string
 }
 
-// NewUserMgmtAccess 创建用户管理访问实例
+// NewUserMgmtAccess creates a user management access instance.
 func NewUserMgmtAccess(appSetting *common.AppSetting) interfaces.UserMgmtAccess {
 	umAccessOnce.Do(func() {
 		umAccess = &userMgmtAccess{
@@ -87,8 +87,8 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 		}
 	}
 
-	// 构建请求 URL + 请求体:bkn-safe(clean /directory/names)或 ISF(/v2/names)。
-	// 两者返回同样的 { user_names, app_names },仅 URL+body 不同。
+	// Build the request URL and body for BKN Safe (/directory/names) or ISF (/v2/names).
+	// Both return user_names and app_names; only the URL and body differ.
 	var httpUrl string
 	var requestBody map[string]any
 	if uma.useBknSafe() {
@@ -112,12 +112,12 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 		HttpContentType: rest.ContentTypeJson,
 	})
 
-	// 设置请求头
+	// Set request headers.
 	headers := map[string]string{
 		"Content-Type": "application/json",
 	}
 
-	// 发送POST请求获取用户信息
+	// Send the POST request to retrieve user information.
 	respCode, result, err := uma.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
 	logger.Debugf("GetAccountNames finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
@@ -135,7 +135,7 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 	}
 
 	// "{\"app_names\":[{\"id\":\"91efa756-11cc-49d7-ab25-f6e18f9305fe\",\"name\":\"kwww\"}],\"user_names\":[{\"id\":\"f6c6e398-ce82-11f0-888f-3ac1298ec09f\",\"name\":\"kww\"}],\"department_names\":[],\"contactor_names\":[],\"group_names\":[]}"
-	// 解析响应数据
+	// Parse the response data.
 	response := struct {
 		AppNames []struct {
 			ID   string `json:"id"`

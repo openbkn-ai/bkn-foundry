@@ -18,11 +18,11 @@ const (
 	RESOURCES_PAGE_LIMIT = "50"
 )
 
-// 分页获取指标模型资源列表
+// List metric model resources with pagination.
 func (r *restHandler) ListResources(c *gin.Context) {
 	logger.Debug("ListResources Start")
 
-	// 获取分页参数
+	// Read pagination parameters.
 	resourceType := c.Query("resource_type")
 	switch resourceType {
 	case interfaces.RESOURCE_TYPE_KN:
@@ -31,7 +31,7 @@ func (r *restHandler) ListResources(c *gin.Context) {
 		// httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusNotFound,
 		// 	derrors.DataModel_MetricModel_MetricTaskNotFound)
 
-		// // 设置 trace 的错误信息的 attributes
+		// // Set trace attributes for the error.
 		// rest.ReplyError(c, httpErr)
 	}
 

@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	// 行动资源类型
+	// Action resource types.
 	ACTION_SOURCE_TYPE_TOOL = "tool"
 	ACTION_SOURCE_TYPE_MCP  = "mcp"
 
-	// 行动类型
+	// Action types.
 	ACTION_TYPE_ADD    = "add"
 	ACTION_TYPE_MODIFY = "modify"
 	ACTION_TYPE_DELETE = "delete"
@@ -27,21 +27,21 @@ var (
 		"update_time": "f_update_time",
 	}
 
-	// 行动类型
+	// Action types.
 	ActionTypeMap = map[string]bool{
 		ACTION_TYPE_ADD:    true,
 		ACTION_TYPE_MODIFY: true,
 		ACTION_TYPE_DELETE: true,
 	}
 
-	// 行动影响操作类型
+	// Action impact operation types.
 	ExpectedOperationMap = map[string]bool{
 		ExpectedOperationAdd:    true,
 		ExpectedOperationModify: true,
 		ExpectedOperationDelete: true,
 	}
 
-	// 行动条件操作符
+	// Action condition operators.
 	ActionCondOperationMap = map[string]struct{}{
 		cond.OperationAnd:        {},
 		cond.OperationOr:         {},
@@ -82,7 +82,7 @@ const (
 	ExpectedOperationDelete string = "delete"
 )
 
-// ImpactContractItem 对应 impact_contracts 数组中的单条契约（DESIGN §7.2）。
+// ImpactContractItem represents one contract in impact_contracts.
 type ImpactContractItem struct {
 	ObjectTypeID      string   `json:"object_type_id,omitempty" mapstructure:"object_type_id"`
 	ExpectedOperation string   `json:"expected_operation,omitempty" mapstructure:"expected_operation"`
@@ -96,10 +96,11 @@ type ActionTypeWithKeyField struct {
 	ActionType   string           `json:"action_type" mapstructure:"action_type"`
 	ActionIntent string           `json:"action_intent,omitempty" mapstructure:"action_intent"`
 	ObjectTypeID string           `json:"object_type_id" mapstructure:"object_type_id"`
-	ObjectType   SimpleObjectType `json:"object_type,omitempty" mapstructure:"object_type"` // 翻译绑定的对象类
+	ObjectType   SimpleObjectType `json:"object_type,omitempty" mapstructure:"object_type"` // Bound object type for display
 	Condition    *ActionCondCfg   `json:"condition,omitempty" mapstructure:"condition"`
 	Affect       *ActionAffect    `json:"affect" mapstructure:"affect"`
-	// ImpactContracts 与原生请求互斥（不得同时自拟多行又与 affect 混搭）；仅 affect 时在 validate 中补一行，expected_operation 取 action_type，并保留 affect。
+	// ImpactContracts and the legacy affect field are mutually exclusive. When only affect is supplied,
+	// validation adds one contract with expected_operation from action_type and retains affect.
 	ImpactContracts []ImpactContractItem `json:"impact_contracts,omitempty" mapstructure:"impact_contracts"`
 	ActionSource    ActionSource         `json:"action_source" mapstructure:"action_source"`
 	Parameters      []Parameter          `json:"parameters" mapstructure:"parameters"`
@@ -121,24 +122,24 @@ type ActionType struct {
 	ModuleType string `json:"module_type" mapstructure:"module_type"`
 
 	IfNameModify bool `json:"-"`
-	// 向量
+	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`
-	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
+	Score  *float64  `json:"_score,omitempty"` // OpenSearch score used by concept search
 }
 
 type ActionSource struct {
 	Type string `json:"type" mapstructure:"type"`
-	// 互斥字段，根据Type选择
-	// type 为 tool
+	// Mutually exclusive fields selected by Type.
+	// Type is tool.
 	BoxID  string `json:"box_id,omitempty" mapstructure:"box_id"`
 	ToolID string `json:"tool_id,omitempty" mapstructure:"tool_id"`
-	// type 为 mcp
+	// Type is mcp.
 	McpID    string `json:"mcp_id,omitempty" mapstructure:"mcp_id"`
 	ToolName string `json:"tool_name,omitempty" mapstructure:"tool_name"`
 }
 
 type ActionCondCfg struct {
-	ObjectTypeID string `json:"object_type_id,omitempty" mapstructure:"object_type_id"` // 行动条件需要标记是哪个行动类的
+	ObjectTypeID string `json:"object_type_id,omitempty" mapstructure:"object_type_id"` // Object type identified by the action condition
 
 	Field            string           `json:"field,omitempty" mapstructure:"field"`
 	Operation        string           `json:"operation,omitempty" mapstructure:"operation"`
@@ -151,10 +152,10 @@ type ActionCondCfg struct {
 }
 
 type ActionAffect struct {
-	ObjectTypeID string           `json:"object_type_id,omitempty" mapstructure:"object_type_id"` // 翻译影响的对象类
+	ObjectTypeID string           `json:"object_type_id,omitempty" mapstructure:"object_type_id"` // Object type affected by the action
 	ObjectType   SimpleObjectType `json:"object_type,omitempty" mapstructure:"object_type"`
 	Comment      string           `json:"comment,omitempty" mapstructure:"comment"`
-	// 与 ImpactContractItem 中单条语义对齐（过渡期单行 affect）。
+	// Aligns with the single-entry semantics of ImpactContractItem during the affect transition.
 	ExpectedOperation string   `json:"expected_operation,omitempty" mapstructure:"expected_operation"`
 	AffectedFields    []string `json:"affected_fields,omitempty" mapstructure:"affected_fields"`
 }
@@ -164,7 +165,7 @@ type Schedule struct {
 	Expression string `json:"expression" mapstructure:"expression"`
 }
 
-// 对象类的分页查询
+// Object type pagination query.
 type ActionTypesQueryParams struct {
 	PaginationQueryParameters
 	NamePattern   string
@@ -175,7 +176,7 @@ type ActionTypesQueryParams struct {
 	ActionType    string
 }
 
-// 检索行动类列表
+// Action type search list.
 type ActionTypes struct {
 	Entries    []*ActionType `json:"entries"`
 	TotalCount int64         `json:"total_count,omitempty"`
@@ -187,12 +188,12 @@ func IsValidActionSourceType(m string) bool {
 	return m == ACTION_SOURCE_TYPE_TOOL || m == ACTION_SOURCE_TYPE_MCP
 }
 
-// IsValidActionTypeIntentValue 报告 s 是否为与 action_type 对齐的合法 action_intent（阶段 B1-5，供阶段 V2 校验复用；与 `IsValidExpectedOperation` 同集合）。
+// IsValidActionTypeIntentValue reports whether s is a valid action_intent aligned with action_type.
 func IsValidActionTypeIntentValue(s string) bool {
 	return ActionTypeMap[s]
 }
 
-// IsValidExpectedOperation 报告 s 是否是有效枚举值
+// IsValidExpectedOperation reports whether s is a valid enum value.
 func IsValidExpectedOperation(s string) bool {
 	return ExpectedOperationMap[s]
 }

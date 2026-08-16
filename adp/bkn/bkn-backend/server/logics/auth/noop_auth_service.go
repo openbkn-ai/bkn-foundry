@@ -17,7 +17,7 @@ import (
 	"bkn-backend/interfaces"
 )
 
-// NoopAuthService 空认证服务（认证禁用时使用）
+// NoopAuthService is used when authentication is disabled.
 type NoopAuthService struct {
 	appSetting *common.AppSetting
 }
@@ -29,6 +29,6 @@ func NewNoopAuthService(appSetting *common.AppSetting) interfaces.AuthService {
 }
 
 func (n *NoopAuthService) VerifyToken(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
-	// 返回空 Visitor，不做任何认证校验
+	// Return an empty Visitor without authentication checks.
 	return visitor.GenerateVisitor(c), nil
 }

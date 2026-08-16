@@ -25,7 +25,7 @@ type SmallModel struct {
 	MaxTokens    int    `json:"max_tokens"`
 }
 
-// ModelFactoryAccess 定义模型工厂相关的访问接口
+// ModelFactoryAccess defines the model-factory access interface.
 //
 //go:generate mockgen -source ../interfaces/model_factory_access.go -destination ../interfaces/mock/mock_model_factory_access.go
 type ModelFactoryAccess interface {

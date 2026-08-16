@@ -162,7 +162,7 @@ func Test_relationTypeAccess_CreateRelationType(t *testing.T) {
 		})
 
 		Convey("CreateRelationType Marshal error\n", func() {
-			// 创建一个会导致marshal失败的relationType
+			// Create a relationType that fails marshaling.
 			invalidRelationType := &interfaces.RelationType{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 					RTID:               "rt1",
@@ -170,7 +170,7 @@ func Test_relationTypeAccess_CreateRelationType(t *testing.T) {
 					SourceObjectTypeID: "ot1",
 					TargetObjectTypeID: "ot2",
 					Type:               interfaces.RELATION_TYPE_DIRECT,
-					MappingRules:       make(chan int), // 使用channel会导致marshal失败
+					MappingRules:       make(chan int), // A channel causes marshaling to fail.
 				},
 				CommonInfo: interfaces.CommonInfo{
 					Tags:          testTags,

@@ -75,7 +75,7 @@ func Test_MetricRestHandler_ValidateMetricsRouteAlias(t *testing.T) {
 				engine.ServeHTTP(w, req)
 
 				So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-				So(w.Body.String(), ShouldContainSubstring, "No metric was passed in")
+				So(w.Body.String(), ShouldContainSubstring, "至少需要提供一项 entries。")
 			})
 		}
 
@@ -89,7 +89,7 @@ func Test_MetricRestHandler_ValidateMetricsRouteAlias(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, "No metric was passed in")
+			So(w.Body.String(), ShouldContainSubstring, "至少需要提供一项 entries。")
 		})
 	})
 }

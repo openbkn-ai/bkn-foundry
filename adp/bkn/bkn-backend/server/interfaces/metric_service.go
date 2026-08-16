@@ -15,9 +15,11 @@ import (
 //
 //go:generate mockgen -source metric_service.go -destination mock/mock_metric_service.go
 type MetricService interface {
-	// CheckMetricExistByID 按 kn/branch/id 判断指标是否存在；存在时返回库中名称（与 ObjectTypeService.CheckObjectTypeExistByID 对齐，供 handler 提前校验）。
+	// CheckMetricExistByID checks whether a metric exists by KN, branch, and ID. When present, it returns the stored
+	// name. It is aligned with ObjectTypeService.CheckObjectTypeExistByID for early handler validation.
 	CheckMetricExistByID(ctx context.Context, knID, branch, metricID string) (name string, exist bool, err error)
-	// CheckMetricExistByName 按名称判断是否存在；存在时返回该指标的 id（与 CheckObjectTypeExistByName 对齐）。
+	// CheckMetricExistByName checks whether a metric exists by name. When present, it returns the metric ID and is
+	// aligned with CheckObjectTypeExistByName.
 	CheckMetricExistByName(ctx context.Context, knID, branch, name string) (metricID string, exist bool, err error)
 
 	CreateMetrics(ctx context.Context, tx *sql.Tx, entries []*MetricDefinition, strictMode bool, importMode string) ([]string, error)
@@ -26,15 +28,19 @@ type MetricService interface {
 	GetMetricsByIDs(ctx context.Context, knID string, branch string, metricIDs []string) ([]*MetricDefinition, error)
 	UpdateMetric(ctx context.Context, tx *sql.Tx, req *MetricDefinition, strictMode bool) error
 	DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, metricIDs []string) error
-	// DeleteMetricsByKnID 内部接口：按知识网络删除全部指标，不校验权限；tx 必须非 nil（与 DeleteActionTypesByKnID 一致）。
+	// DeleteMetricsByKnID is an internal API that deletes all metrics by knowledge network without checking
+	// permissions. tx must be non-nil to match DeleteActionTypesByKnID.
 	DeleteMetricsByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error
 
 	SearchMetrics(ctx context.Context, query *ConceptsQuery) (MetricSearchResult, error)
 
-	// InsertDatasetData 将指标写入 BKN 概念数据集（与 ObjectTypeService.InsertDatasetData 一致；供概念同步等无用户上下文场景调用）。
+	// InsertDatasetData writes metrics to the BKN concept dataset. It matches ObjectTypeService.InsertDatasetData and
+	// is used by scenarios without a user context, such as concept synchronization.
 	InsertDatasetData(ctx context.Context, metrics []*MetricDefinition) error
 
-	// ValidateMetrics 在 strictMode 下校验 scope 与对象类字段等（与 CreateMetrics 中严格校验一致），不写库；请求体合法性由 handler 先通过 ValidateMetricRequests 校验。
-	// batch 非 nil 且 strictMode=true 时，优先按 BatchIDIndex.ObjectTypes 解析 scope_ref（同一 KN / Upload tar 预持久化场景）；batch 为 nil 时仍查库（REST 批量校验路径）。
+	// ValidateMetrics validates scope and object-type fields in strictMode, matching CreateMetrics strict validation,
+	// without persisting data. The handler validates request-body syntax with ValidateMetricRequests first.
+	// When batch is non-nil and strictMode=true, resolve scope_ref from BatchIDIndex.ObjectTypes first for same-KN and
+	// pre-persistence Upload tar scenarios. When batch is nil, use storage for the REST batch-validation path.
 	ValidateMetrics(ctx context.Context, entries []*MetricDefinition, strictMode bool, importMode string, batch *BatchIDIndex) error
 }

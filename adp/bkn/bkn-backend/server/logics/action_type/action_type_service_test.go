@@ -1825,6 +1825,10 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 			aoa.EXPECT().GetToolByID(gomock.Any(), "b1", "t1").Return(errors.New("tool not found"))
 			err := svc.ValidateActionTypes(ctx, "kn1", interfaces.MAIN_BRANCH, actionTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "行动类 [at1] 的工具绑定缺失或无效（box_id=b1，tool_id=t1）。")
+			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "tool not found")
 		})
 
 		Convey("strictMode true succeeds when tool binding check passes\n", func() {
@@ -1881,6 +1885,60 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "m1", "fn").Return(errors.New("mcp tool not found"))
 			err := svc.ValidateActionTypes(ctx, "kn1", interfaces.MAIN_BRANCH, actionTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *testing.T) {
+	Convey("Test strict action source binding errors use localized stable details\n", t, func() {
+		Convey("Tool binding error uses the Chinese catalog and omits the downstream error\n", func() {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
+			svc := &actionTypeService{aoa: aoa}
+			ctx := rest.WithLanguage(context.Background(), rest.SimplifiedChinese)
+			aoa.EXPECT().GetToolByID(gomock.Any(), "box-1", "tool-1").Return(errors.New("downstream tool lookup failed"))
+
+			err := svc.validateActionSourceStrict(ctx, &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATName: "create_order",
+					ActionSource: interfaces.ActionSource{
+						Type:   interfaces.ACTION_SOURCE_TYPE_TOOL,
+						BoxID:  "box-1",
+						ToolID: "tool-1",
+					},
+				},
+			})
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "行动类 [create_order] 的工具绑定缺失或无效（box_id=box-1，tool_id=tool-1）。")
+			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "downstream")
+		})
+
+		Convey("MCP binding error uses the English catalog and omits the downstream error\n", func() {
+			mockCtrl := gomock.NewController(t)
+			defer mockCtrl.Finish()
+			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
+			svc := &actionTypeService{aoa: aoa}
+			ctx := rest.WithLanguage(context.Background(), rest.AmericanEnglish)
+			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "mcp-1", "create_order").Return(errors.New("downstream MCP lookup failed"))
+
+			err := svc.validateActionSourceStrict(ctx, &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATName: "create_order",
+					ActionSource: interfaces.ActionSource{
+						Type:     interfaces.ACTION_SOURCE_TYPE_MCP,
+						McpID:    "mcp-1",
+						ToolName: "create_order",
+					},
+				},
+			})
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "Action type [create_order] MCP tool binding is missing or invalid (mcp_id=mcp-1, tool_name=create_order).")
+			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "downstream")
 		})
 	})
 }

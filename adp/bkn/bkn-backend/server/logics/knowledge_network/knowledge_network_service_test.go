@@ -1851,9 +1851,9 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			mode := interfaces.ImportMode_Normal
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			// 模拟Begin失败
+			// Simulate Begin failure.
 			db2, _, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-			_ = db2.Close() // 关闭数据库连接以模拟Begin失败
+			_ = db2.Close() // Close the database connection to simulate Begin failure.
 			service2 := &knowledgeNetworkService{
 				appSetting: appSetting,
 				kna:        kna,

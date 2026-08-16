@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -41,6 +42,10 @@ type actionScheduleService struct {
 	cronParser cron.Parser
 }
 
+func actionScheduleDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail."+name, templateData)
+}
+
 // NewActionScheduleService creates a singleton instance of ActionScheduleService
 func NewActionScheduleService(appSetting *common.AppSetting) interfaces.ActionScheduleService {
 	assOnce.Do(func() {
@@ -63,8 +68,8 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 	// Validate cron expression
 	if err := s.ValidateCronExpression(schedule.CronExpression); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidCronExpression).
-			WithErrorDetails(err.Error())
-		otellog.LogError(ctx, "Validate cron expression failed", httpErr)
+			WithErrorDetails(actionScheduleDetail(ctx, "CronExpressionInvalid", nil))
+		otellog.LogError(ctx, "Validate cron expression failed", err)
 		return "", httpErr
 	}
 
@@ -78,7 +83,7 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 	}
 	if len(actionTypes) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_ActionTypeNotFound).
-			WithErrorDetails(fmt.Sprintf("Action type not found: %s", schedule.ActionTypeID))
+			WithErrorDetails(actionScheduleDetail(ctx, "ActionTypeNotFound", map[string]any{"actionTypeID": schedule.ActionTypeID}))
 		otellog.LogError(ctx, "Action type not found", httpErr)
 		return "", httpErr
 	}
@@ -98,8 +103,8 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 		nextRunTime, err := s.CalculateNextRunTime(schedule.CronExpression, now)
 		if err != nil {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidCronExpression).
-				WithErrorDetails(err.Error())
-			otellog.LogError(ctx, "Calculate next run time failed", httpErr)
+				WithErrorDetails(actionScheduleDetail(ctx, "CronExpressionInvalid", nil))
+			otellog.LogError(ctx, "Calculate next run time failed", err)
 			return "", httpErr
 		}
 		schedule.NextRunTime = nextRunTime
@@ -142,8 +147,8 @@ func (s *actionScheduleService) UpdateSchedule(ctx context.Context, scheduleID s
 	if req.CronExpression != "" {
 		if err := s.ValidateCronExpression(req.CronExpression); err != nil {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidCronExpression).
-				WithErrorDetails(err.Error())
-			otellog.LogError(ctx, "Validate cron expression failed", httpErr)
+				WithErrorDetails(actionScheduleDetail(ctx, "CronExpressionInvalid", nil))
+			otellog.LogError(ctx, "Validate cron expression failed", err)
 			return httpErr
 		}
 		cronExpr = req.CronExpression
@@ -176,8 +181,8 @@ func (s *actionScheduleService) UpdateSchedule(ctx context.Context, scheduleID s
 		nextRunTime, err := s.CalculateNextRunTime(cronExpr, now)
 		if err != nil {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidCronExpression).
-				WithErrorDetails(err.Error())
-			otellog.LogError(ctx, fmt.Sprintf("Failed to calculate next run time for schedule %s", scheduleID), httpErr)
+				WithErrorDetails(actionScheduleDetail(ctx, "CronExpressionInvalid", nil))
+			otellog.LogError(ctx, fmt.Sprintf("Failed to calculate next run time for schedule %s", scheduleID), err)
 			return httpErr
 		}
 		update.NextRunTime = nextRunTime
@@ -203,7 +208,7 @@ func (s *actionScheduleService) UpdateScheduleStatus(ctx context.Context, schedu
 	// Validate status
 	if status != interfaces.ScheduleStatusActive && status != interfaces.ScheduleStatusInactive {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
-			WithErrorDetails(fmt.Sprintf("Invalid status: %s. Must be 'active' or 'inactive'", status))
+			WithErrorDetails(actionScheduleDetail(ctx, "StatusValueInvalid", map[string]any{"status": status}))
 		otellog.LogError(ctx, "Invalid schedule status", httpErr)
 		return httpErr
 	}
@@ -229,8 +234,8 @@ func (s *actionScheduleService) UpdateScheduleStatus(ctx context.Context, schedu
 		nextRunTime, err = s.CalculateNextRunTime(existing.CronExpression, now)
 		if err != nil {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidCronExpression).
-				WithErrorDetails(err.Error())
-			otellog.LogError(ctx, "Calculate next run time failed", httpErr)
+				WithErrorDetails(actionScheduleDetail(ctx, "CronExpressionInvalid", nil))
+			otellog.LogError(ctx, "Calculate next run time failed", err)
 			return httpErr
 		}
 	}
@@ -270,13 +275,17 @@ func (s *actionScheduleService) DeleteSchedules(ctx context.Context, knID, branc
 		schedule, exists := schedules[id]
 		if !exists {
 			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_NotFound).
-				WithErrorDetails(fmt.Sprintf("Schedule not found: %s", id))
+				WithErrorDetails(actionScheduleDetail(ctx, "ScheduleNotFound", map[string]any{"scheduleID": id}))
 			otellog.LogError(ctx, "Schedule not found", httpErr)
 			return httpErr
 		}
 		if schedule.KNID != knID || schedule.Branch != branch {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("Schedule %s does not belong to kn %s branch %s", id, knID, branch))
+				WithErrorDetails(actionScheduleDetail(ctx, "ScheduleScopeMismatch", map[string]any{
+					"scheduleID": id,
+					"knID":       knID,
+					"branch":     branch,
+				}))
 			otellog.LogError(ctx, "Schedule does not belong to request scope", httpErr)
 			return httpErr
 		}

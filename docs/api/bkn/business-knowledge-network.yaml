@@ -8,12 +8,12 @@ paths:
     get:
       parameters:
         - name: name_pattern
-          description: 根据业务知识网络名称模糊查询，默认为空
+          description: Fuzzy match by business knowledge network name. Defaults to empty.
           schema:
             type: string
           in: query
         - name: sort
-          description: 排序类型，默认是update_time
+          description: Sort type. Defaults to update_time.
           schema:
             enum:
               - update_time
@@ -22,8 +22,8 @@ paths:
           in: query
         - name: direction
           description: |-
-            排序结果方向，可选asc、desc。
-            默认desc
+            Sort direction. Supported values are asc and desc.
+            Defaults to desc.
           schema:
             enum:
               - asc
@@ -31,22 +31,22 @@ paths:
             type: string
           in: query
         - name: offset
-          description: "开始响应的项目的偏移量\t\n范围需大于等于0，默认值0"
+          description: "Offset of the first returned item. Must be greater than or equal to 0. Defaults to 0."
           schema:
             format: int64
             type: integer
           in: query
         - name: limit
           description: |-
-            每页最多可返回的项目数；
-            分页可选1-1000，-1表示不分页；
-            默认值10
+            Maximum number of items returned per page.
+            Pagination accepts 1 through 1000, and -1 disables pagination.
+            Defaults to 10.
           schema:
             format: int64
             type: integer
           in: query
         - name: tag
-          description: 根据标签精准查询，默认为空.
+          description: Exact match by tag. Defaults to empty.
           schema:
             type: string
           in: query
@@ -57,11 +57,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListKN"
           description: ok
-      summary: 获取业务知识网络列表
+      summary: List business knowledge networks
     post:
       parameters:
         - name: import_mode
-          description: 导入模式，可选normal、ignore、overwrite，默认为normal
+          description: Import mode. Supported values are normal, ignore, and overwrite. Defaults to normal.
           schema:
             enum:
               - normal
@@ -70,20 +70,20 @@ paths:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为true。为true时，需校验对象类的视图、关系类的视图等依赖是否存在；为false时，依赖不存在不报错
+          description: Whether to strictly validate dependencies. Defaults to true. When true, validates dependencies such as object type and relation type views. When false, missing dependencies do not cause an error.
           schema:
             type: boolean
             default: true
           in: query
         - name: validate_dependency
           deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
+          description: "Deprecated. Use strict_mode instead. This parameter is retained for compatibility and is read when strict_mode is empty."
           schema:
             type: boolean
             default: true
           in: query
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -102,13 +102,13 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ID"
-          description: 创建成功
-      summary: 创建业务知识网路
+          description: Creation succeeded
+      summary: Create a business knowledge network
   /api/bkn-backend/v1/knowledge-networks/{kn_id}:
     get:
       parameters:
         - name: mode
-          description: 查询模式，当前支持export。默认是只查知识网络的详情，不返回包含的子类。
+          description: Query mode. Currently supports export. By default, returns only knowledge network details and not included child types.
           schema:
             enum:
               - ""
@@ -116,21 +116,21 @@ paths:
             type: string
           in: query
         - name: include_statistics
-          description: 是否包含业务知识网络下的概念的统计信息。默认false
+          description: Whether to include statistics for concepts under the business knowledge network. Defaults to false.
           schema:
             type: boolean
           in: query
           required: false
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
           in: query
         - name: detail_level
           description: |
-            返回详略。`full` 返回完整定义；`summary` 只返回概念的标识与名称，
-            用于大型知识网络的渐进式加载。默认 `full`。
+            Response detail level. full returns complete definitions; summary returns only concept IDs and names
+            for progressive loading of large knowledge networks. Defaults to full.
           schema:
             type: string
             enum: [full, summary]
@@ -175,25 +175,25 @@ paths:
                     updater: a0f02238-6cec-11f0-82bb-fa1c4529a151
                     update_time: 1757583140948
           description: ok
-      summary: 获取业务知识网络详情
-      description: 获取本体模型详情，按需包含说明书内容
+      summary: Get business knowledge network details
+      description: Gets ontology model details and includes specification content when requested.
     put:
       parameters:
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: Branch. Uses main when omitted.
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true。为 true 时，对请求体中嵌套的对象类/关系类/行动类/概念分组等做依赖存在性校验；为 false 时不做该校验
+          description: Whether to strictly validate dependencies. Defaults to true. When true, validates dependencies for nested object types, relation types, action types, and concept groups in the request. When false, skips validation.
           schema:
             type: boolean
             default: true
           in: query
         - name: import_mode
           description: |
-            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
-            `ignore` 跳过同名概念。默认 `normal`。
+            Import mode. normal reports an error for duplicate concept names; overwrite replaces them;
+            ignore skips them. Defaults to normal.
           schema:
             type: string
             enum: [normal, overwrite, ignore]
@@ -207,66 +207,64 @@ paths:
         required: true
       responses:
         "204":
-          description: 修改成功
-      summary: 修改业务知识网路
+          description: Update succeeded
+      summary: Update a business knowledge network
     delete:
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
           in: query
       responses:
         "204":
-          description: 删除成功
-      summary: 删除业务知识网络
-      description: 删除业务知识网络，会把其下的对象类、关系类、行动类和概念分组都删除
+          description: Deletion succeeded
+      summary: Delete a business knowledge network
+      description: Deletes a business knowledge network and all of its object types, relation types, action types, and concept groups.
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: Business knowledge network ID
         schema:
           type: string
         in: path
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/validation:
     post:
-      summary: 校验业务知识网络
+      summary: Validate a business knowledge network
       description: |
-        仅校验知识网络整体依赖存在性，不写库。校验对象类、关系类、行动类、概念分组等全部依赖。
-        服务端从请求体顶层四桶与各 concept_groups 嵌套桶合并构建 BatchIDIndex，整次预检共用该索引，
-        以便仅出现在嵌套分组内的 OT 仍可作为顶层或其它桶内 RT/AT 的引用目标（与 CreateKN 同批语义对齐）。
+        Validates only knowledge network dependency existence and does not persist data. It validates all dependencies including object types, relation types, action types, and concept groups.
+        The server builds one BatchIDIndex from the four top-level request buckets and nested concept_groups buckets, allowing references to types present only in nested groups.
 
-        **响应**：HTTP 200 表示请求已处理完成。响应体 `valid` 为 `true` 表示校验通过；为 `false` 表示校验未通过或服务端在校验过程中返回错误，原因见 `detail`（为服务端错误的 `Error()` 字符串，可能为结构化错误 JSON）。  
-        请求体无法解析、`strict_mode` 非法、知识网络不存在或无权限等仍返回非 2xx（如 400/403），不返回上述 `valid`/`detail` 包。
+        Response: HTTP 200 indicates processing completed. valid=true means validation passed; valid=false means validation failed or an error occurred, with detail explaining the cause. Invalid bodies, invalid strict_mode, missing knowledge networks, and authorization failures return non-2xx responses.
 
-        **内部接口**：与上述请求/响应一致，路径为 `POST /api/bkn-backend/in/v1/knowledge-networks/{kn_id}/validation`；访问者从 Header 解析，不经过 OAuth。
+        Internal API: the corresponding internal path uses the same request and response contract, resolves the caller from headers, and does not use OAuth.
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: Branch. Uses main when omitted.
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true
+          description: Whether to strictly validate dependencies. Defaults to true.
           schema:
             type: boolean
             default: true
           in: query
         - name: import_mode
-          description: 与创建接口一致。导入模式；未传且未传 mode 时视为 normal。用于与落库相同的 ID/名称冲突语义（normal 报错、ignore 跳过冲突项、overwrite 按覆盖规则校验）。
+          description: Matches creation semantics. When neither import_mode nor mode is provided, uses normal. It validates persisted ID and name conflicts with normal, ignore, and overwrite semantics.
           schema:
             type: string
             enum: [normal, ignore, overwrite]
@@ -280,7 +278,7 @@ paths:
               $ref: "#/components/schemas/ValidateKNRequestBody"
       responses:
         "200":
-          description: 已返回校验结果（通过与否均可能为 200）
+          description: Validation result returned. Both pass and fail can return 200.
           content:
             application/json:
               schema:
@@ -290,17 +288,17 @@ paths:
                 properties:
                   valid:
                     type: boolean
-                    description: 为 true 表示校验通过；为 false 表示未通过或处理校验时发生错误
+                    description: true means validation passed. false means validation failed or an error occurred while processing validation.
                   detail:
                     type: string
-                    description: 当 valid 为 false 时给出说明（error.Error()）
+                    description: Explanation when valid is false
         "400":
-          description: 请求参数错误（如请求体非法、strict_mode 无法解析、import_mode/mode 非法等），非业务校验结论
+          description: Invalid request parameters, such as an invalid body, unparseable strict_mode, or invalid import_mode or mode. This is not a business validation result.
 components:
   schemas:
     ValidateKNRequestBody:
       type: object
-      description: 知识网络结构，包含 object_types、relation_types、action_types、concept_groups 等子概念
+      description: Knowledge network structure including child concepts such as object_types, relation_types, action_types, and concept_groups
       properties:
         object_types:
           type: array
@@ -311,26 +309,26 @@ components:
         concept_groups:
           type: array
     BasicInfo:
-      description: 资源的基本信息，包含id和名称
+      description: Basic resource information containing ID and name
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 资源ID
+          description: Resource ID
           type: string
         name:
-          description: 资源名称
+          description: Resource name
           type: string
     ConceptCondition:
-      description: 概念查询数据条件。可用于过滤的字段有类名、属性名和描述
+      description: Concept query condition. Filterable fields include type name, property name, and description.
       required:
         - operation
       type: object
       properties:
         field:
-          description: 字段名称
+          description: Field name
           enum:
             - id
             - name
@@ -341,11 +339,11 @@ components:
           type: string
         operation:
           description: |-
-            操作符。
+            Operators.
 
-            knn: 未对原文进行向量化的向量过滤，接收的值是数组，第一个值，过滤内容，第二个值为 int,是邻居搜索时返回的邻居个数。
+            knn: Vector filter without vectorizing the original text. The value is an array whose first item is the filter content and whose second item is the number of neighbors to return.
 
-            knn_vector: 对原文进行向量化后的向量过滤，接收的值是数组，第一个值，向量，第二个值为 int,是邻居搜索时返回的邻居个数。
+            knn_vector: Vector filter for already-vectorized text. The value is an array whose first item is the vector and whose second item is the number of neighbors to return.
           enum:
             - and
             - or
@@ -362,30 +360,30 @@ components:
             - knn_vector
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Nested filter conditions
           type: array
           items:
             $ref: "#/components/schemas/ConceptCondition"
         value:
-          description: 字段值
+          description: Field value
         value_from:
-          description: 字段值来源，当前仅支持 "const"
+          description: Field value source. Currently supports const only.
           enum:
             - const
           type: string
     ConceptTypeQueryBody:
-      description: 对象类、关系类、行动类的查询请求体
+      description: Query request body for object types, relation types, and action types
       required:
         - condition
       type: object
       properties:
         concept_groups:
-          description: 概念分组ID数组，可选
+          description: Optional concept group ID array
           type: array
           items:
             type: string
         concept_type:
-          description: 概念类型，可选。查询的是对象类、关系类还是行动类，为空时查全部
+          description: Optional concept type. Selects object types, relation types, or action types; empty queries all.
           enum:
             - object_type
             - relation_type
@@ -393,9 +391,9 @@ components:
           type: string
         condition:
           $ref: "#/components/schemas/ConceptCondition"
-          description: 过滤条件
+          description: Filter condition
     ConceptTypeResponse:
-      description: 对象类、关系类、行动类的查询返回结构
+      description: Query response structure for object types, relation types, and action types
       required:
         - id
         - name
@@ -403,23 +401,23 @@ components:
       type: object
       properties:
         id:
-          description: 概念id
+          description: Concept ID
           type: string
         name:
-          description: 概念名称
+          description: Concept name
           type: string
         tags:
-          description: 标签
+          description: Tags
           type: array
           items:
             type: string
         groups:
-          description: 所属概念分组ID
+          description: Owning concept group ID
           type: array
           items:
             type: string
     Path:
-      description: 路径
+      description: Path
       required:
         - nodes
         - edges
@@ -427,51 +425,51 @@ components:
       type: object
       properties:
         nodes:
-          description: 路径中的节点列表(有序)
+          description: Ordered node list in the path
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeDetail"
         edges:
-          description: 路径中的边列表(有序)
+          description: Ordered edge list in the path
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         length:
-          description: 路径长度(边数量)
+          description: Path length, measured by edge count
           type: integer
     ConceptGroup:
-      description: 概念分组
+      description: Concept group
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 概念分组ID
+          description: Concept groupID
           type: string
         name:
-          description: 概念分组名称
+          description: Concept group name
           type: string
     DataSource:
-      description: 数据来源
+      description: Data source
       required:
         - type
         - id
       type: object
       properties:
         type:
-          description: 数据来源类型
+          description: Data source type
           enum:
             - resource
           type: string
         id:
-          description: 数据来源ID
+          description: Data sourceID
           type: string
         name:
-          description: 名称。查看详情时返回。
+          description: Name. Returned when viewing details.
           type: string
     DataProperty:
-      description: 数据属性
+      description: Data properties
       required:
         - name
         - display_name
@@ -484,56 +482,56 @@ components:
       type: object
       properties:
         name:
-          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: Property name. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         display_name:
-          description: 属性显示名
+          description: Property display name
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: Property data type. In addition to view field types, supports metric, objective, event, trace, log, and operator.
           type: string
         comment:
-          description: 属性描述
+          description: Property description
           type: string
         mapped_field:
-          description: 属性映射到数据来源中的字段名
+          description: Field name mapped to the data source
           type: string
         index:
-          description: 是否开启索引，默认是true
+          description: Whether indexing is enabled. Defaults to true.
           type: boolean
         fulltext_config:
           $ref: "#/components/schemas/FulltextConfig"
-          description: 全文索引的配置
+          description: Full-text index configuration
         vector_config:
           $ref: "#/components/schemas/VectorConfig"
-          description: 向量索引的配置
+          description: Vector index configuration
     FulltextConfig:
-      description: 全文索引的配置
+      description: Full-text index configuration
       required:
         - analyzer
         - field_keyword
       type: object
       properties:
         analyzer:
-          description: 分词器
+          description: Analyzer
           enum:
             - standard
             - ik_max_word
           type: string
         field_keyword:
-          description: 是否保留原始字符串，保留原始字符串可用于精确匹配。默认是false
+          description: Whether to retain the original string for exact matching. Defaults to false.
           type: boolean
     VectorConfig:
-      description: 向量索引的配置
+      description: Vector index configuration
       required:
         - dimension
       type: object
       properties:
         dimension:
-          description: 向量维度
+          description: Vector dimension
           type: integer
     LogicProperty:
-      description: 逻辑属性
+      description: Logic properties
       required:
         - name
         - data_source
@@ -541,75 +539,75 @@ components:
       type: object
       properties:
         name:
-          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: Property name. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         display_name:
-          description: 属性显示名
+          description: Property display name
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: Property data type. In addition to view field types, supports metric, objective, event, trace, log, and operator.
           type: string
         comment:
-          description: 属性描述
+          description: Property description
           type: string
         index:
-          description: 是否开启索引，默认是true
+          description: Whether indexing is enabled. Defaults to true.
           type: boolean
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 逻辑来源
+          description: Logic source
         parameters:
-          description: 逻辑所需的参数
+          description: Parameters required by the logic
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
     Object:
-      description: json，字段不定
+      description: JSON object with variable fields
       type: object
     Parameter:
-      description: 逻辑参数
+      description: Logic parameters
       required:
         - name
         - value_from
       type: object
       properties:
         name:
-          description: 参数名称
+          description: Parameter name
           type: string
         value_from:
-          description: 值来源
+          description: Value source
           enum:
             - property
             - input
           type: string
         value:
-          description: 参数值。value_from=property时，填入的是对象类的数据属性名称；value_from=input时，不设置此字段
+          description: Parameter value. For value_from=property, provide the object type data property name. For value_from=input, omit this field.
           type: string
     FilteredCrossJoinMappingRule:
       description: |
-        关系类型为 `filtered_cross_join`（分侧过滤全连接，FCJ）时的匹配规则。无数据视图与键映射；
-        `source_condition` / `target_condition` 为可选的实例过滤条件（结构与对象实例查询 Condition 一致，参见 ontology-query 等查询 API）。
-        两侧均可省略，或 `mapping_rules` 为 `{}`（表示两侧无额外过滤）。
+        Matching rules for filtered_cross_join (FCJ). It does not use data views or key mappings.
+        source_condition and target_condition are optional instance filters with the same structure as object instance query Condition.
+        Either side may be omitted, or mapping_rules can be an empty object when neither side has extra filters.
       type: object
       properties:
         source_condition:
-          description: 起点侧实例过滤条件；可省略表示该侧无约束
+          description: Source-side instance filter. Omit it for no source-side constraint.
           type: object
         target_condition:
-          description: 终点侧实例过滤条件；可省略表示该侧无约束
+          description: Target-side instance filter. Omit it for no target-side constraint.
           type: object
     ActionCondition:
-      description: 行动条件
+      description: Action condition
       type: object
       properties:
         object_type_id:
-          description: 对象类ID。当时多个对象类的过滤时，需要把对象类ID带上，否则只要属性名属于对象类就会进行过滤。
+          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: 字段名称，也即对象类的属性名称
+          description: Field name, which is the object type property name
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - and
             - or
@@ -627,19 +625,19 @@ components:
             - not_exist
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Nested filter conditions
           type: array
           items:
             $ref: "#/components/schemas/ActionCondition"
         value:
-          description: 字段值
+          description: Field value
         value_from:
-          description: 字段值来源，当前仅支持 "const"
+          description: Field value source. Currently supports const only.
           enum:
             - const
           type: string
     ExpectedImpactOperation:
-      description: 与 `action_intent` / `action_type` 一致；`impact_contracts[].expected_operation` 必填；`affect.expected_operation` 若填则须合法。
+      description: Consistent with action_intent and action_type. impact_contracts[].expected_operation is required; affect.expected_operation must be valid when present.
       type: string
       enum:
         - add
@@ -647,7 +645,7 @@ components:
         - delete
     ImpactContractItem:
       description: |
-        行动影响契约单条（与 `action-type.yaml`、`f_impact_contracts` 一致）；DESIGN §7。
+        One action impact contract item, consistent with action-type.yaml and f_impact_contracts. See design section 7.
       type: object
       properties:
         object_type_id:
@@ -663,28 +661,28 @@ components:
     Affect:
       deprecated: true
       description: |
-        **[已废弃]** 请改用 `impact_contracts`。DESIGN §5.9。
+        Deprecated. Use impact_contracts instead. See design section 5.9.
       required:
         - comment
       type: object
       properties:
         object_type:
-          description: 影响的对象类ID
+          description: Affected object type ID
           type: string
         comment:
-          description: 影响描述
+          description: Impact description
           type: string
         expected_operation:
           allOf:
             - $ref: "#/components/schemas/ExpectedImpactOperation"
-          description: 若填写须为 add / modify / delete 之一（与行动类 `action_intent` 一致）；可省略。
+          description: When present, must be add, modify, or delete, consistent with action_intent. May be omitted.
         affected_fields:
-          description: 预期牵涉的数据属性名列表
+          description: Expected involved data property name list
           type: array
           items:
             type: string
     Schedule:
-      description: 执行频率配置项
+      description: Execution frequency configuration
       required:
         - time_type
         - frequency
@@ -693,19 +691,19 @@ components:
       type: object
       properties:
         type:
-          description: 执行类型。枚举，支持配置固定频率(FIX_RATE)和配置crontab表达式（CRON）
+          description: Execution type. Supports a fixed frequency (FIX_RATE) or a cron expression (CRON).
           enum:
             - FIX_RATE
             - CRON
           type: string
         expression:
           description: |-
-            执行表达式。
+            Execution expression.
 
-            1.固定频率指以固定周期执行持久化，frequency=< time_durations >，用一个数字，后面跟时间单位来定义。时间单位可以是如下之一：m - 分钟； h - 小时； d - 天
+            1. Fixed frequency persists execution at a fixed interval. Set frequency=<time_durations> as a number followed by a unit: m for minutes, h for hours, or d for days.
           type: string
     RelationPathReqeustBody:
-      description: 路径查询的请求体
+      description: Path query request body
       required:
         - start_object_type
         - end_object_type
@@ -715,28 +713,28 @@ components:
       type: object
       properties:
         concept_groups:
-          description: 概念分组id
+          description: Concept groupid
           type: array
           items:
             type: string
         source_object_type:
-          description: 起点对象类ID
+          description: Source object type ID
           type: string
         target_object_type:
-          description: 终点对象类ID。当终点类不为空时，查找两个对象类之间的路径；当终点类为空时，从起点类按路径长度查找关联的所有的点
+          description: Target object type ID. When present, finds paths between the source and target types. When empty, finds all nodes connected from the source type within the path length.
           type: string
         path_max_length:
-          description: "最大路径长度,不超过5."
+          description: "Maximum path length, not greater than 5."
           type: integer
         direction:
-          description: 方向：正向(forward)、反向(reverse)、双向(bidirectional)
+          description: "Direction: forward, reverse, or bidirectional"
           enum:
             - forward
             - reverse
             - bidirectional
           type: string
         path_select_policy:
-          description: 路径选择策略。多路径下选择路径的条件或规则，不给则把所有的关系都返回。当前需求不给，策略未来再设计实现
+          description: Path selection strategy. Defines a condition or rule for choosing paths when multiple paths exist. When omitted, returns all relations. Strategy support is future work.
           type: string
     ID:
       description: id
@@ -748,43 +746,43 @@ components:
           description: id
           type: string
     ReqBranch:
-      description: 创建分支的信息
+      description: Branch creation information
       required:
         - name
         - base_version
       type: object
       properties:
         id:
-          description: 分支ID。新建后不可更改。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: Branch ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         name:
-          description: 分支名称。新建后不可更改，只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: Branch name. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         base_version:
-          description: 来源版本
+          description: Source version
           type: string
     UpdateBranch:
-      description: 更新分支信息。只能修改分支的标签、描述
+      description: Branch update information. Only tags and comment can be modified.
       type: object
       properties:
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
     Branch:
-      description: 分支信息
+      description: Branch information
       required:
         - base_version
         - comment
@@ -795,27 +793,27 @@ components:
       type: object
       properties:
         id:
-          description: 分支ID
+          description: Branch ID
           type: string
         name:
-          description: 分支名称
+          description: Branch name
           type: string
         tags:
-          description: 标签
+          description: Tags
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         base_version:
-          description: 来源版本
+          description: Source version
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
     ReqConceptGroup:
-      description: 概念分组创建信息
+      description: Concept group creation information
       required:
         - name
         - branch
@@ -823,154 +821,154 @@ components:
       type: object
       properties:
         id:
-          description: ID。新建后不可更改。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         name:
-          description: 名称。
+          description: Name.
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         base_version:
-          description: 来源版本
+          description: Source version
           type: string
         object_type_ids:
-          description: 概念分组包含的对象类列表
+          description: Object type list included in the concept group
           type: array
           items:
             type: string
         relation_type_ids:
-          description: 概念分组包含的关系类列表
+          description: Relation type list included in the concept group
           type: array
           items:
             type: string
         action_type_ids:
-          description: 概念分组包含的行动类列表
+          description: Action type list included in the concept group
           type: array
           items:
             type: string
     UpdateConceptGroup:
-      description: 修改概念分组信息
+      description: Concept group update information
       required:
         - base_version
         - branch
       type: object
       properties:
         name:
-          description: 名称。
+          description: Name.
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         base_version:
-          description: 来源版本
+          description: Source version
           type: string
         object_type_ids:
-          description: 概念分组包含的对象类列表
+          description: Object type list included in the concept group
           type: array
           items:
             type: string
         relation_type_ids:
-          description: 概念分组包含的关系类列表
+          description: Relation type list included in the concept group
           type: array
           items:
             type: string
         action_type_ids:
-          description: 概念分组包含的行动类列表
+          description: Action type list included in the concept group
           type: array
           items:
             type: string
     ListBranches:
-      description: 分支列表
+      description: Branch list
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: Entry list
           type: array
           items:
             $ref: "#/components/schemas/Branch"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
     ListObjectTypes:
-      description: 对象类列表
+      description: Object type list
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: Entry list
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeDetail"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
     ListRelationTypes:
-      description: 关系类列表
+      description: Relation type list
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: Entry list
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
     ListActionTypes:
-      description: 行动类列表
+      description: Action type list
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: Entry list
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
     Mapping:
-      description: 关联规则
+      description: Mapping rules
       required:
         - target_property
         - source_property
       type: object
       properties:
         target_property:
-          description: 起点属性
+          description: Source property
           type: string
         source_property:
-          description: 终点属性
+          description: Target property
           type: string
     DirectMappings:
-      description: 直接关联
+      description: Direct mapping
       type: object
     m:
       description: m
@@ -982,7 +980,7 @@ components:
           items:
             $ref: "#/components/schemas/Mapping"
     ReqObjectType:
-      description: 对象类创建信息
+      description: Object type creation information
       required:
         - branch
         - base_version
@@ -993,113 +991,113 @@ components:
       type: object
       properties:
         id:
-          description: ID.新建后不可修改，只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         name:
-          description: 名称
+          description: Name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         concept_groups:
-          description: 概念分组
+          description: Concept group
           type: array
           items:
             type: string
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源
+          description: Data source
         data_properties:
-          description: 数据属性
+          description: Data properties
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 逻辑属性
+          description: Logic properties
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 主键，唯一标识
+          description: Primary key, unique identifier
           type: array
           items:
             type: string
         display_key:
-          description: 对象的显示属性
+          description: Display property for objects
           type: string
     ReqKnowledgeNetwork:
-      description: 业务知识网络创建请求体
+      description: Business knowledge network creation request body
       required:
         - name
         - branch
       type: object
       properties:
         id:
-          description: 业务知识网络ID.新建后不可修改，只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: Business knowledge network ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         name:
-          description: 业务知识网络名称
+          description: Business knowledge network name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
     UpdateKnowledgeNetwork:
-      description: 业务知识网络创建请求体
+      description: Business knowledge network creation request body
       required:
         - branch
         - name
       type: object
       properties:
         name:
-          description: 业务知识网络名称
+          description: Business knowledge network name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 指标模型备注
+          description: Metric model comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
     UpdateObjectType:
-      description: 更新对象类
+      description: Object type update
       required:
         - name
         - primary_keys
@@ -1110,53 +1108,53 @@ components:
       type: object
       properties:
         name:
-          description: 名称
+          description: Name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         concept_groups:
-          description: 概念分组
+          description: Concept group
           type: array
           items:
             type: string
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源
+          description: Data source
         data_properties:
-          description: 数据属性
+          description: Data properties
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 逻辑属性
+          description: Logic properties
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 主键，唯一标识
+          description: Primary key, unique identifier
           type: array
           items:
             type: string
         display_key:
-          description: 对象的显示属性
+          description: Display property for objects
           type: string
     ReqRelationType:
-      description: 关系类创建信息
+      description: Relation type creation information
       required:
         - name
         - branch
@@ -1165,41 +1163,41 @@ components:
       type: object
       properties:
         id:
-          description: ID.新建后不可修改，只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         name:
-          description: 名称
+          description: Name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         concept_groups:
-          description: 概念分组
+          description: Concept group
           type: array
           items:
             type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: Source object type ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: Target object type ID
           type: string
         type:
-          description: 关系类型
+          description: Relation type
           enum:
             - direct
             - filtered_cross_join
@@ -1209,9 +1207,9 @@ components:
             - $ref: "#/components/schemas/m"
               type: array
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "关联的匹配规则。direct 为键映射；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule（分侧条件）。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
+          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule with side-specific conditions. A direct mapping maps source object property 1 to target object property 1."
     UpdateRelationType:
-      description: 关系类更新信息
+      description: Relation type update information
       required:
         - name
         - branch
@@ -1221,38 +1219,38 @@ components:
       type: object
       properties:
         name:
-          description: 名称
+          description: Name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         concept_groups:
-          description: 概念分组
+          description: Concept group
           type: array
           items:
             type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: Source object type ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: Target object type ID
           type: string
         type:
-          description: 关系类型
+          description: Relation type
           enum:
             - direct
             - filtered_cross_join
@@ -1261,9 +1259,9 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Object"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "关联的匹配规则。direct 为键映射；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
+          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule. A direct mapping maps source object property 1 to target object property 1."
     ReqActionType:
-      description: 行动类创建信息
+      description: Action type creation information
       required:
         - action_type
         - groups
@@ -1277,58 +1275,58 @@ components:
       type: object
       properties:
         id:
-          description: 行动类ID
+          description: Action type ID
           type: string
         name:
-          description: 行动类名称
+          description: Action type name
           type: string
         tags:
-          description: 标签。
+          description: Tags。
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         concept_groups:
-          description: 概念分组id
+          description: Concept groupid
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         action_type:
           deprecated: true
           description: |
-            **[已废弃]** 优先 `action_intent`（取值 add/modify/delete）；双写须一致。
+            Deprecated. Prefer action_intent with add, modify, or delete; dual writes must agree.
           enum:
             - add
             - modify
             - delete
           type: string
         action_intent:
-          description: 推荐写入的行动意图枚举。
+          description: Recommended action intent enum for writes.
           enum:
             - add
             - modify
             - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: Object type ID bound to the action type
           type: string
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 行动条件
+          description: Action condition
         affect:
           deprecated: true
-          description: "**[已废弃]** 使用 `impact_contracts`。"
+          description: "Deprecated. Use impact_contracts."
           allOf:
             - $ref: "#/components/schemas/Affect"
         impact_contracts:
@@ -1337,17 +1335,17 @@ components:
             $ref: "#/components/schemas/ImpactContractItem"
         action_source:
           $ref: "#/components/schemas/DataSource"
-          description: 绑定的行动的资源
+          description: Resource bound to the action
         parameters:
-          description: 行动资源参数
+          description: Action resource parameters
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 行动监听参数配置
+          description: Action listener parameter configuration
     UpdateActionType:
-      description: 行动类更新信息
+      description: Action type update information
       required:
         - action_type
         - groups
@@ -1361,54 +1359,54 @@ components:
       type: object
       properties:
         name:
-          description: 行动类名称
+          description: Action type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         concept_groups:
-          description: 概念分组id
+          description: Concept groupid
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         action_type:
           deprecated: true
-          description: "**[已废弃]** 优先 `action_intent`。"
+          description: "Deprecated. Prefer action_intent."
           enum:
             - add
             - modify
             - delete
           type: string
         action_intent:
-          description: 服务端持久化字段 `f_action_intent`。
+          description: Server-persisted field f_action_intent.
           enum:
             - add
             - modify
             - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: Object type ID bound to the action type
           type: string
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 行动条件
+          description: Action condition
         affect:
           deprecated: true
-          description: "**[已废弃]** `impact_contracts`。"
+          description: "Deprecated. Use impact_contracts."
           allOf:
             - $ref: "#/components/schemas/Affect"
         impact_contracts:
@@ -1417,17 +1415,17 @@ components:
             $ref: "#/components/schemas/ImpactContractItem"
         action_source:
           $ref: "#/components/schemas/DataSource"
-          description: 绑定的行动的资源
+          description: Resource bound to the action
         parameters:
-          description: 行动资源参数
+          description: Action resource parameters
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 行动监听参数配置
+          description: Action listener parameter configuration
     ActionTypeDetail:
-      description: 行动类
+      description: Action type
       required:
         - action_type
         - comment
@@ -1447,39 +1445,39 @@ components:
       type: object
       properties:
         id:
-          description: 行动类ID
+          description: Action type ID
           type: string
         name:
-          description: 行动类名称
+          description: Action type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         concept_groups:
-          description: 概念分组id
+          description: Concept groupid
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         action_type:
           deprecated: true
-          description: "**[已废弃]** 等价于 `action_intent`。"
+          description: "Deprecated. Equivalent to action_intent."
           enum:
             - add
             - modify
@@ -1492,51 +1490,51 @@ components:
             - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: Object type ID bound to the action type
           type: string
         object_type_name:
-          description: 行动类所绑定的对象类名称
+          description: Object type name bound to the action type
           type: string
         condition:
           $ref: "#/components/schemas/ActionCondition"
-          description: 行动条件
+          description: Action condition
         affect:
           deprecated: true
           allOf:
             - $ref: "#/components/schemas/Affect"
-          description: "**[已废弃]** 单行影响；参见 `impact_contracts`。"
+          description: "Deprecated. Single-line impact; see impact_contracts."
         impact_contracts:
           type: array
           items:
             $ref: "#/components/schemas/ImpactContractItem"
         action_source:
           $ref: "#/components/schemas/DataSource"
-          description: 绑定的行动的资源
+          description: Resource bound to the action
         parameters:
-          description: 行动资源参数
+          description: Action resource parameters
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
         schedule:
           $ref: "#/components/schemas/Schedule"
-          description: 行动监听参数配置
+          description: Action listener parameter configuration
     ListKN:
-      description: 业务知识网络列表
+      description: Business knowledge network list
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: Entry list
           type: array
           items:
             $ref: "#/components/schemas/KnowledgeNetworkDetail"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
     ObjectTypeDetail:
-      description: 节点（对象类）信息
+      description: Node (object type) information
       required:
         - id
         - name
@@ -1554,71 +1552,71 @@ components:
       type: object
       properties:
         id:
-          description: 对象类ID
+          description: Object type ID
           type: string
         name:
-          description: 对象类名称
+          description: Object type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络id
+          description: Business knowledge network ID
           type: string
         concept_groups:
-          description: 概念分组id
+          description: Concept groupid
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源
+          description: Data source
         data_properties:
-          description: 数据属性
+          description: Data properties
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 逻辑属性
+          description: Logic properties
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 主键
+          description: Primary keys
           type: array
           items:
             type: string
         display_key:
-          description: 对象实例的显示属性
+          description: Display property for object instances
           type: string
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
     RelationTypeDetail:
-      description: 关系类
+      description: Relation type
       required:
         - type
         - comment
@@ -1637,50 +1635,50 @@ components:
       type: object
       properties:
         id:
-          description: 关系类ID
+          description: Relation typeID
           type: string
         name:
-          description: 关系类名称
+          description: Relation type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         concept_groups:
-          description: 概念分组
+          description: Concept group
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         source_object_type_id:
-          description: 起点象类ID
+          description: Source object type ID
           type: string
         source_object_type_name:
-          description: 起点象类名称
+          description: Source object type name
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: Target object type ID
           type: string
         target_object_type_name:
-          description: 终点对象类名称
+          description: Target object type name
           type: string
         type:
-          description: 关系类型
+          description: Relation type
           enum:
             - direct
             - filtered_cross_join
@@ -1689,21 +1687,21 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Object"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: "关联的匹配规则。direct 为键映射；filtered_cross_join（FCJ）参考 FilteredCrossJoinMappingRule。直接关联时是一个 map，标记的是起点对象匹配属性1: 终点对象匹配属性1"
+          description: "Matching rules for the relation. direct uses key mapping; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule. A direct mapping maps source object property 1 to target object property 1."
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
     Statistics:
-      description: 概念统计信息
+      description: Concept statistics
       required:
         - object_type_totals
         - relation_type_totals
@@ -1711,61 +1709,61 @@ components:
       type: object
       properties:
         object_types_total:
-          description: 对象类数量
+          description: Object type count
           type: integer
         relation_types_total:
-          description: 关系类数量
+          description: Relation type count
           type: integer
         action_types_total:
-          description: 行动类数量
+          description: Action type count
           type: integer
         metrics_total:
-          description: 指标数量
+          description: Metric count
           type: integer
     ConceptGroupInfo:
-      description: 概念分组自身的信息
+      description: Concept group information
       type: object
       properties:
         id:
           description: ID
           type: string
         name:
-          description: 名称
+          description: Name
           type: string
         tags:
-          description: 标签，可为空
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注，可为空
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
     KnowledgeNetworkDetail:
-      description: 业务知识网络详情
+      description: Business knowledge network details
       required:
         - id
         - name
@@ -1782,72 +1780,72 @@ components:
       type: object
       properties:
         id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         name:
-          description: 业务知识网络名称
+          description: Business knowledge network name
           type: string
         tags:
-          description: 标签，可为空
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注，可为空
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
         statistics:
           $ref: "#/components/schemas/Statistics"
-          description: 概念统计信息。当include_statistics为true时才计算概念统计信息
+          description: Concept statistics. Calculated only when include_statistics is true.
         concept_groups:
-          description: 概念分组信息
+          description: Concept group information
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroupInfo"
         object_types:
-          description: 对象类
+          description: Object types
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeDetail"
         relation_types:
-          description: 关系类
+          description: Relation type
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         action_types:
-          description: 行动类
+          description: Action type
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
 
         business_domain:
-          description: 业务域标识
+          description: Business domain identifier
           type: string
         module_type:
-          description: 概念所属模块类型
+          description: Module type of the concept
           type: string
         operations:
-          description: 当前访问者对该资源可执行的操作码列表（由授权服务下发）
+          description: Operation code list that the current caller can execute on this resource, supplied by the authorization service.
           type: array
           items:
             type: string

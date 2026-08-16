@@ -27,18 +27,15 @@ func (ots *objectTypeService) validateLogicMetricProperty(ctx context.Context, o
 	def, err := ots.ma.GetMetricByID(ctx, objectType.KNID, objectType.Branch, lp.DataSource.ID)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的 KN 指标[%s]获取失败: %s",
-				objectType.OTName, lp.Name, lp.DataSource.ID, err.Error()))
+			WithErrorDetails(invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
 	}
 	if def == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的 KN 指标[%s]不存在，须绑定 MetricDefinition.id",
-				objectType.OTName, lp.Name, lp.DataSource.ID))
+			WithErrorDetails(invalidParameterDetail(ctx, "MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
 	}
 	if strings.TrimSpace(def.ScopeRef) != strings.TrimSpace(objectType.OTID) {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]引用的指标 scope_ref[%s]须等于当前对象类 id[%s]",
-				objectType.OTName, lp.Name, def.ScopeRef, objectType.OTID))
+			WithErrorDetails(invalidParameterDetail(ctx, "MetricScopeMismatch", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "scopeRef": def.ScopeRef, "objectTypeID": objectType.OTID}))
 	}
 	return nil
 }
@@ -82,16 +79,16 @@ func processKNMetricPropertyParamComment(ctx context.Context, logicProp *interfa
 		}
 		switch param.Name {
 		case "instant":
-			comment := "是否是即时查询。可选，默认为 false。当 instant = true 时，表示即时查询；当 instant = false 时，表示范围查询。"
+			comment := invalidParameterDetail(ctx, "MetricInstantComment", nil)
 			objectType.LogicProperties[j].Parameters[k].Comment = &comment
 		case "start":
-			comment := "指标查询的开始时间。 start=<unix_timestamp>，单位到毫秒。 例如: 1646360670123"
+			comment := invalidParameterDetail(ctx, "MetricStartComment", nil)
 			objectType.LogicProperties[j].Parameters[k].Comment = &comment
 		case "end":
-			comment := "指标查询的结束时间。end=<unix_timestamp>，单位到毫秒。例如: 1646471470123"
+			comment := invalidParameterDetail(ctx, "MetricEndComment", nil)
 			objectType.LogicProperties[j].Parameters[k].Comment = &comment
 		case "step":
-			comment := "范围查询的步长。当 instant 为 false 时, 必须。step=<time_durations>，用一个数字，后面跟时间单位来定义。"
+			comment := invalidParameterDetail(ctx, "MetricStepComment", nil)
 			objectType.LogicProperties[j].Parameters[k].Comment = &comment
 		default:
 			otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s logic property [%s]'s parameter[%s] not found in KN metric[%s]",

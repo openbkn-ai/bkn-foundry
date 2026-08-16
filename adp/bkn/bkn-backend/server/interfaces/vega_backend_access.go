@@ -39,7 +39,7 @@ type CatalogRequest struct {
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 	Enabled     bool     `json:"enabled"`
-	// Internal 系统内部目录：在权限服务按 internal_catalog 类型注册，仅超级管理员可见
+	// Internal system catalog: registered as internal_catalog in the permission service and visible only to super administrators.
 	Internal bool `json:"internal"`
 	// ConnectorType string         `json:"connector_type"`
 	// ConnectorCfg  map[string]any `json:"connector_config"`
@@ -67,8 +67,8 @@ type VegaResource struct {
 	// Status           string      `json:"status"`
 	SchemaDefinition []*Property              `json:"schema_definition,omitempty"`
 	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
-	// LocalIndexName 由构建任务填充，非空表示该资源已经有本地索引；
-	// 字段级 features 只有在这种情况下才真的落到了 OpenSearch 上。
+	// LocalIndexName is populated by a build task. A non-empty value indicates that the resource has a local index;
+	// field-level features are persisted to OpenSearch only in that case.
 	LocalIndexName string `json:"index_name,omitempty"`
 }
 

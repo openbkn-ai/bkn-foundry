@@ -11,7 +11,7 @@ import (
 	"database/sql"
 )
 
-// RiskTypeService 风险类服务接口
+// RiskTypeService defines the risk-type service interface.
 //
 //go:generate mockgen -source risk_type_service.go -destination mock/mock_risk_type_service.go
 type RiskTypeService interface {

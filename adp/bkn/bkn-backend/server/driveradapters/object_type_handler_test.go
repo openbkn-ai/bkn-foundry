@@ -408,8 +408,8 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
 		})
 
-		// 下游（如 Vega）返回普通 error 时，handler 不得做裸类型断言：
-		// panic 会让连接在写响应头前断开，网关只能回 502。必须映射为可诊断的 500。
+		// When a downstream service such as Vega returns a plain error, the handler must not use an unchecked type assertion:
+		// A panic closes the connection before response headers are written, leaving the gateway to return 502. Map it to a diagnosable 500 instead.
 		Convey("DeleteObjectTypes maps plain downstream error without panic\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), knID, gomock.Any(), "ot1").Return("object1", true, nil)
@@ -424,7 +424,7 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
-			// 断言错误码存在，用以区分「规范错误响应」与「Recovery 中间件兜住的 panic」。
+			// Assert that an error code exists to distinguish a standard error response from a panic recovered by middleware.
 			So(w.Body.String(), ShouldContainSubstring, berrors.BknBackend_ObjectType_InternalError)
 		})
 	})

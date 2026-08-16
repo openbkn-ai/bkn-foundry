@@ -19,6 +19,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -70,5 +71,35 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 		So(err, ShouldBeNil)
 		So(len(result.Entries), ShouldEqual, interfaces.ConceptQueryLimit+1)
 		So(result.Entries[len(result.Entries)-1].RTID, ShouldEqual, "risk-last")
+	})
+}
+
+func TestRiskTypeServiceHandleImportModeLocalizesInvalidMode(t *testing.T) {
+	Convey("Invalid risk type import modes use the request locale\n", t, func() {
+		service := &riskTypeService{}
+
+		Convey("Chinese request uses the Chinese catalog", func() {
+			_, _, err := service.handleImportMode(
+				rest.WithLanguage(context.Background(), rest.SimplifiedChinese),
+				"unsupported",
+				nil,
+			)
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "import_mode \u5fc5\u987b\u4e3a overwrite\u3001normal \u6216 ignore\u3002")
+		})
+
+		Convey("English request uses the English catalog", func() {
+			_, _, err := service.handleImportMode(
+				rest.WithLanguage(context.Background(), rest.AmericanEnglish),
+				"unsupported",
+				nil,
+			)
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "import_mode must be one of overwrite, normal, or ignore.")
+		})
 	})
 }

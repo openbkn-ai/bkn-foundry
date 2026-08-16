@@ -26,9 +26,9 @@ type ActionTypeService interface {
 
 	SearchActionTypes(ctx context.Context, query *ConceptsQuery) (ActionTypes, error)
 
-	// 写行动类到索引
+	// Write action types to the index.
 	InsertDatasetData(ctx context.Context, actionTypes []*ActionType) error
 
-	// ValidateActionTypes 仅校验依赖存在性，不写库
+	// ValidateActionTypes validates dependency existence only and does not persist data.
 	ValidateActionTypes(ctx context.Context, knID string, branch string, actionTypes []*ActionType, strictMode bool, batch *BatchIDIndex, mode string) error
 }

@@ -14,7 +14,7 @@ import (
 	"bkn-backend/interfaces/data_type"
 )
 
-type contextKey string // 自定义专属的key类型
+type contextKey string // Private context key type.
 
 const (
 	CONTENT_TYPE_NAME = "Content-Type"
@@ -25,12 +25,12 @@ const (
 	HTTP_HEADER_ACCOUNT_TYPE    = "x-account-type"
 	HTTP_HEADER_BUSINESS_DOMAIN = "x-business-domain"
 
-	ACCOUNT_INFO_KEY contextKey = "x-account-info" // 避免直接使用string
+	ACCOUNT_INFO_KEY contextKey = "x-account-info" // Avoid using a raw string directly.
 
 	OBJECT_NAME_MAX_LENGTH = 40
 	DEFAULT_NAME_PATTERN   = ""
 	DEFAULT_OFFEST         = "0"
-	DEFAULT_LIMIT          = "10" // LIMIT=-1, 不分页
+	DEFAULT_LIMIT          = "10" // LIMIT=-1 disables pagination.
 	DEFAULT_SORT           = "update_time"
 	DEFAULT_DIRECTION      = "desc"
 	DESC_DIRECTION         = "desc"
@@ -56,68 +56,69 @@ const (
 	QueryParam_StrictMode  = "strict_mode"
 	QueryParam_DetailLevel = "detail_level"
 
-	// detail_level 取值：summary 只返骨架 + 属性名（砍字段映射/查询算子/逻辑属性
-	// 数据源与参数/关系映射规则，去重 concept_groups 嵌套）；full（默认）返全量。
-	// 完整字段映射按需走 object-types/:ids、relation-types/:ids 端点获取。
+	// detail_level values: summary returns only the skeleton and property names, omitting field
+	// mappings, query operators, logical-property data sources and parameters, relation mappings,
+	// and de-duplicated concept_groups nesting. full, the default, returns all fields.
+	// Retrieve complete field mappings from the object-types/:ids and relation-types/:ids endpoints.
 	DetailLevel_Summary = "summary"
 	DetailLevel_Full    = "full"
 
-	// 对象的导入模式
+	// Object import modes.
 	ImportMode_Normal    = "normal"
 	ImportMode_Ignore    = "ignore"
 	ImportMode_Overwrite = "overwrite"
 
 	Mode_Export = "export"
 
-	// 数据来源类型
+	// Data source types.
 	DATA_SOURCE_TYPE_RESOURCE = "resource"
 
-	// 对象id的校验
+	// Object ID validation.
 	RegexPattern_Builtin_ID    = "^[a-z0-9_][a-z0-9_-]{0,39}$"
 	RegexPattern_NonBuiltin_ID = "^[a-z0-9][a-z0-9_-]{0,39}$"
 
-	// 属性名称约束
+	// Property name constraints.
 	RegexPattern_Property_Name = "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$"
 
-	// 未分组中英文
+	// Ungrouped labels.
 	UNGROUPED_ZH_CN = "未分组"
 	UNGROUPED_EN_US = "Ungrouped"
 
-	// 参数来源
+	// Parameter sources.
 	VALUE_FROM_INPUT    = "input"
 	VALUE_FROM_PROPERTY = "property"
 	VALUE_FROM_CONST    = "const"
-	VALUE_FROM_PARAM    = "param" // RiskFunction 参数：值来自 RiskType 参数，value 为 ParamDef.name
+	VALUE_FROM_PARAM    = "param" // RiskFunction parameter value comes from a RiskType parameter named by ParamDef.name.
 
-	// 属性类型
+	// Property types.
 	PROPERTY_TYPE_METRIC = "metric"
 
-	// 概念检索未指定 limit 时的最大页面大小。
+	// Maximum page size when concept search does not specify limit.
 	ConceptQueryLimit = 10000
 
-	// 按_score排序
+	// Sort by _score.
 	OPENSEARCH_SCORE_FIELD = "_score"
 
-	// 对象索引构建时,存储的对象id
+	// Object ID stored while building the object index.
 	OBJECT_ID = "__id"
 
-	// 是否包含统计信息
+	// Whether to include statistics.
 	DEFAULT_INCLUDE_STATISTICS = "false"
 
-	// 获取总数时每批对象类id传递的数量(每批处理的ID数量)
+	// Number of object type IDs sent per batch when retrieving a total count.
 	GET_TOTAL_CONCEPTID_BATCH_SIZE = 900
 
-	// 概念检索默认的条数
+	// Default number of results for concept search.
 	DEFAULT_CONCEPT_SEARCH_LIMIT = 10
 
-	// 概念id字段名
+	// Concept ID field name.
 	CONCEPT_ID_FIELD = "id"
 )
 
 const (
 	MAIN_BRANCH = "main"
 
-	//模块类型
+	// Module types.
 	MODULE_TYPE_KN                     = "knowledge_network"
 	MODULE_TYPE_OBJECT_TYPE            = "object_type"
 	MODULE_TYPE_RELATION_TYPE          = "relation_type"
@@ -130,14 +131,14 @@ const (
 )
 
 const (
-	// 概念索引名称
+	// Concept index name.
 	KN_CONCEPT_INDEX_NAME = "adp-kn_concept"
 
 	// moduleType + id + branch
 	KN_CONCEPT_DOCID_TEMPLATE = "%s-%s-%s-%s"
 )
 
-// 分页查询参数
+// Pagination query parameters.
 type PaginationQueryParameters struct {
 	Offset    int
 	Limit     int
@@ -218,7 +219,7 @@ type ResourceInfo struct {
 	ResultPath string `json:"result_path,omitempty" mapstructure:"result_path"`
 }
 
-// 概念索引的id生成规则， kn_id + module_type + id + branch
+// Concept index ID format: kn_id + module_type + id + branch.
 func GenerateConceptDocuemtnID(knID string, moduleType string, id string, branch string) string {
 	return fmt.Sprintf(KN_CONCEPT_DOCID_TEMPLATE, knID, moduleType, id, branch)
 }
@@ -248,7 +249,7 @@ const (
 	BKN_DATASET_ID   = "adp_bkn_concept_dataset"
 	BKN_DATASET_NAME = "adp_bkn_concept_dataset"
 
-	//特征的配置项
+	// Feature configuration.
 	FieldFeatureType_Keyword  = "keyword"
 	FieldFeatureType_Fulltext = "fulltext"
 	FieldFeatureType_Vector   = "vector"
@@ -485,7 +486,7 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 		// Object type specific fields
 		{
 			Name:         "data_source",
-			Type:         data_type.DATATYPE_JSON, // 物化到opensearch中是 object 类型
+			Type:         data_type.DATATYPE_JSON, // Materialized as an object type in OpenSearch.
 			DisplayName:  "data_source",
 			OriginalName: "data_source",
 			Description:  "BKN对象类概念的数据源配置信息",
@@ -703,7 +704,7 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 			Description:  "BKN对象类概念的逻辑属性数据源",
 		},
 		{
-			Name:         "logic_properties.parameters", // 逻辑属性的parameters字段需要把struct序列化成json string后存储，不展开
+			Name:         "logic_properties.parameters", // Serialize logical-property parameters as a JSON string instead of expanding the struct.
 			Type:         data_type.DATATYPE_STRING,
 			DisplayName:  "logic_properties.parameters",
 			OriginalName: "logic_properties.parameters",
@@ -917,7 +918,7 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 			Features:     []PropertyFeature{},
 		},
 		{
-			Name:         "parameters", // 行动类的parameters字段需要把struct序列化成json string后存储，不展开
+			Name:         "parameters", // Serialize action-type parameters as a JSON string instead of expanding the struct.
 			Type:         data_type.DATATYPE_STRING,
 			DisplayName:  "parameters",
 			OriginalName: "parameters",

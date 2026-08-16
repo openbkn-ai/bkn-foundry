@@ -308,7 +308,7 @@ func Test_validateConceptsQuery(t *testing.T) {
 				KNID:       "kn1",
 				ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE,
 				Condition: map[string]any{
-					"invalid": make(chan int), // 无法序列化的类型
+					"invalid": make(chan int), // Non-serializable type.
 				},
 			}
 			err := validateConceptsQuery(ctx, query)
@@ -395,7 +395,7 @@ func Test_validateCond(t *testing.T) {
 					Value: []any{"value1", "value2"},
 				},
 			}
-			// 由于 ValueOptCfg 是嵌入的，可以直接访问 Value
+			// ValueOptCfg is embedded, so Value can be accessed directly.
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*rest.HTTPError)
@@ -784,4 +784,69 @@ func Test_validateCond(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestValidateRiskTypesLocalizesInvalidParameterDetails(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "Risk type ID 'risk-1' already exists in the request body."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "请求体中已存在风险类 ID 'risk-1'。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			riskTypes := []*interfaces.RiskType{
+				{RTID: "risk-1", RTName: "risk-one"},
+				{RTID: "risk-1", RTName: "risk-two"},
+			}
+			err := ValidateRiskTypes(
+				rest.WithLanguage(context.Background(), testCase.language),
+				"kn-1",
+				riskTypes,
+			)
+			if err == nil {
+				t.Fatal("ValidateRiskTypes() error = nil, want duplicated ID error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
+}
+
+func TestCommonValidationDetailsRespectLanguage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "x-http-method-override must be GET; got POST."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "x-http-method-override 必须为 GET，当前为 POST。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := ValidateHeaderMethodOverride(
+				rest.WithLanguage(context.Background(), testCase.language),
+				"POST",
+			)
+			if err == nil {
+				t.Fatal("ValidateHeaderMethodOverride() error = nil, want invalid method error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
 }

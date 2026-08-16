@@ -34,7 +34,7 @@ type modelFactoryAccess struct {
 	mfAPIUrl     string
 }
 
-// NewModelFactoryAccess 创建模型工厂访问实例
+// NewModelFactoryAccess creates a model factory access instance.
 func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactoryAccess {
 	mfAccessOnce.Do(func() {
 		mfAccess = &modelFactoryAccess{
@@ -48,8 +48,8 @@ func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactor
 	return mfAccess
 }
 
-// GetDefaultModel 调 mf-model-manager 取某 model_type 下的系统默认小模型。
-// 返回 nil 表示未配置默认(接口返回空对象)。
+// GetDefaultModel retrieves the system default small model for a model_type from mf-model-manager.
+// A nil result means that no default is configured and the API returned an empty object.
 func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context, modelType string) (*interfaces.SmallModel, error) {
 
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetDefaultModel")
@@ -75,7 +75,7 @@ func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context, modelType st
 		return nil, fmt.Errorf("get default model request failed: %w", err)
 	}
 	if respCode == http.StatusNotFound {
-		// 兼容 mf-model-manager 尚未升级（无 get_default 端点）：当作未配置系统默认。
+		// Treat an mf-model-manager without get_default as having no system default.
 		logger.Warnf("get_default endpoint returned 404 (mf-model-manager not upgraded?), no system default available")
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
 		return nil, nil
@@ -96,7 +96,7 @@ func (mfa *modelFactoryAccess) GetDefaultModel(ctx context.Context, modelType st
 	}
 
 	var model *interfaces.SmallModel
-	if smallModel.ModelID != "" { // 空对象 {} 表示未配置默认
+	if smallModel.ModelID != "" { // An empty object means no default is configured.
 		model = &smallModel
 	}
 
@@ -108,21 +108,21 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetModelByID")
 	defer span.End()
 
-	// 构建请求URL
+	// Build the request URL.
 	httpUrl := fmt.Sprintf("%s/small-model/get?model_id=%s", mfa.mfManagerUrl, modelID)
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
-	// 设置请求头
+	// Set request headers.
 	headers := map[string]string{
 		"Content-Type":                      "application/json",
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
 
-	// 发送GET请求获取模型
+	// Send the GET request to retrieve the model.
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 	logger.Debugf("GetModelByID finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
@@ -145,7 +145,7 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 		return nil, err
 	}
 
-	// 解析响应数据
+	// Parse the response data.
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal model response failed")
@@ -161,21 +161,21 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetModelByName")
 	defer span.End()
 
-	// 构建请求URL
+	// Build the request URL.
 	httpUrl := fmt.Sprintf("%s/small-model/get_by_name?model_name=%s", mfa.mfManagerUrl, modelName)
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
-	// 设置请求头
+	// Set request headers.
 	headers := map[string]string{
 		"Content-Type":                      "application/json",
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
 
-	// 发送GET请求获取模型
+	// Send the GET request to retrieve the model.
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 	logger.Debugf("GetModelByName finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
 
@@ -198,7 +198,7 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 		return nil, err
 	}
 
-	// 解析响应数据
+	// Parse the response data.
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal model response failed")
@@ -215,14 +215,14 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetVector")
 	defer span.End()
 
-	// 构建请求URL
+	// Build the request URL.
 	httpUrl := fmt.Sprintf("%s/small-model/embeddings", mfa.mfAPIUrl)
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
-	// 设置请求头
+	// Set request headers.
 	headers := map[string]string{
 		"Content-Type":                      "application/json",
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
@@ -231,7 +231,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 
 	requestBody := map[string]any{"model": "", "model_id": modelID, "input": words}
 
-	// 发送POST请求获取向量
+	// Send the POST request to retrieve vectors.
 	respCode, result, err := mfa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
 
 	logger.Debugf("GetVector finished, batch_size=[%d], response code is [%d], %s", len(words), respCode, common.SafeErrorSummary(err))
@@ -250,7 +250,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 		return nil, err
 	}
 
-	// 解析响应数据
+	// Parse the response data.
 	var response struct {
 		Data []*cond.VectorResp `json:"data"`
 	}
@@ -262,6 +262,6 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 	}
 	logger.Debugf("vectorized result length is [%d]", len(response.Data))
 
-	// 检查返回的向量数量是否与输入文本数量一致
+	// Verify that the returned vector count matches the input text count.
 	return response.Data, nil
 }

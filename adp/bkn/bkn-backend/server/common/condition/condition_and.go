@@ -65,23 +65,23 @@ func (cond *AndCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 			return "", err
 		}
 
-		// 过滤掉空字符串（被忽略的条件）
+		// Drop empty strings from ignored conditions.
 		if dsl != "" && dsl != "{}" {
 			validDSLs = append(validDSLs, dsl)
 		}
 	}
 
-	// 如果所有子条件都被过滤掉，返回空对象
+	// Return an empty object when all child conditions are filtered out.
 	if len(validDSLs) == 0 {
 		return "{}", nil
 	}
 
-	// 如果只有一个有效子条件，直接返回该子条件的 DSL，不需要包装在 bool.must 中
+	// Return the only valid child condition directly without wrapping it in bool.must.
 	if len(validDSLs) == 1 {
 		return validDSLs[0], nil
 	}
 
-	// 多个有效子条件，用逗号连接
+	// Join multiple valid child conditions with commas.
 	for i, dsl := range validDSLs {
 		if i != len(validDSLs)-1 {
 			dslStr += dsl + ","

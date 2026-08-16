@@ -22,23 +22,23 @@ type MultiMatchCond struct {
 
 func NewMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*ViewField) (Condition, error) {
 
-	// 从cfg的 ReaminCfg 中获取 fields，这是属于 multi_match的fields字段，是个字符串数组，
-	// 如果想要全部字段匹配，可不填或者填 ["*"], 不支持填字符串 *， 需要一个数组
+	// Read fields from cfg.RemainCfg. This is the multi_match fields array.
+	// To match all fields, omit this value or pass ["*"]. A plain string * is not supported.
 	var fields []string
 	cfgFields, exist := cfg.RemainCfg["fields"]
 	if exist {
-		// 存在 fields 时需要是一个数组
+		// fields must be an array when present.
 		if !common.IsSlice(cfgFields) {
 			return nil, fmt.Errorf("condition [multi_match] 'fields' value should be an array")
 		}
-		// 字段数组里的需要是个字符串数组
+		// The fields array must contain strings.
 		for _, cfgField := range cfgFields.([]any) {
 			field, ok := cfgField.(string)
 			if !ok {
 				return nil, fmt.Errorf("condition [multi_match] 'fields' value should be a string array, contain non string value[%v]", cfgField)
 			}
 
-			// 字段数组里的每个元素都需要是字符串
+			// Each fields array element must be a string.
 			name := getFilterFieldName(field, fieldsMap, true)
 			if name == AllField {
 				fields = []string{
@@ -53,7 +53,7 @@ func NewMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fiel
 					"logic_properties.display_name",
 					"logic_properties.comment",
 				}
-				// 遇到 * 结束循环
+				// Stop the loop when * is encountered.
 				break
 			} else {
 				fields = append(fields, name)
@@ -61,7 +61,7 @@ func NewMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fiel
 		}
 	}
 
-	// 校验match_type的有效性, match_type可以为空
+	// Validate match_type. It may be empty.
 	matchType, exist := cfg.RemainCfg["match_type"]
 	if exist && matchType != "" {
 		mtype, ok := matchType.(string)
@@ -91,7 +91,7 @@ func (cond *MultiMatchCond) Convert(ctx context.Context, vectorizer func(ctx con
 		return "", fmt.Errorf("condition [multi_match] marshal fields error: %s", err.Error())
 	}
 
-	// 默认是 best_fields
+	// Defaults to best_fields.
 	matchType := "best_fields"
 	if mt, exist := cond.mCfg.RemainCfg["match_type"]; exist {
 		if mtStr, ok := mt.(string); exist && ok {
@@ -107,7 +107,7 @@ func (cond *MultiMatchCond) Convert(ctx context.Context, vectorizer func(ctx con
 							"query": %v,
 							"type": "%s"`, v, matchType)
 
-	// 如果不指定 fields，则用 index.query.default_field 配置的字段查询，默认是*
+	// When fields is omitted, query index.query.default_field, which defaults to *.
 	if len(cond.mFilterFieldNames) > 0 {
 		dslStr = fmt.Sprintf(`%s,
 							"fields": %v
@@ -128,22 +128,22 @@ func (cond *MultiMatchCond) Convert2SQL(ctx context.Context) (string, error) {
 
 // convertMultiMatchCondToDatasetFilterCondition converts MultiMatchCond to dataset filter condition format
 func convertMultiMatchCondToDatasetFilterCondition(cfg *CondCfg, fieldsMap map[string]*ViewField) (map[string]any, error) {
-	// 获取 fields 列表
+	// Get the fields list.
 	var fields []string
 	cfgFields, exist := cfg.RemainCfg["fields"]
 	if exist {
-		// 存在 fields 时需要是一个数组
+		// fields must be an array when present.
 		if !common.IsSlice(cfgFields) {
 			return nil, fmt.Errorf("condition [multi_match] 'fields' value should be an array")
 		}
-		// 字段数组里的需要是个字符串数组
+		// The fields array must contain strings.
 		for _, cfgField := range cfgFields.([]any) {
 			field, ok := cfgField.(string)
 			if !ok {
 				return nil, fmt.Errorf("condition [multi_match] 'fields' value should be a string array, contain non string value[%v]", cfgField)
 			}
 
-			// 字段数组里的每个元素都需要是字符串
+			// Each fields array element must be a string.
 			name := getFilterFieldName(field, fieldsMap, true)
 			if name == AllField {
 				fields = []string{
@@ -158,7 +158,7 @@ func convertMultiMatchCondToDatasetFilterCondition(cfg *CondCfg, fieldsMap map[s
 					"logic_properties.display_name",
 					"logic_properties.comment",
 				}
-				// 遇到 * 结束循环
+				// Stop the loop when * is encountered.
 				break
 			} else {
 				fields = append(fields, name)
@@ -168,7 +168,7 @@ func convertMultiMatchCondToDatasetFilterCondition(cfg *CondCfg, fieldsMap map[s
 
 	return map[string]any{
 		"operation":  "multi_match",
-		"fields":     fields, // 字段列表
+		"fields":     fields, // Field list
 		"value":      cfg.Value,
 		"value_from": "const",
 	}, nil

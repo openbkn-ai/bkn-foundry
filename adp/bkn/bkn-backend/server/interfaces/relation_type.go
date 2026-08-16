@@ -27,7 +27,7 @@ type RelationTypeWithKeyField struct {
 	TargetObjectTypeID string `json:"target_object_type_id" mapstructure:"target_object_type_id"`
 
 	Type         string `json:"type" mapstructure:"type"`
-	MappingRules any    `json:"mapping_rules,omitempty" mapstructure:"mapping_rules"` // 根据type来决定是不同的映射方式，direct对应的结构体是[]Mapping
+	MappingRules any    `json:"mapping_rules,omitempty" mapstructure:"mapping_rules"` // Mapping representation selected by type; direct uses []Mapping
 }
 
 // knowledge_network
@@ -36,8 +36,8 @@ type RelationType struct {
 	CommonInfo               `mapstructure:",squash"`
 	KNID                     string           `json:"kn_id" mapstructure:"kn_id"`
 	Branch                   string           `json:"branch,omitempty" mapstructure:"branch"`
-	SourceObjectType         SimpleObjectType `json:"source_object_type,omitempty" mapstructure:"source_object_type"` // 查看详情的时候给出名称
-	TargetObjectType         SimpleObjectType `json:"target_object_type,omitempty" mapstructure:"target_object_type"` // 查看详情的时候给出名称
+	SourceObjectType         SimpleObjectType `json:"source_object_type,omitempty" mapstructure:"source_object_type"` // Name returned when retrieving details
+	TargetObjectType         SimpleObjectType `json:"target_object_type,omitempty" mapstructure:"target_object_type"` // Name returned when retrieving details
 
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
@@ -48,18 +48,18 @@ type RelationType struct {
 
 	IfNameModify bool `json:"-"`
 
-	// 向量
+	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`
-	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
+	Score  *float64  `json:"_score,omitempty"` // OpenSearch score used by concept search
 }
 
-// 直接映射的一个mapping
+// Mapping for a direct relation.
 type Mapping struct {
 	SourceProp SimpleProperty `json:"source_property" mapstructure:"source_property"`
 	TargetProp SimpleProperty `json:"target_property" mapstructure:"target_property"`
 }
 
-// 非直接映射
+// Non-direct mapping.
 type InDirectMapping struct {
 	BackingDataSource  *ResourceInfo `json:"backing_data_source" mapstructure:"backing_data_source"`
 	SourceMappingRules []Mapping     `json:"source_mapping_rules" mapstructure:"source_mapping_rules"`
@@ -72,7 +72,7 @@ type FilteredCrossJoinMapping struct {
 	TargetCondition *cond.CondCfg `json:"target_condition" mapstructure:"target_condition"`
 }
 
-// 对象类的分页查询
+// Object type pagination query.
 type RelationTypesQueryParams struct {
 	PaginationQueryParameters
 	NamePattern         string
@@ -84,7 +84,7 @@ type RelationTypesQueryParams struct {
 	BoundObjectTypeIDs  []string
 }
 
-// 检索关系类列表
+// Relation type search list.
 type RelationTypes struct {
 	Entries    []*RelationType `json:"entries"`
 	TotalCount int64           `json:"total_count,omitempty"`

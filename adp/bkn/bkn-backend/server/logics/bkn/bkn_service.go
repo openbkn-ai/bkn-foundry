@@ -33,7 +33,7 @@ type bknService struct {
 	kns        interfaces.KNService
 }
 
-// NewBKNService 创建 BKN 服务
+// NewBKNService creates the BKN service.
 func NewBKNService(appSetting *common.AppSetting) interfaces.BKNService {
 	bServiceOnce.Do(func() {
 		bService = &bknService{
@@ -44,7 +44,7 @@ func NewBKNService(appSetting *common.AppSetting) interfaces.BKNService {
 	return bService
 }
 
-// ExportToTar 将知识网络导出为 tar 包
+// ExportToTar exports a knowledge network as a tar archive.
 func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch string) ([]byte, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BKN导出为Tar")
 	defer span.End()

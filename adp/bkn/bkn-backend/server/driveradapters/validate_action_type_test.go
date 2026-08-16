@@ -1005,3 +1005,36 @@ func Test_ValidateActionType(t *testing.T) {
 		})
 	})
 }
+
+func TestActionTypeValidationDetailsRespectLanguage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "The action type must be one of [add, modify, delete]; got unsupported."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "行动类型必须为 [add, modify, delete] 之一，当前为 unsupported。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := ValidateActionType(
+				rest.WithLanguage(context.Background(), testCase.language),
+				&interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID: "at1", ATName: "action1", ObjectTypeID: "ot1", ActionType: "unsupported",
+				}},
+				true,
+			)
+			if err == nil {
+				t.Fatal("ValidateActionType() error = nil, want invalid action type error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
+}

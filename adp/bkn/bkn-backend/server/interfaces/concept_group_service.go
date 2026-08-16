@@ -30,7 +30,7 @@ type ConceptGroupService interface {
 	ListConceptGroupRelations(ctx context.Context, query ConceptGroupRelationsQueryParams) ([]ConceptGroupRelation, error)
 	DeleteObjectTypesFromGroup(ctx context.Context, tx *sql.Tx, knID string, branch string, cgID string, otIDs []string) error
 
-	// ValidateConceptGroups 仅校验概念分组依赖存在性，不写库
-	// parentBatch 为 nil 时仅根据本次 conceptGroups 构造索引；ValidateKN 可传入整包索引。
+	// ValidateConceptGroups validates concept-group dependency existence only and does not persist data.
+	// When parentBatch is nil, build an index from the current conceptGroups only; ValidateKN may pass the full-package index.
 	ValidateConceptGroups(ctx context.Context, knID string, branch string, conceptGroups []*ConceptGroup, strictMode bool, parentBatch *BatchIDIndex, mode string) error
 }

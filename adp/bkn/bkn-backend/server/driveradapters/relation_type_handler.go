@@ -54,19 +54,19 @@ func (r *restHandler) HandleRelationTypeGetOverrideByEx(c *gin.Context) {
 	}
 }
 
-// 创建关系类(内部)
+// Create relation types (internal).
 func (r *restHandler) CreateRelationTypesByIn(c *gin.Context) {
 	logger.Debug("Handler CreateRelationTypesByIn Start")
-	// 内部接口 user_id从header中取，跳过用户有效认证，后面在权限校验时就会校验这个用户是否有权限，无效用户无权限
-	// 自行构建一个visitor
+	// Internal endpoints read user_id from the header and defer authorization to the permission check.
+	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
 	r.CreateRelationTypes(c, visitor)
 }
 
-// 创建关系类（外部）
+// Create relation types (external).
 func (r *restHandler) CreateRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler CreateRelationTypesByEx Start")
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -74,7 +74,7 @@ func (r *restHandler) CreateRelationTypesByEx(c *gin.Context) {
 	r.CreateRelationTypes(c, visitor)
 }
 
-// 创建关系类
+// Create relation types.
 func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler CreateRelationTypes Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -84,13 +84,13 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// account_type 存入 context 中
+	// Store account type in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 查询参数
+	// Read query parameters.
 	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, interfaces.ImportMode_Normal)
 	httpErr := validateImportMode(ctx, mode)
 	if httpErr != nil {
@@ -99,7 +99,7 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		return
 	}
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(
@@ -112,42 +112,42 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Invalid strict_mode parameter: %s", strictModeStr))
+			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 校验业务知识网络存在性
+	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 接受绑定参数
+	// Bind request parameters.
 	var requestData struct {
 		Entries []*interfaces.RelationType `json:"entries"`
 	}
 	err = c.ShouldBindJSON(&requestData)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails("Binding Paramter Failed:" + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
-		// 记录异常日志
+		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -155,26 +155,26 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 
 	relationTypes := requestData.Entries
 
-	// 如果传入的模型对象为[], 应报错
+	// Reject an empty entries array.
 	if len(relationTypes) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("No relation type was passed in")
+			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("创建关系类请求参数: [%s,%v]", c.Request.RequestURI, relationTypes))
 
-	// request来的relationTypes的branch都用url里的branch
+	// Apply the branch from the URL to all requested relation types.
 	for i := range relationTypes {
 		relationTypes[i].KNID = knID
 		relationTypes[i].Branch = branch
 	}
 
-	// 校验 请求体中目标模型名称合法性
+	// Validate model names in the request body.
 	err = ValidateRelationTypes(ctx, knID, relationTypes, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
@@ -183,21 +183,21 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		return
 	}
 
-	//调用创建
-	// 直接创建关系类接口默认进行依赖校验
+	// Create the resources.
+	// Direct relation type creation validates dependencies by default.
 	rtIDs, err := r.rts.CreateRelationTypes(ctx, nil, relationTypes, mode, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 成功，发送多条
+	// Return the created resources.
 	for _, relationType := range relationTypes {
-		//每次成功创建 记录审计日志
+		// Record an audit log after each successful creation.
 		audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
 			interfaces.GenerateRelationTypeAuditObject(relationType.RTID, relationType.RTName), "")
 	}
@@ -212,14 +212,14 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 	rest.ReplyOK(c, http.StatusCreated, result)
 }
 
-// ValidateRelationTypesByIn 仅校验关系类依赖存在性，不写库（内部）
+// ValidateRelationTypesByIn validates relation type dependencies without persistence (internal).
 func (r *restHandler) ValidateRelationTypesByIn(c *gin.Context) {
 	logger.Debug("Handler ValidateRelationTypesByIn Start")
 	v := visitor.GenerateVisitor(c)
 	r.ValidateRelationTypesForKN(c, v)
 }
 
-// ValidateRelationTypesByEx 仅校验关系类依赖存在性，不写库（外部）
+// ValidateRelationTypesByEx validates relation type dependencies without persistence (external).
 func (r *restHandler) ValidateRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ValidateRelationTypesByEx Start")
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
@@ -229,7 +229,7 @@ func (r *restHandler) ValidateRelationTypesByEx(c *gin.Context) {
 	r.ValidateRelationTypesForKN(c, visitor)
 }
 
-// ValidateRelationTypesForKN 仅校验关系类依赖存在性，不写库
+// ValidateRelationTypesForKN validates relation type dependencies without persistence.
 func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler ValidateRelationTypesForKN Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -243,7 +243,7 @@ func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.V
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Invalid strict_mode parameter: %s", strictModeStr))
+			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -278,7 +278,7 @@ func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.V
 	}
 	if err = c.ShouldBindJSON(&requestData); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -290,7 +290,7 @@ func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.V
 		return
 	}
 
-	// request来的relationTypes的branch都用url里的branch
+	// Apply the branch from the URL to all requested relation types.
 	for i := range relationTypes {
 		relationTypes[i].KNID = knID
 		relationTypes[i].Branch = branch
@@ -310,19 +310,19 @@ func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.V
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"valid": true})
 }
 
-// 更新关系类(内部)
+// Update relation types (internal).
 func (r *restHandler) UpdateRelationTypeByIn(c *gin.Context) {
 	logger.Debug("Handler UpdateRelationTypeByIn Start")
-	// 内部接口 user_id从header中取，跳过用户有效认证，后面在权限校验时就会校验这个用户是否有权限，无效用户无权限
-	// 自行构建一个visitor
+	// Internal endpoints read user_id from the header and defer authorization to the permission check.
+	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
 	r.UpdateRelationType(c, visitor)
 }
 
-// 更新关系类（外部）
+// Update relation types (external).
 func (r *restHandler) UpdateRelationTypeByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateRelationTypeByEx Start")
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -330,7 +330,7 @@ func (r *restHandler) UpdateRelationTypeByEx(c *gin.Context) {
 	r.UpdateRelationType(c, visitor)
 }
 
-// 更新关系类
+// Update relation types.
 func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler UpdateRelationType Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -340,13 +340,13 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(
@@ -359,45 +359,45 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Invalid strict_mode parameter: %s", strictModeStr))
+			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 校验业务知识网络存在性
+	// Verify that the knowledge network exists.
 	var exist bool
 	_, exist, err = r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 1. 接受 rt_id 参数
+	// Read the rt_id path parameter.
 	rtID := c.Param("rt_id")
 	span.SetAttributes(attr.Key("rt_id").String(rtID))
 
-	//接收绑定参数
+	// Bind request parameters.
 	relationType := interfaces.RelationType{}
 	err = c.ShouldBindJSON(&relationType)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails("Binding Paramter Failed:" + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
-		// 记录异常日志
+		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -407,15 +407,15 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	relationType.KNID = knID
 	relationType.Branch = branch
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("修改关系类请求参数: [%s, %v]", c.Request.RequestURI, relationType))
 
-	// 先按id获取原对象
+	// Load the existing resource by ID.
 	_, exist, err = r.rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -424,34 +424,34 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	if !exist {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 校验 关系类基本参数的合法性, 非空、长度、是枚举值
+	// Validate required relation type fields, lengths, and enum values.
 	err = ValidateRelationType(ctx, &relationType, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 记录异常日志
+		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate relation type[%s] failed: %s. %v", relationType.RTName,
 			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("rt_name").String(relationType.RTName))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	//根据id修改信息
+	// Update the resource by ID.
 	err = r.rts.UpdateRelationType(ctx, nil, &relationType, strictMode)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -465,7 +465,7 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
 
-// 批量删除关系类
+// Delete relation types in batch.
 func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 	logger.Debug("Handler DeleteRelationTypes Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -480,16 +480,16 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("删除关系类请求参数: [%s]", c.Request.RequestURI))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(
@@ -497,38 +497,38 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 		attr.Key("branch").String(branch),
 	)
 
-	// 校验业务知识网络存在性
+	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	//获取参数字符串 <id1,id2,id3>
+	// Read the comma-separated ID list.
 	otIDsStr := c.Param("rt_ids")
 	span.SetAttributes(attr.Key("rt_ids").String(otIDsStr))
 
-	//解析字符串 转换为 []string
+	// Parse the string into []string.
 	rtIDs := common.StringToStringSlice(otIDsStr)
 
-	//检查 rtIDs 是否都存在
+	// Check that all relation type IDs exist.
 	var relationTypes []*interfaces.RelationTypeWithKeyField
 	for _, rtID := range rtIDs {
 		rtName, exist, err := r.rts.CheckRelationTypeExistByID(ctx, knID, branch, rtID)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 
-			// 设置 trace 的错误信息的 attributes
+			// Set trace attributes for the error.
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 
 			rest.ReplyError(c, httpErr)
@@ -537,7 +537,7 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 		if !exist {
 			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RelationType_RelationTypeNotFound)
 
-			// 设置 trace 的错误信息的 attributes
+			// Set trace attributes for the error.
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -546,17 +546,17 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 		relationTypes = append(relationTypes, &interfaces.RelationTypeWithKeyField{RTID: rtID, RTName: rtName})
 	}
 
-	// 批量删除关系类
+	// Delete relation types in batch.
 	err = r.rts.DeleteRelationTypesByIDs(ctx, nil, knID, branch, rtIDs)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	//循环记录审计日志
+	// Record audit logs for each item.
 	for _, relationType := range relationTypes {
 		audit.NewWarnLog(audit.OPERATION, audit.DELETE, audit.TransforOperator(visitor),
 			interfaces.GenerateRelationTypeAuditObject(relationType.RTID, relationType.RTName), audit.SUCCESS, "")
@@ -567,19 +567,19 @@ func (r *restHandler) DeleteRelationTypes(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
 
-// 分页获取关系类列表(内部)
+// List relation types with pagination (internal).
 func (r *restHandler) ListRelationTypesByIn(c *gin.Context) {
 	logger.Debug("Handler ListRelationTypesByIn Start")
-	// 内部接口 user_id从header中取，跳过用户有效认证，后面在权限校验时就会校验这个用户是否有权限，无效用户无权限
-	// 自行构建一个visitor
+	// Internal endpoints read user_id from the header and defer authorization to the permission check.
+	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
 	r.ListRelationTypes(c, visitor)
 }
 
-// 分页获取关系类列表（外部）
+// List relation types with pagination (external).
 func (r *restHandler) ListRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ListRelationTypesByEx Start")
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -587,7 +587,7 @@ func (r *restHandler) ListRelationTypesByEx(c *gin.Context) {
 	r.ListRelationTypes(c, visitor)
 }
 
-// 分页获取关系类列表
+// List relation types with pagination.
 func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("ListRelationTypes Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -597,16 +597,16 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("分页获取关系类列表请求参数: [%s]", c.Request.RequestURI))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(
@@ -614,24 +614,24 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		attr.Key("branch").String(branch),
 	)
 
-	// 校验业务知识网络存在性
+	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 获取分页参数
+	// Read pagination parameters.
 	namePattern := c.Query("name_pattern")
 	tag := c.Query("tag")
 	sourceObjectTypeIDs := c.QueryArray("source_object_type_id")
@@ -643,26 +643,26 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	sort := c.DefaultQuery("sort", "update_time")
 	direction := c.DefaultQuery("direction", interfaces.DESC_DIRECTION)
 
-	//去掉标签前后的所有空格进行搜索
+	// Trim whitespace around tags before searching.
 	tag = strings.Trim(tag, " ")
 
-	// 校验分页查询参数
+	// Validate pagination query parameters.
 	pageParam, err := validatePaginationQueryParameters(ctx,
 		offset, limit, sort, direction, interfaces.RELATION_TYPE_SORT)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 记录异常日志
+		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 构造标签列表查询参数的结构体
+	// Build the tag-list query parameters.
 	parameter := interfaces.RelationTypesQueryParams{
 		NamePattern: namePattern,
 		Tag:         tag,
@@ -670,7 +670,7 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		KNID:        knID,
 	}
 
-	// 不为空时，赋值
+	// Assign the value when it is present.
 	if len(sourceObjectTypeIDs) > 0 {
 		parameter.SourceObjectTypeIDs = sourceObjectTypeIDs
 	}
@@ -688,17 +688,17 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// var result map[string]any
 	// if simpleInfo {
-	// 获取关系类简单信息
+	// Get relation type summaries.
 	otList, total, err := r.rts.ListRelationTypes(ctx, parameter)
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 记录异常日志
+		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -710,19 +710,19 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// 按 id 获取关系类对象信息(内部)
+// Get relation type by ID (internal).
 func (r *restHandler) GetRelationTypesByIn(c *gin.Context) {
 	logger.Debug("Handler GetRelationTypesByIn Start")
-	// 内部接口 user_id从header中取，跳过用户有效认证，后面在权限校验时就会校验这个用户是否有权限，无效用户无权限
-	// 自行构建一个visitor
+	// Internal endpoints read user_id from the header and defer authorization to the permission check.
+	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
 	r.GetRelationTypes(c, visitor)
 }
 
-// 按 id 获取关系类对象信息（外部）
+// Get relation type by ID (external).
 func (r *restHandler) GetRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ListRelationTypesByEx Start")
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -730,7 +730,7 @@ func (r *restHandler) GetRelationTypesByEx(c *gin.Context) {
 	r.GetRelationTypes(c, visitor)
 }
 
-// 按 id 获取关系类对象信息
+// Get relation type by ID.
 func (r *restHandler) GetRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler GetRelationTypes Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -740,13 +740,13 @@ func (r *restHandler) GetRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(
@@ -754,36 +754,36 @@ func (r *restHandler) GetRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		attr.Key("branch").String(branch),
 	)
 
-	// 校验业务知识网络存在性
+	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	//获取参数字符串
+	// Read the ID list.
 	rtIDsStr := c.Param("rt_ids")
 	span.SetAttributes(attr.Key("rt_ids").String(rtIDsStr))
 
-	//解析字符串 转换为 []string
+	// Parse the string into []string.
 	rtIDs := common.StringToStringSlice(rtIDsStr)
 
-	// 获取关系类的详细信息，根据 include_view 参数来判断是否包含数据视图的过滤条件
+	// Get relation type details; include data-view filters only when include_view is set.
 	result, err := r.rts.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -797,19 +797,19 @@ func (r *restHandler) GetRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, httpResult)
 }
 
-// 检索关系类（外部）
+// Search relation types (external).
 func (r *restHandler) SearchRelationTypesByIn(c *gin.Context) {
 	logger.Debug("Handler SearchRelationTypesByIn Start")
-	// 内部接口 user_id从header中取，跳过用户有效认证，后面在权限校验时就会校验这个用户是否有权限，无效用户无权限
-	// 自行构建一个visitor
+	// Internal endpoints read user_id from the header and defer authorization to the permission check.
+	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
 	r.SearchRelationTypes(c, visitor)
 }
 
-// 检索关系类（外部）
+// Search relation types (external).
 func (r *restHandler) SearchRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler SearchRelationTypesByEx Start")
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -817,7 +817,7 @@ func (r *restHandler) SearchRelationTypesByEx(c *gin.Context) {
 	r.SearchRelationTypes(c, visitor)
 }
 
-// 检索对象类
+// Search object types.
 func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("SearchRelationTypes Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -827,16 +827,16 @@ func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("检索对象类请求参数: [%s]", c.Request.RequestURI))
 
-	// 1. 接受 kn_id 参数
+	// Read the kn_id path parameter.
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(
@@ -844,29 +844,29 @@ func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		attr.Key("branch").String(branch),
 	)
 
-	// 校验业务知识网络存在性
+	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	//接收绑定参数
+	// Bind request parameters.
 	query := interfaces.ConceptsQuery{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Binding Concept Query Paramter Failed:%s", err.Error()))
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
@@ -880,7 +880,7 @@ func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor)
 	query.Branch = branch
 	query.ModuleType = interfaces.MODULE_TYPE_RELATION_TYPE
 
-	// 校验：概念类型非空时，需要是指定的枚举类型；过滤条件的字段只能是type_id, type_name, property_name, property_dispaly_name, comment, *
+	// Validate concept type values and restrict filter fields to the supported allowlist.
 	if query.Limit == 0 {
 		query.Limit = interfaces.DEFAULT_CONCEPT_SEARCH_LIMIT
 	}
@@ -910,12 +910,12 @@ func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		return
 	}
 
-	// 搜索概念
+	// Search concepts.
 	result, err := r.rts.SearchRelationTypes(ctx, &query)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

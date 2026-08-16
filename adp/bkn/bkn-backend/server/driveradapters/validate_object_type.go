@@ -8,7 +8,6 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -16,6 +15,7 @@ import (
 	"github.com/PaesslerAG/jsonpath"
 	"github.com/dlclark/regexp2"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "bkn-backend/errors"
@@ -26,30 +26,30 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 	tmpNameMap := make(map[string]any)
 	idMap := make(map[string]any)
 	for i := 0; i < len(objectTypes); i++ {
-		// 校验导入模型时模块是否是对象类
+		// Verify that imported models are object types.
 		if objectTypes[i].ModuleType != "" && objectTypes[i].ModuleType != interfaces.MODULE_TYPE_OBJECT_TYPE {
 			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-				WithErrorDetails("Object type name is not 'object_type'")
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "ModuleType", nil))
 		}
 
-		// 0.校验请求体中多个模型 ID 是否重复
+		// Verify that model IDs in the request are unique.
 		otID := objectTypes[i].OTID
 		if _, ok := idMap[otID]; !ok || otID == "" {
 			idMap[otID] = nil
 		} else {
-			errDetails := fmt.Sprintf("ObjectType ID '%s' already exists in the request body", otID)
+			errDetails := objectTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"id": otID})
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_Duplicated_IDInFile).
 				WithDescription(map[string]any{"ObjectTypeID": otID}).
 				WithErrorDetails(errDetails)
 		}
 
-		// 1. 校验 对象类必要创建参数的合法性, 非空、长度、是枚举值
+		// Validate required object type fields, lengths, and enum values.
 		err := ValidateObjectType(ctx, objectTypes[i], strictMode)
 		if err != nil {
 			return err
 		}
 
-		// 2. 校验 请求体中对象类名称重复性
+		// Verify that object type names in the request are unique.
 		if _, ok := tmpNameMap[objectTypes[i].OTName]; !ok {
 			tmpNameMap[objectTypes[i].OTName] = nil
 		} else {
@@ -61,31 +61,31 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 	return nil
 }
 
-// ValidateObjectType 对象类必要创建参数的合法性校验。
-// 校验顺序：基础信息 → 数据来源 → 数据属性 → 键 → 逻辑属性
+// ValidateObjectType validates required object type fields.
+// Validation order: basic information, data source, data properties, keys, then logic properties.
 func ValidateObjectType(ctx context.Context, objectType *interfaces.ObjectType, strictMode bool) error {
-	// 1. 校验基础信息：id、name、tags
+	// Validate basic information: ID, name, and tags.
 	if err := validateObjectTypeBasicInfo(ctx, objectType); err != nil {
 		return err
 	}
 
-	// 2. 校验数据来源
+	// Validate the data source.
 	if err := validateObjectTypeDataSource(ctx, objectType); err != nil {
 		return err
 	}
 
-	// 3. 校验数据属性
+	// Validate data properties.
 	if err := validateObjectTypeDataProperties(ctx, objectType, strictMode); err != nil {
 		return err
 	}
 
-	// 4. 构建数据属性索引，校验键（依赖数据属性）
+	// Build the data property index and validate keys that depend on it.
 	dataPropMap := buildDataPropMap(objectType.DataProperties)
 	if err := validateObjectTypeKeys(ctx, objectType, dataPropMap, strictMode); err != nil {
 		return err
 	}
 
-	// 5. 校验逻辑属性
+	// Validate logic properties.
 	if err := validateObjectTypeLogicProperties(ctx, objectType, strictMode); err != nil {
 		return err
 	}
@@ -93,42 +93,45 @@ func ValidateObjectType(ctx context.Context, objectType *interfaces.ObjectType, 
 	return nil
 }
 
-// validateObjectTypeBasicInfo 校验对象类基础信息：id、name、tags。
+// validateObjectTypeBasicInfo validates an object type ID, name, and tags.
 func validateObjectTypeBasicInfo(ctx context.Context, objectType *interfaces.ObjectType) error {
-	// 校验 id 合法性
+	// Validate the ID.
 	if err := validateID(ctx, objectType.OTID); err != nil {
 		return err
 	}
 
-	// 去掉名称前后空格后校验合法性
+	// Trim and validate the name.
 	objectType.OTName = strings.TrimSpace(objectType.OTName)
 	if err := validateObjectName(ctx, objectType.OTName, interfaces.MODULE_TYPE_OBJECT_TYPE); err != nil {
 		return err
 	}
 
-	// 校验 tags 合法性
+	// Validate tags.
 	if err := ValidateTags(ctx, objectType.Tags); err != nil {
 		return err
 	}
-	// 去掉 tag 前后空格并去重
+	// Trim tags and remove duplicates.
 	objectType.Tags = libCommon.TagSliceTransform(objectType.Tags)
 
 	return nil
 }
 
-// validateObjectTypeDataSource 校验对象类数据来源：type 只支持 resource。
+// validateObjectTypeDataSource validates an object type data source; only resource is supported.
 func validateObjectTypeDataSource(ctx context.Context, objectType *interfaces.ObjectType) error {
 	if objectType.DataSource == nil || objectType.DataSource.Type == "" {
 		return nil
 	}
 	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]数据来源类型[%s]不支持, 只支持 resource", objectType.OTName, objectType.DataSource.Type))
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataSourceTypeNotSupported", map[string]any{
+				"objectType": objectType.OTName,
+				"type":       objectType.DataSource.Type,
+			}))
 	}
 	return nil
 }
 
-// buildDataPropMap 将数据属性列表转为以属性名为键的 map，纯构建无副作用。
+// buildDataPropMap converts data properties to a map keyed by property name without side effects.
 func buildDataPropMap(dataProperties []*interfaces.DataProperty) map[string]*interfaces.DataProperty {
 	m := make(map[string]*interfaces.DataProperty, len(dataProperties))
 	for _, prop := range dataProperties {
@@ -137,11 +140,15 @@ func buildDataPropMap(dataProperties []*interfaces.DataProperty) map[string]*int
 	return m
 }
 
-// validateObjectTypeDataProperties 校验数据属性数量上限及每个属性的合法性。
+// validateObjectTypeDataProperties validates the data property count and each property.
 func validateObjectTypeDataProperties(ctx context.Context, objectType *interfaces.ObjectType, strictMode bool) error {
 	if len(objectType.DataProperties) > interfaces.MAX_PROPERTY_NUM {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]数据属性数[%d]超过最大限制[%d]", objectType.OTName, len(objectType.DataProperties), interfaces.MAX_PROPERTY_NUM))
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertiesExceeded", map[string]any{
+				"objectType": objectType.OTName,
+				"count":      len(objectType.DataProperties),
+				"limit":      interfaces.MAX_PROPERTY_NUM,
+			}))
 	}
 
 	for _, prop := range objectType.DataProperties {
@@ -152,11 +159,11 @@ func validateObjectTypeDataProperties(ctx context.Context, objectType *interface
 	return nil
 }
 
-// validateObjectTypeKeys 校验主键、显示键、增量键的合法性（依赖 dataPropMap）。
-// 严格模式下：primary_keys 和 display_key 不能为空。
-// 非严格模式下：可不配置，但若配置了必须是已存在的合法字段。
+// validateObjectTypeKeys validates primary, display, and incremental keys using dataPropMap.
+// Strict mode requires primary_keys and display_key.
+// Non-strict mode allows them to be omitted, but configured keys must reference valid fields.
 func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectType, dataPropMap map[string]*interfaces.DataProperty, strictMode bool) error {
-	// 校验主键：严格模式下不能为空；若配置了则校验存在性和类型
+	// Validate primary keys. Strict mode requires them; configured keys must exist and use supported types.
 	if len(objectType.PrimaryKeys) == 0 {
 		if strictMode {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -168,18 +175,18 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 			if !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]主键[%s]不存在", objectType.OTName, pKey))
+					WithErrorDetails(objectTypeInvalidDetail(ctx, "PrimaryKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": pKey}))
 			}
-			// primary_keys：主键属性类型只能是 integer, unsigned integer, string, text
+			// Primary key properties support only integer, unsigned integer, string, and text.
 			if !interfaces.ValidPrimaryKeyTypes[prop.Type] {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]主键[%s]类型[%s]无效，只支持 integer, unsigned integer, string, text", objectType.OTName, pKey, prop.Type))
+					WithErrorDetails(objectTypeInvalidDetail(ctx, "PrimaryKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": pKey, "type": prop.Type}))
 			}
 		}
 	}
 
-	// 校验显示键：严格模式下不能为空；若配置了则校验存在性和类型
+	// Validate the display key. Strict mode requires it; configured keys must exist and use supported types.
 	if objectType.DisplayKey == "" {
 		if strictMode {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -190,42 +197,42 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]显示键[%s]不存在", objectType.OTName, objectType.DisplayKey))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "DisplayKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": objectType.DisplayKey}))
 		}
-		// display_key：类型支持 integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean
+		// Display keys support integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, and boolean.
 		if !interfaces.ValidDisplayKeyTypes[prop.Type] {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]显示键[%s]类型[%s]无效，只支持 integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean", objectType.OTName, objectType.DisplayKey, prop.Type))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "DisplayKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": objectType.DisplayKey, "type": prop.Type}))
 		}
 	}
 
-	// 校验增量键：始终可选；若配置了则校验存在性和类型
+	// Validate the incremental key. It is optional, but configured keys must exist and use supported types.
 	if objectType.IncrementalKey != "" {
 		field, ok := dataPropMap[objectType.IncrementalKey]
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]增量键[%s]不存在", objectType.OTName, objectType.IncrementalKey))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "IncrementalKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": objectType.IncrementalKey}))
 		}
 		switch field.Type {
 		case "integer", "datetime", "timestamp":
 		default:
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("不支持的对象类[%s]增量键[%s]类型[%s]", objectType.OTName, field.Name, field.Type))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "IncrementalKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": field.Name, "type": field.Type}))
 		}
 	}
 
 	return nil
 }
 
-// validateObjectTypeLogicProperties 校验逻辑属性数量上限及每个逻辑属性的合法性，
-// 并为指标类型属性自动补全系统参数（instant、start、end、step）。
+// validateObjectTypeLogicProperties validates the number and content of logic properties.
+// It also adds instant, start, end, and step system parameters for metric properties.
 func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfaces.ObjectType, strictMode bool) error {
 	if len(objectType.LogicProperties) > interfaces.MAX_PROPERTY_NUM {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性数[%d]超过最大限制[%d]", objectType.OTName, len(objectType.LogicProperties), interfaces.MAX_PROPERTY_NUM))
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertiesExceeded", map[string]any{"objectType": objectType.OTName, "count": len(objectType.LogicProperties), "limit": interfaces.MAX_PROPERTY_NUM}))
 	}
 
 	dataPropNames := make(map[string]struct{}, len(objectType.DataProperties))
@@ -235,106 +242,99 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 
 	ifSystemGen := true
 	for i, prop := range objectType.LogicProperties {
-		// 校验属性名合法性（支持大写字母，规则与 id 不同）
+		// Validate the property name. Its rule differs from ID validation and permits uppercase letters.
 		if err := ValidatePropertyName(ctx, prop.Name); err != nil {
 			return err
 		}
 		if _, exists := dataPropNames[prop.Name]; exists {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]与数据属性重名", objectType.OTName, prop.Name))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDuplicatesDataProperty", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 		}
 
-		// 校验 displayName
+		// Validate displayName.
 		if prop.DisplayName == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的显示名称不能为空", objectType.OTName, prop.Name))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDisplayNameRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 		}
 		if utf8.RuneCountInString(prop.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的显示名称长度不能超过%d个字符", objectType.OTName, prop.Name, interfaces.OBJECT_NAME_MAX_LENGTH))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDisplayNameTooLong", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
 		}
 
-		// type 非空且只支持 metric / tool
+		// Type is required and supports only metric or tool.
 		if prop.Type == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]类型不能为空", objectType.OTName, prop.Name))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyTypeRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 		}
 		if prop.Type != interfaces.LOGIC_PROPERTY_TYPE_METRIC &&
 			prop.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]类型[%s]无效，只支持 metric, tool", objectType.OTName, prop.Name, prop.Type))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyTypeInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.Type}))
 		}
 
-		// 校验 data_source：
-		// - metric：type 和 id 必填
-		// - tool：type、box_id 和 tool_id 必填
-		// - 非严格模式：可不填；若填写，必须符合其类型的完整字段约束
+		// Validate data_source:
+		// - metric requires type and ID;
+		// - tool requires type, box_id, and tool_id;
+		// - non-strict mode permits omission, but supplied values must meet the full type-specific contract.
 		if prop.DataSource != nil && (prop.DataSource.Type != "" || prop.DataSource.ID != "" ||
 			prop.DataSource.BoxID != "" || prop.DataSource.ToolID != "" || prop.DataSource.ResultPath != "") {
 			if prop.DataSource.Type == "" {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源 type 不能为空", objectType.OTName, prop.Name))
+					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceTypeRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 			}
 			if !interfaces.ValidLogicSourceTypes[prop.DataSource.Type] {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据资源类型[%s]无效，只支持 metric, tool", objectType.OTName, prop.Name, prop.DataSource.Type))
+					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceTypeInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.DataSource.Type}))
 			}
 			if prop.Type != prop.DataSource.Type {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据类型[%s]与其所绑定的数据资源类型[%s]不一致",
-						objectType.OTName, prop.Name, prop.Type, prop.DataSource.Type))
+					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceTypeMismatch", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.Type, "sourceType": prop.DataSource.Type}))
 			}
 			if prop.DataSource.Type == interfaces.LOGIC_PROPERTY_TYPE_TOOL {
 				if prop.DataSource.BoxID == "" || prop.DataSource.ToolID == "" {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的工具数据来源 box_id 和 tool_id 必须同时填写",
-							objectType.OTName, prop.Name))
+						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyToolSourceRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 				}
 			} else if prop.DataSource.ID == "" {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源 type 和 id 必须同时填写",
-						objectType.OTName, prop.Name))
+					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertySourceIDRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 			}
 			if prop.DataSource.ResultPath != "" {
 				if prop.DataSource.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的 result_path 仅支持 tool 类型的数据来源",
-							objectType.OTName, prop.Name))
+						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyResultPathRequiresTool", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 				}
 				if _, err := jsonpath.New(prop.DataSource.ResultPath); err != nil {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的 result_path 不是合法的 JSONPath: %v",
-							objectType.OTName, prop.Name, err))
+						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyResultPathInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "error": err.Error()}))
 				}
 			}
 		} else if strictMode {
-			// DataSource 不存在，严格模式下报错
+			// Strict mode rejects a missing data source.
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的数据来源不能为空", objectType.OTName, prop.Name))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 		}
 
-		// 校验参数名称非空
+		// Parameter names are required.
 		for _, param := range prop.Parameters {
 			if param.Name == "" {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的参数名称不能为空", objectType.OTName, prop.Name))
+					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyParameterNameRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
 			}
 			if param.ValueFrom == interfaces.VALUE_FROM_PROPERTY {
 				propName, ok := param.Value.(string)
 				if !ok || strings.TrimSpace(propName) == "" {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]参数[%s]的 property 绑定无效",
-							objectType.OTName, prop.Name, param.Name))
+						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyParameterBindingInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "parameter": param.Name}))
 				}
 				if _, exists := dataPropNames[propName]; !exists {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]参数[%s]绑定的数据属性[%s]不存在",
-							objectType.OTName, prop.Name, param.Name, propName))
+						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyParameterPropertyNotFound", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "parameter": param.Name, "dataProperty": propName}))
 				}
 			}
 		}
 
-		// 指标类型：自动补全系统参数 instant、start、end、step
+		// Metric properties automatically receive instant, start, end, and step system parameters.
 		if prop.Type == interfaces.LOGIC_PROPERTY_TYPE_METRIC {
 			paramMap := make(map[string]struct{}, len(prop.Parameters))
 			for _, param := range prop.Parameters {
@@ -372,12 +372,11 @@ func ValidatePropertyName(ctx context.Context, name string) error {
 	if name == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_NullParameter_PropertyName)
 	}
-	//  id，只包含大小写英文字母和数字和下划线(_)和连字符(-)，且不能以下划线开头，不能超过40个字符
+	// IDs contain letters, digits, underscores, and hyphens; they cannot start with an underscore and are limited to 40 characters.
 	re := regexp2.MustCompile(interfaces.RegexPattern_Property_Name, regexp2.RE2)
 	match, err := re.MatchString(name)
 	if err != nil || !match {
-		errDetails := `The property name can contain only letters, digits and underscores(_),
-			it cannot start with underscores and cannot exceed 40 characters`
+		errDetails := objectTypeInvalidDetail(ctx, "PropertyNameInvalid", nil)
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_PropertyName).
 			WithErrorDetails(errDetails)
 	}
@@ -387,7 +386,7 @@ func ValidatePropertyName(ctx context.Context, name string) error {
 func ValidateDataProperties(ctx context.Context, propertyNames []string, dataProperties []*interfaces.DataProperty, strictMode bool) error {
 	if len(propertyNames) != len(dataProperties) {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails("PropertyNames and DataProperties length not equal")
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "PropertyNamesLengthMismatch", nil))
 		return httpErr
 	}
 
@@ -398,7 +397,7 @@ func ValidateDataProperties(ctx context.Context, propertyNames []string, dataPro
 	for _, prop := range dataProperties {
 		if _, ok := propertyNameMap[prop.Name]; !ok {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("DataProperty %s not in URL", prop.Name))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyMissingFromURL", map[string]any{"property": prop.Name}))
 			return httpErr
 		}
 
@@ -411,7 +410,7 @@ func ValidateDataProperties(ctx context.Context, propertyNames []string, dataPro
 }
 
 func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProperty, strictMode bool) error {
-	// 校验属性名的合法性,与id的规则不同，属性名还支持大写字母
+	// Validate the property name. Unlike an ID, it also supports uppercase letters.
 	err := ValidatePropertyName(ctx, dataProperty.Name)
 	if err != nil {
 		return err
@@ -419,31 +418,30 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 
 	if dataProperty.DisplayName == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("数据属性[%s]的显示名称不能为空", dataProperty.Name))
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyDisplayNameRequired", map[string]any{"property": dataProperty.Name}))
 	}
 	if utf8.RuneCountInString(dataProperty.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("数据属性[%s]的显示名称长度不能超过%d个字符", dataProperty.Name, interfaces.OBJECT_NAME_MAX_LENGTH))
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyDisplayNameTooLong", map[string]any{"property": dataProperty.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
 	}
 
-	// data_property.type： 非空时，需是有效的类型：integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, ip。
+	// When data_property.type is set, it must be a supported type: integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, or ip.
 	if dataProperty.Type != "" {
 		if !interfaces.ValidDataPropertyTypes[dataProperty.Type] {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("数据属性[%s]类型[%s]无效，只支持 integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, ip",
-					dataProperty.Name, dataProperty.Type))
+				WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyTypeInvalid", map[string]any{"property": dataProperty.Name, "type": dataProperty.Type}))
 		}
 	}
 
-	// data_property.mapped_field：非空时，name 非空
+	// When data_property.mapped_field is set, name is required.
 	if dataProperty.MappedField != nil && dataProperty.MappedField.Name == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("数据属性[%s]的映射字段名称不能为空", dataProperty.Name))
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyMappedFieldRequired", map[string]any{"property": dataProperty.Name}))
 	}
 
 	if dataProperty.IndexConfig != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("数据属性[%s]不再支持 index_config；请在 Vega Resource 上配置索引能力", dataProperty.Name))
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyIndexConfigUnsupported", map[string]any{"property": dataProperty.Name}))
 	}
 
 	return nil
@@ -472,10 +470,14 @@ func ValidateKeywordConfig(ctx context.Context, keywordConfig interfaces.Keyword
 	}
 	if keywordConfig.IgnoreAboveLen <= 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails("KeywordConfig IgnoreAboveLen must be greater than 0")
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "KeywordIgnoreAboveLenInvalid", nil))
 		return httpErr
 	}
 	return nil
+}
+
+func objectTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
 }
 
 func ValidateFulltextConfig(ctx context.Context, fulltextConfig interfaces.FulltextConfig) error {
@@ -486,7 +488,7 @@ func ValidateFulltextConfig(ctx context.Context, fulltextConfig interfaces.Fullt
 	case "standard", "english", "ik_max_word", "hanlp_standard", "hanlp_index":
 	default:
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails("FulltextConfig Analyzer must be standard, english, ik_max_word, hanlp_standard or hanlp_index")
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "FulltextAnalyzerInvalid", nil))
 		return httpErr
 	}
 	return nil
@@ -498,7 +500,7 @@ func ValidateVectorConfig(ctx context.Context, vectorConfig interfaces.VectorCon
 	}
 	if strictMode && vectorConfig.ModelID == "" {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails("VectorConfig ModelID must be set")
+			WithErrorDetails(objectTypeInvalidDetail(ctx, "VectorModelIDRequired", nil))
 		return httpErr
 	}
 	return nil

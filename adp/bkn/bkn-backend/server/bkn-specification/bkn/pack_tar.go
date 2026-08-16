@@ -18,7 +18,7 @@ import (
 //
 // On macOS, sets COPYFILE_DISABLE=1 to prevent AppleDouble (._*.bkn) extended-attribute
 // files. Without this, LoadNetworkFromTar would treat ._*.bkn as valid BKN files,
-// producing empty ObjectTypes and validation errors like "对象类名称为空".
+// producing empty ObjectTypes and validation errors such as an empty object-type name.
 //
 // sourceDir: Path to the BKN network directory (e.g. examples/k8s-network).
 // outputPath: Path for the output .tar (or .tar.gz if gzip is true).

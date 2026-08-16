@@ -70,7 +70,7 @@ func Test_RestHandler_ListResources(t *testing.T) {
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
-			// 默认情况下不返回错误，只是不处理
+			// By default it does not return an error; it simply does not process the value.
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 	})

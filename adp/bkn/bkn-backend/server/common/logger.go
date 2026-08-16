@@ -20,11 +20,11 @@ import (
 )
 
 const (
-	// 日志保存位置
+	// Log storage location.
 	logFileName = "/opt/bkn-backend/logs/bkn-backend.log"
 )
 
-// 获取日志句柄
+// Get the logger handle.
 func init() {
 	setting := logger.LogSetting{
 		LogServiceName: version.ServerName,
@@ -38,7 +38,7 @@ func init() {
 	logger.InitGlobalLogger(setting)
 }
 
-// SetLogSetting 设置日志配置
+// SetLogSetting configures logging.
 func SetLogSetting(setting logger.LogSetting) {
 	setting.LogServiceName = version.ServerName
 	setting.LogFileName = logFileName

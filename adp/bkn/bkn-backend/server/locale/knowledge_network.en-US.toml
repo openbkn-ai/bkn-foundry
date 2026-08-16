@@ -4,6 +4,11 @@ Description = "Same Konwledge Network ID Existed"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.InvalidParameter.Detail]
+DirectionUnsupported = "Unsupported direction {{.direction}}. Supported values are forward, backward, and bidirectional."
+PathLengthInvalid = "Path length must be between 1 and 3; received {{.pathLength}}."
+BranchRequired = "branch is required."
+
 [BknBackend.KnowledgeNetwork.Duplicated.Name]
 Description = "Same Konwledge Network Name Existed"
 Solution = "Please check whether the parameter is correct."

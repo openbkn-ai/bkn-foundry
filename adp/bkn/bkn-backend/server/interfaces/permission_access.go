@@ -14,17 +14,17 @@ const (
 	ADMIN_ACCOUNT_ID   = "266c6a42-6131-4d62-8f39-853e7093701c"
 	ADMIN_ACCOUNT_TYPE = "user"
 
-	// 访问者类型
+	// Accessor types.
 	ACCESSOR_TYPE_USER = "user"
 	ACCESSOR_TYPE_APP  = "app"
 
-	// 创建时无资源id，用 * 表示
+	// Use * when no resource ID exists during creation.
 	RESOURCE_ID_ALL = "*"
 
-	// 资源类型
+	// Resource types.
 	RESOURCE_TYPE_KN = "knowledge_network"
 
-	// 资源操作类型
+	// Resource operation types.
 	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
 	OPERATION_TYPE_CREATE      = "create"
 	OPERATION_TYPE_MODIFY      = "modify"
@@ -33,7 +33,7 @@ const (
 	OPERATION_TYPE_AUTHORIZE   = "authorize"
 	OPERATION_TYPE_TASK_MANAGE = "task_manage"
 
-	// 更新资源名称的topic
+	// Topic used to update a resource name.
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
 )
 
@@ -49,7 +49,7 @@ var (
 	}
 )
 
-// 检查权限
+// PermissionCheck describes a permission check.
 type PermissionCheck struct {
 	Accessor   PermissionAccessor `json:"accessor"`
 	Resource   PermissionResource `json:"resource"`
@@ -57,45 +57,45 @@ type PermissionCheck struct {
 	Method     string             `json:"method"`
 }
 
-// 检查权限结果
+// PermissionCheckResult is the result of a permission check.
 type PermissionCheckResult struct {
 	Result bool `json:"result"`
 }
 
-// 访问者信息
+// PermissionAccessor identifies an accessor.
 type PermissionAccessor struct {
-	Type string `json:"type,omitempty"` // 分 user: 实名， app: 应用账户
-	ID   string `json:"id,omitempty"`   // 用户ID
+	Type string `json:"type,omitempty"` // user for a named user, app for an application account
+	ID   string `json:"id,omitempty"`   // User ID
 }
 
-// 资源信息
+// PermissionResource identifies a resource.
 type PermissionResource struct {
-	Type string `json:"type,omitempty"` // 资源类型
-	ID   string `json:"id,omitempty"`   // 资源ID
-	Name string `json:"name,omitempty"` // 资源名称
+	Type string `json:"type,omitempty"` // Resource type
+	ID   string `json:"id,omitempty"`   // Resource ID
+	Name string `json:"name,omitempty"` // Resource name
 }
 
-// 过滤/删除
+// PermissionResourcesFilter is used for filtering and deletion.
 //
-// Operations 与 CandidateOperations 是两个独立维度:
-//   - Operations 判定「可见性」——资源需持有其中全部操作才会被返回;
-//   - CandidateOperations 决定「返回哪些操作」——即返回给前端的 operations 字段的
-//     候选集,与资源因何可见无关。为空时退化为 Operations(即老行为)。
+// Operations and CandidateOperations are independent dimensions.
+// Operations determine visibility: a resource must hold all listed operations to be returned.
+// CandidateOperations determine which operations are returned to the frontend. When empty,
+// they fall back to Operations for backward compatibility.
 //
-// 两者曾共用 Operations 一个字段:ISF 在 allow_operation=true 时无视请求的操作列表、
-// 直接回该资源的全部允许操作,所以少传候选集不显症;切到 bkn-safe 后按请求列表求交,
-// 列表页于是只剩 view_detail。候选集必须显式传到适配器。
+// ISF previously used Operations for both dimensions and returned every allowed operation when
+// allow_operation was true. BKN Safe intersects the requested candidate list, so the candidates
+// must be explicitly passed to the adapter.
 type PermissionResourcesFilter struct {
 	Accessor       PermissionAccessor   `json:"accessor,omitempty"`
 	Resources      []PermissionResource `json:"resources,omitempty"`
 	Operations     []string             `json:"operation,omitempty"`
 	AllowOperation bool                 `json:"allow_operation"`
 	Method         string               `json:"method,omitempty"`
-	// json:"-":该结构体会被整体序列化成 ISF 请求体,新字段不进入 ISF 契约。
+	// json:"-" keeps this new field out of the ISF request contract.
 	CandidateOperations []string `json:"-"`
 }
 
-// 设置权限
+// PermissionPolicy describes a policy to apply.
 type PermissionPolicy struct {
 	Accessor   PermissionAccessor  `json:"accessor"`
 	Resource   PermissionResource  `json:"resource"`

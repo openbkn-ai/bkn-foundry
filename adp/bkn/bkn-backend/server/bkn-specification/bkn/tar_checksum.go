@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 )
 
-// ComputeChecksumFromTar 从 tar 流计算所有定义的 checksum。
-// 返回 map["type:id"] = "sha256:hash"。
+// ComputeChecksumFromTar calculates checksums for all definitions in a tar stream.
+// It returns map["type:id"] = "sha256:hash".
 func ComputeChecksumFromTar(r io.Reader) (map[string]string, error) {
 	mfs, rootFile, err := ExtractTarToMemory(r)
 	if err != nil {
@@ -23,8 +23,8 @@ func ComputeChecksumFromTar(r io.Reader) (map[string]string, error) {
 	return ComputeNetworkChecksums(mfs, rootDir)
 }
 
-// GenerateChecksumFromTar 从 tar 流生成 CHECKSUM 文件内容。
-// 返回 CHECKSUM 文件的字符串内容。
+// GenerateChecksumFromTar generates CHECKSUM file content from a tar stream.
+// It returns the CHECKSUM file content as a string.
 func GenerateChecksumFromTar(r io.Reader) (string, error) {
 	mfs, rootFile, err := ExtractTarToMemory(r)
 	if err != nil {
@@ -34,8 +34,8 @@ func GenerateChecksumFromTar(r io.Reader) (string, error) {
 	return GenerateChecksumFileWithFS(mfs, rootDir)
 }
 
-// VerifyChecksumFromTar 验证 tar 流内的 CHECKSUM 文件是否与实际内容一致。
-// tar 包中必须包含 CHECKSUM 文件。
+// VerifyChecksumFromTar verifies that the CHECKSUM file in a tar stream matches its actual contents.
+// The tar archive must contain a CHECKSUM file.
 func VerifyChecksumFromTar(r io.Reader) (bool, []string) {
 	mfs, rootFile, err := ExtractTarToMemory(r)
 	if err != nil {
@@ -45,8 +45,8 @@ func VerifyChecksumFromTar(r io.Reader) (bool, []string) {
 	return VerifyChecksumFileWithFS(mfs, rootDir)
 }
 
-// DiffNetworksFromTar 比较两个 tar 包之间的定义差异。
-// 返回 DiffResult，包含 create/update/skip/delete 条目。
+// DiffNetworksFromTar compares definition differences between two tar archives.
+// It returns a DiffResult containing create, update, skip, and delete entries.
 func DiffNetworksFromTar(oldTar, newTar io.Reader) (*DiffResult, error) {
 	oldChecksums, err := ComputeChecksumFromTar(oldTar)
 	if err != nil {

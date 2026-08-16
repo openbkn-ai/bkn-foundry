@@ -91,7 +91,7 @@ var (
 		condition.OperationMultiMatch,
 	}
 
-	// DSL_VECTOR_OPS 是字段建了向量索引后额外放开的算子。
+	// DSL_VECTOR_OPS are additional operators enabled after a field has a vector index.
 	DSL_VECTOR_OPS = []string{
 		condition.OperationKNN,
 	}
@@ -116,7 +116,7 @@ var (
 		condition.OperationOutRange,
 	}
 
-	// 配置了对象索引的操作符集合
+	// Operator set for configured object indexes.
 	INDEX_CONDITION_OPS = []string{
 		condition.OperationEq,
 		condition.OperationNotEq,
@@ -140,12 +140,12 @@ var (
 	}
 )
 
-// 指标模型结构体
+// Metric model structure.
 type MetricModel struct {
 	ModelID      string           `json:"id"`
 	ModelName    string           `json:"name"`
 	GroupID      string           `json:"group_id"`
 	GroupName    string           `json:"group_name"`
 	AnalysisDims []Field          `json:"analysis_dimensions,omitempty"`
-	FieldsMap    map[string]Field `json:"fields_map"` // 字段集
+	FieldsMap    map[string]Field `json:"fields_map"` // Field set
 }

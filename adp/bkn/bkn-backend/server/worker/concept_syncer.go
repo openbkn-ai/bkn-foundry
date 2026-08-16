@@ -82,7 +82,7 @@ func NewConceptSyncer(appSetting *common.AppSetting) *ConceptSyncer {
 	return cSyncer
 }
 
-// KNDetailInfo 知识网络详情信息结构
+// KNDetailInfo contains knowledge-network detail information.
 type KNDetailInfo struct {
 	NetworkInfo   map[string]any `json:"network_info"`
 	ObjectTypes   []SimpleItem   `json:"object_types"`
@@ -91,7 +91,7 @@ type KNDetailInfo struct {
 	ConceptGroups []SimpleItem   `json:"concept_groups"`
 }
 
-// SimpleItem 简化项结构，仅保留id、name、tag、comment字段
+// SimpleItem is a simplified item retaining only id, name, tag, and comment.
 type SimpleItem struct {
 	ID      string   `json:"id"`
 	Name    string   `json:"name"`
@@ -106,7 +106,7 @@ type SimpleItem struct {
 	ObjectTypeName string `json:"object_type_name,omitempty"`
 }
 
-// GeneratorTicker 生成业务知识网络详情定时任务
+// GeneratorTicker schedules business knowledge-network detail generation.
 func (cs *ConceptSyncer) Start() {
 	for {
 		err := cs.handleKNs()
@@ -117,7 +117,7 @@ func (cs *ConceptSyncer) Start() {
 	}
 }
 
-// handleKNs 处理业务知识网络详情 todo：补充 对象类、关系类、行动类的detail，并且要更新概念索引
+// handleKNs processes business knowledge-network details. TODO: add object, relation, and action-type details and update the concept index.
 func (cs *ConceptSyncer) handleKNs() error {
 	defer func() {
 		if rerr := recover(); rerr != nil {
@@ -164,25 +164,25 @@ func (cs *ConceptSyncer) handleKNs() error {
 	return nil
 }
 
-// handleKnowledgeNetwork 处理单个知识网络
+// handleKnowledgeNetwork processes one knowledge network.
 func (cs *ConceptSyncer) handleKnowledgeNetwork(ctx context.Context, kn *interfaces.KN, need_update bool) error {
 	logger.Debugf("Handle knowledge network: %s (%s %s), %s", kn.KNName, kn.KNID, kn.Branch)
 
-	// 获取对象类型列表
+	// Get the object-type list.
 	objectTypes, ot_need_update, err := cs.handleObjectTypes(ctx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("Failed to handle object types %s %s: %v", kn.KNID, kn.Branch, err)
 		return err
 	}
 
-	// 获取关系类型列表
+	// Get the relation-type list.
 	relationTypes, rt_need_update, err := cs.handleRelationTypes(ctx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("Failed to handle relation types %s %s: %v", kn.KNID, kn.Branch, err)
 		return err
 	}
 
-	// 获取行动类型列表
+	// Get the action-type list.
 	actionTypes, at_need_update, err := cs.handleActionTypes(ctx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("Failed to handle action types %s %s: %v", kn.KNID, kn.Branch, err)
@@ -221,7 +221,7 @@ func (cs *ConceptSyncer) handleKnowledgeNetwork(ctx context.Context, kn *interfa
 	bknNetwork := logics.ToBKNNetWork(kn)
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
 
-	// 更新知识网络详情
+	// Update knowledge-network details.
 	err = cs.kna.UpdateKNDetail(ctx, kn.KNID, kn.Branch, kn.BKNRawContent)
 	if err != nil {
 		logger.Errorf("Failed to update KN detail for %s (%s %s): %v", kn.KNName, kn.KNID, kn.Branch, err)
@@ -238,7 +238,7 @@ func (cs *ConceptSyncer) handleKnowledgeNetwork(ctx context.Context, kn *interfa
 	return nil
 }
 
-// handleObjectTypes 获取知识网络的对象类型
+// handleObjectTypes gets object types for a knowledge network.
 func (cs *ConceptSyncer) handleObjectTypes(ctx context.Context, knID string,
 	branch string) ([]*interfaces.ObjectType, bool, error) {
 
@@ -262,7 +262,7 @@ func (cs *ConceptSyncer) handleObjectTypes(ctx context.Context, knID string,
 		} else if otInDB.UpdateTime != otInDataset.UpdateTime {
 			add_list = append(add_list, otInDB)
 		}
-		// todo: DB里没有，dataset里有的，需要删除dataset里的数据？
+		// TODO: Should data present in the dataset but absent from the database be deleted from the dataset?
 	}
 	if len(add_list) > 0 {
 		logger.Debugf("Need add (%d) object types to dataset", len(add_list))
@@ -283,7 +283,7 @@ func (cs *ConceptSyncer) handleObjectTypes(ctx context.Context, knID string,
 	return arrObjectTypes, need_update, nil
 }
 
-// handleRelationTypes 获取知识网络的关系类型
+// handleRelationTypes gets relation types for a knowledge network.
 func (cs *ConceptSyncer) handleRelationTypes(ctx context.Context, knID string,
 	branch string) ([]*interfaces.RelationType, bool, error) {
 	logger.Debugf("Handle relation types for knowledge network %s %s", knID, branch)
@@ -326,7 +326,7 @@ func (cs *ConceptSyncer) handleRelationTypes(ctx context.Context, knID string,
 	return arrRelationTypes, need_update, nil
 }
 
-// handleActionTypes 获取知识网络的行动类型
+// handleActionTypes gets action types for a knowledge network.
 func (cs *ConceptSyncer) handleActionTypes(ctx context.Context, knID string,
 	branch string) ([]*interfaces.ActionType, bool, error) {
 	logger.Debugf("Handle action types for knowledge network %s %s", knID, branch)
@@ -369,7 +369,7 @@ func (cs *ConceptSyncer) handleActionTypes(ctx context.Context, knID string,
 	return arrActionTypes, need_update, nil
 }
 
-// handleRiskTypes 获取知识网络的风险类
+// handleRiskTypes gets risk types for a knowledge network.
 func (cs *ConceptSyncer) handleRiskTypes(ctx context.Context, knID string, branch string) ([]*interfaces.RiskType, bool, error) {
 	if cs.riskTypeA == nil {
 		return []*interfaces.RiskType{}, false, nil
@@ -411,7 +411,7 @@ func (cs *ConceptSyncer) handleRiskTypes(ctx context.Context, knID string, branc
 	return arrRiskTypes, need_update, nil
 }
 
-// handleMetrics 同步指标到概念索引（与 handleObjectTypes 等一致：DB 与 dataset 按 id+update_time 比较）。
+// handleMetrics synchronizes metrics to the concept index, comparing database and dataset records by id and update_time like handleObjectTypes.
 func (cs *ConceptSyncer) handleMetrics(ctx context.Context, knID, branch string) ([]*interfaces.MetricDefinition, bool, error) {
 	if cs.ma == nil {
 		return nil, false, nil
@@ -458,7 +458,7 @@ func (cs *ConceptSyncer) handleMetrics(ctx context.Context, knID, branch string)
 	return out, need_update, nil
 }
 
-// handleConceptGroups 获取知识网络的概念组
+// handleConceptGroups gets concept groups for a knowledge network.
 func (cs *ConceptSyncer) handleConceptGroups(ctx context.Context, knID string,
 	branch string) ([]*interfaces.ConceptGroup, bool, error) {
 
@@ -493,7 +493,7 @@ func (cs *ConceptSyncer) handleConceptGroups(ctx context.Context, knID string,
 		return []*interfaces.ConceptGroup{}, false, err
 	}
 
-	// 简化为仅保留id、name、tag、comment字段
+	// Retain only id, name, tag, and comment.
 	arrConceptGroups := make([]*interfaces.ConceptGroup, 0, len(conceptGroupsInDB))
 	for _, cgInDB := range conceptGroupsInDB {
 		arrConceptGroups = append(arrConceptGroups, cgInDB)

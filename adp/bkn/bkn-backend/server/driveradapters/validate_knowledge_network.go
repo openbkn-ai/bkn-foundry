@@ -8,7 +8,6 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -16,65 +15,69 @@ import (
 	"bkn-backend/interfaces"
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// 业务知识网络必要创建参数的非空校验。bool 为 dsl 语句中是否使用了 top_hits 的标识。
+func knowledgeNetworkInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail."+name, templateData)
+}
+
+// validateKnowledgeNetwork validates required knowledge network fields.
 func ValidateKN(ctx context.Context, kn *interfaces.KN) error {
-	// 校验id的合法性
+	// Validate the ID.
 	err := validateID(ctx, kn.KNID)
 	if err != nil {
 		return err
 	}
 
-	// 校验名称合法性
-	// 去掉模型名称的前后空格
+	// Trim and validate the model name.
 	kn.KNName = strings.TrimSpace(kn.KNName)
 	err = validateObjectName(ctx, kn.KNName, interfaces.MODULE_TYPE_KN)
 	if err != nil {
 		return err
 	}
 
-	// 若输入了 tags，校验 tags 的合法性
+	// Validate tags when provided.
 	err = ValidateTags(ctx, kn.Tags)
 	if err != nil {
 		return err
 	}
 
-	// 去掉tag前后空格以及数组去重
+	// Trim tags and remove duplicates.
 	kn.Tags = libCommon.TagSliceTransform(kn.Tags)
 
-	// 校验分支非空
+	// Validate that the branch is not empty.
 	if kn.Branch == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch).
-			WithErrorDetails("branch must be set")
+			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "BranchRequired", nil))
 	}
 
 	return nil
 }
 
-// 路径查询的参数校验
+// validatePathQuery validates path query parameters.
 func ValidateRelationTypePathsQuery(ctx context.Context, query *interfaces.RelationTypePathsBaseOnSource) error {
-	// 起点对象类非空
+	// The source object type is required.
 	if query.SourceObjecTypeId == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 	}
 
-	// 方向非空
+	// The direction is required.
 	if query.Direction == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
 	}
 
-	// 方向有效性
+	// Validate the direction.
 	if !interfaces.DIRECTION_MAP[query.Direction] {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_Direction).
-			WithErrorDetails(fmt.Sprintf("当前支持的方向有: forward, backward, bidirectional. 请求的方向为: %s", query.Direction))
+			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "DirectionUnsupported", map[string]any{"direction": query.Direction}))
 	}
 
-	// 路径长度不超过3
+	// The path length must not exceed three.
 	if query.PathLength > 3 || query.PathLength < 1 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_PathLength).
-			WithErrorDetails(fmt.Sprintf("路径长度不超过3, 请求的路径长度为%d", query.PathLength))
+			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "PathLengthInvalid", map[string]any{"pathLength": query.PathLength}))
 	}
 
 	return nil

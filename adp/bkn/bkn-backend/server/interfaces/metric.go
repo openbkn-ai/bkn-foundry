@@ -43,7 +43,7 @@ const (
 )
 
 var (
-	// ValidMetricUnitTypes 单位类型枚举
+	// ValidMetricUnitTypes enumerates valid unit types.
 	ValidMetricUnitTypes = map[string]struct{}{
 		"numUnit":          {},
 		"storeUnit":        {},
@@ -69,7 +69,7 @@ var (
 		"ordinalRankUnit",
 	}
 
-	// ValidMetricUnits 度量单位枚举
+	// ValidMetricUnits enumerates valid metric units.
 	ValidMetricUnits = map[string]struct{}{
 		"none":        {},
 		"K":           {},
@@ -173,7 +173,7 @@ var (
 		"rank",
 	}
 
-	// ValidMetricAggrs 聚合函数枚举（与 ontology-query MetricAggr 对齐）。
+	// ValidMetricAggrs enumerates aggregation functions and stays aligned with ontology-query MetricAggr.
 	ValidMetricAggrs = map[string]struct{}{
 		MetricAggrCountDistinct: {},
 		MetricAggrSum:           {},

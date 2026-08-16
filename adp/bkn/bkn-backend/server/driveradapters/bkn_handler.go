@@ -26,13 +26,13 @@ import (
 	"bkn-backend/logics"
 )
 
-// UploadBKN 上传 BKN tar 包并导入（外部接口）
+// UploadBKN imports an uploaded BKN tar archive (external endpoint).
 func (r *restHandler) UploadBKN(c *gin.Context) {
 	logger.Debug("Handler UploadBKN Start")
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -42,51 +42,51 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 获取上传的文件
+	// Read the uploaded file.
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails("Failed to get uploaded file: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "UploadedFileReadFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	defer func() { _ = file.Close() }()
 
-	// 验证文件类型
+	// Validate the file type.
 	if header.Header.Get("Content-Type") != "application/octet-stream" {
-		// 尝试通过后缀名判断
+		// Fall back to the filename extension.
 		ext := filepath.Ext(header.Filename)
 		if ext != ".tar" && ext != ".tgz" && ext != ".tar.gz" {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-				WithErrorDetails("Invalid file type, expected tar archive")
+				WithErrorDetails(commonValidationDetail(ctx, "ArchiveFileTypeInvalid", nil))
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
 		}
 	}
 
-	// 获取表单参数
+	// Read form parameters.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 
-	// 从header中获取业务域（可选）
+	// Read the optional business domain from the header.
 	businessDomain := c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)
 
 	logger.Debugf("Upload BKN: branch=%s, filename=%s, size=%d",
 		branch, header.Filename, header.Size)
 
-	// 直接从 tar 包加载网络（纯内存，无需写入磁盘）
+	// Load the network directly from the tar archive in memory.
 	bknNetwork, err := bknsdk.LoadNetworkFromTar(file)
 	if err != nil {
 		logger.Errorf("Failed to load network from tar: %s", err.Error())
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails("Failed to load network from tar: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "ArchiveLoadFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -94,7 +94,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	bknNetwork.Branch = branch
 	bknNetwork.BusinessDomain = businessDomain
 
-	// 执行导入
+	// Import the network.
 	kn := logics.ToADPNetWork(bknNetwork)
 	otMap := make(map[string]*interfaces.ObjectType)
 	for _, bknObj := range bknNetwork.ObjectTypes {
@@ -131,23 +131,23 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		kn.Metrics = append(kn.Metrics, logics.ToADPMetricDefinition(kn.KNID, branch, bknM))
 	}
 
-	// 1. 校验 业务知识网络必要创建参数的合法性, 非空、长度、是枚举值
+	// Validate required knowledge network creation fields, lengths, and enum values.
 	err = ValidateKN(ctx, kn)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 记录异常日志
+		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate knowledge network[%s] failed: %s. %v", kn.KNName,
 			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("kn_name").String(kn.KNName))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 若kn的对象类，关系类，行动类, 概念分组不为空，则应循环调用对象类、关系类、行动类, 概念分组的校验函数
+	// Validate each populated object type, relation type, action type, and concept group in the knowledge network.
 	if len(kn.ObjectTypes) > 0 {
 		err = ValidateObjectTypes(ctx, kn.KNID, kn.ObjectTypes, false)
 		if err != nil {
@@ -205,18 +205,18 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		}
 	}
 
-	// 调用创建单个知识网络
+	// Create the knowledge network.
 	knID, err := r.kns.CreateKN(ctx, kn, interfaces.ImportMode_Overwrite, false)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 设置 trace 的错误信息的 attributes
+		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 成功创建记录审计日志
+	// Record an audit log after successful creation.
 	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
 		interfaces.GenerateKNAuditObject(knID, kn.KNName), "")
 
@@ -225,13 +225,13 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, map[string]string{"kn_id": knID})
 }
 
-// DownloadBKN 下载 BKN tar 包（外部接口）
+// DownloadBKN exports a BKN tar archive (external endpoint).
 func (r *restHandler) DownloadBKN(c *gin.Context) {
 	logger.Debug("Handler DownloadBKN Start")
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
-	// 校验token
+	// Verify the access token.
 	visitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -241,32 +241,32 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 		ID:   visitor.ID,
 		Type: string(visitor.Type),
 	}
-	// accountID 存入 context 中
+	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 获取路径参数
+	// Read path parameters.
 	kn_id := c.Param("kn_id")
 	if kn_id == "" {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails("kn_id is required")
+			WithErrorDetails(commonValidationDetail(ctx, "KnowledgeNetworkIDRequired", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// 获取查询参数
+	// Read query parameters.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 
 	logger.Debugf("Download BKN: kn_id=%s, branch=%s", kn_id, branch)
 
-	// 调用服务导出为 tar 包
+	// Export a tar archive through the service.
 	tarData, err := r.bs.ExportToTar(ctx, kn_id, branch)
 	if err != nil {
 		logger.Errorf("Download BKN failed: %s", err.Error())
 		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
-			WithErrorDetails(err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "InternalRequestFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -276,7 +276,7 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 
 	logger.Debugf("Download BKN completed: filename=%s size=%d", filename, len(tarData))
 
-	// 设置响应头
+	// Set response headers.
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	c.Data(http.StatusOK, "application/octet-stream", tarData)

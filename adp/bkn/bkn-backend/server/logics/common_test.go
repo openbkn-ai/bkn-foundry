@@ -159,7 +159,7 @@ func Test_VegaResourceIndexCaps(t *testing.T) {
 			So(caps["material_number"].Keyword, ShouldBeTrue)
 			So(caps["material_number"].Fulltext, ShouldBeFalse)
 
-			// 没有任何 feature 的字段不进结果，取到的是零值
+			// Fields without features are excluded, leaving the zero value.
 			_, exists := caps["qty"]
 			So(exists, ShouldBeFalse)
 			So(caps["qty"].Fulltext, ShouldBeFalse)

@@ -43,7 +43,7 @@ func MockNewBKNRestHandler(
 	}
 }
 
-// newValidBKNTar 生成一个最小合法的 BKN tar，用于测试
+// newValidBKNTar creates a minimal valid BKN tar archive for tests.
 func newValidBKNTar(t *testing.T) []byte {
 	net := &bknsdk.BknNetwork{
 		BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{
@@ -60,7 +60,7 @@ func newValidBKNTar(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// newMultipartRequestWithContentType 构造指定 Content-Type 的文件上传请求（用于测试扩展名校验分支）
+// newMultipartRequestWithContentType builds a file-upload request with the specified Content-Type for extension-validation tests.
 func newMultipartRequestWithContentType(t *testing.T, url, filename, contentType string, content []byte) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
@@ -80,7 +80,7 @@ func newMultipartRequestWithContentType(t *testing.T, url, filename, contentType
 	return req
 }
 
-// newMultipartRequest 构造一个包含文件的 multipart/form-data 请求
+// newMultipartRequest builds a multipart/form-data request containing a file.
 func newMultipartRequest(t *testing.T, url, filename string, content []byte) *http.Request {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)

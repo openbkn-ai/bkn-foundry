@@ -34,7 +34,7 @@ func NewEqCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*ViewFiel
 
 }
 
-// 注：由于term是包含操作，而不是等值比较，如果field的值是数组的话，无法做到精确相等。
+// Note: term performs containment rather than equality, so exact equality is not possible when a field value is an array.
 func (cond *EqCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, words []string) ([]*VectorResp, error)) (string, error) {
 	v := cond.mCfg.Value
 	vStr, ok := v.(string)

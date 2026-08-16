@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -53,6 +54,10 @@ type relationTypeService struct {
 	rta        interfaces.RelationTypeAccess
 	ums        interfaces.UserMgmtService
 	vba        interfaces.VegaBackendAccess
+}
+
+func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
 }
 
 func NewRelationTypeService(appSetting *common.AppSetting) interfaces.RelationTypeService {
@@ -94,7 +99,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create relation type")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   relationTypes[0].KNID,
@@ -103,7 +108,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		return []string{}, err
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	if tx == nil {
 		tx, err = rts.db.Begin()
 		if err != nil {
@@ -112,11 +117,11 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "CreateRelationType Transaction Commit Failed", err)
@@ -134,7 +139,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 
 	currentTime := time.Now().UnixMilli()
 	for _, relationType := range relationTypes {
-		// 若提交的模型id为空，生成分布式ID
+		// Generate a distributed ID when the submitted model ID is empty.
 		if relationType.RTID == "" {
 			relationType.RTID = xid.New().String()
 		}
@@ -149,7 +154,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		relationType.CreateTime = currentTime
 		relationType.UpdateTime = currentTime
 
-		// 校验起点对象类、终点对象类非空时，需校验存在性
+		// Validate existence when source or target object type IDs are provided.
 		err = rts.validateDependency(ctx, tx, relationType, strictMode, nil)
 		if err != nil {
 			return []string{}, err
@@ -164,7 +169,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		return []string{}, err
 	}
 
-	// 1. 创建模型
+	// 1. Create the model.
 	rtIDs := []string{}
 	for _, relationType := range createRelationTypes {
 		rtIDs = append(rtIDs, relationType.RTID)
@@ -178,7 +183,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		}
 	}
 
-	// 更新
+	// Update.
 	for _, relationType := range updateRelationTypes {
 		err = rts.UpdateRelationType(ctx, tx, relationType, strictMode)
 		if err != nil {
@@ -244,13 +249,13 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询关系类列表")
 	defer span.End()
 
-	// 分支为空时兜底到主分支：关系类查询本身对空分支有兜底，但补全起点/终点对象类名称的查询没有，
-	// 空分支会硬匹配 f_branch = '' 查出 0 行，导致 SourceObjectType/TargetObjectType 变成空结构体。
+	// Fall back to the main branch when branch is empty. Relation type lookup does this already, but source and target name lookup does not.
+	// An empty branch would match f_branch = empty and return no rows, leaving SourceObjectType and TargetObjectType empty.
 	if query.Branch == "" {
 		query.Branch = interfaces.MAIN_BRANCH
 	}
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -259,7 +264,7 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 		return []*interfaces.RelationType{}, 0, err
 	}
 
-	//获取关系类列表
+	// Get the relation type list.
 	relationTypes, err := rts.rta.ListRelationTypes(ctx, query)
 	if err != nil {
 		logger.Errorf("ListRelationTypes error: %s", err.Error())
@@ -293,7 +298,7 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 		return []*interfaces.RelationType{}, 0, err
 	}
 
-	// 补充当前页关系类的起点和终点对象类名称。
+	// Populate source and target object type names for the current relation type page.
 	for _, relationType := range relationTypes {
 		sourceObj := objectTypeMap[relationType.SourceObjectTypeID]
 		targetObj := objectTypeMap[relationType.TargetObjectTypeID]
@@ -334,11 +339,11 @@ func (rts *relationTypeService) ListRelationTypes(ctx context.Context,
 }
 
 func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID string, branch string, rtIDs []string) ([]*interfaces.RelationType, error) {
-	// 获取关系类
+	// Get relation types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询关系类[%v]信息", rtIDs))
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -347,10 +352,10 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 		return []*interfaces.RelationType{}, err
 	}
 
-	// id去重后再查
+	// De-duplicate IDs before querying.
 	rtIDs = common.DuplicateSlice(rtIDs)
 
-	// 获取模型基本信息
+	// Get basic model information.
 	relationTypes, err := rts.rta.GetRelationTypesByIDs(ctx, knID, branch, rtIDs)
 	if err != nil {
 		logger.Errorf("GetRelationTypesByRTIDs error: %s", err.Error())
@@ -370,9 +375,9 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 			berrors.BknBackend_RelationType_RelationTypeNotFound).WithErrorDetails(errStr)
 	}
 
-	// 把起点终点对象类的名称拿到
+	// Retrieve source and target object type names.
 	for _, relationType := range relationTypes {
-		// 起点终点对象类的名称拿到
+		// Retrieve source and target object type names.
 		objectTypeMap, err := rts.ots.GetObjectTypesMapByIDs(ctx, knID, branch,
 			[]string{relationType.SourceObjectTypeID, relationType.TargetObjectTypeID}, true)
 		if err != nil {
@@ -382,16 +387,16 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 		sourceObj := objectTypeMap[relationType.SourceObjectTypeID]
 		targetObj := objectTypeMap[relationType.TargetObjectTypeID]
 
-		// 映射字段的翻译
+		// Resolve mapped field display names.
 		switch relationType.Type {
 		case interfaces.RELATION_TYPE_DIRECT:
-			// 若都没有，不翻译，继续往下
+			// Continue when neither is present.
 			if sourceObj == nil && targetObj == nil {
 				continue
 			}
 
-			// 源属性来自于源对象类。只绑数据属性，所以只需构造数据属性的map
-			// 映射里的source字段名加上显示名
+			// Source properties come from the source object type. Only data properties are bound, so build a data property map.
+			// Add display names to source fields in mappings.
 			for k, m := range relationType.MappingRules.([]interfaces.Mapping) {
 				if sourceObj != nil {
 					relationType.SourceObjectType = interfaces.SimpleObjectType{
@@ -400,7 +405,7 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 						Icon:   sourceObj.Icon,
 						Color:  sourceObj.Color,
 					}
-					// 映射里的source字段名加上显示名
+					// Add display names to source fields in mappings.
 					relationType.MappingRules.([]interfaces.Mapping)[k].SourceProp.DisplayName = sourceObj.PropertyMap[m.SourceProp.Name]
 				}
 				if targetObj != nil {
@@ -410,7 +415,7 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 						Icon:   targetObj.Icon,
 						Color:  targetObj.Color,
 					}
-					// 映射里的target字段名加上显示名
+					// Add display names to target fields in mappings.
 					relationType.MappingRules.([]interfaces.Mapping)[k].TargetProp.DisplayName = targetObj.PropertyMap[m.TargetProp.Name]
 				}
 			}
@@ -452,12 +457,12 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 	return relationTypes, nil
 }
 
-// 更新关系类
+// Update relation types.
 func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.Tx, relationType *interfaces.RelationType, strictMode bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update relation type")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   relationType.KNID,
@@ -472,14 +477,14 @@ func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.
 	}
 	relationType.Updater = accountInfo
 
-	currentTime := time.Now().UnixMilli() // 关系类的update_time是int类型
+	currentTime := time.Now().UnixMilli() // Relation type update_time uses an integer type.
 	relationType.UpdateTime = currentTime
 
 	bknRel := logics.ToBKNRelationType(relationType)
 	relationType.BKNRawContent = bknsdk.SerializeRelationType(bknRel)
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = rts.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -488,11 +493,11 @@ func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "UpdateRelationType Transaction Commit Failed", err)
@@ -508,13 +513,13 @@ func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.
 		}()
 	}
 
-	// 校验起点对象类、终点对象类非空时，需校验存在性（strict_mode 控制）
+	// Validate source and target object type existence when present, controlled by strict_mode.
 	err = rts.validateDependency(ctx, tx, relationType, strictMode, nil)
 	if err != nil {
 		return err
 	}
 
-	// 更新模型信息
+	// Update model information.
 	err = rts.rta.UpdateRelationType(ctx, tx, relationType)
 	if err != nil {
 		logger.Errorf("relationType error: %s", err.Error())
@@ -543,7 +548,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete relation types")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -553,7 +558,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 	}
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = rts.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -562,11 +567,11 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 				berrors.BknBackend_RelationType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "DeleteRelationTypes Transaction Commit Failed", err)
@@ -582,7 +587,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 		}()
 	}
 
-	// 删除指标模型
+	// Delete metric models.
 	rowsAffect, err := rts.rta.DeleteRelationTypesByIDs(ctx, tx, knID, branch, rtIDs)
 	if err != nil {
 		logger.Errorf("DeleteRelationTypes error: %s", err.Error())
@@ -611,7 +616,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 	return nil
 }
 
-// 内部接口，根据业务知识网络ID删除所有关系类，不校验权限，tx必须传入
+// Internal API. Deletes all relation types by business knowledge network ID without permission checks; tx is required.
 func (rts *relationTypeService) DeleteRelationTypesByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete relation types by kn_id")
 	defer span.End()
@@ -623,7 +628,7 @@ func (rts *relationTypeService) DeleteRelationTypesByKnID(ctx context.Context, t
 			WithErrorDetails("missing transaction")
 	}
 
-	// 删除指标模型
+	// Delete metric models.
 	rowsAffect, err := rts.rta.DeleteRelationTypesByKnID(ctx, tx, knID, branch)
 	if err != nil {
 		logger.Errorf("DeleteRelationTypesByKnID error: %s", err.Error())
@@ -647,7 +652,7 @@ func (rts *relationTypeService) handleRelationTypeImportMode(ctx context.Context
 	creates := []*interfaces.RelationType{}
 	updates := []*interfaces.RelationType{}
 
-	// 3. 校验 若模型的id不为空，则用请求体的id与现有模型ID的重复性
+	// 3. When the submitted model ID is not empty, validate conflicts with existing model IDs.
 	for _, relationType := range relationTypes {
 		creates = append(creates, relationType)
 		_, idExist, err := rts.CheckRelationTypeExistByID(ctx, relationType.KNID, relationType.Branch, relationType.RTID)
@@ -655,7 +660,7 @@ func (rts *relationTypeService) handleRelationTypeImportMode(ctx context.Context
 			return creates, updates, err
 		}
 
-		// 根据mode来区别，若是ignore，就从结果集中忽略，若是overwrite，就调用update，若是normal就报错。
+		// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
 		if idExist {
 			switch mode {
 			case interfaces.ImportMode_Normal:
@@ -667,11 +672,11 @@ func (rts *relationTypeService) handleRelationTypeImportMode(ctx context.Context
 					WithErrorDetails(errDetails)
 
 			case interfaces.ImportMode_Ignore:
-				// ID 已存在则跳过，从create数组中删除
+				// Skip when the ID exists and remove it from the create array.
 				creates = creates[:len(creates)-1]
 
 			case interfaces.ImportMode_Overwrite:
-				// ID 已存在则覆盖更新，从create数组中删除, 放到更新数组中
+				// Overwrite when the ID exists, remove it from create, and add it to update.
 				creates = creates[:len(creates)-1]
 				updates = append(updates, relationType)
 			}
@@ -685,7 +690,7 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "关系类索引写入")
 	defer span.End()
 
-	// 关系类索引写入
+	// Write the relation type index.
 	if len(relationTypes) == 0 {
 		return nil
 	}
@@ -769,7 +774,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 	response := interfaces.RelationTypes{}
 	var err error
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err = rts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -778,7 +783,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 		return response, err
 	}
 
-	// 转换条件为 dataset filter condition
+	// Convert conditions to dataset filter conditions.
 	var filterCondition map[string]any
 	if query.ActualCondition != nil {
 		filterCondition, err = cond.ConvertCondCfgToFilterCondition(ctx, query.ActualCondition,
@@ -810,17 +815,18 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				return result, nil
 			})
 		if err != nil {
+			logger.Errorf("convert relation type condition to filter condition failed: %v", err)
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_RelationType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(fmt.Sprintf("failed to convert condition to filter condition, %s", err.Error()))
+				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
 	}
 
-	// 1. 获取组下的关系类
-	rtIDMap := map[string]bool{} // 分组下的对象类id
-	rtIDs := []string{}          // 不同组下的对象类可以重叠，所以需要对对象类id的数组去重
+	// 1. Get relation types in the groups.
+	rtIDMap := map[string]bool{} // Object type IDs in the groups
+	rtIDs := []string{}          // Object types can overlap between groups, so de-duplicate object type IDs.
 	if len(query.ConceptGroups) > 0 {
-		// 校验分组是否都存在，按分组id获取分组
+		// Validate groups by retrieving them by ID.
 		cgCnt, err := rts.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 			KNID:   query.KNID,
 			Branch: query.Branch,
@@ -838,16 +844,16 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				cgCnt, len(query.ConceptGroups))
 			logger.Errorf(errStr)
 
-			// 所有概念分组都不存在，报404，概念分组不存在
+			// Return 404 when all requested concept groups are missing.
 			return response, rest.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 				WithErrorDetails(errStr)
 		}
-		// 在当前业务知识网络下查找属于请求的分组范围内的关系类ID
+		// Find relation type IDs in requested groups within the current business knowledge network.
 		rtIDArr, err := rts.cga.GetRelationTypeIDsFromConceptGroupRelation(ctx, interfaces.ConceptGroupRelationsQueryParams{
 			KNID:        query.KNID,
 			Branch:      query.Branch,
-			ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, // 概念与分组关系中的概念类型
+			ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, // Concept type in the concept-to-group relation
 			CGIDs:       query.ConceptGroups,
 		})
 		if err != nil {
@@ -860,7 +866,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RelationType_InternalError).WithErrorDetails(errStr)
 		}
-		// 概念分组下没有关系类,返回空
+		// Return empty when the concept groups contain no relation types.
 		if len(rtIDArr) == 0 {
 			return response, nil
 		}
@@ -873,15 +879,15 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 		}
 	}
 
-	// 根据NeedTotal参数决定是否查询total
+	// Decide whether to query the total based on NeedTotal.
 	if query.NeedTotal {
 		if len(rtIDMap) == 0 {
-			// 未指定分组，直接搜索.总数从dataset的结果中读取
+			// Search directly when no group is specified and read the total from dataset results.
 			params := &interfaces.ResourceDataQueryParams{
 				FilterCondition: filterCondition,
 				Paging: interfaces.ResourceDataPagingRequest{
 					Mode:  "single",
-					Limit: 1, // 查询1条数据，获取total
+					Limit: 1, // Query one entry to obtain the total count.
 				},
 				NeedTotal: true,
 			}
@@ -895,7 +901,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			}
 			response.TotalCount = datasetResp.TotalCount
 		} else {
-			// 指定了分组，需要查询分组内且符合条件的总数
+			// Query the matching total within specified groups.
 			total, err := rts.GetTotalWithLargeRTIDs(ctx, filterCondition, rtIDs)
 			if err != nil {
 				return response, err
@@ -904,7 +910,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 		}
 	}
 
-	// 4. 迭代查询直到获取足够数量或没有更多数据
+	// 4. Iterate until enough entries are collected or no more data exists.
 	relationTypes := []*interfaces.RelationType{}
 	var totalFilteredCount int64 = 0
 	sort := query.Sort
@@ -923,7 +929,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
-		// 调用 dataset 查询
+		// Call the dataset query.
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
 			Paging:          paging,
@@ -939,14 +945,14 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				WithErrorDetails(err.Error())
 		}
 
-		// 如果没有数据了，跳出循环
+		// Stop when no data remains.
 		if len(datasetResp.Entries) == 0 {
 			break
 		}
 
-		// 5. 处理查询结果
+		// 5. Process query results.
 		for _, entry := range datasetResp.Entries {
-			// 转成 relation type 的 struct
+			// Convert to a relation type struct.
 			jsonByte, err := json.Marshal(entry)
 			if err != nil {
 				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -961,9 +967,9 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal dataset entry to Relation Type, %s", err.Error()))
 			}
 
-			// 如果没有指定分组，或者关系类属于分组，则添加
+			// Add the relation type when no group is specified or it belongs to the group.
 			if len(rtIDMap) == 0 || rtIDMap[relationType.RTID] {
-				// 提取 _score（如果有）
+				// Extract _score when present.
 				if scoreVal, ok := entry["_score"]; ok {
 					if scoreFloat, ok := scoreVal.(float64); ok {
 						score := float64(scoreFloat)
@@ -974,7 +980,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				relationTypes = append(relationTypes, &relationType)
 				totalFilteredCount++
 
-				// 如果已经收集到足够的数量，跳出循环
+				// Stop when enough entries have been collected.
 				if len(relationTypes) >= query.Limit && query.Limit > 0 {
 					break
 				}
@@ -1007,7 +1013,7 @@ func (rts *relationTypeService) GetTotal(ctx context.Context, filterCondition ma
 		FilterCondition: filterCondition,
 		Paging: interfaces.ResourceDataPagingRequest{
 			Mode:  "single",
-			Limit: 1, // 查询1条数据，获取total
+			Limit: 1, // Query one entry to obtain the total count.
 		},
 		NeedTotal: true,
 	}
@@ -1026,13 +1032,13 @@ func (rts *relationTypeService) GetTotal(ctx context.Context, filterCondition ma
 	return datasetResp.TotalCount, nil
 }
 
-// 内部调用，不加权限校验
+// Internal call without permission checks.
 func (rts *relationTypeService) GetRelationTypeIDsByKnID(ctx context.Context, knID string, branch string) ([]string, error) {
-	// 获取关系类
+	// Get relation types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("按kn_id[%s]获取关系类IDs", knID))
 	defer span.End()
 
-	// 获取对象类基本信息
+	// Get basic object type information.
 	rtIDs, err := rts.rta.GetRelationTypeIDsByKnID(ctx, knID, branch)
 	if err != nil {
 		logger.Errorf("GetRelationTypeIDsByKnID error: %s", err.Error())
@@ -1046,7 +1052,7 @@ func (rts *relationTypeService) GetRelationTypeIDsByKnID(ctx context.Context, kn
 	return rtIDs, nil
 }
 
-// 分批查询
+// Query in batches.
 func (rts *relationTypeService) GetTotalWithLargeRTIDs(ctx context.Context,
 	filterCondition map[string]any,
 	rtIDs []string) (int64, error) {
@@ -1070,12 +1076,12 @@ func (rts *relationTypeService) GetTotalWithLargeRTIDs(ctx context.Context,
 	return total, nil
 }
 
-// 查询指定关系类ID列表的关系类总数
+// Query the total count for specified relation type IDs.
 func (rts *relationTypeService) GetTotalWithRTIDs(ctx context.Context,
 	filterCondition map[string]any,
 	rtIDs []string) (int64, error) {
 
-	// 构建包含 RTID 过滤的 filter condition
+	// Build a filter condition containing the relation type ID filter.
 	rtIDCondition := map[string]any{
 		"field":      "id",
 		"operation":  "in",
@@ -1096,7 +1102,7 @@ func (rts *relationTypeService) GetTotalWithRTIDs(ctx context.Context,
 		}
 	}
 
-	// 执行计数查询
+	// Execute the count query.
 	total, err := rts.GetTotal(ctx, combinedCondition)
 	if err != nil {
 		return total, err
@@ -1105,7 +1111,7 @@ func (rts *relationTypeService) GetTotalWithRTIDs(ctx context.Context,
 	return total, nil
 }
 
-// 校验关系类相关的对象类、数据视图存在性
+// Validate object types and data views referenced by relation types.
 func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.Tx, relationType *interfaces.RelationType,
 	strictMode bool, batch *interfaces.BatchIDIndex) error {
 
@@ -1117,15 +1123,15 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			return nil, nil
 		}
 		if batch != nil && batchindex.HasObjectTypeID(otID, batch) {
-			// 在批量内找数据，当前请求带了 BatchIDIndex（整包 KN / 概念分组预检等）且对象类 ID 在 batch 里时
+			// Read from the batch when BatchIDIndex is provided and the object type ID exists in that batch.
 			ot := batch.ObjectTypes[otID]
 			if ot == nil {
 				return nil, nil
 			}
-			// 确保对象类有数据属性，构造 propertyMap
+			// Ensure the object type has data properties and build propertyMap.
 			batchindex.EnsureObjectTypePropertyMap(ot)
 			if len(ot.PropertyMap) == 0 {
-				// 为空，说明批量内仅有 ID、无数据属性：不查库；映射规则侧降级（与预检最低载荷策略一致）
+				// Empty means the batch contains only an ID without data properties. Skip storage lookup and reduce mapping-rule validation.
 				return nil, nil
 			}
 			return ot, nil
@@ -1156,25 +1162,25 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			return err
 		}
 	}
-	// 当关联关系非空时，校验起点对象类、终点对象类的属性存在性
+	// Validate source and target object type properties when mapping rules are present.
 	if relationType.MappingRules != nil {
 		switch relationType.Type {
 		case interfaces.RELATION_TYPE_DIRECT:
 			directMappingRules := relationType.MappingRules.([]interfaces.Mapping)
 			for _, mapping := range directMappingRules {
 				if sourceObjectType != nil {
-					// 检查起点属性是否在起点对象类的数据属性中存在
+					// Check that source properties exist in source object type data properties.
 					if _, exist := sourceObjectType.PropertyMap[mapping.SourceProp.Name]; !exist {
 						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-							WithErrorDetails(fmt.Sprintf("起点关联属性[%s]在起点对象类[%s]中不存在", mapping.SourceProp.Name, sourceObjectType.OTName))
+							WithErrorDetails(invalidParameterDetail(ctx, "SourcePropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "objectType": sourceObjectType.OTName}))
 					}
 				}
 
 				if targetObjectType != nil {
-					// 检查终点属性是否在终点对象类的数据属性中存在
+					// Check that target properties exist in target object type data properties.
 					if _, exist := targetObjectType.PropertyMap[mapping.TargetProp.Name]; !exist {
 						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-							WithErrorDetails(fmt.Sprintf("终点关联属性[%s]在终点对象类[%s]中不存在", mapping.TargetProp.Name, targetObjectType.OTName))
+							WithErrorDetails(invalidParameterDetail(ctx, "TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName}))
 					}
 				}
 			}
@@ -1183,13 +1189,13 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			if sourceObjectType != nil && rules.SourceCondition != nil {
 				if _, err := cond.NewCondition(ctx, rules.SourceCondition, cond.CUSTOM, objectTypeToCondFieldsMap(sourceObjectType)); err != nil {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("分侧过滤全连接起点条件无效: %s", err.Error()))
+						WithErrorDetails(invalidParameterDetail(ctx, "SourceConditionInvalid", nil))
 				}
 			}
 			if targetObjectType != nil && rules.TargetCondition != nil {
 				if _, err := cond.NewCondition(ctx, rules.TargetCondition, cond.CUSTOM, objectTypeToCondFieldsMap(targetObjectType)); err != nil {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("分侧过滤全连接终点条件无效: %s", err.Error()))
+						WithErrorDetails(invalidParameterDetail(ctx, "TargetConditionInvalid", nil))
 				}
 			}
 		}

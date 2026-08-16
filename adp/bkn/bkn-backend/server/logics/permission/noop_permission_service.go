@@ -13,7 +13,7 @@ import (
 	"bkn-backend/interfaces"
 )
 
-// NoopPermissionService 空权限服务（跳过所有权限检查）
+// NoopPermissionService skips all permission checks.
 type NoopPermissionService struct {
 	appSetting *common.AppSetting
 }
@@ -23,20 +23,20 @@ func NewNoopPermissionService(appSetting *common.AppSetting) interfaces.Permissi
 }
 
 func (n *NoopPermissionService) CheckPermission(ctx context.Context, resource interfaces.PermissionResource, ops []string) error {
-	return nil // 始终通过，不检查 accountInfo
+	return nil // Always allow; do not inspect accountInfo.
 }
 
 func (n *NoopPermissionService) CreateResources(ctx context.Context, resources []interfaces.PermissionResource, ops []string) error {
-	return nil // 静默跳过
+	return nil // Silently skip.
 }
 
 func (n *NoopPermissionService) DeleteResources(ctx context.Context, resourceType string, ids []string) error {
-	return nil // 静默跳过
+	return nil // Silently skip.
 }
 
 func (n *NoopPermissionService) FilterResources(ctx context.Context, resourceType string, ids []string,
 	ops []string, allowOperation bool, fullOps []string) (map[string]interfaces.PermissionResourceOps, error) {
-	// 返回所有资源，不做过滤
+	// Return all resources without filtering.
 	result := make(map[string]interfaces.PermissionResourceOps)
 	for _, id := range ids {
 		result[id] = interfaces.PermissionResourceOps{
@@ -48,5 +48,5 @@ func (n *NoopPermissionService) FilterResources(ctx context.Context, resourceTyp
 }
 
 func (n *NoopPermissionService) UpdateResource(ctx context.Context, resource interfaces.PermissionResource) error {
-	return nil // 静默跳过
+	return nil // Silently skip.
 }

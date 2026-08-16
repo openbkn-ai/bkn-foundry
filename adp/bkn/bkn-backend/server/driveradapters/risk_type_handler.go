@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -104,7 +105,7 @@ func (r *restHandler) CreateRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	}
 	if err = c.ShouldBindJSON(&requestData); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed:" + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -112,13 +113,13 @@ func (r *restHandler) CreateRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	riskTypes := requestData.Entries
 	if len(riskTypes) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("No risk type was passed in")
+			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	// request来的riskTypes的branch都用url里的branch
+	// Apply the branch from the URL to all requested risk types.
 	for i := range riskTypes {
 		riskTypes[i].KNID = knID
 		riskTypes[i].Branch = branch
@@ -195,7 +196,7 @@ func (r *restHandler) UpdateRiskType(c *gin.Context, visitor hydra.Visitor) {
 	var riskType interfaces.RiskType
 	if err = c.ShouldBindJSON(&riskType); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed:" + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -234,10 +235,9 @@ func (r *restHandler) UpdateRiskType(c *gin.Context, visitor hydra.Visitor) {
 			return
 		}
 		if exist {
-			errDetails := fmt.Sprintf("risk type name '%s' already exists", riskType.RTName)
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_RiskTypeNameExisted).
 				WithDescription(map[string]any{"name": riskType.RTName}).
-				WithErrorDetails(errDetails)
+				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail.RiskTypeNameAlreadyExists", map[string]any{"riskTypeName": riskType.RTName}))
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -458,7 +458,7 @@ func (r *restHandler) GetRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 			}
 		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound).
-			WithErrorDetails(fmt.Sprintf("Risk types not found: %v", missing))
+			WithErrorDetails(commonValidationDetail(ctx, "RequestedResourcesNotFound", map[string]any{"resources": missing}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -468,12 +468,12 @@ func (r *restHandler) GetRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": list})
 }
 
-// GetRiskTypesByInWithPath 内部 API：按 path 中的 rt_ids 获取风险类
+// GetRiskTypesByInWithPath retrieves risk types by rt_ids in the path (internal API).
 func (r *restHandler) GetRiskTypesByInWithPath(c *gin.Context) {
 	r.GetRiskTypes(c, visitor.GenerateVisitor(c))
 }
 
-// GetRiskTypesByIn 内部 API：按 risk_type_ids、branch 批量获取风险类（供 ontology-query 调用）
+// GetRiskTypesByIn is an internal API that gets risk types by risk_type_ids and branch for ontology-query.
 func (r *restHandler) GetRiskTypesByIn(c *gin.Context) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -502,14 +502,14 @@ func (r *restHandler) GetRiskTypesByIn(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": list})
 }
 
-// 检索风险类（内部）
+// Search risk types (internal).
 func (r *restHandler) SearchRiskTypesByIn(c *gin.Context) {
 	logger.Debug("Handler SearchRiskTypesByIn Start")
 	visitor := visitor.GenerateVisitor(c)
 	r.SearchRiskTypes(c, visitor)
 }
 
-// 检索风险类（外部）
+// Search risk types (external).
 func (r *restHandler) SearchRiskTypesByEx(c *gin.Context) {
 	logger.Debug("Handler SearchRiskTypesByEx Start")
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
@@ -519,7 +519,7 @@ func (r *restHandler) SearchRiskTypesByEx(c *gin.Context) {
 	r.SearchRiskTypes(c, visitor)
 }
 
-// 检索风险类
+// Search risk types.
 func (r *restHandler) SearchRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("SearchRiskTypes Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -559,7 +559,7 @@ func (r *restHandler) SearchRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Binding Concept Query Paramter Failed:%s", err.Error()))
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)

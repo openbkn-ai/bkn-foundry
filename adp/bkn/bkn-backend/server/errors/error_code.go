@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors 服务错误码
+// Package errors defines service error codes.
 package errors
 
 import (
@@ -13,7 +13,7 @@ import (
 	"bkn-backend/locale"
 )
 
-// 公共错误码, 服务内所有模块均可使用
+// Public error codes available to all service modules.
 const (
 	// 400
 	BknBackend_CountExceeded_TagTotal          = "BknBackend.CountExceeded.TagTotal"
@@ -63,7 +63,7 @@ const (
 
 var (
 	errCodeList = []string{
-		// ---公共错误码---
+		// --- Public error codes ---
 		// 400
 		BknBackend_CountExceeded_TagTotal,
 		BknBackend_InvalidParameter_Direction,

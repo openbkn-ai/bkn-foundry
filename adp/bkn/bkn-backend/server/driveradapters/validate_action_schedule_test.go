@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	. "github.com/smartystreets/goconvey/convey"
 
 	"bkn-backend/interfaces"
@@ -126,4 +128,34 @@ func Test_ValidateActionScheduleUpdate(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+func TestActionScheduleValidationDetailsRespectLanguage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "name is required."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "必须提供 name。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := ValidateActionScheduleCreate(
+				rest.WithLanguage(context.Background(), testCase.language),
+				&interfaces.ActionScheduleCreateRequest{},
+			)
+			if err == nil {
+				t.Fatal("ValidateActionScheduleCreate() error = nil, want missing name error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
 }

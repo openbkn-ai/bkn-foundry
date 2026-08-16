@@ -82,7 +82,7 @@ func (r *restHandler) CreateActionSchedule(c *gin.Context, visitor hydra.Visitor
 	var reqBody interfaces.ActionScheduleCreateRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -187,7 +187,7 @@ func (r *restHandler) UpdateActionSchedule(c *gin.Context, visitor hydra.Visitor
 	var reqBody interfaces.ActionScheduleUpdateRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -276,7 +276,7 @@ func (r *restHandler) UpdateActionScheduleStatus(c *gin.Context, visitor hydra.V
 	var reqBody interfaces.ActionScheduleStatusRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -436,7 +436,7 @@ func (r *restHandler) ListActionSchedules(c *gin.Context, visitor hydra.Visitor)
 	// Validate status if provided
 	if status != "" && status != interfaces.ScheduleStatusActive && status != interfaces.ScheduleStatusInactive {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
-			WithErrorDetails(fmt.Sprintf("Invalid status: %s", status))
+			WithErrorDetails(commonValidationDetail(ctx, "StatusInvalid", map[string]any{"value": status}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

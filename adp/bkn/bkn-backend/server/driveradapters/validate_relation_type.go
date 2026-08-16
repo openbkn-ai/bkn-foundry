@@ -8,12 +8,12 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "bkn-backend/errors"
@@ -23,30 +23,30 @@ import (
 func ValidateRelationTypes(ctx context.Context, knID string, relationTypes []*interfaces.RelationType, strictMode bool) error {
 	idMap := make(map[string]any)
 	for i := 0; i < len(relationTypes); i++ {
-		// 校验导入模型时模块是否是关系类
+		// Validate that imported models are relation types.
 		if relationTypes[i].ModuleType != "" && relationTypes[i].ModuleType != interfaces.MODULE_TYPE_RELATION_TYPE {
 			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-				WithErrorDetails("Relation type name is not 'relation_type'")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "ModuleType", nil))
 		}
 
-		// 0.校验请求体中多个模型 ID 是否重复
+		// Reject duplicate model IDs in the request body.
 		rtID := relationTypes[i].RTID
 		if _, ok := idMap[rtID]; !ok || rtID == "" {
 			idMap[rtID] = nil
 		} else {
-			errDetails := fmt.Sprintf("RelationType ID '%s' already exists in the request body", rtID)
+			errDetails := relationTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"id": rtID})
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_Duplicated_IDInFile).
 				WithDescription(map[string]any{"relationTypeID": rtID}).
 				WithErrorDetails(errDetails)
 		}
 
-		// 1. 校验 关系类必要创建参数的合法性, 非空、长度、是枚举值
+		// Validate required relation-type fields, including presence and enum values.
 		err := ValidateRelationType(ctx, relationTypes[i], strictMode)
 		if err != nil {
 			return err
 		}
 
-		// 2. 如果关系类的branch为空，则赋值 main
+		// Default an empty branch to main.
 		if relationTypes[i].Branch == "" {
 			relationTypes[i].Branch = interfaces.MAIN_BRANCH
 		}
@@ -56,67 +56,69 @@ func ValidateRelationTypes(ctx context.Context, knID string, relationTypes []*in
 	return nil
 }
 
-// 对象类必要创建参数的非空校验。
+// ValidateRelationType validates the required relation-type creation fields.
 func ValidateRelationType(ctx context.Context, relationType *interfaces.RelationType, strictMode bool) error {
-	// 校验id的合法性
+	// Validate the ID.
 	err := validateID(ctx, relationType.RTID)
 	if err != nil {
 		return err
 	}
 
-	// 校验名称合法性
-	// 去掉名称的前后空格
+	// Normalize and validate the name.
 	relationType.RTName = strings.TrimSpace(relationType.RTName)
 	err = validateObjectName(ctx, relationType.RTName, interfaces.MODULE_TYPE_RELATION_TYPE)
 	if err != nil {
 		return err
 	}
 
-	// 若输入了 tags，校验 tags 的合法性
+	// Validate tags when provided.
 	err = ValidateTags(ctx, relationType.Tags)
 	if err != nil {
 		return err
 	}
 
-	// 去掉tag前后空格以及数组去重
+	// Trim tags and remove duplicates.
 	relationType.Tags = libCommon.TagSliceTransform(relationType.Tags)
 
-	// 校验type字段
+	// Validate the type field.
 	if relationType.Type != "" {
 		if relationType.Type != interfaces.RELATION_TYPE_DIRECT &&
 			relationType.Type != interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("关系类类型只支持 %s 和 %s，当前类型为: %s",
-					interfaces.RELATION_TYPE_DIRECT, interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN, relationType.Type))
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "TypeNotSupported", map[string]any{
+					"directType":    interfaces.RELATION_TYPE_DIRECT,
+					"crossJoinType": interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN,
+					"type":          relationType.Type,
+				}))
 		}
 	}
 
 	if relationType.SourceObjectTypeID == "" {
 		if strictMode {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("关系类的 source_object_type_id 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceObjectTypeIDRequired", nil))
 		}
 	}
 	if relationType.TargetObjectTypeID == "" {
 		if strictMode {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("关系类的 target_object_type_id 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetObjectTypeIDRequired", nil))
 		}
 	}
 
-	// 校验mapping_rules字段
+	// Validate the mapping_rules field.
 	if relationType.MappingRules == nil {
 		if strictMode {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("关系类的映射规则 mapping_rules 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "MappingRulesRequired", nil))
 		}
 		return nil
 	}
 
-	// 如果mapping_rules不为空，type必须非空
+	// A non-empty mapping_rules value requires type.
 	if relationType.Type == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails("关系类的关系类型 type 字段不能为空")
+			WithErrorDetails(relationTypeInvalidDetail(ctx, "TypeRequired", nil))
 	}
 
 	rules, err := validateMappingRules(ctx, relationType.Type, relationType.MappingRules, strictMode)
@@ -128,7 +130,7 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 	return nil
 }
 
-// 校验mapping_rules的有效性
+// validateMappingRules validates mapping_rules according to the relation type.
 func validateMappingRules(ctx context.Context, relationType string, mappingRules any, strictMode bool) (any, error) {
 	switch relationType {
 	case interfaces.RELATION_TYPE_DIRECT:
@@ -136,48 +138,48 @@ func validateMappingRules(ctx context.Context, relationType string, mappingRules
 	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 		return validateFilteredCrossJoinMappingRules(ctx, mappingRules, strictMode)
 	default:
-		// 如果type不是direct或filtered_cross_join，返回错误
+		// Reject unsupported relation types.
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("关系类的关系类型 %s 不支持", relationType))
+			WithErrorDetails(relationTypeInvalidDetail(ctx, "UnsupportedType", map[string]any{"type": relationType}))
 	}
 }
 
-// 校验直接关联的mapping_rules
+// validateDirectMappingRules validates direct-relation mapping_rules.
 func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMode bool) ([]interfaces.Mapping, error) {
-	// mappingRules 先转成 []any 再解码成 []interfaces.Mapping
+	// Decode the input into []interfaces.Mapping.
 	var mappings []interfaces.Mapping
 	if err := mapstructure.Decode(mappingRules, &mappings); err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails("直接关联的 mapping_rules 解码失败: " + err.Error())
+			WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectMappingRulesDecodeFailed", map[string]any{"error": err.Error()}))
 	}
 
-	// 数组非空
+	// Validate that the list is not empty.
 	if len(mappings) == 0 {
 		if strictMode {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("直接关联的 mapping_rules 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectMappingRulesRequired", nil))
 		}
 	}
 
-	// mappings 里的每对映射规则的起点属性名和终点属性名都不能重复出现
+	// Each source-target mapping pair must be unique.
 	mappingsRuleMap := map[string]bool{}
 	for idx, item := range mappings {
-		// 校验起点属性非空
+		// Validate the source property.
 		if item.SourceProp.Name == "" {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("直接关联的 mapping_rules[%d] 的起点属性名不能为空", idx))
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectSourcePropertyRequired", map[string]any{"index": idx}))
 		}
 
-		// 校验终点属性非空
+		// Validate the target property.
 		if item.TargetProp.Name == "" {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("直接关联的 mapping_rules[%d] 的终点属性名不能为空", idx))
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectTargetPropertyRequired", map[string]any{"index": idx}))
 		}
 
-		// 映射规则重复出现，则报错
+		// Reject duplicate mapping pairs.
 		if mappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("直接关联的 mapping_rules[%d] 的起点和终点的映射规则不能重复出现", idx))
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectMappingRuleDuplicated", map[string]any{"index": idx}))
 		}
 		mappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
 	}
@@ -185,93 +187,95 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 	return mappings, nil
 }
 
-// 校验间接关联的mapping_rules
+// validateInDirectMappingRules validates indirect-relation mapping_rules.
 func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictMode bool) (*interfaces.InDirectMapping, error) {
-	// 尝试类型断言
+	// Decode the input into an indirect mapping.
 	var mapping interfaces.InDirectMapping
 	if err := mapstructure.Decode(mappingRules, &mapping); err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails("间接关联的 mapping_rules 格式不正确，应为 InDirectMapping 对象")
+			WithErrorDetails(relationTypeInvalidDetail(ctx, "IndirectMappingRulesInvalid", nil))
 	}
 
 	// Validate indirect relation backing data source. Only vega resource is supported.
 	if mapping.BackingDataSource == nil {
 		if strictMode {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("间接关联的 backing_data_source 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceRequired", nil))
 		}
 	} else {
 		if mapping.BackingDataSource.Type == "" {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("间接关联的 backing_data_source.type 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceTypeRequired", nil))
 		}
 		if mapping.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("间接关联的 backing_data_source.type 必须为 %s，当前为: %s",
-					interfaces.DATA_SOURCE_TYPE_RESOURCE, mapping.BackingDataSource.Type))
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceTypeInvalid", map[string]any{
+					"expected": interfaces.DATA_SOURCE_TYPE_RESOURCE,
+					"actual":   mapping.BackingDataSource.Type,
+				}))
 		}
-		// 校验关联的数据视图id非空（数据视图存在性校验在logics层）
+		// Validate that the referenced data-view ID is present.
 		if mapping.BackingDataSource.ID == "" {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("间接关联的 backing_data_source.id 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceIDRequired", nil))
 		}
 	}
 
-	// 校验起点对象类与数据集的关联规则非空
+	// Validate source-to-dataset mapping rules.
 	if len(mapping.SourceMappingRules) == 0 {
 		if strictMode {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("间接关联的 source_mapping_rules 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingRulesRequired", nil))
 		}
 	} else {
-		// 起点到中间表的每对映射规则不能重复
+		// Each source-to-bridge mapping pair must be unique.
 		sourceMappingsRuleMap := map[string]bool{}
 		for idx, item := range mapping.SourceMappingRules {
-			// 校验起点对象类的属性非空（属性存在于起点对象类中的校验在logics层）
+			// Validate the source object-type property.
 			if item.SourceProp.Name == "" {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("间接关联的 source_mapping_rules[%d] 的起点对象类属性名不能为空", idx))
+					WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingSourcePropertyRequired", map[string]any{"index": idx}))
 			}
-			// 校验中间的桥梁字段非空（桥梁字段存在于数据视图中的校验在logics层）
+			// Validate the bridge property.
 			if item.TargetProp.Name == "" {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("间接关联的 source_mapping_rules[%d] 的桥梁字段名不能为空", idx))
+					WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingBridgePropertyRequired", map[string]any{"index": idx}))
 			}
 
-			// 映射规则重复出现，则报错
+			// Reject duplicate mapping pairs.
 			if sourceMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("间接关联的 source_mapping_rules[%d] 的起点和终点的映射规则不能重复出现", idx))
+					WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingRuleDuplicated", map[string]any{"index": idx}))
 			}
 			sourceMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
 		}
 	}
 
-	// 校验数据集与终点对象类的关联规则非空
+	// Validate dataset-to-target mapping rules.
 	if len(mapping.TargetMappingRules) == 0 {
 		if strictMode {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails("间接关联的 target_mapping_rules 不能为空")
+				WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingRulesRequired", nil))
 		}
 	} else {
-		// 中间表到终点的每对映射规则不能重复
+		// Each bridge-to-target mapping pair must be unique.
 		targetMappingsRuleMap := map[string]bool{}
 		for idx, item := range mapping.TargetMappingRules {
-			// 校验中间的桥梁字段非空（桥梁字段存在于数据视图中的校验在logics层）
+			// Validate the bridge property.
 			if item.SourceProp.Name == "" {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("间接关联的 target_mapping_rules[%d] 的桥梁字段名不能为空", idx))
+					WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingBridgePropertyRequired", map[string]any{"index": idx}))
 			}
-			// 校验终点对象类的属性非空（属性存在于终点对象类中的校验在logics层）
+			// Validate the target object-type property.
 			if item.TargetProp.Name == "" {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("间接关联的 target_mapping_rules[%d] 的终点对象类属性名不能为空", idx))
+					WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingTargetPropertyRequired", map[string]any{"index": idx}))
 			}
 
-			// 映射规则重复出现，则报错
+			// Reject duplicate mapping pairs.
 			if targetMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] {
 				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("间接关联的 target_mapping_rules[%d] 的起点和终点的映射规则不能重复出现", idx))
+					WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingRuleDuplicated", map[string]any{"index": idx}))
 			}
 			targetMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
 		}
@@ -284,8 +288,12 @@ func validateFilteredCrossJoinMappingRules(ctx context.Context, mappingRules any
 	var mapping interfaces.FilteredCrossJoinMapping
 	if err := mapstructure.Decode(mappingRules, &mapping); err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails("分侧过滤全连接 mapping_rules 解码失败: " + err.Error())
+			WithErrorDetails(relationTypeInvalidDetail(ctx, "FilteredCrossJoinMappingRulesDecodeFailed", map[string]any{"error": err.Error()}))
 	}
-	// source_condition / target_condition 均可省略：nil 表示该侧无额外过滤（与查询引擎语义一致）。
+	// source_condition and target_condition are optional; nil means no extra filter for that side.
 	return &mapping, nil
+}
+
+func relationTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
 }

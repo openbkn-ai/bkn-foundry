@@ -28,7 +28,7 @@ func NewKnnCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap m
 
 	name := getFilterFieldName(cfg.Field, fieldsMap, true)
 	var field string
-	// 如果指定*查询，则把 * 换成 _vector
+	// Replace * with _vector when querying *.
 	if name == AllField {
 		field = "_vector"
 	} else {
@@ -60,7 +60,7 @@ func (cond *KnnCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 
 	vector, err := vectorizer(ctx, []string{v})
 	if err != nil {
-		// 如果错误是因为 DefaultSmallModelEnabled 为 false，则忽略此 knn 条件，返回空字符串
+		// Ignore this KNN condition and return an empty string when DefaultSmallModelEnabled is false.
 		var httpErr *rest.HTTPError
 		if errors.As(err, &httpErr) && httpErr != nil &&
 			httpErr.BaseError.ErrorDetails == DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR {
@@ -95,13 +95,13 @@ func (cond *KnnCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 				return "", err
 			}
 
-			// 过滤掉空字符串（被忽略的条件）
+			// Drop empty strings from ignored conditions.
 			if dsl != "" && dsl != "{}" {
 				validSubDSLs = append(validSubDSLs, dsl)
 			}
 		}
 
-		// 如果有有效的子条件，才添加 filter
+		// Add filter only when valid child conditions exist.
 		if len(validSubDSLs) > 0 {
 			for i, dsl := range validSubDSLs {
 				if i != len(validSubDSLs)-1 {
@@ -112,12 +112,12 @@ func (cond *KnnCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 			}
 			subDSL = fmt.Sprintf(subDSL, subCondStr)
 		} else {
-			// 所有子条件都被忽略，不添加 filter
+			// Do not add filter when all child conditions are ignored.
 			subDSL = ""
 		}
 	}
 
-	// limit_key 和 limit_value 未给时，填入默认值
+	// Use default values when limit_key and limit_value are omitted.
 	key := cond.mCfg.RemainCfg["limit_key"]
 	value := cond.mCfg.RemainCfg["limit_value"]
 	if key == nil || key == "" {
@@ -155,7 +155,7 @@ func convertKnnCondToDatasetFilterCondition(ctx context.Context, cfg *CondCfg,
 	v := fmt.Sprintf("%v", cfg.Value)
 	vectorResp, err := vectorizer(ctx, v)
 	if err != nil {
-		// 如果错误是因为 DefaultSmallModelEnabled 为 false，则忽略此 knn 条件，返回空字符串
+		// Ignore this KNN condition and return an empty string when DefaultSmallModelEnabled is false.
 		var httpErr *rest.HTTPError
 		if errors.As(err, &httpErr) && httpErr != nil &&
 			httpErr.BaseError.ErrorDetails == DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR {
@@ -169,7 +169,7 @@ func convertKnnCondToDatasetFilterCondition(ctx context.Context, cfg *CondCfg,
 
 	name := getFilterFieldName(cfg.Field, fieldsMap, true)
 	var field string
-	// 如果指定*查询，则把 * 换成 _vector
+	// Replace * with _vector when querying *.
 	if name == AllField {
 		field = "_vector"
 	} else {

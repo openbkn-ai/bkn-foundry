@@ -88,7 +88,7 @@ func convertNotInCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, err
 	return map[string]any{
 		"field":      cfg.Field,
 		"operation":  "not_in",
-		"value":      cfg.Value, // 数组
+		"value":      cfg.Value, // Array
 		"value_from": "const",
 	}, nil
 }
