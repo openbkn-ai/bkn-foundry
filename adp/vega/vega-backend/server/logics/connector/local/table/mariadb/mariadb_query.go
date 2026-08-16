@@ -236,8 +236,16 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			dir = "DESC"
 		}
 
-		// Check whether this is a GROUP BY field using calendar_interval
+		// Resolve the sort field against the SELECT aliases first: when an alias matches a
+		// property name the caller means the aggregate, but schema resolution would pick
+		// that property's source column instead. The default sql_mode has no
+		// ONLY_FULL_GROUP_BY, so that does not error — it orders by an arbitrary row.
 		sortField := quoteColumnName(originalName(sortItem.Field))
+		if aggAlias != "" && sortItem.Field == aggAlias {
+			sortField = quoteColumnName(aggAlias)
+		}
+
+		// Check whether this is a GROUP BY field using calendar_interval
 		for _, groupByItem := range params.GroupBy {
 			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
 				// Use the full date_format expression
