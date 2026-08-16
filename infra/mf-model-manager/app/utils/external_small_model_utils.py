@@ -146,7 +146,7 @@ class BaiduClient:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = []
             for texts_slice in slice_list:
-                request_dict[index] = texts_slice  # 存储顺序信息，便于与返回内容匹配
+                request_dict[index] = texts_slice  # Preserve ordering for matching response content.
                 future = executor.submit(self.embedding_thread, texts_slice, index)
                 index += 1
                 futures.append(future)
@@ -197,7 +197,7 @@ class BaiduClient:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = []
             for texts_slice in slice_list:
-                request_dict[index] = texts_slice  # 存储顺序信息，便于与返回内容匹配
+                request_dict[index] = texts_slice  # Preserve ordering for matching response content.
                 future = executor.submit(self.reranker_thread, query, texts_slice, index)
                 index += 1
                 futures.append(future)
@@ -428,7 +428,6 @@ class InnerClient:
             except Exception as e:
                 raise Exception(f"Adapter execution failed: {str(e)}")
 
-        # 原有逻辑
         params = {
             "model": self.model_name,
             "query": query,

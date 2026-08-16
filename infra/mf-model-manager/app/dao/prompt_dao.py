@@ -5,7 +5,6 @@ from app.mydb.my_pymysql_pool import connect_execute_commit_close_db, connect_ex
 
 
 class PromptDao():
-    # 从数据库中查询所有提示词项目列表
     @connect_execute_close_db
     def get_all_prompt_item_list_distinct(self, is_management, connection, cursor):
         sql = """select f_prompt_item_id,f_prompt_item_name,f_create_time,f_create_by,f_update_time,f_update_by,
@@ -16,7 +15,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 数有几个item_id
     @connect_execute_close_db
     def count_prompt_item_id(self, connection, cursor):
         sql = """select count(distinct f_prompt_item_id) from t_prompt_item_list"""
@@ -25,7 +23,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res[0]["count(distinct f_prompt_item_id)"]
 
-    # 从数据库中模糊查询提示词项目列表
     @connect_execute_close_db
     def get_prompt_item_list_by_fuzzy_query_distinct(self, prompt_item_name, connection, cursor):
         sql = """select f_prompt_item_id,f_prompt_item_name,f_create_time,f_create_by,f_update_time,f_update_by,
@@ -38,7 +35,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 通过联查提示词名称，模糊查询对应的提示词项目列表
     @connect_execute_close_db
     def get_prompt_item_list_by_prompt_name_fuzzy(self, prompt_name,connection, cursor):
         sql = """select prompt_item.f_prompt_item_id,prompt_item.f_prompt_item_name,prompt_item.f_prompt_item_type_id,prompt_item.f_prompt_item_type,
@@ -65,7 +61,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 从数据库中获取提示词列表信息
     @connect_execute_close_db
     def get_prompt_list(self, prompt_item_id, prompt_item_type_id,
                         page, size, prompt_name, order, rule, deploy, prompt_type, connection, cursor):
@@ -98,7 +93,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 获取指定提示词项目的名称
     @connect_execute_close_db
     def get_prompt_item_name_by_id(self, prompt_item_id, connection, cursor):
         sql = "select f_prompt_item_name from t_prompt_item_list where f_prompt_item_id={} limit 1".format(
@@ -108,7 +102,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res[0]["f_prompt_item_name"]
 
-    # 获取指定提示词类型的名称
     @connect_execute_close_db
     def get_prompt_item_type_by_type_id(self, prompt_item_type_id, connection, cursor):
         sql = "select f_prompt_item_type from t_prompt_item_list where f_prompt_item_type_id={}".format(
@@ -118,7 +111,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res[0]["f_prompt_item_type"]
 
-    # 从数据库中获取提示词模板列表信息
     @connect_execute_close_db
     def get_prompt_template_list(self, prompt_type, prompt_name, connection, cursor):
         sql = """select f_icon,f_prompt_id,f_messages,f_prompt_name,f_prompt_type,f_prompt_desc,f_opening_remarks,
@@ -140,7 +132,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 通过id获取提示词信息
     @connect_execute_close_db
     def get_prompt_by_id(self, prompt_id, connection, cursor):
         sql = """select f_prompt_id,f_prompt_name,f_model_id,f_prompt_item_id,f_prompt_service_id,f_prompt_item_type_id,
@@ -151,7 +142,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 获取所有prompt_service_id
     @connect_execute_close_db
     def get_all_prompt_service_id(self, connection, cursor):
         sql = "select f_prompt_service_id from t_prompt_list"
@@ -183,7 +173,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 添加提示词项目
     @connect_execute_commit_close_db
     def add_prompt_item(self, id, prompt_item_id, prompt_item_type_id, prompt_item_type, create_by, update_by,
                         prompt_item_name, connection, cursor):
@@ -195,7 +184,6 @@ class PromptDao():
         
         cursor.execute(sql, value_list)
 
-    # 编辑已有提示词项目
     @connect_execute_commit_close_db
     def edit_prompt_item(self, prompt_item_id, prompt_item_name, userId, connection, cursor):
         sql = """update t_prompt_item_list set f_prompt_item_name=%s, f_update_by=%s, f_update_time=%s 
@@ -204,7 +192,6 @@ class PromptDao():
         
         cursor.execute(sql, value_list)
 
-    # 通过type_id获取prompt_item_list表中数据
     @connect_execute_close_db
     def get_data_from_prompt_item_list_by_type_id(self, prompt_item_type_id, connection, cursor):
         sql = """select f_create_by,f_create_time,f_id,f_item_is_delete,f_prompt_item_id,f_prompt_item_name,
@@ -215,7 +202,6 @@ class PromptDao():
         res = cursor.fetchall()
         return res
 
-    # 编辑已有提示词项目分组
     @connect_execute_commit_close_db
     def edit_prompt_item_type(self, prompt_item_type_id, prompt_item_type, userId, connection, cursor):
         sql = """update t_prompt_item_list set f_prompt_item_type=%s, f_update_by=%s, 
@@ -420,7 +406,6 @@ class PromptDao():
         
         cursor.execute(sql, value_list)
 
-    # 根据prompt_id_list删除t_prompt_list表中对应的prompt
     @connect_execute_commit_close_db
     def delete_prompt_by_id_list(self, prompt_id_list, connection, cursor):
         sql = "delete from t_prompt_list where f_prompt_id in ({})".format(",".join(prompt_id_list))

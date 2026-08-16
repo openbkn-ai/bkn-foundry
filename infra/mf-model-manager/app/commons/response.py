@@ -25,10 +25,11 @@ def error_response(
     Returns:
         JSONResponse: FastAPI response object with errors structure
     """
+    fallback = lookup_error_message("ModelFactory.InternalError", language) or {}
     error_content: Dict[str, str] = {
         "code": code,
-        "description": "Request failed." if language == "en-US" else "请求失败。",
-        "solution": solution,
+        "description": fallback.get("description", ""),
+        "solution": solution or fallback.get("solution", ""),
         "detail": detail,
         "link": link
     }

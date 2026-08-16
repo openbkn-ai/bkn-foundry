@@ -6,7 +6,6 @@ from dbutilsx.pooled_db import PooledDB, PooledDBInfo
 from app.core.config import base_config
 
 
-# 单例
 class PymysqlPool(object):
     yamlConfig = None
     _instance_lock = threading.Lock()

@@ -13,7 +13,7 @@ cur_pwd = os.getcwd()
 
 
 def GetCallerInfo() -> Tuple[str, int]:
-    """ 获取调用者文件项目相对位置以及行号 """
+    """ Return the caller's project-relative path and line number. """
     caller_frame = inspect.stack()[2]
     caller_filename = caller_frame.filename.split(cur_pwd)[-1][1:]
     caller_lineno = caller_frame.lineno
@@ -24,7 +24,7 @@ def IsInPod() -> bool:
     return 'KUBERNETES_SERVICE_HOST' in os.environ and 'KUBERNETES_SERVICE_PORT' in os.environ
 
 
-# 触发熔断的失败次数
+# Number of failures that opens the circuit breaker.
 failureThreshold = 10
 
 
@@ -37,7 +37,7 @@ def SetFailureThreshold(time: int):
     failureThreshold = time
 
 
-# 熔断触发后的再次重试间隔，单位：秒
+# Retry interval in seconds after the circuit breaker opens.
 recoveryTimeout = 5
 
 
@@ -61,10 +61,13 @@ async def get_user_info(request, **kwargs):
 
 async def validate_required_params(params_dict, required_params):
     """
-    校验必传参数
-    :param params_dict: 请求参数字典
-    :param required_params: 必传参数列表
-    :return: 缺失的参数列表
+    Validate required parameters.
+
+    Args:
+        params_dict: Request parameters.
+        required_params: Required parameter names.
+    Returns:
+        Missing parameter names.
     """
     missing_params = []
     for param in required_params:

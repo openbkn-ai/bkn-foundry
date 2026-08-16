@@ -35,22 +35,22 @@ def _semantic_model_test_error(detail, fallback):
         [upstream_code, upstream_type, upstream_message, str(detail)]
     ).lower()
     if any(token in raw for token in ("auth", "unauthorized", "api key", "ak/sk", "apikey", "401")):
-        return "模型服务认证失败，请检查 API Key、AK/SK 或授权配置"
+        return "Model service authentication failed; check the API key, AK/SK, or authorization configuration."
     if any(token in raw for token in ("deploymentnotfound", "model not found", "not found", "404")):
-        return "模型或部署不存在，请检查 API Model 和模型服务地址"
+        return "Model or deployment not found; check API Model and the service URL."
     if any(token in raw for token in ("timeout", "timed out")):
-        return "模型服务连接超时，请检查服务地址和网络连通性"
+        return "Model service connection timed out; check the service URL and network connectivity."
     if any(token in raw for token in ("connection", "connect", "dns", "name resolution", "enotfound")):
-        return "无法访问模型服务，请检查 API URL 和网络连通性"
+        return "Model service is unreachable; check the API URL and network connectivity."
     if upstream_message:
-        return f"模型服务返回错误：{upstream_message}"
+        return f"The model service returned an error: {upstream_message}"
     return fallback
 
 
 @func_set_timeout(30)
 async def llm_test(series, config, llm_id, user_id, model_type):
-    content = "测试连接失败，请重新检查信息"
-    # 区分openai和其他模型
+    content = "Connection test failed; check the model configuration."
+    # Handle OpenAI and other providers separately.
     if series == 'openai':
         try:
             if "api_key" not in config.keys():
@@ -94,7 +94,7 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             print(e)
             detail = str(e.args[0]) if e.args else str(e)
             if e.args and isinstance(e.args[0], MaxRetryError):
-                content = "无法访问该链接，请检查该链接是否可以访问"
+                content = "The model service URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
             error_dict["detail"] = detail
             description = _semantic_model_test_error(detail, content)
@@ -134,14 +134,14 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             return JSONResponse(status_code=200, content=content)
         except Exception as e:
             print(e)
-            content = "测试连接失败，请重新检查信息"
+            content = "Connection test failed; check the model configuration."
             if isinstance(e.args[0], MaxRetryError):
-                content = "无法访问该链接，请检查该链接是否可以访问"
+                content = "The model service URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
             error_dict["detail"] = str(e.args[0])
             error_dict["description"] = error_dict["solution"] = content
             if not isinstance(e.args[0], MaxRetryError):
-                error_dict["description"] = "模型配置错误，请检查模型信息"
+                error_dict["description"] = "Model configuration is invalid; check the model information."
             return JSONResponse(status_code=400, content=error_dict)
     elif series.lower() == "baidu":
         headers = {
@@ -260,10 +260,10 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                     return JSONResponse(status_code=200, content=content)
         except Exception as e:
             StandLogger.error(str(e))
-            content = "测试连接失败，请重新检查信息"
+            content = "Connection test failed; check the model configuration."
             detail = str(e.args[0]) if e.args else str(e)
             if e.args and isinstance(e.args[0], MaxRetryError):
-                content = "无法访问该链接，请检查该链接是否可以访问"
+                content = "The model service URL is not reachable."
             error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
             error_dict["detail"] = detail
             description = _semantic_model_test_error(detail, content)

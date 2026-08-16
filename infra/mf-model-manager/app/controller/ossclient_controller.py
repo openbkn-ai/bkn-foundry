@@ -4,7 +4,6 @@ from app.logs.stand_log import StandLogger
 from pydantic import BaseModel
 import abc
 
-# 对象存储交互请求信息
 class OSSRequestInfo(BaseModel):
     Method:     str = None
     URL:        str = None
@@ -13,7 +12,6 @@ class OSSRequestInfo(BaseModel):
     BodyStr:    str = None
 
 class DrivenOsOperation(metaclass=abc.ABCMeta):
-    # 删除对象存储中文件
     @abc.abstractmethod
     def GetFileInfo(self, ossRequestInfo:OSSRequestInfo): pass
 

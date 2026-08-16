@@ -61,6 +61,22 @@ def reset_effective_locale(token: Token) -> None:
     _effective_locale.reset(token)
 
 
+def localized_stream_error(code: str, message_key: Optional[str] = None) -> Dict[str, str]:
+    """Build a localized SSE error without changing its existing error code."""
+    from app.commons.i18n import lookup_error_message
+
+    locale = get_effective_locale()
+    message = lookup_error_message(message_key or code, locale) or \
+        lookup_error_message("ModelFactory.Stream.InternalError", locale) or {}
+    return {
+        "code": code,
+        "description": message.get("description", ""),
+        "detail": message.get("detail", ""),
+        "solution": message.get("solution", ""),
+        "link": "",
+    }
+
+
 def localized_error_content(
         content: Dict[str, Any], locale: str, status_code: Optional[int] = None) -> Tuple[Dict[str, Any], bool]:
     """Return a localized error payload without changing its machine contract."""
@@ -81,13 +97,10 @@ def localized_error_content(
             elif field in message:
                 localized[field] = message[field]
     elif locale == ENGLISH_LOCALE:
-        fallback_messages = {
-            "description": "Request failed.",
-            "detail": "The request could not be completed.",
-            "solution": "See the request details or contact an administrator.",
-        }
+        fallback_messages = lookup_error_message("ModelFactory.InternalError", locale) or {}
         for field, fallback in fallback_messages.items():
-            if not localized.get(field) or _contains_chinese(localized[field]):
+            if field in ("description", "detail", "solution") and (
+                    not localized.get(field) or _contains_chinese(localized[field])):
                 localized[field] = fallback
     return localized, True
 
@@ -119,7 +132,14 @@ def _parameter_names_from_detail(detail: Any) -> str:
     if separator and parameter_names.strip():
         return parameter_names.strip()
 
-    for suffix in ("参数缺失", "参数类型错误"):
+    from app.commons.i18n import lookup_error_message
+
+    suffixes = []
+    for code in ("ParamMissing", "ParamTypeError"):
+        message = lookup_error_message(code, DEFAULT_LOCALE) or {}
+        if message.get("description"):
+            suffixes.append(message["description"])
+    for suffix in suffixes:
         if value.endswith(suffix):
             return value[:-len(suffix)].strip(" :：")
     return ""
@@ -134,34 +154,18 @@ def _contains_chinese(value: Any) -> bool:
 
 
 def _localized_http_error_content(status_code: int, locale: str) -> Dict[str, Any]:
-    chinese_messages = {
-        400: ("请求参数无效。", "请求参数无效。", "请检查请求参数后重试。"),
-        401: ("认证失败。", "认证信息无效或已过期。", "请重新登录后重试。"),
-        403: ("访问被拒绝。", "当前身份没有访问该资源的权限。", "请联系管理员申请权限。"),
-        404: ("资源不存在。", "请求的资源不存在。", "请检查资源标识后重试。"),
-    }
-    english_messages = {
-        400: ("Request is invalid.", "The request parameters are invalid.", "Review the request parameters and try again."),
-        401: ("Authentication failed.", "The authentication credentials are invalid or expired.", "Sign in again and retry the request."),
-        403: ("Access denied.", "The current identity is not allowed to access this resource.", "Contact an administrator to request access."),
-        404: ("Resource not found.", "The requested resource does not exist.", "Check the resource identifier and try again."),
-    }
-    messages = english_messages if locale == ENGLISH_LOCALE else chinese_messages
-    default = (
-        "Request failed.",
-        "The request could not be completed.",
-        "See the request details or contact an administrator.",
-    ) if locale == ENGLISH_LOCALE else (
-        "请求失败。",
-        "请求无法完成。",
-        "请查看请求详情或联系管理员。",
-    )
-    description, detail, solution = messages.get(status_code, default)
+    from app.commons.i18n import lookup_error_message
+
+    message_key = {
+        404: "ModelFactory.HTTP.NotFound",
+        405: "ModelFactory.HTTP.MethodNotAllowed",
+    }.get(status_code, "ModelFactory.InternalError")
+    message = lookup_error_message(message_key, locale) or {}
     return {
         "code": f"HTTP_{status_code}",
-        "description": description,
-        "detail": detail,
-        "solution": solution,
+        "description": message.get("description", ""),
+        "detail": message.get("detail", ""),
+        "solution": message.get("solution", ""),
         "link": "",
     }
 

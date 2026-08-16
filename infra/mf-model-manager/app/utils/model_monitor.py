@@ -1,4 +1,3 @@
-# 定义定时任务函数
 import asyncio
 import json
 import re
@@ -13,7 +12,6 @@ from app.logs.stand_log import StandLogger
 
 
 async def extract_vllm_metrics(log_text):
-    # 查找generation_tokens_total和prompt_tokens_total的值
     generation_match = re.search(
         r'vllm:generation_tokens_total\{engine="[^\"]+",model_name="[^\"]+"\} ([\d.]+(?:e[-+]?\d+)?)',
         log_text)
@@ -26,7 +24,6 @@ async def extract_vllm_metrics(log_text):
     generation_tokens = int(float(generation_match.group(1))) if generation_match else 0
 
     prompt_tokens = int(float(prompt_match.group(1))) if prompt_match else 0
-    # 计算平均首字响应时间
     if first_token_time_sum_match and first_token_time_count_match:
         first_token_time_sum = float(first_token_time_sum_match.group(1))
         first_token_time_count = float(first_token_time_count_match.group(1))
@@ -110,7 +107,6 @@ async def delete_monitor_data_task():
     StandLogger.info_log("delete 30 days ago model monitor data success")
 
 
-# 每个月2号凌晨删除上个月的模型消费数据
 async def delete_model_quota_data_task():
     StandLogger.info_log("start delete 30 days ago model monitor data")
     model_quota_dao.delete_previous_month_model_quota()

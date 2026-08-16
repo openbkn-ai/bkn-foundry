@@ -51,7 +51,6 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
                                                                       role=role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
-        # 权限关闭时 add_permission 直接返回 True，无需查用户名；开启时才调用用户管理服务
         if base_config.AUTH_ENABLED:
             user_infos = await get_username_by_ids([userId])
             user_name = user_infos.get(userId, "")
@@ -88,7 +87,6 @@ async def test_model(request, userId, language, role):
                 return JSONResponse(status_code=400,
                                     content=ModelFactory_SmallModelController_ModelApiDoc_ModelNotFoundError)
             config_info_old = json.loads(model_info[0]["f_model_config"])
-            # 区分是编辑页面测试连接还是外部点击
             if not model_config_new:
                 config_info = config_info_old
                 model_type = model_info[0]["f_model_type"]
@@ -130,7 +128,8 @@ async def test_model(request, userId, language, role):
                     StandLogger.warn(f"用户输入的向量维度与模型不一致，请修改后重试")
                     error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
                     error_dict[
-                        "detail"] = f"用户输入的向量维度与模型不一致(模型向量维度为：{embedding_dim_new},您输入的模型维度为：{embedding_dim})，请修改后重试!"
+                        "detail"] = (f"Embedding dimension mismatch: model={embedding_dim_new}, "
+                                     f"request={embedding_dim}.")
                     return JSONResponse(status_code=400, content=error_dict)
             else:
                 query = "test"
@@ -209,7 +208,6 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
 
         total = 0
         res_list = []
-        # 权限开启时仅查有权限的数据；权限关闭时 permission_ids=None 不做过滤，查全量
         if base_config.AUTH_ENABLED and not permission_ids:
             content = {"count": total, "data": res_list}
             return JSONResponse(status_code=200, content=content)
@@ -294,7 +292,7 @@ async def get_info(model_id, user_id, role):
 
 
 async def get_names_by_ids(model_ids, userId, language, role):
-    # 按 id 批量取名（对象级授权页回显用）：低敏只读，不做授权拦截；不存在的 id 直接略过
+    # Resolve model names by ID for authorization UI display; omit unknown IDs.
     try:
         if not isinstance(model_ids, list) or not model_ids:
             return JSONResponse(status_code=200, content={"entries": []})
@@ -345,8 +343,11 @@ async def get_info_by_name(model_name):
 
 
 async def get_default_model(model_type):
-    """取某 model_type(embedding/reranker) 下的系统默认小模型。内部接口，供各服务解析系统默认模型。
-    未配置默认时返回 200 + 空对象，调用方据此判定"无默认/禁用"。"""
+    """Return the system default embedding or reranker model.
+
+    This internal endpoint returns HTTP 200 with an empty object when no
+    default is configured, allowing callers to treat the model type as disabled.
+    """
     if not model_type:
         return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
     try:
@@ -375,16 +376,16 @@ async def get_default_model(model_type):
 
 
 async def set_default_model(model_para, userId, language, role):
-    """设置/取消某小模型的系统默认。
-    - body 含 model_id；可选 default(bool，默认 true)。
-    - default=true：设为该模型 model_type 下的系统默认，同 model_type 互斥(先清旧再置新)。
-    - default=false：取消该模型的默认标记(该 model_type 回到"无默认"，运行期回退本地配置兜底)。
-    需对该模型有 modify 权限(管理员操作)。"""
+    """Set or clear the system default for a small-model type.
+
+    The request contains model_id and an optional boolean default value. Setting
+    a default clears the previous model for the same type; clearing it leaves the
+    type without a configured default. The caller needs modify permission.
+    """
     try:
         if "model_id" not in model_para or not model_para["model_id"]:
             return JSONResponse(status_code=400, content=IdValueIsEmpty)
         model_id = model_para["model_id"]
-        # default 缺省 true(设默认)；显式传 false 表示取消默认
         set_default = model_para.get("default", True)
         if not isinstance(set_default, bool):
             return JSONResponse(status_code=400, content=IdValueIsEmpty)
@@ -398,11 +399,9 @@ async def set_default_model(model_para, userId, language, role):
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
         if not set_default:
-            # 取消默认：仅清该模型的默认标记
             small_model_dao.update_model_default_status(model_id, False)
             return JSONResponse(status_code=200, content={"status": "ok", "id": model_id, "default": False})
         model_type = model_info[0]["f_model_type"]
-        # 同 model_type 互斥：先把该类型旧默认清掉，再置新默认
         old_default = small_model_dao.get_default_by_type(model_type)
         for line in old_default:
             if line["f_model_id"] != model_id:
@@ -449,7 +448,7 @@ async def delete_model(model_para, userId, language, role):
         for model_id in model_ids:
             if model_id not in permission_ids:
                 error_dict = NotPermissionError.copy()
-                error_dict["detail"] = "部分模型无删除权限"
+                error_dict["detail"] = "One or more models cannot be deleted by the current identity."
                 return JSONResponse(status_code=403, content=NotPermissionError)
         try:
             # if permission_delete_ids:
@@ -527,7 +526,7 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
         model_name = request.model
         texts = request.input
         cache_key = f"dip:model-api:small-model:{model_name}:list"
-        # 确保 redis_util 已初始化
+        # Lazily initialize the Redis client.
         global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
@@ -537,18 +536,18 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
                 model_info = eval(res)
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
-                # 缓存解析失败，回退到数据库查询
+                # Fall back to the database when cached data is invalid.
                 model_info = small_model_dao.get_model_info_by_name(model_name)
                 if len(model_info) == 0:
                     return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
-                # 重新设置缓存
+                # Refresh the cache.
                 await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
         else:
-            # 缓存不存在或非预期类型，从数据库获取
+            # Query the database when the cache is missing or malformed.
             model_info = small_model_dao.get_model_info_by_name(model_name)
             if len(model_info) == 0:
                 return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
-            # 设置缓存
+            # Cache the database result.
             await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
         model_info = model_info[0]
         config_info = json.loads(model_info["f_model_config"])
@@ -596,15 +595,13 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
                 f'{{"model_name":{model_name},"resourece_type":"embeddings","user_id":{userId},'
                 f'"prompt_tokens":0,"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
         return JSONResponse(status_code=400, content=error_dict)
-
-
 async def reranker_model_used(request, userId, language, role, func_module, private=True):
     try:
         model_name = request.model
         query = request.query
         documents = request.documents
         cache_key = f"dip:model-api:small-model:{model_name}:list"
-        # 确保 redis_util 已初始化
+        # Lazily initialize the Redis client.
         global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
@@ -614,18 +611,18 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
                 model_info = eval(res)
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
-                # 缓存解析失败，回退到数据库查询
+                # Fall back to the database when cached data is invalid.
                 model_info = small_model_dao.get_model_info_by_name(model_name)
                 if len(model_info) == 0:
                     return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
-                # 重新设置缓存
+                # Refresh the cache.
                 await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
         else:
-            # 缓存不存在或非预期类型，从数据库获取
+            # Query the database when the cache is missing or malformed.
             model_info = small_model_dao.get_model_info_by_name(model_name)
             if len(model_info) == 0:
                 return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
-            # 设置缓存
+            # Cache the database result.
             await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
 
         model_info = model_info[0]

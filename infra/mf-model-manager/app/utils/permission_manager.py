@@ -40,14 +40,14 @@ class PermissionManager:
                              user_name: str, role: str) -> bool:
         if not base_config.AUTH_ENABLED:
             return True
-        # admin用户无需授权
+        # Administrators do not require object-level authorization.
         if user_id == "266c6a42-6131-4d62-8f39-853e7093701c":
             return True
         # bkn-safe authoritative: grant the four instance ops directly.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_add(user_id, resource_type, resource_id,
                                             ["display", "modify", "delete", "execute"])
-        """添加权限"""
+        """Add a permission."""
         payload = [{
             "accessor": {
                 "id": user_id,
@@ -71,7 +71,7 @@ class PermissionManager:
             "condition": "{}",
             "expires_at": "1970-01-01T08:00:00+08:00"
         }]
-        # 使用filter接口过滤权限不再需要手动添加
+        # The filter endpoint now applies permissions without manual expansion.
         # admin_user_id = "266c6a42-6131-4d62-8f39-853e7093701c"
         # if user_id != admin_user_id:
         #     payload.append({
@@ -126,7 +126,7 @@ class PermissionManager:
             except Exception as e:
                 StandLogger.error(e.args)
                 return False
-        """校验用户对资源的权限"""
+        """Check the user's permission for a resource."""
         payload = {
             "method": "GET",
             "accessor": {
@@ -235,7 +235,7 @@ class PermissionManager:
         # bkn-safe authoritative: filter the model set by per-resource checks.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_filter_ids(user_id, operation, resource_type)
-        """获取资源列表"""
+        """Return the resource list."""
         payload = {
             "method": "GET",
             "accessor": {
@@ -353,7 +353,7 @@ class PermissionManager:
         # bkn-safe authoritative: drop each resource's policies directly.
         if self._bkn_safe_authoritative():
             return await self._bkn_safe_delete(resource_type, resource_ids)
-        """删除权限"""
+        """Delete permissions."""
         session = await self.get_session()
         resources = [{"id": resource_id, "type": resource_type} for resource_id in resource_ids]
         payload = {"resources": resources,

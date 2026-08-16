@@ -9,7 +9,7 @@ from app.mydb.my_pymysql_pool import connect_execute_close_db, connect_execute_c
 
 
 class ModelDao():
-    # 通过模型id获取模型名称
+    # Resolve a model name by model ID.
     @connect_execute_close_db
     def get_model_name_by_id(self, model_id, connection, cursor):
         sql = "select f_model_name from t_llm_model where f_model_id={}".format(model_id)
@@ -113,7 +113,7 @@ class ModelDao():
 
     @connect_execute_commit_close_db
     def delete_model_by_id(self, model_ids, connection, cursor):
-        # 使用参数化查询
+        # Use a parameterized query.
         placeholders = ','.join(['%s'] * len(model_ids))
         sql = f"DELETE FROM t_llm_model WHERE f_model_id IN ({placeholders})"
         cursor.execute(sql, model_ids)
@@ -212,7 +212,7 @@ class ModelDao():
         res = cursor.fetchall()
         return res
 
-    # 检查模型是否已经绑定
+    # Check whether a model is already bound.
     @connect_execute_close_db
     def check_model_is_exist(self, model_id, connection, cursor):
         sql = """select count(f_model_id) from t_llm_model where f_model_id = %s"""
@@ -224,7 +224,7 @@ class ModelDao():
             return True
         return False
 
-    # 检查是否在同一用户下已有base和model都相同的模型，或者在非admin用户的情况下，admin用户是否已有base和model都相同的模型
+    # Check for an existing model with the same provider base, model, and API key.
     @connect_execute_close_db
     def check_model_unique(self, base, model, user_id, api_key, connection, cursor):
         sql = """select f_model_id, f_model_config from t_llm_model where f_model='{}'""".format(
@@ -288,11 +288,10 @@ class ModelDao():
         if not datas:
             return
 
-        # 为每一列设置占位符
         sql = """insert into t_model_monitor(f_id,f_create_time,f_model_name,f_model_id,f_generation_tokens_total,
         f_prompt_tokens_total,f_average_first_token_time,f_generation_token_speed,f_total_token_speed) values (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
-        # 使用executemany处理多行数据
+        # Keep the query execution path consistent with other monitor reads.
 
         cursor.executemany(sql, datas)
 
@@ -301,7 +300,7 @@ class ModelDao():
         sql = f"""select f_create_time,f_model_id, f_average_first_token_time,f_generation_token_speed,f_total_token_speed 
         from t_model_monitor where  f_model_id = {model_id} order by f_create_time desc limit 36"""
 
-        # 使用executemany处理多行数据
+        # Keep the query execution path consistent with other monitor reads.
 
         cursor.execute(sql)
         res = cursor.fetchall()
@@ -312,14 +311,14 @@ class ModelDao():
         now = datetime.datetime.now()
         thirty_days_ago = now - datetime.timedelta(days=30)
 
-        # 使用参数化查询
+        # Use a parameterized query.
         sql = "DELETE FROM t_model_monitor WHERE f_create_time < %s"
 
         cursor.execute(sql, thirty_days_ago)
 
     @connect_execute_close_db
     def get_quota_by_user_and_model(self, user_id, model_id, connection, cursor):
-        # 获取当前日期的月初一号
+        # Start of the current month.
         now_month = datetime.datetime.now().replace(day=1).strftime('%Y-%m-%d')
         sql = f"""SELECT
                     uqc.f_input_tokens, COALESCE(monthly_usage.used_input_tokens,0) AS used_input_tokens,mqc.f_billing_type,
@@ -351,46 +350,46 @@ class ModelDao():
         cursor.execute(sql)
         res = cursor.fetchall()
 
-        # 如果没有配额信息，直接返回空结果
+        # Return immediately when no quota is configured.
         if not res:
             return res
 
-        # 定义单位换算列表，与model_used_audit_dao.py中保持一致
+        # Unit multipliers aligned with model_used_audit_dao.py.
         num_type_list = [0, 1000, 10000, 100000000, 1000000, 10000000]
 
-        # 获取配额配置信息
+        # Read quota configuration.
         quota_info = res[0]
         f_billing_type = quota_info["f_billing_type"]
         f_num_type = json.loads(quota_info["f_num_type"])
 
-        # 获取配置的总配额（未使用单位换算）
+        # Configured quota values before unit conversion.
         config_input_tokens = quota_info["f_input_tokens"]
         config_output_tokens = quota_info["f_output_tokens"]
 
-        # 获取已使用的配额
+        # Quota already consumed this month.
         used_input_tokens = quota_info["used_input_tokens"]
         used_output_tokens = quota_info["used_output_tokens"]
 
-        # 根据单位换算配置计算总配额（使用单位换算后的值）
+        # Apply the configured unit multipliers.
         total_input_tokens = int(config_input_tokens * num_type_list[f_num_type[0]])
         total_output_tokens = int(config_output_tokens * num_type_list[f_num_type[1]])
 
-        # 计算剩余额度
+        # Calculate remaining quota.
         if f_billing_type == 1:
-            # 分别计算输入和输出的剩余额度
+            # Track input and output quotas separately.
             remaining_input_tokens = total_input_tokens - used_input_tokens
             remaining_output_tokens = total_output_tokens - used_output_tokens
         else:
-            # 合并计算输入和输出的剩余额度，从输入配额中扣除
+            # Deduct combined usage from the shared input quota.
             total_used_tokens = used_input_tokens + used_output_tokens
             remaining_input_tokens = total_input_tokens - total_used_tokens
             remaining_output_tokens = True
 
-        # 将计算后的剩余额度添加到返回结果中
+        # Add calculated remaining values to the result.
         res[0]["remaining_input_tokens"] = remaining_input_tokens
         res[0]["remaining_output_tokens"] = remaining_output_tokens
 
-        # 保留原有的配额配置信息
+        # Preserve the converted configured totals.
         res[0]["total_input_tokens"] = total_input_tokens
         res[0]["total_output_tokens"] = total_output_tokens
 
@@ -406,13 +405,12 @@ class ModelDao():
 
     @connect_execute_commit_close_db
     def update_model_default_status(self, model_id, is_default, connection, cursor):
-        """更新模型的默认状态"""
+        """Update a model's default status."""
         sql = """update t_llm_model set f_default=%s where f_model_id=%s"""
         cursor.execute(sql, (1 if is_default else 0, model_id))
 
     @connect_execute_commit_close_db
     def get_overview_data(self, model_id, start_time, end_time, userId, connection, cursor):
-        # 计算end_time向前8小时的时间
         sql1 = f"""SELECT
                 SUM(d.f_total_count) AS total_usage,
                 CASE

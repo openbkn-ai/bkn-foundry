@@ -20,15 +20,6 @@ async def get_error_message(code: str, lang: str) -> dict:
     if message:
         message.pop("detail_template", None)
         message.pop("detail_template_plural", None)
-        return message
-    return {
-        "code": code,
-        "description": "Request failed." if lang == ENGLISH_LOCALE else "请求失败。",
-        "detail": "",
-        "solution": (
-            "See the request details or contact an administrator."
-            if lang == ENGLISH_LOCALE
-            else "请查看请求详情或联系管理员。"
-        ),
-        "link": "",
-    }
+        return {**message, "code": code, "link": message.get("link", "")}
+    fallback = lookup_error_message("ModelFactory.InternalError", lang) or {}
+    return {"code": code, **fallback, "link": ""}

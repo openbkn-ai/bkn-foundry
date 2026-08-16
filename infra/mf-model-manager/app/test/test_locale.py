@@ -10,6 +10,7 @@ from app.commons.locale import (
     LocaleResponseMiddleware,
     internal_request_headers,
     localized_error_content,
+    localized_stream_error,
     reset_effective_locale,
     resolve_accept_language,
     set_effective_locale,
@@ -128,7 +129,36 @@ class TestAcceptLanguageResolver(unittest.TestCase):
 
         self.assertNotIn("detail_template", message)
         self.assertNotIn("detail_template_plural", message)
+        self.assertEqual(message["code"], ParamValidationErrors.ParamMissing)
         self.assertEqual(message["detail"], "缺少必填参数。")
+
+    def test_business_error_keeps_code_and_uses_locale_catalog(self):
+        code = "ModelFactory.PromptController.PromptAdd.ParameterError"
+
+        english = asyncio.run(get_error_message(code, "en-US"))
+        chinese = asyncio.run(get_error_message(code, "zh-CN"))
+
+        self.assertEqual(english["code"], code)
+        self.assertEqual(chinese["code"], code)
+        self.assertEqual(english["description"], "Prompt creation is invalid.")
+        self.assertEqual(chinese["description"], "提示词创建参数无效。")
+        self.assertNotEqual(english["detail"], chinese["detail"])
+
+    def test_sse_error_keeps_code_and_uses_request_locale(self):
+        code = "ModelFactory.LLM.Error"
+        results = {}
+        for locale in ("en-US", "zh-CN"):
+            token = set_effective_locale(locale)
+            try:
+                results[locale] = localized_stream_error(
+                    code, "ModelFactory.Stream.InvalidMessageRole")
+            finally:
+                reset_effective_locale(token)
+
+        self.assertEqual(results["en-US"]["code"], code)
+        self.assertEqual(results["zh-CN"]["code"], code)
+        self.assertEqual(results["en-US"]["description"], "Message role is invalid.")
+        self.assertEqual(results["zh-CN"]["description"], "消息角色无效。")
 
     def test_uses_request_scoped_locale_instead_of_the_raw_header(self):
         class State:
@@ -190,9 +220,9 @@ class TestLocaleResponseMiddleware(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers[b"content-language"], b"en-US")
         self.assertEqual(headers[b"cache-control"], b"private, no-cache")
         self.assertEqual(payload["code"], "Unauthorized")
-        self.assertEqual(payload["description"], "token invalid")
-        self.assertEqual(payload["detail"], "The request could not be completed.")
-        self.assertEqual(payload["solution"], "check token")
+        self.assertEqual(payload["description"], "Authentication failed.")
+        self.assertEqual(payload["detail"], "The access token is invalid or has expired.")
+        self.assertEqual(payload["solution"], "Obtain a valid access token and try again.")
         self.assertNotIn("无效", json.dumps(payload, ensure_ascii=False))
 
     async def test_preserves_existing_english_message_for_unknown_error_code(self):

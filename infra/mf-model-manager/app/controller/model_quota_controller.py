@@ -13,11 +13,9 @@ from app.interfaces import logics, dbaccess
 num_type_list = [0, 1000, 10000, 100000000, 1000000, 10000000]
 
 
-# 新建模型配额配置
 async def add_model_quota_config(para: logics.AddModelQuota, user_id: str):
     try:
         try:
-            # 校验该模型是否存在
             exist = llm_model_dao.check_model_is_exist(para.model_id)
         except Exception as e:
             StandLogger.error(e.args)
@@ -27,7 +25,6 @@ async def add_model_quota_config(para: logics.AddModelQuota, user_id: str):
             return JSONResponse(status_code=400,
                                 content=ModelFactory_ModelQuotaController_ModelConfig_ModelNotFound_Error)
         try:
-            # 校验该模型是否已经设置过
             exist = model_quota_dao.check_model_is_exist(para.model_id)
         except Exception as e:
             StandLogger.error(e.args)
@@ -78,11 +75,9 @@ async def add_model_quota_config(para: logics.AddModelQuota, user_id: str):
                             content=error_dict)
 
 
-# 编辑模型配额配置
 async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, user_id: str):
     try:
         try:
-            # 校验该模型配置是否存在
             exist = model_quota_dao.get_model_config(conf_id)
         except Exception as e:
             StandLogger.error(e.args)
@@ -101,10 +96,9 @@ async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, use
             StandLogger.error("该模型存在用户配额，不支持修改billing_type")
             error_dict = ModelFactory_BenchmarkController_ModelConfig_UnknownError_Error.copy()
             error_dict["description"] = error_dict["detail"] = error_dict["solution"] = \
-                "该模型存在用户配额，不支持修改billing_type"
+                "billing_type cannot be changed while the model has user quotas"
             return JSONResponse(status_code=400, content=error_dict)
         # try:
-        #     # 获取限额类型
         #     info = model_quota_dao.get_model_billing_type(conf_id)
         # except Exception as e:
         #     StandLogger.error(e.args)
@@ -113,17 +107,17 @@ async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, use
         if para.billing_type == 1:
             if para.output_tokens is None:
                 content = {"code": "ModelFactory.Router.ParamError.ParamMissing",
-                           "description": "参数缺失",
-                           "detail": "output_tokens 参数缺失",
-                           "solution": "请检查填写的参数是否正确。",
+                           "description": "Required parameter is missing.",
+                           "detail": "missing parameters: output_tokens",
+                           "solution": "Provide the required parameter and try again.",
                            "link": ""}
                 return JSONResponse(status_code=400,
                                     content=content)
             if para.referprice_out is None:
                 content = {"code": "ModelFactory.Router.ParamError.ParamMissing",
-                           "description": "参数缺失",
-                           "detail": "referprice_out 参数缺失",
-                           "solution": "请检查填写的参数是否正确。",
+                           "description": "Required parameter is missing.",
+                           "detail": "missing parameters: referprice_out",
+                           "solution": "Provide the required parameter and try again.",
                            "link": ""}
                 return JSONResponse(status_code=400,
                                     content=content)
@@ -169,7 +163,6 @@ async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, use
                             content=error_dict)
 
 
-# 获取指定模型配额配置
 async def get_model_quota_config(conf_id, user_id: str):
     try:
         res = model_quota_dao.get_model_config(conf_id)
@@ -206,7 +199,6 @@ async def get_model_quota_config(conf_id, user_id: str):
     return JSONResponse(status_code=200, content={"res": res_dict})
 
 
-# 获取模型配额配置列表
 async def get_model_quota_config_list(request, user_id: str):
     try:
         get_all_config = logics.GetModelQuotaList(
@@ -267,11 +259,9 @@ async def get_model_quota_config_list(request, user_id: str):
                         content={"res": model_quota_list, "total": total, "model_list": api_model_list})
 
 
-# 删除模型陪陪配置
 async def delete_model_quota_config(conf_id, user_id: str):
     try:
         try:
-            # 校验该模型配置是否存在
             exist = model_quota_dao.check_model_conf_is_exist(conf_id)
         except Exception as e:
             StandLogger.error(e.args)
@@ -296,22 +286,19 @@ async def delete_model_quota_config(conf_id, user_id: str):
                             content=error_dict)
 
 
-# 新建用户使用模型配额配置
 async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_id: str):
     try:
         if para.list == []:
             error_dict = ModelFactory_Router_ParamError_FormatError_Error.copy()
-            error_dict["detail"] = "list不得为空列表"
+            error_dict["detail"] = "list cannot be empty"
             StandLogger.error(error_dict["detail"])
             return JSONResponse(content=error_dict, status_code=400)
         user_id_list = []
         try:
-            # 校验非必传参数
             conf = model_quota_dao.get_model_config(para.list[0].model_quota_id)
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
-        # 校验当前模型配额配置是否存在
         if conf is None or len(conf) == 0:
             StandLogger.error(
                 ModelFactory_ModelQuotaController_ModelQuotaConfig_ModelConfigNotFound_Error["description"])
@@ -321,9 +308,9 @@ async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_i
             StandLogger.error(ModelFactory_Router_ParamError_ParamMissing_Error["description"])
             return JSONResponse(status_code=400,
                                 content={"code": "ModelFactory.Router.ParamError.ParamMissing",
-                                         "description": "参数缺失",
-                                         "detail": "output_tokens 参数缺失",
-                                         "solution": "请检查填写的参数是否正确。",
+                                         "description": "Required parameter is missing.",
+                                         "detail": "missing parameters: output_tokens",
+                                         "solution": "Provide the required parameter and try again.",
                                          "link": ""})
         if conf[0]["f_billing_type"] == 1:
             for item in para.list:
@@ -362,11 +349,10 @@ async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_i
                 return JSONResponse(status_code=400,
                                     content=ModelFactory_ModelQuotaController_UserModelConfig_OutputNoLeftSpace_Error)
         old_user_conf_list = model_quota_dao.get_list_from_user_quota_config_by_conf_id(
-            para.list[0].model_quota_id)  # 用于对比是新增还是编辑
+            para.list[0].model_quota_id)  # Used to distinguish creation from update.
         old_user_id_list = []
         for item in old_user_conf_list:
             old_user_id_list.append(item["f_user_id"])
-        # 区分添加和编辑
         add_list = []
         edit_list = []
         only_old_user_id_list = old_user_id_list.copy()
@@ -375,7 +361,8 @@ async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_i
             user_ids.append(item.user_id)
             if item.user_id in user_id_list:
                 error_dict = ModelFactory_BenchmarkController_ModelConfig_UnknownError_Error.copy()
-                error_dict["detail"] = error_dict["description"] = error_dict["solution"] = "添加了重复的用户"
+                error_dict["detail"] = error_dict["description"] = error_dict["solution"] = \
+                    "The request contains duplicate users."
                 StandLogger.error(error_dict["description"])
                 return JSONResponse(status_code=400, content=error_dict)
             else:
@@ -467,14 +454,12 @@ async def get_user_model_quota_config(conf_id, user_id: str):
                             content=error_dict)
 
 
-# 获取用户使用模型配额配置列表
 async def get_user_model_quota_config_list(conf_id, request: logics.GetModelQuotaList, user_id: str):
     try:
         try:
             delete_id_list = []
 
             try:
-                # 获取模型配置
                 confInfo = model_quota_dao.get_model_config(conf_id)
             except Exception as e:
                 StandLogger.error(e.args)
@@ -484,9 +469,9 @@ async def get_user_model_quota_config_list(conf_id, request: logics.GetModelQuot
                                                               "input_tokens_remain": 0,
                                                               "output_tokens_remain": 0})
             input_tokens_remain = confInfo[0]["f_input_tokens"] * num_type_list[
-                json.loads(confInfo[0]["f_num_type"])[0]]  # 剩余输入额度(未分配额度)
+                json.loads(confInfo[0]["f_num_type"])[0]]  # Remaining unallocated input quota.
             output_tokens_remain = confInfo[0]["f_output_tokens"] * num_type_list[
-                json.loads(confInfo[0]["f_num_type"])[1]]  # 剩余输出额度(未分配额度)
+                json.loads(confInfo[0]["f_num_type"])[1]]  # Remaining unallocated output quota.
             res = model_quota_dao.get_user_model_config_list(conf_id, request)
 
             if res == () or res == []:
@@ -511,7 +496,6 @@ async def get_user_model_quota_config_list(conf_id, request: logics.GetModelQuot
                     "output_tokens": item["f_output_tokens"]
                 }
             for info in res:
-                # 计算剩余配额
                 if confInfo[0]["f_billing_type"] == 0:
                     input_tokens_remain -= info["f_input_tokens"] * num_type_list[json.loads(info["f_num_type"])[0]]
                 else:
@@ -564,7 +548,6 @@ async def get_user_model_quota_config_list(conf_id, request: logics.GetModelQuot
                             content=error_dict)
 
 
-# 删除用户使用模型陪陪配置
 async def delete_user_model_quota_config(conf_id_list, user_id: str):
     try:
 
@@ -613,7 +596,6 @@ async def get_user_quote_model_list(userId, page, size, name, api_model, order, 
                     "input_tokens": 0,
                     "output_tokens": 0
                 }
-        # 计算已使用额度
         for item in user_quota_token_used_list:
             user_quota_token_used_dict[item["f_model_id"]] = {
                 "input_tokens": int(item["sum_input"]),
@@ -703,9 +685,6 @@ async def get_user_quote_model_list(userId, page, size, name, api_model, order, 
         error_dict["description"] = str(e.args)
         error_dict["detail"] = str(e.args)
         return JSONResponse(status_code=400, content=error_dict)
-
-
-# 余量检查
 async def remain_check(userId, model_id_list):
     try:
         res_list = []

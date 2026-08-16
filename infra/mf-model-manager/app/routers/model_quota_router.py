@@ -28,7 +28,6 @@ async def remain_check(request: Request, model_id_list: str):
     return await model_quota_controller.remain_check(userId, model_id_list)
 
 
-# 获取用户配额模型列表
 # @model_quota_router.get("/user-quota/model-list")
 async def get_user_quote_model_list(request: Request, page: int = Query(ge=0), size: int = Query(ge=0, default=20),
                                     name: str = Query(default=""), api_model: str = Query(default=""),
@@ -39,14 +38,12 @@ async def get_user_quote_model_list(request: Request, page: int = Query(ge=0), s
                                                                   quota)
 
 
-# 删除用户配额配置(支持批量)
 @model_quota_router.post('/user-quota/delete')
 async def delete_user_model_quota_config(request: Request, conf_id_list: logics.ConfIdList):
     userId, language, role = await get_user_info(request)
     return await model_quota_controller.delete_user_model_quota_config(conf_id_list.conf_id_list, userId)
 
 
-# 添加大模型配额配置
 @model_quota_router.post('/model-quota')
 async def add_model_quota(request: logics.AddModelQuota, head_request: Request):
     userId, language, role = await get_user_info(head_request)
@@ -59,14 +56,12 @@ async def add_model_quota(request: logics.AddModelQuota, head_request: Request):
     return await model_quota_controller.add_model_quota_config(request, userId)
 
 
-# 编辑大模型配额配置
 @model_quota_router.post('/model-quota/{conf_id}')
 async def edit_model_quota(conf_id, request: logics.EditModelQuota, head_request: Request):
     userId, language, role = await get_user_info(head_request)
     return await model_quota_controller.edit_model_quota_config(request, conf_id, userId)
 
 
-# 获取大模型配额配置列表
 @model_quota_router.get('/model-quota/list')
 async def get_model_quota_list(request: Request, page: int = Query(ge=0), size: int = Query(ge=0, default=20),
                                rule: str = Query(regex=r'^(create_time|update_time|model_name|total_price)$'),
@@ -87,21 +82,18 @@ async def get_model_quota_list(request: Request, page: int = Query(ge=0), size: 
     return await model_quota_controller.get_model_quota_config_list(request, userId)
 
 
-# 获取指定大模型配额配置
 @model_quota_router.get('/model-quota/{conf_id}')
 async def get_model_quota(conf_id: str, request: Request):
     userId, language, role = await get_user_info(request)
     return await model_quota_controller.get_model_quota_config(conf_id, userId)
 
 
-# 添加用户使用指定大模型配额
 @model_quota_router.post('/user-quota')
 async def add_user_model_quota(request: logics.AddUserModelQuotaList, head_request: Request):
     userId, language, role = await get_user_info(head_request)
     return await model_quota_controller.add_user_model_quota_config(request, userId)
 
 
-# 获取大模型配额配置列表
 @model_quota_router.get('/user-quota/list')
 async def get_user_quota_list(head_request: Request,
                               conf_id: str = Query(min_length=19, max_length=19, regex=r'^[0-9]*$'),

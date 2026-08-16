@@ -72,44 +72,44 @@ def evaluate(inputs, props, resource, data_source_config):
 
 
 class cos_simExecutor:
-    cls_type = "Executor"  # 此处不要修改
-    metric_name = "cos_sim"  # 在此处填入metric名称
+    cls_type = "Executor"  # Do not change.
+    metric_name = "cos_sim"  # Set the metric name here.
     INPUT_TYPE = {
         "ideal": list,
         "answer": list
-    }  # input类型
+    }  # Input schema.
     OUTPUT_TYPE = {
         "precision": float,
         "recall": float,
         "f1_score": float
-    }  # output类型
+    }  # Output schema.
     metric_input_list = [
         {
             "name": "answer",
-            "description": "算法返回的结果",
+            "description": "Algorithm result.",
             "type": "algorithms"
         },
         {
             "name": "ideal",
-            "description": "理想答案",
+            "description": "Expected answer.",
             "type": "dataset"
         }
-    ]  # 列表内内容为示例格式，此处加上模板input需要存在的键，以及对对应的键的描述, type代表该键对应来源是数据源还是算法
+    ]  # Example template input keys and descriptions; type identifies whether the source is data or an algorithm.
     metric_output_list = [
         {
             "name": "precision",
-            "description": "精确度，相似度总分/预测答案个数"
+            "description": "Precision: total similarity score divided by predicted answer count."
         },
         {
             "name": "recall",
-            "description": "召回率，相似度总分/标准答案个数"
+            "description": "Recall: total similarity score divided by expected answer count."
         },
         {
             "name": "f1_score",
-            "description": "f1分数是精确度和召回率的调和平均数，它试图同时考虑精确度和召回率，提供一个单一的性能指标。"
+            "description": "F1 is the harmonic mean of precision and recall."
         }
-    ]  # 列表内内容为示例格式，此处加上模板output需要存在的键，以及对对应的键的描述
-    metric_description = """调用bge模型对文本进行编码，计算余弦相似度。"""
+    ]  # Example template output keys and descriptions.
+    metric_description = """Encode text with the BGE model and calculate cosine similarity."""
     DEFAULT_PROPS = {
         'emb_url': 'Config.EMB_URL'
     }

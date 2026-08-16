@@ -14,6 +14,7 @@ from llmadapter.schema import HumanMessage, AIMessage
 
 from app.commons.errors import ModelError, LLMParamError, ModelTimeoutError, \
     ModelFactory_ModelController_Model_Error_Error
+from app.commons.locale import localized_stream_error
 from app.controller.model_audit_controller import add_llm_model_call_log
 from app.core.config import base_config
 from app.dao.llm_model_dao import llm_model_dao
@@ -23,10 +24,10 @@ from app.utils.observability.observability_log import get_logger
 
 from app.utils.str_util import generate_random_string, has_common_substring
 
-# 全局tokenizer缓存
+# Process-wide tokenizer cache.
 _TOKENIZER_CACHE = {}
 _TOKENIZER_LOCK = threading.RLock()
-_MAX_CACHE_SIZE = 5  # 限制最大缓存数量
+_MAX_CACHE_SIZE = 5
 
 
 class OpenAIClient:
@@ -151,10 +152,10 @@ class OpenAIClientRequest:
         self.tools = tools
         self.tool_choice = tool_choice
 
-    async def chat_completion(self, messages, user_id, func_module, cache=False):  # 写一版直接请求url的，便于传入工具
+    async def chat_completion(self, messages, user_id, func_module, cache=False):
         if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-            error_dict = ModelError.copy()
-            error_dict["description"] = error_dict["detail"] = error_dict["solution"] = "千循大模型只支持最后一条消息role为user"
+            error_dict = localized_stream_error(
+                ModelError["code"], "ModelFactory.Stream.InvalidMessageRole")
             return error_dict
         start_time = time.time()
         params = {
@@ -217,8 +218,8 @@ class OpenAIClientRequest:
 
     async def chat_completion_stream_openai(self, messages, user_id, return_info, func_module, cache=False):
         if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-            error_dict = ModelError.copy()
-            error_dict["description"] = error_dict["detail"] = error_dict["solution"] = "千循大模型只支持最后一条消息role为user"
+            error_dict = localized_stream_error(
+                ModelError["code"], "ModelFactory.Stream.InvalidMessageRole")
             yield error_dict
         retry_time = 3
         while retry_time > 0:
@@ -343,9 +344,9 @@ class OpenAIClientRequest:
                                 f'"total_tokens":{prompt_tokens + completion_tokens},"func_module":{func_module},"status":"success"}}')
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
+                    error_dict = localized_stream_error(
+                        ModelFactory_ModelController_Model_Error_Error["code"],
+                        "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     if get_logger():
@@ -415,11 +416,11 @@ async def openai_series_stream(types, api_key, api_model, ai_system, ai_history,
                                llm_id=None,
                                user_id="", cache=False, stop=None):
     try:
-        # 获取所有输入信息的长度
+        # Calculate the total input length.
         messages, mess_str = prompt(ai_system, ai_user, ai_assistant, ai_history)
         max_token = await get_context_size("openai", base_url, api_model)
         llm_max_token = max_token if max_token is not None else 16000
-        # 校验 token 有没有超出
+        # Reject requests that exceed the model token limit.
         try:
             prompt_tokens = await openai_token_num(max_tokens, llm_max_token, mess_str)
             if prompt_tokens == -1:
@@ -670,9 +671,9 @@ class BaiduTianchenClient:
                         return
         except aiohttp.ClientError as e:
             if retry_time <= 0:
-                error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                error_dict["detail"] = str(e)
+                error_dict = localized_stream_error(
+                    ModelFactory_ModelController_Model_Error_Error["code"],
+                    "ModelFactory.Stream.ModelConnectionFailed")
                 yield json.dumps(error_dict, ensure_ascii=False)
                 StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                 return
@@ -765,9 +766,9 @@ class BaiduTianchenClient:
                         return
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
+                    error_dict = localized_stream_error(
+                        ModelFactory_ModelController_Model_Error_Error["code"],
+                        "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     return
@@ -779,7 +780,7 @@ class BaiduTianchenClient:
                 raise e
 
 
-# 百度大模型类
+# Baidu model client.
 class BaiduClient:
     def __init__(self, api_url, api_model, api_key, model_id, temperature, top_p, max_tokens, frequency_penalty,
                  presence_penalty, secret_key, top_k=1, stop=None):
@@ -1021,7 +1022,7 @@ class BaiduClient:
                                         datas["usage"]["prompt_tokens_details"] = {
                                             "cached_tokens": 0
                                         }
-                                        # 计算 uncached_tokens
+                                        # Calculate uncached tokens.
                                     cached_tokens = datas["usage"]["prompt_tokens_details"].get(
                                         "cached_tokens", 0)
                                     datas["usage"]["prompt_tokens_details"][
@@ -1055,9 +1056,9 @@ class BaiduClient:
                         return
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
+                    error_dict = localized_stream_error(
+                        ModelFactory_ModelController_Model_Error_Error["code"],
+                        "ModelFactory.Stream.ModelConnectionFailed")
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
@@ -1175,9 +1176,9 @@ class BaiduClient:
                                 return
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
+                    error_dict = localized_stream_error(
+                        ModelFactory_ModelController_Model_Error_Error["code"],
+                        "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     return
@@ -1191,7 +1192,7 @@ class BaiduClient:
                 return
 
 
-# 其他模型类
+# Generic model client.
 class OtherClient:
     def __init__(self, api_url, api_model, api_key, model_id,
                  temperature, top_p, frequency_penalty, presence_penalty, max_tokens, top_k=1, response_format={},
@@ -1218,9 +1219,8 @@ class OtherClient:
             retry_time -= 1
             try:
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-                    error_dict = ModelError.copy()
-                    error_dict["description"] = error_dict["detail"] = error_dict[
-                        "solution"] = "千循大模型只支持最后一条消息role为user"
+                    error_dict = localized_stream_error(
+                        ModelError["code"], "ModelFactory.Stream.InvalidMessageRole")
                     return error_dict
                 start_time = time.time()
                 params = {
@@ -1258,7 +1258,7 @@ class OtherClient:
                             await add_llm_model_call_log(log_info)
                             if self.model_type == "rlm" and not result["choices"][0]["message"].get("reasoning_content",
                                                                                                     None):
-                                # 提取thinking标签
+                                # Extract the thinking tag.
                                 pattern = r"<think>(.*?)</think>"
                                 match = re.search(pattern, result["choices"][0]["message"]["content"], re.DOTALL)
                                 if match:
@@ -1287,7 +1287,7 @@ class OtherClient:
                                 usage["prompt_tokens_details"] = {
                                     "cached_tokens": 0
                                 }
-                                # 计算 uncached_tokens
+                                # Calculate uncached tokens.
                             cached_tokens = usage["prompt_tokens_details"].get(
                                 "cached_tokens", 0)
                             usage["prompt_tokens_details"][
@@ -1331,9 +1331,8 @@ class OtherClient:
             try:
                 chunk_id = ""
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-                    error_dict = ModelError.copy()
-                    error_dict["description"] = error_dict["detail"] = error_dict[
-                        "solution"] = "千循大模型只支持最后一条消息role为user"
+                    error_dict = localized_stream_error(
+                        ModelError["code"], "ModelFactory.Stream.InvalidMessageRole")
                     yield json.dumps(error_dict, ensure_ascii=False)
                 token_len = 0
                 params = {
@@ -1423,7 +1422,7 @@ class OtherClient:
                                                 prompt_tokens = datas["usage"]["prompt_tokens"]
                                                 completion_tokens = datas["usage"]["completion_tokens"]
                                                 total_tokens = datas["usage"]["total_tokens"]
-                                                # 处理 usage 信息，添加 uncached_tokens 字段
+                                                # Add uncached_tokens to usage metadata.
                                                 if "prompt_tokens_details" not in datas["usage"]:
                                                     datas["usage"]["prompt_tokens_details"] = {
                                                         "cache_type": "implicit",
@@ -1443,7 +1442,7 @@ class OtherClient:
                                                 prompt_tokens = datas["usage"]["prompt_tokens"]
                                                 completion_tokens = datas["usage"]["completion_tokens"]
                                                 total_tokens = datas["usage"]["total_tokens"]
-                                                # 处理 usage 信息，添加 uncached_tokens 字段
+                                                # Add uncached_tokens to usage metadata.
                                                 if "prompt_tokens_details" not in datas["usage"]:
                                                     datas["usage"]["prompt_tokens_details"] = {
                                                         "cache_type": "implicit",
@@ -1530,7 +1529,7 @@ class OtherClient:
                                             prompt_tokens = datas["usage"]["prompt_tokens"]
                                             completion_tokens = datas["usage"]["completion_tokens"]
                                             total_tokens = datas["usage"]["total_tokens"]
-                                            # 处理 usage 信息，添加 uncached_tokens 字段
+                                            # Add uncached_tokens to usage metadata.
                                             if "prompt_tokens_details" not in datas["usage"]:
                                                 datas["usage"]["prompt_tokens_details"] = {
                                                     "cache_type": "implicit",
@@ -1561,9 +1560,9 @@ class OtherClient:
             except aiohttp.ClientError as e:
                 StandLogger.error(f"call llmModelError {self.api_model} error params={params},headers={headers},error={e}")
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
+                    error_dict = localized_stream_error(
+                        ModelFactory_ModelController_Model_Error_Error["code"],
+                        "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     if get_logger():
@@ -1593,9 +1592,8 @@ class OtherClient:
             retry_time -= 1
             try:
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
-                    error_dict = ModelError.copy()
-                    error_dict["description"] = error_dict["detail"] = error_dict[
-                        "solution"] = "千循大模型只支持最后一条消息role为user"
+                    error_dict = localized_stream_error(
+                        ModelError["code"], "ModelFactory.Stream.InvalidMessageRole")
                     yield "--error--" + json.dumps(error_dict, ensure_ascii=False)
                 start_time = time.time()
                 token_len = 0
@@ -1725,9 +1723,9 @@ class OtherClient:
                         return
             except aiohttp.ClientError as e:
                 if retry_time <= 0:
-                    error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
-                    error_dict["description"] = f"大模型: {self.api_model} 连接失败，请检查该服务是否可用"
-                    error_dict["detail"] = str(e)
+                    error_dict = localized_stream_error(
+                        ModelFactory_ModelController_Model_Error_Error["code"],
+                        "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
                     StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
                     return
@@ -2284,7 +2282,7 @@ class ClaudeClient:
 
 
 async def encode(model_series, text, api_model="", api_key="", secret_key=""):
-    return [], len(text) // 4  # 5002beta过度，5003删除该函数
+    return [], len(text) // 4  # Deprecated in 5002 beta and removed in 5003.
     # import os
     # if model_series == "openai":
     #     cache_key = "9b5ad71b2ce5302211f9c61530b329a4922fc6a4"
@@ -2300,25 +2298,25 @@ async def encode(model_series, text, api_model="", api_key="", secret_key=""):
     #     tokenizer_dir = os.path.dirname(
     #         os.path.dirname(os.path.realpath(__file__))) + f"/utils/tokenizer/{model_series}"
     #     try:
-    #         # 使用异步方式加载tokenizer
+    #         # Load the tokenizer asynchronously.
     #         tokenizer = await get_tokenizer_async(tokenizer_dir)
     #         tokens = tokenizer.encode(text)
     #         return tokens, len(tokens)
     #     except Exception as e:
     #         StandLogger.error(f"Tokenizer加载失败: {str(e)}")
-    #         # 出错时使用近似估算
+    #         # Fall back to an approximation.
     #         return [], len(text) // 4
     # elif model_series == "tome":
     #     tokenizer_dir = os.path.dirname(
     #         os.path.dirname(os.path.realpath(__file__))) + f"/utils/tokenizer/qwen"
     #     try:
-    #         # 使用异步方式加载tokenizer
+    #         # Load the tokenizer asynchronously.
     #         tokenizer = await get_tokenizer_async(tokenizer_dir)
     #         tokens = tokenizer.encode(text)
     #         return tokens, len(tokens)
     #     except Exception as e:
     #         StandLogger.error(f"Tokenizer加载失败: {str(e)}")
-    #         # 出错时使用近似估算
+    #         # Fall back to an approximation.
     #         return [], len(text) // 4
     # elif model_series == "baidu":
     #     headers = {
@@ -2342,7 +2340,7 @@ async def encode(model_series, text, api_model="", api_key="", secret_key=""):
     #             original_info = await original_res.json()
     #             return [], original_info["usage"]["total_tokens"]
     # else:
-    #     return [], len(text) // 4  # 使用更合理的近似值
+    #     return [], len(text) // 4  # Use a more realistic approximation.
 
 
 async def decode(api_base, api_model, token_ids):

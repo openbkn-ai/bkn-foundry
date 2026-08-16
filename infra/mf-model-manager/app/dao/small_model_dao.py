@@ -142,7 +142,7 @@ class SmallModelDao:
 
     @connect_execute_close_db
     def get_default_by_type(self, model_type, connection, cursor):
-        """取某 model_type 下的系统默认小模型(f_default=1)"""
+        """Return the system default small model for a model_type."""
         sql = """select f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_adapter,
         f_adapter_code,f_batch_size,f_max_tokens,f_embedding_dim,f_default
                     from t_small_model where f_default = 1 and f_model_type = %s"""
@@ -152,7 +152,7 @@ class SmallModelDao:
 
     @connect_execute_commit_close_db
     def update_model_default_status(self, model_id, is_default, connection, cursor):
-        """更新单个小模型的默认状态"""
+        """Update one small model's default status."""
         sql = """update t_small_model set f_default = %s where f_model_id = %s"""
         cursor.execute(sql, (1 if is_default else 0, model_id))
 

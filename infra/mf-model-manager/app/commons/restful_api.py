@@ -2,9 +2,9 @@ def get_model_restful_api_document(llm_id):
     api = {
         "openapi": "3.0.2",
         "info": {
-            "title": "大语言模型服务",
+            "title": "Large Language Model Service",
             "version": "1.0.0",
-            "description": "大语言模型服务RESTful API文档"
+            "description": "Large language model RESTful API"
         },
         "paths": {
             "/api/model-factory/v1/llm-used/{}".format(llm_id): {
@@ -67,7 +67,7 @@ def get_model_restful_api_document(llm_id):
                                     "examples": {
                                         "resp": {
                                             "value": {
-                                                "res": "这是调用大预言模型的返回结果"
+                                                "res": "This is the large model response"
                                             }
                                         }
                                     }
@@ -79,57 +79,57 @@ def get_model_restful_api_document(llm_id):
                             "$ref": "#/components/responses/RespStaSE500"
                         }
                     },
-                    "summary": "大语言模型接口"
+                    "summary": "Large language model endpoint"
                 }
             }
         },
         "components": {
             "schemas": {
                 "serviceReq": {
-                    "description": "使用服务请求体",
+                    "description": "Service request body",
                     "type": "object",
                     "properties": {
                         "ai_system": {
-                            "description": "系统角色",
+                            "description": "System role",
                             "type": "string"
                         },
                         "ai_user": {
-                            "description": "用户角色",
+                            "description": "User role",
                             "type": "string"
                         },
                         "ai_assistant": {
-                            "description": "助手角色",
+                            "description": "Assistant role",
                             "type": "string"
                         },
                         "ai_history": {
-                            "description": "历史对话",
+                            "description": "Conversation history",
                             "type": "array",
                             "items": {}
                         },
                         "top_p": {
-                            "description": "核采样",
+                            "description": "Nucleus sampling",
                             "type": "number"
                         },
                         "temperature": {
-                            "description": "随机性",
+                            "description": "Sampling randomness",
                             "type": "number"
                         },
                         "max_token": {
-                            "description": "单次回复限制",
+                            "description": "Maximum tokens per response",
                             "type": "integer"
                         },
                         "frequency_penalty": {
-                            "description": "频率惩罚度",
+                            "description": "Frequency penalty",
                             "type": "number"
                         },
                         "presence_penalty": {
-                            "description": "话题新鲜度",
+                            "description": "Presence penalty",
                             "type": "number"
                         }
                     }
                 },
                 "Error": {
-                    "description": "接口调用错误信息基类，具体错误情况可查看字段ErrorDetails",
+                    "description": "Base API error envelope; see ErrorDetails for the specific error",
                     "required": [
                         "code",
                         "solution",
@@ -140,23 +140,23 @@ def get_model_restful_api_document(llm_id):
                     "type": "object",
                     "properties": {
                         "description": {
-                            "description": "导致此错误的原因",
+                            "description": "Reason for the error",
                             "type": "string"
                         },
                         "code": {
-                            "description": "业务错误码，'.' 字符前为微服务名， '.' 字符后为具体错误码",
+                            "description": "Stable business error code",
                             "type": "string"
                         },
                         "solution": {
-                            "description": "解决错误办法",
+                            "description": "Suggested resolution",
                             "type": "string"
                         },
                         "link": {
-                            "description": "错误链接",
+                            "description": "Error reference link",
                             "type": "string"
                         },
                         "detail": {
-                            "description": "错误详情",
+                            "description": "Error details",
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -177,19 +177,19 @@ def get_model_restful_api_document(llm_id):
                     "type": "object",
                     "properties": {
                         "res": {
-                            "description": "调用大模型结果",
+                            "description": "Large model invocation result",
                             "type": "object",
                             "properties": {
                                 "time": {
-                                    "description": "大模型生成结果的耗时",
+                                    "description": "Large model generation time",
                                     "type": "string"
                                 },
                                 "token_len": {
-                                    "description": "大模型返回结果的token总数",
+                                    "description": "Total tokens returned by the large model",
                                     "type": "integer"
                                 },
                                 "data": {
-                                    "description": "调用提示词的返回结果",
+                                    "description": "Prompt invocation result",
                                     "type": "string"
                                 }
                             }
@@ -217,7 +217,7 @@ def get_model_restful_api_document(llm_id):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: AnyDATA account application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -226,7 +226,7 @@ def get_model_restful_api_document(llm_id):
                 },
                 "ServiceUserTimeStampColumn": {
                     "name": "timestamp",
-                    "description": "timestamp: 此时间戳的接受范围以AD的系统时间为基准，接受客户端的时间在AD的系统有效期为30分钟，误差时间15分钟",
+                    "description": "timestamp: Client timestamp accepted within the platform validation window",
                     "schema": {
                         "type": "string"
                     },
@@ -235,7 +235,7 @@ def get_model_restful_api_document(llm_id):
                 },
                 "ServiceUserAppKeyColumn": {
                     "name": "appkey",
-                    "description": "appkey: 客户端使用特定的算法通过appid、时间戳和请求参数这三个参数生成的校验字符串，用于后端校验请求的合法性",
+                    "description": "appkey: Signature generated from appid, timestamp, and request parameters",
                     "schema": {
                         "type": "string"
                     },
@@ -245,8 +245,8 @@ def get_model_restful_api_document(llm_id):
             },
             "examples": {
                 "Status500": {
-                    "summary": "请求参数错误",
-                    "description": "以下原因均会导致该错误\n- 当前大模型不存在\n- 参数错误\n",
+                    "summary": "Request parameter is invalid",
+                    "description": "The model does not exist or the request parameters are invalid.\n",
                     "value": {
                         "description": "Parma Error",
                         "code": "LLMUsed.ParameterError",
@@ -260,7 +260,7 @@ def get_model_restful_api_document(llm_id):
         "tags": [
             {
                 "name": "LLM Service",
-                "description": "大语言模型服务API"
+                "description": "Large Language Model Service API"
             }
         ]
     }
@@ -271,9 +271,9 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
     api = {
         "openapi": "3.0.2",
         "info": {
-            "title": "提示词服务",
+            "title": "Prompt Service",
             "version": "1.0.0",
-            "description": "提示词服务RESTful API文档"
+            "description": "Prompt service RESTful API"
         },
         "paths": {
             "/api/model-factory/v1/prompt/{}/used".format(prompt_id): {
@@ -345,31 +345,31 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
                             "$ref": "#/components/responses/RespStaSE500"
                         }
                     },
-                    "summary": "提示词工程接口",
-                    "description": "您当前使用的提示词为：{}".format(prompt)
+                    "summary": "Prompt engineering endpoint",
+                    "description": "Current prompt: {}".format(prompt)
                 }
             }
         },
         "components": {
             "schemas": {
                 "serviceReq": {
-                    "description": "使用服务请求体",
+                    "description": "Service request body",
                     "type": "object",
                     "properties": {
                         "inputs": {
-                            "description": "变量值",
+                            "description": "Variable value",
                             "type": "object",
                             "items": {}
                         },
                         "history_dia": {
-                            "description": "历史对话",
+                            "description": "Conversation history",
                             "type": "array",
                             "items": {}
                         }
                     }
                 },
                 "Error": {
-                    "description": "接口调用错误信息基类，具体错误情况可查看字段ErrorDetails",
+                    "description": "Base API error envelope; see ErrorDetails for the specific error",
                     "required": [
                         "code",
                         "solution",
@@ -380,23 +380,23 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
                     "type": "object",
                     "properties": {
                         "description": {
-                            "description": "导致此错误的原因",
+                            "description": "Reason for the error",
                             "type": "string"
                         },
                         "code": {
-                            "description": "业务错误码，'.' 字符前为微服务名， '.' 字符后为具体错误码",
+                            "description": "Stable business error code",
                             "type": "string"
                         },
                         "solution": {
-                            "description": "解决错误办法",
+                            "description": "Suggested resolution",
                             "type": "string"
                         },
                         "link": {
-                            "description": "错误链接",
+                            "description": "Error reference link",
                             "type": "string"
                         },
                         "detail": {
-                            "description": "错误详情",
+                            "description": "Error details",
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -410,26 +410,26 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
                     }
                 },
                 "PromptResp": {
-                    "description": "提示词服务响应结构体",
+                    "description": "Prompt service response",
                     "required": [
                         "res"
                     ],
                     "type": "object",
                     "properties": {
                         "res": {
-                            "description": "结果",
+                            "description": "Result",
                             "type": "object",
                             "properties": {
                                 "time": {
-                                    "description": "大模型生成结果的耗时",
+                                    "description": "Large model generation time",
                                     "type": "string"
                                 },
                                 "token_len": {
-                                    "description": "大模型返回结果的token总数",
+                                    "description": "Total tokens returned by the large model",
                                     "type": "integer"
                                 },
                                 "data": {
-                                    "description": "调用提示词的返回结果",
+                                    "description": "Prompt invocation result",
                                     "type": "string"
                                 }
                             }
@@ -457,7 +457,7 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: AnyDATA account application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -466,7 +466,7 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
                 },
                 "ServiceUserTimeStampColumn": {
                     "name": "timestamp",
-                    "description": "timestamp: 此时间戳的接受范围以AD的系统时间为基准，接受客户端的时间在AD的系统有效期为30分钟，误差时间15分钟",
+                    "description": "timestamp: Client timestamp accepted within the platform validation window",
                     "schema": {
                         "type": "string"
                     },
@@ -475,7 +475,7 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
                 },
                 "ServiceUserAppKeyColumn": {
                     "name": "appkey",
-                    "description": "appkey: 客户端使用特定的算法通过appid、时间戳和请求参数这三个参数生成的校验字符串，用于后端校验请求的合法性",
+                    "description": "appkey: Signature generated from appid, timestamp, and request parameters",
                     "schema": {
                         "type": "string"
                     },
@@ -485,8 +485,8 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
             },
             "examples": {
                 "Status500": {
-                    "summary": "请求参数错误",
-                    "description": "以下原因均会导致该错误\n- 提示词变量输入异常\n- 历史信息字数超过限制\n- 当前prompt未发布\n",
+                    "summary": "Request parameter is invalid",
+                    "description": "Prompt variables are invalid, the conversation history is too long, or the prompt is not published.\n",
                     "value": {
                         "description": "Parma Error",
                         "code": "PromptUsed.ParameterError",
@@ -500,7 +500,7 @@ def get_prompt_restful_api_document(prompt_id, var_dict, prompt):
         "tags": [
             {
                 "name": "Prompt Service",
-                "description": "提示词服务API"
+                "description": "Prompt Service API"
             }
         ]
     }
@@ -511,9 +511,9 @@ def get_embedding_restful_api_document(model_name):
     api = {
         "openapi": "3.0.2",
         "info": {
-            "title": "embedding小模型",
+            "title": "Embedding model",
             "version": "1.0.0",
-            "description": "embedding小模型 RESTful API 文档"
+            "description": "Embedding model RESTful API"
         },
         "paths": {
             "/api/model-factory/v1/small_model_run": {
@@ -576,26 +576,26 @@ def get_embedding_restful_api_document(model_name):
                             "$ref": "#/components/responses/RespStaSE500"
                         }
                     },
-                    "summary": "embedding推理接口"
+                    "summary": "Embedding inference endpoint"
                 }
             }
         },
         "components": {
             "schemas": {
                 "serviceReq": {
-                    "description": "使用服务请求体",
+                    "description": "Service request body",
                     "type": "object",
                     "properties": {
                         "model_name": {
-                            "description": "模型名称",
+                            "description": "Model name",
                             "type": "string"
                         },
                         "param_data": {
-                            "description": "推理参数",
+                            "description": "Inference parameters",
                             "type": "object",
                             "properties": {
                                 "texts": {
-                                    "description": "需向量化的文本",
+                                    "description": "Text to embed",
                                     "type": "array",
                                     "items": {}
                                 }
@@ -604,7 +604,7 @@ def get_embedding_restful_api_document(model_name):
                     }
                 },
                 "Error": {
-                    "description": "接口调用错误信息基类，具体错误情况可查看字段detail",
+                    "description": "Base API error envelope; see detail for the specific error",
                     "required": [
                         "code",
                         "solution",
@@ -615,23 +615,23 @@ def get_embedding_restful_api_document(model_name):
                     "type": "object",
                     "properties": {
                         "description": {
-                            "description": "导致此错误的原因",
+                            "description": "Reason for the error",
                             "type": "string"
                         },
                         "code": {
-                            "description": "业务错误码，'.' 字符前为微服务名， '.' 字符后为具体错误码",
+                            "description": "Stable business error code",
                             "type": "string"
                         },
                         "solution": {
-                            "description": "解决错误办法",
+                            "description": "Suggested resolution",
                             "type": "string"
                         },
                         "link": {
-                            "description": "错误链接",
+                            "description": "Error reference link",
                             "type": "string"
                         },
                         "detail": {
-                            "description": "错误详情",
+                            "description": "Error details",
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -645,7 +645,7 @@ def get_embedding_restful_api_document(model_name):
                     }
                 },
                 "EmbeddingResp": {
-                    "description": "Embedding响应结构体",
+                    "description": "Embedding response",
                     "required": [
                         "res"
                     ],
@@ -676,7 +676,7 @@ def get_embedding_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: AnyDATA account application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -685,7 +685,7 @@ def get_embedding_restful_api_document(model_name):
                 },
                 "ServiceUserTimeStampColumn": {
                     "name": "timestamp",
-                    "description": "timestamp: 此时间戳的接受范围以AD的系统时间为基准，接受客户端的时间在AD的系统有效期为30分钟，误差时间15分钟",
+                    "description": "timestamp: Client timestamp accepted within the platform validation window",
                     "schema": {
                         "type": "string"
                     },
@@ -694,7 +694,7 @@ def get_embedding_restful_api_document(model_name):
                 },
                 "ServiceUserAppKeyColumn": {
                     "name": "appkey",
-                    "description": "appkey: 客户端使用特定的算法通过appid、时间戳和请求参数这三个参数生成的校验字符串，用于后端校验请求的合法性",
+                    "description": "appkey: Signature generated from appid, timestamp, and request parameters",
                     "schema": {
                         "type": "string"
                     },
@@ -704,12 +704,12 @@ def get_embedding_restful_api_document(model_name):
             },
             "examples": {
                 "Status500": {
-                    "summary": "请求参数错误",
+                    "summary": "Request parameter is invalid",
                     "value": {
                         "code": "ModelFactory.SmallModelRouter.SmallModelRun.ParameterError",
-                        "description": "缺少参数 model_name",
-                        "detail": "缺少参数 model_name",
-                        "solution": "请检查填写的参数是否正确。",
+                        "description": "model_name is required",
+                        "detail": "model_name is required",
+                        "solution": "Check the request parameters and try again.",
                         "link": ""
                     }
                 }
@@ -723,9 +723,9 @@ def get_reranker_restful_api_document(model_name):
     api = {
         "openapi": "3.0.2",
         "info": {
-            "title": "reranker小模型",
+            "title": "Reranker model",
             "version": "1.0.0",
-            "description": "reranker小模型 RESTful API 文档"
+            "description": "Reranker model RESTful API"
         },
         "paths": {
             "/api/model-factory/v1/small_model_run": {
@@ -787,31 +787,31 @@ def get_reranker_restful_api_document(model_name):
                             "$ref": "#/components/responses/RespStaSE500"
                         }
                     },
-                    "summary": "reranker推理接口"
+                    "summary": "Reranker inference endpoint"
                 }
             }
         },
         "components": {
             "schemas": {
                 "serviceReq": {
-                    "description": "使用服务请求体",
+                    "description": "Service request body",
                     "type": "object",
                     "properties": {
                         "model_name": {
-                            "description": "模型名称",
+                            "description": "Model name",
                             "type": "string"
                         },
                         "param_data": {
-                            "description": "推理参数",
+                            "description": "Inference parameters",
                             "type": "object",
                             "properties": {
                                 "slices": {
-                                    "description": "需计算相似度得分的一组文本",
+                                    "description": "Documents to score",
                                     "type": "array",
                                     "items": {}
                                 },
                                 "query": {
-                                    "description": "计算相似度得分的问题",
+                                    "description": "Query used for similarity scoring",
                                     "type": "string"
                                 }
                             }
@@ -819,7 +819,7 @@ def get_reranker_restful_api_document(model_name):
                     }
                 },
                 "Error": {
-                    "description": "接口调用错误信息基类，具体错误情况可查看字段detail",
+                    "description": "Base API error envelope; see detail for the specific error",
                     "required": [
                         "code",
                         "solution",
@@ -830,23 +830,23 @@ def get_reranker_restful_api_document(model_name):
                     "type": "object",
                     "properties": {
                         "description": {
-                            "description": "导致此错误的原因",
+                            "description": "Reason for the error",
                             "type": "string"
                         },
                         "code": {
-                            "description": "业务错误码，'.' 字符前为微服务名， '.' 字符后为具体错误码",
+                            "description": "Stable business error code",
                             "type": "string"
                         },
                         "solution": {
-                            "description": "解决错误办法",
+                            "description": "Suggested resolution",
                             "type": "string"
                         },
                         "link": {
-                            "description": "错误链接",
+                            "description": "Error reference link",
                             "type": "string"
                         },
                         "detail": {
-                            "description": "错误详情",
+                            "description": "Error details",
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -860,7 +860,7 @@ def get_reranker_restful_api_document(model_name):
                     }
                 },
                 "RerankerResp": {
-                    "description": "Reranker响应结构体",
+                    "description": "Reranker response",
                     "required": [
                         "res"
                     ],
@@ -890,7 +890,7 @@ def get_reranker_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: AnyDATA account application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -899,7 +899,7 @@ def get_reranker_restful_api_document(model_name):
                 },
                 "ServiceUserTimeStampColumn": {
                     "name": "timestamp",
-                    "description": "timestamp: 此时间戳的接受范围以AD的系统时间为基准，接受客户端的时间在AD的系统有效期为30分钟，误差时间15分钟",
+                    "description": "timestamp: Client timestamp accepted within the platform validation window",
                     "schema": {
                         "type": "string"
                     },
@@ -908,7 +908,7 @@ def get_reranker_restful_api_document(model_name):
                 },
                 "ServiceUserAppKeyColumn": {
                     "name": "appkey",
-                    "description": "appkey: 客户端使用特定的算法通过appid、时间戳和请求参数这三个参数生成的校验字符串，用于后端校验请求的合法性",
+                    "description": "appkey: Signature generated from appid, timestamp, and request parameters",
                     "schema": {
                         "type": "string"
                     },
@@ -918,12 +918,12 @@ def get_reranker_restful_api_document(model_name):
             },
             "examples": {
                 "Status500": {
-                    "summary": "请求参数错误",
+                    "summary": "Request parameter is invalid",
                     "value": {
                         "code": "ModelFactory.SmallModelRouter.SmallModelRun.ParameterError",
-                        "description": "缺少参数 model_name",
-                        "detail": "缺少参数 model_name",
-                        "solution": "请检查填写的参数是否正确。",
+                        "description": "model_name is required",
+                        "detail": "model_name is required",
+                        "solution": "Check the request parameters and try again.",
                         "link": ""
                     }
                 }
@@ -937,9 +937,9 @@ def get_spr_restful_api_document(model_name):
     api = {
         "openapi": "3.0.2",
         "info": {
-            "title": "spr小模型",
+            "title": "SPR model",
             "version": "1.0.0",
-            "description": "spr小模型 RESTful API 文档"
+            "description": "SPR model RESTful API"
         },
         "paths": {
             "/api/model-factory/v1/small_model_run": {
@@ -1009,46 +1009,46 @@ def get_spr_restful_api_document(model_name):
                             "$ref": "#/components/responses/RespStaSE500"
                         }
                     },
-                    "summary": "spr推理接口"
+                    "summary": "SPR inference endpoint"
                 }
             }
         },
         "components": {
             "schemas": {
                 "serviceReq": {
-                    "description": "使用服务请求体",
+                    "description": "Service request body",
                     "type": "object",
                     "properties": {
                         "model_name": {
-                            "description": "模型名称",
+                            "description": "Model name",
                             "type": "string"
                         },
                         "param_data": {
-                            "description": "推理参数",
+                            "description": "Inference parameters",
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {
                                     "query_text": {
-                                        "description": "查询文本",
+                                        "description": "Query text",
                                         "type": "string"
                                     },
                                     "entity_dict_list": {
-                                        "description": "实体字典列表",
+                                        "description": "Entity dictionary list",
                                         "type": "array",
                                         "items": {
                                             "type": "object"
                                         }
                                     },
                                     "property_list": {
-                                        "description": "属性列表",
+                                        "description": "Property list",
                                         "type": "array",
                                         "items": {
                                             "type": "string"
                                         }
                                     },
                                     "relation_list": {
-                                        "description": "关系列表",
+                                        "description": "Relation list",
                                         "type": "array",
                                         "items": {
                                             "type": "string"
@@ -1060,7 +1060,7 @@ def get_spr_restful_api_document(model_name):
                     }
                 },
                 "Error": {
-                    "description": "接口调用错误信息基类，具体错误情况可查看字段detail",
+                    "description": "Base API error envelope; see detail for the specific error",
                     "required": [
                         "code",
                         "solution",
@@ -1071,23 +1071,23 @@ def get_spr_restful_api_document(model_name):
                     "type": "object",
                     "properties": {
                         "description": {
-                            "description": "导致此错误的原因",
+                            "description": "Reason for the error",
                             "type": "string"
                         },
                         "code": {
-                            "description": "业务错误码，'.' 字符前为微服务名， '.' 字符后为具体错误码",
+                            "description": "Stable business error code",
                             "type": "string"
                         },
                         "solution": {
-                            "description": "解决错误办法",
+                            "description": "Suggested resolution",
                             "type": "string"
                         },
                         "link": {
-                            "description": "错误链接",
+                            "description": "Error reference link",
                             "type": "string"
                         },
                         "detail": {
-                            "description": "错误详情",
+                            "description": "Error details",
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -1101,7 +1101,7 @@ def get_spr_restful_api_document(model_name):
                     }
                 },
                 "SprResp": {
-                    "description": "Spr响应结构体",
+                    "description": "SPR response",
                     "required": [
                         "res"
                     ],
@@ -1131,7 +1131,7 @@ def get_spr_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: AnyDATA account application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -1140,7 +1140,7 @@ def get_spr_restful_api_document(model_name):
                 },
                 "ServiceUserTimeStampColumn": {
                     "name": "timestamp",
-                    "description": "timestamp: 此时间戳的接受范围以AD的系统时间为基准，接受客户端的时间在AD的系统有效期为30分钟，误差时间15分钟",
+                    "description": "timestamp: Client timestamp accepted within the platform validation window",
                     "schema": {
                         "type": "string"
                     },
@@ -1149,7 +1149,7 @@ def get_spr_restful_api_document(model_name):
                 },
                 "ServiceUserAppKeyColumn": {
                     "name": "appkey",
-                    "description": "appkey: 客户端使用特定的算法通过appid、时间戳和请求参数这三个参数生成的校验字符串，用于后端校验请求的合法性",
+                    "description": "appkey: Signature generated from appid, timestamp, and request parameters",
                     "schema": {
                         "type": "string"
                     },
@@ -1159,12 +1159,12 @@ def get_spr_restful_api_document(model_name):
             },
             "examples": {
                 "Status500": {
-                    "summary": "请求参数错误",
+                    "summary": "Request parameter is invalid",
                     "value": {
                         "code": "ModelFactory.SmallModelRouter.SmallModelRun.ParameterError",
-                        "description": "缺少参数 model_name",
-                        "detail": "缺少参数 model_name",
-                        "solution": "请检查填写的参数是否正确。",
+                        "description": "model_name is required",
+                        "detail": "model_name is required",
+                        "solution": "Check the request parameters and try again.",
                         "link": ""
                     }
                 }
@@ -1178,9 +1178,9 @@ def get_info_extract_restful_api_document(model_name):
     api = {
         "openapi": "3.0.2",
         "info": {
-            "title": "info_extract小模型",
+            "title": "Information extraction model",
             "version": "1.0.0",
-            "description": "info_extract小模型 RESTful API 文档"
+            "description": "Information extraction model RESTful API"
         },
         "paths": {
             "/api/model-factory/v1/small_model_run": {
@@ -1271,33 +1271,33 @@ def get_info_extract_restful_api_document(model_name):
                             "$ref": "#/components/responses/RespStaSE500"
                         }
                     },
-                    "summary": "info_extract推理接口"
+                    "summary": "Information extraction endpoint"
                 }
             }
         },
         "components": {
             "schemas": {
                 "serviceReq": {
-                    "description": "使用服务请求体",
+                    "description": "Service request body",
                     "type": "object",
                     "properties": {
                         "model_name": {
-                            "description": "模型名称",
+                            "description": "Model name",
                             "type": "string"
                         },
                         "param_data": {
-                            "description": "推理参数",
+                            "description": "Inference parameters",
                             "type": "object",
                             "properties": {
                                 "schema": {
-                                    "description": "抽取schema",
+                                    "description": "Extraction schema",
                                     "type": "array",
                                     "items": {
                                         "type": "string"
                                     }
                                 },
                                 "texts": {
-                                    "description": "要抽取的文本内容",
+                                    "description": "Text to extract from",
                                     "type": "array",
                                     "items": {
                                         "type": "string"
@@ -1308,7 +1308,7 @@ def get_info_extract_restful_api_document(model_name):
                     }
                 },
                 "Error": {
-                    "description": "接口调用错误信息基类，具体错误情况可查看字段detail",
+                    "description": "Base API error envelope; see detail for the specific error",
                     "required": [
                         "code",
                         "solution",
@@ -1319,23 +1319,23 @@ def get_info_extract_restful_api_document(model_name):
                     "type": "object",
                     "properties": {
                         "description": {
-                            "description": "导致此错误的原因",
+                            "description": "Reason for the error",
                             "type": "string"
                         },
                         "code": {
-                            "description": "业务错误码，'.' 字符前为微服务名， '.' 字符后为具体错误码",
+                            "description": "Stable business error code",
                             "type": "string"
                         },
                         "solution": {
-                            "description": "解决错误办法",
+                            "description": "Suggested resolution",
                             "type": "string"
                         },
                         "link": {
-                            "description": "错误链接",
+                            "description": "Error reference link",
                             "type": "string"
                         },
                         "detail": {
-                            "description": "错误详情",
+                            "description": "Error details",
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -1349,7 +1349,7 @@ def get_info_extract_restful_api_document(model_name):
                     }
                 },
                 "InfoExtractResp": {
-                    "description": "info_extract响应结构体",
+                    "description": "Information extraction response",
                     "type": "object",
                     "properties": {
                         "res": {
@@ -1381,7 +1381,7 @@ def get_info_extract_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: AnyDATA account application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -1390,7 +1390,7 @@ def get_info_extract_restful_api_document(model_name):
                 },
                 "ServiceUserTimeStampColumn": {
                     "name": "timestamp",
-                    "description": "timestamp: 此时间戳的接受范围以AD的系统时间为基准，接受客户端的时间在AD的系统有效期为30分钟，误差时间15分钟",
+                    "description": "timestamp: Client timestamp accepted within the platform validation window",
                     "schema": {
                         "type": "string"
                     },
@@ -1399,7 +1399,7 @@ def get_info_extract_restful_api_document(model_name):
                 },
                 "ServiceUserAppKeyColumn": {
                     "name": "appkey",
-                    "description": "appkey: 客户端使用特定的算法通过appid、时间戳和请求参数这三个参数生成的校验字符串，用于后端校验请求的合法性",
+                    "description": "appkey: Signature generated from appid, timestamp, and request parameters",
                     "schema": {
                         "type": "string"
                     },
@@ -1409,12 +1409,12 @@ def get_info_extract_restful_api_document(model_name):
             },
             "examples": {
                 "Status500": {
-                    "summary": "请求参数错误",
+                    "summary": "Request parameter is invalid",
                     "value": {
                         "code": "ModelFactory.SmallModelRouter.SmallModelRun.ParameterError",
-                        "description": "缺少参数 model_name",
-                        "detail": "缺少参数 model_name",
-                        "solution": "请检查填写的参数是否正确。",
+                        "description": "model_name is required",
+                        "detail": "model_name is required",
+                        "solution": "Check the request parameters and try again.",
                         "link": ""
                     }
                 }
@@ -1428,9 +1428,9 @@ def get_audio_restful_api_document(model_name):
     api = {
         "openapi": "3.0.2",
         "info": {
-            "title": "audio小模型",
+            "title": "Audio model",
             "version": "1.0.0",
-            "description": "audio小模型 RESTful API 文档"
+            "description": "Audio model RESTful API"
         },
         "paths": {
             "/api/model-factory/v1/small_model_run": {
@@ -1492,34 +1492,34 @@ def get_audio_restful_api_document(model_name):
                             "$ref": "#/components/responses/RespStaSE500"
                         }
                     },
-                    "summary": "info_extract推理接口"
+                    "summary": "Information extraction endpoint"
                 }
             }
         },
         "components": {
             "schemas": {
                 "serviceReq": {
-                    "description": "使用服务请求体",
+                    "description": "Service request body",
                     "type": "object",
                     "properties": {
                         "model_name": {
-                            "description": "模型名称",
+                            "description": "Model name",
                             "type": "string"
                         },
                         "param_data": {
-                            "description": "推理参数",
+                            "description": "Inference parameters",
                             "type": "object",
                             "properties": {
                                 "file_url": {
-                                    "description": "音频文件下载地址",
+                                    "description": "Audio file URL",
                                     "type": "string"
                                 },
                                 "file_size": {
-                                    "description": "音频文件大小",
+                                    "description": "Audio file size",
                                     "type": "string"
                                 },
                                 "file_name": {
-                                    "description": "音频文件名称",
+                                    "description": "Audio file name",
                                     "type": "string"
                                 }
                             }
@@ -1527,7 +1527,7 @@ def get_audio_restful_api_document(model_name):
                     }
                 },
                 "Error": {
-                    "description": "接口调用错误信息基类，具体错误情况可查看字段detail",
+                    "description": "Base API error envelope; see detail for the specific error",
                     "required": [
                         "code",
                         "solution",
@@ -1538,23 +1538,23 @@ def get_audio_restful_api_document(model_name):
                     "type": "object",
                     "properties": {
                         "description": {
-                            "description": "导致此错误的原因",
+                            "description": "Reason for the error",
                             "type": "string"
                         },
                         "code": {
-                            "description": "业务错误码，'.' 字符前为微服务名， '.' 字符后为具体错误码",
+                            "description": "Stable business error code",
                             "type": "string"
                         },
                         "solution": {
-                            "description": "解决错误办法",
+                            "description": "Suggested resolution",
                             "type": "string"
                         },
                         "link": {
-                            "description": "错误链接",
+                            "description": "Error reference link",
                             "type": "string"
                         },
                         "detail": {
-                            "description": "错误详情",
+                            "description": "Error details",
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -1568,7 +1568,7 @@ def get_audio_restful_api_document(model_name):
                     }
                 },
                 "AudioResp": {
-                    "description": "info_extract响应结构体",
+                    "description": "Information extraction response",
                     "type": "object",
                     "properties": {
                         "id": {
@@ -1597,7 +1597,7 @@ def get_audio_restful_api_document(model_name):
             "parameters": {
                 "ServiceUserTokenColumn": {
                     "name": "appid",
-                    "description": "appid: 用户登录AnyDATA 通过 /manager/v1/appid 获取的AnyDATA账户的APPID，用于数据科学家和开发者调用或者使用AnyDATA服务时的唯一标识",
+                    "description": "appid: AnyDATA account application ID used to identify service callers",
                     "schema": {
                         "type": "string"
                     },
@@ -1606,7 +1606,7 @@ def get_audio_restful_api_document(model_name):
                 },
                 "ServiceUserTimeStampColumn": {
                     "name": "timestamp",
-                    "description": "timestamp: 此时间戳的接受范围以AD的系统时间为基准，接受客户端的时间在AD的系统有效期为30分钟，误差时间15分钟",
+                    "description": "timestamp: Client timestamp accepted within the platform validation window",
                     "schema": {
                         "type": "string"
                     },
@@ -1615,7 +1615,7 @@ def get_audio_restful_api_document(model_name):
                 },
                 "ServiceUserAppKeyColumn": {
                     "name": "appkey",
-                    "description": "appkey: 客户端使用特定的算法通过appid、时间戳和请求参数这三个参数生成的校验字符串，用于后端校验请求的合法性",
+                    "description": "appkey: Signature generated from appid, timestamp, and request parameters",
                     "schema": {
                         "type": "string"
                     },
@@ -1625,12 +1625,12 @@ def get_audio_restful_api_document(model_name):
             },
             "examples": {
                 "Status500": {
-                    "summary": "请求参数错误",
+                    "summary": "Request parameter is invalid",
                     "value": {
                         "code": "ModelFactory.SmallModelRouter.SmallModelRun.ParameterError",
-                        "description": "缺少参数 model_name",
-                        "detail": "缺少参数 model_name",
-                        "solution": "请检查填写的参数是否正确。",
+                        "description": "model_name is required",
+                        "detail": "model_name is required",
+                        "solution": "Check the request parameters and try again.",
                         "link": ""
                     }
                 }

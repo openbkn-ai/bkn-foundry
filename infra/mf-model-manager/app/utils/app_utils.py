@@ -24,7 +24,6 @@ from app.utils.model_monitor import vllm_monitor_task, delete_monitor_data_task,
 from app.utils.observability.observability import init_observability, shutdown_observability
 from app.utils.operation_audit import operation_audit_middleware
 
-# 添加APScheduler相关导入
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
@@ -41,7 +40,6 @@ def conf_init(app):
 
 def start_scheduler():
     scheduler = BackgroundScheduler(timezone=pytz.utc)
-    # 每10分钟执行一次的定时任务
     scheduler.add_job(lambda: asyncio.run(vllm_monitor_task()), 'cron', minute='0,10,20,30,40,50', timezone=pytz.utc)
     scheduler.add_job(lambda: asyncio.run(delete_monitor_data_task()), 'cron', hour=4, minute=0, timezone=pytz.utc)
     scheduler.add_job(lambda: asyncio.run(delete_model_quota_data_task()), 'cron', day=2, hour=3, minute=0, timezone=pytz.utc)
@@ -50,20 +48,19 @@ def start_scheduler():
 
 async def start_event():
     await write_log(msg='系统启动')
-    # 在应用启动时调用
+    # Initialize required infrastructure when the application starts.
     try:
         await get_redis_util()
     except Exception as e:
         raise e
-    # 初始化可观测模块
+    # Initialize observability integrations.
     init_observability(server_info, observability_config)
-    # 启动定时任务
     start_scheduler()
 
 
 async def shutdown_event():
     await write_log(msg='系统关闭')
-    # 关闭可观测模块
+    # Shut down observability integrations.
     shutdown_observability()
 
 
@@ -74,7 +71,7 @@ async def auth_middleware(request: Request, call_next):
     elif path.startswith("/api/private"):
         pass
     elif not base_config.AUTH_ENABLED:
-        # 权限控制关闭：跳过 token 校验，注入匿名用户 ID 保证审计日志有值
+        # With authorization disabled, inject an anonymous identity for audit correlation.
         user_id = request.headers.get("x-account-id", base_config.ANONYMOUS_USER_ID)
         request.scope['headers'].append((b"x-account-id", user_id.encode()))
         request.scope['headers'].append((b"x-account-type", b"user"))
@@ -130,7 +127,7 @@ async def auth_middleware(request: Request, call_next):
 class RequestSizeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         content_length = request.headers.get('content-length')
-        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10M限制
+        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10 MB limit.
             return JSONResponse(
                 status_code=413,
                 content={"detail": "Payload too large"}
@@ -146,9 +143,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     content, _ = localized_error_content(
         {
             "code": "ModelFactory.InternalError",
-            "description": "请求失败。",
-            "detail": "服务内部错误。",
-            "solution": "请查看请求详情或联系管理员。",
+            "description": "Request failed.",
+            "detail": "The service encountered an internal error.",
+            "solution": "Retry later or contact an administrator.",
             "link": "",
         },
         locale,
@@ -227,9 +224,9 @@ def create_app():
                   on_startup=[start_event],
                   on_shutdown=[shutdown_event])
 
-    # 添加请求体大小检查中间件
+    # Add request body size validation.
     # app.add_middleware(RequestSizeMiddleware)
-    # 添加鉴权中间件
+    # Add authentication middleware.
     # Starlette runs the most recently added middleware first.  Authentication
     # must therefore wrap audit collection so audit reads the verified actor
     # injected by auth_middleware after the handler returns.
@@ -238,11 +235,11 @@ def create_app():
     app.add_middleware(LocaleResponseMiddleware)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
-    # 初始化日志
+    # Initialize logging.
     log_init()
-    # 加载配置
+    # Load runtime configuration.
     conf_init(app)
-    # 初始化路由配置
+    # Register application routes.
     router_init(app)
     configure_locale_openapi(app)
     return app

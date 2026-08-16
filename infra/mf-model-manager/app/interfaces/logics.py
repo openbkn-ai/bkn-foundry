@@ -15,50 +15,33 @@ model_quota_list_dict = {
     "user_name": "username"
 }
 
-"""
-正则仅支持中英文、数字和键盘上的特殊字符
-^：匹配字符串的开始
-[\w\u4e00-\u9fa5~!@#$%^&*()-_=+[]{}\|;:'",<.>/?]`：匹配一个字符，这个字符可以是：
-\w：一个字母、数字或下划线
-\u4e00-\u9fa5：一个中文字符
-~!@#$%^&*()-_=+[]{}\|;:'",<.>/?`：一个键盘上的特殊字符
-+：前面的模式可以出现一次或多次
-$：匹配字符串的结束
-"""
+"""Pattern for Chinese, English, digits, underscores, and keyboard symbols."""
 reg0 = r'^[\w\u4e00-\u9fa5~`!@#$%^&*()\-_=+\[\]{}\\|;:\'",<.>/?]+$'
 
-"""
-正则仅支持输入英文、数字及键盘上的特殊字符号
-^：匹配字符串的开始
-[\w~!@#$%^&*()-_=+[]{}\|;:'",<.>/?]`：匹配一个字符，这个字符可以是：
-\w：一个字母、数字或下划线
-~!@#$%^&*()-_=+[]{}\|;:'",<.>/?`：一个键盘上的特殊字符
-+：前面的模式可以出现一次或多次
-$：匹配字符串的结束
-"""
+"""Pattern for English letters, digits, underscores, and keyboard symbols."""
 reg1 = r'^[\w~`!@#$%^&*()\-_=+\[\]{}\\|;:\'",<.>/?]+$'
 
 
-# 添加大模型配额请求体
+# Request body for adding a large-model quota.
 class AddModelQuota(BaseModel):
-    model_id: StrictStr = Field(description="绑定的模型id", max_length=19, min_length=19)
-    billing_type: conint(ge=0, le=1)  # 计费类型 0:统一计费 1:input output单独计费
-    input_tokens: confloat(le=9999.9999, ge=1.0) = Field(description="输入tokens总额度")
-    output_tokens: Optional[confloat(le=9999.9999, ge=0.0)] = Field(description="输出tokens总额度", default=0.0)
-    currency_type: conint(ge=0, le=1)  # 计费单价货币类型,0:人名币 1:美元
-    referprice_in: confloat(ge=0.00, le=1000) = Field(description="输入tokens计费单价")
-    referprice_out: Optional[confloat(ge=0.00, le=1000)] = Field(description="输出tokens计费单价", default=0)
+    model_id: StrictStr = Field(description="Bound model ID", max_length=19, min_length=19)
+    billing_type: conint(ge=0, le=1)  # Billing type: 0 for unified billing, 1 for separate input and output billing
+    input_tokens: confloat(le=9999.9999, ge=1.0) = Field(description="Total input token quota")
+    output_tokens: Optional[confloat(le=9999.9999, ge=0.0)] = Field(description="Total output token quota", default=0.0)
+    currency_type: conint(ge=0, le=1)  # Billing currency: 0 for CNY, 1 for USD
+    referprice_in: confloat(ge=0.00, le=1000) = Field(description="Input token unit price")
+    referprice_out: Optional[confloat(ge=0.00, le=1000)] = Field(description="Output token unit price", default=0)
     num_type: conlist(conint(ge=0, le=5), min_items=2, max_items=2)
     price_type: conlist(constr(regex=r'^(thousand|million)$'), min_items=2, max_items=2)
 
-    # 当billing_type == 1时，output_tokens必传
+    # output_tokens is required when billing_type is 1.
     @validator('output_tokens', always=True)
     def check_output_tokens(cls, v, values):
         if 'billing_type' in values and values['billing_type'] == 1 and v is None:
             raise RequestValidationError([{"loc": ('body', "output_tokens"), "type": "value_error.missing"}])
         return v
 
-    # 当billing_type == 1时，referprice_out必传
+    # referprice_out is required when billing_type is 1.
     @validator('referprice_out', always=True)
     def check_referprice_out(cls, v, values):
         if 'billing_type' in values and values['billing_type'] == 1 and v is None:
@@ -74,14 +57,14 @@ class AddModelQuota(BaseModel):
         return round(v, 3)
 
 
-# 编辑大模型配额请求体
+# Request body for updating a large-model quota.
 class EditModelQuota(BaseModel):
-    input_tokens: confloat(le=9999.9999, ge=1.0) = Field(description="输入tokens总额度")
-    output_tokens: Optional[confloat(le=9999.9999, ge=0.0)] = Field(description="输出tokens总额度", default=0.0)
-    currency_type: conint(ge=0, le=1)  # 计费单价货币类型,0:人名币 1:美元
-    referprice_in: confloat(ge=0.00, le=1000) = Field(description="输入tokens计费单价")
-    referprice_out: Optional[confloat(ge=0.00, le=1000)] = Field(description="输出tokens计费单价", default=0.0)
-    billing_type: conint(ge=0, le=1)  # 计费类型 0:统一计费 1:input output单独计费
+    input_tokens: confloat(le=9999.9999, ge=1.0) = Field(description="Total input token quota")
+    output_tokens: Optional[confloat(le=9999.9999, ge=0.0)] = Field(description="Total output token quota", default=0.0)
+    currency_type: conint(ge=0, le=1)  # Billing currency: 0 for CNY, 1 for USD
+    referprice_in: confloat(ge=0.00, le=1000) = Field(description="Input token unit price")
+    referprice_out: Optional[confloat(ge=0.00, le=1000)] = Field(description="Output token unit price", default=0.0)
+    billing_type: conint(ge=0, le=1)  # Billing type: 0 for unified billing, 1 for separate input and output billing
     num_type: conlist(conint(ge=0, le=5), min_items=2, max_items=2)
     price_type: conlist(constr(regex=r'^(thousand|million)$'), min_items=2, max_items=2)
 
@@ -94,17 +77,17 @@ class EditModelQuota(BaseModel):
         return round(v, 3)
 
 
-# 获取大模型配额列表请求体
+# Request parameters for listing large-model quotas.
 class GetModelQuotaList(BaseModel):
-    page: conint(ge=-1)  # 分页
-    size: conint(ge=0)  # 数量
-    rule: StrictStr = Field(description="根据指定字段排序",
+    page: conint(ge=-1)  # Page number.
+    size: conint(ge=0)  # Page size.
+    rule: StrictStr = Field(description="Field used for sorting",
                              regex=r'^(create_time|update_time|model_name|total_price)$')
-    order: StrictStr = Field(description="排序规则", regex=r'^(desc|asc)$')
+    order: StrictStr = Field(description="Sort direction", regex=r'^(desc|asc)$')
     name: StrictStr = Field(default="")
     api_model: StrictStr = Field(default="")
 
-    # 当page > 0 时，size必传
+    # size is required when page is greater than zero.
     @validator('size', always=True)
     def check_output_tokens(cls, v, values):
         if 'page' in values and values['page'] > -1 and v is None:
@@ -112,11 +95,11 @@ class GetModelQuotaList(BaseModel):
         return v
 
 
-# 添加用户使用大模型配额请求体
+# Request body for adding a per-user large-model quota.
 class AddUserModelQuota(BaseModel):
-    model_quota_id: StrictStr = Field(description="绑定的模型配额配置id", max_length=19, min_length=19)
-    input_tokens: confloat(ge=1.0, le=9999.9999) = Field(description="输入tokens总额度")
-    output_tokens: Optional[confloat(ge=0.0, le=9999.9999)] = Field(description="输出tokens总额度", default=0.0)
+    model_quota_id: StrictStr = Field(description="Bound model quota configuration ID", max_length=19, min_length=19)
+    input_tokens: confloat(ge=1.0, le=9999.9999) = Field(description="Total input token quota")
+    output_tokens: Optional[confloat(ge=0.0, le=9999.9999)] = Field(description="Total output token quota", default=0.0)
     user_id: StrictStr
     num_type: conlist(conint(ge=0, le=5), min_items=2, max_items=2)
 
@@ -133,10 +116,10 @@ class AddUserModelQuotaList(BaseModel):
     list: List[AddUserModelQuota]
 
 
-# 编辑用户使用大模型配额请求体
+# Request body for updating a per-user large-model quota.
 class EditUserModelQuota(BaseModel):
-    input_tokens: StrictFloat = Field(description="输入tokens总额度")
-    output_tokens: Optional[StrictFloat] = Field(description="输出tokens总额度", default=0.0)
+    input_tokens: StrictFloat = Field(description="Total input token quota")
+    output_tokens: Optional[StrictFloat] = Field(description="Total output token quota", default=0.0)
 
     @validator('input_tokens', pre=True)
     def check_input_tokens(cls, v, values):
@@ -147,14 +130,14 @@ class EditUserModelQuota(BaseModel):
         return round(v, 3)
 
 
-# 获取用户使用大模型配额列表请求体
+# Request parameters for listing per-user large-model quotas.
 class GetUserModelQuotaList(BaseModel):
-    page: conint(ge=-1)  # 分页
-    size: conint(ge=0)  # 数量
-    order: StrictStr = Field(description="根据指定字段排序", regex=r'^(create_time|update_time)$')
-    rule: StrictStr = Field(description="排序规则", regex=r'^(desc|asc)$')
+    page: conint(ge=-1)  # Page number.
+    size: conint(ge=0)  # Page size.
+    order: StrictStr = Field(description="Field used for sorting", regex=r'^(create_time|update_time)$')
+    rule: StrictStr = Field(description="Sort direction", regex=r'^(desc|asc)$')
 
-    # 当page > 0 时，size必传
+    # size is required when page is greater than zero.
     @validator('size', always=True)
     def check_output_tokens(cls, v, values):
         if 'page' in values and values['page'] > -1 and v is None:
@@ -162,19 +145,19 @@ class GetUserModelQuotaList(BaseModel):
         return v
 
 
-# 获取大模型配额列表请求体
+# Request parameters for listing large-model usage records.
 class GetModelOpList(BaseModel):
-    page: conint(ge=-1)  # 分页
-    size: conint(ge=0)  # 数量
-    order: StrictStr = Field(description="根据指定字段排序", regex=r'^(create_time|update_time|total_price|user_name)$')
-    rule: StrictStr = Field(description="排序规则", regex=r'^(desc|asc)$')
-    # query:Optional[StrictStr]= Field(description="搜索关键字",default="")
-    user_id: StrictStr = Field(description="用户id")
-    api_model: StrictStr = Field(description="模型")
+    page: conint(ge=-1)  # Page number.
+    size: conint(ge=0)  # Page size.
+    order: StrictStr = Field(description="Field used for sorting", regex=r'^(create_time|update_time|total_price|user_name)$')
+    rule: StrictStr = Field(description="Sort direction", regex=r'^(desc|asc)$')
+    # query: Optional[StrictStr] = Field(description="Search term", default="")
+    user_id: StrictStr = Field(description="User ID")
+    api_model: StrictStr = Field(description="Model")
 
-    # filter_type:StrictStr= Field(description="筛选类型",regex=r'^(user_name|model_name|all)$')
+    # filter_type: StrictStr = Field(description="Filter type", regex=r'^(user_name|model_name|all)$')
 
-    # 当page > 0 时，size必传
+    # size is required when page is greater than zero.
     @validator('size', always=True)
     def check_output_tokens(cls, v, values):
         if 'page' in values and values['page'] > -1 and v is None:
@@ -189,26 +172,26 @@ class ModelConf(BaseModel):
 
 
 class AddLLM(BaseModel):
-    model_name: StrictStr = Field(description="模型名称")
-    model_series: StrictStr = Field(description="协议，选项：AISHU/OpenAI")
-    model_conf: ModelConf = Field(description="模型配置")
-    model_type: StrictStr = Field(description="模型类型")
-    icon: StrictStr = Field(description="模型配置")
-    model_quota: AddModelQuota = Field(description="tokens配额配置")
+    model_name: StrictStr = Field(description="Model name")
+    model_series: StrictStr = Field(description="Protocol: AISHU or OpenAI")
+    model_conf: ModelConf = Field(description="Model configuration")
+    model_type: StrictStr = Field(description="Model type")
+    icon: StrictStr = Field(description="Model configuration")
+    model_quota: AddModelQuota = Field(description="Token quota configuration")
 
 
 class EditLLM(BaseModel):
-    model_id: StrictStr = Field(description="模型id", max_length=19, min_length=19)
-    model_name: StrictStr = Field(description="模型名称")
-    icon: StrictStr = Field(description="模型配置")
-    model_quota: EditModelQuota = Field(description="tokens配额配置")
+    model_id: StrictStr = Field(description="Model ID", max_length=19, min_length=19)
+    model_name: StrictStr = Field(description="Model name")
+    icon: StrictStr = Field(description="Model configuration")
+    model_quota: EditModelQuota = Field(description="Token quota configuration")
 
 
 class AddModelUsedAudit(BaseModel):
-    model_id: StrictStr = Field(description="模型id", default="")
-    user_id: StrictStr = Field(description="用户id", default="")
-    input_tokens: StrictInt = Field(description="使用tokens量", default=0)
-    output_tokens: StrictInt = Field(description="输出tokens量", default=0)
+    model_id: StrictStr = Field(description="Model ID", default="")
+    user_id: StrictStr = Field(description="User ID", default="")
+    input_tokens: StrictInt = Field(description="Input token usage", default=0)
+    output_tokens: StrictInt = Field(description="Output token usage", default=0)
 
 
 class ConfIdList(BaseModel):
@@ -358,17 +341,17 @@ class PromptRunPara(BaseModel):
     type: constr()
 
 
-# 添加外部小模型请求体
+# Request body for adding an external small model.
 class AddExternalSmallModel(BaseModel):
-    model_name: StrictStr = Field(description="模型名称")
-    model_type: StrictStr = Field(description="模型类型", regex=r'^(reranker|embedding)$')
-    model_config: Optional[dict] = Field(default={}, description="第三方模型服务配置")
-    adapter: Optional[bool] = Field(default=False, description="是否开启适配服务")
-    adapter_code: Optional[StrictStr] = Field(default=None, description="适配代码")
-    batch_size: int = Field(description="批处理大小")
-    max_tokens: Optional[int] = Field(default=None, description="最大token数")
-    embedding_dim: Optional[int] = Field(default=None, description="嵌入维度")
-    is_private: Optional[bool] = Field(default=False, description="是否为私有路由，用于控制校验逻辑")
+    model_name: StrictStr = Field(description="Model name")
+    model_type: StrictStr = Field(description="Model type", regex=r'^(reranker|embedding)$')
+    model_config: Optional[dict] = Field(default={}, description="Third-party model service configuration")
+    adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
+    adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
+    batch_size: int = Field(description="Batch size")
+    max_tokens: Optional[int] = Field(default=None, description="Maximum token count")
+    embedding_dim: Optional[int] = Field(default=None, description="Embedding dimension")
+    is_private: Optional[bool] = Field(default=False, description="Whether this is a private route used to control validation")
 
     @root_validator
     def validate_mutually_exclusive_groups(cls, values):
@@ -377,9 +360,9 @@ class AddExternalSmallModel(BaseModel):
         adapter_code = values.get('adapter_code')
 
         if model_config and (adapter or adapter_code):
-            raise ValueError("model_config和adapter/adapter_code不能同时设置")
+            raise ValueError("model_config and adapter/adapter_code cannot be set together")
         if not model_config and not (adapter or adapter_code):
-            raise ValueError("必须设置model_config或adapter/adapter_code中的一组")
+            raise ValueError("Set either model_config or adapter/adapter_code")
         return values
 
     @validator('model_config', pre=False)
@@ -403,28 +386,27 @@ class AddExternalSmallModel(BaseModel):
         embedding_dim = values.get('embedding_dim')
         is_private = values.get('is_private', False)
         
-        # 对于私有路由，跳过 max_tokens 和 embedding_dim 的校验
-        # 私有路由会在控制器中自动设置默认值
+        # Private routes set max_tokens and embedding_dim defaults in the controller.
         if model_type == 'embedding' and not is_private:
             if max_tokens is None:
-                raise RequestValidationError([{"loc": ('body', "max_tokens"), "type": "value_error.missing", "msg": "当model_type为embedding时，max_tokens为必填字段"}])
+                raise RequestValidationError([{"loc": ('body', "max_tokens"), "type": "value_error.missing", "msg": "max_tokens is required when model_type is embedding"}])
             if embedding_dim is None:
-                raise RequestValidationError([{"loc": ('body', "embedding_dim"), "type": "value_error.missing", "msg": "当model_type为embedding时，embedding_dim为必填字段"}])
+                raise RequestValidationError([{"loc": ('body', "embedding_dim"), "type": "value_error.missing", "msg": "embedding_dim is required when model_type is embedding"}])
         
         return values
 
 
 class TestSmallModel(BaseModel):
-    model_id: Optional[StrictStr] = Field(None, description="配置id", min_length=19, max_length=19)
-    model_name: Optional[StrictStr] = Field(default="", description="模型名称")
-    model_type: Optional[StrictStr] = Field(default="", description="模型类型", regex=r'^(reranker|embedding)$')
-    model_config: Optional[dict] = Field(default={}, description="第三方模型服务配置")
-    adapter: Optional[bool] = Field(default=False, description="是否开启适配服务")
-    adapter_code: Optional[StrictStr] = Field(default=None, description="适配代码")
-    batch_size: Optional[int] = Field(description="批处理大小")
-    max_tokens: Optional[int] = Field(default=None, description="最大token数")
-    embedding_dim: Optional[int] = Field(default=None, description="嵌入维度")
-    change: Optional[bool] = Field(default=False, description="model_config中的api_key是否做过更改")
+    model_id: Optional[StrictStr] = Field(None, description="Configuration ID", min_length=19, max_length=19)
+    model_name: Optional[StrictStr] = Field(default="", description="Model name")
+    model_type: Optional[StrictStr] = Field(default="", description="Model type", regex=r'^(reranker|embedding)$')
+    model_config: Optional[dict] = Field(default={}, description="Third-party model service configuration")
+    adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
+    adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
+    batch_size: Optional[int] = Field(description="Batch size")
+    max_tokens: Optional[int] = Field(default=None, description="Maximum token count")
+    embedding_dim: Optional[int] = Field(default=None, description="Embedding dimension")
+    change: Optional[bool] = Field(default=False, description="Whether api_key in model_config was changed")
     @root_validator
     def check_fields(cls, values):
         model_id = values.get('model_id')
@@ -433,10 +415,10 @@ class TestSmallModel(BaseModel):
             adapter = values.get('adapter', False)
             adapter_code = values.get('adapter_code')
             if model_config and (adapter or adapter_code):
-                raise ValueError("model_config和adapter/adapter_code不能同时设置")
+                raise ValueError("model_config and adapter/adapter_code cannot be set together")
             if not model_config and not (adapter or adapter_code):
-                raise ValueError("必须设置model_config或adapter/adapter_code中的一组")
-            # 如果没有提供model_id，则必须提供其他三个字段
+                raise ValueError("Set either model_config or adapter/adapter_code")
+            # Without model_id, the identifying model fields are required.
             required_fields = ['model_name', 'model_type']
             for field in required_fields:
                 if values.get(field) is None:
@@ -447,17 +429,17 @@ class TestSmallModel(BaseModel):
             embedding_dim = values.get('embedding_dim')
             if batch_size is None:
                 raise RequestValidationError([{"loc": ('body', "batch_size"), "type": "value_error.missing",
-                                               "msg": "batch_size为必填字段"}])
+                                               "msg": "batch_size is required"}])
             if model_type == 'embedding':
                 if max_tokens is None:
                     raise RequestValidationError([{"loc": ('body', "max_tokens"), "type": "value_error.missing",
-                                                   "msg": "当model_type为embedding时，max_tokens为必填字段"}])
+                                                   "msg": "max_tokens is required when model_type is embedding"}])
                 if embedding_dim is None:
                     raise RequestValidationError([{"loc": ('body', "embedding_dim"), "type": "value_error.missing",
-                                                   "msg": "当model_type为embedding时，embedding_dim为必填字段"}])
+                                                   "msg": "embedding_dim is required when model_type is embedding"}])
 
         else:
-            # 如果提供了model_id，则其他字段可以为None
+            # With model_id, the other model fields may be omitted.
             pass
         return values
 
@@ -471,16 +453,16 @@ class TestSmallModel(BaseModel):
 
 
 class EditExternalSmallModel(BaseModel):
-    model_id: StrictStr = Field(description="配置id", min_length=19, max_length=19)
-    model_name: StrictStr = Field(description="模型名称")
-    model_type: StrictStr = Field(description="模型类型", regex=r'^(reranker|embedding)$')
-    model_config: Optional[dict] = Field(default={}, description="第三方模型服务配置")
-    adapter: Optional[bool] = Field(default=False, description="是否开启适配服务")
-    adapter_code: Optional[StrictStr] = Field(default=None, description="适配代码")
-    batch_size: int = Field(description="批处理大小")
-    max_tokens: Optional[int] = Field(default=None, description="最大token数")
-    embedding_dim: Optional[int] = Field(default=None, description="嵌入维度")
-    change: Optional[bool] = Field(default=False, description="model_config中的api_key是否做过更改")
+    model_id: StrictStr = Field(description="Configuration ID", min_length=19, max_length=19)
+    model_name: StrictStr = Field(description="Model name")
+    model_type: StrictStr = Field(description="Model type", regex=r'^(reranker|embedding)$')
+    model_config: Optional[dict] = Field(default={}, description="Third-party model service configuration")
+    adapter: Optional[bool] = Field(default=False, description="Whether to enable the adapter service")
+    adapter_code: Optional[StrictStr] = Field(default=None, description="Adapter code")
+    batch_size: int = Field(description="Batch size")
+    max_tokens: Optional[int] = Field(default=None, description="Maximum token count")
+    embedding_dim: Optional[int] = Field(default=None, description="Embedding dimension")
+    change: Optional[bool] = Field(default=False, description="Whether api_key in model_config was changed")
 
     @root_validator
     def validate_mutually_exclusive_groups(cls, values):
@@ -489,9 +471,9 @@ class EditExternalSmallModel(BaseModel):
         adapter_code = values.get('adapter_code')
 
         if model_config and (adapter or adapter_code):
-            raise ValueError("model_config和adapter/adapter_code不能同时设置")
+            raise ValueError("model_config and adapter/adapter_code cannot be set together")
         if not model_config and not (adapter or adapter_code):
-            raise ValueError("必须设置model_config或adapter/adapter_code中的一组")
+            raise ValueError("Set either model_config or adapter/adapter_code")
         return values
 
     @validator('model_config', pre=False)
@@ -511,23 +493,23 @@ class EditExternalSmallModel(BaseModel):
         if model_type == 'embedding':
             if max_tokens is None:
                 raise RequestValidationError([{"loc": ('body', "max_tokens"), "type": "value_error.missing",
-                                               "msg": "当model_type为embedding时，max_tokens为必填字段"}])
+                                               "msg": "max_tokens is required when model_type is embedding"}])
             if embedding_dim is None:
                 raise RequestValidationError([{"loc": ('body', "embedding_dim"), "type": "value_error.missing",
-                                               "msg": "当model_type为embedding时，embedding_dim为必填字段"}])
+                                               "msg": "embedding_dim is required when model_type is embedding"}])
 
         return values
 
 
 class UsedReranker(BaseModel):
-    model: StrictStr = Field(description="模型名称")
-    query: StrictStr = Field(description="需要排序的问题")
-    documents: list = Field(description="排序的内容列表")
+    model: StrictStr = Field(description="Model name")
+    query: StrictStr = Field(description="Query to rank against")
+    documents: list = Field(description="Documents to rank")
 
 
 class UsedEmbedding(BaseModel):
-    model: StrictStr = Field(description="模型名称")
-    input: list = Field(description="向量化的内容列表")
+    model: StrictStr = Field(description="Model name")
+    input: list = Field(description="Content to embed")
 
 
 class AuthInfo(BaseModel):

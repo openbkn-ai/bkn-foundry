@@ -12,9 +12,8 @@ from app.logs.stand_log import StandLogger
 
 
 class ModelConfigNode:
-    """模型配置数据节点类，支持直接属性访问"""
+    """Model configuration node with attribute access."""
 
-    # 定义类属性以支持IDE自动提示
     model_id: str
     billing_type: str
     input_tokens: int
@@ -65,10 +64,9 @@ class ModelConfigNode:
 
 
 class QuotaConfigCacheTree:
-    """配置缓存树形结构类"""
+    """Tree-structured model configuration cache."""
 
     def __init__(self):
-        # 使用树形结构存储数据，第一层为model_id，第二层为具体配置属性
         self._root: Dict[str, ModelConfigNode] = {}
         self._lock = threading.RLock()
         self._snapshot_path = os.path.join(os.path.dirname(__file__), "quota_config_cache.snapshot.json")
@@ -76,7 +74,6 @@ class QuotaConfigCacheTree:
         self._boot_source = "unknown"  # db | snapshot | empty
         self._load_from_snapshot_or_db()
         StandLogger.info_log("加载大模型配额相关配置成功")
-        # Redis 多副本同步设置（基于全局单例）
         self._redis_channel = "quota_config_change"
         self._redis_hash_key = "quota_config_hash"
         self._redis_cmd_queue: "queue.Queue" = queue.Queue()
@@ -87,7 +84,7 @@ class QuotaConfigCacheTree:
             StandLogger.error(f"启动Redis工作线程失败: {e}")
 
     def _load_data(self):
-        """从数据库加载所有配置数据到树形结构"""
+        """Load all model configurations from the database."""
         try:
             model_quota_config = model_quota_dao.get_all_model_quota_config()
             loaded = False
@@ -110,7 +107,6 @@ class QuotaConfigCacheTree:
             StandLogger.info(f"加载配置数据时出错: {e}")
 
     def _load_from_snapshot_or_db(self) -> None:
-        # 优先尝试从DB加载；如果DB为空/失败，则尝试快照；最后保持空
         with self._lock:
             self._root.clear()
             try:
@@ -118,7 +114,6 @@ class QuotaConfigCacheTree:
             except Exception:
                 pass
             if self._boot_source != "db":
-                # DB为空或失败，尝试快照
                 if os.path.exists(self._snapshot_path):
                     try:
                         self._load_snapshot()
@@ -127,7 +122,6 @@ class QuotaConfigCacheTree:
                         return
                     except Exception as e:
                         StandLogger.error(f"加载快照失败，保持空: {e}")
-                # 最终为空
                 self._root = {}
 
     def _load_snapshot(self) -> None:
@@ -172,7 +166,6 @@ class QuotaConfigCacheTree:
         except Exception as e:
             StandLogger.error(f"检查/加载快照失败: {e}")
 
-    # ---------------- Redis 同步（基于全局单例）：发布/订阅与全量同步 ----------------
     def _enqueue_cmd(self, cmd: Dict[str, Any]) -> None:
         try:
             self._redis_cmd_queue.put_nowait(cmd)
@@ -184,7 +177,6 @@ class QuotaConfigCacheTree:
         asyncio.set_event_loop(loop)
 
         async def startup_and_run():
-            # 初始化全局redis单例
             try:
                 global redis_util
                 if redis_util is None:
@@ -193,19 +185,15 @@ class QuotaConfigCacheTree:
                 StandLogger.error(f"初始化Redis单例失败: {e}")
                 return
 
-            # 启动前根据来源决定同步方向
             try:
                 if self._boot_source == "db":
-                    # 以DB为准，广播全量覆盖到Redis
                     self._enqueue_cmd({"op": "full_reload"})
                     StandLogger.info_log("以DB为准，已触发全量覆盖写入Redis")
                 else:
-                    # 本地非DB来源，尝试从Redis回填本地
                     await self._async_load_all_from_redis_hash()
             except Exception as e:
                 StandLogger.error(f"启动前同步阶段异常: {e}")
 
-            # 并行启动：订阅循环 + 命令处理循环
             await asyncio.gather(
                 self._async_subscribe_loop(),
                 self._async_cmd_loop()
@@ -267,7 +255,6 @@ class QuotaConfigCacheTree:
                     await redis_util.write_conn.hdel(self._redis_hash_key, model_id)
                     await self._async_publish({"op": "delete", "model_id": model_id})
                 elif op == "full_reload":
-                    # 覆盖写入Hash
                     pipe = redis_util.write_conn.pipeline(transaction=True)
                     await pipe.delete(self._redis_hash_key)
                     for mid, node in self._root.items():
@@ -323,79 +310,73 @@ class QuotaConfigCacheTree:
                     pass
 
     def __getattr__(self, model_id: str) -> ModelConfigNode:
-        """支持直接通过属性访问获取模型配置数据"""
+        """Return model configuration data through attribute access."""
         self._refresh_from_snapshot_if_modified()
         if model_id in self._root:
             return self._root[model_id]
-        raise AttributeError(f"模型配置 '{model_id}' 不存在")
+        raise AttributeError(f"Model configuration '{model_id}' does not exist")
 
     def __getitem__(self, model_id: str) -> ModelConfigNode:
-        """支持通过索引访问获取模型配置数据"""
+        """Return model configuration data through item access."""
         self._refresh_from_snapshot_if_modified()
         if model_id in self._root:
             return self._root[model_id]
-        raise KeyError(f"模型配置 '{model_id}' 不存在")
+        raise KeyError(f"Model configuration '{model_id}' does not exist")
 
     def add(self, data: Dict[str, Any]) -> None:
-        """添加新的配置数据到树形结构"""
+        """Add model configuration data to the tree."""
         with self._lock:
             model_id = str(data["f_model_id"])
             self._root[model_id] = ModelConfigNode(data)
             self._save_snapshot()
-            # 异步同步到Redis并发布变更（通过队列交给工作线程处理）
             self._enqueue_cmd({"op": "upsert", "model_id": model_id, "config": self._root[model_id].to_dict()})
         return True
 
     def update(self, data: Dict[str, Any]) -> bool:
         model_id = str(data["f_model_id"])
-        """更新指定model_id的配置数据"""
+        """Update configuration data for a model ID."""
         with self._lock:
             self._root[model_id] = ModelConfigNode(data)
             self._save_snapshot()
-            # 异步同步到Redis并发布变更
             self._enqueue_cmd({"op": "upsert", "model_id": model_id, "config": self._root[model_id].to_dict()})
         return True
 
     def delete(self, model_id: str) -> bool:
-        """从树形结构中删除指定model_id的配置数据"""
+        """Delete configuration data for a model ID."""
         with self._lock:
             if model_id in self._root:
                 del self._root[model_id]
                 self._save_snapshot()
-                # 异步同步删除
                 self._enqueue_cmd({"op": "delete", "model_id": model_id})
                 return True
         return False
 
     def delete_batch(self, model_ids: []) -> bool:
-        """从树形结构中批量删除指定model_id的配置数据"""
+        """Delete configuration data for multiple model IDs."""
         with self._lock:
             for model_id in model_ids:
                 if model_id in self._root:
                     del self._root[model_id]
             self._save_snapshot()
-            # 异步广播全量刷新
             self._enqueue_cmd({"op": "full_reload"})
         return True
 
     def reload(self) -> None:
-        """重新从数据库加载所有配置数据"""
+        """Reload all configuration data from the database."""
         with self._lock:
             self._root.clear()
             self._load_data()
-            # 异步广播全量刷新
             self._enqueue_cmd({"op": "full_reload"})
 
     def list_all_model_ids(self) -> list:
-        """获取所有model_id列表"""
+        """Return all model IDs."""
         self._refresh_from_snapshot_if_modified()
         return list(self._root.keys())
 
     def get_all_configs(self) -> Dict[str, ModelConfigNode]:
-        """获取所有配置数据"""
+        """Return all configuration data."""
         self._refresh_from_snapshot_if_modified()
         return self._root
 
 
-# 全局配置缓存树形结构实例
 quota_config_cache_tree = QuotaConfigCacheTree()

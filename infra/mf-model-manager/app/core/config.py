@@ -10,25 +10,25 @@ import aiohttp
 class BaseConfig(object):
     DEBUGDEFAULT = False
     aiohttp_timeout = aiohttp.ClientTimeout(
-        total=1800,  # 总超时
-        sock_connect=30  # 保留连接超时
+        total=1800,  # Total timeout.
+        sock_connect=30  # Socket connection timeout.
     )
     test_llm_timeout = aiohttp.ClientTimeout(
-        total=60,  # 总超时
-        sock_connect=60  # 保留连接超时
+        total=60,  # Total timeout.
+        sock_connect=60  # Socket connection timeout.
     )
     DIPHOSTDEFAULT = "104.167.134.253"
     PORTDEFAULT = 9898
-    # 结构化数据库相关
+    # Relational database defaults.
     RDSHOSTDEFAULT = DIPHOSTDEFAULT
     RDSPORTDEFAULT = 3330
     RDSDBNAMEDEFAULT = 'openbkn'
     RDSUSERDEFAULT = 'root'
     RDSPASSDEFAULT = 'password'
 
-    # redis数据库相关
+    # Redis defaults.
     REDISCLUSTERMODEDEFAULT = "master-slave"
-    # 哨兵
+    # Redis Sentinel.
     SENTINELMASTERDEFAULT = DIPHOSTDEFAULT
     SENTINELUSERDEFAULT = "root"
     SENTINELPASSDEFAULT = "password"
@@ -41,39 +41,39 @@ class BaseConfig(object):
     REDISWRITEPORTDEFAULT = 6379
     REDISWRITEUSERDEFAULT = 'root'
     REDISWRITEPASSDEFAULT = 'password'
-    # 主从
+    # Redis primary/replica mode.
     REDISHOSTDEFAULT = DIPHOSTDEFAULT
     REDISPORTDEFAULT = 6379
     REDISUSERDEFAULT = 'root'
     REDISPASSDEFAULT = 'password'
-    # 鉴权相关
+    # Authentication services.
     OAUTHADMINHOSTDEFAULT = DIPHOSTDEFAULT
     OAUTHADMINPORTDEFAULT = 4445
     USERMANAGEMENTPRIVATEHOSTDEFAULT = DIPHOSTDEFAULT
     USERMANAGEMENTPRIVATEPORTDEFAULT = 30980
 
-    # 资源权限相关
+    # Resource authorization service.
     AUTHORIZATIONPRIVATEHOSTDEFAULT = DIPHOSTDEFAULT
     AUTHORIZATIONPRIVATEPORTDEFAULT = 30920
 
-    # KAFKA相关
+    # Kafka defaults.
     KAFKAHOSTDEFAULT = DIPHOSTDEFAULT
     KAFKAPORTDEFAULT = 9097
     KAFKAUSERDEFAULT = "username"
     KAFKAPASSDEFAULT = "password"
-    # app相关
+    # Application settings.
     APP_PORT = int(os.getenv('PORT', PORTDEFAULT))
     DEBUG = True if os.getenv("DEBUG") else DEBUGDEFAULT
     LOG_LEVEL = logging.debug if DEBUG else logging.info
 
-    # 结构化数据库相关
+    # Relational database defaults.
     RDSHOST = os.getenv("RDSHOST", RDSHOSTDEFAULT)
     RDSPORT = int(os.getenv("RDSPORT", RDSPORTDEFAULT))
     RDSDBNAME = os.getenv("RDSDBNAME", RDSDBNAMEDEFAULT)
     RDSUSER = os.getenv("RDSUSER", RDSUSERDEFAULT)
     RDSPASS = os.getenv("RDSPASS", RDSPASSDEFAULT)
 
-    # redis数据库相关
+    # Redis defaults.
     REDISCLUSTERMODE = os.getenv("REDISCLUSTERMODE", REDISCLUSTERMODEDEFAULT)
     REDISHOST = os.getenv("REDISHOST", DIPHOSTDEFAULT)
     REDISPORT = int(os.getenv("REDISPORT", REDISPORTDEFAULT))
@@ -90,38 +90,37 @@ class BaseConfig(object):
     SENTINELMASTER = os.getenv("SENTINELMASTER", SENTINELMASTERDEFAULT)
     SENTINELUSER = os.getenv("SENTINELUSER", SENTINELUSERDEFAULT)
     SENTINELPASS = os.getenv("SENTINELPASS", SENTINELPASSDEFAULT)
-    # 登录鉴权相关
+    # Authentication settings.
     OAUTHADMINHOST = os.getenv("OAUTHADMINHOST", OAUTHADMINHOSTDEFAULT)
     OAUTHADMINPORT = os.getenv("OAUTHADMINPORT", OAUTHADMINPORTDEFAULT)
     USERMANAGEMENTPRIVATEHOST = os.getenv("USERMANAGEMENTPRIVATEHOST", USERMANAGEMENTPRIVATEHOSTDEFAULT)
     USERMANAGEMENTPRIVATEPORT = os.getenv("USERMANAGEMENTPRIVATEPORT", USERMANAGEMENTPRIVATEPORTDEFAULT)
-    # 资源权限相关
+    # Resource authorization service.
     AUTHORIZATIONPRIVATEHOST = os.getenv("AUTHORIZATIONPRIVATEHOST", AUTHORIZATIONPRIVATEHOSTDEFAULT)
     AUTHORIZATIONPRIVATEPORT = os.getenv("AUTHORIZATIONPRIVATEPORT", AUTHORIZATIONPRIVATEPORTDEFAULT)
 
-    # KAFKA相关
+    # Kafka defaults.
     KAFKAHOST = os.getenv('KAFKAHOST', KAFKAHOSTDEFAULT)
     KAFKAPORT = os.getenv('KAFKAPORT', KAFKAPORTDEFAULT)
     KAFKAUSER = os.getenv('KAFKAUSER', KAFKAUSERDEFAULT)
     KAFKAPASS = os.getenv('KAFKAPASS', KAFKAPASSDEFAULT)
 
-    # 计量传输后端：auto=有 KAFKAHOST 环境变量则 kafka，否则 redis
+    # Metering transport: auto selects Kafka when KAFKAHOST is set, otherwise Redis.
     METERINGBACKEND = os.getenv('METERING_BACKEND', 'auto')
     METERINGREDISDB = int(os.getenv('METERING_REDIS_DB', '1'))
     METERINGSTREAMMAXLEN = int(os.getenv('METERING_STREAM_MAXLEN', '100000'))
 
-    # 权限控制开关：true=开启完整鉴权与资源权限逻辑；false=关闭，所有接口放行，不过滤数据
+    # Authorization switch: true enables authentication and resource filtering.
     AUTH_ENABLED = os.getenv('AUTH_ENABLED', 'false').lower() == 'true'
-    # 权限关闭时写入审计日志所用的匿名用户ID占位符
+    # Anonymous identity used for audit correlation when authorization is disabled.
     ANONYMOUS_USER_ID = "anonymous-user"
 
 
 def resolve_metering_backend():
-    """解析计量传输后端：kafka | redis。
+    """Resolve the metering transport: kafka or redis.
 
-    auto 模式下以原始环境变量 KAFKAHOST 是否设置为准（KAFKAHOSTDEFAULT
-    是写死的开发默认值，永远非空，不能用解析后的配置判断）。
-    显式指定 kafka/redis 时不做探活，按配置执行。
+    In auto mode, select Kafka only when the original KAFKAHOST environment variable is set; the resolved development default is always non-empty.
+    An explicit kafka or redis value is used without a health probe.
     """
     backend = (BaseConfig.METERINGBACKEND or 'auto').strip().lower()
     if backend in ('kafka', 'redis'):

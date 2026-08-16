@@ -8,7 +8,6 @@ from app.interfaces import dbaccess, logics
 
 
 class ModelOpDao():
-    # 新建模型配额设置（单条插入）
     # @connect_execute_commit_close_db
     # def add_model_used_log(self, config: dbaccess.ModelUsedAuditInfo, connection, cursor):
     #     sql = """insert into t_model_op_detail (f_id, f_model_id, f_user_id, f_input_tokens, f_output_tokens, f_total_price,
@@ -20,10 +19,8 @@ class ModelOpDao():
     #                   json.dumps(config.price_type)]
     #     cursor.execute(sql, value_list)
 
-    # 批量插入模型使用日志
     @connect_execute_commit_close_db
     def batch_add_model_used_log(self, batch_data: list, connection, cursor):
-        # 使用 INSERT ... ON DUPLICATE KEY UPDATE 实现幂等性
         sql = """INSERT INTO t_model_op_detail (f_id, f_model_id, f_user_id, f_input_tokens, f_output_tokens, f_total_price,
                 f_create_time, f_currency_type, f_referprice_in, f_referprice_out, f_price_type, f_total_count, f_failed_count,
                 f_average_total_time, f_average_first_time) 
@@ -54,7 +51,6 @@ class ModelOpDao():
             StandLogger.info_log(f"批量入库完成: affected_rows={inserted}")
         except Exception as e:
             StandLogger.error(f"批量入库时出错: {e}")
-            # 如果批量操作失败，尝试逐条插入
             inserted = 0
             for value_list in values:
                 try:
@@ -65,7 +61,6 @@ class ModelOpDao():
         
         return inserted
 
-    # 获取模型配额配置列表
     @connect_execute_close_db
     def get_model_config_list(self, config: logics.GetModelOpList, connection, cursor):
         today = datetime.datetime.today()
@@ -100,7 +95,6 @@ class ModelOpDao():
         res = cursor.fetchall()
         return res
 
-    # 获取指定时间范围内的所有log
     @connect_execute_close_db
     def get_model_used_logs_list_within_specified_timeframe(self, start_time, end_time, connection, cursor):
         sql = """select f_model_id, f_user_id, sum(f_input_tokens) as f_input_tokens, sum(f_output_tokens) as f_output_tokens
@@ -111,7 +105,6 @@ class ModelOpDao():
         res = cursor.fetchall()
         return res
 
-    # 生成通过model_id获取当月log列表的函数
     @connect_execute_close_db
     def get_model_used_logs_list_within_specified_timeframe_by_model_id(self, model_id, user_id, connection, cursor):
         sql = """select f_id, f_model_id, f_user_id, f_input_tokens, f_output_tokens, f_total_price, f_create_time, 
@@ -127,7 +120,6 @@ class ModelOpDao():
         res = cursor.fetchall()
         return res
 
-    # 删除指定时间范围内的所有log
     @connect_execute_commit_close_db
     def delete_model_used_logs_list_within_specified_timeframe(self, start_time, end_time, connection, cursor):
         sql = """delete from t_model_op_detail where f_create_time >= %s and f_create_time < %s"""
@@ -135,7 +127,6 @@ class ModelOpDao():
         StandLogger.info_log(sql % tuple(value_list))
         cursor.execute(sql, value_list)
 
-    # 归档表写入新数据
     @connect_execute_commit_close_db
     def add_data_to_model_archiving(self, new_id, model_id, archiving, key, file_size, connection, cursor):
         sql = """insert into t_model_archiving(f_id, f_model_id, f_archiving, f_create_time, f_key, f_file_size) 
@@ -146,14 +137,6 @@ class ModelOpDao():
 
     @connect_execute_close_db
     def get_model_archiving_list(self, page, size, model_id, order, rule, name, connection, cursor):
-        # if "使用明细_" in name:
-        #     name = name.replace("使用明细_", "")
-        # if "用明细_" in name:
-        #     name = name.replace("用明细_", "")
-        # if "明细_" in name:
-        #     name = name.replace("明细_", "")
-        # if "细_" in name:
-        #     name = name.replace("细_", "")
         sql = """select f_id, f_model_id, f_archiving, f_create_time, f_key, f_file_size from t_model_archiving """
         where = False
         if model_id != "":
@@ -215,7 +198,7 @@ class ModelOpDao():
         StandLogger.info_log(sql1)
         cursor.execute(sql1)
         model_quota_config = cursor.fetchall()
-        if model_quota_config == () or model_quota_config == []:  # 未设置配额，相当于还有token余额，可以调用
+        if model_quota_config == () or model_quota_config == []:  # No quota means the model remains callable.
             if quota[0]["f_create_by"] == user_id:
                 return True, ""
             else:

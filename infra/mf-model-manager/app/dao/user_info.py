@@ -7,7 +7,6 @@ from app.logs.stand_log import StandLogger
 from app.mydb.my_pymysql_pool import connect_execute_close_db
 
 
-# 获取用户名函数
 def user(user_id, **kwargs):
     try:
         user_cache = kwargs.get('user_cache', {})

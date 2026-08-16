@@ -21,7 +21,6 @@ from app.dao.prompt_dao import prompt_dao
 from app.dao.llm_model_dao import llm_model_dao
 
 
-# 获取prompt项目列表
 async def source_prompt_item_endpoint(request, prompt_item_name, prompt_name):
     headers = request.headers
     content = prompt_source_item_verify(prompt_item_name)
@@ -92,7 +91,7 @@ async def source_prompt_item_endpoint(request, prompt_item_name, prompt_name):
                     if i["f_prompt_item_id"] == item["f_prompt_item_id"] and i["f_type_is_delete"] == 0:
                         prompt_item_types.append(i)
                 for item_type in prompt_item_types:
-                    # 先收集该item_type下的所有prompt记录
+                    # Collect every prompt in the current group first.
                     prompt_infos = []
                     for prompt_item in fuzzy_item_type_list:
                         if prompt_item['f_prompt_item_type_id'] == item_type['f_prompt_item_type_id']:
@@ -121,7 +120,7 @@ async def source_prompt_item_endpoint(request, prompt_item_name, prompt_name):
                         data_item_type = {
                             "id": item_type["f_prompt_item_type_id"],
                             "name": item_type["f_prompt_item_type"],
-                            "prompt_info": prompt_infos  # 将收集的所有prompt记录放入数组
+                            "prompt_info": prompt_infos  # Store all collected prompt records.
                         }
                         data_item["prompt_item_types"].append(data_item_type)
                 if data_item["create_by"] not in id_name:
@@ -145,7 +144,6 @@ async def source_prompt_item_endpoint(request, prompt_item_name, prompt_name):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 获取提示词列表信息
 async def source_prompt_endpoint(request, prompt_item_id, prompt_item_type_id,
                                  page, size, prompt_name, order, rule, deploy, prompt_type):
     headers = request.headers
@@ -228,13 +226,11 @@ async def source_prompt_endpoint(request, prompt_item_id, prompt_item_type_id,
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 获取所有提示词的id和name
 async def prompt_list_endpoint():
     all_prompt = prompt_dao.get_all_data_from_prompt_list()
     return {prompt['f_prompt_id']: prompt['f_prompt_name'] for prompt in all_prompt}
 
 
-# 获取提示词模板列表信息
 async def template_source_prompt_endpoint(request, prompt_type, prompt_name):
     headers = request.headers
     error = prompt_template_verify(prompt_name, prompt_type)
@@ -270,7 +266,6 @@ async def template_source_prompt_endpoint(request, prompt_type, prompt_name):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 提示词查看
 async def check_prompt_endpoint(request, prompt_id):
     headers = request.headers
     error = await check_prompt_verify(prompt_id)
@@ -311,7 +306,6 @@ async def check_prompt_endpoint(request, prompt_id):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 新建提示词项目
 async def add_prompt_item_endpoint(userId, params):
     error = await item_add_verify(params)
     if error:
@@ -328,15 +322,14 @@ async def add_prompt_item_endpoint(userId, params):
                 return JSONResponse(status_code=200, content={"res": str(f_prompt_item_id)})
             except Exception as e:
                 print(e)
-                PromptItemAddError2['description'] = "提示词项目名称重复"
-                PromptItemAddError2['detail'] = "prompt_item_name参数不符合规范"
+                PromptItemAddError2['description'] = "Prompt project name already exists."
+                PromptItemAddError2['detail'] = "The prompt_item_name parameter is invalid."
                 return JSONResponse(status_code=500, content=PromptItemAddError2)
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 编辑提示词项目
 async def edit_prompt_item_endpoint(userId, model_para):
     error = await item_edit_verify(model_para)
     if error:
@@ -351,7 +344,6 @@ async def edit_prompt_item_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 新建提示词分类
 async def add_prompt_type_endpoint(userId, model_para):
     error = await type_add_verify(model_para)
     if error:
@@ -371,7 +363,6 @@ async def add_prompt_type_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 编辑提示词分类
 async def edit_prompt_type_endpoint(userId, model_para):
     error = await type_edit_verify(model_para)
     if error:
@@ -386,7 +377,6 @@ async def edit_prompt_type_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 新增提示词
 async def add_prompt_endpoint(userId, model_para):
     if "prompt_desc" not in model_para:
         model_para["prompt_desc"] = ''
@@ -424,7 +414,6 @@ async def add_prompt_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 提示词名称编辑
 async def name_edit_prompt_endpoint(userId, model_para):
     if "prompt_desc" not in model_para:
         model_para["prompt_desc"] = ''
@@ -436,15 +425,12 @@ async def name_edit_prompt_endpoint(userId, model_para):
         return JSONResponse(status_code=error[0], content=error[1])
     else:
         try:
-            # 获取原来的提示词分类id
             info = prompt_dao.get_prompt_by_id(model_para["prompt_id"])
             type_id = info[0]["f_prompt_item_type_id"]
-            # 如果两次的分类ID不一样
             if model_para['prompt_item_type_id'] != type_id:
-                # 去查询第二次分类的所有prompt名称
                 info = prompt_dao.get_data_from_prompt_list_by_item_type_id(model_para['prompt_item_type_id'])
                 prompt_name_in_new_type = [cell["f_prompt_name"] for cell in info]
-                # 如果名称重复, 进入循环阶段，为名称加后缀，直到不重复
+                # Add a suffix until the prompt name is unique.
                 if model_para['prompt_name'] in prompt_name_in_new_type:
                     num = 1
                     while True:
@@ -463,7 +449,6 @@ async def name_edit_prompt_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 提示词编辑
 async def edit_prompt_endpoint(userId, model_para):
     if "variables" not in model_para:
         model_para["variables"] = []
@@ -489,7 +474,6 @@ async def edit_prompt_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 提示词管理中编辑提示词接口
 async def edit_template_prompt_endpoint(userId, params):
     if "variables" not in params:
         params["variables"] = []
@@ -502,24 +486,21 @@ async def edit_template_prompt_endpoint(userId, params):
         StandLogger.error(error[1])
         return JSONResponse(status_code=error[0], content=error[1])
     try:
-        # 获取原来的提示词分类id
         info = prompt_dao.get_prompt_by_id(params["prompt_id"])
         type_id = info[0]["f_prompt_item_type_id"]
 
-        # 如果两次的分类ID一样
         if params['prompt_item_type_id'] == type_id:
             prompt_name_list = [ids["f_prompt_name"] for ids in
                                 prompt_dao.get_data_from_prompt_list_by_item_type_id(info[0]["f_prompt_item_type_id"])]
             if params["prompt_name"] in prompt_name_list and params["prompt_name"] != info[0]["f_prompt_name"]:
-                PromptNameEditError2['description'] = "参数错误"
-                PromptNameEditError2['detail'] = "提示词名称重复"
+                PromptNameEditError2['description'] = "Prompt rename is invalid."
+                PromptNameEditError2['detail'] = "Another prompt already uses this name."
                 StandLogger.error(PromptNameEditError2)
                 return JSONResponse(status_code=500, content=PromptNameEditError2)
         else:
-            # 去查询第二次分类的所有prompt名称
             info = prompt_dao.get_data_from_prompt_list_by_item_type_id(params['prompt_item_type_id'])
             prompt_name_in_new_type = [cell["f_prompt_name"] for cell in info]
-            # 如果名称重复, 进入循环阶段，为名称加后缀，直到不重复
+            # Add a suffix until the prompt name is unique.
             if params['prompt_name'] in prompt_name_in_new_type:
                 num = 1
                 while True:
@@ -538,7 +519,6 @@ async def edit_template_prompt_endpoint(userId, params):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 提示词发布
 async def deploy_prompt_endpoint(userId, model_para):
     error = await prompt_deploy_verify(model_para)
     if error:
@@ -555,7 +535,6 @@ async def deploy_prompt_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 提示词取消发布
 async def undeploy_prompt_endpoint(userId, model_para):
     error = await prompt_undeploy_verify(model_para)
     if error:
@@ -570,7 +549,6 @@ async def undeploy_prompt_endpoint(userId, model_para):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 填充提示词
 async def completion_prompt_endpoint(userId, prompt_id, inputs):
     if type(inputs) is str:
         inputs = json.loads(inputs.replace("'", '"'))
@@ -589,7 +567,6 @@ async def completion_prompt_endpoint(userId, prompt_id, inputs):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 查看代码
 async def code_prompt_endpoint(userId, model_id, prompt_id):
     error = await prompt_code_verify(model_id, prompt_id)
     if error:
@@ -627,7 +604,6 @@ async def code_prompt_endpoint(userId, model_id, prompt_id):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 获取api文档接口
 async def api_doc_prompt_endpoint(prompt_service_id):
     from app.commons.restful_api import get_prompt_restful_api_document
     info = prompt_dao.get_prompt_by_service_id(prompt_service_id)
@@ -644,7 +620,6 @@ async def api_doc_prompt_endpoint(prompt_service_id):
     return JSONResponse(status_code=200, content={'res': res})
 
 
-# 删除功能函数
 async def delete_prompt_endpoint(userId, delete_id):
     error = await prompt_delete_verify(delete_id)
     if error:
@@ -682,12 +657,10 @@ async def delete_prompt_endpoint(userId, delete_id):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 获取id模块
 async def get_id_endpoint(userId):
     return {"res": str(snow_id())}
 
 
-# 提示词移动
 async def move_prompt_endpoint(userId, move_param):
     error = await prompt_move_verify(move_param)
     if error:
@@ -697,11 +670,9 @@ async def move_prompt_endpoint(userId, move_param):
         prompt_id = move_param['prompt_id']
         new_item_id = move_param['prompt_item_id']
         new_type_id = move_param['prompt_item_type_id']
-        # 获取原来的 ID 和 name
         info = prompt_dao.get_prompt_by_id(prompt_id)
         old_type_id = info[0]["f_prompt_item_type_id"]
         old_name = info[0]["f_prompt_name"]
-        # 对重名的进行改名
         if new_type_id != old_type_id:
             info = prompt_dao.get_data_from_prompt_list_by_item_type_id(new_type_id)
             prompt_name_in_new_type = [cell["f_prompt_name"] for cell in info]
@@ -713,7 +684,6 @@ async def move_prompt_endpoint(userId, move_param):
                         break
                     num += 1
                 old_name = new_name
-        # 写数据
         prompt_dao.move_prompt(prompt_id, old_name, new_type_id, new_item_id, userId)
         return JSONResponse(status_code=200, content={"res": True})
     except Exception as e:
@@ -754,7 +724,8 @@ async def batch_add_prompt_endpoint(userId, params_list):
             for prompt in params["prompt_list"]:
                 if not isinstance(prompt["messages"], str):
                     error_dict = DataBaseError.copy()
-                    error_dict["description"] = error_dict["detail"] = error_dict["solution"] = "messages必须是字符串类型"
+                    error_dict["description"] = error_dict["detail"] = error_dict["solution"] = \
+                        "messages must be a string"
                     return JSONResponse(status_code=500, content=error_dict)
                 prompt_name = prompt["prompt_name"]
                 if prompt_name in prompt_name_id_dict.keys():
@@ -785,31 +756,27 @@ async def batch_add_prompt_endpoint(userId, params_list):
         StandLogger.error(e.args)
         error_dict = DataBaseError.copy()
 
-        error_dict["description"] = "发生了未知错误"
+        error_dict["description"] = "The prompt request failed."
         error_dict["detail"] = str(e.args[0])
         error_dict["solution"] = str(e.args[0])
         if "dict can not" in str(e.args[0]):
-            error_dict["description"] = error_dict["detail"] = error_dict["solution"] = "messages必须是字符串类型"
+            error_dict["description"] = error_dict["detail"] = error_dict["solution"] = \
+                "messages must be a string"
         return JSONResponse(status_code=500, content=error_dict)
 
 
 # async def encode_endpoint(params_json):
 #     try:
 #         if "text" not in params_json:
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "缺少参数text"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #         elif not isinstance(params_json["text"], str):
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "text必须为字符串类型"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #
 #         if "model_name" not in params_json:
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "缺少参数model_name"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #         elif not isinstance(params_json["model_name"], str):
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "model_name必须为字符串类型"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #         elif params_json["model_name"] == "":
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "model_name不可以为空"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #
 #         model_name = params_json["model_name"]
@@ -818,7 +785,6 @@ async def batch_add_prompt_endpoint(userId, params_list):
 #         if len(model_info) <= 0:
 #             model_info = llm_model_dao.get_model_by_name(model_name)
 #             if len(model_info) <= 0:
-#                 EncodeParaError['description'] = EncodeParaError['detail'] = "模型名称不存在"
 #                 return JSONResponse(status_code=500, content=EncodeParaError)
 #             model_info = model_info[0]
 #             llm_utils.model_config.add_model_config(model_info["f_model_id"], model_info["f_model_series"],
@@ -836,20 +802,15 @@ async def batch_add_prompt_endpoint(userId, params_list):
 # async def encode_endpoint_v2(params_json):
 #     try:
 #         if "text" not in params_json:
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "缺少参数text"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #         elif not isinstance(params_json["text"], str):
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "text必须为字符串类型"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #
 #         if "model_name" not in params_json:
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "缺少参数model_name"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #         elif not isinstance(params_json["model_name"], str):
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "model_name必须为字符串类型"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #         elif params_json["model_name"] == "":
-#             EncodeParaError["description"] = EncodeParaError["detail"] = "model_name不可以为空"
 #             return JSONResponse(status_code=400, content=EncodeParaError)
 #
 #         model_name = params_json["model_name"]
@@ -858,7 +819,6 @@ async def batch_add_prompt_endpoint(userId, params_list):
 #         if len(model_info) <= 0:
 #             model_info = llm_model_dao.get_model_by_name(model_name)
 #             if len(model_info) <= 0:
-#                 EncodeParaError['description'] = EncodeParaError['detail'] = "模型名称不存在"
 #                 return JSONResponse(status_code=500, content=EncodeParaError)
 #             model_info = model_info[0]
 #             llm_utils.model_config.add_model_config(model_info["f_model_id"], model_info["f_model_series"],
@@ -878,20 +838,20 @@ async def batch_add_prompt_endpoint(userId, params_list):
 async def decode_endpoint(params_json):
     try:
         if "token_ids" not in params_json:
-            DecodeParaError["description"] = DecodeParaError["detail"] = "缺少参数token_ids"
+            DecodeParaError["description"] = DecodeParaError["detail"] = "token_ids is required"
             return JSONResponse(status_code=400, content=DecodeParaError)
         elif not isinstance(params_json["token_ids"], list):
-            DecodeParaError["description"] = DecodeParaError["detail"] = "token_ids必须为list类型"
+            DecodeParaError["description"] = DecodeParaError["detail"] = "token_ids must be a list"
             return JSONResponse(status_code=400, content=DecodeParaError)
 
         if "model_name" not in params_json:
-            DecodeParaError["description"] = DecodeParaError["detail"] = "缺少参数model_name"
+            DecodeParaError["description"] = DecodeParaError["detail"] = "model_name is required"
             return JSONResponse(status_code=400, content=DecodeParaError)
         elif not isinstance(params_json["model_name"], str):
-            DecodeParaError["description"] = DecodeParaError["detail"] = "model_name必须为字符串类型"
+            DecodeParaError["description"] = DecodeParaError["detail"] = "model_name must be a string"
             return JSONResponse(status_code=400, content=DecodeParaError)
         elif params_json["model_name"] == "":
-            DecodeParaError["description"] = DecodeParaError["detail"] = "model_name不可以为空"
+            DecodeParaError["description"] = DecodeParaError["detail"] = "model_name cannot be empty"
             return JSONResponse(status_code=400, content=DecodeParaError)
 
         model_name = params_json["model_name"]
@@ -900,7 +860,7 @@ async def decode_endpoint(params_json):
         if len(model_info) <= 0:
             model_info = llm_model_dao.get_model_by_name(model_name)
             if len(model_info) <= 0:
-                DecodeParaError['description'] = DecodeParaError['detail'] = "模型名称不存在"
+                DecodeParaError['description'] = DecodeParaError['detail'] = "The model name does not exist."
                 return JSONResponse(status_code=500, content=DecodeParaError)
             model_info = model_info[0]
             llm_utils.model_config.add_model_config(model_info["f_model_id"], model_info["f_model_series"],
@@ -934,21 +894,13 @@ async def decode_endpoint(params_json):
 
 # async def llm_generate(userId, language, req: LLMGenerateReq):
 #     generation_prompts = {
-#         'prompt': '1100000000000000038',  # 生成提示词
-#         'function': '1100000000000000039'  # 生成代码
 #     }
 #     if not req.input:
-#         AutoGenerationError1['description'] = "参数错误"
-#         AutoGenerationError1['detail'] = "input不能为空"
 #         return JSONResponse(status_code=400, content=AutoGenerationError1)
 #     if req.type not in generation_prompts:
-#         AutoGenerationError1['description'] = "参数错误"
-#         AutoGenerationError1['detail'] = "type 只能为" + str(list(generation_prompts.keys()))
 #         return JSONResponse(status_code=400, content=AutoGenerationError1)
 #     prompt = prompt_dao.get_prompt_by_id(generation_prompts[req.type])
 #     if not prompt:
-#         AutoGenerationError1['description'] = "提示词不存在"
-#         AutoGenerationError1['detail'] = "提示词不存在"
 #         return JSONResponse(status_code=500, content=AutoGenerationError1)
 #     prompt_message = Message(role="system", content=prompt[0]["f_messages"])
 #     input_message = Message(role="user", content=req.input)
@@ -1008,8 +960,8 @@ async def run_prompt_endpoint_stream(request, model_para, security_token=None):
                 messages = messages.replace("{{" + str(message_input) + "}}", str(value))
         except Exception as e:
             StandLogger.error(e.args)
-            PromptTemplateRunError1["description"] = "messages解析错误"
-            PromptTemplateRunError1["detail"] = "messages解析错误"
+            PromptTemplateRunError1["description"] = "Unable to parse messages."
+            PromptTemplateRunError1["detail"] = "The messages value could not be parsed."
             return JSONResponse(status_code=500, content=PromptTemplateRunError1)
         prompt_tokens = 100
         context_size = info[0]["f_max_model_len"] * 1000

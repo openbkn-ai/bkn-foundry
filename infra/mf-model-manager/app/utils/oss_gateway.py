@@ -19,7 +19,6 @@ class OSSGateway:
     _basicUrl = f"http://{_host}:{_port}"
     _bucketID = ""
 
-    # 下载
     @circuit(failure_threshold=5, recovery_timeout=60)
     def ownload(self, key: str, name: str):
         url = "%s/api/ossgateway/v1/download/%s/%s?user=%s&type=query_string&internal_request=false&save_name=%s" % \

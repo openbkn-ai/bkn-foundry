@@ -8,35 +8,32 @@ from app.utils.metering_producer import produce_metering_record
 
 async def add_llm_model_call_log(para: logics.AddModelUsedAudit):
     """
-    将token消费信息写入计量队列（Kafka 或 Redis Stream，按 METERING_BACKEND）
-    :param para:
-    :return:
+    Write token usage to the metering queue selected by METERING_BACKEND.
+    Args:
+        para: Usage record to enqueue.
+    Returns:
+        Whether the record was accepted.
     """
     try:
 
-        # 准备消息数据，参考kafka_streams_processor.py中消费者的字段
         message_data = {
             'model_id': para.model_id,
             'user_id': para.user_id,
             'input_tokens': para.input_tokens,
             'output_tokens': para.output_tokens,
-            'conf_id': str(worker.get_id()),  # 生成新的配置ID
-            'total_price': 0.0,  # 这个值会在消费者端计算
-            'currency_type': 0,  # 默认值，会在消费者端更新
-            'price_type': ["thousand", "thousand"],    # 默认值，会在消费者端更新
-            'referprice_in': 0.0,  # 默认值，会在消费者端更新
-            'referprice_out': 0.0  # 默认值，会在消费者端更新
+            'conf_id': str(worker.get_id()),  # Generate a new configuration ID.
+            'total_price': 0.0,  # Calculated by the consumer.
+            'currency_type': 0,  # Default updated by the consumer.
+            'price_type': ["thousand", "thousand"],    # Default updated by the consumer.
+            'referprice_in': 0.0,  # Default updated by the consumer.
+            'referprice_out': 0.0  # Default updated by the consumer.
         }
 
-        # 将消息数据转换为JSON格式
         message_json = json.dumps(message_data, ensure_ascii=False)
 
-        # 异步非阻塞发送到计量队列
         await produce_metering_record(
             value=message_json.encode('utf-8'),
-            key=f"{para.model_id}_{para.user_id}_{message_data['conf_id']}".encode('utf-8')  # 加入conf_id以便排查追踪
+            key=f"{para.model_id}_{para.user_id}_{message_data['conf_id']}".encode('utf-8')  # Include conf_id for diagnostics.
         )
     except Exception as e:
         StandLogger.error(f"将token消费信息写入计量队列时出错: {e}")
-
-

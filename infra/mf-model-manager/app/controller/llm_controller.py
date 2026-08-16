@@ -24,13 +24,7 @@ from app.utils.verify_utils import llm_test
 from sse_starlette import EventSourceResponse
 import re
 
-eng_dict = {
-    "名称已存在，请修改": "Name already exists, please modify",
-    "名称已被其他用户占用，请修改": "The name is already taken by another user, please change it"
-}
-
-
-# 保存大模型数据
+# Save a large model configuration.
 async def add_model(schema_para, userId, language, role=""):
     required_params = ["max_model_len"]
     missing_params = await validate_required_params(schema_para, required_params)
@@ -39,7 +33,7 @@ async def add_model(schema_para, userId, language, role=""):
         content = await get_error_message(code, language)
         content["detail"] = f"missing parameters: {', '.join(missing_params)}"
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
-    # 创建权限校验（大模型走 bkn-safe authz，与小模型一致；资源 id 用通配 "*"）
+    # Large-model creation uses bkn-safe authorization with the wildcard resource ID.
     permission = await permission_manager.check_single_permission(user_id=userId, resource_id="*",
                                                                   operations="create",
                                                                   resource_type="large_model",
@@ -51,9 +45,6 @@ async def add_model(schema_para, userId, language, role=""):
     if content:
         StandLogger.error(content)
         content = content.copy()
-        if content.get("code", "") == "ModelFactory.ConnectController.LLMAdd.NameRepeat" and language == "en-US":
-            content["description"] = content["detail"] = eng_dict.get(content["description"], "")
-            content["solution"] = "Please check the input information"
         return JSONResponse(status_code=400, content=content)
     else:
         try:
@@ -71,7 +62,7 @@ async def add_model(schema_para, userId, language, role=""):
                                                    userId, json.dumps(config),
                                                    schema_para["max_model_len"],
                                                    schema_para.get("model_parameters", None), quota)
-            # 把新建大模型的实例权限授予创建者（admin 用户在 add_permission 内部短路跳过）
+            # Grant the new model instance to its creator; add_permission bypasses administrators.
             if base_config.AUTH_ENABLED:
                 user_infos = await get_username_by_ids([userId])
                 user_name = user_infos.get(userId, "")
@@ -82,14 +73,12 @@ async def add_model(schema_para, userId, language, role=""):
                 resource_type="large_model", user_name=user_name, role=role)
             if not grant_ok:
                 raise Exception("add permission failed")
-            # id 返回 string：雪花 id 是 19 位整数(>2^53)，JSON number 会被 JS 客户端
-            # 精度截断(末位抹零)，导致前端拿到的 id 删不掉/查不到。与小模型一致返回字符串。
+            # Return Snowflake IDs as strings because 19-digit values exceed JavaScript's safe integer range.
+            # Numeric JSON would lose precision and make the returned resource impossible to query or delete.
             content = {"status": "ok", "id": str(model_id)}
             if quota is False:
-                # 需要预插入一条模型配额
                 conf_id = worker.get_id()
                 model_quota_dao.add_no_model_quota_config(conf_id, model_id, userId)
-                # 增加缓存
                 quota_config_cache_tree.add({"f_model_id": model_id})
             return JSONResponse(status_code=200, content=content)
         except Exception as e:
@@ -97,7 +86,6 @@ async def add_model(schema_para, userId, language, role=""):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 删除大模型
 async def remove_model(model_ids, userId, language, role=""):
     try:
         if "model_ids" not in model_ids.keys():
@@ -114,26 +102,25 @@ async def remove_model(model_ids, userId, language, role=""):
             if model_id not in model_dict:
                 StandLogger.error(LLMRemoveError["detail"])
                 return JSONResponse(status_code=400, content=LLMRemoveError)
-        # 删除权限校验：逐个待删模型校验 delete 权限（大模型走 bkn-safe authz，与小模型一致）
+        # Check delete permission for every large model before removal.
         for model_id in model_ids["model_ids"]:
             permission = await permission_manager.check_single_permission(
                 user_id=userId, resource_id=str(model_id), operations="delete",
                 resource_type="large_model", role=role)
             if not permission:
                 error_dict = NotPermissionError.copy()
-                error_dict["detail"] = "部分模型无删除权限"
+                error_dict["detail"] = "One or more models cannot be deleted by the current identity."
                 return JSONResponse(status_code=403, content=error_dict)
         llm_model_dao.delete_model_by_id(model_ids["model_ids"])
         model_quota_dao.delete_model_quota_by_model_id(model_ids["model_ids"])
-        # 清理 bkn-safe 中这些模型实例的全部授权策略
+        # Remove all bkn-safe authorization policies for the deleted model instances.
         await permission_manager.delete_permission(resource_type="large_model",
                                                    resource_ids=[str(mid) for mid in model_ids["model_ids"]])
-        # 确保 redis_util 已初始化
+        # Lazily initialize the Redis client.
         global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
         await redis_util.delete_str(cache_key_list)
-        # 删除缓存
         quota_config_cache_tree.delete_batch(model_ids['model_ids'])
         content = {"status": "ok", "id": model_ids['model_ids']}
         return JSONResponse(status_code=200, content=content)
@@ -162,7 +149,7 @@ async def remove_model_by_name(model_names, userId, language):
                 return JSONResponse(status_code=400, content=LLMRemoveError)
         llm_model_dao.delete_model_by_id(model_ids)
 
-        # 确保 redis_util 已初始化
+        # Lazily initialize the Redis client.
         global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
@@ -176,7 +163,6 @@ async def remove_model_by_name(model_names, userId, language):
         return JSONResponse(status_code=400, content=LLMRemoveError)
 
 
-# 测试大模型
 async def test_model(model_config, userId, language):
     model_id = model_config.get("model_id", "-")
     change = model_config.get("change", False)
@@ -189,7 +175,6 @@ async def test_model(model_config, userId, language):
                 return JSONResponse(status_code=400, content=LLMTestError)
             config_str = info[0]["f_model_config"]
             model_config_old = json.loads(config_str.replace("'", '"'))
-            # 区分是编辑页面测试连接还是外部点击
             if not model_config_new:
                 config = model_config_old
                 series = info[0]["f_model_series"]
@@ -217,12 +202,11 @@ async def test_model(model_config, userId, language):
     except Exception as e:
         StandLogger.error(str(e))
         error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-        error_dict["description"] = "无法访问该链接，请检查该链接是否可以访问"
+        error_dict["description"] = "The model service URL is not reachable."
         error_dict["detail"] = str(e)
         return JSONResponse(status_code=400, content=error_dict)
 
 
-# 重命名大模型
 async def edit_model(model_para, userId, language, role=""):
     content = llm_edit_verify(model_para)
     if content:
@@ -236,7 +220,7 @@ async def edit_model(model_para, userId, language, role=""):
                 StandLogger.error(LLMEdit2Error["detail"])
                 return JSONResponse(status_code=400, content=LLMEdit2Error)
             else:
-                # 修改权限校验（大模型走 bkn-safe authz，与小模型一致）
+                # Check bkn-safe modify permission for the large model.
                 permission = await permission_manager.check_single_permission(
                     user_id=userId, resource_id=str(model_para["model_id"]), operations="modify",
                     resource_type="large_model", role=role)
@@ -267,7 +251,6 @@ async def edit_model(model_para, userId, language, role=""):
                 model_config = config_new
                 model_series = model_para["model_series"]
                 model_type = model_para["model_type"]
-                # 配额开关切换状态需要清空数据
                 if old_quota != quota:
                     model_quota_dao.delete_model_quota_by_model_id([model_para["model_id"]])
                 if re_name not in model_name_list or re_name == old_name:
@@ -275,7 +258,6 @@ async def edit_model(model_para, userId, language, role=""):
                                              model_para["max_model_len"],
                                              model_para.get("model_parameters", None), quota, json.dumps(model_config),
                                              model_series, model_type)
-                    # 编辑后移除配额缓存
                     global redis_util
                     if redis_util is None:
                         redis_util = await get_redis_util()
@@ -290,24 +272,19 @@ async def edit_model(model_para, userId, language, role=""):
                 else:
                     model_name_list = llm_model_dao.get_model_by_name(re_name)
                     if model_name_list[0]["f_create_by"] == userId:
-                        LLMEdit4Error['description'] = "名称已存在，请修改"
-                        LLMEdit4Error['detail'] = "名称已存在，请修改"
+                        LLMEdit4Error['description'] = "Model name already exists."
+                        LLMEdit4Error['detail'] = "Another model already uses this name."
                     else:
-                        LLMEdit4Error['description'] = "名称已被其他用户占用，请修改"
-                        LLMEdit4Error['detail'] = "名称已被其他用户占用，请修改"
+                        LLMEdit4Error['description'] = "Model name is already in use."
+                        LLMEdit4Error['detail'] = "Another user already uses this model name."
                     StandLogger.error(LLMEdit4Error["detail"])
                     content = LLMEdit4Error.copy()
-                    if content.get("code",
-                                   "") == "ModelFactory.ConnectController.LLMEdit.NameError" and language == "en-US":
-                        content["description"] = content["detail"] = eng_dict.get(content["description"], "")
-                        content["solution"] = "Please check the input information"
                     return JSONResponse(status_code=500, content=content)
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 获取大模型列表函数
 async def source_model(userId, language, page, size, name, order, series, rule, api_model, model_type, quota, role=""):
     name = name.strip()
     error = llm_source_verify(order, page, size, rule, series, name, model_type)
@@ -316,7 +293,7 @@ async def source_model(userId, language, page, size, name, order, series, rule, 
         return JSONResponse(status_code=400, content=error)
     else:
         try:
-            # 权限关闭或 admin 用户：直接查全量，不按用户过滤
+            # Return all models when authorization is disabled or the caller is an administrator.
             if not base_config.AUTH_ENABLED or userId == "266c6a42-6131-4d62-8f39-853e7093701c":
                 result = llm_model_dao.get_data_from_model_list_by_name_fuzzy(name, page, size, order, rule, api_model,
                                                                               model_type)
@@ -326,8 +303,8 @@ async def source_model(userId, language, page, size, name, order, series, rule, 
                 result = await reshape_source(result, total)
                 return JSONResponse(status_code=200, content=result)
             else:
-                # 授权过滤（#213）：普通用户只看有 large_model:display 授权的模型。
-                # 未授权任何模型 → 空列表；否则把授权 id 集下推进配额查询（查询层过滤，分页正确）。
+                # Authorization filter (#213): regular users see only models with large_model:display permission.
+                # Return an empty list without grants; otherwise push authorized IDs into the paginated query.
                 candidate_ids = [m['f_model_id'] for m in llm_model_dao.get_all_model_list()]
                 permission_ids = await permission_manager.filter_authorized_ids(
                     user_id=userId, role=role, candidate_ids=candidate_ids,
@@ -347,13 +324,12 @@ async def source_model(userId, language, page, size, name, order, series, rule, 
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 大模型信息查看接口
 async def check_model(model_id, userId, language, role=""):
     idx_list = [idx["f_model_id"] for idx in llm_model_dao.get_all_model_list()]
     if model_id not in idx_list:
         StandLogger.error(LLMCheckError["detail"])
         return JSONResponse(status_code=400, content=LLMCheckError)
-    # 查看权限校验（大模型走 bkn-safe authz，与小模型一致）
+    # Check bkn-safe display permission for the large model.
     permission = await permission_manager.check_single_permission(
         user_id=userId, resource_id=str(model_id), operations="display",
         resource_type="large_model", role=role)
@@ -365,10 +341,8 @@ async def check_model(model_id, userId, language, role=""):
     except Exception as e:
         StandLogger.error(e.args)
         return JSONResponse(status_code=500, content=DataBaseError)
-
-
 async def check_names_by_ids(model_ids, userId, language, role=""):
-    # 按 id 批量取名（对象级授权页回显用）：低敏只读，不做授权拦截；不存在的 id 直接略过
+    # Resolve model names by ID for authorization UI display; omit unknown IDs.
     try:
         if not isinstance(model_ids, list) or not model_ids:
             return JSONResponse(status_code=200, content={"entries": []})
@@ -381,7 +355,6 @@ async def check_names_by_ids(model_ids, userId, language, role=""):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-# 新增大模型参数获取接口
 async def param_model(user):
     try:
         info = llm_model_dao.get_all_data_from_model_series()
@@ -397,7 +370,6 @@ async def api_doc_model(llm_id):
     return JSONResponse(status_code=200, content={"res": get_model_restful_api_document(llm_id)})
 
 
-# 调用大模型函数
 from fastapi import Request
 
 
@@ -644,15 +616,12 @@ async def used_model_stream(request: Request, llm_id, ai_system, ai_user, ai_ass
             "content": ai_system
         })
 
-        # 流式返回处理
         if stream:
             try:
-                # 设置更合理的超时时间并确保正确关闭
                 generator = other_client.chat_completion_stream(messages, user_id, return_info, cache)
                 return EventSourceResponse(generator, ping=3600)
             except Exception as e:
                 raise e
-        # 非流式返回处理
         else:
             try:
                 res = await other_client.chat_completion(messages, user_id, '')
@@ -661,7 +630,6 @@ async def used_model_stream(request: Request, llm_id, ai_system, ai_user, ai_ass
                 else:
                     return JSONResponse(status_code=200, content=res)
             except Exception as e:
-                # 确保发生异常时关闭客户端
                 raise e
 
 
@@ -679,7 +647,7 @@ async def used_model_openai(request, user_id, language, func_module):
     model_name = request["model"]
     cache_key = f"dip:model-api:llm:{model_name}:list"
     try:
-        # 确保 redis_util 已初始化
+        # Lazily initialize the Redis client.
         global redis_util
         if redis_util is None:
             redis_util = await get_redis_util()
@@ -689,18 +657,18 @@ async def used_model_openai(request, user_id, language, func_module):
                 model_info = eval(res)
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
-                # 缓存解析失败，回退到数据库查询
+                # Fall back to the database when cached data is invalid.
                 model_info = llm_model_dao.get_data_from_model_list_by_name(model_name)
                 if len(model_info) == 0:
                     return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
-                # 重新设置缓存
+                # Refresh the quota cache.
                 await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
         else:
-            # 缓存不存在或非预期类型，从数据库获取
+            # Query the database when the cache is missing or has an unexpected type.
             model_info = llm_model_dao.get_data_from_model_list_by_name(model_name)
             if len(model_info) == 0:
                 return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
-            # 设置缓存
+            # Cache the quota result.
             await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
     except Exception as e:
         StandLogger.error(e.args)
@@ -719,14 +687,14 @@ async def used_model_openai(request, user_id, language, func_module):
                 model_quota_info = eval(res)
             except Exception as e:
                 StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={quota_cache_key}, value={res}")
-                # 缓存解析失败，回退到数据库查询
+                # Fall back to the database when cached data is invalid.
                 model_quota_info = llm_model_dao.get_quota_by_user_and_model(user_id, model_id)
-                # 重新设置缓存
+                # Refresh the quota cache.
                 await redis_util.set_str(key=quota_cache_key, value=str(model_quota_info), expire=300)
         else:
-            # 缓存不存在或非预期类型，从数据库获取
+            # Query the database when the cache is missing or has an unexpected type.
             model_quota_info = llm_model_dao.get_quota_by_user_and_model(user_id, model_id)
-            # 设置缓存
+            # Cache the quota result.
             await redis_util.set_str(key=quota_cache_key, value=str(model_quota_info), expire=300)
         if len(model_quota_info) == 0 or model_quota_info[0]["remaining_input_tokens"] <= 0 or model_quota_info[0][
             "remaining_output_tokens"] <= 0:
@@ -735,7 +703,7 @@ async def used_model_openai(request, user_id, language, func_module):
 
     if request["max_tokens"] > context_size * 1000:
         error_dict = ModelFactory_Router_ParamError_FormatError_Error.copy()
-        error_dict["detail"] = f"max_tokens超过最大值{context_size}k"
+        error_dict["detail"] = f"max_tokens exceeds the maximum value of {context_size}k"
         return JSONResponse(status_code=400, content=error_dict)
     messages = request["messages"]
     message = messages[len(messages) - 1]["content"]
@@ -917,20 +885,15 @@ async def encode_endpoint(params_json, userId, language):
     return JSONResponse(status_code=200, content={"count": 100})
     # try:
     #     if "text" not in params_json:
-    #         EncodeParaError["description"] = EncodeParaError["detail"] = "缺少参数text"
     #         return JSONResponse(status_code=400, content=EncodeParaError)
     #     elif not isinstance(params_json["text"], str):
-    #         EncodeParaError["description"] = EncodeParaError["detail"] = "text必须为字符串类型"
     #         return JSONResponse(status_code=400, content=EncodeParaError)
     #
     #     if "model_name" not in params_json:
-    #         EncodeParaError["description"] = EncodeParaError["detail"] = "缺少参数model_name"
     #         return JSONResponse(status_code=400, content=EncodeParaError)
     #     elif not isinstance(params_json["model_name"], str):
-    #         EncodeParaError["description"] = EncodeParaError["detail"] = "model_name必须为字符串类型"
     #         return JSONResponse(status_code=400, content=EncodeParaError)
     #     elif params_json["model_name"] == "":
-    #         EncodeParaError["description"] = EncodeParaError["detail"] = "model_name不可以为空"
     #         return JSONResponse(status_code=400, content=EncodeParaError)
     #
     #     model_name = params_json["model_name"]
@@ -939,7 +902,6 @@ async def encode_endpoint(params_json, userId, language):
     #     if len(model_info) <= 0:
     #         model_info = llm_model_dao.get_model_by_name(model_name)
     #         if len(model_info) <= 0:
-    #             EncodeParaError['description'] = EncodeParaError['detail'] = "模型名称不存在"
     #             return JSONResponse(status_code=500, content=EncodeParaError)
     #         model_info = model_info[0]
     #         await llm_utils.model_config.add_model_config(model_info["f_model_id"], model_info["f_model_series"],
@@ -962,8 +924,8 @@ async def get_monitor_data(userId, language, model_id, role=""):
             error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
             error_dict["deatil"] = "Param model_id is required"
             return JSONResponse(status_code=400, content=error_dict)
-        # 授权（#213）：无该模型 display 权限的用户不得看统计（此前返全 0，误导为「没被调用」）。
-        # admin 用户与 AUTH 关闭在 check_display 内部短路放行。
+        # Authorization (#213): callers without display permission cannot view model statistics.
+        # check_display bypasses administrators and disabled authorization.
         if userId != "266c6a42-6131-4d62-8f39-853e7093701c" and \
                 not await permission_manager.check_display(userId, role, "large_model", model_id):
             return JSONResponse(status_code=403, content=NotPermissionError)
@@ -992,8 +954,8 @@ async def edit_default_model(model_para, userId, language):
     global redis_util
     if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
         error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-        error_dict['description'] = "无操作权限"
-        error_dict['detail'] = "仅管理员具备编辑权限"
+        error_dict['description'] = "Permission denied."
+        error_dict['detail'] = "Only administrators can edit the default model."
         return JSONResponse(status_code=403, content=error_dict)
     key_list = ["model_id", "default"]
     for k in key_list:
@@ -1001,22 +963,22 @@ async def edit_default_model(model_para, userId, language):
             raise RequestValidationError([{"loc": ('body', k), "type": "value_error.missing"}])
     if not isinstance(model_para["default"], bool):
         error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-        error_dict['description'] = "default 参数不符合规范"
-        error_dict['detail'] = "当前参数仅支持布尔值true"
+        error_dict['description'] = "The default parameter is invalid."
+        error_dict['detail'] = "The default parameter must be a boolean."
         return JSONResponse(status_code=400, content=error_dict)
 
     try:
         model_id = model_para["model_id"]
 
-        # 检查模型是否存在
+        # Check whether the model exists.
         model_exists = llm_model_dao.check_model_is_exist(model_id)
         if not model_exists:
             error_dict = ModelFactory_ExternalSmallModel_EditModel_IdNotExist_Error.copy()
-            error_dict['description'] = "模型不存在"
-            error_dict['detail'] = "模型不存在"
+            error_dict['description'] = "Model not found."
+            error_dict['detail'] = "The specified model does not exist."
             return JSONResponse(status_code=400, content=error_dict)
 
-        # 获取当前默认模型
+        # Read the current default model.
         set_default = model_para["default"]
         if not set_default:
             llm_model_dao.update_model_default_status(model_id, False)
@@ -1031,18 +993,17 @@ async def edit_default_model(model_para, userId, language):
         old_model_id = ""
         if old_default_data:
             old_model_id = old_default_data[0]["f_model_id"]
-        # 检查是否已经是默认模型
+        # Reject a redundant default-model update.
         if old_model_id == model_id:
             error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict['description'] = "该模型已经是默认模型"
-            error_dict['detail'] = "该模型已经是默认模型，无需重复设置"
+            error_dict['description'] = "The model is already the default."
+            error_dict['detail'] = "The model is already the default and does not need to be set again."
             return JSONResponse(status_code=400, content=error_dict)
 
-        # 设置新的默认模型
-        # 先将旧的默认模型设置为非默认
+        # Clear the old default before setting the new one.
         if old_model_id:
             llm_model_dao.update_model_default_status(old_model_id, False)
-        # 设置新的默认模型
+        # Set the new default model.
         llm_model_dao.update_model_default_status(model_id, True)
         default_cache_name = "default_model_3ed523"
         default_cache_key = f"dip:model-api:llm:{default_cache_name}:list"
@@ -1059,19 +1020,19 @@ async def edit_default_model(model_para, userId, language):
 
 async def get_overview_data(userId, language, model_id, start_time, end_time, role=""):
     try:
-        # 授权（#213）：指定 model_id 时校验其 display 权限；未指定（聚合全部）时要求
-        # 至少对一个大模型有 display 权限,否则空权限用户会看到全 0 的误导性总览。
-        # admin 与 AUTH 关闭在内部短路放行。
+        # Authorization (#213): check display permission for a selected model.
+        # Aggregate views require permission for at least one large model.
+        # Administrators and disabled authorization bypass this check.
         if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
             if model_id:
                 if not await permission_manager.check_display(userId, role, "large_model", model_id):
                     return JSONResponse(status_code=403, content=NotPermissionError)
             else:
-                # 口径说明:此处 authorized 仅作准入门禁(有无任一授权模型),用于消除
-                # 空权限用户的误导性全 0 总览。聚合本身不再按 authorized 集收窄——DAO 侧
-                # 对非 admin 已附加 and d.f_user_id='{userId}'(llm_model_dao 435/459),
-                # 总览统计的是调用者自身跨模型的用量,不构成越权;列表按授权收窄、总览按
-                # 自身用量,两处口径不同,勿误读为总览也已逐模型过滤。
+                # authorized is an admission check for at least one model, preventing a misleading zero overview.
+                # The aggregate is not narrowed to the authorized model set; the DAO filters by caller.
+                # Non-admin queries add d.f_user_id='{userId}' in llm_model_dao.
+                # The overview aggregates the caller's own cross-model usage and does not expose other users.
+                # Lists are grant-filtered, while overviews are caller-filtered.
                 candidate_ids = [m['f_model_id'] for m in llm_model_dao.get_all_model_list()]
                 authorized = await permission_manager.filter_authorized_ids(
                     user_id=userId, role=role, candidate_ids=candidate_ids,
@@ -1087,7 +1048,6 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
             error_dict["detail"] = "Param end_time is required"
             return JSONResponse(status_code=400, content=error_dict)
 
-        # 验证 start_time 和 end_time 的格式是否为 YYYY-MM-DD
         date_pattern = r'^\d{4}-\d{2}-\d{2}$'
         if not re.match(date_pattern, start_time):
             error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
@@ -1108,7 +1068,6 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
         core_metrics, trend_analysis, qps_analysis = llm_model_dao.get_overview_data(model_id, start_time, end_time,
                                                                                      userId)
 
-        # 处理核心指标数据，只有一行数据，提取到summary字段中
         summary = {}
         if core_metrics and len(core_metrics) > 0:
             metric = core_metrics[0]
@@ -1122,11 +1081,10 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                 "total_usage": int(metric["total_usage"]) if metric["total_usage"] is not None else 0
             }
 
-        # 处理趋势分析数据，多行数据，每行代表一天的数据
         trends = []
         for trend in trend_analysis:
             trends.append({
-                "date": str(trend["date_group"]),  # 转换为字符串格式
+                "date": str(trend["date_group"]),  # Convert to a string.
                 "input_tokens": int(trend["input_tokens"]) if trend["input_tokens"] is not None else 0,
                 "output_tokens": int(trend["output_tokens"]) if trend["output_tokens"] is not None else 0,
                 "avg_total_time": float(trend["avg_total_time"]) if trend["avg_total_time"] is not None else 0,
@@ -1134,9 +1092,7 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                 "avg_rate": float(trend["avg_rate"]) if trend["avg_rate"] is not None else 0
             })
         
-        # 补全趋势分析数据，确保从start_time到end_time每天都有数据
         if not trends:
-            # 如果trends为空，则填充从start_time到end_time每天的数据，指标全部为0
             start_date = datetime.strptime(start_time, "%Y-%m-%d")
             end_date = datetime.strptime(end_time, "%Y-%m-%d")
             current_date = start_date
@@ -1151,8 +1107,6 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                 })
                 current_date += timedelta(days=1)
         else:
-            # 如果trends不为空，检查缺失的日期并补全
-            # 创建一个包含所有预期日期的集合
             expected_dates = set()
             start_date = datetime.strptime(start_time, "%Y-%m-%d")
             end_date = datetime.strptime(end_time, "%Y-%m-%d")
@@ -1161,11 +1115,9 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                 expected_dates.add(current_date.strftime("%Y-%m-%d"))
                 current_date += timedelta(days=1)
             
-            # 检查现有数据中缺少哪些日期
             existing_dates = set(item["date"] for item in trends)
             missing_dates = expected_dates - existing_dates
             
-            # 为缺失的日期创建补全数据
             for missing_date in missing_dates:
                 trends.append({
                     "date": missing_date,
@@ -1176,7 +1128,6 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                     "avg_rate": 0.0
                 })
             
-            # 按日期排序
             trends.sort(key=lambda x: datetime.strptime(x["date"], "%Y-%m-%d"))
         qps_data = []
         for qps in qps_analysis:
@@ -1185,19 +1136,15 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                 "avg_qps": f"{float(qps['avg_qps']):.6f}" if qps["avg_qps"] is not None else "0.000000"
             }))
         
-        # 补全缺失的数据，确保有最近8小时的数据（每5分钟一条，共96条）
+        # Fill missing points for the latest eight hours at five-minute intervals.
         if not qps_data:
-            # 使用end_time的23:59:59作为结束时间
             end_date = datetime.strptime(end_time, "%Y-%m-%d")
-            # 判断end_date是否为今天
             today = datetime.now().date()
             if end_date.date() == today:
-                # 如果是今天，则使用当前时间作为结束时间
                 end_time_dt = datetime.now()
             else:
-                # 如果不是今天，则使用23:59:59作为结束时间
                 end_time_dt = end_date.replace(hour=23, minute=59, second=59)
-            # 生成最近8小时的所有时间点（每5分钟一个点）
+            # Generate five-minute time points for the latest eight hours.
             for i in range(96):
                 time_point = end_time_dt - timedelta(minutes=i * 5)
                 qps_data.append({
@@ -1205,10 +1152,8 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                     "avg_qps": "0.000000"
                 })
         else:
-            # 创建一个包含所有预期时间点的集合
-            # 获取最后一个时间点作为结束时间
             end_time_dt = datetime.strptime(qps_data[0]["date"], "%Y-%m-%d %H:%M:%S")
-            # 生成最近8小时的所有时间点（每5分钟一个点）
+            # Generate five-minute time points for the latest eight hours.
             for i in range(96):
                 num = i+1
                 time_point = end_time_dt - timedelta(minutes=num * 5)
@@ -1216,10 +1161,9 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                     "date": time_point.strftime("%Y-%m-%d %H:%M:%S"),
                     "avg_qps": "0.000000"
                 })
-        # 按时间排序
         qps_data.sort(key=lambda x: datetime.strptime(x["date"], "%Y-%m-%d %H:%M:%S"))
         
-        # 确保最多只有96条数据
+        # Keep at most 96 data points.
         if len(qps_data) > 96:
             qps_data = qps_data[-96:]
         

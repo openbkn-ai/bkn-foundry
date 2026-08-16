@@ -66,16 +66,16 @@ def router_init(app):
             paramName = ' '.join(map(str, error["loc"][1:]))
             if error["type"] == "value_error.missing":
                 content = {"code": "ModelFactory.Router.ParamError.ParamMissing",
-                           "description": "参数缺失",
-                           "detail": "{0} 参数缺失".format(paramName),
-                           "solution": "请检查填写的参数是否正确。",
+                           "description": "Required parameter is missing.",
+                           "detail": "missing parameters: {0}".format(paramName),
+                           "solution": "Provide the required parameter and try again.",
                            "link": ""}
                 return JSONResponse(status_code=400, content=content)
             else:
                 content = {"code": "ModelFactory.Router.ParamError.FormatError",
-                           "description": "参数错误",
+                           "description": "Request parameter is invalid.",
                            "detail": f"{error.get('msg', '')}",
-                           "solution": "请检查输入内容格式是否符合要求",
+                           "solution": "Check that the input matches the API documentation.",
                            "link": ""}
                 return JSONResponse(status_code=400, content=content)
 

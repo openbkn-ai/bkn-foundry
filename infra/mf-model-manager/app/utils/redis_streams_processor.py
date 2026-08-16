@@ -1,10 +1,10 @@
 """
-Redis Stream 计量消费端：与 KafkaStreamsProcessor 对等的实现（METERING_BACKEND=redis 时启用）。
+Redis Stream metering consumer enabled by METERING_BACKEND=redis.
 
-- 消费组语义：XREADGROUP + 批量 XACK，at-least-once；落库侧 INSERT ON DUPLICATE KEY 幂等兜底。
-- 进程重启不丢：启动时先以 id=0 读回自己名下未 ACK 的 pending。
-- 实例崩溃不丢：周期 XAUTOCLAIM 接管空闲超时的 pending。
-- 聚合与落库复用 QuotaAggregator，与 Kafka 消费端口径一致。
+- XREADGROUP and batched XACK provide at-least-once delivery; database upserts are idempotent.
+- On restart, read this consumer's unacknowledged pending entries from ID 0.
+- Periodically use XAUTOCLAIM to recover pending entries from failed instances.
+- Reuse QuotaAggregator so Redis and Kafka share aggregation semantics.
 """
 import asyncio
 import json
@@ -16,11 +16,10 @@ from app.core.config import base_config
 from app.logs.stand_log import StandLogger
 from app.utils.quota_aggregator import QuotaAggregator
 
-# stream 名沿用原 Kafka topic 名（与生产端 metering_producer.METERING_STREAM 一致）
 STREAM_NAME = 'tenant_a.dip.model_manager.quota_data'
 GROUP_ID = 'quota_data_group_new'
 AUTOCLAIM_INTERVAL_SECONDS = 300
-AUTOCLAIM_MIN_IDLE_MS = 600000  # 空闲超 10 分钟的 pending 才接管
+AUTOCLAIM_MIN_IDLE_MS = 600000  # Claim pending entries idle for more than 10 minutes.
 
 
 class RedisStreamsProcessor:
@@ -48,7 +47,7 @@ class RedisStreamsProcessor:
                 raise
 
     def _handle_entry(self, entry_id, fields):
-        """处理一条 stream entry（解析失败只记日志，不阻塞后续 ACK）"""
+        """Process one stream entry; malformed entries do not block later acknowledgements."""
         raw = fields.get(b'value') if isinstance(fields, dict) else None
         if raw is None and isinstance(fields, dict):
             raw = fields.get('value')
@@ -66,7 +65,7 @@ class RedisStreamsProcessor:
             StandLogger.error(f"处理计量消息时出错: {e}")
 
     def _consume_entries(self, entries):
-        """处理 XREADGROUP 返回的批次，返回待 ACK 的 entry id 列表"""
+        """Process an XREADGROUP batch and return entry IDs to acknowledge."""
         ack_ids = []
         for _stream_key, messages in entries:
             for entry_id, fields in messages:
@@ -75,7 +74,7 @@ class RedisStreamsProcessor:
         return ack_ids
 
     async def _drain_own_pending(self):
-        """进程重启后，先处理自己名下未 ACK 的消息"""
+        """Process this consumer's pending entries before reading new messages."""
         last_id = '0'
         while self.running:
             entries = await self.conn.xreadgroup(
@@ -90,17 +89,16 @@ class RedisStreamsProcessor:
             StandLogger.info_log(f"重放 {len(ack_ids)} 条重启前未确认的计量消息")
 
     async def _autoclaim_stale_pending(self):
-        """接管崩溃实例遗留的 pending（失败不影响主消费循环）"""
+        """Claim pending entries left by failed consumers without stopping the main loop."""
         try:
             result = await self.conn.xautoclaim(
                 self.stream_name, self.group_id, self.consumer_name,
                 min_idle_time=AUTOCLAIM_MIN_IDLE_MS, start_id='0-0', count=500)
-            # redis 6.2 返回 (next_start, claimed)；redis 7 追加 deleted 列表
             claimed = result[1] if result and len(result) >= 2 else []
             ack_ids = []
             for entry_id, fields in claimed:
                 if fields is None:
-                    continue  # 已被 XDEL/XTRIM 截断的消息
+                    continue  # Entry already removed by XDEL or XTRIM.
                 self._handle_entry(entry_id, fields)
                 ack_ids.append(entry_id)
             if ack_ids:
@@ -110,7 +108,7 @@ class RedisStreamsProcessor:
             StandLogger.warn(f"XAUTOCLAIM 处理失败（不影响主消费）: {e}")
 
     async def start(self):
-        """启动消费主循环（阻塞直至 stop）"""
+        """Run the blocking consumer loop until stopped."""
         StandLogger.info_log(
             f"启动 Redis Stream 计量消费者... stream={self.stream_name}, "
             f"group={self.group_id}, consumer={self.consumer_name}")
@@ -145,18 +143,17 @@ class RedisStreamsProcessor:
         StandLogger.info_log("Redis Stream 计量消费者已停止")
 
     def stop_consumer(self):
-        """停止消费者（信号处理器调用，主循环在 block 超时后退出）"""
+        """Stop the consumer; the main loop exits after the blocking read times out."""
         StandLogger.info_log("停止 Redis Stream 计量消费者...")
         self.running = False
         self.aggregator.stop()
 
 
-# 全局实例（与 kafka_streams_processor.kafka_processor 对等）
 redis_processor = None
 
 
 def start_redis_streams_processor():
-    """启动 Redis Stream 计量处理器（阻塞运行）"""
+    """Run the blocking Redis Stream metering processor."""
     global redis_processor
     if redis_processor is None:
         StandLogger.info_log("创建 RedisStreamsProcessor 实例...")
