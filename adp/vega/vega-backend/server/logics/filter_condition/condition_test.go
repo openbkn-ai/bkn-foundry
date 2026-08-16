@@ -369,7 +369,7 @@ func TestLikeCond(t *testing.T) {
 		assert.Contains(t, err.Error(), "[regex]")
 	})
 	t.Run("not_like cond rejects SQL wildcards", func(t *testing.T) {
-		cfg := constCfg("name", "not_like", "ali_")
+		cfg := constCfg("name", "not_like", "ali%")
 		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "literal substring")
@@ -412,7 +412,8 @@ func TestParseLikeValue(t *testing.T) {
 		{name: "backslash before a plain char is kept", value: `a\nb`, want: `a\nb`},
 		{name: "trailing backslash is kept", value: `ab\`, want: `ab\`},
 		{name: "leading and trailing percent rejected", value: "%Indirect%", errContain: "literal substring"},
-		{name: "bare underscore rejected", value: "a_b", errContain: "literal substring"},
+		// _ 在改动前每条路上都是字面量，拒它是误伤：带下划线的检索词太常见
+		{name: "bare underscore is a literal", value: "object_type", want: "object_type"},
 	}
 
 	for _, tt := range tests {
@@ -705,4 +706,52 @@ func advancedFieldsMap() map[string]*interfaces.Property {
 	fields := testFieldsMap()
 	fields["embedding"] = &interfaces.Property{Name: "embedding", Type: interfaces.DataType_Vector}
 	return fields
+}
+
+// 视图定义里存着的老写法不能因为新契约而查废：升级后按字面量匹配（与改动前 SQL 连接器
+// 一致）并告警，而不是每次查询都 400。
+func TestEscapeLegacyLikeWildcards(t *testing.T) {
+	t.Run("rewrites an unescaped percent and reports the count", func(t *testing.T) {
+		cfg := constCfg("name", "like", "%ali%")
+
+		rewritten := EscapeLegacyLikeWildcards(cfg)
+
+		assert.Equal(t, 1, rewritten)
+		assert.Equal(t, `\%ali\%`, cfg.Value)
+
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.NoError(t, err)
+		assert.Equal(t, "%ali%", cond.(*LikeCond).Value)
+	})
+
+	t.Run("leaves already valid values untouched", func(t *testing.T) {
+		cfg := constCfg("name", "like", `object_type\%`)
+
+		rewritten := EscapeLegacyLikeWildcards(cfg)
+
+		assert.Equal(t, 0, rewritten)
+		assert.Equal(t, `object_type\%`, cfg.Value)
+	})
+
+	t.Run("walks nested conditions and skips other operations", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Operation: OperationAnd,
+			SubConds: []*interfaces.FilterCondCfg{
+				constCfg("name", "like", "%a"),
+				constCfg("name", "not_like", "b%"),
+				constCfg("name", "==", "100%"),
+			},
+		}
+
+		rewritten := EscapeLegacyLikeWildcards(cfg)
+
+		assert.Equal(t, 2, rewritten)
+		assert.Equal(t, `\%a`, cfg.SubConds[0].Value)
+		assert.Equal(t, `b\%`, cfg.SubConds[1].Value)
+		assert.Equal(t, "100%", cfg.SubConds[2].Value)
+	})
+
+	t.Run("tolerates a nil condition", func(t *testing.T) {
+		assert.Equal(t, 0, EscapeLegacyLikeWildcards(nil))
+	})
 }
