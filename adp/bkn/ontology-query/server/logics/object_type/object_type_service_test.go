@@ -1162,6 +1162,44 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(result, ShouldResemble, map[string]any{"result": "success"})
 		})
 
+		Convey("失败 - 工具执行错误保留具体原因", func() {
+			localizedCtx := rest.WithLanguage(ctx, rest.AmericanEnglish)
+			logicProp := &interfaces.LogicProperty{
+				Name: "logic_prop1",
+				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+				DataSource: &interfaces.ResourceInfo{
+					Type:   interfaces.LOGIC_PROPERTY_TYPE_TOOL,
+					BoxID:  "box1",
+					ToolID: "tool1",
+				},
+			}
+			toolValue := interfaces.ToolProperty{Parameters: map[string]any{}}
+			aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box1", "tool1", gomock.Any()).
+				Return(nil, fmt.Errorf("tool failed"))
+
+			result, err := service.handleToolProperty(localizedCtx, "logic_prop1", toolValue, logicProp, nil)
+			So(result, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			So(httpErr.BaseError.ErrorDetails, ShouldEqual,
+				"Toolbox box1 tool tool1 failed while evaluating logic property logic_prop1: tool failed")
+		})
+
+		Convey("失败 - 指标动态参数错误保留具体原因", func() {
+			localizedCtx := rest.WithLanguage(ctx, rest.SimplifiedChinese)
+			dynamicParams := map[string]map[string]any{
+				"metric_prop": {"invalid": make(chan int)},
+			}
+
+			_, err := service.handleMetricProperty(localizedCtx, "kn1", "main", "ot1", "metric_prop",
+				interfaces.MetricProperty{}, &interfaces.LogicProperty{}, dynamicParams)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			details := httpErr.BaseError.ErrorDetails.(string)
+			So(details, ShouldStartWith, "解析属性 metric_prop 的动态参数失败：")
+			So(details, ShouldContainSubstring, "chan")
+		})
+
 		Convey("成功 - 提取工具箱逻辑属性嵌套结果", func() {
 			logicProp := &interfaces.LogicProperty{
 				Name: "logic_prop1",

@@ -26,6 +26,7 @@ import (
 
 func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 	Convey("metricGroupByDimensions respects analysis_dimensions\n", t, func() {
+		ctx := context.Background()
 		propMap := map[string]*cond.DataProperty{
 			"warehouse_id": {Name: "warehouse_id", MappedField: cond.Field{Name: "warehouse_id_res"}},
 			"item_code":    {Name: "item_code", MappedField: cond.Field{Name: "item_code_res"}},
@@ -47,7 +48,7 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 		}
 
 		Convey("Without request analysis_dimensions uses calculation_formula.group_by only\n", func() {
-			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{}, propMap, "")
+			dims, err := metricGroupByDimensions(ctx, def, &interfaces.MetricQueryRequest{}, propMap, "")
 			So(err, ShouldBeNil)
 			So(len(dims), ShouldEqual, 1)
 			So(dims[0].PropertyName, ShouldEqual, "region")
@@ -55,7 +56,7 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 		})
 
 		Convey("Request analysis_dimensions appends valid dimensions after fixed group_by and preserves query order\n", func() {
-			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{
+			dims, err := metricGroupByDimensions(ctx, def, &interfaces.MetricQueryRequest{
 				AnalysisDimensions: []string{"item_code", "warehouse_id", "unknown"},
 			}, propMap, "")
 			So(err, ShouldBeNil)
@@ -69,7 +70,7 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 		})
 
 		Convey("Non-trend request keeps time_dimension property as an analysis dimension\n", func() {
-			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{
+			dims, err := metricGroupByDimensions(ctx, def, &interfaces.MetricQueryRequest{
 				AnalysisDimensions: []string{"evt_time", "warehouse_id"},
 			}, propMap, "")
 			So(err, ShouldBeNil)
@@ -83,7 +84,7 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 		})
 
 		Convey("Trend request excludes aliases mapped to the time resource field\n", func() {
-			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{
+			dims, err := metricGroupByDimensions(ctx, def, &interfaces.MetricQueryRequest{
 				AnalysisDimensions: []string{"time_alias", "warehouse_id"},
 			}, propMap, "evt_time_res")
 			So(err, ShouldBeNil)
@@ -95,7 +96,7 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 		})
 
 		Convey("Non-trend request keeps aliases mapped to the time resource field\n", func() {
-			dims, err := metricGroupByDimensions(def, &interfaces.MetricQueryRequest{
+			dims, err := metricGroupByDimensions(ctx, def, &interfaces.MetricQueryRequest{
 				AnalysisDimensions: []string{"time_alias"},
 			}, propMap, "")
 			So(err, ShouldBeNil)
@@ -106,6 +107,44 @@ func Test_metricGroupByDimensions_analysisDimensions(t *testing.T) {
 			So(dims[1].ResourceFieldName, ShouldEqual, "evt_time_res")
 		})
 	})
+}
+
+func Test_mapDataPropertyToResourceField_localizesErrors(t *testing.T) {
+	propMap := map[string]*cond.DataProperty{
+		"unmapped": {Name: "unmapped"},
+	}
+	tests := []struct {
+		name     string
+		language rest.Language
+		property string
+		expected string
+	}{
+		{
+			name:     "Chinese invalid property",
+			language: rest.SimplifiedChinese,
+			property: "missing",
+			expected: "属性 missing 不是对象类的数据属性。",
+		},
+		{
+			name:     "English missing mapped field",
+			language: rest.AmericanEnglish,
+			property: "unmapped",
+			expected: "Property unmapped has no mapped_field and cannot be pushed down to the resource.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := rest.WithLanguage(context.Background(), tt.language)
+			_, err := mapDataPropertyToResourceField(ctx, tt.property, propMap)
+			if err == nil {
+				t.Fatal("mapDataPropertyToResourceField() returned nil error")
+			}
+			if err.Error() != tt.expected {
+				t.Fatalf("error = %q, want %q", err.Error(), tt.expected)
+			}
+		})
+	}
 }
 
 func Test_mergeConditions(t *testing.T) {

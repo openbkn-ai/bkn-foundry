@@ -757,6 +757,20 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("失败 - Condition 解码错误保留具体原因", func() {
+			localizedCtx := rest.WithLanguage(ctx, rest.SimplifiedChinese)
+			query := &interfaces.ObjectQueryBaseOnObjectType{
+				Condition: map[string]any{"sub_conditions": "invalid"},
+			}
+
+			err := validateObjectSearchRequest(localizedCtx, query)
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*rest.HTTPError)
+			details := httpErr.BaseError.ErrorDetails.(string)
+			So(details, ShouldStartWith, "解析过滤条件失败：")
+			So(details, ShouldContainSubstring, "sub_conditions")
+		})
+
 		Convey("失败 - Limit小于1", func() {
 			query := &interfaces.ObjectQueryBaseOnObjectType{
 				PageQuery: interfaces.PageQuery{

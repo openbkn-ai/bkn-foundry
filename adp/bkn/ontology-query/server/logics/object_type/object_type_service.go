@@ -795,12 +795,16 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	if err != nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{"property": propName}))
+			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{
+				"property": propName, "error": err.Error(),
+			}))
 	}
 	if err = sonic.Unmarshal(paramBytes, &metricParams); err != nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{"property": propName}))
+			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{
+				"property": propName, "error": err.Error(),
+			}))
 	}
 
 	if metricParams.Start != nil {
@@ -881,6 +885,7 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 			oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).
 			WithErrorDetails(locale.ValidationDetail(ctx, "ToolExecutionFailed", map[string]any{
 				"property": propName, "toolbox": logicProp.DataSource.BoxID, "tool": logicProp.DataSource.ToolID,
+				"error": err.Error(),
 			}))
 	}
 

@@ -120,7 +120,7 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 	err := mapstructure.Decode(query.Condition, &actualCond)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", nil))
+			WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", map[string]any{"error": err.Error()}))
 	}
 	query.ActualCondition = actualCond
 
@@ -252,7 +252,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 			err := mapstructure.Decode(path.ObjectTypes[i].Condition, &actualCond)
 			if err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-					WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", nil))
+					WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", map[string]any{"error": err.Error()}))
 			}
 			query.Paths.TypePaths[pathIndex].ObjectTypes[i].ActualCondition = actualCond
 
@@ -296,7 +296,7 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 	err := mapstructure.Decode(query.Condition, &actualCond)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", nil))
+			WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", map[string]any{"error": err.Error()}))
 	}
 	query.ActualCondition = actualCond
 

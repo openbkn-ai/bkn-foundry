@@ -84,20 +84,20 @@ func mergeConditions(a, b *cond.CondCfg) *cond.CondCfg {
 }
 
 // mapObjectDataPropertyToResourceField maps an object-type data property name to resource payload field (mapped_field.Name).
-func mapDataPropertyToResourceField(propName string, propMap map[string]*cond.DataProperty) (string, error) {
+func mapDataPropertyToResourceField(ctx context.Context, propName string, propMap map[string]*cond.DataProperty) (string, error) {
 	prop, ok := propMap[propName]
 	if !ok {
-		return "", fmt.Errorf("property %q is not an object-type data property", propName)
+		return "", fmt.Errorf("%s", locale.ValidationDetail(ctx, "MetricPropertyInvalid", map[string]any{"property": propName}))
 	}
 	if prop.MappedField.Name == "" {
-		return "", fmt.Errorf("property %q has no mapped_field and cannot be pushed down to the resource", propName)
+		return "", fmt.Errorf("%s", locale.ValidationDetail(ctx, "MetricMappedFieldRequired", map[string]any{"property": propName}))
 	}
 	return prop.MappedField.Name, nil
 }
 
 // mapMetricOrderByPropertyToResourceSortField maps calculation_formula.order_by / request order_by property
 // (object-type data property name, or __value for the aggregation alias) to resource payload field names for Sort.
-func mapMetricOrderByPropertyToResourceSortField(propName string, propMap map[string]*cond.DataProperty) (string, error) {
+func mapMetricOrderByPropertyToResourceSortField(ctx context.Context, propName string, propMap map[string]*cond.DataProperty) (string, error) {
 	p := strings.TrimSpace(propName)
 	if p == "" {
 		return "", fmt.Errorf("order_by property is empty")
@@ -105,11 +105,11 @@ func mapMetricOrderByPropertyToResourceSortField(propName string, propMap map[st
 	if p == "__value" {
 		return "__value", nil
 	}
-	return mapDataPropertyToResourceField(p, propMap)
+	return mapDataPropertyToResourceField(ctx, p, propMap)
 }
 
 // buildResourceSortFromMergedOrder maps merged order_by entries to resource []*SortParams (field = mapped_field / __value).
-func buildResourceSortFromMergedOrder(merged []interfaces.MetricOrderBy, propMap map[string]*cond.DataProperty) ([]*interfaces.SortParams, error) {
+func buildResourceSortFromMergedOrder(ctx context.Context, merged []interfaces.MetricOrderBy, propMap map[string]*cond.DataProperty) ([]*interfaces.SortParams, error) {
 	if len(merged) == 0 {
 		return nil, nil
 	}
@@ -119,7 +119,7 @@ func buildResourceSortFromMergedOrder(merged []interfaces.MetricOrderBy, propMap
 		if p == "" {
 			continue
 		}
-		resField, err := mapMetricOrderByPropertyToResourceSortField(p, propMap)
+		resField, err := mapMetricOrderByPropertyToResourceSortField(ctx, p, propMap)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +234,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 				WithErrorDetails(err.Error())
 		}
 		timeProp := strings.TrimSpace(def.TimeDimension.Property)
-		timeResField, err := mapDataPropertyToResourceField(timeProp, propMap)
+		timeResField, err := mapDataPropertyToResourceField(ctx, timeProp, propMap)
 		if err != nil {
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 				WithErrorDetails(err.Error())
@@ -264,7 +264,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 					WithErrorDetails("time range filter requires metric time_dimension.property")
 			}
 			timeProp := strings.TrimSpace(def.TimeDimension.Property)
-			if _, err := mapDataPropertyToResourceField(timeProp, propMap); err != nil {
+			if _, err := mapDataPropertyToResourceField(ctx, timeProp, propMap); err != nil {
 				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 					WithErrorDetails(err.Error())
 			}
@@ -303,7 +303,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	}
 
 	// 处理聚合
-	aggrProp, err := mapDataPropertyToResourceField(metricFormula.Aggregation.Property, propMap)
+	aggrProp, err := mapDataPropertyToResourceField(ctx, metricFormula.Aggregation.Property, propMap)
 	if err != nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails(err.Error())
@@ -319,7 +319,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	if trend != nil {
 		excludedGroupByResourceField = trend.timeResField
 	}
-	groupDims, err := metricGroupByDimensions(def, metricQuery, propMap, excludedGroupByResourceField)
+	groupDims, err := metricGroupByDimensions(ctx, def, metricQuery, propMap, excludedGroupByResourceField)
 	if err != nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails(err.Error())
@@ -362,7 +362,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	// 		Direction: interfaces.ASC_DIRECTION,
 	// 	})
 	// }
-	resourceSort, err := buildResourceSortFromMergedOrder(mergedOrder, propMap)
+	resourceSort, err := buildResourceSortFromMergedOrder(ctx, mergedOrder, propMap)
 	if err != nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails(err.Error())
@@ -429,7 +429,7 @@ type metricGroupByDimension struct {
 // calculation_formula.group_by is the fixed grouping baseline; request analysis_dimensions append valid drill-down
 // dimensions in request order.
 // excludedResourceField prevents trend queries from grouping the time field twice, including through property aliases.
-func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces.MetricQueryRequest,
+func metricGroupByDimensions(ctx context.Context, def *interfaces.MetricDefinition, query *interfaces.MetricQueryRequest,
 	propMap map[string]*cond.DataProperty, excludedResourceField string) ([]metricGroupByDimension, error) {
 	if def == nil {
 		return nil, nil
@@ -492,7 +492,7 @@ func metricGroupByDimensions(def *interfaces.MetricDefinition, query *interfaces
 	out := make([]metricGroupByDimension, 0, len(propertyNames))
 	seenResourceFields := make(map[string]struct{}, len(propertyNames))
 	for _, p := range propertyNames {
-		res, err := mapDataPropertyToResourceField(p, propMap)
+		res, err := mapDataPropertyToResourceField(ctx, p, propMap)
 		if err != nil {
 			return nil, err
 		}
@@ -608,7 +608,7 @@ func vegaEntriesToMetricData(ctx context.Context, def interfaces.MetricDefinitio
 		return convertVegaDatas2TimeSeries(ctx, def, datas, samePeriodDatas, query, trend, vegaFetchDur, propMap)
 	}
 
-	groupDims, err := metricGroupByDimensions(&def, query, propMap, "")
+	groupDims, err := metricGroupByDimensions(ctx, &def, query, propMap, "")
 	if err != nil {
 		return interfaces.MetricResponse{}, err
 	}
@@ -1005,7 +1005,7 @@ func convert2TimeSeries(ctx context.Context, def interfaces.MetricDefinition, da
 		return seriesMap, nil
 	}
 	fillNull := query != nil && query.FillNull
-	groupDims, err := metricGroupByDimensions(&def, query, propMap, trend.timeResField)
+	groupDims, err := metricGroupByDimensions(ctx, &def, query, propMap, trend.timeResField)
 	if err != nil {
 		return nil, err
 	}
