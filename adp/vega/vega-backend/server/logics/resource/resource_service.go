@@ -1281,6 +1281,9 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if req.SchemaDefinition == nil {
 		return indexConfigChanged, nil
 	}
+	// 库里的存量 schema 可能带自引用 ref_property（迁移前平台自己写的形状），请求侧已在
+	// 入口抹平。两侧都归一化后再比，否则一次没改 schema 的普通编辑会被判成 build 相关变更。
+	NormalizeSelfReferencingFeatures(resource.SchemaDefinition)
 	schemaChanged, err := validateMutableSchemaUpdate(
 		ctx,
 		resource.SchemaDefinition,

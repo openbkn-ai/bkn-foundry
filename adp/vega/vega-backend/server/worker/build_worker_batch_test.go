@@ -319,11 +319,40 @@ func TestValidateBuildTaskSchemaFeatures(t *testing.T) {
 		{
 			name:     "dataset rejects ref property",
 			category: interfaces.ResourceCategoryDataset,
+			schema: []*interfaces.Property{
+				{Name: "content_keyword", Type: interfaces.DataType_String},
+				{Name: "content", Type: interfaces.DataType_Text,
+					Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "content_keyword"}}},
+			},
+			wantErr: "must not set ref_property",
+		},
+		// 从没被 PUT 过的存量资源，库里仍是自引用形状。抹平之后必须能建索引，否则
+		// 「push 清掉 condition_operations -> 重建索引 -> 恢复」这条路仍然是断的。
+		{
+			name:     "accepts legacy self-referencing fulltext feature",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{{
+				Name: "title", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureName: "title_fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "title"}},
+			}},
+		},
+		{
+			// keyword 的 ref 类型要求是 string，text 字段上的自引用 keyword 特征
+			// 在抹平前会撞上 ref 类型校验，抹平后按「特征作用于属性自身」通过
+			name:     "accepts legacy self-referencing keyword feature on a text field",
+			category: interfaces.ResourceCategoryTable,
+			schema: []*interfaces.Property{{
+				Name: "title", Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{{FeatureName: "title.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title"}},
+			}},
+		},
+		{
+			name:     "accepts legacy self-referencing feature on a dataset",
+			category: interfaces.ResourceCategoryDataset,
 			schema: []*interfaces.Property{{
 				Name: "content", Type: interfaces.DataType_Text,
-				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "content"}},
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "content"}},
 			}},
-			wantErr: "must not set ref_property",
 		},
 		{
 			name:     "rejects feature unsupported by property type",

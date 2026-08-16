@@ -16,6 +16,7 @@ import (
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 var testSortTypes = map[string]string{
@@ -255,6 +256,24 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	// 归一化排在类目校验之前，所以 dataset 请求里的自引用不再撞上「ref_property 只有
+	// original 资源支持」。这是有意放宽：存量 dataset 也可能是自引用形状，静默抹平比
+	// 让它连更新都做不了更可取；指向别的字段仍然是 400（见上一条用例）。
+	t.Run("ValidateResourceRequest normalizes a dataset self-referencing feature", func(t *testing.T) {
+		req := baseReq([]*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{
+					{FeatureName: "content_fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "content"},
+				},
+			},
+		})
+
+		require.NoError(t, ValidateResourceRequest(ctx, req))
+		assert.Empty(t, req.SchemaDefinition[0].Features[0].RefProperty)
+	})
+
 	t.Run("ValidateResourceRequest rejects invalid table feature", func(t *testing.T) {
 		err := ValidateResourceRequest(ctx, &interfaces.ResourceRequest{
 			Name:     "table",
@@ -368,20 +387,20 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		}
 	})
 
-	t.Run("normalizeSchemaFeatures drops self-referencing ref_property", func(t *testing.T) {
+	t.Run("NormalizeSelfReferencingFeatures drops self-referencing ref_property", func(t *testing.T) {
 		props := []*interfaces.Property{
 			{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
 				{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "body", IsNative: true},
 			}},
 		}
 
-		normalizeSchemaFeatures(props)
+		resourcelogic.NormalizeSelfReferencingFeatures(props)
 
 		assert.Empty(t, props[0].Features[0].RefProperty)
 		require.NoError(t, validateSchemaProperties(ctx, props, true))
 	})
 
-	t.Run("normalizeSchemaFeatures keeps ref_property pointing at another field", func(t *testing.T) {
+	t.Run("NormalizeSelfReferencingFeatures keeps ref_property pointing at another field", func(t *testing.T) {
 		props := []*interfaces.Property{
 			{Name: "title_keyword", Type: interfaces.DataType_String},
 			{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
@@ -389,7 +408,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 			}},
 		}
 
-		normalizeSchemaFeatures(props)
+		resourcelogic.NormalizeSelfReferencingFeatures(props)
 
 		assert.Equal(t, "title_keyword", props[1].Features[0].RefProperty)
 	})

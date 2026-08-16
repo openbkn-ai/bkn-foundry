@@ -21,33 +21,14 @@ import (
 )
 
 func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
-	normalizeSchemaFeatures(req.SchemaDefinition)
+	// 存量资源的自引用 ref_property 在这里抹平。库里读出来的 schema 由 logics 层做同样的
+	// 归一化，两侧必须一致，否则更新会被判成 build 相关变更而清空 LocalIndexName。
+	resourcelogic.NormalizeSelfReferencingFeatures(req.SchemaDefinition)
 
 	if err := validateResourceRequestBase(ctx, req); err != nil {
 		return err
 	}
 	return validateResourceRequestSchema(ctx, req)
-}
-
-// normalizeSchemaFeatures 归一化字段特征里的自引用 ref_property。
-//
-// ref_property 的语义是「特征挂在 A 属性上、但作用于 B 字段」，指向字段自身是一个
-// 无意义的冗余写法：能力派生本来就在 ref_property 为空时落回属性自身（见 bkn-backend
-// 的 VegaResourceIndexCaps），两种写法结果完全相同。
-//
-// 但历史上平台自己写入的存量资源正是这个形状，因此这里必须就地抹平而不是报错——
-// 一旦报错，存量资源的任何读改写（vega dataset build 就是）都会失败，索引再也重建不了。
-func normalizeSchemaFeatures(props []*interfaces.Property) {
-	for _, prop := range props {
-		if prop == nil {
-			continue
-		}
-		for i := range prop.Features {
-			if prop.Features[i].RefProperty == prop.Name {
-				prop.Features[i].RefProperty = ""
-			}
-		}
-	}
 }
 
 func validateResourceRequestBase(ctx context.Context, req *interfaces.ResourceRequest) error {
