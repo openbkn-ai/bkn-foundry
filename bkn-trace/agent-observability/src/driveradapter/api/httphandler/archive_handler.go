@@ -3,6 +3,8 @@ package httphandler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -100,14 +102,15 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 	if len(parts) == 2 && parts[1] == "retry-cleanup" {
 		method = http.MethodPost
 	}
-	if len(parts) == 2 && parts[1] == "download-url" {
-		method = http.MethodPost
-	}
 	profile, ok := handler.authorize(w, r, method)
 	if !ok {
 		return
 	}
 	if method == http.MethodGet {
+		if len(parts) == 2 && parts[1] == "download" {
+			handler.download(w, r, parts[0], profile.TenantID)
+			return
+		}
 		job, found := handler.service.Get(parts[0], profile.TenantID)
 		if !found {
 			writeObservabilityError(w, r, http.StatusNotFound, "archive_job_not_found", "archive job was not found")
@@ -116,21 +119,26 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusOK, rdto.NewArchiveJob(job))
 		return
 	}
-	if len(parts) == 2 && parts[1] == "download-url" {
-		url, err := handler.service.DownloadURL(r.Context(), parts[0], profile.TenantID)
-		if err != nil {
-			writeObservabilityError(w, r, http.StatusBadRequest, "archive_download_unavailable", "archive download is unavailable")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"download_url": url})
-		return
-	}
 	job, err := handler.service.RetryCleanup(r.Context(), parts[0], profile.TenantID)
 	if err != nil {
 		writeObservabilityError(w, r, http.StatusBadRequest, "archive_retry_failed", "archive cleanup cannot be retried")
 		return
 	}
 	writeJSON(w, http.StatusOK, rdto.NewArchiveJob(job))
+}
+
+func (handler *ArchiveHandler) download(w http.ResponseWriter, r *http.Request, jobID, tenantID string) {
+	download, err := handler.service.OpenDownload(r.Context(), jobID, tenantID)
+	if err != nil {
+		writeObservabilityError(w, r, http.StatusBadRequest, "archive_download_unavailable", "archive download is unavailable")
+		return
+	}
+	defer func() { _ = download.Content.Close() }()
+	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=archive-%s-%s.jsonl", download.Kind, jobID))
+	if _, err := io.Copy(w, download.Content); err != nil {
+		return
+	}
 }
 func (handler *ArchiveHandler) authorize(w http.ResponseWriter, r *http.Request, method string) (profile evidencevo.AccessProfile, ok bool) {
 	if r.Method != method {

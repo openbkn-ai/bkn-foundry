@@ -1,8 +1,10 @@
 package archivesvc
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -95,6 +97,32 @@ func TestCompletedArchiveDoesNotRetainRetryPayload(t *testing.T) {
 	}
 }
 
+func TestOpenDownloadReadsTheArchivedDataBundleInsteadOfReturningStorageURL(t *testing.T) {
+	store := NewMemoryStore()
+	job := Job{ID: "arc_log_1", TenantID: "tenant-a", Kind: observabilityvo.ArchiveKindLog, Status: observabilityvo.ArchiveStatusCompleted, ManifestRef: "archive/manifest.json"}
+	if err := store.Create(job); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	objectStore := &fakeDownloadObjectStore{objects: map[string][]byte{
+		"archive/manifest.json": []byte(`{"data_key":"archive/data.jsonl"}`),
+		"archive/data.jsonl":    []byte("{\\\"id\\\":\\\"log-1\\\"}\\n"),
+	}}
+	service := New(store, &fakeSource{}, objectStore, Options{})
+
+	download, err := service.OpenDownload(context.Background(), job.ID, "tenant-a")
+	if err != nil {
+		t.Fatalf("open archive download: %v", err)
+	}
+	defer func() { _ = download.Content.Close() }()
+	content, err := io.ReadAll(download.Content)
+	if err != nil {
+		t.Fatalf("read archive content: %v", err)
+	}
+	if string(content) != "{\\\"id\\\":\\\"log-1\\\"}\\n" {
+		t.Fatalf("downloaded content = %q", content)
+	}
+}
+
 type fakeSource struct {
 	candidates []Candidate
 	purged     map[string]bool
@@ -117,6 +145,19 @@ func (source *fakeSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind
 type fakeObjectStore struct {
 	verified  bool
 	verifyErr error
+}
+
+type fakeDownloadObjectStore struct {
+	fakeObjectStore
+	objects map[string][]byte
+}
+
+func (store *fakeDownloadObjectStore) Read(_ context.Context, key string) (io.ReadCloser, error) {
+	content, ok := store.objects[key]
+	if !ok {
+		return nil, errors.New("archive object not found")
+	}
+	return io.NopCloser(bytes.NewReader(content)), nil
 }
 
 func (store *fakeObjectStore) WriteAndVerify(_ context.Context, _ Job, _ []Candidate) (string, error) {

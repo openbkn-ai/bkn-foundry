@@ -102,6 +102,14 @@ func (client *Client) upload(ctx context.Context, key string, content []byte) er
 	return client.signed(ctx, method, signedURL, headers, content)
 }
 func (client *Client) download(ctx context.Context, key string) ([]byte, error) {
+	content, err := client.Read(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = content.Close() }()
+	return io.ReadAll(content)
+}
+func (client *Client) Read(ctx context.Context, key string) (io.ReadCloser, error) {
 	method, signedURL, headers, err := client.authorize(ctx, "download", key, http.MethodGet)
 	if err != nil {
 		return nil, err
@@ -117,15 +125,11 @@ func (client *Client) download(ctx context.Context, key string) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		_ = response.Body.Close()
 		return nil, fmt.Errorf("read archive bundle: %s", response.Status)
 	}
-	return io.ReadAll(response.Body)
-}
-func (client *Client) DownloadURL(ctx context.Context, key string) (string, error) {
-	_, signedURL, _, err := client.authorize(ctx, "download", key, http.MethodGet)
-	return signedURL, err
+	return response.Body, nil
 }
 func (client *Client) authorize(ctx context.Context, operation, key, method string) (string, string, map[string]string, error) {
 	storageID, err := client.storageID(ctx)

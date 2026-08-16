@@ -5,8 +5,10 @@ package archivesvc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 	"time"
@@ -49,8 +51,13 @@ type ObjectStore interface {
 	WriteAndVerify(context.Context, Job, []Candidate) (string, error)
 }
 
-type DownloadStore interface {
-	DownloadURL(context.Context, string) (string, error)
+type ReadStore interface {
+	Read(context.Context, string) (io.ReadCloser, error)
+}
+
+type Download struct {
+	Content io.ReadCloser
+	Kind    observabilityvo.ArchiveKind
 }
 
 type Store interface {
@@ -186,16 +193,33 @@ func (service *Service) Get(jobID, tenantID string) (Job, bool) {
 	return job, ok && job.TenantID == tenantID
 }
 
-func (service *Service) DownloadURL(ctx context.Context, jobID, tenantID string) (string, error) {
+// OpenDownload returns the verified archive data through the application
+// boundary.  The browser must never receive an internal object-store URL.
+func (service *Service) OpenDownload(ctx context.Context, jobID, tenantID string) (Download, error) {
 	job, ok := service.Get(jobID, tenantID)
 	if !ok || job.ManifestRef == "" {
-		return "", fmt.Errorf("archive download is unavailable")
+		return Download{}, fmt.Errorf("archive download is unavailable")
 	}
-	store, ok := service.objectStore.(DownloadStore)
+	store, ok := service.objectStore.(ReadStore)
 	if !ok {
-		return "", fmt.Errorf("archive download is unavailable")
+		return Download{}, fmt.Errorf("archive download is unavailable")
 	}
-	return store.DownloadURL(ctx, job.ManifestRef)
+	manifest, err := store.Read(ctx, job.ManifestRef)
+	if err != nil {
+		return Download{}, fmt.Errorf("read archive manifest: %w", err)
+	}
+	defer func() { _ = manifest.Close() }()
+	var record struct {
+		DataKey string `json:"data_key"`
+	}
+	if err := json.NewDecoder(manifest).Decode(&record); err != nil || record.DataKey == "" {
+		return Download{}, fmt.Errorf("archive manifest is invalid")
+	}
+	content, err := store.Read(ctx, record.DataKey)
+	if err != nil {
+		return Download{}, fmt.Errorf("read archive data: %w", err)
+	}
+	return Download{Content: content, Kind: job.Kind}, nil
 }
 
 // List returns the newest jobs for one archive kind.  The archive kinds stay
