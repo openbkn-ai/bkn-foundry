@@ -198,11 +198,11 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 	// 视图定义里存着的过滤条件是服务端数据，调用方改不了。新的 like 契约拒绝未转义的 %，
 	// 直接套到存量定义上会让一次升级把视图查废，因此这里按老行为（当字面量）改写并告警，
 	// 只有调用方传进来的条件才硬拒。
-	if rewritten := filter_condition.EscapeLegacyLikeWildcards(fromResourceFilterCond); rewritten > 0 {
+	if marked := filter_condition.MarkLegacyLikeWildcards(fromResourceFilterCond); marked > 0 {
 		otellog.LogWarn(ctx, fmt.Sprintf(
-			"View %s has %d stored like/not_like condition(s) using '%%' as a wildcard; matched as a literal. "+
+			"View %s has %d stored like/not_like condition(s) using '%%' as a wildcard; kept on the pre-change behaviour of this backend. "+
 				"Escape it as '\\%%' or switch the condition to [regex] in the view definition.",
-			view.ID, rewritten))
+			view.ID, marked))
 	}
 
 	fromResource, err := lvs.rs.GetByID(ctx, nodeCfg.ResourceID)

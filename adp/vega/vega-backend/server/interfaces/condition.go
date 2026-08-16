@@ -33,6 +33,11 @@ type FilterCondCfg struct {
 	ValueOptCfg `mapstructure:",squash"`
 
 	RemainCfg map[string]any `mapstructure:",remain"`
+
+	// LegacyLikeWildcards 标记这条 like/not_like 来自视图定义里存的老写法（值里用 % 当
+	// 通配符）。置位后按各后端改动前的语义渲染：SQL 侧把 % 转义成字面量，索引侧翻译成
+	// 正则通配符。仅由服务端在读取存量定义时设置，不走线也不接受调用方传入。
+	LegacyLikeWildcards bool `json:"-" mapstructure:"-"`
 }
 
 //go:generate mockgen -source ../interfaces/condition.go -destination ../interfaces/mock/mock_condition.go
