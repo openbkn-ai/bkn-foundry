@@ -234,13 +234,15 @@ func renderHTML(c *gin.Context, t *template.Template, data any) {
 func renderHTMLStatus(c *gin.Context, status int, t *template.Template, data any) {
 	c.Status(status)
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	sharedrest.MarkLocalizedResponse(c)
+	c.Header("Cache-Control", "no-store")
+	sharedrest.MarkLocalizedCacheableResponse(c)
 	_ = t.Execute(c.Writer, data)
 }
 
 func replyLocalizedAuthText(c *gin.Context, status int, messageID string) {
 	language := sharedrest.GetLanguageByCtx(c.Request.Context())
-	sharedrest.MarkLocalizedResponse(c)
+	c.Header("Cache-Control", "no-store")
+	sharedrest.MarkLocalizedCacheableResponse(c)
 	c.String(status, locale.Translate(language, messageID))
 }
 
@@ -256,7 +258,7 @@ func isExpiredLoginRequest(err error) bool {
 func showLogin(c *gin.Context) {
 	challenge := c.Query("login_challenge")
 	if challenge == "" {
-		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingLoginChallenge")
 		return
 	}
 	data := localizedAuthPageData(c)
@@ -269,7 +271,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 	account := c.PostForm("account")
 	password := c.PostForm("password")
 	if challenge == "" {
-		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingLoginChallenge")
 		return
 	}
 	redirectTo, user, err := p.Login(c.Request.Context(), challenge, account, password, false)
@@ -317,7 +319,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 func showChangePassword(c *gin.Context) {
 	challenge := c.Query("login_challenge")
 	if challenge == "" {
-		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingLoginChallenge")
 		return
 	}
 	data := localizedAuthPageData(c)
@@ -335,7 +337,7 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.S
 	newPw := c.PostForm("new_password")
 	confirm := c.PostForm("confirm_password")
 	if challenge == "" {
-		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingLoginChallenge")
 		return
 	}
 	reRender := func(messageKey string) {
@@ -416,7 +418,7 @@ var firstPartyClients = map[string]bool{
 func showConsent(c *gin.Context, p *auth.Provider) {
 	challenge := c.Query("consent_challenge")
 	if challenge == "" {
-		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingConsentChallenge")
 		return
 	}
 	cr, err := p.ConsentInfo(c.Request.Context(), challenge)
@@ -451,7 +453,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 func doConsent(c *gin.Context, p *auth.Provider) {
 	challenge := c.PostForm("consent_challenge")
 	if challenge == "" {
-		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingConsentChallenge")
 		return
 	}
 	ctx := c.Request.Context()
@@ -497,8 +499,12 @@ func normalizeUserCode(s string) string {
 func doDevice(c *gin.Context, h *auth.HydraAdmin) {
 	challenge := c.PostForm("device_challenge")
 	userCode := normalizeUserCode(c.PostForm("user_code"))
-	if challenge == "" || userCode == "" {
-		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
+	if challenge == "" {
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingDeviceChallenge")
+		return
+	}
+	if userCode == "" {
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingUserCode")
 		return
 	}
 	redirectTo, err := h.AcceptUserCode(c.Request.Context(), challenge, userCode)

@@ -88,7 +88,7 @@ func (s *adminWriteServices) UpdateRole(ctx context.Context, id string, patch ad
 		fields["description"] = *patch.Description
 	}
 	if len(fields) == 0 {
-		return fmt.Errorf("%w: no updatable fields provided", adminwrite.ErrInvalid)
+		return adminwrite.ErrNoUpdatableFields
 	}
 	return s.db.WithContext(ctx).Model(&model.Role{}).Where("id = ?", role.ID).Updates(fields).Error
 }
@@ -116,10 +116,10 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 		return err
 	}
 	if err := rejectWildcardGrant(resourceType, []string{op}); err != nil {
-		return fmt.Errorf("%w: %s", adminwrite.ErrInvalid, err.Error())
+		return fmt.Errorf("%w: %s", adminwrite.ErrWildcardGrant, err.Error())
 	}
 	if resourceType == adminConsoleResourceType {
-		return fmt.Errorf("%w: admin console capability is granted by role binding, not by role permissions", adminwrite.ErrForbidden)
+		return adminwrite.ErrAdminConsolePermission
 	}
 	return s.e.GrantRolePermission(role.ID, resourceType, resourceID, op)
 }

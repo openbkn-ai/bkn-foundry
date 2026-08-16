@@ -70,3 +70,32 @@ PasswordMismatch = "两次输入的新密码不一致或为空"
 PasswordReuse = "新密码不能与当前密码相同"
 CurrentPasswordInvalid = "当前密码错误"
 InvalidDeviceCode = "无效的设备码"
+MissingLoginChallenge = "缺少 login_challenge 参数。"
+MissingConsentChallenge = "缺少 consent_challenge 参数。"
+MissingDeviceChallenge = "缺少 device_challenge 参数。"
+MissingUserCode = "缺少 user_code 参数。"
+
+[BknSafe.AdminWrite.Invalid]
+Description = "管理写入请求无效。"
+Solution = "请检查请求的角色或权限变更。"
+ErrorLink = ""
+
+[BknSafe.AdminWrite.Immutable]
+Description = "内置对象不能修改。"
+Solution = "请改为创建或修改自定义对象。"
+ErrorLink = ""
+
+[BknSafe.AdminWrite.NoUpdatableFields]
+Description = "未提供可更新字段。"
+Solution = "请至少提供一个可更新字段。"
+ErrorLink = ""
+
+[BknSafe.AdminWrite.WildcardGrantForbidden]
+Description = "不能授予通配资源类型或操作。"
+Solution = "请指定具体的资源类型和操作。"
+ErrorLink = ""
+
+[BknSafe.AdminWrite.AdminConsolePermissionForbidden]
+Description = "不能通过角色权限授予管理控制台能力。"
+Solution = "请通过受管的管理员角色绑定授予此能力。"
+ErrorLink = ""

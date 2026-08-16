@@ -22,6 +22,12 @@ const (
 	MethodNotAllowed   = "BknSafe.MethodNotAllowed"
 	ServiceUnavailable = "BknSafe.ServiceUnavailable"
 	InternalError      = "BknSafe.InternalError"
+
+	AdminWriteInvalid                         = "BknSafe.AdminWrite.Invalid"
+	AdminWriteImmutable                       = "BknSafe.AdminWrite.Immutable"
+	AdminWriteNoUpdatableFields               = "BknSafe.AdminWrite.NoUpdatableFields"
+	AdminWriteWildcardGrantForbidden          = "BknSafe.AdminWrite.WildcardGrantForbidden"
+	AdminWriteAdminConsolePermissionForbidden = "BknSafe.AdminWrite.AdminConsolePermissionForbidden"
 )
 
 var (
@@ -35,6 +41,11 @@ var (
 		MethodNotAllowed,
 		ServiceUnavailable,
 		InternalError,
+		AdminWriteInvalid,
+		AdminWriteImmutable,
+		AdminWriteNoUpdatableFields,
+		AdminWriteWildcardGrantForbidden,
+		AdminWriteAdminConsolePermissionForbidden,
 	}
 )
 

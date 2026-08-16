@@ -30,6 +30,7 @@ package adminwrite
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -53,13 +54,19 @@ var (
 	// ErrImmutable: the target is a built-in (seed-owned) object and cannot be
 	// modified through the API.
 	ErrImmutable = errors.New("adminwrite: built-in object is immutable")
-	// ErrInvalid: the request is malformed against a guard (wildcard grant,
-	// empty patch). Maps to 400. The wrapped message is safe to surface.
+	// ErrInvalid: the request is malformed against a guard. Maps to 400.
 	ErrInvalid = errors.New("adminwrite: invalid request")
 	// ErrForbidden: the request is well-formed but refused by a security guard
 	// (e.g. granting the admin-console capability through a role permission,
 	// which would turn this route into an admin-promotion path). Maps to 403.
 	ErrForbidden = errors.New("adminwrite: forbidden")
+
+	// Stable sub-errors retain the reason without exposing wrapped free-form
+	// diagnostics as a client contract. They continue to match their parent
+	// sentinel through errors.Is.
+	ErrNoUpdatableFields      = fmt.Errorf("%w: no updatable fields provided", ErrInvalid)
+	ErrWildcardGrant          = fmt.Errorf("%w: wildcard grant", ErrInvalid)
+	ErrAdminConsolePermission = fmt.Errorf("%w: admin console permission", ErrForbidden)
 )
 
 // RoleSpec creates a custom role. Source is always forced to "custom" by the

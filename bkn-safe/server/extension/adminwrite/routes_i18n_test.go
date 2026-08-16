@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
@@ -28,22 +29,42 @@ func TestWriteErrUsesStableLocalizedResponse(t *testing.T) {
 	}{
 		{
 			name: "invalid", err: errors.Join(ErrInvalid, errors.New("unsafe detail")),
-			status: http.StatusBadRequest, code: "BknSafe.InvalidRequest",
-			description: map[string]string{"zh-CN": "请求参数无效。", "en-US": "The request parameters are invalid."},
+			status: http.StatusBadRequest, code: httperrors.AdminWriteInvalid,
+			description: map[string]string{"zh-CN": "管理写入请求无效。", "en-US": "The admin write request is invalid."},
 		},
 		{
 			name: "not found", err: ErrNotFound,
-			status: http.StatusNotFound, code: "BknSafe.NotFound",
+			status: http.StatusNotFound, code: httperrors.NotFound,
 			description: map[string]string{"zh-CN": "请求的资源不存在。", "en-US": "The requested resource was not found."},
 		},
 		{
 			name: "forbidden", err: ErrForbidden,
-			status: http.StatusForbidden, code: "BknSafe.Forbidden",
+			status: http.StatusForbidden, code: httperrors.Forbidden,
 			description: map[string]string{"zh-CN": "没有执行此操作的权限。", "en-US": "You are not permitted to perform this operation."},
 		},
 		{
+			name: "immutable", err: ErrImmutable,
+			status: http.StatusForbidden, code: httperrors.AdminWriteImmutable,
+			description: map[string]string{"zh-CN": "内置对象不能修改。", "en-US": "Built-in objects cannot be modified."},
+		},
+		{
+			name: "no updatable fields", err: ErrNoUpdatableFields,
+			status: http.StatusBadRequest, code: httperrors.AdminWriteNoUpdatableFields,
+			description: map[string]string{"zh-CN": "未提供可更新字段。", "en-US": "No updatable fields were provided."},
+		},
+		{
+			name: "wildcard grant", err: errors.Join(ErrWildcardGrant, errors.New("wildcard detail")),
+			status: http.StatusBadRequest, code: httperrors.AdminWriteWildcardGrantForbidden,
+			description: map[string]string{"zh-CN": "不能授予通配资源类型或操作。", "en-US": "Wildcard resource types and operations cannot be granted."},
+		},
+		{
+			name: "admin console permission", err: ErrAdminConsolePermission,
+			status: http.StatusForbidden, code: httperrors.AdminWriteAdminConsolePermissionForbidden,
+			description: map[string]string{"zh-CN": "不能通过角色权限授予管理控制台能力。", "en-US": "The admin console capability cannot be granted through role permissions."},
+		},
+		{
 			name: "internal", err: errors.New("database detail"),
-			status: http.StatusInternalServerError, code: "BknSafe.InternalError",
+			status: http.StatusInternalServerError, code: httperrors.InternalError,
 			description: map[string]string{"zh-CN": "服务内部错误。", "en-US": "An internal service error occurred."},
 		},
 	}
@@ -79,8 +100,10 @@ func TestWriteErrUsesStableLocalizedResponse(t *testing.T) {
 				if got := body["error"]; got != testCase.description[language] {
 					t.Errorf("legacy error = %q, want localized description", got)
 				}
-				if strings.Contains(response.Body.String(), "unsafe detail") || strings.Contains(response.Body.String(), "database detail") {
-					t.Error("internal error detail leaked into the response")
+				for _, internalDetail := range []string{"unsafe detail", "wildcard detail", "database detail"} {
+					if strings.Contains(response.Body.String(), internalDetail) {
+						t.Errorf("internal error detail %q leaked into the response", internalDetail)
+					}
 				}
 			})
 		}

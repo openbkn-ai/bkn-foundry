@@ -20,14 +20,24 @@ type localizedErrorResponse struct {
 
 // New creates a localized HTTP error for the stable BKN Safe status mapping.
 func New(ctx context.Context, status int) *sharedrest.HTTPError {
+	return NewCode(ctx, status, ForStatus(status))
+}
+
+// NewCode creates a localized HTTP error with a handler-specific stable code.
+func NewCode(ctx context.Context, status int, code string) *sharedrest.HTTPError {
 	Register()
-	return sharedrest.NewHTTPError(ctx, status, ForStatus(status))
+	return sharedrest.NewHTTPError(ctx, status, code)
 }
 
 // Write sends the common localized BKN Safe error envelope. Optional details
 // must remain structured, machine-readable context rather than free-form text.
 func Write(c *gin.Context, status int, details any) {
-	err := New(c.Request.Context(), status)
+	WriteCode(c, status, ForStatus(status), details)
+}
+
+// WriteCode sends the common envelope with a handler-specific stable code.
+func WriteCode(c *gin.Context, status int, code string, details any) {
+	err := NewCode(c.Request.Context(), status, code)
 	if details != nil {
 		err.WithErrorDetails(details)
 	}

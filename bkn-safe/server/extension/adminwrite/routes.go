@@ -156,15 +156,29 @@ func bindJSON(c *gin.Context, v any) bool {
 // error is a 500 — the message is not leaked.
 func writeErr(c *gin.Context, err error) {
 	status := http.StatusInternalServerError
+	code := httperrors.InternalError
 	switch {
 	case errors.Is(err, ErrNotFound):
 		status = http.StatusNotFound
+		code = httperrors.NotFound
 	case errors.Is(err, ErrImmutable):
 		status = http.StatusForbidden
+		code = httperrors.AdminWriteImmutable
+	case errors.Is(err, ErrNoUpdatableFields):
+		status = http.StatusBadRequest
+		code = httperrors.AdminWriteNoUpdatableFields
+	case errors.Is(err, ErrWildcardGrant):
+		status = http.StatusBadRequest
+		code = httperrors.AdminWriteWildcardGrantForbidden
+	case errors.Is(err, ErrAdminConsolePermission):
+		status = http.StatusForbidden
+		code = httperrors.AdminWriteAdminConsolePermissionForbidden
 	case errors.Is(err, ErrForbidden):
 		status = http.StatusForbidden
+		code = httperrors.Forbidden
 	case errors.Is(err, ErrInvalid):
 		status = http.StatusBadRequest
+		code = httperrors.AdminWriteInvalid
 	}
-	httperrors.Write(c, status, nil)
+	httperrors.WriteCode(c, status, code, nil)
 }

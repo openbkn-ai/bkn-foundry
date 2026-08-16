@@ -70,3 +70,32 @@ PasswordMismatch = "The new passwords do not match or are empty."
 PasswordReuse = "The new password must differ from the current password."
 CurrentPasswordInvalid = "The current password is incorrect."
 InvalidDeviceCode = "The device code is invalid."
+MissingLoginChallenge = "The login_challenge parameter is required."
+MissingConsentChallenge = "The consent_challenge parameter is required."
+MissingDeviceChallenge = "The device_challenge parameter is required."
+MissingUserCode = "The user_code parameter is required."
+
+[BknSafe.AdminWrite.Invalid]
+Description = "The admin write request is invalid."
+Solution = "Check the requested role or permission change."
+ErrorLink = ""
+
+[BknSafe.AdminWrite.Immutable]
+Description = "Built-in objects cannot be modified."
+Solution = "Create or modify a custom object instead."
+ErrorLink = ""
+
+[BknSafe.AdminWrite.NoUpdatableFields]
+Description = "No updatable fields were provided."
+Solution = "Provide at least one field that can be updated."
+ErrorLink = ""
+
+[BknSafe.AdminWrite.WildcardGrantForbidden]
+Description = "Wildcard resource types and operations cannot be granted."
+Solution = "Specify a concrete resource type and operation."
+ErrorLink = ""
+
+[BknSafe.AdminWrite.AdminConsolePermissionForbidden]
+Description = "The admin console capability cannot be granted through role permissions."
+Solution = "Use the managed administrator role binding for this capability."
+ErrorLink = ""
