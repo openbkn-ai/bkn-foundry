@@ -258,6 +258,50 @@ func Test_ValidateRelationType(t *testing.T) {
 	})
 }
 
+func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{
+			name:     "English",
+			language: rest.AmericanEnglish,
+			want:     "Relation type must be direct or filtered_cross_join; received unsupported.",
+		},
+		{
+			name:     "SimplifiedChinese",
+			language: rest.SimplifiedChinese,
+			want:     "关系类型仅支持 direct 和 filtered_cross_join，当前为 unsupported。",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := rest.WithLanguage(context.Background(), testCase.language)
+			relationType := &interfaces.RelationType{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID:   "rt1",
+					RTName: "relation1",
+					Type:   "unsupported",
+				},
+			}
+
+			err := ValidateRelationType(ctx, relationType, true)
+			if err == nil {
+				t.Fatal("ValidateRelationType() error = nil, want invalid parameter error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
+}
+
 func Test_ValidateRelationTypes(t *testing.T) {
 	Convey("Test ValidateRelationTypes\n", t, func() {
 		ctx := context.Background()
@@ -313,4 +357,33 @@ func Test_ValidateRelationTypes(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+}
+
+func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "Relation type module type must be relation_type."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "关系类模块类型必须为 relation_type。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := ValidateRelationTypes(
+				rest.WithLanguage(context.Background(), testCase.language),
+				"kn-1",
+				[]*interfaces.RelationType{{ModuleType: "object_type"}},
+				true,
+			)
+			if err == nil {
+				t.Fatal("ValidateRelationTypes() error = nil, want invalid module type error")
+			}
+			httpErr := err.(*rest.HTTPError)
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
 }

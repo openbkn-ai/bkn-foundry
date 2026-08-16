@@ -31,38 +31,38 @@ const (
 	DATATYPE_TIME             = "time"
 	DATATYPE_BOOLEAN          = "boolean"
 
-	//字符型
+	// Character types.
 	CHAR    = "char"
 	VARCHAR = "varchar"
 	STRING  = "string"
-	//整数型
+	// Integer types.
 	NUMBER   = "number"
 	TINYINT  = "tinyint"
 	SMALLINT = "smallint"
 	INTEGER  = "integer"
-	INT      = "int" //INTEGER 别名
+	INT      = "int" // INTEGER alias
 	BIGINT   = "bigint"
-	//小数型
+	// Decimal types.
 	REAL            = "real"
-	FLOAT           = "float" //REAL 别名
+	FLOAT           = "float" // REAL alias
 	DOUBLE          = "double"
-	DOUBLEPRECISION = "double precision" //DOUBLE 别名
-	//高精度型
+	DOUBLEPRECISION = "double precision" // DOUBLE alias
+	// High-precision types.
 	DECIMAL = "decimal"
-	NUMERIC = "numeric" //DECIMAL 别名
-	DEC     = "dec"     //DECIMAL 别名
-	//布尔型
+	NUMERIC = "numeric" // DECIMAL alias
+	DEC     = "dec"     // DECIMAL alias
+	// Boolean types.
 	BOOLEAN = "boolean"
-	//日期型
+	// Date types.
 	DATE = "date"
-	//日期时间型
+	// Date-time types.
 	TIME                     = "time"
 	TIME_WITH_TIME_ZONE      = "time with time zone"
 	DATETIME                 = "datetime"
 	TIMESTAMP                = "timestamp"
 	TIMESTAMP_WITH_TIME_ZONE = "timestamp with time zone"
 
-	//region 业务大类型
+	// region Business-level types.
 	SimpleChar     = "char"
 	SimpleInt      = "int"
 	SimpleFloat    = "float"
@@ -114,10 +114,10 @@ var (
 	// }
 )
 
-//region 业务大类型 与 虚拟化引擎类型 映射
+// region Mapping between business-level types and virtual engine types.
 
 var SimpleTypeMapping = map[string]string{
-	//region 字符型
+	// region Character types.
 	STRING:             SimpleChar,
 	CHAR:               SimpleChar,
 	VARCHAR:            SimpleChar,
@@ -147,7 +147,7 @@ var SimpleTypeMapping = map[string]string{
 	"ipaddress":        SimpleChar,
 	//endregion
 
-	//region 整数型
+	// region Integer types.
 	NUMBER:               SimpleInt,
 	TINYINT:              SimpleInt,
 	SMALLINT:             SimpleInt,
@@ -194,9 +194,9 @@ var SimpleTypeMapping = map[string]string{
 	TIMESTAMP:                SimpleDatetime,
 	"timestamptz":            SimpleDatetime,
 	TIMESTAMP_WITH_TIME_ZONE: SimpleDatetime,
-	"interval":               SimpleDatetime, // 跨度
-	"interval year to month": SimpleDatetime, // 年和月的跨度
-	"interval day to second": SimpleDatetime, // 天数、小时、分钟、秒和毫秒的跨度
+	"interval":               SimpleDatetime, // Duration
+	"interval year to month": SimpleDatetime, // Year-and-month duration
+	"interval day to second": SimpleDatetime, // Day, hour, minute, second, and millisecond duration
 
 	TIME: SimpleTime, "timetz": SimpleTime, TIME_WITH_TIME_ZONE: SimpleTime,
 

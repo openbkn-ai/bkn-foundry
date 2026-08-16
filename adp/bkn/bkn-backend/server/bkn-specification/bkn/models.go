@@ -368,10 +368,10 @@ type Schedule struct {
 // ActionSource represents action source.
 type ActionSource struct {
 	Type string
-	// type 为 tool
+	// type is tool.
 	BoxID  string
 	ToolID string
-	// type 为 mcp
+	// type is mcp.
 	McpID    string
 	ToolName string
 }

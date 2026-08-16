@@ -361,7 +361,7 @@ func (vba *vegaBackendAccess) DeleteDatasetDocumentsByQuery(ctx context.Context,
 	return nil
 }
 
-// 从 vega resource中获取数据
+// GetData retrieves data from a Vega resource.
 func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Query dataset data")
 	defer span.End()

@@ -131,7 +131,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create knowledge network")
 	defer span.End()
 
-	// 判断userid是否有创建业务知识网络的权限（策略决策）
+	// Check whether the user ID can create business knowledge networks through policy evaluation.
 	err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   interfaces.RESOURCE_ID_ALL,
@@ -141,7 +141,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	}
 
 	currentTime := time.Now().UnixMilli()
-	// 若提交的模型id为空，生成分布式ID
+	// Generate a distributed ID when the submitted model ID is empty.
 	if kn.KNID == "" {
 		kn.KNID = xid.New().String()
 	}
@@ -186,7 +186,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	bknNetwork := logics.ToBKNNetWork(kn)
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	tx, err := kns.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
@@ -195,11 +195,11 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
-	// 0.1 异常时
+	// 0.1 On failure.
 	defer func() {
 		switch err {
 		case nil:
-			// 提交事务
+			// Commit the transaction.
 			err = tx.Commit()
 			if err != nil {
 				otellog.LogError(ctx, "CreateKN Transaction Commit Failed", err)
@@ -214,13 +214,13 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}()
 
-	// 处理导入模式
+	// Process import mode.
 	isCreate, isUpdate, err := kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return "", err
 	}
 
-	// 处理创建情况
+	// Process creation.
 	if isCreate {
 		err = kns.kna.CreateKN(ctx, tx, kn)
 		if err != nil {
@@ -232,7 +232,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				WithErrorDetails(err.Error())
 		}
 
-		// 导入概念分组
+		// Import concept groups.
 		if len(kn.ConceptGroups) > 0 {
 			for _, cg := range kn.ConceptGroups {
 				_, err = kns.cgs.CreateConceptGroup(ctx, tx, cg, mode, strictMode)
@@ -300,9 +300,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}
 
-	// 处理更新情况
+	// Process updates.
 	if isUpdate {
-		// todo: 提交的已存在，需要更新，则版本号+1
+		// TODO: increment the version when updating an existing submitted item.
 		err = kns.UpdateKN(ctx, tx, kn, strictMode)
 		if err != nil {
 			logger.Errorf("UpdateKN error: %s", err.Error())
@@ -391,9 +391,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}
 
-	// 最后才绑定业务域，创建才绑业务域
+	// Bind the business domain last and only during creation.
 	if isCreate {
-		// 注册资源策略
+		// Register resource policies.
 		err = kns.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 			ID:   kn.KNID,
 			Type: interfaces.RESOURCE_TYPE_KN,
@@ -407,7 +407,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				WithErrorDetails(err.Error())
 		}
 
-		// 绑定业务域
+		// Bind the business domain.
 		err = kns.bss.BindResource(ctx, kn.BusinessDomain, kn.KNID, interfaces.MODULE_TYPE_KN)
 		if err != nil {
 			logger.Errorf("BindResource error: %s", err.Error())
@@ -440,7 +440,7 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 	}
 	kn.Branch = branch
 
-	// 处理导入模式
+	// Process import mode.
 	_, _, err := kns.handleKNImportMode(ctx, mode, kn)
 	if err != nil {
 		return err
@@ -505,13 +505,13 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 		return []*interfaces.KN{}, 0, nil
 	}
 
-	// 处理资源id
+	// Process resource IDs.
 	KNIDs := make([]string, 0)
 	for _, m := range KNArr {
 		KNIDs = append(KNIDs, m.KNID)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
+	// Filter objects by view permission. The filtered length is the total, so no separate total query is needed.
 	matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, KNIDs,
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
@@ -583,16 +583,16 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 	return KNs, total, nil
 }
 
-// GetKNNamesByIDs 按 ID 批量取知识网络名称(对象级授权页回显)。
-// 刻意不走 FilterResources 授权过滤：授权页需要为"用户无权但被授权对象引用"的 KN 回显名称，
-// 故此处只做轻量名称查询。缺失 id 略过、空 ids 返回空 entries、id 去重。
+// GetKNNamesByIDs resolves knowledge network names in bulk for object-level authorization display.
+// Do not use FilterResources here because authorization pages must display names referenced by objects even when users lack access.
+// Perform only a lightweight name query. Skip missing IDs, return empty entries for empty input, and de-duplicate IDs.
 func (kns *knowledgeNetworkService) GetKNNamesByIDs(ctx context.Context, ids []string) (*interfaces.KNBatchNamesResp, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "按ID批量查询业务知识网络名称")
 	defer span.End()
 
 	resp := &interfaces.KNBatchNamesResp{Entries: []*interfaces.KNNameEntry{}}
 
-	// 去重，过滤空字符串
+	// De-duplicate and filter empty strings.
 	seen := make(map[string]struct{}, len(ids))
 	uniqueIDs := make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -625,11 +625,11 @@ func (kns *knowledgeNetworkService) GetKNNamesByIDs(ctx context.Context, ids []s
 
 func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, branch string, mode string) (*interfaces.KN, error) {
 
-	// 获取业务知识网络
+	// Get business knowledge networks.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询业务知识网络[%s]信息", knID))
 	defer span.End()
 
-	// 获取模型基本信息
+	// Get basic model information.
 	kn, err := kns.kna.GetKNByID(ctx, knID, branch)
 	if err != nil {
 		logger.Errorf("GetKNByID error: %s", err.Error())
@@ -650,7 +650,7 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 			WithErrorDetails(errStr)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
+	// Filter objects by view permission. The filtered length is the total, so no separate total query is needed.
 	matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
@@ -659,10 +659,9 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 	}
 
 	if resrc, exist := matchResoucesMap[kn.KNID]; exist {
-		kn.Operations = resrc.Operations // 用户当前有权限的操作
+		kn.Operations = resrc.Operations // Operations currently allowed for the user
 	} else {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
+		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
 	accountInfos := []*interfaces.AccountInfo{&kn.Creator, &kn.Updater}
@@ -749,11 +748,11 @@ func (kns *knowledgeNetworkService) GetKNByID(ctx context.Context, knID string, 
 }
 
 func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfaces.KN) (*interfaces.Statistics, error) {
-	// 获取业务知识网络
+	// Get business knowledge networks.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询业务知识网络[%s]信息", kn.KNID))
 	defer span.End()
 
-	// 获取业务知识网络下的对象类、关系类、行动类的数量
+	// Get counts of object, relation, and action types in the business knowledge network.
 	otCnt, err := kns.ota.GetObjectTypesTotal(ctx, interfaces.ObjectTypesQueryParams{
 		KNID:   kn.KNID,
 		Branch: kn.Branch,
@@ -767,7 +766,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// 关系类数量
+	// Relation type count.
 	rtCnt, err := kns.rta.GetRelationTypesTotal(ctx, interfaces.RelationTypesQueryParams{
 		KNID:   kn.KNID,
 		Branch: kn.Branch,
@@ -781,7 +780,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// 行动类数量
+	// Action type count.
 	atCnt, err := kns.ata.GetActionTypesTotal(ctx, interfaces.ActionTypesQueryParams{
 		KNID:   kn.KNID,
 		Branch: kn.Branch,
@@ -795,7 +794,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// 概念分组数量
+	// Concept group count.
 	cgCnt, err := kns.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 		KNID:   kn.KNID,
 		Branch: kn.Branch,
@@ -809,7 +808,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// riskTypes 数量
+	// Risk type count.
 	riskTypeCnt, err := kns.riskTypeA.GetRiskTypesTotal(ctx, interfaces.RiskTypesQueryParams{
 		KNID:   kn.KNID,
 		Branch: kn.Branch,
@@ -823,7 +822,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// metrics 数量
+	// Metric count.
 	metricsCnt, err := kns.ma.GetMetricsTotal(ctx, interfaces.MetricsListQueryParams{
 		KNID:   kn.KNID,
 		Branch: kn.Branch,
@@ -850,12 +849,12 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 	return statistics, nil
 }
 
-// 更新业务知识网络
+// Update business knowledge networks.
 func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn *interfaces.KN, strictMode bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update knowledge network")
 	defer span.End()
 
-	// 判断userid是否有创建业务知识网络的权限（策略决策）
+	// Check whether the user ID can create business knowledge networks through policy evaluation.
 	err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   kn.KNID,
@@ -876,14 +875,14 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 	}
 	kn.Updater = accountInfo
 
-	currentTime := time.Now().UnixMilli() // 业务知识网络的update_time是int类型
+	currentTime := time.Now().UnixMilli() // Business knowledge network update_time uses an integer type.
 	kn.UpdateTime = currentTime
 
 	bknNetwork := logics.ToBKNNetWork(kn)
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = kns.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -891,11 +890,11 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 				berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "UpdateKN Transaction Commit Failed", err)
@@ -911,7 +910,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 		}()
 	}
 
-	// 更新模型信息
+	// Update model information.
 	err = kns.kna.UpdateKN(ctx, tx, kn)
 	if err != nil {
 		logger.Errorf("UpdateKN error: %s", err.Error())
@@ -932,7 +931,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 			WithErrorDetails(err.Error())
 	}
 
-	// 请求更新资源名称的接口，更新资源的名称
+	// Call the resource name update API.
 	if kn.IfNameModify {
 		err = kns.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   kn.KNID,
@@ -952,7 +951,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete knowledge network")
 	defer span.End()
 
-	// 判断userid是否有删除业务知识网络的权限
+	// Check whether the user ID can delete business knowledge networks.
 	err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   kn.KNID,
@@ -961,7 +960,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	tx, err := kns.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
@@ -970,11 +969,11 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
-	// 0.1 异常时
+	// 0.1 On failure.
 	defer func() {
 		switch err {
 		case nil:
-			// 提交事务
+			// Commit the transaction.
 			err = tx.Commit()
 			if err != nil {
 				otellog.LogError(ctx, "CreateKN Transaction Commit Failed", err)
@@ -989,7 +988,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		}
 	}()
 
-	// 删除业务知识网络
+	// Delete business knowledge networks.
 	rowsAffect, err := kns.kna.DeleteKN(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteKN error: %s", err.Error())
@@ -1003,8 +1002,8 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		otellog.LogWarn(ctx, fmt.Sprintf("Delete kns number %v not equal 1!", rowsAffect))
 	}
 
-	// 删除业务知识网络下的所有对象类、关系类、行动类和概念分组
-	// 获取业务知识网络下的对象类id
+	// Delete all object types, relation types, action types, and concept groups under the business knowledge network.
+	// Get object type IDs under the business knowledge network.
 	err = kns.ots.DeleteObjectTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteObjectTypesByKnID error: %s", err.Error())
@@ -1012,7 +1011,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// 删除业务知识网络下的所有关系类
+	// Delete all relation types under the business knowledge network.
 	err = kns.rts.DeleteRelationTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteRelationTypesByKnID error: %s", err.Error())
@@ -1020,7 +1019,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// 删除业务知识网络下的所有行动类
+	// Delete all action types under the business knowledge network.
 	err = kns.ats.DeleteActionTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteActionTypesByKnID error: %s", err.Error())
@@ -1028,7 +1027,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// 删除业务知识网络下的所有指标
+	// Delete all metrics under the business knowledge network.
 	err = kns.ms.DeleteMetricsByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteMetricsByKnID error: %s", err.Error())
@@ -1036,7 +1035,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// 删除业务知识网络下的所有风险类
+	// Delete all risk types under the business knowledge network.
 	err = kns.riskTypeS.DeleteRiskTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteRiskTypesByKnID error: %s", err.Error())
@@ -1044,7 +1043,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// 删除业务知识网络下的所有概念分组
+	// Delete all concept groups under the business knowledge network.
 	err = kns.cgs.DeleteConceptGroupsByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
@@ -1088,14 +1087,14 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
-	//  清除资源策略
+	// Clear resource policies.
 	err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
 	if err != nil {
 		logger.Errorf("DeleteResources error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")
 		return err
 	}
-	// 最后再解绑业务域
+	// Unbind the business domain last.
 	err = kns.bss.UnbindResource(ctx, kn.BusinessDomain, kn.KNID, interfaces.RESOURCE_TYPE_KN)
 	if err != nil {
 		logger.Errorf("UnbindResource error: %s", err.Error())
@@ -1109,12 +1108,12 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	return nil
 }
 
-// 更新知识网络详情
+// Update knowledge network details.
 func (kns *knowledgeNetworkService) UpdateKNDetail(ctx context.Context, knID string, branch string, detail string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateKNDetail")
 	defer span.End()
 
-	// 更新知识网络详情
+	// Update knowledge network details.
 	err := kns.kna.UpdateKNDetail(ctx, knID, branch, detail)
 	if err != nil {
 		logger.Errorf("UpdateKNDetail error: %s", err.Error())
@@ -1138,20 +1137,20 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 	isCreate = false
 	isUpdate = false
 
-	// 校验单个KN的导入模式逻辑
+	// Validate import mode for a single knowledge network.
 	idExist := false
 	_, idExist, err = kns.CheckKNExistByID(ctx, kn.KNID, kn.Branch)
 	if err != nil {
 		return false, false, err
 	}
 
-	// 校验请求体与现有模型名称的重复性
+	// Validate conflicts between the request and existing model names.
 	existID, nameExist, err := kns.CheckKNExistByName(ctx, kn.KNName, kn.Branch)
 	if err != nil {
 		return false, false, err
 	}
 
-	// 根据mode来区别，若是ignore，就从结果集中忽略，若是overwrite，就调用update，若是normal就报错。
+	// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
 	if idExist || nameExist {
 		switch mode {
 		case interfaces.ImportMode_Normal:
@@ -1175,11 +1174,11 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 			}
 
 		case interfaces.ImportMode_Ignore:
-			// 存在重复的就跳过，不创建也不更新
+			// Skip duplicates without creating or updating.
 			return false, false, nil
 		case interfaces.ImportMode_Overwrite:
 			if idExist && nameExist {
-				// 如果 id 和名称都存在，但是存在的名称对应的视图 id 和当前视图 id 不一样，则报错
+				// Return an error when both ID and name exist but the named view has a different ID.
 				if existID != kn.KNID {
 					errDetails := fmt.Sprintf("KN ID '%s' and name '%s' already exist, but the exist knowledge network id is '%s'",
 						kn.KNID, kn.KNName, existID)
@@ -1189,19 +1188,19 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 						berrors.BknBackend_KnowledgeNetwork_KNNameExisted).
 						WithErrorDetails(errDetails)
 				} else {
-					// 如果 id 和名称、度量名称都存在，存在的名称对应的模型 id 和当前模型 id 一样，则覆盖更新
+					// Overwrite when ID, name, and metric name exist and the named model ID matches the current model ID.
 					isUpdate = true
 					return isCreate, isUpdate, nil
 				}
 			}
 
-			// id 已存在，且名称不存在，覆盖更新
+			// Overwrite when the ID exists and the name does not.
 			if idExist && !nameExist {
 				isUpdate = true
 				return isCreate, isUpdate, nil
 			}
 
-			// 如果 id 不存在，name 存在，报错
+			// Return an error when the ID does not exist but the name exists.
 			if !idExist && nameExist {
 				errDetails := fmt.Sprintf("KN ID '%s' does not exist, but name '%s' already exists",
 					kn.KNID, kn.KNName)
@@ -1212,12 +1211,12 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 					WithErrorDetails(errDetails)
 			}
 
-			// 如果 id 不存在，name不存在，度量名称不存在，不需要做什么，创建
+			// Create when ID, name, and metric name do not exist.
 			// if !idExist && !nameExist {}
 		}
 	}
 
-	// 默认情况：需要创建
+	// Default behavior is creation.
 	isCreate = true
 	return isCreate, isUpdate, nil
 }
@@ -1297,23 +1296,23 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 	return nil
 }
 
-// 批量查询的中间状态
+// Intermediate state for batched queries.
 type batchQueryState struct {
 	visited   map[string]bool
 	batchSize int
 }
 
-// 根据起点对象类，方向，长度获取路径
+// Get paths by source object type, direction, and length.
 func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 	query interfaces.RelationTypePathsBaseOnSource) ([]interfaces.RelationTypePath, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetRelationTypePaths")
 	defer span.End()
 
-	// 1. 获取起点对象类
+	// 1. Get the source object type.
 
 	allPaths := []interfaces.RelationTypePath{}
 
-	// 使用BFS进行路径搜索
+	// Search paths with BFS.
 	queue := []interfaces.RelationTypePath{
 		{
 			ObjectTypes: []interfaces.ObjectTypeWithKeyField{
@@ -1325,24 +1324,24 @@ func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 		},
 	}
 
-	// 初始化状态
+	// Initialize state.
 	state := &batchQueryState{
-		visited: map[string]bool{}, // 用于防止循环路径
+		visited: map[string]bool{}, // Prevent cyclic paths
 		// objectTypeCache: map[string]interfaces.ObjectType{},
-		batchSize: 50, // 每批查询的节点数量
+		batchSize: 50, // Number of nodes queried per batch
 	}
 	for len(queue) > 0 {
 		currentLevelSize := len(queue)
 		var nextLevelNodes []string
 		currentLevelPaths := make([]interfaces.RelationTypePath, 0, currentLevelSize)
 
-		// 处理当前层的所有路径
+		// Process all paths at the current depth.
 		for i := 0; i < currentLevelSize; i++ {
 			currentPath := queue[i]
 			currentNode := currentPath.ObjectTypes[len(currentPath.ObjectTypes)-1]
-			// 获取当前节点的信息（按需查询）
+			// Retrieve current node information on demand.
 			if currentNode.OTName == "" {
-				// 若currentNode.OTID不存在，此函数会报错： objetc type not found
+				// This function returns an object type not found error when currentNode.OTID does not exist.
 				objectType, err := kns.ots.GetObjectTypeByID(ctx, nil, query.KNID, query.Branch, currentNode.OTID)
 				if err != nil {
 					otellog.LogError(ctx, "Get source object type failed", err)
@@ -1361,18 +1360,18 @@ func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 				currentPath.ObjectTypes[len(currentPath.ObjectTypes)-1] = currentNode
 			}
 
-			// 如果达到最大深度，保存路径
+			// Save the path when maximum depth is reached.
 			if currentPath.Length >= query.PathLength {
 				allPaths = append(allPaths, currentPath)
 				continue
 			}
 
-			// 收集需要查询邻居的节点ID
+			// Collect node IDs whose neighbors must be queried.
 			nextLevelNodes = append(nextLevelNodes, currentNode.OTID)
 			currentLevelPaths = append(currentLevelPaths, currentPath)
 		}
 
-		// 批量查询下一层节点的邻居
+		// Query next-level neighbors in batches.
 		if len(nextLevelNodes) > 0 {
 			neighborPathsMap, err := kns.getNeighborsBatch(ctx, nextLevelNodes, query, state)
 			if err != nil {
@@ -1380,25 +1379,25 @@ func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 				return nil, err
 			}
 
-			// 为每个当前层的路径扩展新路径
+			// Extend every path at the current depth.
 			for i, currentPath := range currentLevelPaths {
 
 				currentNodeID := nextLevelNodes[i]
 				neighborPaths := neighborPathsMap[currentNodeID]
 
-				// 如果没有邻居节点，保存当前路径
+				// Save the current path when no neighbor exists.
 				if len(neighborPaths) == 0 {
 					allPaths = append(allPaths, currentPath)
 					continue
 				}
 
-				// 为每个邻居创建新路径. 当前起点指向的路径需要重置，不完整。
+				// Create a new path for each neighbor. Reset incomplete paths from the current source.
 				for _, neighbor := range neighborPaths {
-					// 构建路径键来检测循环
-					// 这个一度的路径，第二个对象类是终点
+					// Build a path key to detect cycles.
+					// In this one-hop path, the second object type is the target.
 					pathKey := buildPathKey(currentPath, neighbor)
 					if state.visited[pathKey] {
-						continue // 跳过已访问的路径
+						continue // Skip an already visited path.
 					}
 					state.visited[pathKey] = true
 
@@ -1416,12 +1415,12 @@ func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 				}
 			}
 		}
-		// 移除已处理的当前层路径
+		// Remove processed paths at the current depth.
 		if currentLevelSize > 0 {
 			queue = queue[currentLevelSize:]
 		}
 	}
-	// 添加队列中剩余的路径（如果未达到限制）
+	// Add remaining queued paths when the limit is not reached.
 	for i := 0; i < len(queue); i++ {
 		allPaths = append(allPaths, queue[i])
 	}
@@ -1430,7 +1429,7 @@ func (kns *knowledgeNetworkService) GetRelationTypePaths(ctx context.Context,
 	return allPaths, nil
 }
 
-// 批量查询相邻节点 - 核心优化方法
+// Query neighboring nodes in batches as the core optimization.
 func (kns *knowledgeNetworkService) getNeighborsBatch(ctx context.Context, objectClassIDs []string,
 	query interfaces.RelationTypePathsBaseOnSource, state *batchQueryState) (map[string][]interfaces.RelationTypePath, error) {
 
@@ -1438,12 +1437,12 @@ func (kns *knowledgeNetworkService) getNeighborsBatch(ctx context.Context, objec
 		return nil, nil
 	}
 
-	// 分批处理，避免SQL参数过多
+	// Process in batches to avoid too many SQL parameters.
 	batchSize := state.batchSize
 	neighborPathsMap := map[string][]interfaces.RelationTypePath{}
 
 	for start := 0; start < len(objectClassIDs); start += batchSize {
-		// 遍历当前节点的邻居路径
+		// Traverse neighbor paths of the current node.
 		end := start + batchSize
 		if end > len(objectClassIDs) {
 			end = len(objectClassIDs)
@@ -1455,7 +1454,7 @@ func (kns *knowledgeNetworkService) getNeighborsBatch(ctx context.Context, objec
 			return nil, err
 		}
 
-		// 合并结果
+		// Merge results.
 		for k, v := range batchNeighborPathsMap {
 			neighborPathsMap[k] = append(neighborPathsMap[k], v...)
 		}
@@ -1464,7 +1463,7 @@ func (kns *knowledgeNetworkService) getNeighborsBatch(ctx context.Context, objec
 	return neighborPathsMap, nil
 }
 
-// 构建路径键用于循环检测
+// Build a path key for cycle detection.
 func buildPathKey(path interfaces.RelationTypePath, neighborPath interfaces.RelationTypePath) string {
 
 	key := ""
@@ -1476,14 +1475,14 @@ func buildPathKey(path interfaces.RelationTypePath, neighborPath interfaces.Rela
 	return key
 }
 
-// 获取业务知识网络资源列表
+// Get business knowledge network resource list.
 func (kns *knowledgeNetworkService) ListKnSrcs(ctx context.Context,
 	parameter interfaces.KNsQueryParams) ([]interfaces.PermissionResource, int, error) {
 
 	listCtx, listSpan := oteltrace.StartNamedInternalSpan(ctx, "查询业务知识网络实例列表")
 	defer listSpan.End()
 
-	//获取业务知识网络列表（不分页，获取所有的业务知识网络)
+	// Get all business knowledge networks without pagination.
 	knList, err := kns.kna.ListKnSrcs(listCtx, parameter)
 	emptyResources := []interfaces.PermissionResource{}
 	if err != nil {
@@ -1497,20 +1496,20 @@ func (kns *knowledgeNetworkService) ListKnSrcs(ctx context.Context,
 		return emptyResources, 0, nil
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
-	// 处理资源id
+	// Filter objects by view permission. The filtered length is the total, so no separate total query is needed.
+	// Process resource IDs.
 	resMids := make([]string, 0)
 	for _, m := range knList {
 		resMids = append(resMids, m.ID)
 	}
-	// 校验权限管理的操作权限
+	// Validate permission-management operations.
 	matchResoucesMap, err := kns.ps.FilterResources(ctx, interfaces.RESOURCE_TYPE_KN, resMids,
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, false, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		return emptyResources, 0, err
 	}
 
-	// 遍历对象
+	// Traverse objects.
 	results := make([]interfaces.PermissionResource, 0)
 	for _, knSrc := range knList {
 		if _, exist := matchResoucesMap[knSrc.ID]; exist {
@@ -1518,17 +1517,17 @@ func (kns *knowledgeNetworkService) ListKnSrcs(ctx context.Context,
 		}
 	}
 
-	// limit = -1,则返回所有
+	// Return all entries when limit is -1.
 	if parameter.Limit == -1 {
 		return results, len(results), nil
 	}
 
-	// 分页
-	// 检查起始位置是否越界
+	// Paginate results.
+	// Check whether the start offset is out of range.
 	if parameter.Offset < 0 || parameter.Offset >= len(results) {
 		return nil, len(results), nil
 	}
-	// 计算结束位置
+	// Calculate the end offset.
 	end := parameter.Offset + parameter.Limit
 	if end > len(results) {
 		end = len(results)

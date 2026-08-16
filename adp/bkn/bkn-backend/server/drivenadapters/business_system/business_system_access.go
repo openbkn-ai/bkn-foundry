@@ -32,7 +32,7 @@ type businessSystemAccess struct {
 	bsUrl      string
 }
 
-// NewBusinessSystemAccess 创建业务系统访问实例
+// NewBusinessSystemAccess creates a business-system access instance.
 func NewBusinessSystemAccess(appSetting *common.AppSetting) interfaces.BusinessSystemAccess {
 	bsAccessOnce.Do(func() {
 		bsAccess = &businessSystemAccess{

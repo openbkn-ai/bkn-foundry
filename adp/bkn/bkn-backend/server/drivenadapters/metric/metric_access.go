@@ -385,11 +385,11 @@ func processMetricQueryCondition(query interfaces.MetricsListQueryParams, subBui
 	} else {
 		subBuilder = subBuilder.Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH})
 	}
-	// 统计主体类型
+	// Statistical subject type.
 	if query.ScopeType != "" {
 		subBuilder = subBuilder.Where(sq.Eq{"f_scope_type": query.ScopeType})
 	}
-	// 统计主体id：多值走 IN（OT-first 场景一次枚举多个对象类的指标），单值保持等值
+	// Statistical subject ID. Multiple values use IN and a single value uses equality.
 	if len(query.ScopeRefs) > 0 {
 		subBuilder = subBuilder.Where(sq.Eq{"f_scope_ref": query.ScopeRefs})
 	} else if query.ScopeRef != "" {
@@ -413,8 +413,8 @@ func (ma *metricAccess) ListMetrics(ctx context.Context, query interfaces.Metric
 		if dir == "" {
 			dir = interfaces.DESC_DIRECTION
 		}
-		// f_id 兜底：默认按 f_update_time 排序，同批导入的指标时间戳完全相同，
-		// 没有 tiebreaker 时跨页边界的行序不保证稳定（同一行可能翻两次或被跳过）。
+		// Use f_id as a tie-breaker because same-batch metrics can share identical f_update_time values.
+		// Without a tie-breaker, ordering across page boundaries is unstable and rows can repeat or be skipped.
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", sortCol, dir), "f_id ASC")
 	}
 
@@ -512,7 +512,7 @@ func (ma *metricAccess) UpdateMetric(ctx context.Context, tx *sql.Tx, metric *in
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		logger.Errorf("Get RowsAffected error: %v\n", common.SafeErrorSummary(err))
@@ -521,7 +521,7 @@ func (ma *metricAccess) UpdateMetric(ctx context.Context, tx *sql.Tx, metric *in
 	}
 
 	if RowsAffected != 1 {
-		// 影响行数不等于1不报错，更新操作已经发生
+		// Do not return an error when affected rows are not one because the update has occurred.
 		logger.Errorf("Update metric affected unexpected row count: metric_id=%s, rows=%d",
 			metric.ID, RowsAffected)
 		span.SetStatus(codes.Error, fmt.Sprintf("Update metric affected unexpected row count: metric_id=%s, rows=%d",
@@ -556,7 +556,7 @@ func (ma *metricAccess) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knID
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		logger.Errorf("Delete metrics RowsAffected error: requested_count=%d, %s\n", len(metricIDs), common.SafeErrorSummary(err))
@@ -565,7 +565,7 @@ func (ma *metricAccess) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knID
 	}
 
 	if RowsAffected != int64(len(metricIDs)) {
-		// 影响行数不等于删除的指标数量不报错，删除操作已经发生
+		// Do not return an error when affected rows differ from deleted metric count because deletion has occurred.
 		logger.Warnf("Delete metrics affected unexpected row count: requested_count=%d, rows=%d",
 			len(metricIDs), RowsAffected)
 		span.SetStatus(codes.Error, fmt.Sprintf("Delete metrics affected unexpected row count: requested_count=%d, rows=%d",

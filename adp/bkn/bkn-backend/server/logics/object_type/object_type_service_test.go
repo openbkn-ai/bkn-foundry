@@ -326,9 +326,9 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			otIDs := []string{"ot1"}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			// 模拟Begin失败
+			// Simulate Begin failure.
 			db2, _, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-			_ = db2.Close() // 关闭数据库连接以模拟Begin失败
+			_ = db2.Close() // Close the database connection to simulate Begin failure.
 			service2 := &objectTypeService{
 				appSetting: appSetting,
 				db:         db2,
@@ -2633,7 +2633,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 				Limit:  10,
 			}
-			// 创建一个无法序列化的对象
+			// Create a non-serializable object.
 			entry := map[string]any{
 				"invalid": make(chan int), // channel cannot be marshaled
 			}
@@ -3248,7 +3248,7 @@ func Test_objectTypeService_processConditionOperations(t *testing.T) {
 			dataView := &interfaces.DataView{}
 
 			ops := service2.processConditionOperations(objectType, prop, dataView)
-			// 即使vector config enabled，但model disabled，也不应该有knn操作
+			// Even when vector config is enabled, no KNN operation should occur if the model is disabled.
 			So(len(ops), ShouldBeGreaterThanOrEqualTo, 0)
 		})
 	})
@@ -3315,7 +3315,7 @@ func Test_objectTypeService_handleGroupRelations(t *testing.T) {
 		Convey("Failed when concept groups count mismatch\n", func() {
 			smock.ExpectBegin()
 			tx, _ := db.Begin()
-			conceptGroups := []*interfaces.ConceptGroup{} // 返回空数组
+			conceptGroups := []*interfaces.ConceptGroup{} // Return an empty slice.
 
 			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(conceptGroups, nil)
 
@@ -3402,7 +3402,7 @@ func Test_objectTypeService_syncObjectGroups(t *testing.T) {
 				},
 			}
 			existingRelation := map[string][]*interfaces.ConceptGroup{
-				"ot1": {}, // 没有现有关系
+				"ot1": {}, // No existing relation.
 			}
 
 			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(conceptGroups, nil)
@@ -3430,7 +3430,7 @@ func Test_objectTypeService_syncObjectGroups(t *testing.T) {
 				},
 				KNID:          "kn1",
 				Branch:        interfaces.MAIN_BRANCH,
-				ConceptGroups: []*interfaces.ConceptGroup{}, // 空分组
+				ConceptGroups: []*interfaces.ConceptGroup{}, // Empty concept groups.
 			}
 
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(existingRelation, nil)
@@ -3479,7 +3479,7 @@ func Test_objectTypeService_syncObjectGroups(t *testing.T) {
 		Convey("Failed when concept groups count mismatch\n", func() {
 			smock.ExpectBegin()
 			tx, _ := db.Begin()
-			conceptGroups := []*interfaces.ConceptGroup{} // 返回空数组
+			conceptGroups := []*interfaces.ConceptGroup{} // Return an empty slice.
 
 			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(conceptGroups, nil)
 
@@ -3695,7 +3695,7 @@ func Test_compareMappedField(t *testing.T) {
 
 func Test_applyIndexCapOps(t *testing.T) {
 	Convey("Test applyIndexCapOps\n", t, func() {
-		// 属性类型推出来的基线：字符串在 DSL 视图下只有 keyword 那批算子
+		// Baseline inferred from property type: strings expose only keyword operators in the DSL view.
 		baseline := append([]string{}, interfaces.DSL_KEYWORD_OPS...)
 
 		contains := func(ops []string, op string) bool {
@@ -3716,7 +3716,7 @@ func Test_applyIndexCapOps(t *testing.T) {
 			ops := applyIndexCapOps(baseline, logics.PropertyIndexCaps{Fulltext: true})
 			So(contains(ops, cond.OperationMatch), ShouldBeTrue)
 			So(contains(ops, cond.OperationMultiMatch), ShouldBeTrue)
-			// 基线算子一个不少
+			// All baseline operators are present.
 			for _, op := range baseline {
 				So(contains(ops, op), ShouldBeTrue)
 			}

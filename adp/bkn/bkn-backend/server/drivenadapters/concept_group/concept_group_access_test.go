@@ -632,7 +632,7 @@ func Test_conceptGroupAccess_UpdateConceptGroupDetail(t *testing.T) {
 			smock.ExpectExec(sqlStr).WithArgs(detail, cgID, knID, branch).WillReturnResult(sqlmock.NewResult(1, 2))
 
 			err := cga.UpdateConceptGroupDetail(testCtx, knID, branch, cgID, detail)
-			So(err, ShouldBeNil) // 注意：代码中 RowsAffected != 1 时只记录警告，不返回错误
+			So(err, ShouldBeNil) // Note: when RowsAffected != 1, the implementation logs a warning instead of returning an error.
 
 			if err := smock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
@@ -1120,7 +1120,7 @@ func Test_conceptGroupAccess_ProcessQueryCondition(t *testing.T) {
 func Test_conceptGroupAccess_GetRelationTypeIDsFromConceptGroupRelation(t *testing.T) {
 	Convey("test GetRelationTypeIDsFromConceptGroupRelation\n", t, func() {
 		appSetting := &common.AppSetting{}
-		// 使用正则表达式匹配器来处理复杂的 SQL
+		// Use a regular-expression matcher for complex SQL.
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 		cga := &conceptGroupAccess{
 			appSetting: appSetting,
@@ -1135,7 +1135,7 @@ func Test_conceptGroupAccess_GetRelationTypeIDsFromConceptGroupRelation(t *testi
 		}
 
 		Convey("GetRelationTypeIDsFromConceptGroupRelation Success \n", func() {
-			// 使用正则表达式匹配 SQL 开头
+			// Use a regular expression to match the start of the SQL.
 			rows := sqlmock.NewRows([]string{"f_id"}).
 				AddRow("rt1").
 				AddRow("rt2")
@@ -1164,7 +1164,7 @@ func Test_conceptGroupAccess_GetRelationTypeIDsFromConceptGroupRelation(t *testi
 		})
 
 		Convey("GetRelationTypeIDsFromConceptGroupRelation scan error \n", func() {
-			rows := sqlmock.NewRows([]string{"f_id", "f_id"}).AddRow(123, "123") // 使用 int 而不是 string
+			rows := sqlmock.NewRows([]string{"f_id", "f_id"}).AddRow(123, "123") // Use int instead of string.
 			smock.ExpectQuery("SELECT f_id FROM t_relation_type").WillReturnRows(rows)
 
 			rtIDs, err := cga.GetRelationTypeIDsFromConceptGroupRelation(testCtx, query)
@@ -1181,7 +1181,7 @@ func Test_conceptGroupAccess_GetRelationTypeIDsFromConceptGroupRelation(t *testi
 func Test_conceptGroupAccess_GetActionTypeIDsFromConceptGroupRelation(t *testing.T) {
 	Convey("test GetActionTypeIDsFromConceptGroupRelation\n", t, func() {
 		appSetting := &common.AppSetting{}
-		// 使用正则表达式匹配器来处理复杂的 SQL
+		// Use a regular-expression matcher for complex SQL.
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 		cga := &conceptGroupAccess{
 			appSetting: appSetting,
@@ -1224,7 +1224,7 @@ func Test_conceptGroupAccess_GetActionTypeIDsFromConceptGroupRelation(t *testing
 		})
 
 		Convey("GetActionTypeIDsFromConceptGroupRelation scan error \n", func() {
-			rows := sqlmock.NewRows([]string{"f_id", "f_id"}).AddRow(123, "123") // 使用 int 而不是 string
+			rows := sqlmock.NewRows([]string{"f_id", "f_id"}).AddRow(123, "123") // Use int instead of string.
 			smock.ExpectQuery("^SELECT f_id FROM t_action_type").WillReturnRows(rows)
 
 			atIDs, err := cga.GetActionTypeIDsFromConceptGroupRelation(testCtx, query)
@@ -1241,7 +1241,7 @@ func Test_conceptGroupAccess_GetActionTypeIDsFromConceptGroupRelation(t *testing
 func Test_conceptGroupAccess_GetConceptGroupsByOTIDs(t *testing.T) {
 	Convey("test GetConceptGroupsByOTIDs\n", t, func() {
 		appSetting := &common.AppSetting{}
-		// 使用正则表达式匹配器来处理复杂的 SQL
+		// Use a regular-expression matcher for complex SQL.
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 		cga := &conceptGroupAccess{
 			appSetting: appSetting,

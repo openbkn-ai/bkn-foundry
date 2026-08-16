@@ -184,7 +184,7 @@ func (rta *riskTypeAccess) ListRiskTypes(ctx context.Context, query interfaces.R
 
 	builder := processRiskTypeQueryCondition(query, subBuilder)
 	if query.Sort != "" {
-		sortCol := query.Sort // 来自 validatePaginationQueryParameters，已是 DB 列名
+		sortCol := query.Sort // Validated by validatePaginationQueryParameters and already a DB column name.
 		dir := query.Direction
 		if dir == "" {
 			dir = interfaces.DESC_DIRECTION

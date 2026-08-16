@@ -10,7 +10,7 @@ import (
 	"context"
 )
 
-// UserMgmtAccess 定义用户管理相关的访问接口
+// UserMgmtAccess defines the user-management access interface.
 //
 //go:generate mockgen -source ../interfaces/user_mgmt_access.go -destination ../interfaces/mock/mock_user_mgmt_access.go
 type UserMgmtAccess interface {

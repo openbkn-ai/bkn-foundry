@@ -8,18 +8,27 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "bkn-backend/errors"
 	"bkn-backend/interfaces"
 )
 
-// ValidateRiskTypes 校验风险类创建请求
+// ValidateRiskTypes validates risk type creation requests.
+
+func riskTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(
+		rest.GetLanguageByCtx(ctx),
+		"BknBackend.RiskType.InvalidParameter.Detail."+name,
+		templateData,
+	)
+}
+
 func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces.RiskType) error {
 	tmpNameMap := make(map[string]any)
 	idMap := make(map[string]any)
@@ -27,7 +36,7 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 		riskType := riskTypes[i]
 		if riskType.ModuleType != "" && riskType.ModuleType != interfaces.MODULE_TYPE_RISK_TYPE {
 			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-				WithErrorDetails("Risk type module type is not 'risk_type'")
+				WithErrorDetails(riskTypeInvalidDetail(ctx, "ModuleType", nil))
 		}
 
 		rtID := riskType.RTID
@@ -36,7 +45,7 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 		} else {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_IDInFile).
 				WithDescription(map[string]any{"riskTypeID": rtID}).
-				WithErrorDetails(fmt.Sprintf("RiskType ID '%s' already exists in the request body", rtID))
+				WithErrorDetails(riskTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"riskTypeID": rtID}))
 		}
 
 		err := ValidateRiskType(ctx, riskType)
@@ -49,7 +58,7 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 		} else {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_Name).
 				WithDescription(map[string]any{"riskTypeName": riskType.RTName}).
-				WithErrorDetails(fmt.Sprintf("RiskType name '%s' already exists in the request body", riskType.RTName))
+				WithErrorDetails(riskTypeInvalidDetail(ctx, "DuplicatedNameInFile", map[string]any{"riskTypeName": riskType.RTName}))
 		}
 
 		riskType.KNID = knID
@@ -57,7 +66,7 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 	return nil
 }
 
-// ValidateRiskType 校验单个风险类
+// ValidateRiskType validates a single risk type.
 func ValidateRiskType(ctx context.Context, riskType *interfaces.RiskType) error {
 	err := validateID(ctx, riskType.RTID)
 	if err != nil {

@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	// 指标数据查询是否包含模型信息
+	// Whether metric data queries include model information.
 	DEFAULT_INCLUDE_TYPE_INFO = "false"
 
-	// 路径方向
+	// Path directions.
 	DIRECTION_FORWARD       = "forward"
 	DIRECTION_BACKWARD      = "backward"
 	DIRECTION_BIDIRECTIONAL = "bidirectional"
@@ -27,7 +27,7 @@ var (
 		"update_time": "f_update_time",
 	}
 
-	// 字段集为 kn_id, module_type, id, name, property_name, property_display_name, comment
+	// Fields are kn_id, module_type, id, name, property_name, property_display_name, and comment.
 	CONCPET_QUERY_FIELD_STR = []string{
 		"kn_id",
 		"module_type",
@@ -127,14 +127,14 @@ type KN struct {
 
 	IfNameModify bool `json:"-"`
 
-	// 统计信息
+	// Statistics.
 	Statistics *Statistics `json:"statistics,omitempty"`
-	// 操作权限
+	// Operation permissions.
 	Operations []string `json:"operations,omitempty"`
 
-	// 向量
+	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`
-	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
+	Score  *float64  `json:"_score,omitempty"` // OpenSearch score used by concept search
 }
 
 // SlimForSummary trims the exported KN detail for detail_level=summary.
@@ -195,19 +195,19 @@ func slimObjectTypeForSummary(ot *ObjectType) {
 
 const KN_BATCH_NAMES_MAX_IDS = 100
 
-// KNBatchNamesReq 按 ID 批量取知识网络名称请求(对象级授权页回显，统一契约)
+// KNBatchNamesReq requests knowledge network names in bulk by ID.
 type KNBatchNamesReq struct {
-	IDs []string `json:"ids"` // 待取名的知识网络 ID 列表，空列表返回空 entries
+	IDs []string `json:"ids"` // Knowledge network IDs to resolve; an empty list returns empty entries
 }
 
-// KNNameEntry 单个 知识网络 ID->名称 条目
+// KNNameEntry maps one knowledge network ID to a name.
 type KNNameEntry struct {
-	ID   string `json:"id"`   // 知识网络 ID(string slug)
-	Name string `json:"name"` // 知识网络名称
+	ID   string `json:"id"`   // Knowledge network ID (string slug)
+	Name string `json:"name"` // Knowledge network name
 }
 
-// KNBatchNamesResp 按 ID 批量取知识网络名称响应
-// 容错：不存在的 ID 略过，不报错
+// KNBatchNamesResp returns knowledge network names in bulk by ID.
+// Missing IDs are skipped without an error.
 type KNBatchNamesResp struct {
 	Entries []*KNNameEntry `json:"entries"`
 }
@@ -221,7 +221,7 @@ type Statistics struct {
 	MetricsTotal  int `json:"metrics_total"`
 }
 
-// 业务知识网络的分页查询
+// Business knowledge network pagination query.
 type KNsQueryParams struct {
 	PaginationQueryParameters
 	NamePattern    string
@@ -234,11 +234,11 @@ type KNsQueryParams struct {
 	OnlyIDs bool `json:"-" form:"-"`
 }
 
-// 概念搜索
+// Concept search.
 type ConceptsQuery struct {
 	ConceptGroups []string       `json:"concept_groups,omitempty"`
 	Condition     map[string]any `json:"condition,omitempty"`
-	// 分页信息
+	// Pagination information.
 	NeedTotal bool          `json:"need_total"`
 	Limit     int           `json:"limit"`
 	Sort      []*SortParams `json:"sort"`
@@ -255,7 +255,7 @@ type SortParams struct {
 	Direction string `json:"direction"`
 }
 
-// 基于起点、方向和路径长度获取对象子图的请求体
+// Request body for retrieving an object subgraph by source, direction, and path length.
 type RelationTypePathsBaseOnSource struct {
 	ConceptGroups     []string `json:"concept_groups,omitempty"`
 	SourceObjecTypeId string   `json:"source_object_type_id"`

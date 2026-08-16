@@ -34,7 +34,7 @@ type ConceptGroupAccess interface {
 	DeleteObjectTypesFromGroup(ctx context.Context, tx *sql.Tx, query ConceptGroupRelationsQueryParams) (int64, error)
 	// DeleteObjectTypesFromGroup(ctx context.Context, tx *sql.Tx, knID string, branch string, cgID string, otIDs []string) (int64, error)
 
-	// 从概念与分组关系中获取对象类id（join了对象类表）
+	// Get object type IDs from concept-group relations joined with the object type table.
 
 	GetConceptIDsByConceptGroupIDs(ctx context.Context, knID string, branch string, cgIDs []string, conceptType string) ([]string, error)
 	GetRelationTypeIDsFromConceptGroupRelation(ctx context.Context, query ConceptGroupRelationsQueryParams) ([]string, error)

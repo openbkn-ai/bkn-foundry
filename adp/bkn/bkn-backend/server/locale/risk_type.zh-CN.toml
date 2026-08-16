@@ -14,6 +14,13 @@ Description = "请求参数无效"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 
+[BknBackend.RiskType.InvalidParameter.Detail]
+ModuleType = "风险类模块类型必须为 'risk_type'。"
+DuplicatedIDInFile = "请求体中已存在风险类 ID '{{.riskTypeID}}'。"
+DuplicatedNameInFile = "请求体中已存在风险类名称 '{{.riskTypeName}}'。"
+RiskTypeIDAlreadyExists = "风险类 ID {{.riskTypeID}} 已存在。"
+RiskTypeNameAlreadyExists = "风险类名称 {{.riskTypeName}} 已存在。"
+
 [BknBackend.RiskType.RiskTypeIDExisted]
 Description = "风险类ID已存在"
 Solution = "请检查参数是否正确。"

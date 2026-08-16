@@ -19,35 +19,35 @@ import (
 // WalkFunc is the callback for FileSystem.Walk.
 type WalkFunc func(path string, info fs.FileInfo, err error) error
 
-// FileSystem 抽象文件系统接口
+// FileSystem defines an abstract file-system interface.
 type FileSystem interface {
-	// ReadFile 读取文件内容
+	// ReadFile reads file contents.
 	ReadFile(path string) ([]byte, error)
-	// Stat 获取文件信息
+	// Stat gets file information.
 	Stat(path string) (fs.FileInfo, error)
-	// ReadDir 读取目录内容
+	// ReadDir reads directory contents.
 	ReadDir(path string) ([]fs.DirEntry, error)
-	// IsDir 判断路径是否为目录
+	// IsDir reports whether a path is a directory.
 	IsDir(path string) bool
-	// Abs 获取绝对路径
+	// Abs gets an absolute path.
 	Abs(path string) string
-	// Join 拼接路径
+	// Join joins path components.
 	Join(elem ...string) string
-	// Dir 获取目录路径
+	// Dir gets a directory path.
 	Dir(path string) string
-	// Base 获取文件名
+	// Base gets a file name.
 	Base(path string) string
-	// Ext 获取文件扩展名
+	// Ext gets a file extension.
 	Ext(path string) string
-	// Walk 递归遍历目录
+	// Walk recursively traverses a directory.
 	Walk(root string, fn WalkFunc) error
-	// Rel 返回相对路径
+	// Rel returns a relative path.
 	Rel(basepath, targpath string) (string, error)
-	// WriteFile 写入文件
+	// WriteFile writes a file.
 	WriteFile(path string, data []byte, perm fs.FileMode) error
 }
 
-// OSFileSystem 基于真实文件系统的实现
+// OSFileSystem implements FileSystem using the operating system file system.
 type OSFileSystem struct{}
 
 func NewOSFileSystem() FileSystem {
@@ -109,9 +109,9 @@ func (f *OSFileSystem) WriteFile(path string, data []byte, perm fs.FileMode) err
 	return os.WriteFile(path, data, perm)
 }
 
-// MemoryFileSystem 基于内存的文件系统实现
+// MemoryFileSystem implements an in-memory file system.
 type MemoryFileSystem struct {
-	files map[string][]byte // 文件路径 -> 内容
+	files map[string][]byte // File path to content.
 }
 
 func NewMemoryFileSystem() *MemoryFileSystem {
@@ -120,12 +120,12 @@ func NewMemoryFileSystem() *MemoryFileSystem {
 	}
 }
 
-// AddFile 添加文件到内存文件系统
+// AddFile adds a file to the in-memory file system.
 func (mfs *MemoryFileSystem) AddFile(path string, content []byte) {
 	mfs.files[path] = content
 }
 
-// AddFiles 批量添加文件
+// AddFiles adds files in batches.
 func (mfs *MemoryFileSystem) AddFiles(files map[string][]byte) {
 	for path, content := range files {
 		mfs.files[path] = content
@@ -143,11 +143,11 @@ func (mfs *MemoryFileSystem) Stat(path string) (fs.FileInfo, error) {
 	if _, ok := mfs.files[path]; ok {
 		return &memoryFileInfo{name: path, size: int64(len(mfs.files[path]))}, nil
 	}
-	// "." or "" 表示根目录，只要有任何文件就视为存在
+	// "." or "" represents the root directory, which exists when any file is present.
 	if (path == "." || path == "") && len(mfs.files) > 0 {
 		return &memoryFileInfo{name: path, isDir: true}, nil
 	}
-	// 检查是否是目录（通过查找子文件）
+	// Check whether this is a directory by looking for child files.
 	for filePath := range mfs.files {
 		if strings.HasPrefix(filePath, path+"/") || strings.HasPrefix(filePath, path+"\\") {
 			return &memoryFileInfo{name: path, isDir: true}, nil
@@ -190,11 +190,11 @@ func (mfs *MemoryFileSystem) ReadDir(path string) ([]fs.DirEntry, error) {
 }
 
 func (mfs *MemoryFileSystem) IsDir(path string) bool {
-	// "." or "" 表示根目录
+	// "." or "" represents the root directory.
 	if (path == "." || path == "") && len(mfs.files) > 0 {
 		return true
 	}
-	// 检查是否有子文件
+	// Check whether child files exist.
 	for filePath := range mfs.files {
 		if strings.HasPrefix(filePath, path+"/") || strings.HasPrefix(filePath, path+"\\") {
 			return true
@@ -204,7 +204,7 @@ func (mfs *MemoryFileSystem) IsDir(path string) bool {
 }
 
 func (mfs *MemoryFileSystem) Abs(path string) string {
-	// 内存文件系统使用标准化路径
+	// The in-memory file system uses normalized paths.
 	return filepath.Clean(path)
 }
 
@@ -269,7 +269,7 @@ func (mfs *MemoryFileSystem) WriteFile(path string, data []byte, perm fs.FileMod
 	return nil
 }
 
-// memoryFileInfo 内存文件信息
+// memoryFileInfo contains in-memory file information.
 type memoryFileInfo struct {
 	name  string
 	size  int64
@@ -283,7 +283,7 @@ func (fi *memoryFileInfo) ModTime() time.Time { return time.Time{} }
 func (fi *memoryFileInfo) IsDir() bool        { return fi.isDir }
 func (fi *memoryFileInfo) Sys() interface{}   { return nil }
 
-// memoryDirEntry 内存目录项
+// memoryDirEntry represents an in-memory directory entry.
 type memoryDirEntry struct {
 	name  string
 	isDir bool

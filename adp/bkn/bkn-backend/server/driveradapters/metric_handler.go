@@ -9,7 +9,6 @@ package driveradapters
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -85,7 +84,7 @@ func (r *restHandler) CreateMetrics(c *gin.Context, vis hydra.Visitor) {
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Invalid strict_mode parameter: %s", strictModeStr))
+			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -114,14 +113,14 @@ func (r *restHandler) CreateMetrics(c *gin.Context, vis hydra.Visitor) {
 	}
 	if err = c.ShouldBindJSON(&body); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if len(body.Entries) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("No metric was passed in")
+			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -140,7 +139,7 @@ func (r *restHandler) CreateMetrics(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
-	// request来的actionTypes的branch都用url里的branch
+	// Apply the branch from the URL to all requested action types.
 	for i := range metrics {
 		metrics[i].KnID = knID
 		metrics[i].Branch = branch
@@ -198,7 +197,7 @@ func (r *restHandler) ValidateMetrics(c *gin.Context, vis hydra.Visitor) {
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Invalid strict_mode parameter: %s", strictModeStr))
+			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -227,21 +226,21 @@ func (r *restHandler) ValidateMetrics(c *gin.Context, vis hydra.Visitor) {
 	}
 	if err = c.ShouldBindJSON(&body); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("Binding Parameter Failed: " + err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if len(body.Entries) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("No metric was passed in")
+			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	metrics := body.Entries
 
-	// request来的actionTypes的branch都用url里的branch
+	// Apply the branch from the URL to all requested action types.
 	for i := range metrics {
 		metrics[i].KnID = knID
 		metrics[i].Branch = branch
@@ -443,7 +442,7 @@ func (r *restHandler) GetMetricsByIDs(c *gin.Context, vis hydra.Visitor) {
 			}
 		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound).
-			WithErrorDetails(fmt.Sprintf("metrics not found: %v", missing))
+			WithErrorDetails(commonValidationDetail(ctx, "RequestedResourcesNotFound", map[string]any{"resources": missing}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -480,7 +479,7 @@ func (r *restHandler) UpdateMetric(c *gin.Context, vis hydra.Visitor) {
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Invalid strict_mode parameter: %s", strictModeStr))
+			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -500,7 +499,7 @@ func (r *restHandler) UpdateMetric(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
-	// 先按 id 校验指标是否存在（与 UpdateObjectType 中 CheckObjectTypeExistByID 一致；在解析 body 前失败可尽早返回）
+	// Validate that the metric exists before parsing the body, consistent with UpdateObjectType and CheckObjectTypeExistByID.
 	oldMetricName, metricExist, err := r.ms.CheckMetricExistByID(ctx, knID, branch, metricID)
 	if err != nil {
 		var httpErr *rest.HTTPError
@@ -524,7 +523,7 @@ func (r *restHandler) UpdateMetric(c *gin.Context, vis hydra.Visitor) {
 	var req interfaces.MetricDefinition
 	if err = c.ShouldBindJSON(&req); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -545,7 +544,7 @@ func (r *restHandler) UpdateMetric(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 
-	// 名称变更时校验新名称未被其它指标占用
+	// Ensure a renamed metric does not conflict with another metric.
 	newName := strings.TrimSpace(req.Name)
 	if newName != "" && newName != strings.TrimSpace(oldMetricName) {
 		existID, nameExist, err := r.ms.CheckMetricExistByName(ctx, knID, branch, newName)
@@ -557,7 +556,7 @@ func (r *restHandler) UpdateMetric(c *gin.Context, vis hydra.Visitor) {
 		}
 		if nameExist && existID != metricID {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_Duplicated_Name).
-				WithErrorDetails(fmt.Sprintf("metric name %q already exists", newName))
+				WithErrorDetails(commonValidationDetail(ctx, "MetricNameAlreadyExists", map[string]any{"name": newName}))
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -668,7 +667,7 @@ func (r *restHandler) SearchMetrics(c *gin.Context, vis hydra.Visitor) {
 	query := interfaces.ConceptsQuery{}
 	if err = c.ShouldBindJSON(&query); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("Binding Concept Query Paramter Failed:%s", err.Error()))
+			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

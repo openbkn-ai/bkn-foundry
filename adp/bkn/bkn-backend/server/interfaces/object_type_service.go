@@ -31,13 +31,13 @@ type ObjectTypeService interface {
 
 	SearchObjectTypes(ctx context.Context, query *ConceptsQuery) (ObjectTypes, error)
 
-	// 获取对象类基本信息（无翻译依赖资源）
+	// Get basic object-type information without translation-dependent resources.
 	GetObjectTypesMapByIDs(ctx context.Context, knID string, branch string, otIDs []string, needPropMap bool) (map[string]*ObjectType, error)
 
-	// 对象类写索引
+	// Write object types to the index.
 	InsertDatasetData(ctx context.Context, objectTypes []*ObjectType) error
 
-	// ValidateObjectTypes 仅校验依赖存在性，不写库
+	// ValidateObjectTypes validates dependency existence only and does not persist data.
 	// When batch is nil, behavior matches history (DB existence only). For full-KN / concept-group preflight, pass an index from batchindex.CollectKNFromPayload / batchindex.CollectFromConceptGroups.
 	ValidateObjectTypes(ctx context.Context, knID string, branch string, objectTypes []*ObjectType, strictMode bool, batch *BatchIDIndex, mode string) error
 }

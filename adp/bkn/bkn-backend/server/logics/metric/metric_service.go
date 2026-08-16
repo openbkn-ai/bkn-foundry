@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -51,6 +52,10 @@ type metricService struct {
 	vba        interfaces.VegaBackendAccess
 	mfs        interfaces.ModelFactoryService
 	ots        interfaces.ObjectTypeService
+}
+
+func metricInvalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Metric.InvalidParameter.Detail."+name, templateData)
 }
 
 func NewMetricService(appSetting *common.AppSetting) interfaces.MetricService {
@@ -147,7 +152,7 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 
 	if len(entries) == 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("No metric entries were passed in")
+			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.EntriesRequired", nil))
 	}
 
 	err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -158,7 +163,7 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 		return nil, err
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	if tx == nil {
 		tx, err = ms.db.Begin()
 		if err != nil {
@@ -169,11 +174,11 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 				berrors.BknBackend_Metric_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					logger.Errorf("CreateMetrics Transaction Commit Failed:%v", err)
@@ -290,18 +295,18 @@ func (ms *metricService) handleMetricImportMode(ctx context.Context, mode string
 			case interfaces.ImportMode_Normal:
 				if idExist {
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("metric id '%s' already exists (name in DB: %s)", id, existNameByID))
+						WithErrorDetails(metricInvalidParameterDetail(ctx, "MetricIDAlreadyExists", map[string]any{"id": id, "name": existNameByID}))
 				}
 				if nameExist && existIDByName != id {
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_Duplicated_Name).
-						WithErrorDetails(fmt.Sprintf("metric name '%s' already exists", m.Name))
+						WithErrorDetails(metricInvalidParameterDetail(ctx, "MetricNameAlreadyExists", map[string]any{"name": m.Name}))
 				}
 			case interfaces.ImportMode_Ignore:
 				continue
 			case interfaces.ImportMode_Overwrite:
 				if idExist && nameExist && existIDByName != id {
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_Metric_Duplicated_Name).
-						WithErrorDetails(fmt.Sprintf("metric id '%s' and name '%s' conflict with existing id '%s'", id, m.Name, existIDByName))
+						WithErrorDetails(metricInvalidParameterDetail(ctx, "MetricIDNameConflict", map[string]any{"id": id, "name": m.Name, "existingID": existIDByName}))
 				}
 				if idExist && nameExist && existIDByName == id {
 					updates = append(updates, m)
@@ -313,12 +318,12 @@ func (ms *metricService) handleMetricImportMode(ctx context.Context, mode string
 				}
 				if !idExist && nameExist {
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_Metric_Duplicated_Name).
-						WithErrorDetails(fmt.Sprintf("metric name '%s' already exists", m.Name))
+						WithErrorDetails(metricInvalidParameterDetail(ctx, "MetricNameAlreadyExists", map[string]any{"name": m.Name}))
 				}
 				continue
 			default:
 				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ImportMode).
-					WithErrorDetails("unsupported import_mode")
+					WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil))
 			}
 		}
 
@@ -470,7 +475,7 @@ func (ms *metricService) UpdateMetric(ctx context.Context, tx *sql.Tx, req *inte
 	metricID := strings.TrimSpace(req.ID)
 	if knID == "" || branch == "" || metricID == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("missing kn_id, branch or id in metric definition")
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "MetricIdentityRequired", nil))
 	}
 
 	err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -482,7 +487,7 @@ func (ms *metricService) UpdateMetric(ctx context.Context, tx *sql.Tx, req *inte
 	}
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = ms.db.Begin()
 		if err != nil {
 			logger.Errorf("Begin transaction error: %s", err.Error())
@@ -492,11 +497,11 @@ func (ms *metricService) UpdateMetric(ctx context.Context, tx *sql.Tx, req *inte
 				berrors.BknBackend_Metric_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					logger.Errorf("UpdateMetric Transaction Commit Failed:%v", err)
@@ -562,7 +567,7 @@ func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knI
 	}
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = ms.db.Begin()
 		if err != nil {
 			logger.Errorf("Begin transaction error: %s", err.Error())
@@ -572,11 +577,11 @@ func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knI
 				berrors.BknBackend_Metric_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					logger.Errorf("DeleteMetricsByIDs Transaction Commit Failed:%v", err)
@@ -605,7 +610,7 @@ func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knI
 	return nil
 }
 
-// DeleteMetricsByKnID 内部接口，不校验权限；tx 必须传（与 DeleteActionTypesByKnID 一致）。
+// DeleteMetricsByKnID is an internal API that does not check permissions; tx is required to match DeleteActionTypesByKnID.
 func (ms *metricService) DeleteMetricsByKnID(ctx context.Context, tx *sql.Tx, knID, branch string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeleteMetricsByKnID")
 	defer span.End()
@@ -683,9 +688,10 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 				return result, nil
 			})
 		if err != nil {
+			logger.Errorf("convert metric condition to filter condition failed: %v", err)
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_InvalidParameter_Condition).
-				WithErrorDetails(fmt.Sprintf("failed to convert condition to filter condition, %s", err.Error()))
+				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
 	}
 
@@ -709,7 +715,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 				cgCnt, len(query.ConceptGroups))
 			logger.Errorf(errStr)
 
-			// 所有概念分组都不存在，报404，概念分组不存在
+			// Return 404 when none of the requested concept groups exists.
 			return response, rest.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 				WithErrorDetails(errStr)
@@ -914,7 +920,7 @@ func (ms *metricService) validateMetricStrictExternalDeps(ctx context.Context, t
 	scopeRef := strings.TrimSpace(metric.ScopeRef)
 	if scopeRef == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("scope_ref is required (service dependency check)")
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeRefRequired", nil))
 	}
 
 	ot, err := ms.ots.GetObjectTypeByID(ctx, tx, metric.KnID, metric.Branch, scopeRef)
@@ -923,7 +929,7 @@ func (ms *metricService) validateMetricStrictExternalDeps(ctx context.Context, t
 	}
 	if ot == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("metric[%s]'s scope_ref[%s] object type not found", metric.ID, scopeRef))
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeObjectTypeNotFound", map[string]any{"metricID": metric.ID, "scopeRef": scopeRef}))
 	}
 	batchindex.EnsureObjectTypePropertyMap(ot)
 	return ms.validateMetricAgainstResolvedOT(ctx, metric, ot, scopeRef)
@@ -936,12 +942,12 @@ func (ms *metricService) validateMetricStrictExternalDepsFromBatch(ctx context.C
 	scopeRef := strings.TrimSpace(metric.ScopeRef)
 	if scopeRef == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("scope_ref is required (service dependency check)")
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeRefRequired", nil))
 	}
 	ot := batch.ObjectTypes[scopeRef]
 	if ot == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("metric[%s]'s scope_ref[%s] object type not found in batch payload", metric.ID, scopeRef))
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeObjectTypeMissingFromBatch", map[string]any{"metricID": metric.ID, "scopeRef": scopeRef}))
 	}
 	batchindex.EnsureObjectTypePropertyMap(ot)
 	return ms.validateMetricAgainstResolvedOT(ctx, metric, ot, scopeRef)
@@ -951,16 +957,16 @@ func (ms *metricService) validateMetricAgainstResolvedOT(ctx context.Context, me
 	ds := ot.DataSource
 	if ds == nil || strings.TrimSpace(ds.ID) == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("metric[%s]'s object type data_source resource id is required", metric.ID))
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeDataSourceIDRequired", map[string]any{"metricID": metric.ID}))
 	}
 	dsType := strings.TrimSpace(ds.Type)
 	if dsType == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("metric[%s]'s object type data_source.type is required", metric.ID))
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeDataSourceTypeRequired", map[string]any{"metricID": metric.ID}))
 	}
 	if dsType != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("metric[%s]'s scope object type data_source.type[%s] is not supported", metric.ID, ds.Type))
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "ScopeDataSourceTypeUnsupported", map[string]any{"metricID": metric.ID, "type": ds.Type}))
 	}
 
 	propertyMap := map[string]*interfaces.DataProperty{}
@@ -968,77 +974,73 @@ func (ms *metricService) validateMetricAgainstResolvedOT(ctx context.Context, me
 		propertyMap[prop.Name] = prop
 	}
 
-	// 校验指标定义中使用的各个属性是属于统计主体对象类的
-	// 	1. 时间维度非空时，其property需是属于对象类的属性
+	// Validate that every property referenced by the metric belongs to the scope object type.
+	// 1. When a time dimension is present, its property must belong to the object type.
 	if metric.TimeDimension != nil {
 		if p := strings.TrimSpace(metric.TimeDimension.Property); p != "" {
 			if _, ok := propertyMap[p]; !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("metric[%s]'s time_dimension.property[%s] is not a data property of the scope object type[%s]",
-						metric.ID, p, scopeRef))
+					WithErrorDetails(metricInvalidParameterDetail(ctx, "TimeDimensionPropertyNotFound", map[string]any{"metricID": metric.ID, "property": p, "scopeRef": scopeRef}))
 			}
 		}
 	}
 
-	// 2. 分析维度非空时，其property需是属于对象类的属性
+	// 2. When analysis dimensions are present, each property must belong to the object type.
 	for i, ad := range metric.AnalysisDimensions {
 		if n := strings.TrimSpace(ad.Name); n != "" {
 			if _, ok := propertyMap[n]; !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("metric[%s]'s analysis_dimensions[%d].name[%s] is not a data property of the scope object type[%s]",
-						metric.ID, i, n, scopeRef))
+					WithErrorDetails(metricInvalidParameterDetail(ctx, "AnalysisDimensionPropertyNotFound", map[string]any{"metricID": metric.ID, "index": i, "property": n, "scopeRef": scopeRef}))
 			}
 		}
 	}
 
-	// 3. 计算公式的 condition 的字段需在对象类中存在
+	// 3. Fields referenced by the calculation formula condition must exist on the object type.
 	if metric.CalculationFormula == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("metric[%s]'s calculation_formula is required", metric.ID))
+			WithErrorDetails(metricInvalidParameterDetail(ctx, "CalculationFormulaRequiredForMetric", map[string]any{"metricID": metric.ID}))
 	}
 
-	// 3. calculation_formula.condition：递归校验 CondCfg 中出现的字段（含 and/or/knn、multi_match.fields、叶子条件 field）均须为对象类数据属性
+	// 3. Recursively validate all fields in calculation_formula.condition, including and/or/knn,
+	// multi_match.fields, and leaf-condition fields.
 	if metric.CalculationFormula.Condition != nil {
 		if err := validateConditionFieldsReferenceObjectType(ctx, metric.CalculationFormula.Condition, propertyMap, metric.ID); err != nil {
 			return err
 		}
 	}
 
-	// 4. aggregation使用的聚合属性需在对象类中存在
+	// 4. The aggregation property must exist on the object type.
 	if metric.CalculationFormula.Aggregation.Aggr != "" {
 		if _, ok := propertyMap[metric.CalculationFormula.Aggregation.Property]; !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("metric[%s]'s calculation_formula.aggregation.property[%s] is not a data property of the scope object type[%s]",
-					metric.ID, metric.CalculationFormula.Aggregation.Property, scopeRef))
+				WithErrorDetails(metricInvalidParameterDetail(ctx, "AggregationPropertyNotFound", map[string]any{"metricID": metric.ID, "property": metric.CalculationFormula.Aggregation.Property, "scopeRef": scopeRef}))
 		}
 	}
 
-	// 5. 分组字段使用的属性需在对象类中存在
+	// 5. Each group-by property must exist on the object type.
 	if metric.CalculationFormula.GroupBy != nil {
 		for i, g := range metric.CalculationFormula.GroupBy {
 			if _, ok := propertyMap[g.Property]; !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("metric[%s]'s calculation_formula.group_by[%d].property[%s] is not a data property of the scope object type[%s]",
-						metric.ID, i, g.Property, scopeRef))
+					WithErrorDetails(metricInvalidParameterDetail(ctx, "GroupByPropertyNotFound", map[string]any{"metricID": metric.ID, "index": i, "property": g.Property, "scopeRef": scopeRef}))
 			}
 		}
 	}
-	// 6. 排序字段属于分组字段
+	// 6. Each order-by property must exist on the object type.
 	if metric.CalculationFormula.OrderBy != nil {
 		for i, o := range metric.CalculationFormula.OrderBy {
 			if _, ok := propertyMap[o.Property]; !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("metric[%s]'s calculation_formula.order_by[%d].property[%s] is not a data property of the scope object type[%s]",
-						metric.ID, i, o.Property, scopeRef))
+					WithErrorDetails(metricInvalidParameterDetail(ctx, "OrderByPropertyNotFound", map[string]any{"metricID": metric.ID, "index": i, "property": o.Property, "scopeRef": scopeRef}))
 			}
 		}
 	}
 
-	// 7.having过滤只能是__value字段
+	// 7. The having filter may only reference the __value field.
 	if metric.CalculationFormula.Having != nil {
 		if metric.CalculationFormula.Having.Field != interfaces.MetricHavingFieldValue {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("metric[%s]'s calculation_formula.having.field must be %q, got %q", metric.ID, interfaces.MetricHavingFieldValue, metric.CalculationFormula.Having.Field))
+				WithErrorDetails(metricInvalidParameterDetail(ctx, "HavingFieldInvalid", map[string]any{"metricID": metric.ID, "expected": interfaces.MetricHavingFieldValue, "actual": metric.CalculationFormula.Having.Field}))
 		}
 	}
 	return nil
@@ -1061,12 +1063,12 @@ func validateConditionFieldsReferenceObjectType(ctx context.Context, cfg *cond.C
 		n := strings.TrimSpace(cfg.Field)
 		if n == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("metric[%s]: condition property is required", metricID))
+				WithErrorDetails(metricInvalidParameterDetail(ctx, "ConditionPropertyRequired", map[string]any{"metricID": metricID}))
 		}
 
 		if _, ok := propertyMap[n]; !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("metric[%s]: condition property [%s] is not a data property of the scope object type", metricID, n))
+				WithErrorDetails(metricInvalidParameterDetail(ctx, "ConditionPropertyNotFound", map[string]any{"metricID": metricID, "property": n}))
 		}
 		return nil
 	}

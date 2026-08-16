@@ -27,10 +27,10 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Conce
 			WithErrorDetails(fmt.Sprintf("failed to unMarshal dslStr to map, %s", err.Error()))
 	}
 
-	// 处理 sort
+	// Process sort parameters.
 	sort := []map[string]any{}
 	for _, sp := range query.Sort {
-		// 不做排序字段参数校验了，如果排序字段不存在，opensearch会报错，由opensearch来报错
+		// Do not validate sort fields here. OpenSearch reports an error when a sort field does not exist.
 		sort = append(sort, map[string]any{
 			sp.Field: sp.Direction,
 		})
@@ -46,19 +46,19 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Conce
 	return dsl, nil
 }
 
-// PropertyIndexCaps 描述 Vega 资源的某个字段在本地索引里实际具备的检索能力。
-// 能力来源是资源 schema 上的字段 features（由 `openbkn vega dataset build` 写入），
-// 不是对象类属性上手填的 index_config。
+// PropertyIndexCaps describes the search capabilities a Vega resource field actually has in a local index.
+// Capabilities come from field features in the resource schema, written by openbkn vega dataset build,
+// rather than index_config manually entered on object-type properties.
 type PropertyIndexCaps struct {
 	Keyword  bool
 	Fulltext bool
 	Vector   bool
 }
 
-// VegaResourceIndexCaps 派生资源各字段的索引能力，key 是资源字段名。
+// VegaResourceIndexCaps derives index capabilities for each resource field, keyed by resource field name.
 //
-// 资源没有本地索引（index_name 为空）时返回 nil：features 只是「配置了要建什么」，
-// 构建任务没跑完之前这些能力并不存在，此时 Vega 会回落到源库实时查。
+// It returns nil when the resource has no local index (index_name is empty). features only configures what to
+// build; the capabilities do not exist until the build completes, and Vega queries the source database directly.
 func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyIndexCaps {
 	if res == nil || res.LocalIndexName == "" {
 		return nil
@@ -70,8 +70,9 @@ func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyInde
 			continue
 		}
 		for _, feature := range p.Features {
-			// 特性可以挂在一个属性上而作用于另一个字段（ref_property）。归属必须跟
-			// vega-backend 生成构建任务快照时的算法一致，否则能力会记到错误的字段上。
+			// A feature can be declared on one property and apply to another field through ref_property. Ownership must
+			// match the algorithm used by vega-backend when it creates build-task snapshots, or capabilities attach to
+			// the wrong field.
 			field := p.Name
 			if feature.RefProperty != "" {
 				field = feature.RefProperty

@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// 字段范围
+// Field scope.
 const (
 	CUSTOM uint8 = iota
 	ALL
@@ -33,7 +33,7 @@ const (
 	KNN_LIMIT_KEY_DEFAULT   = "k"
 	KNN_LIMIT_VALUE_DEFAULT = 100
 
-	// DefaultSmallModelEnabled 关闭的错误信息
+	// Error returned when DefaultSmallModelEnabled is disabled.
 	DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR string = "DefaultSmallModelEnabled is false"
 )
 
@@ -77,7 +77,7 @@ const (
 
 var (
 	OperationMap = map[string]struct{}{
-		"=":                  {}, // 兼容filter中定义的等于是 =
+		"=":                  {}, // Compatibility with the equality operator defined by filters.
 		OperationAnd:         {},
 		OperationOr:          {},
 		OperationEq:          {},

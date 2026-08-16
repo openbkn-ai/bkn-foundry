@@ -683,6 +683,40 @@ func Test_ValidateObjectType(t *testing.T) {
 	})
 }
 
+func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "Object type customer uses unsupported data-source type table; only resource is supported."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "对象类 customer 的数据来源类型 table 不支持，仅支持 resource。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			objectType := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:       "customer",
+					OTName:     "customer",
+					DataSource: &interfaces.ResourceInfo{Type: "table"},
+				},
+			}
+			err := ValidateObjectType(rest.WithLanguage(context.Background(), testCase.language), objectType, false)
+			if err == nil {
+				t.Fatal("ValidateObjectType() error = nil, want invalid parameter error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
+}
+
 func Test_ValidatePropertyName(t *testing.T) {
 	Convey("Test ValidatePropertyName\n", t, func() {
 		ctx := context.Background()
@@ -985,4 +1019,34 @@ func Test_ValidateVectorConfig(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+}
+
+func TestObjectTypeConfigValidationDetailsRespectLanguage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "keyword_config.ignore_above_len must be greater than 0."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "keyword_config.ignore_above_len 必须大于 0。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := ValidateKeywordConfig(
+				rest.WithLanguage(context.Background(), testCase.language),
+				interfaces.KeywordConfig{Enabled: true},
+			)
+			if err == nil {
+				t.Fatal("ValidateKeywordConfig() error = nil, want invalid ignore_above_len error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
 }

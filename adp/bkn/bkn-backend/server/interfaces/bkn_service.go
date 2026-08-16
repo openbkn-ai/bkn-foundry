@@ -10,10 +10,10 @@ import (
 	"context"
 )
 
-// BKNService BKN 导入导出服务接口
+// BKNService defines the BKN import and export service interface.
 //
 //go:generate mockgen -source ../interfaces/bkn_service.go -destination ../interfaces/mock/mock_bkn_service.go
 type BKNService interface {
-	// ExportToTar 将知识网络导出为 tar 包
+	// ExportToTar exports a knowledge network as a tar archive.
 	ExportToTar(ctx context.Context, knID string, branch string) ([]byte, error)
 }

@@ -61,14 +61,14 @@ func MockNewRiskTypeAccess(appSetting *common.AppSetting) (*riskTypeAccess, sqlm
 	return rta, smock
 }
 
-// rtSelectCols 是 ListRiskTypes / GetRiskTypesByIDs 的 SELECT 列列表（与实现保持一致）
+// rtSelectCols lists SELECT columns for ListRiskTypes and GetRiskTypesByIDs and stays aligned with the implementation.
 var rtSelectCols = []string{
 	"f_id", "f_name", "f_comment", "f_tags", "f_icon", "f_color", "f_bkn_raw_content",
 	"f_kn_id", "f_branch", "f_creator", "f_creator_type", "f_create_time",
 	"f_updater", "f_updater_type", "f_update_time",
 }
 
-// addRTRow 向 Rows 追加一行风险类测试数据
+// addRTRow appends one risk-type test-data row to Rows.
 func addRTRow(rows *sqlmock.Rows, id, name string) *sqlmock.Rows {
 	return rows.AddRow(
 		id, name, "test comment", `"tag1"`, "icon1", "color1", "bkn1",

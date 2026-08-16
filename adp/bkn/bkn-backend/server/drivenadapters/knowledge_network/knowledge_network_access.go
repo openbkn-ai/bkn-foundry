@@ -52,7 +52,7 @@ func NewKNAccess(appSetting *common.AppSetting) interfaces.KNAccess {
 	return knAccess
 }
 
-// 根据ID获取业务知识网络存在性
+// Get business knowledge network existence by ID.
 func (kna *knowledgeNetworkAccess) CheckKNExistByID(ctx context.Context,
 	knID string, branch string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query knowledge network")
@@ -62,7 +62,7 @@ func (kna *knowledgeNetworkAccess) CheckKNExistByID(ctx context.Context,
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_name").
 		From(KN_TABLE_NAME).
@@ -74,7 +74,7 @@ func (kna *knowledgeNetworkAccess) CheckKNExistByID(ctx context.Context,
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
@@ -92,7 +92,7 @@ func (kna *knowledgeNetworkAccess) CheckKNExistByID(ctx context.Context,
 	return name, true, nil
 }
 
-// 根据名称获取业务知识网络存在性
+// Get business knowledge network existence by name.
 func (oma *knowledgeNetworkAccess) CheckKNExistByName(ctx context.Context,
 	knName string, branch string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query knowledge network")
@@ -102,7 +102,7 @@ func (oma *knowledgeNetworkAccess) CheckKNExistByName(ctx context.Context,
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id").
 		From(KN_TABLE_NAME).
@@ -114,7 +114,7 @@ func (oma *knowledgeNetworkAccess) CheckKNExistByName(ctx context.Context,
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var knID string
@@ -134,7 +134,7 @@ func (oma *knowledgeNetworkAccess) CheckKNExistByName(ctx context.Context,
 	return knID, true, nil
 }
 
-// 创建业务知识网络
+// Create a business knowledge network.
 func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN *interfaces.KN) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Insert into knowledge network")
 	defer span.End()
@@ -143,7 +143,7 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(KN.Tags)
 
 	sqlStr, vals, err := sq.Insert(KN_TABLE_NAME).
@@ -188,7 +188,7 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
@@ -201,7 +201,7 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 	return nil
 }
 
-// 查询业务知识网络列表。查主线的当前版本为true的业务知识网络
+// Query current business knowledge networks on the main branch.
 func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces.KNsQueryParams) ([]*interfaces.KN, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge networks")
 	defer span.End()
@@ -235,7 +235,7 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 
 	builder := processQueryCondition(query, subBuilder)
 
-	//排序
+	// Sort.
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
 	}
@@ -252,7 +252,7 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 		return []*interfaces.KN{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
@@ -299,7 +299,7 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 			return []*interfaces.KN{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		KN.Tags = libCommon.TagString2TagSlice(tagsStr)
 		KNs = append(KNs, &KN)
 	}
@@ -325,7 +325,7 @@ func (kna *knowledgeNetworkAccess) GetKNsTotal(ctx context.Context, query interf
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
@@ -375,7 +375,7 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	tagsStr := ""
@@ -409,7 +409,7 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// Convert a tag string to an array.
 	KN.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 	span.SetStatus(codes.Ok, "")
@@ -424,7 +424,7 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(kn.Tags)
 
 	data := map[string]any{
@@ -448,7 +448,7 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -457,7 +457,7 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -465,7 +465,7 @@ func (kna *knowledgeNetworkAccess) UpdateKN(ctx context.Context, tx *sql.Tx, kn 
 	}
 
 	if RowsAffected != 1 {
-		// 影响行数不等于1不报错，更新操作已经发生
+		// Do not return an error when affected rows are not one because the update has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Update knowledge network affected unexpected row count: knowledge_network_id=%s, rows=%d",
 			kn.KNID, RowsAffected))
 	}
@@ -497,7 +497,7 @@ func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := kna.db.Exec(sqlStr, vals...)
@@ -506,7 +506,7 @@ func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -541,7 +541,7 @@ func (kna *knowledgeNetworkAccess) DeleteKN(ctx context.Context,
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -550,7 +550,7 @@ func (kna *knowledgeNetworkAccess) DeleteKN(ctx context.Context,
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -567,10 +567,10 @@ func (kna *knowledgeNetworkAccess) DeleteKN(ctx context.Context,
 	return RowsAffected, nil
 }
 
-// 拼接 sql 过滤条件
+// Build SQL filter conditions.
 func processQueryCondition(query interfaces.KNsQueryParams, subBuilder sq.SelectBuilder) sq.SelectBuilder {
 	if query.NamePattern != "" {
-		// 模糊查询，用名称或id进行模糊查询，匹配任一即可
+		// Fuzzy-match name or ID; either match is sufficient.
 		subBuilder = subBuilder.Where(sq.Expr("(instr(f_name, ?) > 0 OR instr(f_id, ?) > 0)", query.NamePattern, query.NamePattern))
 	}
 
@@ -589,7 +589,7 @@ func processQueryCondition(query interfaces.KNsQueryParams, subBuilder sq.Select
 	return subBuilder
 }
 
-// 获取邻居对象类
+// Get neighboring object types.
 func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, otIDs []string,
 	query interfaces.RelationTypePathsBaseOnSource) (map[string][]interfaces.RelationTypePath, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select relation type paths")
@@ -603,10 +603,10 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 	vals := []any{}
 	var err error
 
-	// 如果概念分组非空，则关系类需在概念分组的范围内
+	// When concept groups are present, relation types must be within their scope.
 	var subQueryBuilder sq.SelectBuilder
 	if len(query.ConceptGroups) > 0 {
-		// 子查询：获取指定概念组中的概念ID（object_type类型）
+		// Subquery: retrieve object type concept IDs in the specified concept group.
 		subQueryBuilder = sq.Select("cgr.f_concept_id").
 			From("t_concept_group_relation AS cgr").
 			Join(object_type.OT_TABLE_NAME + " AS ot ON cgr.f_concept_id = ot.f_id AND cgr.f_branch = ot.f_branch AND cgr.f_kn_id = ot.f_kn_id").
@@ -623,7 +623,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 	switch query.Direction {
 	case interfaces.DIRECTION_FORWARD:
 		subBuilder := sq.Select(
-			// 关系信息
+			// Relation information.
 			`"forward" as direction`,
 			"rt.f_source_object_type_id",
 			"rt.f_target_object_type_id",
@@ -633,7 +633,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			"rt.f_target_object_type_id",
 			"rt.f_type",
 			"rt.f_mapping_rules",
-			// 正向的终点类信息，起点已经在上一轮的时候拿到了，每次再连带着把终点对象类的信息查出来
+			// Forward target information. The source was retrieved in the prior traversal step.
 			"ot.f_id",
 			"ot.f_name",
 			"ot.f_data_source",
@@ -646,7 +646,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			Where(sq.Eq{"rt.f_source_object_type_id": otIDs}).
 			Where(sq.Eq{"rt.f_kn_id": query.KNID})
 
-		// 关系类须在分组中：即关系类的起点和终点都在分组中
+		// Relation types must be in the group: both source and target must belong to it.
 		if len(query.ConceptGroups) > 0 {
 			subBuilder = subBuilder.
 				Where(sq.Expr("rt.f_source_object_type_id IN (?)", subQueryBuilder)).
@@ -660,7 +660,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 		}
 	case interfaces.DIRECTION_BACKWARD:
 		subBuilder := sq.Select(
-			// 关系信息
+			// Relation information.
 			`"backward" as direction`,
 			"rt.f_target_object_type_id",
 			"rt.f_source_object_type_id",
@@ -670,7 +670,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			"rt.f_target_object_type_id",
 			"rt.f_type",
 			"rt.f_mapping_rules",
-			// 反向查找，路径是从关系类的终点到起点，当前的点是关系的终点，要找关系的起点，当前点的信息已经在上一轮的时候拿到了，每次再连带着把路径终点对象类的信息查出来
+			// Reverse traversal goes from relation target to source. The current target was retrieved in the prior step.
 			"ot.f_id",
 			"ot.f_name",
 			"ot.f_data_source",
@@ -683,7 +683,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			Where(sq.Eq{"rt.f_target_object_type_id": otIDs}).
 			Where(sq.Eq{"rt.f_kn_id": query.KNID})
 
-		// 关系类须在分组中：即关系类的起点和终点都在分组中
+		// Relation types must be in the group: both source and target must belong to it.
 		if len(query.ConceptGroups) > 0 {
 			subBuilder = subBuilder.
 				Where(sq.Expr("rt.f_source_object_type_id IN (?)", subQueryBuilder)).
@@ -697,7 +697,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 		}
 	case interfaces.DIRECTION_BIDIRECTIONAL:
 		subBuilder1 := sq.Select(
-			// 关系信息
+			// Relation information.
 			`"forward" as direction`,
 			"rt.f_source_object_type_id",
 			"rt.f_target_object_type_id",
@@ -707,7 +707,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			"rt.f_target_object_type_id",
 			"rt.f_type",
 			"rt.f_mapping_rules",
-			// 正向的终点类信息，起点已经在上一轮的时候拿到了，每次再连带着把终点对象类的信息查出来
+			// Forward target information. The source was retrieved in the prior traversal step.
 			"ot.f_id",
 			"ot.f_name",
 			"ot.f_data_source",
@@ -720,7 +720,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			Where(sq.Eq{"rt.f_source_object_type_id": otIDs}).
 			Where(sq.Eq{"rt.f_kn_id": query.KNID})
 		subBuilder2 := sq.Select(
-			// 关系信息
+			// Relation information.
 			`"backward" as direction`,
 			"rt.f_target_object_type_id",
 			"rt.f_source_object_type_id",
@@ -730,7 +730,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			"rt.f_target_object_type_id",
 			"rt.f_type",
 			"rt.f_mapping_rules",
-			// 反向查找，路径是从关系类的终点到起点，当前的点是关系的终点，要找关系的起点，当前点的信息已经在上一轮的时候拿到了，每次再连带着把路径终点对象类的信息查出来
+			// Reverse traversal goes from relation target to source. The current target was retrieved in the prior step.
 			"ot.f_id",
 			"ot.f_name",
 			"ot.f_data_source",
@@ -742,13 +742,13 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			Join(object_type.OT_TABLE_NAME + " " + "AS ot on rt.f_source_object_type_id = ot.f_id AND rt.f_branch = ot.f_branch AND rt.f_kn_id = ot.f_kn_id ").
 			Where(sq.Eq{"rt.f_target_object_type_id": otIDs}).
 			Where(sq.Eq{"rt.f_kn_id": query.KNID})
-		// 关系类须在分组中：即关系类的起点和终点都在分组中
+		// Relation types must be in the group: both source and target must belong to it.
 		if len(query.ConceptGroups) > 0 {
 			subBuilder1 = subBuilder1.
 				Where(sq.Expr("rt.f_source_object_type_id IN (?)", subQueryBuilder)).
 				Where(sq.Expr("rt.f_target_object_type_id IN (?)", subQueryBuilder))
 		}
-		// 关系类须在分组中：即关系类的起点和终点都在分组中
+		// Relation types must be in the group: both source and target must belong to it.
 		if len(query.ConceptGroups) > 0 {
 			subBuilder2 = subBuilder2.
 				Where(sq.Expr("rt.f_source_object_type_id IN (?)", subQueryBuilder)).
@@ -813,41 +813,41 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 			return nil, err
 		}
 
-		// 2.0 反序列化dMappingRules
+		// 2.0 Deserialize mapping rules.
 		err = sonic.Unmarshal(mappingRulesBytes, &relationType.MappingRules)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 			return nil, err
 		}
-		// 2.0 反序列化datasource
+		// 2.0 Deserialize the data source.
 		err = sonic.Unmarshal(dataSourceBytes, &neighbor.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return nil, err
 		}
 
-		// 2.1 反序列化DataProperties
+		// 2.1 Deserialize data properties.
 		err = sonic.Unmarshal(dataPropertiesBytes, &neighbor.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return nil, err
 		}
 
-		// 2.2 反序列化LogicProperties
+		// 2.2 Deserialize logical properties.
 		err = sonic.Unmarshal(logicPropertiesBytes, &neighbor.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return nil, err
 		}
 
-		// 2.3 反序列化主键
+		// 2.3 Deserialize primary keys.
 		err = sonic.Unmarshal(primaryKeysBytes, &neighbor.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return nil, err
 		}
 
-		// 找相邻就是一度路径，所以在获取邻居的时候把一度路径组装。因为还需要关系上的一些字段
+		// Neighbor lookup is a one-hop path, so assemble it while retrieving neighbors because relation fields are also needed.
 		ots := []interfaces.ObjectTypeWithKeyField{
 			{
 				OTID: sourceID,
@@ -873,7 +873,7 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 	return rtPathsMap, nil
 }
 
-// 查询业务知识网络列表。查主线的当前版本为true的业务知识网络
+// Query current business knowledge networks on the main branch.
 func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*interfaces.KN, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge networks")
 	defer span.End()
@@ -905,7 +905,7 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 		return map[string]*interfaces.KN{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
@@ -943,7 +943,7 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 			return map[string]*interfaces.KN{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		KN.Tags = libCommon.TagString2TagSlice(tagsStr)
 		KNs[KN.KNID] = &KN
 	}
@@ -952,7 +952,7 @@ func (kna *knowledgeNetworkAccess) GetAllKNs(ctx context.Context) (map[string]*i
 	return KNs, nil
 }
 
-// GetKNNamesByIDs 按 ID 批量查询知识网络名称(轻查询，仅取 f_id/f_name)。缺失 id 略过、空 ids 返回空切片。
+// GetKNNamesByIDs resolves knowledge network names in bulk using only f_id and f_name. Missing IDs are skipped and an empty input returns an empty slice.
 func (kna *knowledgeNetworkAccess) GetKNNamesByIDs(ctx context.Context,
 	ids []string, branch string) ([]*interfaces.KNNameEntry, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Select knowledge network names by ids")
@@ -980,7 +980,7 @@ func (kna *knowledgeNetworkAccess) GetKNNamesByIDs(ctx context.Context,
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
@@ -1012,14 +1012,14 @@ func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	// 新的业务知识网络
+	// New business knowledge network.
 	subBuilder := sq.Select(
 		"f_id",
 		"f_name").
 		From(KN_TABLE_NAME)
 	builder := processQueryCondition(query, subBuilder)
 
-	//排序
+	// Sort.
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
 	}
@@ -1029,7 +1029,7 @@ func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 		return []interfaces.PermissionResource{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
@@ -1068,7 +1068,7 @@ func processConceptGroupRelationsQueryCondition(query interfaces.ConceptGroupRel
 	if query.Branch != "" {
 		subBuilder = subBuilder.Where(sq.Eq{fmt.Sprintf("%s%s", fieldPrefix, "f_branch"): query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		subBuilder = subBuilder.Where(sq.Eq{fmt.Sprintf("%s%s", fieldPrefix, "f_branch"): interfaces.MAIN_BRANCH})
 	}
 

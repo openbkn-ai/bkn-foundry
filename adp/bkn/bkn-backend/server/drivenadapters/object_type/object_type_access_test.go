@@ -227,12 +227,12 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 		})
 
 		Convey("CreateObjectType Marshal DataSource error\n", func() {
-			// 创建一个会导致marshal失败的objectType - 使用channel会导致marshal失败
+			// Create an objectType that fails marshaling because a channel cannot be marshaled.
 			invalidObjectType := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:            "ot1",
 					OTName:          "Object Type 1",
-					DataSource:      &interfaces.ResourceInfo{ID: "test"}, // 使用一个包含无法序列化字段的值
+					DataSource:      &interfaces.ResourceInfo{ID: "test"}, // Use a value containing a non-serializable field.
 					DataProperties:  []*interfaces.DataProperty{},
 					LogicProperties: []*interfaces.LogicProperty{},
 					PrimaryKeys:     []string{"id"},
@@ -260,12 +260,12 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 				UpdateTime: testUpdateTime,
 				ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE,
 			}
-			// 通过反射设置一个无法序列化的字段来测试marshal错误
-			// 由于sonic能处理大部分情况，这里主要确保代码路径被覆盖
+			// Use reflection to set a non-serializable field and test marshal errors.
+			// Sonic handles most cases, so this primarily ensures the code path is covered.
 			smock.ExpectBegin()
 			tx, _ := ota.db.Begin()
 			err := ota.CreateObjectType(testCtx, tx, invalidObjectType)
-			// 正常情况下应该能marshal，所以这里主要确保代码路径被覆盖
+			// Marshaling should normally succeed, so this primarily ensures the code path is covered.
 			_ = err
 		})
 
@@ -275,7 +275,7 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 					OTID:            "ot1",
 					OTName:          "Object Type 1",
 					DataSource:      &interfaces.ResourceInfo{ID: "test"},
-					DataProperties:  []*interfaces.DataProperty{{Name: "test"}}, // 正常值
+					DataProperties:  []*interfaces.DataProperty{{Name: "test"}}, // Valid value.
 					LogicProperties: []*interfaces.LogicProperty{},
 					PrimaryKeys:     []string{"id"},
 					DisplayKey:      "name",
@@ -305,7 +305,7 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 			smock.ExpectBegin()
 			tx, _ := ota.db.Begin()
 			err := ota.CreateObjectType(testCtx, tx, invalidObjectType)
-			// 正常情况下应该能marshal，所以这里主要确保代码路径被覆盖
+			// Marshaling should normally succeed, so this primarily ensures the code path is covered.
 			_ = err
 		})
 
@@ -316,7 +316,7 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 					OTName:          "Object Type 1",
 					DataSource:      &interfaces.ResourceInfo{ID: "test"},
 					DataProperties:  []*interfaces.DataProperty{},
-					LogicProperties: []*interfaces.LogicProperty{{Name: "test"}}, // 正常值
+					LogicProperties: []*interfaces.LogicProperty{{Name: "test"}}, // Valid value.
 					PrimaryKeys:     []string{"id"},
 					DisplayKey:      "name",
 					IncrementalKey:  "update_time",
@@ -345,7 +345,7 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 			smock.ExpectBegin()
 			tx, _ := ota.db.Begin()
 			err := ota.CreateObjectType(testCtx, tx, invalidObjectType)
-			// 正常情况下应该能marshal，所以这里主要确保代码路径被覆盖
+			// Marshaling should normally succeed, so this primarily ensures the code path is covered.
 			_ = err
 		})
 
@@ -357,7 +357,7 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 					DataSource:      &interfaces.ResourceInfo{ID: "test"},
 					DataProperties:  []*interfaces.DataProperty{},
 					LogicProperties: []*interfaces.LogicProperty{},
-					PrimaryKeys:     []string{"id"}, // 正常值
+					PrimaryKeys:     []string{"id"}, // Valid value.
 					DisplayKey:      "name",
 					IncrementalKey:  "update_time",
 				},
@@ -385,24 +385,24 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 			smock.ExpectBegin()
 			tx, _ := ota.db.Begin()
 			err := ota.CreateObjectType(testCtx, tx, invalidObjectType)
-			// 正常情况下应该能marshal，所以这里主要确保代码路径被覆盖
+			// Marshaling should normally succeed, so this primarily ensures the code path is covered.
 			_ = err
 		})
 
 		Convey("CreateObjectType ToSql error\n", func() {
-			// 创建一个会导致ToSql失败的objectType - 使用一个无效的字段值
-			// 由于squirrel的ToSql通常不会失败，这里主要确保代码路径被覆盖
+			// Create an objectType intended to trigger a ToSql failure with an invalid field value.
+			// squirrel ToSql normally does not fail, so this primarily ensures the code path is covered.
 			smock.ExpectBegin()
 			tx, _ := ota.db.Begin()
 			err := ota.CreateObjectType(testCtx, tx, testObjectType)
-			// 正常情况下ToSql应该成功，所以这里主要确保代码路径被覆盖
+			// ToSql should normally succeed, so this primarily ensures the code path is covered.
 			_ = err
 		})
 	})
 }
 
-// Test_NewObjectTypeAccess 跳过测试，因为NewObjectTypeAccess需要实际的数据库连接
-// 在单元测试中使用MockNewObjectTypeAccess代替
+// Test_NewObjectTypeAccess is skipped because NewObjectTypeAccess requires a real database connection.
+// Unit tests use MockNewObjectTypeAccess instead.
 // func Test_NewObjectTypeAccess(t *testing.T) {
 // 	Convey("test NewObjectTypeAccess\n", t, func() {
 // 		appSetting := &common.AppSetting{
@@ -419,7 +419,7 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 // 			access := NewObjectTypeAccess(appSetting)
 // 			So(access, ShouldNotBeNil)
 //
-// 			// 第二次调用应该返回同一个实例（单例模式）
+// 			// The second call should return the same instance (singleton pattern).
 // 			access2 := NewObjectTypeAccess(appSetting)
 // 			So(access2, ShouldEqual, access)
 // 		})
@@ -1217,7 +1217,7 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:            "ot1",
 					OTName:          "Updated Object Type",
-					DataSource:      nil, // nil可以正常marshal，但我们可以测试其他marshal错误
+					DataSource:      nil, // nil DataSource marshals successfully, but this can exercise other marshal errors.
 					DataProperties:  []*interfaces.DataProperty{},
 					LogicProperties: []*interfaces.LogicProperty{},
 					PrimaryKeys:     []string{"id"},
@@ -1240,9 +1240,9 @@ func Test_objectTypeAccess_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			tx, _ := ota.db.Begin()
-			// nil DataSource可以正常marshal，所以这个测试主要确保代码路径被覆盖
+			// nil DataSource marshals successfully, so this primarily ensures the code path is covered.
 			err := ota.UpdateObjectType(testCtx, tx, invalidObjectType)
-			// 正常情况下应该能marshal，所以这里主要确保代码路径被覆盖
+			// Marshaling should normally succeed, so this primarily ensures the code path is covered.
 			_ = err
 		})
 

@@ -53,7 +53,7 @@ func NewConceptGroupAccess(appSetting *common.AppSetting) interfaces.ConceptGrou
 	return cgAccess
 }
 
-// 根据ID获取概念分组存在性
+// Get concept group existence by ID.
 func (cga *conceptGroupAccess) CheckConceptGroupExistByID(ctx context.Context, knID string, branch string, cgID string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckConceptGroupExistByID")
 	defer span.End()
@@ -63,7 +63,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByID(ctx context.Context, k
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_name").
 		From(CONCEPT_GROUP_TABLE_NAME).
@@ -76,7 +76,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByID(ctx context.Context, k
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
@@ -94,7 +94,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByID(ctx context.Context, k
 	return name, true, nil
 }
 
-// 根据名称获取概念分组存在性
+// Get concept group existence by name.
 func (cga *conceptGroupAccess) CheckConceptGroupExistByName(ctx context.Context, knID string, branch string, name string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckConceptGroupExistByName")
 	defer span.End()
@@ -103,7 +103,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByName(ctx context.Context,
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id").
 		From(CONCEPT_GROUP_TABLE_NAME).
@@ -116,7 +116,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByName(ctx context.Context,
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var cgID string
@@ -136,7 +136,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByName(ctx context.Context,
 	return cgID, true, nil
 }
 
-// 创建概念分组
+// Create a concept group.
 func (cga *conceptGroupAccess) CreateConceptGroup(ctx context.Context, tx *sql.Tx, conceptGroup *interfaces.ConceptGroup) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateConceptGroup")
 	defer span.End()
@@ -146,7 +146,7 @@ func (cga *conceptGroupAccess) CreateConceptGroup(ctx context.Context, tx *sql.T
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(conceptGroup.Tags)
 
 	sqlStr, vals, err := sq.Insert(CONCEPT_GROUP_TABLE_NAME).
@@ -189,7 +189,7 @@ func (cga *conceptGroupAccess) CreateConceptGroup(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
@@ -202,7 +202,7 @@ func (cga *conceptGroupAccess) CreateConceptGroup(ctx context.Context, tx *sql.T
 	return nil
 }
 
-// 查询概念分组列表。查主线的当前版本为true的概念分组
+// Query current concept groups on the main branch.
 func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query interfaces.ConceptGroupsQueryParams) ([]*interfaces.ConceptGroup, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListConceptGroups")
 	defer span.End()
@@ -232,7 +232,7 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 
 	builder := processQueryCondition(query, subBuilder)
 
-	//排序
+	// Sort.
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
 	}
@@ -249,7 +249,7 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 		return []*interfaces.ConceptGroup{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
@@ -288,7 +288,7 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 			return []*interfaces.ConceptGroup{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		conceptGroup.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		conceptGroups = append(conceptGroups, &conceptGroup)
@@ -298,7 +298,7 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 	return conceptGroups, nil
 }
 
-// 批量获取概念分组
+// Get concept groups in bulk.
 func (cga *conceptGroupAccess) GetConceptGroupsByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, cgIDs []string) ([]*interfaces.ConceptGroup, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetConceptGroupsByIDs")
 	defer span.End()
@@ -308,7 +308,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByIDs(ctx context.Context, tx *sq
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id",
 		"f_name",
@@ -335,7 +335,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByIDs(ctx context.Context, tx *sq
 		return []*interfaces.ConceptGroup{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := tx.Query(sqlStr, vals...)
@@ -373,7 +373,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByIDs(ctx context.Context, tx *sq
 			return []*interfaces.ConceptGroup{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		conceptGroup.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		conceptGroups = append(conceptGroups, &conceptGroup)
@@ -383,7 +383,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByIDs(ctx context.Context, tx *sq
 	return conceptGroups, nil
 }
 
-// 获取概念分组总数
+// Get total concept group count.
 func (cga *conceptGroupAccess) GetConceptGroupsTotal(ctx context.Context, query interfaces.ConceptGroupsQueryParams) (int, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetConceptGroupsTotal")
 	defer span.End()
@@ -401,7 +401,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsTotal(ctx context.Context, query 
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
@@ -424,7 +424,7 @@ func (cga *conceptGroupAccess) GetConceptGroupByID(ctx context.Context, knID str
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id",
 		"f_name",
@@ -451,7 +451,7 @@ func (cga *conceptGroupAccess) GetConceptGroupByID(ctx context.Context, knID str
 		return &interfaces.ConceptGroup{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	tagsStr := ""
@@ -484,7 +484,7 @@ func (cga *conceptGroupAccess) GetConceptGroupByID(ctx context.Context, knID str
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// Convert a tag string to an array.
 	conceptGroup.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 	span.SetStatus(codes.Ok, "")
@@ -500,7 +500,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(conceptGroup.Tags)
 
 	data := map[string]any{
@@ -525,7 +525,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -534,7 +534,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -542,7 +542,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 	}
 
 	if RowsAffected != 1 {
-		// 影响行数不等于1不报错，更新操作已经发生
+		// Do not return an error when affected rows are not one because the update has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Update concept group affected unexpected row count: concept_group_id=%s, rows=%d",
 			conceptGroup.CGID, RowsAffected))
 	}
@@ -574,7 +574,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroupDetail(ctx context.Context, knI
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := cga.db.Exec(sqlStr, vals...)
@@ -583,7 +583,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroupDetail(ctx context.Context, knI
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -623,7 +623,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupByID(ctx context.Context, tx *s
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -632,7 +632,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupByID(ctx context.Context, tx *s
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -662,7 +662,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupsByKnID(ctx context.Context, tx
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -671,7 +671,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupsByKnID(ctx context.Context, tx
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -701,7 +701,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupRelationsByKnID(ctx context.Con
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -710,7 +710,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupRelationsByKnID(ctx context.Con
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -731,7 +731,7 @@ func (cga *conceptGroupAccess) GetConceptGroupIDsByKnID(ctx context.Context, knI
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id",
 	).From(CONCEPT_GROUP_TABLE_NAME).
@@ -743,7 +743,7 @@ func (cga *conceptGroupAccess) GetConceptGroupIDsByKnID(ctx context.Context, knI
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
@@ -772,10 +772,10 @@ func (cga *conceptGroupAccess) GetConceptGroupIDsByKnID(ctx context.Context, knI
 	return cgIDs, nil
 }
 
-// 拼接 sql 过滤条件
+// Build SQL filter conditions.
 func processQueryCondition(query interfaces.ConceptGroupsQueryParams, subBuilder sq.SelectBuilder) sq.SelectBuilder {
 	if query.NamePattern != "" {
-		// 模糊查询，名称或id进行模糊查询，匹配任一即可
+		// Fuzzy-match name or ID; either match is sufficient.
 		subBuilder = subBuilder.Where(sq.Expr("(instr(f_name, ?) > 0 OR instr(f_id, ?) > 0)", query.NamePattern, query.NamePattern))
 	}
 
@@ -790,7 +790,7 @@ func processQueryCondition(query interfaces.ConceptGroupsQueryParams, subBuilder
 	if query.Branch != "" {
 		subBuilder = subBuilder.Where(sq.Eq{"f_branch": query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		subBuilder = subBuilder.Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH})
 	}
 
@@ -801,7 +801,7 @@ func processQueryCondition(query interfaces.ConceptGroupsQueryParams, subBuilder
 	return subBuilder
 }
 
-// 查询概念分组列表。查主线的当前版本为true的概念分组
+// Query current concept groups on the main branch.
 func (cga *conceptGroupAccess) GetAllConceptGroupsByKnID(ctx context.Context, knID string, branch string) (map[string]*interfaces.ConceptGroup, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetAllConceptGroupsByKnID")
 	defer span.End()
@@ -837,7 +837,7 @@ func (cga *conceptGroupAccess) GetAllConceptGroupsByKnID(ctx context.Context, kn
 		return map[string]*interfaces.ConceptGroup{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
@@ -876,7 +876,7 @@ func (cga *conceptGroupAccess) GetAllConceptGroupsByKnID(ctx context.Context, kn
 			return map[string]*interfaces.ConceptGroup{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		conceptGroup.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		conceptGroups[conceptGroup.CGID] = &conceptGroup
@@ -886,7 +886,7 @@ func (cga *conceptGroupAccess) GetAllConceptGroupsByKnID(ctx context.Context, kn
 	return conceptGroups, nil
 }
 
-// 获取指定分组下的对象类的绑定关系
+// Get object type bindings for the specified group.
 func (cga *conceptGroupAccess) ListConceptGroupRelations(ctx context.Context, tx *sql.Tx,
 	query interfaces.ConceptGroupRelationsQueryParams) ([]interfaces.ConceptGroupRelation, error) {
 
@@ -898,7 +898,7 @@ func (cga *conceptGroupAccess) ListConceptGroupRelations(ctx context.Context, tx
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	subBuilder := sq.Select(
 		"f_id",
 		"f_kn_id",
@@ -917,7 +917,7 @@ func (cga *conceptGroupAccess) ListConceptGroupRelations(ctx context.Context, tx
 		return []interfaces.ConceptGroupRelation{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := tx.Query(sqlStr, vals...)
@@ -986,7 +986,7 @@ func (cga *conceptGroupAccess) CreateConceptGroupRelation(ctx context.Context, t
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
@@ -999,7 +999,7 @@ func (cga *conceptGroupAccess) CreateConceptGroupRelation(ctx context.Context, t
 	return nil
 }
 
-// 拼接 sql 过滤条件
+// Build SQL filter conditions.
 func processConceptGroupRelationsQueryCondition(query interfaces.ConceptGroupRelationsQueryParams, subBuilder sq.SelectBuilder, fieldPrefix string) sq.SelectBuilder {
 
 	if query.KNID != "" {
@@ -1009,7 +1009,7 @@ func processConceptGroupRelationsQueryCondition(query interfaces.ConceptGroupRel
 	if query.Branch != "" {
 		subBuilder = subBuilder.Where(sq.Eq{fmt.Sprintf("%s%s", fieldPrefix, "f_branch"): query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		subBuilder = subBuilder.Where(sq.Eq{fmt.Sprintf("%s%s", fieldPrefix, "f_branch"): interfaces.MAIN_BRANCH})
 	}
 
@@ -1028,7 +1028,7 @@ func processConceptGroupRelationsQueryCondition(query interfaces.ConceptGroupRel
 	return subBuilder
 }
 
-// 从分组中删除对象类，即删除概念与分组的绑定关系
+// Remove an object type from a group by deleting the concept-to-group binding.
 func (cga *conceptGroupAccess) DeleteObjectTypesFromGroup(ctx context.Context, tx *sql.Tx, query interfaces.ConceptGroupRelationsQueryParams) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "DeleteObjectTypesFromGroup")
 	defer span.End()
@@ -1065,7 +1065,7 @@ func (cga *conceptGroupAccess) DeleteObjectTypesFromGroup(ctx context.Context, t
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -1086,7 +1086,7 @@ func (cga *conceptGroupAccess) GetConceptIDsByConceptGroupIDs(ctx context.Contex
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_concept_id",
 	).From(CONCEPT_GROUP_RELATION_TABLE_NAME).
@@ -1100,7 +1100,7 @@ func (cga *conceptGroupAccess) GetConceptIDsByConceptGroupIDs(ctx context.Contex
 		return []string{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
@@ -1128,7 +1128,7 @@ func (cga *conceptGroupAccess) GetConceptIDsByConceptGroupIDs(ctx context.Contex
 	return conceptIDs, nil
 }
 
-// 获取概念分组下的关系类ID
+// Get relation type IDs in a concept group.
 func (cga *conceptGroupAccess) GetRelationTypeIDsFromConceptGroupRelation(ctx context.Context, query interfaces.ConceptGroupRelationsQueryParams) ([]string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetRelationTypeIDsFromConceptGroupRelation")
 	defer span.End()
@@ -1138,7 +1138,7 @@ func (cga *conceptGroupAccess) GetRelationTypeIDsFromConceptGroupRelation(ctx co
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// 子查询：获取指定概念组中的概念ID（object_type类型）
+	// Subquery: retrieve object type concept IDs in the specified concept group.
 	subQueryBuilder := sq.Select("cgr.f_concept_id").
 		From(CONCEPT_GROUP_RELATION_TABLE_NAME + " AS cgr").
 		Join(object_type.OT_TABLE_NAME + " AS ot ON cgr.f_concept_id = ot.f_id AND cgr.f_branch = ot.f_branch AND cgr.f_kn_id = ot.f_kn_id").
@@ -1146,7 +1146,7 @@ func (cga *conceptGroupAccess) GetRelationTypeIDsFromConceptGroupRelation(ctx co
 
 	subQueryBuilder = processConceptGroupRelationsQueryCondition(query, subQueryBuilder, "cgr.")
 
-	// 主查询
+	// Main query.
 	builder := sq.Select(
 		"f_id",
 	).From(relation_type.RT_TABLE_NAME).
@@ -1160,7 +1160,7 @@ func (cga *conceptGroupAccess) GetRelationTypeIDsFromConceptGroupRelation(ctx co
 	if query.Branch != "" {
 		builder = builder.Where(sq.Eq{"f_branch": query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		builder = builder.Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH})
 	}
 
@@ -1170,7 +1170,7 @@ func (cga *conceptGroupAccess) GetRelationTypeIDsFromConceptGroupRelation(ctx co
 		return []string{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
@@ -1199,7 +1199,7 @@ func (cga *conceptGroupAccess) GetRelationTypeIDsFromConceptGroupRelation(ctx co
 	return rtIDs, nil
 }
 
-// 获取概念分组下的行动类ID
+// Get action type IDs in a concept group.
 func (cga *conceptGroupAccess) GetActionTypeIDsFromConceptGroupRelation(ctx context.Context, query interfaces.ConceptGroupRelationsQueryParams) ([]string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetActionTypeIDsFromConceptGroupRelation")
 	defer span.End()
@@ -1209,7 +1209,7 @@ func (cga *conceptGroupAccess) GetActionTypeIDsFromConceptGroupRelation(ctx cont
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// 子查询：获取指定概念组中的概念ID（object_type类型）
+	// Subquery: retrieve object type concept IDs in the specified concept group.
 	subQueryBuilder := sq.Select("cgr.f_concept_id").
 		From(CONCEPT_GROUP_RELATION_TABLE_NAME + " AS cgr").
 		Join(object_type.OT_TABLE_NAME + " AS ot ON cgr.f_concept_id = ot.f_id AND cgr.f_branch = ot.f_branch AND cgr.f_kn_id = ot.f_kn_id").
@@ -1217,7 +1217,7 @@ func (cga *conceptGroupAccess) GetActionTypeIDsFromConceptGroupRelation(ctx cont
 
 	subQueryBuilder = processConceptGroupRelationsQueryCondition(query, subQueryBuilder, "cgr.")
 
-	// 主查询
+	// Main query.
 	builder := sq.Select(
 		"f_id",
 	).From(action_type.AT_TABLE_NAME).
@@ -1230,7 +1230,7 @@ func (cga *conceptGroupAccess) GetActionTypeIDsFromConceptGroupRelation(ctx cont
 	if query.Branch != "" {
 		builder = builder.Where(sq.Eq{"f_branch": query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		builder = builder.Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH})
 	}
 
@@ -1240,7 +1240,7 @@ func (cga *conceptGroupAccess) GetActionTypeIDsFromConceptGroupRelation(ctx cont
 		return []string{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
@@ -1269,7 +1269,7 @@ func (cga *conceptGroupAccess) GetActionTypeIDsFromConceptGroupRelation(ctx cont
 	return atIDs, nil
 }
 
-// 获取概念所属的分组信息
+// Get group information for a concept.
 func (cga *conceptGroupAccess) GetConceptGroupsByOTIDs(ctx context.Context, tx *sql.Tx,
 	query interfaces.ConceptGroupRelationsQueryParams) (map[string][]*interfaces.ConceptGroup, error) {
 
@@ -1281,7 +1281,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByOTIDs(ctx context.Context, tx *
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	subBuilder := sq.Select(
 		"cgr.f_concept_id",
 		"cg.f_id",
@@ -1308,7 +1308,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByOTIDs(ctx context.Context, tx *
 		return map[string][]*interfaces.ConceptGroup{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := tx.Query(sqlStr, vals...)
@@ -1342,7 +1342,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByOTIDs(ctx context.Context, tx *
 			return map[string][]*interfaces.ConceptGroup{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		conceptGroup.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		results[otID] = append(results[otID], conceptGroup)

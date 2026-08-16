@@ -14,6 +14,13 @@ Description = "Invalid Request Parameter"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 
+[BknBackend.RiskType.InvalidParameter.Detail]
+ModuleType = "Risk type module type must be 'risk_type'."
+DuplicatedIDInFile = "Risk type ID '{{.riskTypeID}}' already exists in the request body."
+DuplicatedNameInFile = "Risk type name '{{.riskTypeName}}' already exists in the request body."
+RiskTypeIDAlreadyExists = "Risk type ID {{.riskTypeID}} already exists."
+RiskTypeNameAlreadyExists = "Risk type name {{.riskTypeName}} already exists."
+
 [BknBackend.RiskType.RiskTypeIDExisted]
 Description = "Same Risk Type ID Existed"
 Solution = "Please check whether the parameter is correct."

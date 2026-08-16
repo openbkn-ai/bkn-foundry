@@ -4,6 +4,11 @@ Description = "存在重复的业务知识网络ID"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 
+[BknBackend.KnowledgeNetwork.InvalidParameter.Detail]
+DirectionUnsupported = "不支持方向 {{.direction}}，仅支持 forward、backward 和 bidirectional。"
+PathLengthInvalid = "路径长度必须在 1 到 3 之间，当前为 {{.pathLength}}。"
+BranchRequired = "必须提供 branch。"
+
 [BknBackend.KnowledgeNetwork.Duplicated.Name]
 Description = "存在重复的业务知识网络名称"
 Solution = "请检查参数是否正确。"

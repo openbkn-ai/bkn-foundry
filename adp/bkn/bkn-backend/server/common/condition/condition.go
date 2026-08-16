@@ -18,16 +18,16 @@ import (
 
 const MaxSubCondition = 100
 
-// sql的字符串转义
+// SQL string escaping.
 var Special = strings.NewReplacer(`\`, `\\\\`, `'`, `\'`, `%`, `\%`, `_`, `\_`)
 
 //go:generate mockgen -source ../condition/condition.go -destination ../condition/mock/mock_condition.go
 type Condition interface {
 	Convert(ctx context.Context, vectorizer func(ctx context.Context, words []string) ([]*VectorResp, error)) (string, error)
-	Convert2SQL(ctx context.Context) (string, error) // 把condition转成sql的where条件
+	Convert2SQL(ctx context.Context) (string, error) // Convert the condition to an SQL WHERE clause.
 }
 
-// 将过滤条件拼接到 dsl 请求的 query 部分
+// Append filter conditions to the query section of the DSL request.
 func NewCondition(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*ViewField) (cond Condition, err error) {
 	if cfg == nil {
 		return nil, nil
@@ -49,16 +49,16 @@ func NewCondition(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 
 func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*ViewField) (cond Condition, err error) {
 
-	// multi_match之外的才校验
+	// Validate all operators except multi_match.
 	if cfg.Operation != OperationMultiMatch {
-		// 判断除 * 之外的字段权限
+		// Check permissions for fields other than *.
 		if cfg.Field != AllField {
 			field, ok := fieldsMap[cfg.Field]
 			if !ok {
 				return nil, fmt.Errorf("condition config field name '%s' must in view original fields", cfg.Field)
 			}
 
-			// 如果字段类型是 binary 类型，则不支持过滤
+			// Binary fields do not support filtering.
 			if field.Type == dtype.DATATYPE_BINARY {
 				return nil, fmt.Errorf("condition config field '%s' is binary type, do not support filtering", cfg.Field)
 			}
@@ -102,28 +102,28 @@ func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsM
 }
 
 func getFilterFieldName(name string, fieldsMap map[string]*ViewField, isFullTextQuery bool) string {
-	// 全文检索允许字段为 "*"
+	// Full-text search permits the * field.
 	if name == AllField {
 		return name
 	}
 
-	// 如果字段为 __id, 转化为 open search内置字段 _id
+	// Convert __id to the OpenSearch built-in _id field.
 	if name == MetaField_ID {
 		return OS_MetaField_ID
 	}
 
-	// 如果是脱敏字段，字段添加后缀 _desensitize
+	// Add the _desensitize suffix for desensitized fields.
 	desensitizeFieldName := name + DESENSITIZE_FIELD_SUFFIX
 
 	fieldInfo, ok1 := fieldsMap[name]
 	_, ok2 := fieldsMap[desensitizeFieldName]
 	if ok1 && ok2 {
-		// 脱敏字段
+		// Desensitized field.
 		name = desensitizeFieldName
 	}
 
-	// 全文检索情况下，text 类型的字段不需要添加 keyword 后缀
-	// 精确查询情况下，text 类型的字段给字段名加上后缀 .keyword
+	// Text fields do not need the keyword suffix for full-text search.
+	// Add the .keyword suffix to text fields for exact queries.
 	if !isFullTextQuery && fieldInfo.Type == dtype.DATATYPE_TEXT {
 		name = wrapKeyWordFieldName(name)
 	}
@@ -131,7 +131,7 @@ func getFilterFieldName(name string, fieldsMap map[string]*ViewField, isFullText
 	return name
 }
 
-// 转换成 keyword
+// Convert to keyword.
 func wrapKeyWordFieldName(fields ...string) string {
 	for _, field := range fields {
 		if field == "" {

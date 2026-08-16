@@ -226,7 +226,7 @@ func TestRoundTrip_FileContent(t *testing.T) {
 
 // === Boundary Case Tests ===
 
-// TestEmptyNetwork: 空网络处理
+// TestEmptyNetwork covers empty-network handling.
 func TestEmptyNetwork(t *testing.T) {
 	dir := tempDir(t)
 
@@ -252,7 +252,7 @@ version: "1.0"
 	assert.Empty(t, doc.Metrics)
 }
 
-// TestCircularInclude: 循环include检测
+// TestCircularInclude covers circular-include detection.
 func TestCircularInclude(t *testing.T) {
 	dir := tempDir(t)
 
@@ -286,7 +286,7 @@ Test object description.
 	assert.Equal(t, 1, len(doc.ObjectTypes))
 }
 
-// TestMissingInclude: 缺失include文件
+// TestMissingInclude covers missing include files.
 func TestMissingInclude(t *testing.T) {
 	dir := tempDir(t)
 
@@ -306,7 +306,7 @@ version: "1.0"
 	assert.Equal(t, "test-missing", doc.ID)
 }
 
-// TestLargeNetwork: 大规模网络性能
+// TestLargeNetwork covers large-network performance.
 func TestLargeNetwork(t *testing.T) {
 	dir := tempDir(t)
 
@@ -336,7 +336,7 @@ version: "1.0"
 	assert.Equal(t, 10, len(doc.ObjectTypes))
 }
 
-// TestInvalidBKNFile: 无效BKN文件处理
+// TestInvalidBKNFile covers invalid BKN-file handling.
 func TestInvalidBKNFile(t *testing.T) {
 	dir := tempDir(t)
 

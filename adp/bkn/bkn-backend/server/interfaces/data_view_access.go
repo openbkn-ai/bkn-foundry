@@ -16,7 +16,7 @@ type DataView struct {
 	FieldsMap map[string]*ViewField `json:"-"`
 }
 
-// 数据视图字段
+// Data view fields.
 type ViewField struct {
 	Name              string       `json:"name"`
 	Type              string       `json:"type"`

@@ -8,7 +8,6 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/dlclark/regexp2"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "bkn-backend/common/condition"
@@ -23,7 +23,7 @@ import (
 	"bkn-backend/interfaces"
 )
 
-// 对象名称错误码字典, key为对象类型, value为其错误码数组
+// objectNameErrorCode maps object types to their required-name and overlength error codes.
 var objectNameErrorCode = map[string][]string{
 
 	interfaces.MODULE_TYPE_KN: {
@@ -62,7 +62,15 @@ var objectNameErrorCode = map[string][]string{
 	},
 }
 
-// 校验的导入模式
+func commonValidationDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(
+		rest.GetLanguageByCtx(ctx),
+		"BknBackend.Validation.Detail."+name,
+		templateData,
+	)
+}
+
+// Validate the import mode.
 func validateImportMode(ctx context.Context, mode string) *rest.HTTPError {
 	switch mode {
 	case interfaces.ImportMode_Normal,
@@ -71,13 +79,13 @@ func validateImportMode(ctx context.Context, mode string) *rest.HTTPError {
 	default:
 		return rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_ImportMode).
-			WithErrorDetails("The import_mode value can be 'overwrite', 'normal', 'ignore'")
+			WithErrorDetails(commonValidationDetail(ctx, "ImportMode", nil))
 	}
 
 	return nil
 }
 
-// 公共校验函数(1): 对象名称合法性校验
+// validateObjectName validates an object name.
 func validateObjectName(ctx context.Context, objectName string, objectType string) error {
 	if objectName == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][0])
@@ -85,13 +93,13 @@ func validateObjectName(ctx context.Context, objectName string, objectType strin
 
 	if utf8.RuneCountInString(objectName) > interfaces.OBJECT_NAME_MAX_LENGTH {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][1]).
-			WithErrorDetails(fmt.Sprintf("The length of the %v named %v exceeds %v", objectType, objectName, interfaces.OBJECT_NAME_MAX_LENGTH))
+			WithErrorDetails(commonValidationDetail(ctx, "NameLengthExceeded", map[string]any{"objectType": objectType, "objectName": objectName, "limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
 	}
 
 	return nil
 }
 
-// tags 的合法性校验
+// ValidateTags validates tag values.
 func ValidateTags(ctx context.Context, Tags []string) error {
 	if len(Tags) > interfaces.TAGS_MAX_NUMBER {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_TagTotal)
@@ -106,9 +114,9 @@ func ValidateTags(ctx context.Context, Tags []string) error {
 	return nil
 }
 
-// 数据标签名称合法性校验
+// validateDataTagName validates a data tag name.
 func validateDataTagName(ctx context.Context, dataTagName string) error {
-	// 去除dataTagName的左右空格
+	// Trim surrounding whitespace from the data tag name.
 	dataTagName = strings.Trim(dataTagName, " ")
 
 	if dataTagName == "" {
@@ -118,18 +126,18 @@ func validateDataTagName(ctx context.Context, dataTagName string) error {
 
 	if utf8.RuneCountInString(dataTagName) > interfaces.OBJECT_NAME_MAX_LENGTH {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
-			WithErrorDetails(fmt.Sprintf("The length of the data tag name exceeds %d", interfaces.OBJECT_NAME_MAX_LENGTH))
+			WithErrorDetails(commonValidationDetail(ctx, "DataTagNameLength", map[string]any{"limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
 	}
 
 	if isInvalid := strings.ContainsAny(interfaces.NAME_INVALID_CHARACTER, dataTagName); isInvalid {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
-			WithErrorDetails(fmt.Sprintf("Data tag name contains special characters, such as %s", interfaces.NAME_INVALID_CHARACTER))
+			WithErrorDetails(commonValidationDetail(ctx, "DataTagNameInvalidCharacters", map[string]any{"characters": interfaces.NAME_INVALID_CHARACTER}))
 	}
 
 	return nil
 }
 
-// 分页参数合法性校验
+// validatePaginationQueryParameters validates pagination query parameters.
 func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort, direction string,
 	supportedSortTypes map[string]string) (interfaces.PaginationQueryParameters, error) {
 	pageParams := interfaces.PaginationQueryParameters{}
@@ -137,23 +145,23 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 	off, err := strconv.Atoi(offset)
 	if err != nil {
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
-			WithErrorDetails(err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "OffsetIntegerRequired", nil))
 	}
 
 	if off < interfaces.MIN_OFFSET {
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
-			WithErrorDetails(fmt.Sprintf("The offset is not greater than %d", interfaces.MIN_OFFSET))
+			WithErrorDetails(commonValidationDetail(ctx, "OffsetMin", map[string]any{"min": interfaces.MIN_OFFSET}))
 	}
 
 	lim, err := strconv.Atoi(limit)
 	if err != nil {
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).
-			WithErrorDetails(err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "LimitIntegerRequired", nil))
 	}
 
 	if limit != interfaces.NO_LIMIT && (lim < interfaces.MIN_LIMIT || lim > interfaces.MAX_LIMIT) {
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).
-			WithErrorDetails(fmt.Sprintf("The number per page does not equal %s is not in the range of [%d,%d]", interfaces.NO_LIMIT, interfaces.MIN_LIMIT, interfaces.MAX_LIMIT))
+			WithErrorDetails(commonValidationDetail(ctx, "LimitRange", map[string]any{"noLimit": interfaces.NO_LIMIT, "min": interfaces.MIN_LIMIT, "max": interfaces.MAX_LIMIT}))
 	}
 
 	_, ok := supportedSortTypes[sort]
@@ -163,12 +171,12 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 			types = append(types, t)
 		}
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Sort).
-			WithErrorDetails(fmt.Sprintf("Wrong sort type, does not belong to any item in set %v ", types))
+			WithErrorDetails(commonValidationDetail(ctx, "SortInvalid", map[string]any{"types": types}))
 	}
 
 	if direction != interfaces.DESC_DIRECTION && direction != interfaces.ASC_DIRECTION {
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Direction).
-			WithErrorDetails("The sort direction is not desc or asc")
+			WithErrorDetails(commonValidationDetail(ctx, "DirectionInvalid", nil))
 	}
 
 	return interfaces.PaginationQueryParameters{
@@ -181,12 +189,12 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 
 func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery) error {
 
-	// 过滤条件用map接，然后再decode到condCfg中
+	// Decode the filter condition into its typed representation.
 	var actualCond *cond.CondCfg
 	err := mapstructure.Decode(query.Condition, &actualCond)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Condition).
-			WithErrorDetails(fmt.Sprintf("mapstructure decode condition failed: %s", err.Error()))
+			WithErrorDetails(commonValidationDetail(ctx, "ConditionDecodeFailed", nil))
 	}
 	query.ActualCondition = actualCond
 
@@ -199,7 +207,7 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 		},
 	}
 
-	// 3. module type的过滤
+	// Add the module type filter.
 	typeFilter := &cond.CondCfg{
 		Field:     "module_type",
 		Operation: cond.OperationEq,
@@ -209,7 +217,7 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 		},
 	}
 
-	// 4. branch的过滤
+	// Add the branch filter.
 	branchFilter := &cond.CondCfg{
 		Field:     "branch",
 		Operation: cond.OperationEq,
@@ -219,7 +227,7 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 		},
 	}
 
-	// 如果包含了knn，则把kn_id、module_type、branch的过滤条件放在knn的sub condition里
+	// Include required BKN filters in the condition tree.
 	err = validateCond(ctx, query.ActualCondition)
 	if err != nil {
 		return err
@@ -238,7 +246,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 		return nil
 	}
 
-	// 过滤操作符
+	// Validate the filter operation.
 	if cfg.Operation == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionOperation)
 	}
@@ -250,10 +258,10 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 
 	switch cfg.Operation {
 	case cond.OperationAnd, cond.OperationOr, cond.OperationKNN:
-		// 子过滤条件不能超过10个
+		// Limit the number of sub-conditions.
 		if len(cfg.SubConds) > cond.MaxSubCondition {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
-				WithErrorDetails(fmt.Sprintf("The number of subConditions exceeds %d", cond.MaxSubCondition))
+				WithErrorDetails(commonValidationDetail(ctx, "ConditionCountExceeded", map[string]any{"limit": cond.MaxSubCondition}))
 		}
 
 		for _, subCond := range cfg.SubConds {
@@ -263,7 +271,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			}
 		}
 	default:
-		// 过滤字段名称不能为空
+		// A field is required except for multi-match operations.
 		if cfg.Operation != cond.OperationMultiMatch && cfg.Field == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionName)
 		}
@@ -280,11 +288,11 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 	case cond.OperationEq, cond.OperationNotEq, cond.OperationGt, cond.OperationGte, cond.OperationLt, cond.OperationLte,
 		cond.OperationLike, cond.OperationNotLike, cond.OperationPrefix, cond.OperationNotPrefix, cond.OperationRegex,
 		cond.OperationMatch, cond.OperationMatchPhrase, cond.OperationCurrent, cond.OperationMultiMatch:
-		// 右侧值为单个值
+		// These operations require a single value.
 		_, ok := cfg.Value.([]any)
 		if ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails(fmt.Sprintf("[%s] operation's value should be a single value", cfg.Operation))
+				WithErrorDetails(commonValidationDetail(ctx, "ConditionSingleValueRequired", map[string]any{"operation": cfg.Operation}))
 		}
 
 		if cfg.Operation == cond.OperationLike || cfg.Operation == cond.OperationNotLike ||
@@ -292,7 +300,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			_, ok := cfg.Value.(string)
 			if !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails("[like not_like prefix not_prefix] operation's value should be a string")
+					WithErrorDetails(commonValidationDetail(ctx, "ConditionStringValueRequired", nil))
 			}
 		}
 
@@ -300,41 +308,41 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			val, ok := cfg.Value.(string)
 			if !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails("[regex] operation's value should be a string")
+					WithErrorDetails(commonValidationDetail(ctx, "ConditionRegexStringRequired", nil))
 			}
 
 			_, err := regexp2.Compile(val, regexp2.RE2)
 			if err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails(fmt.Sprintf("[regex] operation regular expression error: %s", err.Error()))
+					WithErrorDetails(commonValidationDetail(ctx, "ConditionRegexInvalid", nil))
 			}
 
 		}
 
 	case cond.OperationIn, cond.OperationNotIn:
-		// 当 operation 是 in, not_in 时，value 为任意基本类型的数组，且长度大于等于1；
+		// The in and not_in operations require a non-empty array value.
 		_, ok := cfg.Value.([]any)
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[in not_in] operation's value must be an array")
+				WithErrorDetails(commonValidationDetail(ctx, "ConditionArrayRequired", nil))
 		}
 
 		if len(cfg.Value.([]any)) <= 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[in not_in] operation's value should contains at least 1 value")
+				WithErrorDetails(commonValidationDetail(ctx, "ConditionArrayNonEmpty", nil))
 		}
 	case cond.OperationRange, cond.OperationOutRange, cond.OperationBefore, cond.OperationBetween:
-		// 当 operation 是 range 时，value 是个由范围的下边界和上边界组成的长度为 2 的数值型数组
-		// 当 operation 是 out_range 时，value 是个长度为 2 的数值类型的数组，查询的数据范围为 (-inf, value[0]) || [value[1], +inf)
+		// Range-like operations require an array with two values.
+		// out_range excludes the interval between the two values.
 		v, ok := cfg.Value.([]any)
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[range, out_range] operation's value must be an array")
+				WithErrorDetails(commonValidationDetail(ctx, "ConditionRangeArrayRequired", nil))
 		}
 
 		if len(v) != 2 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[range, out_range] operation's value must contain 2 values")
+				WithErrorDetails(commonValidationDetail(ctx, "ConditionRangeArrayLength", nil))
 		}
 	}
 
@@ -343,31 +351,29 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 
 func validateID(ctx context.Context, id string) error {
 	if id != "" {
-		//  id，只包含小写英文字母和数字和下划线(_)和连字符(-)，且不能以下划线开头，不能超过40个字符
+		// IDs may contain lowercase letters, digits, underscores, and hyphens; they cannot start with an underscore or exceed 40 characters.
 		re := regexp2.MustCompile(interfaces.RegexPattern_NonBuiltin_ID, regexp2.RE2)
 		match, err := re.MatchString(id)
 		if err != nil || !match {
-			errDetails := fmt.Sprintf(`The id can contain only lowercase letters, digits and underscores(_),
-			it cannot start with underscores and cannot exceed 40 characters, but got %s`, id)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
-				WithErrorDetails(errDetails)
+				WithErrorDetails(commonValidationDetail(ctx, "IdentifierInvalid", map[string]any{"id": id}))
 		}
 	}
 
 	return nil
 }
 
-// 校验 x-http-method-override 重载方法，只在 header里传递
+// ValidateHeaderMethodOverride validates the x-http-method-override request header.
 func ValidateHeaderMethodOverride(ctx context.Context, methodOverride string) error {
 
 	if methodOverride == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
-			WithErrorDetails("x-http-method-override must be set")
+			WithErrorDetails(commonValidationDetail(ctx, "OverrideMethodRequired", nil))
 	}
 
 	if methodOverride != "GET" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
-			WithErrorDetails(fmt.Sprintf("x-http-method-overide is expected to be GET, but got %s", methodOverride))
+			WithErrorDetails(commonValidationDetail(ctx, "OverrideMethodInvalid", map[string]any{"method": methodOverride}))
 	}
 	return nil
 }

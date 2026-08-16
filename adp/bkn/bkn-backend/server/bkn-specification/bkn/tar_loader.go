@@ -14,21 +14,21 @@ import (
 	"strings"
 )
 
-// LoadNetworkFromTar 从 tar 包直接加载 BKN 网络
-// 无需写入本地文件系统，完全在内存中处理
+// LoadNetworkFromTar loads a BKN network directly from a tar archive.
+// It processes the archive entirely in memory without writing to the local file system.
 func LoadNetworkFromTar(tarReader io.Reader) (*BknNetwork, error) {
-	// 1. 解压 tar 包到内存文件系统
+	// 1. Extract the tar archive into the in-memory file system.
 	mfs, rootDir, err := ExtractTarToMemory(tarReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract tar: %w", err)
 	}
 
-	// 2. 使用内存文件系统加载网络（使用目录路径）
+	// 2. Load the network through the in-memory file system using the directory path.
 	return LoadNetworkWithFS(mfs, rootDir)
 }
 
-// ExtractTarToMemory 将 tar 包解压到内存文件系统
-// 返回内存文件系统和根目录路径
+// ExtractTarToMemory extracts a tar archive into the in-memory file system.
+// It returns the in-memory file system and root directory path.
 func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 	mfs := NewMemoryFileSystem()
 	tr := tar.NewReader(reader)
@@ -44,13 +44,13 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 			return nil, "", fmt.Errorf("failed to read tar header: %w", err)
 		}
 
-		// 跳过目录
+		// Skip directories.
 		if header.Typeflag == tar.TypeDir {
 			continue
 		}
 
 		base := filepath.Base(header.Name)
-		// 跳过 macOS AppleDouble 扩展属性文件（._*），避免解析出空 ObjectType
+		// Skip macOS AppleDouble extended-attribute files (._*) to avoid parsing empty ObjectTypes.
 		if strings.HasPrefix(base, "._") {
 			if _, err := io.CopyN(io.Discard, tr, header.Size); err != nil {
 				return nil, "", fmt.Errorf("failed to skip %s body: %w", header.Name, err)
@@ -58,7 +58,7 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 			continue
 		}
 
-		// 只处理支持的文件类型（.bkn, .md）以及 CHECKSUM 文件
+		// Process only supported file types (.bkn and .md) and the CHECKSUM file.
 		ext := strings.ToLower(filepath.Ext(header.Name))
 		if !SupportedExtensions[ext] && base != ChecksumFileName {
 			if _, err := io.CopyN(io.Discard, tr, header.Size); err != nil {
@@ -67,17 +67,17 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 			continue
 		}
 
-		// 读取文件内容
+		// Read file contents.
 		content := make([]byte, header.Size)
 		if _, err := io.ReadFull(tr, content); err != nil {
 			return nil, "", fmt.Errorf("failed to read file %s: %w", header.Name, err)
 		}
 
-		// 标准化路径：去除 leading "./"，统一使用 / 分隔符
+		// Normalize paths by removing the leading "./" and using / as the separator.
 		path := strings.TrimPrefix(filepath.ToSlash(header.Name), "./")
 		mfs.AddFile(path, content)
 
-		// 检查是否是根文件候选，记录其目录
+		// Check whether this is a root-file candidate and record its directory.
 		if strings.EqualFold(base, RootFileName) {
 			rootDir = filepath.Dir(path)
 			if rootDir == "" {

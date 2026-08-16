@@ -8,7 +8,6 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -107,9 +106,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	bknApiV1.GET("/operation-audits/:event_id", r.GetOperationAudit)
 
 	for _, apiV1 := range []*gin.RouterGroup{bknApiV1, otlApiV1} {
-		// 业务知识网络
+		// Knowledge networks.
 		apiV1.POST("/knowledge-networks", r.verifyJsonContentType(), r.CreateKNByEx)
-		// 按 ID 批量取名(对象级授权页回显，绕过授权过滤；静态段 names 与 :kn_id 不冲突)
+		// Resolve names by ID in batch for object-level authorization views; the names segment does not conflict with :kn_id.
 		apiV1.POST("/knowledge-networks/names", r.verifyJsonContentType(), r.QueryKNNamesByIDs)
 		apiV1.DELETE("/knowledge-networks/:kn_id", r.DeleteKN)
 		apiV1.PUT("/knowledge-networks/:kn_id", r.verifyJsonContentType(), r.UpdateKNByEx)
@@ -118,27 +117,27 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.POST("/knowledge-networks/:kn_id/validation", r.verifyJsonContentType(), r.ValidateKNByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/relation-type-paths", r.GetRelationTypePathsByEx)
 
-		// 概念分组
+		// Concept groups.
 		apiV1.POST("/knowledge-networks/:kn_id/concept-groups", r.verifyJsonContentType(), r.CreateConceptGroupByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/concept-groups/validation", r.verifyJsonContentType(), r.ValidateConceptGroupsByEx)
-		apiV1.DELETE("/knowledge-networks/:kn_id/concept-groups/:cg_id", r.DeleteConceptGroup) // 不支持批量删
+		apiV1.DELETE("/knowledge-networks/:kn_id/concept-groups/:cg_id", r.DeleteConceptGroup) // Batch deletion is not supported.
 		apiV1.PUT("/knowledge-networks/:kn_id/concept-groups/:cg_id", r.verifyJsonContentType(), r.UpdateConceptGroupByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/concept-groups", r.ListConceptGroupsByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/concept-groups/:cg_id", r.GetConceptGroupByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types", r.AddObjectTypesToConceptGroupByEx)
 		apiV1.DELETE("/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types/:ot_ids", r.DeleteObjectTypesFromGroupByEx)
 
-		// 对象类
+		// Object types.
 		apiV1.POST("/knowledge-networks/:kn_id/object-types", r.verifyJsonContentType(), r.HandleObjectTypeGetOverrideByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/object-types/validation", r.verifyJsonContentType(), r.ValidateObjectTypesByEx)
-		apiV1.DELETE("/knowledge-networks/:kn_id/object-types/:ot_ids", r.DeleteObjectTypes) // path上用kn_ids接，实际上只能传一个id
+		apiV1.DELETE("/knowledge-networks/:kn_id/object-types/:ot_ids", r.DeleteObjectTypes) // The path uses the plural parameter name but accepts one ID only.
 		apiV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.UpdateObjectTypeByEx)
 		apiV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id/data_properties/:property_names", r.verifyJsonContentType(), r.UpdateDataProperties)
-		apiV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByEx) // path上用kn_ids接，实际上只能传一个id
+		apiV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByEx) // The path uses the plural parameter name but accepts one ID only.
 		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids/sample-data", r.GetObjectTypeSampleDataByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByEx) // path上用kn_ids接，实际上只能传一个id
+		apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByEx) // The path uses the plural parameter name but accepts one ID only.
 
-		// 关系类
+		// Relation types.
 		apiV1.POST("/knowledge-networks/:kn_id/relation-types", r.verifyJsonContentType(), r.HandleRelationTypeGetOverrideByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/relation-types/validation", r.verifyJsonContentType(), r.ValidateRelationTypesByEx)
 		apiV1.DELETE("/knowledge-networks/:kn_id/relation-types/:rt_ids", r.DeleteRelationTypes)
@@ -146,7 +145,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/relation-types", r.ListRelationTypesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/relation-types/:rt_ids", r.GetRelationTypesByEx)
 
-		// 行动类
+		// Action types.
 		apiV1.POST("/knowledge-networks/:kn_id/action-types", r.verifyJsonContentType(), r.HandleActionTypeGetOverrideByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/action-types/validation", r.verifyJsonContentType(), r.ValidateActionTypesByEx)
 		apiV1.DELETE("/knowledge-networks/:kn_id/action-types/:at_ids", r.DeleteActionTypes)
@@ -154,7 +153,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/action-types", r.ListActionTypesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.GetActionTypesByEx)
 
-		// 指标
+		// Metrics.
 		apiV1.POST("/knowledge-networks/:kn_id/metrics", r.verifyJsonContentType(), r.HandleMetricGetOverrideByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/metrics/validation", r.verifyJsonContentType(), r.ValidateMetricsByEx)
 		// SDK/CLI compatibility alias (@openbkn/bkn-sdk uses /metrics/validate)
@@ -164,14 +163,14 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids", r.GetMetricsByIDsByEx)
 
-		// 风险类
+		// Risk types.
 		apiV1.POST("/knowledge-networks/:kn_id/risk-types", r.verifyJsonContentType(), r.HandleRiskTypeGetOverrideByEx)
 		apiV1.DELETE("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.DeleteRiskTypes)
 		apiV1.PUT("/knowledge-networks/:kn_id/risk-types/:rt_id", r.verifyJsonContentType(), r.UpdateRiskTypeByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/risk-types", r.ListRiskTypesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.GetRiskTypesByEx)
 
-		// 行动计划管理
+		// Action schedule management.
 		apiV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByEx)
 		apiV1.DELETE("/knowledge-networks/:kn_id/action-schedules/:schedule_ids", r.DeleteActionSchedulesByEx)
 		apiV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.verifyJsonContentType(), r.UpdateActionScheduleByEx)
@@ -179,12 +178,12 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByEx)
 
-		// 业务知识网络资源示例列表
+		// Knowledge network resource example list.
 		apiV1.GET("/resources", r.ListResources)
 
-		// BKN 导入导出 (RESTful 设计)
-		apiV1.POST("/bkns", r.UploadBKN)         // 上传 BKN tar 包导入
-		apiV1.GET("/bkns/:kn_id", r.DownloadBKN) // 下载 BKN tar 包导出
+		// BKN import and export (RESTful design).
+		apiV1.POST("/bkns", r.UploadBKN)         // Upload a BKN tar archive for import.
+		apiV1.GET("/bkns/:kn_id", r.DownloadBKN) // Download a BKN tar archive for export.
 	}
 
 	bknApiInV1 := c.Group("/api/bkn-backend/in/v1")
@@ -193,9 +192,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	otlApiInV1.Use(rest.PrivateNoCacheMiddleware())
 
 	for _, apiInV1 := range []*gin.RouterGroup{bknApiInV1, otlApiInV1} {
-		// 业务知识网络
+		// Knowledge networks.
 		apiInV1.POST("/knowledge-networks", r.verifyJsonContentType(), r.CreateKNByIn)
-		// 按 ID 批量取名(对象级授权页回显，绕过授权过滤；静态段 names 与 :kn_id 不冲突)
+		// Resolve names by ID in batch for object-level authorization views; the names segment does not conflict with :kn_id.
 		apiInV1.POST("/knowledge-networks/names", r.verifyJsonContentType(), r.QueryKNNamesByIDs)
 		apiInV1.PUT("/knowledge-networks/:kn_id", r.verifyJsonContentType(), r.UpdateKNByIn)
 		apiInV1.GET("/knowledge-networks", r.ListKNsByIn)
@@ -203,7 +202,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.POST("/knowledge-networks/:kn_id/validation", r.verifyJsonContentType(), r.ValidateKNByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/relation-type-paths", r.GetRelationTypePathsByIn)
 
-		// 概念分组
+		// Concept groups.
 		apiInV1.POST("/knowledge-networks/:kn_id/concept-groups", r.verifyJsonContentType(), r.CreateConceptGroupByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/concept-groups/validation", r.verifyJsonContentType(), r.ValidateConceptGroupsByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/concept-groups/:cg_id", r.verifyJsonContentType(), r.UpdateConceptGroupByIn)
@@ -212,29 +211,29 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.POST("/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types", r.AddObjectTypesToConceptGroupByIn)
 		apiInV1.DELETE("/knowledge-networks/:kn_id/concept-groups/:cg_id/object-types/:ot_ids", r.DeleteObjectTypesFromGroupByIn)
 
-		// 对象类
+		// Object types.
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types", r.verifyJsonContentType(), r.HandleObjectTypeGetOverrideByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/validation", r.verifyJsonContentType(), r.ValidateObjectTypesByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.UpdateObjectTypeByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids/sample-data", r.GetObjectTypeSampleDataByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByIn) // path上用kn_ids接，实际上只能传一个id
+		apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByIn) // The path uses the plural parameter name but accepts one ID only.
 
-		// 关系类
+		// Relation types.
 		apiInV1.POST("/knowledge-networks/:kn_id/relation-types", r.verifyJsonContentType(), r.HandleRelationTypeGetOverrideByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/relation-types/validation", r.verifyJsonContentType(), r.ValidateRelationTypesByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/relation-types/:rt_id", r.verifyJsonContentType(), r.UpdateRelationTypeByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/relation-types", r.ListRelationTypesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/relation-types/:rt_ids", r.GetRelationTypesByIn)
 
-		// 行动类
+		// Action types.
 		apiInV1.POST("/knowledge-networks/:kn_id/action-types", r.verifyJsonContentType(), r.HandleActionTypeGetOverrideByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/action-types/validation", r.verifyJsonContentType(), r.ValidateActionTypesByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.UpdateActionTypeByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-types", r.ListActionTypesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.GetActionTypesByIn)
 
-		// 指标（内部）
+		// Metrics (internal).
 		apiInV1.POST("/knowledge-networks/:kn_id/metrics", r.verifyJsonContentType(), r.HandleMetricGetOverrideByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/metrics/validation", r.verifyJsonContentType(), r.ValidateMetricsByIn)
 		// SDK/CLI compatibility alias (@openbkn/bkn-sdk uses /metrics/validate)
@@ -244,14 +243,14 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids", r.GetMetricsByIDsByIn)
 
-		// 风险类（内部 API：GetRiskTypesByIn 支持 risk_type_ids 查询参数）
+		// Risk types (internal); GetRiskTypesByIn supports the risk_type_ids query parameter.
 		apiInV1.POST("/knowledge-networks/:kn_id/risk-types", r.verifyJsonContentType(), r.HandleRiskTypeGetOverrideByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/risk-types/:rt_id", r.verifyJsonContentType(), r.UpdateRiskTypeByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/risk-types", r.GetRiskTypesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.GetRiskTypesByInWithPath)
 		apiInV1.DELETE("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.DeleteRiskTypes)
 
-		// 行动计划管理
+		// Action schedule management.
 		apiInV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByIn)
 		apiInV1.DELETE("/knowledge-networks/:kn_id/action-schedules/:schedule_ids", r.DeleteActionSchedulesByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.verifyJsonContentType(), r.UpdateActionScheduleByIn)
@@ -264,9 +263,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	logger.Info("RestHandler RegisterPublic")
 }
 
-// HealthCheck 健康检查
+// HealthCheck reports service health.
 func (r *restHandler) HealthCheck(c *gin.Context) {
-	// 返回服务信息
+	// Return service information.
 	rest.ReplyOK(c, http.StatusOK, gin.H{
 		"ServerName":    version.ServerName,
 		"ServerVersion": version.ServerVersion,
@@ -279,28 +278,28 @@ func (r *restHandler) HealthCheck(c *gin.Context) {
 // verifyJsonContentType middleware
 func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		//拦截请求，判断ContentType是否为XXX
+		// Reject requests whose Content-Type is not application/json.
 		if c.ContentType() != interfaces.CONTENT_TYPE_JSON {
 			httpErr := rest.NewHTTPError(c, http.StatusNotAcceptable, berrors.BknBackend_InvalidRequestHeader_ContentType).
-				WithErrorDetails(fmt.Sprintf("Content-Type header [%s] is not supported, expected is [application/json].", c.ContentType()))
+				WithErrorDetails(commonValidationDetail(c.Request.Context(), "ContentTypeUnsupported", map[string]any{"contentType": c.ContentType()}))
 			rest.ReplyError(c, httpErr)
 
 			c.Abort()
 			return
 		}
 
-		//执行后续操作
+		// Continue with the next handler.
 		c.Next()
 	}
 }
 
 // LanguageMiddleware resolves Accept-Language once and stores it in request context.
-// 注册顺序必须在 TracingMiddleware 之后，这样 language ctx 叠加在 trace ctx 上。
+// Register this after TracingMiddleware so the language context is layered onto the trace context.
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
 	return rest.LanguageMiddleware()
 }
 
-// gin中间件 访问日志
+// Gin middleware access log.
 func (r *restHandler) AccessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		beginTime := time.Now()
@@ -318,12 +317,12 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 	}
 }
 
-// 校验oauth
+// Verify OAuth credentials.
 func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
 	visitor, err := r.as.VerifyToken(ctx, c)
 	if err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusUnauthorized, rest.PublicError_Unauthorized).
-			WithErrorDetails(err.Error())
+			WithErrorDetails(commonValidationDetail(ctx, "AuthenticationFailed", nil))
 		rest.ReplyError(c, httpErr)
 		return visitor, err
 	}

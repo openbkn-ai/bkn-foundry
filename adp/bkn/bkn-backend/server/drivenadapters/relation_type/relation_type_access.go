@@ -51,7 +51,7 @@ func NewRelationTypeAccess(appSetting *common.AppSetting) interfaces.RelationTyp
 	return rtAccess
 }
 
-// 根据ID获取关系类存在性
+// Get relation type existence by ID.
 func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, knID string, branch string, rtID string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckRelationTypeExistByID")
 	defer span.End()
@@ -61,7 +61,7 @@ func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, k
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_name").
 		From(RT_TABLE_NAME).
@@ -74,7 +74,7 @@ func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, k
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
@@ -92,7 +92,7 @@ func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, k
 	return name, true, nil
 }
 
-// 创建关系类
+// Create a relation type.
 func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.Tx, relationType *interfaces.RelationType) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateRelationType")
 	defer span.End()
@@ -102,10 +102,10 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(relationType.Tags)
 
-	// 2.0 序列化数据来源
+	// 2.0 Serialize the data source.
 	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
 	if err != nil {
 		logger.Errorf("Failed to marshal MappingRules, err: %v", common.SafeErrorSummary(err))
@@ -160,7 +160,7 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
@@ -173,7 +173,7 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 	return nil
 }
 
-// 查询关系类列表。查主线的当前版本为true的关系类
+// Query current relation types on the main branch.
 func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListRelationTypes")
 	defer span.End()
@@ -207,7 +207,7 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 
 	builder := processQueryCondition(query, subBuilder)
 
-	//排序
+	// Sort.
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
 	}
@@ -224,7 +224,7 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 		return []*interfaces.RelationType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
@@ -267,10 +267,10 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 			return []*interfaces.RelationType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		relationType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化dMappingRules
+		// 2.0 Deserialize mapping rules.
 		if relationType.Type == interfaces.RELATION_TYPE_DIRECT {
 			var mappings []interfaces.Mapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
@@ -315,7 +315,7 @@ func (rta *relationTypeAccess) GetRelationTypesTotal(ctx context.Context, query 
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
@@ -368,7 +368,7 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	relationType := interfaces.RelationType{
@@ -404,10 +404,10 @@ func (rta *relationTypeAccess) GetRelationTypeByID(ctx context.Context, knID str
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// Convert a tag string to an array.
 	relationType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-	// 2.0 反序列化dMappingRules
+	// 2.0 Deserialize mapping rules.
 	if relationType.Type == interfaces.RELATION_TYPE_DIRECT {
 		var mappings []interfaces.Mapping
 		err = sonic.Unmarshal(mappingRulesBytes, &mappings)
@@ -470,7 +470,7 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 		return []*interfaces.RelationType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
@@ -515,10 +515,10 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 			return []*interfaces.RelationType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		relationType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化dMappingRules
+		// 2.0 Deserialize mapping rules.
 		if relationType.Type == interfaces.RELATION_TYPE_DIRECT {
 			var mappings []interfaces.Mapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)
@@ -554,9 +554,9 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(relationType.Tags)
-	// 2.0 序列化数据来源
+	// 2.0 Serialize the data source.
 	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
 	if err != nil {
 		logger.Errorf("Failed to marshal MappingRules, err: %v", common.SafeErrorSummary(err))
@@ -588,7 +588,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -597,7 +597,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -605,7 +605,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 	}
 
 	if RowsAffected != 1 {
-		// 影响行数不等于1不报错，更新操作已经发生
+		// Do not return an error when affected rows are not one because the update has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Update relation type affected unexpected row count: relation_type_id=%s, rows=%d",
 			relationType.RTID, RowsAffected))
 	}
@@ -638,7 +638,7 @@ func (rta *relationTypeAccess) DeleteRelationTypesByIDs(ctx context.Context, tx 
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -647,7 +647,7 @@ func (rta *relationTypeAccess) DeleteRelationTypesByIDs(ctx context.Context, tx 
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -682,7 +682,7 @@ func (rta *relationTypeAccess) DeleteRelationTypesByKnID(ctx context.Context, tx
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -691,7 +691,7 @@ func (rta *relationTypeAccess) DeleteRelationTypesByKnID(ctx context.Context, tx
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -723,7 +723,7 @@ func (rta *relationTypeAccess) GetRelationTypeIDsByKnID(ctx context.Context, knI
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
@@ -754,10 +754,10 @@ func (rta *relationTypeAccess) GetRelationTypeIDsByKnID(ctx context.Context, knI
 	return rtIDs, nil
 }
 
-// 拼接 sql 过滤条件
+// Build SQL filter conditions.
 func processQueryCondition(query interfaces.RelationTypesQueryParams, subBuilder sq.SelectBuilder) sq.SelectBuilder {
 	if query.NamePattern != "" {
-		// 模糊查询，名称或id进行模糊查询，匹配任一即可
+		// Fuzzy-match name or ID; either match is sufficient.
 		subBuilder = subBuilder.Where(sq.Expr("(instr(f_name, ?) > 0 OR instr(f_id, ?) > 0)", query.NamePattern, query.NamePattern))
 	}
 
@@ -772,7 +772,7 @@ func processQueryCondition(query interfaces.RelationTypesQueryParams, subBuilder
 	if query.Branch != "" {
 		subBuilder = subBuilder.Where(sq.Eq{"f_branch": query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		subBuilder = subBuilder.Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH})
 	}
 
@@ -833,7 +833,7 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 		return map[string]*interfaces.RelationType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
@@ -876,10 +876,10 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 			return map[string]*interfaces.RelationType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		relationType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化dMappingRules
+		// 2.0 Deserialize mapping rules.
 		if relationType.Type == interfaces.RELATION_TYPE_DIRECT {
 			var mappings []interfaces.Mapping
 			err = sonic.Unmarshal(mappingRulesBytes, &mappings)

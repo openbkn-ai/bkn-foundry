@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -55,6 +56,10 @@ type objectTypeService struct {
 	vba        interfaces.VegaBackendAccess
 }
 
+func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
+}
+
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
 	otServiceOnce.Do(func() {
 		otService = &objectTypeService{
@@ -82,12 +87,12 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			if err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]的资源[%s]获取失败: %s", objectType.OTName, objectType.DataSource.ID, err.Error()))
+					WithErrorDetails(invalidParameterDetail(ctx, "ResourceLookupFailed", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID}))
 			}
 			if res == nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]的资源[%s]不存在", objectType.OTName, objectType.DataSource.ID))
+					WithErrorDetails(invalidParameterDetail(ctx, "ResourceNotFound", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID}))
 			}
 		default:
 			return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
@@ -103,8 +108,7 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 		case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
 			if err := ots.aoa.GetToolByID(ctx, lp.DataSource.BoxID, lp.DataSource.ToolID); err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("对象类[%s]逻辑属性[%s]的工具箱[%s]工具[%s]获取失败: %s",
-						objectType.OTName, lp.Name, lp.DataSource.BoxID, lp.DataSource.ToolID, err.Error()))
+					WithErrorDetails(invalidParameterDetail(ctx, "ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID}))
 			}
 		}
 	}
@@ -153,7 +157,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create object type")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   objectTypes[0].KNID,
@@ -164,7 +168,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	currentTime := time.Now().UnixMilli()
 	for _, objectType := range objectTypes {
-		// 若提交的模型id为空，生成分布式ID
+		// Generate a distributed ID when the submitted model ID is empty.
 		if objectType.OTID == "" {
 			objectType.OTID = xid.New().String()
 		}
@@ -189,7 +193,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	if tx == nil {
 		tx, err = ots.db.Begin()
 		if err != nil {
@@ -198,11 +202,11 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "CreateObjectType Transaction Commit Failed", err)
@@ -223,7 +227,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		return []string{}, err
 	}
 
-	// 创建
+	// Create.
 	otIDs := []string{}
 	for _, objectType := range createObjectTypes {
 		otIDs = append(otIDs, objectType.OTID)
@@ -247,9 +251,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				WithErrorDetails(err.Error())
 		}
 
-		// 按需建立对象类到各个组的关系
+		// Create object type-to-group relationships as needed.
 		if needCreateConceptGroupRelation {
-			// 建立对象类到各个组的关系，已经存在的关系就不需要建立，需要先获取一下对象类与组的关系
+			// Create missing object type-to-group relationships after retrieving existing bindings.
 			if len(objectType.ConceptGroups) > 0 {
 				err = ots.handleGroupRelations(ctx, tx, objectType, currentTime, strictMode)
 				if err != nil {
@@ -260,7 +264,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		}
 	}
 
-	// 更新
+	// Update.
 	for _, objectType := range updateObjectTypes {
 		err = ots.UpdateObjectType(ctx, tx, objectType, strictMode)
 		if err != nil {
@@ -316,7 +320,7 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 				return err
 			}
 
-			// 校验概念分组存在性；batch 中含糊的同批分组 ID 视为将创建，跳过查库
+			// Validate concept groups. Same-batch group IDs are treated as pending creation and skip storage lookup.
 			if len(objectType.ConceptGroups) > 0 {
 				cgIDs := []string{}
 				for _, cg := range objectType.ConceptGroups {
@@ -352,7 +356,7 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 				if len(conceptGroups) != len(needDBLookup) {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(fmt.Sprintf("Exists any concept group not found, expect [%d], actual [%d]", len(needDBLookup), len(conceptGroups)))
+						WithErrorDetails(invalidParameterDetail(ctx, "ConceptGroupsNotFound", map[string]any{"expected": len(needDBLookup), "actual": len(conceptGroups)}))
 				}
 			}
 		}
@@ -368,7 +372,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象类列表")
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -377,7 +381,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		return []*interfaces.ObjectType{}, 0, err
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	if tx == nil {
 		tx, err = ots.db.Begin()
 		if err != nil {
@@ -386,11 +390,11 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "ListObjectTypes Transaction Commit Failed", err)
@@ -406,7 +410,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		}()
 	}
 
-	//获取对象类列表
+	// Get the object type list.
 	objectTypes, err := ots.ota.ListObjectTypes(ctx, tx, query)
 	if err != nil {
 		logger.Errorf("ListObjectTypes error: %s", err.Error())
@@ -442,7 +446,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// 获取对象类所属的分组 -- 注掉，不显示分组信息
+	// Object type groups are intentionally omitted from this response.
 	// otGroups, err := ots.cga.GetConceptGroupsByOTIDs(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 	// 	KNID:   query.KNID,
 	// 	Branch: query.Branch,
@@ -455,9 +459,9 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	// 		berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	// }
 
-	// 注掉，不显示视图信息和属性映射字段的显示名
+	// View information and mapped field display names are intentionally omitted.
 	// for _, objectType := range objectTypes {
-	// 	// 获取视图字段的显示名
+	// 	// Get view field display names.
 	// 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 	// 		dataView, err := ots.dva.GetDataViewByID(ctx, objectType.DataSource.ID)
 	// 		if err != nil {
@@ -469,22 +473,22 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	// 			otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s Data view %s not found", objectType.OTID, objectType.DataSource.ID))
 	// 		} else {
 	// 			objectType.DataSource.Name = dataView.ViewName
-	// 			// 翻译数据属性映射的字段显示名
+	// 			// Resolve data-property mapped field display names.
 	// 			for j, prop := range objectType.DataProperties {
-	// 				// 不为空时，才翻译字段显示名。为空则不翻译
+	// 				// Resolve the field display name only when it is present.
 	// 				if prop.MappedField != nil {
 	// 					if field, exists := dataView.FieldsMap[prop.MappedField.Name]; exists {
 	// 						objectType.DataProperties[j].MappedField.DisplayName = field.DisplayName
 	// 						objectType.DataProperties[j].MappedField.Type = field.Type
 	// 					}
 	// 				}
-	// 				// 字符串类型的属性支持的操作符返回
+	// 				// Return supported operators for string properties.
 	// 				objectType.DataProperties[j].ConditionOperations = ots.processConditionOperations(objectType, prop, dataView)
 	// 			}
 	// 		}
 	// 	}
 
-	// 	// 给对象类加上分组信息
+	// 	// Add group information to object types.
 	// 	objectType.ConceptGroups = otGroups[objectType.OTID]
 	// }
 
@@ -494,11 +498,11 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 
 func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx,
 	knID string, branch string, otIDs []string) ([]*interfaces.ObjectType, error) {
-	// 获取对象类
+	// Get object types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询对象类[%s]信息", otIDs))
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -507,7 +511,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		return []*interfaces.ObjectType{}, err
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	if tx == nil {
 		tx, err = ots.db.Begin()
 		if err != nil {
@@ -516,11 +520,11 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "GetObjectTypes Transaction Commit Failed", err)
@@ -536,10 +540,10 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		}()
 	}
 
-	// id去重后再查
+	// De-duplicate IDs before querying.
 	otIDs = common.DuplicateSlice(otIDs)
 
-	// 获取对象类基本信息
+	// Get basic object type information.
 	objectTypes, err := ots.ota.GetObjectTypesByIDs(ctx, tx, knID, branch, otIDs)
 	if err != nil {
 		logger.Errorf("GetObjectTypesByObjectTypeIDs error: %s", err.Error())
@@ -558,7 +562,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(errStr)
 	}
 
-	// 获取对象类所属的分组
+	// Get object type groups.
 	otGroups, err := ots.cga.GetConceptGroupsByOTIDs(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 		KNID:   knID,
 		Branch: branch,
@@ -571,15 +575,15 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// 数据视图不为空时，需要把id转成名称
-	// 请求视图
+	// Resolve a non-empty data view ID to its name.
+	// Request the view.
 	for _, objectType := range objectTypes {
-		// 处理数据源和操作符
+		// Process the data source and operators.
 		err = ots.processObjectTypeDetails(ctx, objectType)
 		if err != nil {
 			return []*interfaces.ObjectType{}, err
 		}
-		// 给对象类加上分组信息
+		// Add group information to object types.
 		objectType.ConceptGroups = otGroups[objectType.OTID]
 	}
 
@@ -621,7 +625,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	}
 	if len(objectTypes) == 0 || objectTypes[0] == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(fmt.Sprintf("object type[%s] not found", otID))
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(invalidParameterDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}))
 	}
 
 	objectType := objectTypes[0]
@@ -706,29 +710,29 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	return result, nil
 }
 
-// hasDataPropertyIndexAffectingChanges 检测单个数据属性的关键字段是否发生变化
-// 影响索引的字段包括：Name, Type, IndexConfig, MappedField.Name, MappedField.Type
+// hasDataPropertyIndexAffectingChanges detects changes to index-affecting data property fields.
+// Index-affecting fields include Name, Type, IndexConfig, MappedField.Name, and MappedField.Type.
 func hasDataPropertyIndexAffectingChanges(oldProp, newProp *interfaces.DataProperty) bool {
 	if oldProp == nil || newProp == nil {
 		return oldProp != newProp
 	}
 
-	// 比较属性名称
+	// Compare property names.
 	if oldProp.Name != newProp.Name {
 		return true
 	}
 
-	// 比较属性类型
+	// Compare property types.
 	if oldProp.Type != newProp.Type {
 		return true
 	}
 
-	// 比较索引配置
+	// Compare index configuration.
 	if !compareIndexConfig(oldProp.IndexConfig, newProp.IndexConfig) {
-		return true // 如果配置不同，返回 true（有变化）
+		return true // Return true when configuration differs.
 	}
 
-	// 比较映射字段名称和类型
+	// Compare mapped field names and types.
 	if !compareMappedField(oldProp.MappedField, newProp.MappedField) {
 		return true
 	}
@@ -736,16 +740,16 @@ func hasDataPropertyIndexAffectingChanges(oldProp, newProp *interfaces.DataPrope
 	return false
 }
 
-// compareIndexConfig 比较两个索引配置是否相同
+// compareIndexConfig compares two index configurations.
 func compareIndexConfig(oldConfig, newConfig *interfaces.IndexConfig) bool {
 	if oldConfig == nil && newConfig == nil {
-		return true // 都为空 = 状态相同（都没有配置）
+		return true // Both are empty, so their states are equal.
 	}
 	if oldConfig == nil || newConfig == nil {
-		return false // 一个为空一个不为空 = 状态不同
+		return false // One is empty and the other is not, so their states differ.
 	}
 
-	// 使用 JSON 序列化比较，确保准确性
+	// Compare JSON serialization to ensure accuracy.
 	oldBytes, err := sonic.Marshal(oldConfig)
 	if err != nil {
 		return false
@@ -758,7 +762,7 @@ func compareIndexConfig(oldConfig, newConfig *interfaces.IndexConfig) bool {
 	return string(oldBytes) == string(newBytes)
 }
 
-// compareMappedField 比较两个映射字段是否相同（只比较 Name 和 Type）
+// compareMappedField compares mapped fields by Name and Type only.
 func compareMappedField(oldField, newField *interfaces.Field) bool {
 	if oldField == nil && newField == nil {
 		return true
@@ -767,12 +771,12 @@ func compareMappedField(oldField, newField *interfaces.Field) bool {
 		return false
 	}
 
-	// 比较字段名称
+	// Compare field names.
 	if oldField.Name != newField.Name {
 		return false
 	}
 
-	// 比较字段类型
+	// Compare field types.
 	if oldField.Type != newField.Type {
 		return false
 	}
@@ -780,9 +784,9 @@ func compareMappedField(oldField, newField *interfaces.Field) bool {
 	return true
 }
 
-// hasAnyDataPropertyIndexAffectingChanges 检测数据属性列表中是否有影响索引的变化
+// hasAnyDataPropertyIndexAffectingChanges detects index-affecting changes in data property lists.
 func hasAnyDataPropertyIndexAffectingChanges(oldProps, newProps []*interfaces.DataProperty) bool {
-	// 将旧属性列表转换为以 Name 为 key 的 map
+	// Convert old properties to a map keyed by Name.
 	oldPropMap := make(map[string]*interfaces.DataProperty)
 	for _, prop := range oldProps {
 		if prop != nil {
@@ -790,7 +794,7 @@ func hasAnyDataPropertyIndexAffectingChanges(oldProps, newProps []*interfaces.Da
 		}
 	}
 
-	// 遍历新属性列表，查找对应的旧属性进行比较
+	// Traverse new properties and compare corresponding old properties.
 	for _, newProp := range newProps {
 		if newProp == nil {
 			continue
@@ -798,20 +802,20 @@ func hasAnyDataPropertyIndexAffectingChanges(oldProps, newProps []*interfaces.Da
 
 		oldProp, exists := oldPropMap[newProp.Name]
 		if !exists {
-			// 新增属性可能影响索引
+			// Added properties can affect indexes.
 			return true
 		}
 
-		// 比较属性是否有影响索引的变化
+		// Check whether property changes affect indexes.
 		if hasDataPropertyIndexAffectingChanges(oldProp, newProp) {
 			return true
 		}
 
-		// 从 map 中删除已比较的属性
+		// Delete compared properties from the map.
 		delete(oldPropMap, newProp.Name)
 	}
 
-	// 如果旧属性列表中有新列表不存在的属性，也可能影响索引（删除属性）
+	// Removed old properties can also affect indexes.
 	if len(oldPropMap) > 0 {
 		return true
 	}
@@ -819,13 +823,13 @@ func hasAnyDataPropertyIndexAffectingChanges(oldProps, newProps []*interfaces.Da
 	return false
 }
 
-// 更新对象类
+// Update object types.
 func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType, strictMode bool) error {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   objectType.KNID,
@@ -846,14 +850,14 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 	}
 	objectType.Updater = accountInfo
 
-	currentTime := time.Now().UnixMilli() // 对象类的update_time是int类型
+	currentTime := time.Now().UnixMilli() // Object type update_time uses an integer type.
 	objectType.UpdateTime = currentTime
 
 	bknObj := logics.ToBKNObjectType(objectType)
 	objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = ots.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -862,11 +866,11 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "UpdateObjectType Transaction Commit Failed", err)
@@ -882,7 +886,7 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 		}()
 	}
 
-	// 获取旧的对象类数据，用于比较数据属性变化
+	// Get old object type data to compare data property changes.
 	oldObjectType, err := ots.ota.GetObjectTypeByID(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID)
 	if err != nil {
 		otellog.LogError(ctx, "GetObjectTypeByID error", err)
@@ -892,9 +896,9 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 			WithErrorDetails(err.Error())
 	}
 
-	// 检测数据属性是否有影响索引的变化
+	// Detect whether data property changes affect indexes.
 	if oldObjectType != nil && hasAnyDataPropertyIndexAffectingChanges(oldObjectType.DataProperties, objectType.DataProperties) {
-		// 更新索引状态为不可用
+		// Mark index status unavailable.
 		otStatus := *oldObjectType.Status
 		otStatus.IndexAvailable = false
 		otStatus.UpdateTime = currentTime
@@ -904,13 +908,13 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
-				WithErrorDetails(fmt.Sprintf("更新对象类索引状态失败: %s", err.Error()))
+				WithErrorDetails(invalidParameterDetail(ctx, "IndexStatusUpdateFailed", nil))
 		}
 
 		otellog.LogInfo(ctx, fmt.Sprintf("数据属性变化影响索引，已将对象类[%s]的索引状态设置为不可用", objectType.OTID))
 	}
 
-	// 更新模型信息
+	// Update model information.
 	err = ots.ota.UpdateObjectType(ctx, tx, objectType)
 	if err != nil {
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
@@ -921,7 +925,7 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 			WithErrorDetails(err.Error())
 	}
 
-	// 4. 同步分组关系（全量替换）
+	// 4. Synchronize group relationships by full replacement.
 	if err := ots.syncObjectGroups(ctx, tx, *objectType, currentTime, strictMode); err != nil {
 		return err
 	}
@@ -940,14 +944,14 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 	return nil
 }
 
-// 更新对象类数据属性
+// Update object type data properties.
 func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	objectType *interfaces.ObjectType, dataProperties []*interfaces.DataProperty, strictMode bool) error {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   objectType.KNID,
@@ -969,17 +973,17 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 				if model == nil {
 					return rest.NewHTTPError(ctx, http.StatusNotFound,
 						berrors.BknBackend_ObjectType_SmallModelNotFound).
-						WithErrorDetails(fmt.Sprintf("small model %s not found", prop.IndexConfig.VectorConfig.ModelID))
+						WithErrorDetails(invalidParameterDetail(ctx, "SmallModelNotFound", map[string]any{"modelID": prop.IndexConfig.VectorConfig.ModelID}))
 				}
 				if model.ModelType != interfaces.SMALL_MODEL_TYPE_EMBEDDING {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("small model type %s is not %s model", model.ModelType, interfaces.SMALL_MODEL_TYPE_EMBEDDING))
+						WithErrorDetails(invalidParameterDetail(ctx, "SmallModelTypeInvalid", map[string]any{"modelType": model.ModelType, "expectedType": interfaces.SMALL_MODEL_TYPE_EMBEDDING}))
 				}
 				if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(fmt.Sprintf("small model %s has invalid embedding dim, batch size or max tokens", model.ModelID))
+						WithErrorDetails(invalidParameterDetail(ctx, "SmallModelConfigInvalid", map[string]any{"modelID": model.ModelID}))
 				}
 			}
 		}
@@ -990,17 +994,17 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	objectType.Updater = accountInfo
-	currentTime := time.Now().UnixMilli() // 对象类的update_time是int类型
+	currentTime := time.Now().UnixMilli() // Object type update_time uses an integer type.
 	objectType.UpdateTime = currentTime
 
-	// 深拷贝旧的数据属性，用于后续比较
+	// Deep-copy old data properties for later comparison.
 	oldDataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to marshal old DataProperties, err", err)
 
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(fmt.Sprintf("序列化旧数据属性失败: %s", err.Error()))
+			WithErrorDetails(invalidParameterDetail(ctx, "OldDataPropertiesMarshalFailed", nil))
 	}
 
 	var oldDataProperties []*interfaces.DataProperty
@@ -1010,7 +1014,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(fmt.Sprintf("反序列化旧数据属性失败: %s", err.Error()))
+			WithErrorDetails(invalidParameterDetail(ctx, "OldDataPropertiesUnmarshalFailed", nil))
 	}
 
 	propMap := map[string]int{}
@@ -1019,16 +1023,16 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	}
 	for _, prop := range dataProperties {
 		if idx, ok := propMap[prop.Name]; ok {
-			objectType.DataProperties[idx] = prop // 更新已存在的数据属性
+			objectType.DataProperties[idx] = prop // Update an existing data property.
 		} else {
-			objectType.DataProperties = append(objectType.DataProperties, prop) // 添加新的数据属性
+			objectType.DataProperties = append(objectType.DataProperties, prop) // Add a new data property.
 		}
 	}
 
 	bknObj := logics.ToBKNObjectType(objectType)
 	objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	var tx *sql.Tx
 	tx, err = ots.db.Begin()
 	if err != nil {
@@ -1038,11 +1042,11 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 			berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
-	// 0.1 异常时
+	// 0.1 On failure.
 	defer func() {
 		switch err {
 		case nil:
-			// 提交事务
+			// Commit the transaction.
 			err = tx.Commit()
 			if err != nil {
 				otellog.LogError(ctx, "UpdateObjectType Transaction Commit Failed", err)
@@ -1057,29 +1061,29 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		}
 	}()
 
-	// 检测数据属性是否有影响索引的变化
+	// Detect whether data property changes affect indexes.
 	if hasAnyDataPropertyIndexAffectingChanges(oldDataProperties, objectType.DataProperties) {
-		// 更新索引状态为不可用
+		// Mark index status unavailable.
 		if objectType.Status != nil {
 			otStatus := *objectType.Status
 			otStatus.IndexAvailable = false
 			otStatus.UpdateTime = currentTime
-			// UpdateDataProperties 方法没有 tx 参数，需要在内部管理事务
-			// 但为了保持一致性，我们使用 db.Exec 直接执行
+			// UpdateDataProperties has no tx parameter and manages its transaction internally.
+			// Use db.Exec directly to preserve consistency.
 			err = ots.ota.UpdateObjectTypeStatus(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID, otStatus)
 			if err != nil {
 				otellog.LogError(ctx, "UpdateObjectTypeStatus error", err)
 
 				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ObjectType_InternalError).
-					WithErrorDetails(fmt.Sprintf("更新对象类索引状态失败: %s", err.Error()))
+					WithErrorDetails(invalidParameterDetail(ctx, "IndexStatusUpdateFailed", nil))
 			}
 
 			otellog.LogInfo(ctx, fmt.Sprintf("数据属性变化影响索引，已将对象类[%s]的索引状态设置为不可用", objectType.OTID))
 		}
 	}
 
-	// 更新模型信息
+	// Update model information.
 	err = ots.ota.UpdateDataProperties(ctx, tx, objectType)
 	if err != nil {
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
@@ -1108,7 +1112,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete object types")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -1118,7 +1122,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	}
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = ots.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -1127,11 +1131,11 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "DeleteObjectTypes Transaction Commit Failed", err)
@@ -1146,7 +1150,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		}()
 	}
 
-	// 删除对象类
+	// Delete object types.
 	rowsAffect, err := ots.ota.DeleteObjectTypesByIDs(ctx, tx, knID, branch, otIDs)
 	if err != nil {
 		logger.Errorf("DeleteObjectTypes error: %s", err.Error())
@@ -1170,7 +1174,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// 记录info日志，删除的条数
+	// Record the deleted count in an info log.
 	logger.Infof("DeleteObjectTypeStatusByIDs success, the kn_id is [%s], branch is [%s], ot_ids is [%v], rowsAffect is [%d]",
 		knID, branch, otIDs, rowsAffect)
 
@@ -1181,8 +1185,8 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除对象类概念索引失败")
 
-			// Vega 返回的是普通 error，必须归一为 HTTPError 后再上抛，
-			// 否则 handler 侧的类型断言会 panic，连接在写响应头前断开，网关只能报 502。
+			// Vega returns ordinary errors. Normalize them to HTTPError before propagating.
+			// Otherwise handler type assertions panic before headers are written and the gateway reports 502.
 			var httpErr *rest.HTTPError
 			if errors.As(err, &httpErr) {
 				return httpErr
@@ -1192,8 +1196,8 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		}
 	}
 
-	// 从概念与分组的关系表中删除该对象所建立的关系
-	// 删除对象类与分组的绑定关系
+	// Delete this object relations from the concept-to-group relation table.
+	// Delete object type-to-group bindings.
 	rowsAffect, err = ots.cga.DeleteObjectTypesFromGroup(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 		KNID:        knID,
 		Branch:      branch,
@@ -1209,7 +1213,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 			berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(errStr)
 	}
-	// 记录info日志，删除的条数
+	// Record the deleted count in an info log.
 	logger.Infof("DeleteObjectTypesFromGroup success, the kn_id is [%s], branch is [%s], ot_ids is [%v], rowsAffect is [%d]",
 		knID, branch, otIDs, rowsAffect)
 
@@ -1217,7 +1221,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	return nil
 }
 
-// 内部方法，删除对象类与状态，不检查权限，tx必须传入
+// Internal method. Deletes object types and status without permission checks; tx is required.
 func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete object types")
 	defer span.End()
@@ -1229,7 +1233,7 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 			WithErrorDetails("missing transaction")
 	}
 
-	// 删除对象类
+	// Delete object types.
 	rowsAffect, err := ots.ota.DeleteObjectTypesByKnID(ctx, tx, knID, branch)
 	if err != nil {
 		logger.Errorf("DeleteObjectTypes error: %s", err.Error())
@@ -1247,7 +1251,7 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// 记录info日志，删除的条数
+	// Record the deleted count in an info log.
 	logger.Infof("DeleteObjectTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
 	span.SetStatus(codes.Ok, "")
@@ -1263,7 +1267,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 	creates := []*interfaces.ObjectType{}
 	updates := []*interfaces.ObjectType{}
 
-	// 3. 校验 若模型的id不为空，则用请求体的id与现有模型ID的重复性
+	// 3. When the submitted model ID is not empty, validate conflicts with existing model IDs.
 	for _, objectType := range objectTypes {
 		creates = append(creates, objectType)
 		idExist := false
@@ -1272,13 +1276,13 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 			return creates, updates, err
 		}
 
-		// 校验 请求体与现有模型名称的重复性
+		// Validate conflicts between the request and existing model names.
 		existID, nameExist, err := ots.CheckObjectTypeExistByName(ctx, objectType.KNID, objectType.Branch, objectType.OTName)
 		if err != nil {
 			return creates, updates, err
 		}
 
-		// 根据mode来区别，若是ignore，就从结果集中忽略，若是overwrite，就调用update，若是normal就报错。
+		// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
 		if idExist || nameExist {
 			switch mode {
 			case interfaces.ImportMode_Normal:
@@ -1302,12 +1306,12 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 				}
 
 			case interfaces.ImportMode_Ignore:
-				// 存在重复的就跳过
-				// 从create数组中删除
+				// Skip duplicates.
+				// Remove from the create array.
 				creates = creates[:len(creates)-1]
 			case interfaces.ImportMode_Overwrite:
 				if idExist && nameExist {
-					// 如果 id 和名称都存在，但是存在的名称对应的视图 id 和当前视图 id 不一样，则报错
+					// Return an error when both ID and name exist but the named view has a different ID.
 					if existID != objectType.OTID {
 						errDetails := fmt.Sprintf("ObjectType ID '%s' and name '%s' already exist, but the exist object type id is '%s'",
 							objectType.OTID, objectType.OTName, existID)
@@ -1317,21 +1321,21 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 							berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
 							WithErrorDetails(errDetails)
 					} else {
-						// 如果 id 和名称、度量名称都存在，存在的名称对应的模型 id 和当前模型 id 一样，则覆盖更新
-						// 从create数组中删除, 放到更新数组中
+						// Overwrite when ID, name, and metric name exist and the named model ID matches the current model ID.
+						// Remove from the create array and add to the update array.
 						creates = creates[:len(creates)-1]
 						updates = append(updates, objectType)
 					}
 				}
 
-				// id 已存在，且名称不存在，覆盖更新
+				// Overwrite when the ID exists and the name does not.
 				if idExist && !nameExist {
-					// 从create数组中删除, 放到更新数组中
+					// Remove from the create array and add to the update array.
 					creates = creates[:len(creates)-1]
 					updates = append(updates, objectType)
 				}
 
-				// 如果 id 不存在，name 存在，报错
+				// Return an error when the ID does not exist but the name exists.
 				if !idExist && nameExist {
 					errDetails := fmt.Sprintf("ObjectType ID '%s' does not exist, but name '%s' already exists",
 						objectType.OTID, objectType.OTName)
@@ -1342,7 +1346,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 						WithErrorDetails(errDetails)
 				}
 
-				// 如果 id 不存在，name不存在，度量名称不存在，不需要做什么，创建
+				// Create when ID, name, and metric name do not exist.
 				// if !idExist && !nameExist {}
 			}
 		}
@@ -1351,14 +1355,14 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 	return creates, updates, nil
 }
 
-// 内部使用，无需校验权限
+// Internal use without permission checks.
 func (ots *objectTypeService) GetObjectTypesMapByIDs(ctx context.Context, knID string,
 	branch string, otIDs []string, needPropMap bool) (map[string]*interfaces.ObjectType, error) {
-	// 获取对象类
+	// Get object types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询对象类[%v]信息", otIDs))
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -1367,10 +1371,10 @@ func (ots *objectTypeService) GetObjectTypesMapByIDs(ctx context.Context, knID s
 		return map[string]*interfaces.ObjectType{}, err
 	}
 
-	// id去重后再查
+	// De-duplicate IDs before querying.
 	otIDs = common.DuplicateSlice(otIDs)
 
-	// 获取模型基本信息
+	// Get basic model information.
 	objectTypeArr, err := ots.ota.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 	if err != nil {
 		logger.Errorf("GetObjectTypesByObjectTypeIDs error: %s", err.Error())
@@ -1502,7 +1506,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	response := interfaces.ObjectTypes{}
 	var err error
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -1511,7 +1515,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		return response, err
 	}
 
-	// 转换条件为 dataset filter condition
+	// Convert conditions to dataset filter conditions.
 	var filterCondition map[string]any
 	if query.ActualCondition != nil {
 		filterCondition, err = cond.ConvertCondCfgToFilterCondition(ctx, query.ActualCondition,
@@ -1543,17 +1547,18 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				return result, nil
 			})
 		if err != nil {
+			logger.Errorf("convert object type condition to filter condition failed: %v", err)
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(fmt.Sprintf("failed to convert condition to filter condition, %s", err.Error()))
+				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
 	}
 
-	// 1. 获取组下的对象类
-	otIDMap := map[string]bool{} // 分组下的对象类id
-	otIDs := []string{}          // 不同组下的对象类可以重叠，所以需要对对象类id的数组去重
+	// 1. Get object types in the groups.
+	otIDMap := map[string]bool{} // Object type IDs in the groups
+	otIDs := []string{}          // Object types can overlap between groups, so de-duplicate object type IDs.
 	if len(query.ConceptGroups) > 0 {
-		// 校验分组是否都存在，按分组id获取分组
+		// Validate groups by retrieving them by ID.
 		cgCnt, err := ots.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 			KNID:   query.KNID,
 			Branch: query.Branch,
@@ -1571,13 +1576,13 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				cgCnt, len(query.ConceptGroups))
 			logger.Errorf(errStr)
 
-			// 所有概念分组都不存在，报404，概念分组不存在
+			// Return 404 when all requested concept groups are missing.
 			return response, rest.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 				WithErrorDetails(errStr)
 		}
 
-		// 在当前业务知识网络下查找属于请求的分组范围内的对象类ID
+		// Find object type IDs in requested groups within the current business knowledge network.
 		otIDArr, err := ots.cga.GetConceptIDsByConceptGroupIDs(ctx, query.KNID,
 			query.Branch, query.ConceptGroups, interfaces.MODULE_TYPE_OBJECT_TYPE)
 		if err != nil {
@@ -1591,7 +1596,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 
-		// 概念分组下没有对象类,返回空
+		// Return empty when the concept groups contain no object types.
 		if len(otIDArr) == 0 {
 			return response, nil
 		}
@@ -1604,15 +1609,15 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		}
 	}
 
-	// 根据NeedTotal参数决定是否查询total
+	// Decide whether to query the total based on NeedTotal.
 	if query.NeedTotal {
 		if len(otIDMap) == 0 {
-			// 查询总数
+			// Query the total count.
 			params := &interfaces.ResourceDataQueryParams{
 				FilterCondition: filterCondition,
 				Paging: interfaces.ResourceDataPagingRequest{
 					Mode:  "single",
-					Limit: 1, // 查询1条数据，获取total
+					Limit: 1, // Query one entry to obtain the total count.
 				},
 				NeedTotal: true,
 			}
@@ -1626,7 +1631,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			}
 			response.TotalCount = datasetResp.TotalCount
 		} else {
-			// 指定了分组，需要查询分组内且符合条件的总数
+			// Query the matching total within specified groups.
 			total, err := ots.GetTotalWithLargeOTIDs(ctx, filterCondition, otIDs)
 			if err != nil {
 				return response, err
@@ -1635,7 +1640,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		}
 	}
 
-	// 4. 迭代查询直到获取足够数量或没有更多数据。
+	// 4. Iterate until enough entries are collected or no more data exists.
 	objectTypes := []*interfaces.ObjectType{}
 	var totalFilteredCount int64 = 0
 	sort := query.Sort
@@ -1654,7 +1659,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
-		// 调用 dataset 查询
+		// Call the dataset query.
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
 			Paging:          paging,
@@ -1670,12 +1675,12 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				WithErrorDetails(err.Error())
 		}
 
-		// 如果没有数据了，跳出循环
+		// Stop when no data remains.
 		if len(datasetResp.Entries) == 0 {
 			break
 		}
 
-		// 5. 处理查询结果
+		// 5. Process query results.
 		for _, entry := range datasetResp.Entries {
 			// Deserialize logic_properties[].parameters from JSON string
 			if logicProps, exists := entry["logic_properties"]; exists {
@@ -1699,7 +1704,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				}
 			}
 
-			// 转成 object type 的 struct
+			// Convert to an object type struct.
 			jsonByte, err := json.Marshal(entry)
 			if err != nil {
 				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -1714,14 +1719,14 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal dataset entry to Object Type, %s", err.Error()))
 			}
 
-			// 如果没有指定分组，或者对象类属于分组，则添加
+			// Add the object type when no group is specified or it belongs to the group.
 			if len(otIDMap) == 0 || otIDMap[objectType.OTID] {
-				// 处理数据源和操作符
+				// Process the data source and operators.
 				err = ots.processObjectTypeDetails(ctx, &objectType)
 				if err != nil {
 					return response, err
 				}
-				// 提取 _score（如果有）
+				// Extract _score when present.
 				if scoreVal, ok := entry["_score"]; ok {
 					if scoreFloat, ok := scoreVal.(float64); ok {
 						score := float64(scoreFloat)
@@ -1733,7 +1738,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				objectTypes = append(objectTypes, &objectType)
 				totalFilteredCount++
 
-				// 如果已经收集到足够的数量，跳出循环
+				// Stop when enough entries have been collected.
 				if len(objectTypes) >= query.Limit && query.Limit > 0 {
 					break
 				}
@@ -1760,10 +1765,10 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 	return response, nil
 }
 
-// 提取出来的处理对象类型详情的函数
+// Extracted helper for processing object type details.
 func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, objectType *interfaces.ObjectType) error {
 
-	// 查视图或 vega Resource 组装 ops. 不需要组装,因为保存的时候会保存进去
+	// Retrieve views or Vega resources to assemble operations. Assembly is unnecessary because they are persisted on save.
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
@@ -1792,7 +1797,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 			}
 		}
 
-		// 逻辑属性，资源id转名称
+		// Resolve logical property resource IDs to names.
 		for j, logicProp := range objectType.LogicProperties {
 			if logicProp.DataSource != nil {
 				switch logicProp.DataSource.Type {
@@ -1801,7 +1806,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 						ots.enrichLogicMetricProperty(ctx, objectType, logicProp, j)
 					}
 				}
-				// todo: 处理动态参数,动态参数统一放在一个新字段上,供统一召回的大模型使用(检索那边也需要处理一下)
+				// TODO: move dynamic parameters to a dedicated field for unified retrieval and update search accordingly.
 			}
 		}
 	}
@@ -1817,7 +1822,7 @@ func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[
 		FilterCondition: filterCondition,
 		Paging: interfaces.ResourceDataPagingRequest{
 			Mode:  "single",
-			Limit: 1, // 查询1条数据，获取total
+			Limit: 1, // Query one entry to obtain the total count.
 		},
 		NeedTotal: true,
 	}
@@ -1835,14 +1840,14 @@ func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[
 	return datasetResp.TotalCount, nil
 }
 
-// 内部调用，不加权限校验
+// Internal call without permission checks.
 func (ots *objectTypeService) GetObjectTypeIDsByKnID(ctx context.Context,
 	knID string, branch string) ([]string, error) {
-	// 获取对象类
+	// Get object types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("按kn_id[%s]获取对象类IDs", knID))
 	defer span.End()
 
-	// 获取对象类基本信息
+	// Get basic object type information.
 	otIDs, err := ots.ota.GetObjectTypeIDsByKnID(ctx, knID, branch)
 	if err != nil {
 		logger.Errorf("GetObjectTypeIDsByKnID error: %s", err.Error())
@@ -1858,11 +1863,11 @@ func (ots *objectTypeService) GetObjectTypeIDsByKnID(ctx context.Context,
 
 func (ots *objectTypeService) GetAllObjectTypesByKnID(ctx context.Context,
 	knID string, branch string) (map[string]*interfaces.ObjectType, error) {
-	// 获取对象类
+	// Get object types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("按kn_id[%s]获取对象类基本信息", knID))
 	defer span.End()
 
-	// 获取对象类基本信息
+	// Get basic object type information.
 	objectTypes, err := ots.ota.GetAllObjectTypesByKnID(ctx, knID, branch)
 	if err != nil {
 		logger.Errorf("GetAllObjectTypesByKnID error: %s", err.Error())
@@ -1876,15 +1881,15 @@ func (ots *objectTypeService) GetAllObjectTypesByKnID(ctx context.Context,
 	return objectTypes, nil
 }
 
-// 内部接口，不检查权限
+// Internal API without permission checks.
 func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 	knID string, branch string, otID string) (*interfaces.ObjectType, error) {
-	// 获取对象类
+	// Get object types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("查询对象类[%s]信息", otID))
 	defer span.End()
 
 	var err error
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	if tx == nil {
 		tx, err = ots.db.Begin()
 		if err != nil {
@@ -1893,11 +1898,11 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "GetObjectTypeByID Transaction Commit Failed", err)
@@ -1913,7 +1918,7 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 		}()
 	}
 
-	// 获取对象类基本信息
+	// Get basic object type information.
 	objectType, err := ots.ota.GetObjectTypeByID(ctx, tx, knID, branch, otID)
 	if err != nil {
 		logger.Errorf("GetObjectTypeByID error: %s", err.Error())
@@ -1924,24 +1929,22 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 	}
 	if objectType == nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
-			WithErrorDetails(fmt.Sprintf("对象类[id:%s]不存在: %v", otID, err))
+			WithErrorDetails(invalidParameterDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}))
 	}
 
 	span.SetStatus(codes.Ok, "")
 	return objectType, nil
 }
 
-// applyIndexCapOps 把资源本地索引上已经具备的检索能力叠加进属性的算子集合。
+// applyIndexCapOps adds search capabilities already present in resource-local indexes to property operators.
 //
-// 叠加而不是替换：属性类型推出来的那批算子是基线（对象类可以完全没有索引），
-// 资源真建了什么索引，就在基线上再放开什么算子。字段有全文索引时，match /
-// multi_match 的执行链路本来就是通的（bkn 改写 → Vega 路由到 fulltext 子字段），
-// 这里只是把它如实登记出来，让上层检索知道可以用。
+// Capabilities are added rather than replaced: property-type operators are the baseline even when an
+// object type has no index. Resource indexes add available operators. Full-text indexes already support
+// match and multi_match through BKN rewriting and Vega full-text field routing; this records that capability.
 //
-// 向量能力映射成 knn 的前提是属性上已经带了 index_config.vector_config（物理向量
-// 字段 + 已解析的模型 ID）：表资源的源字段是 string，向量落在构建任务生成的字段上，
-// 查询侧靠这份配置改写，缺了就发不出去。调用方在解析不到模型时会先把 Vector 置回
-// false，所以这里只管如实登记。
+// Mapping vector capability to KNN requires index_config.vector_config with the physical vector field
+// and resolved model ID. Table resources originate as strings and vectors are generated by build tasks.
+// Callers reset Vector to false when model resolution fails, so this function only records available capability.
 func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string {
 	if !propCaps.Keyword && !propCaps.Fulltext && !propCaps.Vector {
 		return ops
@@ -1975,18 +1978,18 @@ func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string 
 	return merged
 }
 
-// 处理字符串类型的操作符
+// Process operators for string property types.
 func (ots *objectTypeService) processConditionOperations(objectType *interfaces.ObjectType, prop *interfaces.DataProperty,
 	dataView *interfaces.DataView) []string {
 
 	ops := []string{}
 	if objectType.Status != nil && !objectType.Status.IndexAvailable {
-		// 索引不可用时,按视图的字段来做,varchar是opensearch没有的,是数据库字段.keyword和text是opensearch独有的,所以按字段类型来分
+		// When indexes are unavailable, derive operations from view field types because varchar is a database type and keyword/text are OpenSearch types.
 		switch prop.Type {
 		case "keyword":
 			ops = interfaces.DSL_KEYWORD_OPS
 		case "varchar", "string":
-			// string的原始类型可以是keyword或者varchar,所以按视图类型来区别一下
+			// A string source type may be keyword or varchar, so distinguish by view type.
 			if dataView.QueryType == interfaces.VIEW_QueryType_DSL {
 				ops = interfaces.DSL_KEYWORD_OPS
 			} else {
@@ -1994,20 +1997,20 @@ func (ots *objectTypeService) processConditionOperations(objectType *interfaces.
 			}
 		case "text":
 			if dataView.QueryType == interfaces.VIEW_QueryType_DSL {
-				ops = interfaces.DSL_TEXT_OPS // dsl的text有match
+				ops = interfaces.DSL_TEXT_OPS // DSL text supports match
 				ops = append(ops, interfaces.DSL_KEYWORD_OPS...)
 			} else {
 				ops = interfaces.SQL_STRING_OPS
 			}
 		case "vector":
-			// 小模型打开了才能支持knn操作
+			// KNN operations require an enabled small model.
 			if ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
 				ops = append(ops, cond.OperationKNN)
 			}
 		}
 	} else {
 		opMap := make(map[string]string)
-		// 先看本类型，text 类型支持 match,其余的字符串类型可支持 == != in not_in
+		// text supports match; other string types support ==, !=, in, and not_in.
 		switch prop.Type {
 		case "keyword", "varchar", "string":
 			// Copy map content instead of assigning reference to avoid concurrent map access
@@ -2026,19 +2029,19 @@ func (ots *objectTypeService) processConditionOperations(objectType *interfaces.
 			opMap[cond.OperationKNN] = cond.OperationKNN
 		}
 
-		// 配置了keyword索引
+		// A keyword index is configured.
 		if prop.IndexConfig != nil && prop.IndexConfig.KeywordConfig.Enabled {
-			// 把 keyword 支持的操作符添加
+			// Add operators supported by keyword indexes.
 			for k, v := range interfaces.DSL_KEYWORD_OPS_MAP {
 				opMap[k] = v
 			}
 		}
-		// 配置了full text索引,则可以做  match 的操作
+		// A full-text index enables match operations.
 		if prop.IndexConfig != nil && prop.IndexConfig.FulltextConfig.Enabled {
 			opMap[cond.OperationMatch] = cond.OperationMatch
 			opMap[cond.OperationMultiMatch] = cond.OperationMultiMatch
 		}
-		// 配置了 vector 索引, 且向量化小模型是打开的,则可以做 knn 的操作
+		// A vector index with an enabled embedding model enables KNN operations.
 		if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled &&
 			ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
 
@@ -2052,7 +2055,7 @@ func (ots *objectTypeService) processConditionOperations(objectType *interfaces.
 	return ops
 }
 
-// 处理对象类与组的关系，并保存
+// Process and persist object type-to-group relationships.
 func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.Tx,
 	objectType *interfaces.ObjectType, currentTime int64, strictMode bool) error {
 
@@ -2061,7 +2064,7 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 	for _, cg := range objectType.ConceptGroups {
 		cgIDs = append(cgIDs, cg.CGID)
 	}
-	// id去重后再查
+	// De-duplicate IDs before querying.
 	cgIDs = common.DuplicateSlice(cgIDs)
 
 	// When strictMode is true, validate all concept groups exist
@@ -2087,7 +2090,7 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 		}
 	}
 
-	// 创建
+	// Create.
 	for _, cg := range objectType.ConceptGroups {
 		cgRelationID := xid.New().String()
 		err = ots.cga.CreateConceptGroupRelation(ctx, tx, &interfaces.ConceptGroupRelation{
@@ -2112,7 +2115,7 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 	return nil
 }
 
-// syncObjectGroups 同步分组关系（更新时使用，全量替换）
+// syncObjectGroups synchronizes group relationships by full replacement during updates.
 func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 	objectType interfaces.ObjectType, currentTime int64, strictMode bool) error {
 
@@ -2120,7 +2123,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 	for _, cg := range objectType.ConceptGroups {
 		cgIDs = append(cgIDs, cg.CGID)
 	}
-	// id去重后再查
+	// De-duplicate IDs before querying.
 	cgIDs = common.DuplicateSlice(cgIDs)
 
 	// When strictMode is true and cgIDs not empty, validate all concept groups exist
@@ -2146,7 +2149,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 		}
 	}
 
-	// 1. 获取对象类现有的分组关系
+	// 1. Get existing object type group relationships.
 	existingRelation, err := ots.cga.GetConceptGroupsByOTIDs(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 		KNID:   objectType.KNID,
 		Branch: objectType.Branch,
@@ -2158,10 +2161,10 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
-	// 2. 计算需要添加和删除的分组
+	// 2. Compute groups to add and delete.
 	existingGroupIDs := make(map[string]bool)
 	if len(existingRelation) == 1 {
-		// 对象类已建立的关系
+		// Existing object type relationships.
 		for _, rel := range existingRelation[objectType.OTID] {
 			existingGroupIDs[rel.CGID] = true
 		}
@@ -2172,7 +2175,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 		newGroupIDs[ref.CGID] = true
 	}
 
-	// 计算差异
+	// Compute differences.
 	groupsToAdd := make([]string, 0)
 	groupsToRemove := make([]string, 0)
 
@@ -2188,9 +2191,9 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 		}
 	}
 
-	// 3. 执行添加操作
+	// 3. Add relationships.
 	if len(groupsToAdd) > 0 {
-		// 构建新增关系记录
+		// Build records for new relationships.
 		for _, cgID := range groupsToAdd {
 			cgRelationID := xid.New().String()
 			err = ots.cga.CreateConceptGroupRelation(ctx, tx, &interfaces.ConceptGroupRelation{
@@ -2214,9 +2217,9 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 		}
 	}
 
-	// 4. 执行删除操作
+	// 4. Delete relationships.
 	if len(groupsToRemove) > 0 {
-		// 删除对象类与分组的绑定关系
+		// Delete object type-to-group bindings.
 		rowsAffect, err := ots.cga.DeleteObjectTypesFromGroup(ctx, tx, interfaces.ConceptGroupRelationsQueryParams{
 			KNID:        objectType.KNID,
 			Branch:      objectType.Branch,
@@ -2233,7 +2236,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(errStr)
 		}
-		// 记录ingo日志，删除的条数
+		// Record the deleted count in an info log.
 		logger.Infof("DeleteObjectTypesFromGroup success, the concept group is [%v], kn_id is [%s], branch is [%s], object type is [%s], rowsAffect is [%d]",
 			groupsToRemove, objectType.KNID, objectType.Branch, objectType.OTID, rowsAffect)
 	}
@@ -2241,7 +2244,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 	return nil
 }
 
-// 分批查询
+// Query in batches.
 func (ots *objectTypeService) GetTotalWithLargeOTIDs(ctx context.Context,
 	filterCondition map[string]any,
 	otIDs []string) (int64, error) {
@@ -2265,12 +2268,12 @@ func (ots *objectTypeService) GetTotalWithLargeOTIDs(ctx context.Context,
 	return total, nil
 }
 
-// 查询指定对象类ID列表的对象类总数
+// Query the total count for specified object type IDs.
 func (ots *objectTypeService) GetTotalWithOTIDs(ctx context.Context,
 	filterCondition map[string]any,
 	otIDs []string) (int64, error) {
 
-	// 构建包含 OTID 过滤的 filter condition
+	// Build a filter condition containing the object type ID filter.
 	otIDCondition := map[string]any{
 		"field":      "id",
 		"operation":  "in",
@@ -2291,7 +2294,7 @@ func (ots *objectTypeService) GetTotalWithOTIDs(ctx context.Context,
 		}
 	}
 
-	// 执行计数查询
+	// Execute the count query.
 	total, err := ots.GetTotal(ctx, combinedCondition)
 	if err != nil {
 		return total, err

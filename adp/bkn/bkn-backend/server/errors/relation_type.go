@@ -6,7 +6,7 @@
 
 package errors
 
-// 业务知识网络错误码
+// Business knowledge network error codes.
 const (
 	// 400
 	BknBackend_RelationType_Duplicated_IDInFile               = "BknBackend.RelationType.Duplicated.IDInFile"

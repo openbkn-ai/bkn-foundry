@@ -146,16 +146,16 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 			cs.ata = ata
 			cs.cga = cga
 
-			// handleKNs 调用顺序：
+			// handleKNs call order:
 			// 1. GetAllKNs
 			kna.EXPECT().GetAllKNs(ctx).Return(map[string]*interfaces.KN{knID: kn}, nil)
-			// 2. getAllKNsFromDataset (内部调用 QueryResourceData)
+			// 2. getAllKNsFromDataset (internally calls QueryResourceData)
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
 			vba.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			// 3. handleKnowledgeNetwork 会调用多个 getAllXXXFromDatasetByKnID
-			// 每个都会调用 QueryResourceData
+			// 3. handleKnowledgeNetwork calls several getAllXXXFromDatasetByKnID methods.
+			// Each calls QueryResourceData.
 			vba.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil).Times(4)
 
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
@@ -585,7 +585,7 @@ func TestConceptSyncer_getAllKNsFromDataset(t *testing.T) {
 
 		Convey("Failed to decode KN from entry", func() {
 			entry := map[string]any{
-				"name": make(chan int), // 无法解码的类型
+				"name": make(chan int), // Non-decodable type.
 			}
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{entry},
@@ -1390,7 +1390,7 @@ func TestConceptSyncer_getAllObjectTypesFromDatasetByKnID(t *testing.T) {
 			response := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{
 					{
-						"name": make(chan int), // 无法解码的类型
+						"name": make(chan int), // Non-decodable type.
 					},
 				},
 				TotalCount: 1,
@@ -1448,7 +1448,7 @@ func TestConceptSyncer_getAllRelationTypesFromDatasetByKnID(t *testing.T) {
 			response := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{
 					{
-						"name": make(chan int), // 无法解码的类型
+						"name": make(chan int), // Non-decodable type.
 					},
 				},
 				TotalCount: 1,
@@ -1506,7 +1506,7 @@ func TestConceptSyncer_getAllActionTypesFromDatasetByKnID(t *testing.T) {
 			response := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{
 					{
-						"name": make(chan int), // 无法解码的类型
+						"name": make(chan int), // Non-decodable type.
 					},
 				},
 				TotalCount: 1,
@@ -1564,7 +1564,7 @@ func TestConceptSyncer_getAllConceptGroupsFromDatasetByKnID(t *testing.T) {
 			response := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{
 					{
-						"name": make(chan int), // 无法解码的类型
+						"name": make(chan int), // Non-decodable type.
 					},
 				},
 				TotalCount: 1,

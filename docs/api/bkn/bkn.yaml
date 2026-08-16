@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: BKN Backend API
   description: |
-    BKN (Business Knowledge Network) Backend API 提供了业务知识网络的导入导出功能。
+    BKN (Business Knowledge Network) Backend API provides import and export operations for business knowledge networks.
   version: 1.0.0
   contact:
     name: BKN Foundry Team
@@ -13,7 +13,7 @@ security:
 
 tags:
   - name: BKN Import/Export
-    description: BKN 导入导出接口
+    description: BKN import and export APIs
 
 paths:
   # ==================== BKN Import/Export ====================
@@ -21,8 +21,8 @@ paths:
     post:
       tags:
         - BKN Import/Export
-      summary: 上传 BKN tar 包并导入
-      description: 上传 BKN tar 包文件并导入为业务知识网络，tar 包内容格式参考 docs/design/bkn/features/bkn_docs/SPECIFICATION.md
+      summary: Upload and import a BKN tar archive
+      description: Upload a BKN tar archive and import it as a business knowledge network. For the archive format, see docs/design/bkn/features/bkn_docs/SPECIFICATION.md
       operationId: uploadBKN
       security:
         - OAuth2: []
@@ -36,48 +36,48 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: BKN tar 包文件
+                  description: BKN tar archive file
             encoding:
               file:
                 contentType: application/octet-stream
       parameters:
         - name: branch
           in: query
-          description: 分支名称，默认为 main
+          description: Branch name. Defaults to main.
           schema:
             type: string
             default: main
         - name: X-Business-Domain
           in: header
           required: true
-          description: 业务域
+          description: Business domain
           schema:
             type: string
         - name: import_mode
           description: |
-            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
-            `ignore` 跳过同名概念。默认 `normal`。
+            Import mode. normal reports an error for duplicate concept names; overwrite replaces them;
+            ignore skips them. Defaults to normal.
           schema:
             type: string
             enum: [normal, overwrite, ignore]
             default: normal
           in: query
         - name: strict_mode
-          description: 是否校验依赖对象存在性，默认 true。为空时回退读取已废弃的 validate_dependency
+          description: Whether to validate that dependent objects exist. Defaults to true. When empty, the deprecated validate_dependency parameter is used.
           schema:
             type: boolean
             default: true
           in: query
         - name: validate_dependency
           deprecated: true
-          description: "[已废弃] 请使用 strict_mode。兼容保留，strict_mode 为空时会读取此参数"
+          description: "Deprecated. Use strict_mode instead. This parameter is retained for compatibility and is read when strict_mode is empty."
           schema:
             type: boolean
             default: true
           in: query
       responses:
         '200':
-          description: 导入成功
+          description: Import succeeded
           content:
             application/json:
               schema:
@@ -85,18 +85,18 @@ paths:
                 properties:
                   kn_id:
                     type: string
-                    description: 创建的知识网络 ID
+                    description: ID of the created knowledge network
         '400':
-          description: 请求参数错误
+          description: Invalid request parameters
         '401':
-          description: 未授权
+          description: Unauthorized
 
   /api/bkn-backend/v1/bkns/{kn_id}:
     get:
       tags:
         - BKN Import/Export
-      summary: 下载 BKN tar 包
-      description: 导出业务知识网络为 BKN tar 包文件，tar 包内容格式参考 docs/design/bkn/features/bkn_docs/SPECIFICATION.md
+      summary: Download a BKN tar archive
+      description: Export a business knowledge network as a BKN tar archive. For the archive format, see docs/design/bkn/features/bkn_docs/SPECIFICATION.md
       operationId: downloadBKN
       security:
         - OAuth2: []
@@ -104,35 +104,35 @@ paths:
         - name: kn_id
           in: path
           required: true
-          description: 知识网络 ID
+          description: Knowledge network ID
           schema:
             type: string
         - name: branch
           in: query
-          description: 分支名称，默认为 main
+          description: Branch name. Defaults to main.
           schema:
             type: string
             default: main
       responses:
         '200':
-          description: 导出成功
+          description: Export succeeded
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
         '400':
-          description: 请求参数错误
+          description: Invalid request parameters
         '401':
-          description: 未授权
+          description: Unauthorized
         '404':
-          description: 知识网络不存在
+          description: Knowledge network not found
   /api/bkn-backend/v1/knowledge-networks/names:
     post:
       tags:
         - BKN
-      summary: 按 ID 批量取知识网络名称
-      description: "按 ID 批量回显知识网络名称（用于对象级授权页等）。不存在的 ID 略过，不报错。需 `Content-Type: application/json`。"
+      summary: Batch get knowledge network names by ID
+      description: "Batch return knowledge network names by ID, for example for object-level authorization pages. Missing IDs are skipped without an error. Requires application/json content type."
       operationId: queryKNNamesByIDs
       security:
         - OAuth2: []
@@ -145,7 +145,7 @@ paths:
               properties:
                 ids:
                   type: array
-                  description: 待取名的知识网络 ID 列表，最多 100 个；空列表返回空 entries
+                  description: List of knowledge network IDs to resolve, with at most 100 items. An empty list returns empty entries.
                   maxItems: 100
                   items:
                     type: string
@@ -167,19 +167,19 @@ paths:
                         name:
                           type: string
         '400':
-          description: 请求参数错误
+          description: Invalid request parameters
           content:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         '401':
-          description: 未授权
+          description: Unauthorized
   /api/bkn-backend/v1/resources:
     get:
       tags:
         - BKN
-      summary: 列出资源
-      description: 按资源类型分页列出资源（统一资源平台）。当前支持 `resource_type=knowledge_network`（知识网络）。
+      summary: List resources
+      description: Lists resources by resource type with pagination on the unified resource platform. Currently supports resource_type=knowledge_network.
       operationId: listResources
       security:
         - OAuth2: []
@@ -188,42 +188,42 @@ paths:
           in: query
           required: true
           description: |
-            资源类型。当前实现只识别 `knowledge_network`（知识网络），
-            对应 `interfaces.RESOURCE_TYPE_KN`。
+            Resource type. The current implementation recognizes only knowledge_network, which represents a knowledge network.
+            It maps to interfaces.RESOURCE_TYPE_KN.
 
-            传其他值不报错，而是走 default 分支**返回 200 且响应体为空**
-            （不是空列表，是完全没有 body）。取值写错时的表现是客户端
-            JSON 解析失败或拿不到任何数据，而不是 400。
+            Other values do not return an error. Instead, the default branch returns 200 with an empty response body.
+            This is not an empty list: there is no body at all. An invalid value causes the client
+            to fail JSON parsing or receive no data, rather than receive a 400 response.
           schema:
             type: string
             enum: [knowledge_network]
         - name: keyword
           in: query
-          description: 名称关键字过滤，默认空
+          description: Filter by name keyword. Defaults to empty.
           schema:
             type: string
         - name: offset
           in: query
-          description: 偏移量，默认 0
+          description: Offset. Defaults to 0.
           schema:
             type: integer
             format: int64
             default: 0
         - name: limit
           in: query
-          description: 每页条数，默认 10
+          description: Page size. Defaults to 10.
           schema:
             type: integer
             format: int64
             default: 10
         - name: sort
-          description: 排序字段，默认 name
+          description: Sort field. Defaults to name.
           schema:
             type: string
             default: name
           in: query
         - name: direction
-          description: 排序方向，默认 desc
+          description: Sort direction. Defaults to desc.
           schema:
             type: string
             enum: [asc, desc]
@@ -252,19 +252,19 @@ paths:
                     type: integer
                     format: int64
         '400':
-          description: 请求参数错误
+          description: Invalid request parameters
           content:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         '401':
-          description: 未授权
+          description: Unauthorized
 
 components:
   securitySchemes:
     OAuth2:
       type: oauth2
-      description: OAuth2 认证，用于外网接口
+      description: OAuth2 authentication for public APIs
       flows:
         clientCredentials:
           tokenUrl: /oauth2/token

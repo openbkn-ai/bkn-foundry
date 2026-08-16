@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -54,6 +55,10 @@ type actionTypeService struct {
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
 	vba        interfaces.VegaBackendAccess
+}
+
+func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
 }
 
 func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeService {
@@ -104,7 +109,7 @@ func (ats *actionTypeService) CheckActionTypeExistByName(ctx context.Context, kn
 	return actionTypeID, exist, nil
 }
 
-// checkImpactContractObjectTypes：strict 下校验每条 impact_contract 指向的对象类存在。
+// checkImpactContractObjectTypes validates every impact-contract object type in strict mode.
 func (ats *actionTypeService) checkImpactContractObjectTypes(ctx context.Context, tx *sql.Tx,
 	knID, branch string, contracts []interfaces.ImpactContractItem, batch *interfaces.BatchIDIndex) error {
 
@@ -135,18 +140,28 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 			return nil
 		}
 		if err := ats.aoa.GetToolByID(ctx, src.BoxID, src.ToolID); err != nil {
+			logger.Errorf("validate action type tool binding failed: action_type=%s box_id=%s tool_id=%s err=%v",
+				at.ATName, src.BoxID, src.ToolID, err)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("Action type [%s] tool binding is missing or invalid: box_id=%s tool_id=%s (%v)",
-					at.ATName, src.BoxID, src.ToolID, err))
+				WithErrorDetails(invalidParameterDetail(ctx, "ToolBindingInvalid", map[string]any{
+					"actionType": at.ATName,
+					"boxID":      src.BoxID,
+					"toolID":     src.ToolID,
+				}))
 		}
 	case interfaces.ACTION_SOURCE_TYPE_MCP:
 		if src.McpID == "" || src.ToolName == "" {
 			return nil
 		}
 		if err := ats.aoa.GetMcpToolByName(ctx, src.McpID, src.ToolName); err != nil {
+			logger.Errorf("validate action type MCP tool binding failed: action_type=%s mcp_id=%s tool_name=%s err=%v",
+				at.ATName, src.McpID, src.ToolName, err)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("Action type [%s] MCP tool binding is missing or invalid: mcp_id=%s tool_name=%s (%v)",
-					at.ATName, src.McpID, src.ToolName, err))
+				WithErrorDetails(invalidParameterDetail(ctx, "MCPBindingInvalid", map[string]any{
+					"actionType": at.ATName,
+					"mcpID":      src.McpID,
+					"toolName":   src.ToolName,
+				}))
 		}
 	}
 	return nil
@@ -156,7 +171,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CreateActionTypes")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   actionTypes[0].KNID,
@@ -165,7 +180,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		return []string{}, err
 	}
 
-	// 0. 开始事务
+	// 0. Begin the transaction.
 	if tx == nil {
 		tx, err = ats.db.Begin()
 		if err != nil {
@@ -174,11 +189,11 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "CreateActionType Transaction Commit Failed", err)
@@ -196,7 +211,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 
 	currentTime := time.Now().UnixMilli()
 	for _, actionType := range actionTypes {
-		// 若提交的模型id为空，生成分布式ID
+		// Generate a distributed ID when the submitted model ID is empty.
 		if actionType.ATID == "" {
 			actionType.ATID = xid.New().String()
 		}
@@ -246,7 +261,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		return []string{}, err
 	}
 
-	// 创建
+	// Create.
 	atIDs := []string{}
 	for _, actionType := range createActionTypes {
 		atIDs = append(atIDs, actionType.ATID)
@@ -259,9 +274,9 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		}
 	}
 
-	// 更新
+	// Update.
 	for _, actionType := range updateActionTypes {
-		// 提交的已存在，需要更新
+		// Update an existing submitted item.
 		err = ats.UpdateActionType(ctx, tx, actionType, strictMode)
 		if err != nil {
 			return []string{}, err
@@ -346,7 +361,7 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListActionTypes")
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -355,7 +370,7 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		return []*interfaces.ActionType{}, 0, err
 	}
 
-	//获取行动类列表
+	// Get the action type list.
 	actionTypes, err := ats.ata.ListActionTypes(ctx, query)
 	if err != nil {
 		logger.Errorf("ListActionTypes error: %s", err.Error())
@@ -387,7 +402,7 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		return []*interfaces.ActionType{}, 0, err
 	}
 
-	// 补充当前页行动类绑定对象类的名称。
+	// Populate bound object type names for the current action type page.
 	for _, actionType := range actionTypes {
 		if objectTypeMap[actionType.ObjectTypeID] != nil {
 			actionType.ObjectType = interfaces.SimpleObjectType{
@@ -416,11 +431,11 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 }
 
 func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID string, branch string, atIDs []string) ([]*interfaces.ActionType, error) {
-	// 获取行动类
+	// Get action types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetActionTypesByIDs")
 	defer span.End()
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -429,10 +444,10 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 		return []*interfaces.ActionType{}, err
 	}
 
-	// id去重后再查
+	// De-duplicate IDs before querying.
 	atIDs = common.DuplicateSlice(atIDs)
 
-	// 获取模型基本信息
+	// Get basic model information.
 	actionTypes, err := ats.ata.GetActionTypesByIDs(ctx, knID, branch, atIDs)
 	if err != nil {
 		logger.Errorf("GetActionTypesByATIDs error: %s", err.Error())
@@ -450,8 +465,8 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 			berrors.BknBackend_ActionType_ActionTypeNotFound).WithErrorDetails(errStr)
 	}
 
-	// todo:翻译绑定的对象类、影响对象类、和对应的api文档
-	// 获取绑定对象类和影响对象类的名称拿到
+	// TODO: localize bound and impacted object types and their API documents.
+	// Retrieve bound and impacted object type names.
 	for _, actionType := range actionTypes {
 		affectObjectTypeID := ""
 		if actionType.Affect != nil && actionType.Affect.ObjectTypeID != "" {
@@ -487,12 +502,12 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 	return actionTypes, nil
 }
 
-// 更新行动类
+// Update action types.
 func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, actionType *interfaces.ActionType, strictMode bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateActionType")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   actionType.KNID,
@@ -531,25 +546,25 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 	}
 	actionType.Updater = accountInfo
 
-	currentTime := time.Now().UnixMilli() // 行动类的update_time是int类型
+	currentTime := time.Now().UnixMilli() // Action type update_time uses an integer type.
 	actionType.UpdateTime = currentTime
 
 	bknAction := logics.ToBKNActionType(actionType)
 	actionType.BKNRawContent = bknsdk.SerializeActionType(bknAction)
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = ats.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "UpdateActionType Transaction Commit Failed", err)
@@ -565,7 +580,7 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 		}()
 	}
 
-	// 更新模型信息
+	// Update model information.
 	err = ats.ata.UpdateActionType(ctx, tx, actionType)
 	if err != nil {
 		logger.Errorf("UpdateActionType error: %s", err.Error())
@@ -592,7 +607,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeleteActionTypesByIDs")
 	defer span.End()
 
-	// 判断userid是否有修改业务知识网络的权限
+	// Check whether the user ID can modify the business knowledge network.
 	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   knID,
@@ -602,7 +617,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 	}
 
 	if tx == nil {
-		// 0. 开始事务
+		// 0. Begin the transaction.
 		tx, err = ats.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
@@ -610,11 +625,11 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
-		// 0.1 异常时
+		// 0.1 On failure.
 		defer func() {
 			switch err {
 			case nil:
-				// 提交事务
+				// Commit the transaction.
 				err = tx.Commit()
 				if err != nil {
 					otellog.LogError(ctx, "DeleteActionTypes Transaction Commit Failed", err)
@@ -630,7 +645,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		}()
 	}
 
-	// 删除行动类
+	// Delete action types.
 	rowsAffect, err := ats.ata.DeleteActionTypesByIDs(ctx, tx, knID, branch, atIDs)
 	if err != nil {
 		logger.Errorf("DeleteActionTypes error: %s", err.Error())
@@ -658,7 +673,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 	return nil
 }
 
-// 内部接口，不校验权限， tx必须传
+// Internal API. It does not check permissions and requires tx.
 func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeleteActionTypesByKnID")
 	defer span.End()
@@ -670,7 +685,7 @@ func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *s
 			WithErrorDetails("missing transaction")
 	}
 
-	// 删除行动类
+	// Delete action types.
 	rowsAffect, err := ats.ata.DeleteActionTypesByKnID(ctx, tx, knID, branch)
 	if err != nil {
 		logger.Errorf("DeleteActionTypes error: %s", err.Error())
@@ -694,7 +709,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 	creates := []*interfaces.ActionType{}
 	updates := []*interfaces.ActionType{}
 
-	// 3. 校验 若模型的id不为空，则用请求体的id与现有模型ID的重复性
+	// 3. When the submitted model ID is not empty, validate conflicts with existing model IDs.
 	for _, actionType := range actionTypes {
 		creates = append(creates, actionType)
 		idExist := false
@@ -703,13 +718,13 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 			return creates, updates, err
 		}
 
-		// 校验 请求体与现有模型名称的重复性
+		// Validate conflicts between the request and existing model names.
 		existID, nameExist, err := ats.CheckActionTypeExistByName(ctx, actionType.KNID, actionType.Branch, actionType.ATName)
 		if err != nil {
 			return creates, updates, err
 		}
 
-		// 根据mode来区别，若是ignore，就从结果集中忽略，若是overwrite，就调用update，若是normal就报错。
+		// Handle mode: ignore removes it from results, overwrite updates it, and normal returns an error.
 		if idExist || nameExist {
 			switch mode {
 			case interfaces.ImportMode_Normal:
@@ -733,12 +748,12 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 				}
 
 			case interfaces.ImportMode_Ignore:
-				// 存在重复的就跳过
-				// 从create数组中删除
+				// Skip duplicates.
+				// Remove from the create array.
 				creates = creates[:len(creates)-1]
 			case interfaces.ImportMode_Overwrite:
 				if idExist && nameExist {
-					// 如果 id 和名称都存在，但是存在的名称对应的行动类 id 和当前行动类 id 不一样，则报错
+					// Return an error when both ID and name exist but the named action type has a different ID.
 					if existID != actionType.ATID {
 						errDetails := fmt.Sprintf("ActionType ID '%s' and name '%s' already exist, but the exist action type id is '%s'",
 							actionType.ATID, actionType.ATName, existID)
@@ -748,21 +763,21 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 							berrors.BknBackend_ActionType_ActionTypeNameExisted).
 							WithErrorDetails(errDetails)
 					} else {
-						// 如果 id 和名称、度量名称都存在，存在的名称对应的模型 id 和当前模型 id 一样，则覆盖更新
-						// 从create数组中删除, 放到更新数组中
+						// Overwrite when ID, name, and metric name exist and the named model ID matches the current model ID.
+						// Remove from the create array and add to the update array.
 						creates = creates[:len(creates)-1]
 						updates = append(updates, actionType)
 					}
 				}
 
-				// id 已存在，且名称不存在，覆盖更新
+				// Overwrite when the ID exists and the name does not.
 				if idExist && !nameExist {
-					// 从create数组中删除, 放到更新数组中
+					// Remove from the create array and add to the update array.
 					creates = creates[:len(creates)-1]
 					updates = append(updates, actionType)
 				}
 
-				// 如果 id 不存在，name 存在，报错
+				// Return an error when the ID does not exist but the name exists.
 				if !idExist && nameExist {
 					errDetails := fmt.Sprintf("ActionType ID '%s' does not exist, but name '%s' already exists",
 						actionType.ATID, actionType.ATName)
@@ -773,7 +788,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 						WithErrorDetails(errDetails)
 				}
 
-				// 如果 id 不存在，name不存在，度量名称不存在，不需要做什么，创建
+				// Create when ID, name, and metric name do not exist.
 				// if !idExist && !nameExist {}
 			}
 		}
@@ -890,7 +905,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 	response := interfaces.ActionTypes{}
 	var err error
 
-	// 判断userid是否有查看业务知识网络的权限
+	// Check whether the user ID can view the business knowledge network.
 	err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   query.KNID,
@@ -899,7 +914,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		return response, err
 	}
 
-	// 转换条件为 dataset filter condition
+	// Convert conditions to dataset filter conditions.
 	var filterCondition map[string]any
 	if query.ActualCondition != nil {
 		filterCondition, err = cond.ConvertCondCfgToFilterCondition(ctx, query.ActualCondition,
@@ -931,17 +946,18 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				return result, nil
 			})
 		if err != nil {
+			logger.Errorf("convert action type condition to filter condition failed: %v", err)
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ActionType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(fmt.Sprintf("failed to convert condition to filter condition, %s", err.Error()))
+				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
 		}
 	}
 
-	// 1. 获取组下的关系类
-	atIDMap := map[string]bool{} // 分组下的对象类id
-	atIDs := []string{}          // 不同组下的对象类可以重叠，所以需要对对象类id的数组去重
+	// 1. Get relation types in the groups.
+	atIDMap := map[string]bool{} // Object type IDs in the groups
+	atIDs := []string{}          // Object types can overlap between groups, so de-duplicate object type IDs.
 	if len(query.ConceptGroups) > 0 {
-		// 校验分组是否都存在，按分组id获取分组
+		// Validate groups by retrieving them by ID.
 		cgCnt, err := ats.cga.GetConceptGroupsTotal(ctx, interfaces.ConceptGroupsQueryParams{
 			KNID:   query.KNID,
 			Branch: query.Branch,
@@ -959,17 +975,17 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				cgCnt, len(query.ConceptGroups))
 			logger.Errorf(errStr)
 
-			// 所有概念分组都不存在，报404，概念分组不存在
+			// Return 404 when all requested concept groups are missing.
 			return response, rest.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 				WithErrorDetails(errStr)
 		}
 
-		// 在当前业务知识网络下查找属于请求的分组范围内的行动类ID
+		// Find action type IDs in requested groups within the current business knowledge network.
 		atIDArr, err := ats.cga.GetActionTypeIDsFromConceptGroupRelation(ctx, interfaces.ConceptGroupRelationsQueryParams{
 			KNID:        query.KNID,
 			Branch:      query.Branch,
-			ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, // 概念与分组关系中的概念类型
+			ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, // Concept type in the concept-to-group relation
 			CGIDs:       query.ConceptGroups,
 		})
 		if err != nil {
@@ -983,7 +999,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(errStr)
 		}
 
-		// 概念分组下没有行动类,返回空
+		// Return empty when the concept groups contain no action types.
 		if len(atIDArr) == 0 {
 			return response, nil
 		}
@@ -996,15 +1012,15 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		}
 	}
 
-	// 根据NeedTotal参数决定是否查询total
+	// Decide whether to query the total based on NeedTotal.
 	if query.NeedTotal {
 		if len(atIDMap) == 0 {
-			// 查询总数
+			// Query the total count.
 			params := &interfaces.ResourceDataQueryParams{
 				FilterCondition: filterCondition,
 				Paging: interfaces.ResourceDataPagingRequest{
 					Mode:  "single",
-					Limit: 1, // 查询1条数据，获取total
+					Limit: 1, // Query one entry to obtain the total count.
 				},
 				NeedTotal: true,
 			}
@@ -1018,7 +1034,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			}
 			response.TotalCount = datasetResp.TotalCount
 		} else {
-			// 指定了分组，需要查询分组内且符合条件的总数
+			// Query the matching total within specified groups.
 			total, err := ats.GetTotalWithLargeATIDs(ctx, filterCondition, atIDs)
 			if err != nil {
 				return response, err
@@ -1027,7 +1043,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		}
 	}
 
-	// 4. 迭代查询直到获取足够数量或没有更多数据。
+	// 4. Iterate until enough entries are collected or no more data exists.
 	actionTypes := []*interfaces.ActionType{}
 	var totalFilteredCount int64 = 0
 	sort := query.Sort
@@ -1046,7 +1062,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		if cursor != "" {
 			paging = interfaces.ResourceDataPagingRequest{Cursor: cursor}
 		}
-		// 调用 dataset 查询
+		// Call the dataset query.
 		params := &interfaces.ResourceDataQueryParams{
 			FilterCondition: filterCondition,
 			Paging:          paging,
@@ -1062,12 +1078,12 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				WithErrorDetails(err.Error())
 		}
 
-		// 如果没有数据了，跳出循环
+		// Stop when no data remains.
 		if len(datasetResp.Entries) == 0 {
 			break
 		}
 
-		// 5. 处理查询结果
+		// 5. Process query results.
 		for _, entry := range datasetResp.Entries {
 			// Deserialize condition from JSON string
 			if condStr, exists := entry["condition"]; exists {
@@ -1099,7 +1115,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				}
 			}
 
-			// 转成 action type 的 struct
+			// Convert to an action type struct.
 			jsonByte, err := json.Marshal(entry)
 			if err != nil {
 				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
@@ -1114,9 +1130,9 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal dataset entry to Action Type, %s", err.Error()))
 			}
 
-			// 如果没有指定分组，或者行动类属于分组，则添加
+			// Add the action type when no group is specified or it belongs to the group.
 			if len(atIDMap) == 0 || atIDMap[actionType.ATID] {
-				// 提取 _score（如果有）
+				// Extract _score when present.
 				if scoreVal, ok := entry["_score"]; ok {
 					if scoreFloat, ok := scoreVal.(float64); ok {
 						score := float64(scoreFloat)
@@ -1127,7 +1143,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				actionTypes = append(actionTypes, &actionType)
 				totalFilteredCount++
 
-				// 如果已经收集到足够的数量，跳出循环
+				// Stop when enough entries have been collected.
 				if len(actionTypes) >= query.Limit && query.Limit > 0 {
 					break
 				}
@@ -1157,7 +1173,7 @@ func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetTotal")
 	defer span.End()
 
-	// 添加 module_type 过滤条件
+	// Add a module_type filter condition.
 	if filterCondition == nil {
 		filterCondition = map[string]any{
 			"field":      "module_type",
@@ -1184,7 +1200,7 @@ func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[
 		FilterCondition: filterCondition,
 		Paging: interfaces.ResourceDataPagingRequest{
 			Mode:  "single",
-			Limit: 1, // 查询1条数据，获取total
+			Limit: 1, // Query one entry to obtain the total count.
 		},
 		NeedTotal: true,
 	}
@@ -1202,13 +1218,13 @@ func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[
 	return datasetResp.TotalCount, nil
 }
 
-// 内部调用，不加权限校验
+// Internal call without permission checks.
 func (ats *actionTypeService) GetActionTypeIDsByKnID(ctx context.Context, knID string, branch string) ([]string, error) {
-	// 获取行动类
+	// Get action types.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetActionTypeIDsByKnID")
 	defer span.End()
 
-	// 获取模型基本信息
+	// Get basic model information.
 	atIDs, err := ats.ata.GetActionTypeIDsByKnID(ctx, knID, branch)
 	if err != nil {
 		logger.Errorf("GetActionTypeIDsByKnID error: %s", err.Error())
@@ -1222,7 +1238,7 @@ func (ats *actionTypeService) GetActionTypeIDsByKnID(ctx context.Context, knID s
 	return atIDs, nil
 }
 
-// 分批查询
+// Query in batches.
 func (ats *actionTypeService) GetTotalWithLargeATIDs(ctx context.Context,
 	filterCondition map[string]any,
 	atIDs []string) (int64, error) {
@@ -1246,12 +1262,12 @@ func (ats *actionTypeService) GetTotalWithLargeATIDs(ctx context.Context,
 	return total, nil
 }
 
-// 查询指定行动类ID列表的行动类总数
+// Query the total count for specified action type IDs.
 func (ats *actionTypeService) GetTotalWithATIDs(ctx context.Context,
 	filterCondition map[string]any,
 	atIDs []string) (int64, error) {
 
-	// 构建包含 ATID 过滤的 filter condition
+	// Build a filter condition containing the action type ID filter.
 	atIDCondition := map[string]any{
 		"field":      "id",
 		"operation":  "in",
@@ -1272,7 +1288,7 @@ func (ats *actionTypeService) GetTotalWithATIDs(ctx context.Context,
 		}
 	}
 
-	// 执行计数查询
+	// Execute the count query.
 	total, err := ats.GetTotal(ctx, combinedCondition)
 	if err != nil {
 		return total, err

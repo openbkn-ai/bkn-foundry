@@ -8,10 +8,10 @@ package permission
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -24,6 +24,10 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 )
+
+func localizedPermissionDetail(ctx context.Context, key string) string {
+	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
+}
 
 type PermissionServiceImpl struct {
 	appSetting *common.AppSetting
@@ -58,12 +62,12 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
 		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("Access denied: missing account ID or type")
+			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
 		otellog.LogError(ctx, "CheckPermission missing account ID or type", httpErr)
 		return httpErr
 	}
 
-	// todo: 暂时先去掉权限校验
+	// Permission checks are temporarily disabled.
 	ok, err := ps.pa.CheckPermission(ctx, interfaces.PermissionCheck{
 		Accessor: interfaces.PermissionAccessor{
 			ID:   accountInfo.ID,
@@ -80,7 +84,7 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 	}
 	if !ok {
 		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", ops))
+			WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
 		otellog.LogError(ctx, "CheckPermission denied", httpErr)
 		return httpErr
 	}
@@ -88,7 +92,7 @@ func (ps *PermissionServiceImpl) CheckPermission(ctx context.Context, resource i
 	return nil
 }
 
-// 添加资源权限（新建决策）
+// CreateResources creates permission policies for newly created resources.
 func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources []interfaces.PermissionResource, ops []string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CreatePermissionResources")
 	defer span.End()
@@ -99,12 +103,12 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
 		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("Access denied: missing account ID or type")
+			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
 		otellog.LogError(ctx, "CreateResources missing account ID or type", httpErr)
 		return httpErr
 	}
 
-	// todo: 创建资源权限暂时先去掉
+	// Permission resource creation is temporarily disabled.
 	allowOps := []interfaces.PermissionOperation{}
 	for _, op := range ops {
 		allowOps = append(allowOps, interfaces.PermissionOperation{
@@ -138,7 +142,7 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 	return nil
 }
 
-// 删除策略
+// DeleteResources deletes permission policies for the supplied resources.
 func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceType string, ids []string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeletePermissionResources")
 	defer span.End()
@@ -147,8 +151,8 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 		span.SetStatus(codes.Ok, "")
 		return nil
 	}
-	// todo：删除权限资源暂时先去掉
-	// 清除资源策略
+	// Permission resource deletion is temporarily disabled.
+
 	resources := []interfaces.PermissionResource{}
 	for _, id := range ids {
 		resources = append(resources, interfaces.PermissionResource{
@@ -168,7 +172,7 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 	return nil
 }
 
-// 过滤资源列表
+// Filter the resource list.
 func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceType string, ids []string,
 	ops []string, allowOperation bool, fullOps []string) (map[string]interfaces.PermissionResourceOps, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "FilterPermissionResources")
@@ -180,7 +184,7 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
 		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("Access denied: missing account ID or type")
+			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
 		otellog.LogError(ctx, "FilterResources missing account ID or type", httpErr)
 		return nil, httpErr
 	}
@@ -193,10 +197,8 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 		})
 	}
 
-	// ops 判定可见性，fullOps 是回给前端的候选操作集——两者必须都传下去。
-	// 早前 fullOps 收而不用：ISF 在 allow_operation=true 时无视请求的操作列表、直接
-	// 回该资源的全部允许操作，遗漏不显症；bkn-safe 严格按请求列表求交，于是列表/详情
-	// 的 operations 塌成只剩 ops（如 view_detail），Studio 据此把编辑/删除入口藏了。
+	// The access filter and fullOps both need to be sent to preserve the operation candidates returned to Studio.
+	// bkn-safe intersects the requested operation list, so omitting fullOps hides edit and delete actions.
 	matchResouces, err := ps.pa.FilterResources(ctx, interfaces.PermissionResourcesFilter{
 		Accessor: interfaces.PermissionAccessor{
 			ID:   accountInfo.ID,
@@ -214,7 +216,7 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 		return nil, httpErr
 	}
 
-	// id转map
+	// Convert resource IDs to a lookup map.
 	idMap := map[string]interfaces.PermissionResourceOps{}
 	for _, resourceOps := range matchResouces {
 		idMap[resourceOps.ResourceID] = resourceOps
@@ -224,7 +226,7 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 	return idMap, nil
 }
 
-// 更新资源名称
+// UpdateResource updates a resource name through the authorization event channel.
 func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource interfaces.PermissionResource) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdatePermissionResource")
 	defer span.End()

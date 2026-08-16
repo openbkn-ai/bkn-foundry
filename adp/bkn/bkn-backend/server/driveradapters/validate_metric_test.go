@@ -80,7 +80,7 @@ func Test_ValidateMetricRequest(t *testing.T) {
 			r.UnitType = ""
 			r.Unit = ""
 			r.MetricType = ""
-			// 非 strict：formula 可省略；若提供 calculation_formula，aggregation.property 与 aggr 仍须齐全。
+			// Non-strict mode allows omitting formula; when calculation_formula is provided, aggregation.property and aggr are still required.
 			r.CalculationFormula = nil
 			err := ValidateMetricRequest(ctx, r, false)
 			So(err, ShouldBeNil)
@@ -145,4 +145,76 @@ func Test_validateMetricCond(t *testing.T) {
 		httpErr := err.(*rest.HTTPError)
 		So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_InvalidParameter_Condition)
 	})
+}
+
+func TestValidateMetricRequestsLocalizesInvalidParameterDetails(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "Duplicate metric name in the request body: duplicate."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "请求体中存在重复的指标名称：duplicate。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			first := validStrictCreateMetric()
+			first.Name = "duplicate"
+			second := validStrictCreateMetric()
+			second.Name = "duplicate"
+
+			err := ValidateMetricRequests(
+				rest.WithLanguage(context.Background(), testCase.language),
+				[]*interfaces.MetricDefinition{first, second},
+				true,
+			)
+			if err == nil {
+				t.Fatal("ValidateMetricRequests() error = nil, want duplicate name error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
+}
+
+func TestValidateMetricConditionDetailsRespectLanguage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "The == operation requires a single value."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "== 操作要求单个值。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := validateMetricCond(
+				rest.WithLanguage(context.Background(), testCase.language),
+				&cond.CondCfg{
+					Field:     "field",
+					Operation: cond.OperationEq,
+					ValueOptCfg: cond.ValueOptCfg{
+						Value: []any{"value"},
+					},
+				},
+			)
+			if err == nil {
+				t.Fatal("validateMetricCond() error = nil, want invalid condition value error")
+			}
+			httpErr, ok := err.(*rest.HTTPError)
+			if !ok {
+				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+			}
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
 }

@@ -50,7 +50,7 @@ func NewActionTypeAccess(appSetting *common.AppSetting) interfaces.ActionTypeAcc
 	return atAccess
 }
 
-// 根据ID获取行动类存在性
+// Get action type existence by ID.
 func (ata *actionTypeAccess) CheckActionTypeExistByID(ctx context.Context, knID string, branch string, atID string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckActionTypeExistByID")
 	defer span.End()
@@ -60,7 +60,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByID(ctx context.Context, knID 
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_name").
 		From(AT_TABLE_NAME).
@@ -73,7 +73,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByID(ctx context.Context, knID 
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
@@ -91,7 +91,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByID(ctx context.Context, knID 
 	return name, true, nil
 }
 
-// 根据名称获取行动类存在性
+// Get action type existence by name.
 func (ata *actionTypeAccess) CheckActionTypeExistByName(ctx context.Context, knID string, branch string, atName string) (string, bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CheckActionTypeExistByName")
 	defer span.End()
@@ -101,7 +101,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByName(ctx context.Context, knI
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id").
 		From(AT_TABLE_NAME).
@@ -114,7 +114,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByName(ctx context.Context, knI
 		return "", false, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var atID string
@@ -134,7 +134,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByName(ctx context.Context, knI
 	return atID, true, nil
 }
 
-// 创建行动类
+// Create an action type.
 func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, actionType *interfaces.ActionType) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateActionType")
 	defer span.End()
@@ -144,45 +144,45 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(actionType.Tags)
 
-	// 2.0 序列化 condition
+	// 2.0 Serialize condition.
 	conditionBytes, err := sonic.Marshal(actionType.Condition)
 	if err != nil {
 		logger.Errorf("Failed to marshal Condition, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
-	// 2.1 序列化 affect
+	// 2.1 Serialize affect.
 	affectBytes, err := sonic.Marshal(actionType.Affect)
 	if err != nil {
 		logger.Errorf("Failed to marshal Affect, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
-	// 2.2 序列化 action_source
+	// 2.2 Serialize action_source.
 	actionSourceBytes, err := sonic.Marshal(actionType.ActionSource)
 	if err != nil {
 		logger.Errorf("Failed to marshal ActionSource, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
-	// 2.3 序列化 parameters
+	// 2.3 Serialize parameters.
 	parameterBytes, err := sonic.Marshal(actionType.Parameters)
 	if err != nil {
 		logger.Errorf("Failed to marshal Parameters, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
-	// 2.4 序列化 schedule
+	// 2.4 Serialize schedule.
 	scheduleBytes, err := sonic.Marshal(actionType.Schedule)
 	if err != nil {
 		logger.Errorf("Failed to marshal Schedule, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
-	// 2.5 序列化 impact_contracts（为空则入库 NULL）
+	// 2.5 Serialize impact_contracts; store NULL when empty.
 	impactContractsBytes, err := marshalImpactContractsJSON(actionType)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal ImpactContracts, err", err)
@@ -247,7 +247,7 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
@@ -260,7 +260,7 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 	return nil
 }
 
-// 查询行动类列表。查主线的当前版本为true的行动类
+// Query current action types on the main branch.
 func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfaces.ActionTypesQueryParams) ([]*interfaces.ActionType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListActionTypes")
 	defer span.End()
@@ -299,7 +299,7 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 
 	builder := processQueryCondition(query, subBuilder)
 
-	//排序
+	// Sort.
 	if query.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", query.Sort, query.Direction))
 	}
@@ -316,7 +316,7 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 		return []*interfaces.ActionType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
@@ -371,34 +371,34 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 			return []*interfaces.ActionType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化 condition
+		// 2.0 Deserialize condition.
 		err = sonic.Unmarshal(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.1 反序列化 affect
+		// 2.1 Deserialize affect.
 		err = sonic.Unmarshal(affectBytes, &actionType.Affect)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Affect after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.2 反序列化  action_source
+		// 2.2 Deserialize action_source.
 		err = sonic.Unmarshal(actionSourceBytes, &actionType.ActionSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal ActionSource after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.3 反序列化  parameters
+		// 2.3 Deserialize parameters.
 		err = sonic.Unmarshal(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.4 反序列化 schedule
+		// 2.4 Deserialize schedule.
 		err = sonic.Unmarshal(scheduleBytes, &actionType.Schedule)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Schedule after getting action type, err", err)
@@ -433,7 +433,7 @@ func (ata *actionTypeAccess) GetActionTypesTotal(ctx context.Context, query inte
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
@@ -456,7 +456,7 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id",
 		"f_name",
@@ -492,7 +492,7 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 		return []*interfaces.ActionType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
@@ -549,34 +549,34 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 			return []*interfaces.ActionType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化 condition
+		// 2.0 Deserialize condition.
 		err = sonic.Unmarshal(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.1 反序列化 affect
+		// 2.1 Deserialize affect.
 		err = sonic.Unmarshal(affectBytes, &actionType.Affect)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Affect after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.2 反序列化  action_source
+		// 2.2 Deserialize action_source.
 		err = sonic.Unmarshal(actionSourceBytes, &actionType.ActionSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal ActionSource after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.3 反序列化  parameters
+		// 2.3 Deserialize parameters.
 		err = sonic.Unmarshal(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
 		}
-		// 2.4 反序列化 schedule
+		// 2.4 Deserialize schedule.
 		err = sonic.Unmarshal(scheduleBytes, &actionType.Schedule)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Schedule after getting action type, err", err)
@@ -603,44 +603,44 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	// tags 转成 string 的格式
+	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(actionType.Tags)
-	// 2.0 序列化 condition
+	// 2.0 Serialize condition.
 	conditionBytes, err := sonic.Marshal(actionType.Condition)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Condition, err", err)
 		return err
 	}
 
-	// 2.1 序列化 affect
+	// 2.1 Serialize affect.
 	affectBytes, err := sonic.Marshal(actionType.Affect)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Affect, err", err)
 		return err
 	}
 
-	// 2.2 序列化 action_source
+	// 2.2 Serialize action_source.
 	actionSourceBytes, err := sonic.Marshal(actionType.ActionSource)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal ActionSource, err", err)
 		return err
 	}
 
-	// 2.3 序列化 parameters
+	// 2.3 Serialize parameters.
 	parameterBytes, err := sonic.Marshal(actionType.Parameters)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Parameters, err", err)
 		return err
 	}
 
-	// 2.4 序列化 schedule
+	// 2.4 Serialize schedule.
 	scheduleBytes, err := sonic.Marshal(actionType.Schedule)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Schedule, err", err)
 		return err
 	}
 
-	// 2.5 序列化 impact_contracts（为空则入库 NULL）
+	// 2.5 Serialize impact_contracts; store NULL when empty.
 	impactContractsBytes, err := marshalImpactContractsJSON(actionType)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal ImpactContracts, err", err)
@@ -677,7 +677,7 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		return err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -686,7 +686,7 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 		return err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -694,7 +694,7 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 	}
 
 	if RowsAffected != 1 {
-		// 影响行数不等于1不报错，更新操作已经发生
+		// Do not return an error when affected rows are not one because the update has occurred.
 		otellog.LogWarn(ctx, fmt.Sprintf("Update action type affected unexpected row count: action_type_id=%s, rows=%d",
 			actionType.ATID, RowsAffected))
 	}
@@ -727,7 +727,7 @@ func (ata *actionTypeAccess) DeleteActionTypesByIDs(ctx context.Context, tx *sql
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -736,7 +736,7 @@ func (ata *actionTypeAccess) DeleteActionTypesByIDs(ctx context.Context, tx *sql
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -766,7 +766,7 @@ func (ata *actionTypeAccess) DeleteActionTypesByKnID(ctx context.Context, tx *sq
 		return 0, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
@@ -775,7 +775,7 @@ func (ata *actionTypeAccess) DeleteActionTypesByKnID(ctx context.Context, tx *sq
 		return 0, err
 	}
 
-	//sql语句影响的行数
+	// Number of rows affected by the SQL statement.
 	RowsAffected, err := ret.RowsAffected()
 	if err != nil {
 		common.LogSafeError(ctx, "Get RowsAffected error", err)
@@ -796,7 +796,7 @@ func (ata *actionTypeAccess) GetActionTypeIDsByKnID(ctx context.Context, knID st
 		attr.Key("db_type").String(libdb.GetDBType()),
 	)
 
-	//查询
+	// Query.
 	sqlStr, vals, err := sq.Select(
 		"f_id",
 	).From(AT_TABLE_NAME).
@@ -808,7 +808,7 @@ func (ata *actionTypeAccess) GetActionTypeIDsByKnID(ctx context.Context, knID st
 		return nil, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
@@ -837,10 +837,10 @@ func (ata *actionTypeAccess) GetActionTypeIDsByKnID(ctx context.Context, knID st
 	return atIDs, nil
 }
 
-// 拼接 sql 过滤条件
+// Build SQL filter conditions.
 func processQueryCondition(query interfaces.ActionTypesQueryParams, subBuilder sq.SelectBuilder) sq.SelectBuilder {
 	if query.NamePattern != "" {
-		// 模糊查询，名称或id进行模糊查询，匹配任一即可
+		// Fuzzy-match name or ID; either match is sufficient.
 		subBuilder = subBuilder.Where(sq.Expr("(instr(f_name, ?) > 0 OR instr(f_id, ?) > 0)", query.NamePattern, query.NamePattern))
 	}
 
@@ -855,7 +855,7 @@ func processQueryCondition(query interfaces.ActionTypesQueryParams, subBuilder s
 	if query.Branch != "" {
 		subBuilder = subBuilder.Where(sq.Eq{"f_branch": query.Branch})
 	} else {
-		// 查主线分支的业务知识网络
+		// Query business knowledge networks on the main branch.
 		subBuilder = subBuilder.Where(sq.Eq{"f_branch": interfaces.MAIN_BRANCH})
 	}
 
@@ -870,7 +870,7 @@ func processQueryCondition(query interfaces.ActionTypesQueryParams, subBuilder s
 	return subBuilder
 }
 
-// 查询行动类列表。查主线的当前版本为true的行动类
+// Query current action types on the main branch.
 func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID string, branch string) (map[string]*interfaces.ActionType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetAllActionTypesByKnID")
 	defer span.End()
@@ -915,7 +915,7 @@ func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID s
 		return map[string]*interfaces.ActionType{}, err
 	}
 
-	// 记录处理的 sql 字符串
+	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
@@ -970,34 +970,34 @@ func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID s
 			return map[string]*interfaces.ActionType{}, err
 		}
 
-		// tags string 转成数组的格式
+		// Convert a tag string to an array.
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
-		// 2.0 反序列化 condition
+		// 2.0 Deserialize condition.
 		err = sonic.Unmarshal(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
-		// 2.1 反序列化 affect
+		// 2.1 Deserialize affect.
 		err = sonic.Unmarshal(affectBytes, &actionType.Affect)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Affect after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
-		// 2.2 反序列化  action_source
+		// 2.2 Deserialize action_source.
 		err = sonic.Unmarshal(actionSourceBytes, &actionType.ActionSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal ActionSource after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
-		// 2.3 反序列化  parameters
+		// 2.3 Deserialize parameters.
 		err = sonic.Unmarshal(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
 		}
-		// 2.4 反序列化 schedule
+		// 2.4 Deserialize schedule.
 		err = sonic.Unmarshal(scheduleBytes, &actionType.Schedule)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Schedule after getting action type, err", err)

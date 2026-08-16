@@ -25,9 +25,9 @@ type RelationTypeService interface {
 
 	SearchRelationTypes(ctx context.Context, query *ConceptsQuery) (RelationTypes, error)
 
-	// 写关系类到索引中
+	// Write relation types to the index.
 	InsertDatasetData(ctx context.Context, relationTypes []*RelationType) error
 
-	// ValidateRelationTypes 仅校验依赖存在性，不写库
+	// ValidateRelationTypes validates dependency existence only and does not persist data.
 	ValidateRelationTypes(ctx context.Context, knID string, branch string, relationTypes []*RelationType, strictMode bool, batch *BatchIDIndex, mode string) error
 }

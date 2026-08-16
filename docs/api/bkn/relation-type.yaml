@@ -8,18 +8,18 @@ paths:
     get:
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: name_pattern
-          description: 根据络名称模糊查询，默认为空
+          description: Fuzzy-match by relation type name. Empty by default.
           schema:
             type: string
           in: query
         - name: sort
-          description: 排序类型，默认是update_time
+          description: Sort field. Defaults to update_time.
           schema:
             enum:
               - update_time
@@ -28,8 +28,8 @@ paths:
           in: query
         - name: direction
           description: |-
-            排序结果方向，可选asc、desc。
-            默认desc
+            Sort direction. Supported values are asc and desc.
+            Defaults to desc.
           schema:
             enum:
               - asc
@@ -37,44 +37,44 @@ paths:
             type: string
           in: query
         - name: offset
-          description: "开始响应的项目的偏移量\t\n范围需大于等于0，默认值0"
+          description: "Offset of the first returned item. Must be greater than or equal to 0. Defaults to 0."
           schema:
             format: int64
             type: integer
           in: query
         - name: limit
           description: |-
-            每页最多可返回的项目数；
-            分页可选1-1000，-1表示不分页；
-            默认值10
+            Maximum number of returned items per page.
+            Supported paginated values are 1 to 1000; -1 disables pagination.
+            Defaults to 10.
           schema:
             format: int64
             type: integer
           in: query
         - name: tag
-          description: 根据标签精准查询，默认为空.
+          description: Exact-match by tag. Empty by default.
           schema:
             type: string
           in: query
         - name: source_object_type_id
-          description: 起点对象类ID
+          description: Source object type ID
           schema:
             type: string
           in: query
         - name: target_object_type_id
-          description: 终点对象类ID
+          description: Target object type ID
           schema:
             type: string
           in: query
         - name: bound_object_type_id
-          description: 绑定的对象类ID，查询起点等于此对象类或者终点等于此对象类的关系类。支持传入多个值
+          description: Bound object type ID. Finds relation types whose source or target equals this object type. Multiple values are supported.
           schema:
             type: array
             items:
               type: string
           in: query
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -86,7 +86,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListRelationTypes"
           description: ok
-      summary: 获取关系类列表
+      summary: List relation types
     post:
       requestBody:
         content:
@@ -168,13 +168,13 @@ paths:
         required: true
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: x-http-method-override
-          description: 重载请求头
+          description: Override request headers
           schema:
             enum:
               - POST
@@ -183,22 +183,22 @@ paths:
           in: header
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
           in: query
         - name: import_mode
           description: |
-            导入模式。`normal` 遇到同名概念报错；`overwrite` 覆盖同名概念；
-            `ignore` 跳过同名概念。默认 `normal`。
+            Import mode. normal returns an error for a concept with the same name; overwrite replaces it;
+            ignore skips it. Defaults to normal.
           schema:
             type: string
             enum: [normal, overwrite, ignore]
             default: normal
           in: query
         - name: strict_mode
-          description: 是否校验依赖对象存在性，默认 true。为空时回退读取已废弃的 validate_dependency
+          description: Whether to validate dependency existence. Defaults to true. When unset, falls back to the deprecated validate_dependency.
           schema:
             type: boolean
             default: true
@@ -287,7 +287,7 @@ paths:
                         IfNameModify: false
                         module_type: relation_type
                     next_cursor: cursor-relation-types-2
-          description: "重载GET, 检索关系类"
+          description: Override GET to search relation types
         "201":
           content:
             application/json:
@@ -296,10 +296,10 @@ paths:
                 items:
                   $ref: "#/components/schemas/ID"
           description: ok
-      summary: 创建或检索关系类
+      summary: Create or search relation types
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: Business knowledge network ID
         schema:
           type: string
         in: path
@@ -314,24 +314,24 @@ paths:
         required: true
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: rt_id
-          description: 关系类ID
+          description: Relation type ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: Branch. Uses main when omitted.
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true。为 true 时校验关联对象类、数据视图等依赖是否存在；为 false 时不做该校验
+          description: Whether to strictly validate dependencies. When true, validates dependencies such as related object types and data views. When false, skips this validation.
           schema:
             type: boolean
             default: true
@@ -339,16 +339,16 @@ paths:
       responses:
         "204":
           description: ok
-      summary: 修改关系类
+      summary: Update a relation type
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: Business knowledge network ID
         schema:
           type: string
         in: path
         required: true
       - name: rt_id
-        description: 关系类ID
+        description: Relation type ID
         schema:
           type: string
         in: path
@@ -357,7 +357,7 @@ paths:
     get:
       parameters:
         - name: rt_ids
-          description: 关系类ID
+          description: Relation type ID
           schema:
             type: array
             items:
@@ -365,13 +365,13 @@ paths:
           in: path
           required: true
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -383,17 +383,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RelationTypeDetails"
           description: ok
-      summary: 获取关系类详情
+      summary: Get relation type details
     delete:
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: rt_ids
-          description: 关系类ID
+          description: Relation type ID
           schema:
             type: array
             items:
@@ -401,7 +401,7 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -409,16 +409,16 @@ paths:
       responses:
         "204":
           description: ok
-      summary: 删除关系类
+      summary: Delete relation types
     parameters:
       - name: kn_id
-        description: 业务知识网络ID
+        description: Business knowledge network ID
         schema:
           type: string
         in: path
         required: true
       - name: rt_ids
-        description: 关系类ID
+        description: Relation type ID
         schema:
           type: array
           items:
@@ -426,8 +426,8 @@ paths:
         in: path
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-type-paths:
-    summary: 从起点探索概念路径
-    description: 从起点探索概念路径
+    summary: Explore concept paths from a source
+    description: Explore concept paths from a source
     post:
       requestBody:
         content:
@@ -446,7 +446,7 @@ paths:
           in: path
           required: true
         - name: branch
-          description: 分支，默认 main
+          description: Branch. Defaults to main.
           schema:
             type: string
             default: main
@@ -865,41 +865,41 @@ paths:
                           direction: backward
                       length: 1
           description: ok
-      summary: 从起点探索概念路径
-      description: 从起点探索概念路径
+      summary: Explore concept paths from a source
+      description: Explore concept paths from a source
     parameters:
       - name: kn_id
         in: path
         required: true
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types/validation:
     post:
-      summary: 校验关系类
+      summary: Validate relation types
       description: |
-        仅校验关系类依赖存在性，不写库。校验起点/终点对象类、间接数据视图等依赖是否存在。
+        Validates relation type dependency existence only and does not write data. It verifies dependencies such as source and target object types and indirect data views.
 
-        **响应**：HTTP 200 时 `valid`/`detail` 同其它 validate 接口；参数与鉴权错误为非 2xx。
+        Response: HTTP 200 uses valid and detail in the same way as other validation APIs; parameter and authentication failures return non-2xx statuses.
 
-        **内部接口**：`POST /api/bkn-backend/in/v1/.../relation-types/validation`；Header 解析访问者，无 OAuth。
+        Internal API: POST /api/bkn-backend/in/v1/.../relation-types/validation. The caller is resolved from headers and OAuth is not required.
       parameters:
         - name: kn_id
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           schema:
             type: string
           in: path
           required: true
         - name: branch
-          description: 分支，不填则使用 main 分支
+          description: Branch. Uses main when omitted.
           schema:
             type: string
           in: query
         - name: strict_mode
-          description: 是否严格校验依赖，默认为 true
+          description: Whether to strictly validate dependencies. Defaults to true.
           schema:
             type: boolean
             default: true
           in: query
         - name: import_mode
-          description: 与创建关系类接口一致；用于关系类 ID 已存在等冲突的校验语义（名称维度与创建侧一致时由创建逻辑约束）。
+          description: Same as the create relation type API. Defines validation semantics for existing relation type ID conflicts; name conflicts follow create behavior.
           schema:
             type: string
             enum: [normal, ignore, overwrite]
@@ -914,12 +914,12 @@ paths:
               properties:
                 entries:
                   type: array
-                  description: 待校验的关系类列表，结构与创建接口一致
+                  description: Relation type list to validate. Its structure is the same as the create API.
                   items:
                     type: object
       responses:
         "200":
-          description: 已返回校验结果（通过与否均可能为 200）
+          description: Validation result returned. Both pass and fail can return 200.
           content:
             application/json:
               schema:
@@ -931,32 +931,32 @@ paths:
                     type: boolean
                   detail:
                     type: string
-                    description: 当 valid 为 false 时的说明（error.Error()）
+                    description: Explanation when valid is false (error.Error()).
         "400":
-          description: 请求参数错误等；业务校验未通过见 200 + valid:false
+          description: Invalid request parameters and similar errors. Business validation failures use 200 plus valid false.
 components:
   schemas:
     BasicInfo:
-      description: 资源的基本信息，包含id和名称
+      description: Basic resource information containing an ID and name
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 资源ID
+          description: Resource ID
           type: string
         name:
-          description: 资源名称
+          description: Resource name
           type: string
     ConceptCondition:
-      description: 概念查询数据条件。可用于过滤的字段有类名、属性名和描述
+      description: Concept query data condition. Filterable fields include type name, property name, and description.
       required:
         - operation
       type: object
       properties:
         field:
-          description: 字段名称
+          description: Field name
           enum:
             - type_id
             - type_name
@@ -966,11 +966,11 @@ components:
           type: string
         operation:
           description: |-
-            操作符。
+            Operators.
 
-            knn: 未对原文进行向量化的向量过滤，接收的值是数组，第一个值，过滤内容，第二个值为 int,是邻居搜索时返回的邻居个数。
+            knn: Vector filter without vectorizing the original text. The value is an array whose first item is the filter content and whose second item is the number of neighbors to return.
 
-            knn_vector: 对原文进行向量化后的向量过滤，接收的值是数组，第一个值，向量，第二个值为 int,是邻居搜索时返回的邻居个数。
+            knn_vector: Vector filter for already-vectorized text. The value is an array whose first item is the vector and whose second item is the number of neighbors to return.
           enum:
             - and
             - or
@@ -987,39 +987,39 @@ components:
             - knn_vector
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Child filter conditions
           type: array
           items:
             $ref: "#/components/schemas/ConceptCondition"
         value:
-          description: 字段值
+          description: Field value
         value_from:
-          description: 字段值来源，当前仅支持 "const"
+          description: Field value source. Only const is currently supported.
           enum:
             - const
           type: string
     ConceptGroup:
-      description: 概念分组
+      description: Concept groups
       required:
         - id
         - name
       type: object
       properties:
         id:
-          description: 概念分组ID
+          description: Concept groupsID
           type: string
         name:
-          description: 概念分组名称
+          description: Concept group name
           type: string
     DataSource:
-      description: 数据来源
+      description: Data source
       required:
         - type
         - id
       type: object
       properties:
         type:
-          description: 间接关系 backing 数据来源类型。当前仅支持 vega resource。
+          description: Backing data source type for indirect relations. Currently only Vega resources are supported.
           enum:
             - resource
           type: string
@@ -1027,22 +1027,21 @@ components:
           description: vega resource ID
           type: string
         name:
-          description: 数据视图名称。查看详情时返回。
+          description: Data view name. Returned when retrieving details.
           type: string
     FilteredCrossJoinMappingRule:
       description: |
-        关系类型为 `filtered_cross_join`（分侧过滤全连接，FCJ）时的匹配规则。
-        不绑定数据视图，无数组形式的键映射；`source_condition` 与 `target_condition` 分别约束起点侧、终点侧对象实例是否参与该关系
-        （结构与对象实例查询的 Condition 相同）。
-        两侧条件均可省略：可只填一侧、或两侧皆不传/`{}`（表示该侧或两侧无额外过滤，与引擎中「无条件即全量」语义一致）。
+        Matching rules for the filtered_cross_join relation type (FCJ).
+        It does not bind a data view and has no array-form key mapping. source_condition and target_condition determine whether source-side and target-side object instances participate in the relation.
+        Both conditions are optional: provide either one, or omit both or pass an empty object to apply no additional filtering.
       type: object
       properties:
         source_condition:
           $ref: "#/components/schemas/Condition"
-          description: 起点对象类实例需满足的条件；可省略或为空表示该侧无额外约束
+          description: Condition that source object type instances must satisfy. Omit or leave empty for no additional source-side constraint.
         target_condition:
           $ref: "#/components/schemas/Condition"
-          description: 终点对象类实例需满足的条件；可省略或为空表示该侧无额外约束
+          description: Condition that target object type instances must satisfy. Omit or leave empty for no additional target-side constraint.
     ID:
       description: id
       required:
@@ -1053,22 +1052,22 @@ components:
           description: id
           type: string
     ListRelationTypes:
-      description: 关系类列表
+      description: Relation type list
       required:
         - entries
         - total_count
       type: object
       properties:
         entries:
-          description: 条目列表
+          description: Entry list
           type: array
           items:
             $ref: "#/components/schemas/RelationType"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
     Mapping:
-      description: 关联规则
+      description: Mapping rule
       required:
         - target_property
         - source_property
@@ -1076,21 +1075,21 @@ components:
       properties:
         target_property:
           $ref: "#/components/schemas/SimpleProperty"
-          description: 起点属性
+          description: Source property
         source_property:
           $ref: "#/components/schemas/SimpleProperty"
-          description: 终点属性
+          description: Target property
     SimpleProperty:
-      description: 属性简单信息
+      description: Basic property information
       required:
         - name
       type: object
       properties:
         name:
-          description: 属性名称
+          description: Property name
           type: string
         display_name:
-          description: 属性显示名。当查看详情时会返回此字段
+          description: Property display name. Returned when retrieving details.
           type: string
     SimpleObjectType:
       description: ""
@@ -1102,22 +1101,22 @@ components:
       type: object
       properties:
         id:
-          description: 对象类id
+          description: Object type ID
           type: string
         name:
-          description: 对象类名称
+          description: Object type name
           type: string
         icon:
-          description: 对象类图标
+          description: Object type icon
           type: string
         color:
-          description: 对象类颜色
+          description: Object type color
           type: string
         branch:
-          description: 所属分支
+          description: Owning branch
           type: string
     Path:
-      description: 路径
+      description: Path
       required:
         - nodes
         - edges
@@ -1125,20 +1124,20 @@ components:
       type: object
       properties:
         nodes:
-          description: 路径中的节点列表(有序)
+          description: Ordered node list in the path
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeDetail"
         edges:
-          description: 路径中的边列表(有序)
+          description: Ordered edge list in the path
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         length:
-          description: 路径长度(边数量)
+          description: Path length (edge count)
           type: integer
     ObjectTypeDetail:
-      description: 节点（对象类）信息
+      description: Node (object type) information
       required:
         - id
         - name
@@ -1161,76 +1160,76 @@ components:
       type: object
       properties:
         id:
-          description: 对象类ID
+          description: Object type ID
           type: string
         name:
-          description: 对象类名称
+          description: Object type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络id
+          description: Business knowledge network ID
           type: string
         concept_groups:
-          description: 概念分组id
+          description: Concept groupsid
           type: array
           items:
             $ref: "#/components/schemas/ConceptGroup"
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源
+          description: Data source
         data_properties:
-          description: 数据属性
+          description: Data properties
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 逻辑属性
+          description: Logical properties
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 主键
+          description: Primary keys
           type: array
           items:
             type: string
         display_key:
-          description: 对象实例的显示属性
+          description: Display property for object instances
           type: string
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
         module_type:
-          description: 模块类型
+          description: Module type
           enum:
             - object_type
           type: string
     DataProperty:
-      description: 数据属性
+      description: Data properties
       required:
         - name
         - display_name
@@ -1243,71 +1242,71 @@ components:
       type: object
       properties:
         name:
-          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: Property name. It may contain only lowercase English letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         display_name:
-          description: 属性显示名
+          description: Property display name
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: Property data type. In addition to view field types, metric, objective, event, trace, log, and operator are supported.
           type: string
         comment:
-          description: 属性描述
+          description: Property description
           type: string
         mapped_field:
           $ref: "#/components/schemas/ViewField"
-          description: 属性映射到数据来源中的字段名
+          description: Field name mapped to the data source
         index:
-          description: 是否开启索引，默认是true
+          description: Whether to enable indexing. Defaults to true.
           type: boolean
         fulltext_config:
           $ref: "#/components/schemas/FulltextConfig"
-          description: 全文索引的配置
+          description: Full-text index configuration
         vector_config:
           $ref: "#/components/schemas/VectorConfig"
-          description: 向量索引的配置
+          description: Vector index configuration
     FulltextConfig:
-      description: 全文索引的配置
+      description: Full-text index configuration
       required:
         - analyzer
         - field_keyword
       type: object
       properties:
         analyzer:
-          description: 分词器
+          description: Analyzer
           enum:
             - standard
             - ik_max_word
           type: string
         field_keyword:
-          description: 是否保留原始字符串，保留原始字符串可用于精确匹配。默认是false
+          description: Whether to retain the original string for exact matching. Defaults to false.
           type: boolean
     ViewField:
-      description: 视图字段信息
+      description: View field information
       required:
         - name
       type: object
       properties:
         name:
-          description: 字段名称
+          description: Field name
           type: string
         display_name:
-          description: 字段显示名.查看时有此字段
+          description: Field display name. Returned when retrieving details.
           type: string
         type:
-          description: 视图字段类型，查看时有此字段
+          description: View field type. Returned when retrieving details.
           type: string
     VectorConfig:
-      description: 向量索引的配置
+      description: Vector index configuration
       required:
         - dimension
       type: object
       properties:
         dimension:
-          description: 向量维度
+          description: Vector dimension
           type: integer
     LogicProperty:
-      description: 逻辑属性
+      description: Logical properties
       required:
         - name
         - data_source
@@ -1315,65 +1314,65 @@ components:
       type: object
       properties:
         name:
-          description: 属性名称。只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: Property name. It may contain only lowercase English letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
         display_name:
-          description: 属性显示名
+          description: Property display name
           type: string
         type:
-          description: 属性数据类型。除了视图的字段类型之外，还有 metric、objective、event、trace、log、operator
+          description: Property data type. In addition to view field types, metric, objective, event, trace, log, and operator are supported.
           type: string
         comment:
-          description: 属性描述
+          description: Property description
           type: string
         index:
-          description: 是否开启索引，默认是true
+          description: Whether to enable indexing. Defaults to true.
           type: boolean
         data_source:
           $ref: "#/components/schemas/LogicSource"
-          description: 逻辑来源
+          description: Logical source
         parameters:
-          description: 逻辑所需的参数
+          description: Parameters required by the logic
           type: array
           items:
             $ref: "#/components/schemas/Parameter"
     LogicSource:
-      description: 数据来源
+      description: Data source
       required:
         - type
         - id
       type: object
       properties:
         type:
-          description: 数据来源类型
+          description: Data source type
           enum:
             - metric
             - operator
           type: string
         id:
-          description: 数据来源ID
+          description: Data sourceID
           type: string
         name:
-          description: 名称。查看详情时返回。
+          description: Name. Returned when retrieving details.
           type: string
     Parameter:
-      description: 逻辑参数
+      description: Logical parameters
       required:
         - name
         - value_from
       type: object
       properties:
         name:
-          description: 参数名称
+          description: Parameter name
           type: string
         value_from:
-          description: 值来源
+          description: Value source
           enum:
             - property
             - input
           type: string
         value:
-          description: 参数值。value_from=property时，填入的是对象类的数据属性名称；value_from=input时，不设置此字段
+          description: Parameter value. When value_from is property, provide the object type data property name; when it is input, omit this field.
           type: string
     override:
       oneOf:
@@ -1385,37 +1384,37 @@ components:
           x-http-method-override:POST: "#/components/schemas/ReqRelationTypes"
           x-http-method-override:GET: "#/components/schemas/override--get"
         propertyName: x-http-method-override
-      description: post 重载批量创建、关系类检索接口
+      description: POST overload for bulk creation and relation type search
       type: object
     override--get:
       oneOf:
         - $ref: "#/components/schemas/FirstQueryWithCursor"
         - $ref: "#/components/schemas/PageTurnQueryWithCursor"
-      description: 关系类检索请求体
+      description: Relation type search request body
       type: object
     Sort:
-      description: 排序字段。默认按 _score 倒序排序
+      description: Sort field. Defaults to _score in descending order.
       required:
         - field
         - direction
       type: object
       properties:
         field:
-          description: 排序字段
+          description: Sort field
           type: string
         direction:
-          description: 排序方向
+          description: Sort direction
           enum:
             - desc
             - asc
           type: string
     DirectMappingRules:
-      description: 直接关联
+      description: Direct relation
       type: array
       items:
         $ref: "#/components/schemas/Mapping"
     ReqRelationType:
-      description: 关系类创建信息
+      description: Relation type creation information
       required:
         - name
         - branch
@@ -1423,36 +1422,36 @@ components:
       type: object
       properties:
         id:
-          description: ID.新建后不可修改，只能包含小写英文字母、数字、下划线（_）、连字符（-），且不能以下划线和连字符开头
+          description: ID. It cannot be changed after creation and may contain only lowercase English letters, digits, underscores, and hyphens. It cannot start with an underscore or hyphen.
           type: string
         name:
-          description: 名称
+          description: Name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: Source object type ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: Target object type ID
           type: string
         type:
-          description: 关系类型
+          description: Relation type
           enum:
             - direct
             - filtered_cross_join
@@ -1461,9 +1460,9 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 映射规则。`direct` 时为 Mapping 数组；`filtered_cross_join`（FCJ）时为 FilteredCrossJoinMappingRule（分侧条件，无键映射）。
+          description: Mapping rule. For direct, this is a Mapping array; for filtered_cross_join (FCJ), this is a FilteredCrossJoinMappingRule with per-side conditions and no key mapping.
     UpdateRelationType:
-      description: 关系类更新信息
+      description: Relation type update information
       required:
         - name
         - branch
@@ -1473,33 +1472,33 @@ components:
       type: object
       properties:
         name:
-          description: 名称
+          description: Name
           type: string
         tags:
-          description: 标签。用于业务标识
+          description: Tags used for business identification
           type: array
           items:
             type: string
         comment:
-          description: 备注
+          description: Comment
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: Source object type ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: Target object type ID
           type: string
         type:
-          description: 关系类型
+          description: Relation type
           enum:
             - direct
             - filtered_cross_join
@@ -1508,9 +1507,9 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
+          description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
     RelationTypeDetail:
-      description: 关系类
+      description: Relation type
       required:
         - type
         - comment
@@ -1531,45 +1530,45 @@ components:
       type: object
       properties:
         id:
-          description: 关系类ID
+          description: Relation type ID
           type: string
         name:
-          description: 关系类名称
+          description: Relation type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: Source object type ID
           type: string
         source_object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 起点象类名称，当查看详情时，此字段才会返回。
+          description: Source object type name. Returned when retrieving details.
         target_object_type_id:
-          description: 终点对象类ID
+          description: Target object type ID
           type: string
         target_object_type:
           $ref: "#/components/schemas/SimpleObjectType"
-          description: 终点对象类名称，当查看详情时，此字段才会返回
+          description: Target object type name. Returned when retrieving details.
         type:
-          description: 关系类型
+          description: Relation type
           enum:
             - direct
             - filtered_cross_join
@@ -1578,24 +1577,24 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
+          description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
         module_type:
-          description: 概念所属模块类型
+          description: Module type of the concept
           type: string
     RelationType:
-      description: 关系类
+      description: Relation type
       required:
         - type
         - comment
@@ -1616,39 +1615,39 @@ components:
       type: object
       properties:
         id:
-          description: 关系类ID
+          description: Relation type ID
           type: string
         name:
-          description: 关系类名称
+          description: Relation type name
           type: string
         tags:
-          description: 标签。 （可以为空）
+          description: Tags. May be empty.
           type: array
           items:
             type: string
         comment:
-          description: 备注（可以为空）
+          description: Comment. May be empty.
           type: string
         icon:
-          description: 图标
+          description: Icon
           type: string
         color:
-          description: 颜色
+          description: Color
           type: string
         branch:
-          description: 分支ID
+          description: Branch ID
           type: string
         kn_id:
-          description: 业务知识网络ID
+          description: Business knowledge network ID
           type: string
         source_object_type_id:
-          description: 起点象类ID
+          description: Source object type ID
           type: string
         target_object_type_id:
-          description: 终点对象类ID
+          description: Target object type ID
           type: string
         type:
-          description: 关系类型
+          description: Relation type
           enum:
             - direct
             - filtered_cross_join
@@ -1657,21 +1656,21 @@ components:
           oneOf:
             - $ref: "#/components/schemas/DirectMappingRules"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
-          description: 关联的匹配规则。`direct` 时为 Mapping 数组；`filtered_cross_join` 时为 FilteredCrossJoinMappingRule。
+          description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
           format: int64
-          description: 创建时间
+          description: Creation time
           type: integer
         updater:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         update_time:
           format: int64
-          description: 最近一次更新时间
+          description: Most recent update time
           type: integer
         source_object_type:
-          description: 起点对象类的概要信息
+          description: Summary information for the source object type
           type: object
           properties:
             id:
@@ -1685,7 +1684,7 @@ components:
             color:
               type: string
         target_object_type:
-          description: 终点对象类的概要信息
+          description: Summary information for the target object type
           type: object
           properties:
             id:
@@ -1699,48 +1698,48 @@ components:
             color:
               type: string
         module_type:
-          description: 概念所属模块类型
+          description: Module type of the concept
           type: string
     RelationTypeSearchResponse:
-      description: 关系类检索返回结果
+      description: Relation type search result
       required:
         - type
         - entries
       type: object
       properties:
         entries:
-          description: 对象实例数据
+          description: Object instance data
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
         total_count:
-          description: 总条数
+          description: Total count
           type: integer
         next_cursor:
-          description: 不透明续页游标；下一页将其作为 cursor 传回。
+          description: Opaque continuation cursor. Return it as cursor on the next page.
           type: string
     RelationTypePath:
-      description: 概念路径
+      description: Concept path
       required:
         - object_types
         - length
       type: object
       properties:
         object_types:
-          description: 概念路径中各节点的对象类数组
+          description: Object type array for every node in the concept path
           type: array
           items:
             $ref: "#/components/schemas/ObjectTypeWithKeyField"
         relation_types:
-          description: 概念路径
+          description: Concept path
           type: array
           items:
             $ref: "#/components/schemas/TypeEdge"
         length:
-          description: 路径长度
+          description: Path length
           type: integer
     ObjectTypeWithKeyField:
-      description: 对象类的关键信息
+      description: Key object type information
       required:
         - id
         - name
@@ -1751,34 +1750,34 @@ components:
       type: object
       properties:
         id:
-          description: 对象类id
+          description: Object type ID
           type: string
         name:
-          description: 对象类名称
+          description: Object type name
           type: string
         data_source:
           $ref: "#/components/schemas/DataSource"
-          description: 数据来源信息
+          description: Data source information
         data_properties:
-          description: 数据属性
+          description: Data properties
           type: array
           items:
             $ref: "#/components/schemas/DataProperty"
         logic_properties:
-          description: 逻辑属性
+          description: Logical properties
           type: array
           items:
             $ref: "#/components/schemas/LogicProperty"
         primary_keys:
-          description: 主键信息
+          description: Primary key information
           type: array
           items:
             type: string
         display_key:
-          description: 对象类的显示属性名
+          description: Display property name of the object type
           type: string
     RelationTypeWithKeyField:
-      description: 关系类关键信息
+      description: Key relation type information
       required:
         - id
         - name
@@ -1789,19 +1788,19 @@ components:
       type: object
       properties:
         id:
-          description: 关系类id
+          description: Relation typeid
           type: string
         name:
-          description: 关系类名称
+          description: Relation type name
           type: string
         source_object_type_id:
-          description: 起点对象类id
+          description: Source object type ID
           type: string
         target_object_type_id:
-          description: 终点对象类id
+          description: Target object type ID
           type: string
         type:
-          description: 关联类型。`direct` 直接键映射；`filtered_cross_join` 分侧过滤全连接（FCJ），无数组形式键映射。
+          description: Relation type. direct uses direct key mapping; filtered_cross_join uses per-side filtered cross join (FCJ) without array-form key mapping.
           enum:
             - direct
             - filtered_cross_join
@@ -1811,7 +1810,7 @@ components:
             - $ref: "#/components/schemas/DirectMappingRules"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
     TypeEdge:
-      description: 路径的边
+      description: Path edge
       required:
         - relation_type_id
         - relation_type
@@ -1821,48 +1820,48 @@ components:
       type: object
       properties:
         relation_type_id:
-          description: 关系类id
+          description: Relation typeid
           type: string
         relation_type:
           $ref: "#/components/schemas/RelationTypeWithKeyField"
-          description: 关系类信息
+          description: Relation type information
         source_object_type_id:
-          description: 边的起点对象类id
+          description: Edge source object type ID
           type: string
         target_object_type_id:
-          description: 边的终点对象类id
+          description: Edge target object type ID
           type: string
         direction:
-          description: 当前边相对于关系类的方向。正向(forward)、反向(backward)、双向(bidirectional)
+          description: "Direction of the current edge relative to the relation type: forward, backward, or bidirectional."
           enum:
             - forward
             - reverse
             - bidirectional
           type: string
     RelationTypeDetails:
-      description: 关系类详情
+      description: Relation type details
       required:
         - entries
       type: object
       properties:
         entries:
-          description: 关系类详情
+          description: Relation type details
           type: array
           items:
             $ref: "#/components/schemas/RelationTypeDetail"
     ReqRelationTypes:
-      description: 批量创建请求体
+      description: Bulk creation request body
       required:
         - entries
       type: object
       properties:
         entries:
-          description: 关系类详情
+          description: Relation type details
           type: array
           items:
             $ref: "#/components/schemas/ReqRelationType"
     RelationTypePaths:
-      description: 概念路径
+      description: Concept path
       required:
         - entries
       type: object
@@ -1873,33 +1872,33 @@ components:
           items:
             $ref: "#/components/schemas/RelationTypePath"
     FirstQueryWithCursor:
-      description: 关系类检索第一次请求
+      description: First relation type search request
       required:
         - condition
         - limit
       type: object
       properties:
         concept_groups:
-          description: 概念分组id数组
+          description: Concept group ID array
           type: array
           items:
             type: string
         condition:
           $ref: "#/components/schemas/Condition"
-          description: 关系类检索条件
+          description: Relation type search condition
         sort:
-          description: 排序字段，默认使用 _score 排序，排序方向为 desc
+          description: Sort field. Defaults to _score with descending direction.
           type: array
           items:
             $ref: "#/components/schemas/Sort"
         limit:
-          description: 返回的数量，默认值 10。范围 1-10000
+          description: Number of returned entries. Defaults to 10. Range is 1 to 10000.
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: Whether a total count is needed. Defaults to false.
           type: boolean
     PageTurnQueryWithCursor:
-      description: 分页查询的后续分页查询请求
+      description: Subsequent request for a paginated query
       required:
         - limit
         - cursor
@@ -1907,29 +1906,29 @@ components:
       type: object
       properties:
         concept_groups:
-          description: 概念分组id数组
+          description: Concept group ID array
           type: array
           items:
             type: string
         condition:
           $ref: "#/components/schemas/Condition"
-          description: 过滤条件
+          description: Filter condition
         sort:
-          description: 排序字段，默认使用 _score 排序，排序方向为 desc
+          description: Sort field. Defaults to _score with descending direction.
           type: array
           items:
             $ref: "#/components/schemas/Sort"
         limit:
-          description: 返回的数量，默认值 10。范围 1-10000
+          description: Number of returned entries. Defaults to 10. Range is 1 to 10000.
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: Whether a total count is needed. Defaults to false.
           type: boolean
         cursor:
-          description: 上次响应返回的 next_cursor。
+          description: next_cursor returned by the previous response.
           type: string
     RelationPathReqeustBody:
-      description: 路径查询的请求体
+      description: Path query request body
       required:
         - source_object_type_id
         - path_length
@@ -1937,42 +1936,42 @@ components:
       type: object
       properties:
         concept_groups:
-          description: 概念分组id数组
+          description: Concept group ID array
           type: array
           items:
             type: string
         source_object_type_id:
-          description: 起点对象类ID
+          description: Source object type ID
           type: string
         path_length:
-          description: "路径长度,不超过3."
+          description: "Path length. Must not exceed 3."
           type: integer
         direction:
-          description: 方向：正向(forward)、反向(backward)、双向(bidirectional)
+          description: "Direction: forward, backward, or bidirectional."
           enum:
             - forward
             - reverse
             - bidirectional
           type: string
     condition_or:
-      description: or 的过滤条件
+      description: OR filter condition
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: Filter operator
           enum:
             - or
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Child filter conditions
           type: array
           items:
             $ref: "#/components/schemas/Condition"
     condition_eq:
-      description: 等于过滤条件
+      description: Equality filter condition
       required:
         - field
         - operation
@@ -1980,21 +1979,21 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，等于支持的字段类型：数值、字符串
+          description: Filter field. Equality supports numeric and string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - ==
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     condition_not_eq:
-      description: 不等于的过滤条件
+      description: Inequality filter condition
       required:
         - field
         - operation
@@ -2002,21 +2001,21 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不等于支持的字段类型：数值、字符串
+          description: Filter field. Inequality supports numeric and string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - "!="
           type: string
         value:
-          description: 过滤值
+          description: Filter value
     condition_in:
-      description: 包含过滤条件
+      description: Contains filter condition
       required:
         - field
         - operation
@@ -2024,23 +2023,23 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，包含支持所有类型
+          description: Filter field. Contains supports all field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - in
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     condition_like:
-      description: like过滤
+      description: Like filter
       required:
         - field
         - operation
@@ -2048,22 +2047,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，相似支持的字段类型：字符串
+          description: Filter field. Like supports string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - like
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_not_like:
-      description: not_like过滤
+      description: Not-like filter
       required:
         - field
         - operation
@@ -2071,22 +2070,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不相似支持的字段类型：字符串
+          description: Filter field. Not-like supports string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - not_like
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_regex:
-      description: regex过滤
+      description: Regular-expression filter
       required:
         - field
         - operation
@@ -2094,22 +2093,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，正则支持的字段类型：字符串
+          description: Filter field. Regular expressions support string field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - regex
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_multi_match:
-      description: 多字段全文匹配
+      description: Multi-field full-text match
       required:
         - operation
         - value
@@ -2117,22 +2116,21 @@ components:
       properties:
         fields:
           description:
-            "过滤字段数组，多字段全文匹配支持的字段类型：字符串。为空时，用opensearch中 index.default_field\
-            \ 配置的字段进行查询。当需要对所有字段进行匹配时，此参数传 [\"*\"]。支持的字段有： name, comment, detail,\
+            "Filter field array. Multi-field full-text matching supports string field types. When empty, queries the field configured by index.default_field in OpenSearch. To match all fields, pass [\"*\"]. Supported fields are name, comment, detail,\
             \ *"
           type: array
           items:
             type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - multi_match
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
         match_type:
-          description: 全文匹配类型，默认是 best_fields
+          description: Full-text match type. Defaults to best_fields.
           enum:
             - best_fields
             - most_fields
@@ -2142,7 +2140,7 @@ components:
             - bool_prefix
           type: string
     condition_not_in:
-      description: not_in过滤条件
+      description: Not-in filter condition
       required:
         - field
         - operation
@@ -2150,23 +2148,23 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，不包含支持所有类型
+          description: Filter field. Not-in supports all field types.
           enum:
             - id
             - name
             - comment
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - not_in
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: array
           items: {}
     condition_match_phrase:
-      description: "match_phrase 过滤，支持单个字段和*, * 表示全部字段"
+      description: "Match-phrase filter. Supports a single field or * for all fields."
       required:
         - field
         - operation
@@ -2174,22 +2172,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，短语匹配支持的字段类型：字符串
+          description: Filter field. Phrase matching supports string field types.
           enum:
             - name
             - comment
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - match_phrase
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_match:
-      description: "match 过滤，支持单个字段和*, * 表示全部字段"
+      description: "Match filter. Supports a single field or * for all fields."
       required:
         - field
         - operation
@@ -2197,22 +2195,22 @@ components:
       type: object
       properties:
         field:
-          description: 过滤字段，全文匹配支持的字段类型：字符串
+          description: Filter field. Full-text matching supports string field types.
           enum:
             - name
             - comment
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - match
           type: string
         value:
-          description: 过滤值
+          description: Filter value
           type: string
     condition_knn:
-      description: 'knn 过滤，支持单个字段和*, * 表示"_vector"'
+      description: 'KNN filter. Supports a single field or * for _vector.'
       required:
         - field
         - operation
@@ -2220,22 +2218,21 @@ components:
       type: object
       properties:
         field:
-          description: "过滤字段，,概念索引是内部生成，不对外暴露，所以knn过滤时，field 传 * 即可"
+          description: "Filter field. Concept indexes are generated internally and not exposed; use * for field in KNN filters."
           enum:
             - "*"
           type: string
         operation:
-          description: 操作符
+          description: Operator
           enum:
             - knn
           type: string
         value:
-          description: 过滤值。当limit_key为k时，limit_value为整型；当limit_key为max_distance和min_score时，limit_value为浮点型
+          description: Filter value. When limit_key is k, limit_value is an integer; when it is max_distance or min_score, limit_value is a float.
           type: number
         limit_key:
           description:
-            "执行径向搜索时使用的过滤和评分行为, k:返回最相似的limit_value个结果；max_distance:返回距\
-            离小于等于limit_value的结果；min_score：返回相似度分数大于等于limit_value的结果。默认值为k"
+            "Filter and scoring behavior for radial search. k returns the limit_value most similar results; max_distance returns results whose distance is at most limit_value; min_score returns results whose similarity score is at least limit_value. Defaults to k."
           enum:
             - k
             - max_distance
@@ -2243,28 +2240,28 @@ components:
           type: string
           default: k
         limit_value:
-          description: "执行径向搜索使用的值。默认值为100"
+          description: "Value used for radial search. Defaults to 100."
           type: number
           default: 100
         sub_conditions:
-          description: knn下的子查询
+          description: Child query under KNN
           type: array
           items:
             $ref: "#/components/schemas/Condition"
     condition_and:
-      description: and的过滤条件
+      description: AND filter condition
       required:
         - operation
         - sub_conditions
       type: object
       properties:
         operation:
-          description: 过滤操作符
+          description: Filter operator
           enum:
             - and
           type: string
         sub_conditions:
-          description: 子过滤条件
+          description: Child filter conditions
           type: array
           items:
             $ref: "#/components/schemas/Condition"

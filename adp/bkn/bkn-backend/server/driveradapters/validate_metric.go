@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/dlclark/regexp2"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "bkn-backend/common/condition"
@@ -33,7 +34,15 @@ var validMetricTimeRangePolicies = map[string]struct{}{
 	interfaces.MetricTimeDefaultRangePolicyNone:        {},
 }
 
-// ValidateMetricRequests 校验批量创建指标请求体：id/名称/tag、单位、统计主体、公式、时间维度、分析维度等（不写库、不查依赖资源）。
+func metricInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
+	return i18n.Translate(
+		rest.GetLanguageByCtx(ctx),
+		"BknBackend.Metric.InvalidParameter.Detail."+name,
+		templateData,
+	)
+}
+
+// ValidateMetricRequests validates batch metric creation requests without writing data or resolving dependencies.
 func ValidateMetricRequests(ctx context.Context, entries []*interfaces.MetricDefinition, strictMode bool) error {
 	if len(entries) == 0 {
 		return nil
@@ -44,11 +53,11 @@ func ValidateMetricRequests(ctx context.Context, entries []*interfaces.MetricDef
 		name := strings.TrimSpace(e.Name)
 		if name == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("metric name is required")
+				WithErrorDetails(metricInvalidDetail(ctx, "NameRequired", nil))
 		}
 		if _, dup := seenName[name]; dup {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("duplicate metric name in request body: %s", name))
+				WithErrorDetails(metricInvalidDetail(ctx, "DuplicatedName", map[string]any{"name": name}))
 		}
 		seenName[name] = struct{}{}
 
@@ -56,7 +65,7 @@ func ValidateMetricRequests(ctx context.Context, entries []*interfaces.MetricDef
 		if id != "" {
 			if _, dup := seenID[id]; dup {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-					WithErrorDetails(fmt.Sprintf("duplicate metric id in request body: %s", id))
+					WithErrorDetails(metricInvalidDetail(ctx, "DuplicatedID", map[string]any{"id": id}))
 			}
 			seenID[id] = struct{}{}
 		}
@@ -68,7 +77,7 @@ func ValidateMetricRequests(ctx context.Context, entries []*interfaces.MetricDef
 	return nil
 }
 
-// ValidateMetricRequest 校验单条创建指标请求体（与 ValidateObjectType 对单条对象类的作用类似）。
+// ValidateMetricRequest validates a single metric creation request.
 func ValidateMetricRequest(ctx context.Context, metric *interfaces.MetricDefinition, strictMode bool) error {
 	if err := validateID(ctx, strings.TrimSpace(metric.ID)); err != nil {
 		return err
@@ -104,7 +113,7 @@ func validateMetricCalculationFormula(ctx context.Context, f *interfaces.MetricC
 	if f == nil {
 		if strictMode {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("calculation_formula is required in strict mode")
+				WithErrorDetails(metricInvalidDetail(ctx, "CalculationFormulaRequired", nil))
 		}
 		return nil
 	}
@@ -120,7 +129,7 @@ func validateMetricCalculationFormula(ctx context.Context, f *interfaces.MetricC
 		p := strings.TrimSpace(f.GroupBy[i].Property)
 		if p == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("calculation_formula.group_by[%d].property is required", i))
+				WithErrorDetails(metricInvalidDetail(ctx, "GroupByPropertyRequired", map[string]any{"index": i}))
 		}
 		if err := ValidatePropertyName(ctx, p); err != nil {
 			return err
@@ -130,7 +139,7 @@ func validateMetricCalculationFormula(ctx context.Context, f *interfaces.MetricC
 		p := strings.TrimSpace(f.OrderBy[i].Property)
 		if p == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("calculation_formula.order_by[%d].property is required", i))
+				WithErrorDetails(metricInvalidDetail(ctx, "OrderByPropertyRequired", map[string]any{"index": i}))
 		}
 		if err := ValidatePropertyName(ctx, p); err != nil {
 			return err
@@ -138,7 +147,7 @@ func validateMetricCalculationFormula(ctx context.Context, f *interfaces.MetricC
 		d := strings.TrimSpace(f.OrderBy[i].Direction)
 		if d != "" && d != interfaces.MetricOrderDirectionAsc && d != interfaces.MetricOrderDirectionDesc {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("calculation_formula.order_by direction must be asc or desc")
+				WithErrorDetails(metricInvalidDetail(ctx, "OrderByDirectionInvalid", nil))
 		}
 	}
 	if f.Having != nil {
@@ -153,21 +162,21 @@ func validateMetricType(ctx context.Context, metricType string, strictMode bool)
 	if strictMode {
 		if metricType == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("metric_type is required in strict mode")
+				WithErrorDetails(metricInvalidDetail(ctx, "MetricTypeRequired", nil))
 		}
 		if metricType != interfaces.MetricTypeAtomic {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidMetricType)
 		}
 		return nil
 	}
-	// strictMode 为 false 时，metricType 为空可跳过，便于先导入后补类型。
+	// In non-strict mode, an empty metric type is allowed for incremental imports.
 	if metricType == "" {
 		return nil
 	}
-	// strict mode 为false，非空时，需要是一个有效值
+	// In non-strict mode, a provided value must still be valid.
 	if _, ok := validMetricTypesEnum[metricType]; !ok {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("metric_type must be one of atomic, derived, composite")
+			WithErrorDetails(metricInvalidDetail(ctx, "MetricTypeInvalid", nil))
 	}
 	return nil
 }
@@ -176,34 +185,34 @@ func validateMetricUnits(ctx context.Context, unitType string, unit string, stri
 	if strictMode {
 		if unitType == "" || unit == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("unit_type and unit are required in strict mode")
+				WithErrorDetails(metricInvalidDetail(ctx, "UnitsRequired", nil))
 		}
 	}
 	if unitType != "" {
 		if _, ok := interfaces.ValidMetricUnitTypes[unitType]; !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("invalid unit_type %q, expected one of %v", unitType, interfaces.ValidMetricUnitTypesArr))
+				WithErrorDetails(metricInvalidDetail(ctx, "UnitTypeInvalid", map[string]any{"unitType": unitType, "allowed": interfaces.ValidMetricUnitTypesArr}))
 		}
 	}
 	if unit != "" {
 		if _, ok := interfaces.ValidMetricUnits[unit]; !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("invalid unit %q, expected one of %v", unit, interfaces.ValidMetricUnitsArr))
+				WithErrorDetails(metricInvalidDetail(ctx, "UnitInvalid", map[string]any{"unit": unit, "allowed": interfaces.ValidMetricUnitsArr}))
 		}
 	}
 	return nil
 }
 
-// 统计主体：scope_type + scope_ref；非 strict 时允许皆空（导入占位）；非空时须一致且 scope_ref 符合 ID 规则。
+// Validate scope_type and scope_ref. Non-strict imports may omit both fields.
 func validateMetricScopeBody(ctx context.Context, scopeType, scopeRef string, strictMode bool) error {
 	if strictMode {
 		if scopeType == "" || scopeRef == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("scope_type and scope_ref are required in strict mode")
+				WithErrorDetails(metricInvalidDetail(ctx, "ScopeRequired", nil))
 		}
 		if scopeType != interfaces.ScopeTypeObjectType {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("only scope_type object_type is supported for metrics")
+				WithErrorDetails(metricInvalidDetail(ctx, "ScopeTypeUnsupported", nil))
 		}
 		return nil
 	}
@@ -212,11 +221,11 @@ func validateMetricScopeBody(ctx context.Context, scopeType, scopeRef string, st
 	}
 	if scopeType != interfaces.ScopeTypeObjectType {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("only scope_type object_type is supported for metrics")
+			WithErrorDetails(metricInvalidDetail(ctx, "ScopeTypeUnsupported", nil))
 	}
 	if scopeRef == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("scope_ref is required when scope is provided")
+			WithErrorDetails(metricInvalidDetail(ctx, "ScopeRefRequired", nil))
 	}
 	return nil
 }
@@ -229,21 +238,21 @@ func timeDimensionPresent(td *interfaces.MetricTimeDimension) bool {
 }
 
 func validateMetricTimeDimensionBody(ctx context.Context, td *interfaces.MetricTimeDimension, _ bool) error {
-	// time dimension 为空或不完整时，可跳过，不是必填
+	// A missing or incomplete time dimension is optional.
 	if td == nil || !timeDimensionPresent(td) {
 		return nil
 	}
-	// time dimension 不为空时，需有效
+	// A provided time dimension must be valid.
 	prop := strings.TrimSpace(td.Property)
 	if prop == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("time_dimension.property is required when time_dimension is provided")
+			WithErrorDetails(metricInvalidDetail(ctx, "TimeDimensionPropertyRequired", nil))
 	}
 	pol := strings.TrimSpace(td.DefaultRangePolicy)
 	if pol != "" {
 		if _, ok := validMetricTimeRangePolicies[pol]; !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("invalid time_dimension.default_range_policy")
+				WithErrorDetails(metricInvalidDetail(ctx, "TimeDimensionPolicyInvalid", nil))
 		}
 	}
 	return nil
@@ -258,7 +267,7 @@ func validateMetricAnalysisDimensionsBody(ctx context.Context, ads []interfaces.
 		n := strings.TrimSpace(ads[i].Name)
 		if n == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("analysis_dimensions[%d].name is required", i))
+				WithErrorDetails(metricInvalidDetail(ctx, "AnalysisDimensionNameRequired", map[string]any{"index": i}))
 		}
 		if ads[i].DisplayName != "" {
 			if err := validateObjectName(ctx, ads[i].DisplayName, interfaces.MODULE_TYPE_METRIC); err != nil {
@@ -273,46 +282,46 @@ func validateMetricAggregation(ctx context.Context, a *interfaces.MetricAggregat
 	if a == nil {
 		if strictMode {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-				WithErrorDetails("calculation_formula.aggregation is required in strict mode")
+				WithErrorDetails(metricInvalidDetail(ctx, "AggregationRequired", nil))
 		}
 		return nil
 	}
 	if strings.TrimSpace(a.Property) == "" || strings.TrimSpace(a.Aggr) == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("calculation_formula.aggregation.property and calculation_formula.aggregation.aggr are required")
+			WithErrorDetails(metricInvalidDetail(ctx, "AggregationFieldsRequired", nil))
 	}
 	ag := strings.TrimSpace(a.Aggr)
 	if _, ok := interfaces.ValidMetricAggrs[ag]; !ok {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("invalid calculation_formula.aggregation.aggr %s ", ag))
+			WithErrorDetails(metricInvalidDetail(ctx, "AggregationInvalid", map[string]any{"aggregation": ag}))
 	}
 	return nil
 }
 
 func validateMetricHaving(ctx context.Context, h *interfaces.MetricHaving) error {
-	// 如果 having 的field为空，默认用 __value，不是必填
+	// Default an empty having field to __value.
 	if strings.TrimSpace(h.Field) == "" {
 		h.Field = interfaces.MetricHavingFieldValue
 	}
-	// 如果 having 的operation为空，返回错误
+	// A having operation is required.
 	if strings.TrimSpace(h.Operation) == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("calculation_formula.having operation is required")
+			WithErrorDetails(metricInvalidDetail(ctx, "HavingOperationRequired", nil))
 	}
 
-	// 如果 having 的value为空，返回错误
+	// A having value is required.
 	if h.Value == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails("calculation_formula.having value is required")
+			WithErrorDetails(metricInvalidDetail(ctx, "HavingValueRequired", nil))
 	}
 
-	// value 需是数值类型
+	// The having value must be numeric.
 	switch v := h.Value.(type) {
 	case int, int8, int16, int32, int64, float32, float64:
 		return nil
 	default:
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("calculation_formula.having value must be a number, got %T", v))
+			WithErrorDetails(metricInvalidDetail(ctx, "HavingValueTypeInvalid", map[string]any{"type": fmt.Sprintf("%T", v)}))
 	}
 }
 
@@ -321,7 +330,7 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 		return nil
 	}
 
-	// 过滤操作符
+	// Validate the filter operation.
 	if cfg.Operation == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionOperation)
 	}
@@ -331,16 +340,16 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_UnsupportConditionOperation)
 	}
 
-	// 指标的过滤条件不支持模糊查询和语义查询操作符
+	// Metric conditions do not support fuzzy or semantic query operators.
 	switch cfg.Operation {
 	case cond.OperationAnd, cond.OperationOr:
 		if len(cfg.SubConds) == 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Condition).
-				WithErrorDetails(fmt.Sprintf("[%s] operation requires at least 1 sub_condition", cfg.Operation))
+				WithErrorDetails(metricInvalidDetail(ctx, "ConditionSubconditionsRequired", map[string]any{"operation": cfg.Operation}))
 		}
 		if len(cfg.SubConds) > cond.MaxSubCondition {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
-				WithErrorDetails(fmt.Sprintf("The number of subConditions exceeds %d", cond.MaxSubCondition))
+				WithErrorDetails(metricInvalidDetail(ctx, "ConditionSubconditionsExceeded", map[string]any{"limit": cond.MaxSubCondition}))
 		}
 
 		for _, subCond := range cfg.SubConds {
@@ -350,7 +359,7 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 		}
 		return nil
 	default:
-		// 过滤字段名称不能为空
+		// A filter field is required for leaf conditions.
 		if cfg.Field == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionName)
 		}
@@ -360,11 +369,11 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 	case cond.OperationEq, cond.OperationNotEq, cond.OperationGt, cond.OperationGte, cond.OperationLt, cond.OperationLte,
 		cond.OperationLike, cond.OperationNotLike, cond.OperationPrefix, cond.OperationNotPrefix, cond.OperationRegex,
 		cond.OperationCurrent:
-		// 右侧值为单个值
+		// These operators require a single value.
 		_, ok := cfg.Value.([]any)
 		if ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails(fmt.Sprintf("[%s] operation's value should be a single value", cfg.Operation))
+				WithErrorDetails(metricInvalidDetail(ctx, "ConditionSingleValueRequired", map[string]any{"operation": cfg.Operation}))
 		}
 
 		if cfg.Operation == cond.OperationLike || cfg.Operation == cond.OperationNotLike ||
@@ -372,7 +381,7 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 			_, ok := cfg.Value.(string)
 			if !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails("[like not_like prefix not_prefix] operation's value should be a string")
+					WithErrorDetails(metricInvalidDetail(ctx, "ConditionStringValueRequired", nil))
 			}
 		}
 
@@ -380,45 +389,45 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 			val, ok := cfg.Value.(string)
 			if !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails("[regex] operation's value should be a string")
+					WithErrorDetails(metricInvalidDetail(ctx, "ConditionRegexStringRequired", nil))
 			}
 
 			_, err := regexp2.Compile(val, regexp2.RE2)
 			if err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails(fmt.Sprintf("[regex] operation regular expression error: %s", err.Error()))
+					WithErrorDetails(metricInvalidDetail(ctx, "ConditionRegexInvalid", nil))
 			}
 
 		}
 
 	case cond.OperationIn, cond.OperationNotIn:
-		// 当 operation 是 in, not_in 时，value 为任意基本类型的数组，且长度大于等于1；
+		// The in and not_in operators require a non-empty array of primitive values.
 		_, ok := cfg.Value.([]any)
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[in not_in] operation's value must be an array")
+				WithErrorDetails(metricInvalidDetail(ctx, "ConditionArrayRequired", nil))
 		}
 
 		if len(cfg.Value.([]any)) <= 0 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[in not_in] operation's value should contains at least 1 value")
+				WithErrorDetails(metricInvalidDetail(ctx, "ConditionArrayNonEmpty", nil))
 		}
 	case cond.OperationRange, cond.OperationOutRange, cond.OperationBefore, cond.OperationBetween:
-		// 当 operation 是 range 时，value 是个由范围的下边界和上边界组成的长度为 2 的数值型数组
-		// 当 operation 是 out_range 时，value 是个长度为 2 的数值类型的数组，查询的数据范围为 (-inf, value[0]) || [value[1], +inf)
+		// Range-like operators require a two-element array.
+		// out_range excludes the interval between the two values.
 		v, ok := cfg.Value.([]any)
 		if !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[range, out_range] operation's value must be an array")
+				WithErrorDetails(metricInvalidDetail(ctx, "ConditionRangeArrayRequired", nil))
 		}
 
 		if len(v) != 2 {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails("[range, out_range] operation's value must contain 2 values")
+				WithErrorDetails(metricInvalidDetail(ctx, "ConditionRangeArrayLength", nil))
 		}
 	default:
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_UnsupportConditionOperation).
-			WithErrorDetails(fmt.Sprintf("[%s] operation is not supported in metric condition", cfg.Operation))
+			WithErrorDetails(metricInvalidDetail(ctx, "ConditionOperationUnsupported", map[string]any{"operation": cfg.Operation}))
 	}
 	return nil
 }

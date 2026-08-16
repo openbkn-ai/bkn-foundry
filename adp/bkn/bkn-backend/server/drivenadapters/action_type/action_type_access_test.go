@@ -911,9 +911,9 @@ func Test_ActionTypeAccess_UpdateActionType(t *testing.T) {
 		})
 
 		Convey("UpdateActionType Build sql error \n", func() {
-			// 使用一个会导致 SQL 构建错误的 actionType
-			// 实际上，由于使用了 SetMap，SQL 构建通常不会失败
-			// 但我们可以测试其他边界情况
+			// Use an actionType intended to trigger an SQL construction error.
+			// In practice, SQL construction usually does not fail because SetMap is used.
+			// This still exercises related edge cases.
 			smock.ExpectBegin()
 			smock.ExpectExec(sqlStr).WithArgs().WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -1078,8 +1078,8 @@ func Test_ActionTypeAccess_GetActionTypeIDsByKnID(t *testing.T) {
 		})
 
 		Convey("GetActionTypeIDsByKnID scan error \n", func() {
-			// 使用错误的列类型来触发 scan 错误
-			rows := sqlmock.NewRows([]string{"f_id", "f_id"}).AddRow(123, "123") // 使用 int 而不是 string
+			// Use an invalid column type to trigger a scan error.
+			rows := sqlmock.NewRows([]string{"f_id", "f_id"}).AddRow(123, "123") // Use int instead of string.
 			smock.ExpectQuery(sqlStr).WithArgs(knID, branch).WillReturnRows(rows)
 
 			atIDs, err := ata.GetActionTypeIDsByKnID(testCtx, knID, branch)

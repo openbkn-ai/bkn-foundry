@@ -13,7 +13,7 @@ import (
 	"bkn-backend/interfaces"
 )
 
-// NoopBusinessSystemService 空业务域服务（业务域禁用时使用）
+// NoopBusinessSystemService is used when business domains are disabled.
 type NoopBusinessSystemService struct {
 	appSetting *common.AppSetting
 }
@@ -23,9 +23,9 @@ func NewNoopBusinessSystemService(appSetting *common.AppSetting) interfaces.Busi
 }
 
 func (n *NoopBusinessSystemService) BindResource(ctx context.Context, bd_id string, rid string, rtype string) error {
-	return nil // 静默跳过
+	return nil // Silently skip.
 }
 
 func (n *NoopBusinessSystemService) UnbindResource(ctx context.Context, bd_id string, rid string, rtype string) error {
-	return nil // 静默跳过
+	return nil // Silently skip.
 }

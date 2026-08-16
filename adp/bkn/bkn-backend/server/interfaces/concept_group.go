@@ -34,14 +34,14 @@ type ConceptGroup struct {
 
 	ModuleType string `json:"module_type" mapstructure:"module_type"`
 
-	// 统计信息
+	// Statistics.
 	Statistics *Statistics `json:"statistics,omitempty"`
-	// 操作权限
+	// Operation permissions.
 	Operations []string `json:"operations,omitempty"`
 
-	// 向量
+	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`
-	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
+	Score  *float64  `json:"_score,omitempty"` // OpenSearch score used by concept search
 
 	IfNameModify bool `json:"-"`
 }
@@ -57,12 +57,12 @@ type ConceptGroupRelation struct {
 	CreateTime  int64  `json:"create_time" mapstructure:"create_time"`
 
 	ModuleType string `json:"module_type" mapstructure:"module_type"`
-	// 向量
+	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`
-	Score  *float64  `json:"_score,omitempty"` // opensearch检索的得分，在概念搜索时使用
+	Score  *float64  `json:"_score,omitempty"` // OpenSearch score used by concept search
 }
 
-// 概念分组的分页查询
+// Concept group pagination query.
 type ConceptGroupsQueryParams struct {
 	PaginationQueryParameters
 	NamePattern string
@@ -72,7 +72,7 @@ type ConceptGroupsQueryParams struct {
 	CGIDs       []string
 }
 
-// 概念与分组关系的分页查询
+// Pagination query for concept-to-group relationships.
 type ConceptGroupRelationsQueryParams struct {
 	PaginationQueryParameters
 	KNID        string
@@ -82,7 +82,7 @@ type ConceptGroupRelationsQueryParams struct {
 	OTIDs       []string
 }
 
-// 对ID去重
+// De-duplicate IDs.
 func GetUniqueIDs(ids []ID) []string {
 	seen := make(map[string]bool)
 	result := make([]string, 0, len(ids))

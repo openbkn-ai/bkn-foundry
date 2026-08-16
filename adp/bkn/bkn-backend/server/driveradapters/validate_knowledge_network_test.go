@@ -134,3 +134,30 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 		})
 	})
 }
+
+func TestKnowledgeNetworkValidationDetailsRespectLanguage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		language string
+		want     string
+	}{
+		{"English", rest.AmericanEnglish, "branch is required."},
+		{"SimplifiedChinese", rest.SimplifiedChinese, "必须提供 branch。"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := ValidateKN(
+				rest.WithLanguage(context.Background(), testCase.language),
+				&interfaces.KN{KNID: "kn-1", KNName: "network"},
+			)
+			if err == nil {
+				t.Fatal("ValidateKN() error = nil, want missing branch error")
+			}
+			httpErr := err.(*rest.HTTPError)
+			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			}
+		})
+	}
+}
