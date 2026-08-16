@@ -14,11 +14,15 @@ sandbox_sdk.bkn —— 沙箱内的 BKN 能力面
 用户看不到 event、token、conversation_id —— dispatch() 在调用用户函数前已经把
 本次执行的 event 交给了本模块（见 __init__.configure_runtime）。
 
-【为什么函数定义不烤进镜像】
-本模块只有加载器，那 21 个 BKN 函数的定义由 context-loader 在
-`GET /mcp/ptc/toolkit` 渲染，首次使用时取回并按 version（内容哈希）缓存到
-/workspace。烤进镜像的话，工具面一变镜像就漂，且只能靠重建镜像来修；而工具面
-是随服务演进的，漂移只会在模型调用失败时才暴露。
+【能力面从哪来】
+_bkn_tools.py 与本模块一同随镜像发布，沙箱因此不依赖网络就能 import。
+那份 Python 不是手写的，是构建期由 `go run ./cmd/ptc-stub` 从 MCP 工具目录
+渲染出来的——与线上 `GET /mcp/ptc/toolkit` 走同一个 BuildPTCToolkit，逐字节
+相同。渲染规则只此一份；用 Python 再实现一遍就又有了会各自漂移的第二份。
+
+代价是产物与服务端工具面可能不同步。靠版本管理兜：产物里带
+__toolkit_version__（内容哈希），CI 重新生成并比对，改了 schema 不重新生成
+就红。运行时也能自查，见 check_against_server()。
 
 【为什么凭据只认 event，不读环境变量】
 沙箱会话是池化复用的，环境变量会把上一个调用方的值留在容器里。task_id 这类
@@ -26,19 +30,16 @@ sandbox_sdk.bkn —— 沙箱内的 BKN 能力面
 所以本模块只从 event 取 token，取不到就直接报错，不做任何回退。
 
 MCP 地址是另一回事：它是部署配置而非密钥，因此允许 event 缺省时回退到沙箱级
-环境变量，由控制面注入一次即可，不必每个调用方都传。
+环境变量，由控制面注入一次即可。注意定义虽已烤进镜像，调用仍要回访 MCP，
+地址少不了。
 """
 
 from __future__ import annotations
 
 import json
 import os
-import pathlib
 import urllib.request
 from typing import Any, Optional
-
-# 工具包缓存目录。/workspace 是持久的（对象存储挂载），所以拉一次能长期复用。
-_CACHE_DIR = pathlib.Path("/workspace/.bkn-toolkit")
 
 # MCP 地址的部署级兜底。集群内地址，沙箱用不了浏览器侧的网关地址。
 _MCP_URL_ENV = "BKN_SANDBOX_MCP_URL"
@@ -103,59 +104,37 @@ def _fetch_toolkit() -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _load_stub_source() -> str:  # noqa: C901
-    """取回能力面的 Python 源码，按 version 缓存。
+def _load_capability_module():
+    """载入随镜像发布的能力面产物。单独一个函数，测试才好把它换掉。"""
+    from . import _bkn_tools
 
-    先读缓存里的 version 再决定要不要写盘：工具包每次都取（那是一个小 GET），
-    但 27K 的源码只在内容真的变了时才落盘，免得每次执行都写一遍对象存储。
-    """
-    global _VERSION
-    toolkit = _fetch_toolkit()
-    version = str(toolkit.get("version") or "").strip()
-    _VERSION = version or None
-    stub = toolkit.get("stub")
-    if not stub:
-        raise BKNNotConfigured("工具包里没有 stub 字段，无法装配能力面。")
-
-    if version:
-        # version 是内容哈希，直接做文件名，不同版本自然并存、互不覆盖。
-        safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in version)[:80]
-        path = _CACHE_DIR / (safe + ".py")
-        try:
-            if path.exists():
-                return path.read_text(encoding="utf-8")
-            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            # 先写临时文件再改名：并发执行下别让另一个进程读到写了一半的源码。
-            tmp = path.with_suffix(".py.%d.tmp" % os.getpid())
-            tmp.write_text(stub, encoding="utf-8")
-            tmp.replace(path)
-        except OSError:
-            # /workspace 只读或满了都不该连累这次调用，直接用内存里的源码。
-            pass
-    return stub
+    return _bkn_tools
 
 
 def _impl():
-    """惰性装配能力面。不碰 BKN 的纯计算函数因此零负担。"""
-    global _IMPL
+    """装配能力面。惰性——不碰 BKN 的纯计算函数因此零负担。"""
+    global _IMPL, _VERSION
     if _IMPL is not None:
         return _IMPL
 
-    import importlib.util
+    try:
+        module = _load_capability_module()
+    except ImportError as exc:
+        raise BKNNotConfigured(
+            "能力面未随镜像发布（sandbox_sdk/_bkn_tools.py 缺失）。"
+            "重新生成：make -C infra/sandbox bkn-tools"
+        ) from exc
 
-    source = _load_stub_source()
-    spec = importlib.util.spec_from_loader("sandbox_sdk._bkn_impl", loader=None)
-    module = importlib.util.module_from_spec(spec)
-    exec(compile(source, "<bkn-toolkit>", "exec"), module.__dict__)
-
-    # stub 用 _configure(event) 接收 MCP 地址、凭据与 bkn_context；这里把地址补齐
-    # 成带尾斜杠的形态再交过去，免得调用方传了个缺斜杠的地址在深处才炸。
+    # 每次执行都重新 _configure：模块是进程级单例，而沙箱会话池化复用，
+    # 上一个调用方的凭据不能留在里面。地址在这里补齐尾斜杠，免得调用方传了个
+    # 缺斜杠的地址到深处才炸。
     configured = dict(_RUNTIME)
     configured["mcp"] = _mcp_url()
     configured["token"] = _token()
     configured.setdefault("bkn", {})
     module._configure(configured)
 
+    _VERSION = getattr(module, "__toolkit_version__", None)
     _IMPL = module
     return _IMPL
 
@@ -186,9 +165,19 @@ def available() -> bool:
 
 
 def toolkit_version() -> Optional[str]:
-    """当前装配的能力面版本，未装配时为 None。
+    """本镜像里能力面的版本（内容哈希），未装配时为 None。
 
-    版本由加载器记录而不是从 stub 里读：stub 是渲染产物，不含自身版本，
-    指望它自报家门只会恒得到 None。
+    值由 cmd/ptc-stub 在构建期写进产物，不是运行时算的。
     """
     return _VERSION
+
+
+def check_against_server() -> dict:
+    """比对镜像里的能力面与服务端当前工具面是否同版本。
+
+    诊断用，正常调用路径不会碰它——那条路完全离线。镜像滞后于服务端时，
+    症状是签名对不上导致调用失败，而失败信息里看不出根因，所以留一个能直接问的口子。
+    """
+    local = toolkit_version() or getattr(_impl(), "__toolkit_version__", None)
+    remote = str(_fetch_toolkit().get("version") or "") or None
+    return {"local": local, "remote": remote, "in_sync": bool(local and local == remote)}

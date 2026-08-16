@@ -1,10 +1,9 @@
 """sandbox_sdk.bkn 的单元测试。
 
-不打真实网络：装配路径被替换成一份最小的假 stub，验证的是「凭据从哪来、缓存怎么
-命中、失败时报什么」这些契约，而不是 BKN 那 21 个函数本身。
+验证的是「凭据从哪来、什么时候装配、版本怎么报」这些契约，不是 BKN 那些函数本身
+——它们由 cmd/ptc-stub 从 MCP 工具目录渲染，正确性归 context-loader 那边的测试管。
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -15,21 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 import sandbox_sdk                      # noqa: E402
 from sandbox_sdk import bkn             # noqa: E402
 
-# 一份最小的能力面：只要有 _configure 和一个可调用的函数就够验证装配链路。
-FAKE_STUB = '''
-__toolkit_version__ = "sha256:fake"
-_CFG = {}
-
-
-def _configure(event):
-    _CFG.clear()
-    _CFG.update(event)
-
-
-def whoami():
-    return dict(_CFG)
-'''
-
 
 @pytest.fixture(autouse=True)
 def reset():
@@ -39,25 +23,40 @@ def reset():
 
 
 @pytest.fixture
-def fake_toolkit(monkeypatch, tmp_path):
+def fake_surface(monkeypatch):
+    """替掉能力面本体，只留装配链路。
+
+    真产物有 25 个函数、35K 字符，测装配链路用不上它；而且拿它做断言，
+    schema 一改测试就跟着碎。
+    """
+    import types
+
     calls = []
+    module = types.ModuleType("fake_bkn_tools")
+    module.__toolkit_version__ = "sha256:fake"
+    module._CFG = {}
 
-    def _fetch():
-        calls.append(1)
-        return {"version": "sha256:fake", "stub": FAKE_STUB}
+    def _configure(event):
+        calls.append(event)
+        module._CFG = dict(event)
 
-    monkeypatch.setattr(bkn, "_fetch_toolkit", _fetch)
-    monkeypatch.setattr(bkn, "_CACHE_DIR", tmp_path / ".bkn-toolkit")
+    module._configure = _configure
+    module.whoami = lambda: dict(module._CFG)
+
+    monkeypatch.setattr(bkn, "_load_capability_module", lambda: module)
     return calls
 
 
 def test_credentials_never_come_from_environment(monkeypatch):
     """令牌只认 event。
 
-    沙箱会话是池化复用的，环境变量会把上一个调用方的值留在容器里；task_id 那类
-    追踪标记漏了无伤大雅，令牌漏了是凭据泄露。所以这里必须报错，而不是回退。
+    沙箱会话池化复用，环境变量会把上一个调用方的值留在容器里。task_id 那类追踪
+    标记漏了无伤大雅（Context.from_env 正是这么做的），令牌漏了是凭据泄露。
+    所以这里必须报错，而不是回退到 env。
     """
-    monkeypatch.setenv("BKN_SANDBOX_MCP_URL", "http://agent-retrieval:30779/api/x/v1/mcp/")
+    monkeypatch.setenv(
+        "BKN_SANDBOX_MCP_URL", "http://agent-retrieval:30779/api/x/v1/mcp/"
+    )
     monkeypatch.setenv("token", "leaked-from-previous-caller")
     monkeypatch.setenv("BKN_TOKEN", "leaked-from-previous-caller")
 
@@ -69,8 +68,13 @@ def test_credentials_never_come_from_environment(monkeypatch):
 
 
 def test_mcp_url_may_fall_back_to_deployment_env(monkeypatch):
-    """MCP 地址是部署配置而非密钥，允许由控制面注入一次。"""
-    monkeypatch.setenv("BKN_SANDBOX_MCP_URL", "http://agent-retrieval:30779/api/x/v1/mcp/")
+    """MCP 地址是部署配置而非密钥，允许控制面注入一次。
+
+    定义虽然烤进了镜像，调用仍要回访 MCP —— 地址少不了。
+    """
+    monkeypatch.setenv(
+        "BKN_SANDBOX_MCP_URL", "http://agent-retrieval:30779/api/x/v1/mcp/"
+    )
     bkn.configure_runtime({"token": "tok"})
     assert bkn.available() is True
     assert bkn._mcp_url().endswith("/mcp/")
@@ -84,47 +88,29 @@ def test_mcp_url_always_ends_with_slash(monkeypatch):
     assert bkn._mcp_url() == "http://svc:1/api/x/v1/mcp/"
 
 
-def test_capability_surface_is_lazily_assembled(fake_toolkit, monkeypatch):
-    """纯计算函数不该为 BKN 付代价：只导入不使用时不该有任何取工具包的动作。"""
+def test_capability_surface_is_lazily_assembled(fake_surface, monkeypatch):
+    """纯计算函数不该为 BKN 付代价：只导入不使用时不该装配。"""
     monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
     bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
-    assert fake_toolkit == []           # 还没碰过任何能力
+    assert fake_surface == []           # 还没碰过任何能力
 
     assert bkn.whoami()["token"] == "tok"
-    assert len(fake_toolkit) == 1
+    assert len(fake_surface) == 1
 
 
-def test_runtime_is_reset_between_executions(fake_toolkit, monkeypatch):
-    """会话池化复用，上一次执行的凭据不能留在进程里。"""
+def test_runtime_is_reset_between_executions(fake_surface, monkeypatch):
+    """能力面模块是进程级单例，而沙箱会话池化复用——上一次执行的凭据不能留下。"""
     monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
     bkn.configure_runtime({"token": "first", "mcp": "http://svc/mcp/"})
     assert bkn.whoami()["token"] == "first"
 
     bkn.configure_runtime({"token": "second", "mcp": "http://svc/mcp/"})
     assert bkn.whoami()["token"] == "second"
+    # 换一次执行必须重新 _configure，而不是复用上一次配好的模块。
+    assert len(fake_surface) == 2
 
 
-def test_toolkit_is_cached_by_version(fake_toolkit, monkeypatch, tmp_path):
-    """按 version（内容哈希）缓存：同版本不重复写盘，不同版本互不覆盖。"""
-    monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
-    bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
-    bkn.whoami()
-
-    cached = list((tmp_path / ".bkn-toolkit").glob("*.py"))
-    assert len(cached) == 1
-    assert cached[0].read_text(encoding="utf-8") == FAKE_STUB
-    assert "sha256-fake" in cached[0].name      # 冒号被归一化，不能逃出目录
-
-
-def test_unwritable_cache_does_not_break_the_call(fake_toolkit, monkeypatch):
-    """/workspace 只读或写满都不该连累这次调用——缓存是优化，不是依赖。"""
-    monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
-    monkeypatch.setattr(bkn, "_CACHE_DIR", Path("/proc/definitely-not-writable"))
-    bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
-    assert bkn.whoami()["token"] == "tok"
-
-
-def test_dispatch_hands_the_event_to_the_capability_surface(fake_toolkit, monkeypatch):
+def test_dispatch_hands_the_event_to_the_capability_surface(fake_surface, monkeypatch):
     """用户函数不写 event、不接 token —— dispatch 已经替它配置好了。"""
     monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
 
@@ -143,25 +129,60 @@ def test_dispatch_hands_the_event_to_the_capability_surface(fake_toolkit, monkey
     # 生命周期上下文要原样传下去，脚本内的调用才挂得到同一次交互上。
     assert result["seen"]["bkn"]["conversation_id"] == "conv_1"
     assert result["seen"]["token"] == "tok"
-    # 而 token / mcp 不该被当成业务入参喂给用户函数（它的签名里没有）。
+    # token / mcp 不该被当成业务入参喂给用户函数（它的签名里没有）。
     assert "token" not in result
 
 
-def test_toolkit_version_is_recorded_by_the_loader(fake_toolkit, monkeypatch, tmp_path):
-    """版本由加载器记，不从 stub 里读——stub 是渲染产物，不含自身版本。"""
+def test_toolkit_version_comes_from_the_built_artifact(fake_surface, monkeypatch):
+    """版本是构建期写进产物的，不是运行时算的。"""
     monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
     bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
-    assert bkn.toolkit_version() is None        # 未装配
+    assert bkn.toolkit_version() is None         # 未装配
     bkn.whoami()
     assert bkn.toolkit_version() == "sha256:fake"
-    bkn.configure_runtime({})                   # 换一次执行即重置
+    bkn.configure_runtime({})                    # 换一次执行即重置
     assert bkn.toolkit_version() is None
 
 
-def test_missing_stub_field_reports_clearly(monkeypatch, tmp_path):
-    monkeypatch.setattr(bkn, "_fetch_toolkit", lambda: {"version": "v1"})
-    monkeypatch.setattr(bkn, "_CACHE_DIR", tmp_path)
+def test_missing_artifact_points_at_the_build_step(monkeypatch):
+    """产物缺失是构建事故，报错要直接给出重新生成的命令。"""
+    def _boom():
+        raise ImportError("no module named _bkn_tools")
+
+    monkeypatch.setattr(bkn, "_load_capability_module", _boom)
+    monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
     bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
     with pytest.raises(bkn.BKNNotConfigured) as excinfo:
         bkn.whoami()
-    assert "stub" in str(excinfo.value)
+    assert "make -C infra/sandbox bkn-tools" in str(excinfo.value)
+
+
+def test_version_check_compares_image_against_server(fake_surface, monkeypatch):
+    """镜像滞后于服务端时症状是签名对不上，而错误里看不出根因——留个能直接问的口子。"""
+    monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
+    bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
+
+    monkeypatch.setattr(bkn, "_fetch_toolkit", lambda: {"version": "sha256:fake"})
+    assert bkn.check_against_server()["in_sync"] is True
+
+    monkeypatch.setattr(bkn, "_fetch_toolkit", lambda: {"version": "sha256:newer"})
+    result = bkn.check_against_server()
+    assert result["in_sync"] is False
+    assert result["local"] == "sha256:fake"
+    assert result["remote"] == "sha256:newer"
+
+
+def test_shipped_artifact_is_importable_and_versioned():
+    """镜像里那份产物本身要能 import，且带着构建期写入的版本。
+
+    上面的用例都把能力面替掉了，这里是唯一碰真产物的地方——它若坏了，
+    整条离线路径就是坏的。
+    """
+    from sandbox_sdk import _bkn_tools
+
+    assert _bkn_tools.__toolkit_version__.startswith("sha256:")
+    assert callable(_bkn_tools._configure)
+    # 抽查几个能力：签名清单变了不该悄悄少函数。
+    for name in ("list_knowledge_networks", "query_object_instance",
+                 "run_sql", "list_resources"):
+        assert callable(getattr(_bkn_tools, name)), name
