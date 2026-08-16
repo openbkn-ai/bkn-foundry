@@ -360,12 +360,13 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 		return "", fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
 
-	// 确定HAVING子句中使用的字段表达式
+	// 确定HAVING子句中使用的字段表达式。别名来自请求体且不受校验，取到保留字时
+	// SELECT 侧已加反引号，这里不加就会出现 SELECT 通过而 HAVING 报 1064。
 	var fieldExpr string
 	if having.Field == "count(*)" {
 		fieldExpr = "COUNT(*)"
 	} else {
-		fieldExpr = aggAlias
+		fieldExpr = quoteColumnName(aggAlias)
 	}
 
 	var op string
