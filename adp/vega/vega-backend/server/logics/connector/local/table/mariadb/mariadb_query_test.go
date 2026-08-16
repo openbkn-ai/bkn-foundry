@@ -181,6 +181,35 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
+	// 构建任务补出来的向量字段只有 Name 没有 OriginalName，取不到就回落到属性名，
+	// 否则会拼出空标识符 `` 让整条 SQL 报错
+	t.Run("a property without original_name falls back to the property name", func(t *testing.T) {
+		schemaless := &interfaces.Resource{
+			SourceIdentifier: "yanfeng_kb.fact",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", OriginalName: "id", Type: interfaces.DataType_String},
+				{Name: "content_vector", Type: interfaces.DataType_Vector},
+			},
+		}
+		schemalessFields := map[string]*interfaces.Property{}
+		for _, prop := range schemaless.SchemaDefinition {
+			schemalessFields[prop.Name] = prop
+		}
+
+		builder, err := connector.buildSelectBuilder(schemaless, &interfaces.ResourceDataQueryParams{
+			OutputFields: []string{"content_vector"},
+			Sort:         []*interfaces.SortField{{Field: "content_vector", Direction: interfaces.DESC_DIRECTION}},
+			Limit:        5,
+		}, schemalessFields, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT `content_vector` FROM `yanfeng_kb`.`fact` ORDER BY `content_vector` DESC LIMIT 5 OFFSET 0",
+			sql)
+	})
+
 	t.Run("aggregation quotes the aggregated column, group by and alias", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},

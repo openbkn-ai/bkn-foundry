@@ -111,9 +111,12 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams, fieldMap map[string]*interfaces.Property,
 	condition sq.Sqlizer) (sq.SelectBuilder, error) {
 
-	// Source column name; fall back to the property name when the schema has no mapping.
+	// Source column name. Fall back to the property name when the schema has no mapping,
+	// and also when the property carries no original_name: build tasks add vector fields
+	// with a Name and no OriginalName (appendTaskEmbeddingVectorFields), and without the
+	// fallback those render as an empty quoted identifier.
 	originalName := func(property string) string {
-		if field, ok := fieldMap[property]; ok {
+		if field, ok := fieldMap[property]; ok && field.OriginalName != "" {
 			return field.OriginalName
 		}
 		return property
