@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripper func(*http.Request) (*http.Response, error)
@@ -31,3 +32,46 @@ func TestAvailabilityResolvesEnabledDefaultStorage(t *testing.T) {
 		t.Fatalf("storage id = %q", client.resolvedStorageID)
 	}
 }
+
+func TestReadDoesNotApplyControlPlaneTimeoutToArchiveBody(t *testing.T) {
+	client := New(Config{BaseURL: "http://gateway/api/v1", StorageID: "archive", Timeout: time.Millisecond})
+	client.http.Transport = roundTripper(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"data":{"method":"GET","url":"http://object-store/archive.jsonl"}}`)),
+			Header:     make(http.Header),
+		}, nil
+	})
+	client.stream.Transport = roundTripper(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       &delayedReadCloser{delay: 10 * time.Millisecond, content: strings.NewReader("archive\n")},
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	body, err := client.Read(context.Background(), "archive.jsonl")
+	if err != nil {
+		t.Fatalf("read archive: %v", err)
+	}
+	defer func() { _ = body.Close() }()
+	content, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("read archive body: %v", err)
+	}
+	if string(content) != "archive\n" {
+		t.Fatalf("archive body = %q", content)
+	}
+}
+
+type delayedReadCloser struct {
+	delay   time.Duration
+	content io.Reader
+}
+
+func (body *delayedReadCloser) Read(target []byte) (int, error) {
+	time.Sleep(body.delay)
+	return body.content.Read(target)
+}
+
+func (*delayedReadCloser) Close() error { return nil }
