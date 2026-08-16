@@ -708,29 +708,33 @@ func advancedFieldsMap() map[string]*interfaces.Property {
 	return fields
 }
 
-// 视图定义里存着的老写法不能因为新契约而查废：升级后按字面量匹配（与改动前 SQL 连接器
-// 一致）并告警，而不是每次查询都 400。
-func TestEscapeLegacyLikeWildcards(t *testing.T) {
-	t.Run("rewrites an unescaped percent and reports the count", func(t *testing.T) {
+// 视图定义里存着的老写法不能因为新契约而查废：标记为老写法后，由各连接器按它自己
+// 改动前的语义渲染（SQL 侧字面量、索引侧通配符正则），而不是每次查询都 400。
+func TestMarkLegacyLikeWildcards(t *testing.T) {
+	t.Run("marks an unescaped percent without touching the value", func(t *testing.T) {
 		cfg := constCfg("name", "like", "%ali%")
 
-		rewritten := EscapeLegacyLikeWildcards(cfg)
+		marked := MarkLegacyLikeWildcards(cfg)
 
-		assert.Equal(t, 1, rewritten)
-		assert.Equal(t, `\%ali\%`, cfg.Value)
+		assert.Equal(t, 1, marked)
+		assert.True(t, cfg.LegacyLikeWildcards)
+		// 值保持原样：翻译交给连接器，这里统一改写会丢掉索引侧的通配符语义
+		assert.Equal(t, "%ali%", cfg.Value)
 
 		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		require.NoError(t, err)
-		assert.Equal(t, "%ali%", cond.(*LikeCond).Value)
+		like := cond.(*LikeCond)
+		assert.True(t, like.LegacyWildcards)
+		assert.Equal(t, "%ali%", like.Value)
 	})
 
 	t.Run("leaves already valid values untouched", func(t *testing.T) {
 		cfg := constCfg("name", "like", `object_type\%`)
 
-		rewritten := EscapeLegacyLikeWildcards(cfg)
+		marked := MarkLegacyLikeWildcards(cfg)
 
-		assert.Equal(t, 0, rewritten)
-		assert.Equal(t, `object_type\%`, cfg.Value)
+		assert.Equal(t, 0, marked)
+		assert.False(t, cfg.LegacyLikeWildcards)
 	})
 
 	t.Run("walks nested conditions and skips other operations", func(t *testing.T) {
@@ -743,15 +747,15 @@ func TestEscapeLegacyLikeWildcards(t *testing.T) {
 			},
 		}
 
-		rewritten := EscapeLegacyLikeWildcards(cfg)
+		marked := MarkLegacyLikeWildcards(cfg)
 
-		assert.Equal(t, 2, rewritten)
-		assert.Equal(t, `\%a`, cfg.SubConds[0].Value)
-		assert.Equal(t, `b\%`, cfg.SubConds[1].Value)
-		assert.Equal(t, "100%", cfg.SubConds[2].Value)
+		assert.Equal(t, 2, marked)
+		assert.True(t, cfg.SubConds[0].LegacyLikeWildcards)
+		assert.True(t, cfg.SubConds[1].LegacyLikeWildcards)
+		assert.False(t, cfg.SubConds[2].LegacyLikeWildcards)
 	})
 
 	t.Run("tolerates a nil condition", func(t *testing.T) {
-		assert.Equal(t, 0, EscapeLegacyLikeWildcards(nil))
+		assert.Equal(t, 0, MarkLegacyLikeWildcards(nil))
 	})
 }

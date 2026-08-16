@@ -17,6 +17,8 @@ type NotLikeCond struct {
 	Cfg    *interfaces.FilterCondCfg
 	Lfield *interfaces.Property
 	Value  string
+	// LegacyWildcards 含义同 LikeCond
+	LegacyWildcards bool
 }
 
 func (c *NotLikeCond) GetOperation() string { return OperationNotLike }
@@ -49,6 +51,9 @@ func (c *NotLikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	val, ok := cfg.Value.(string)
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
+	}
+	if cfg.LegacyLikeWildcards {
+		return &NotLikeCond{Cfg: cfg, Lfield: field, Value: val, LegacyWildcards: true}, nil
 	}
 	literal, err := ParseLikeValue(OperationNotLike, val)
 	if err != nil {

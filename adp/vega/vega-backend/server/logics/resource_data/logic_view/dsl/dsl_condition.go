@@ -447,10 +447,17 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionLike(ctx context.Context, 
 		return nil, err
 	}
 
-	vStr := c.likeContainsPattern(cond.Value)
+	if cond.LegacyWildcards {
+		return map[string]any{
+			"regexp": map[string]any{
+				fieldName + keyword: c.legacyLikeWildcardRegexp(cond.Value),
+			},
+		}, nil
+	}
+
 	return map[string]any{
 		"wildcard": map[string]any{
-			fieldName + keyword: vStr,
+			fieldName + keyword: c.likeContainsPattern(cond.Value),
 		},
 	}, nil
 }
@@ -473,14 +480,22 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionNotLike(ctx context.Contex
 		return nil, err
 	}
 
-	vStr := c.likeContainsPattern(cond.Value)
+	inner := map[string]any{
+		"wildcard": map[string]any{
+			fieldName + keyword: c.likeContainsPattern(cond.Value),
+		},
+	}
+	if cond.LegacyWildcards {
+		inner = map[string]any{
+			"regexp": map[string]any{
+				fieldName + keyword: c.legacyLikeWildcardRegexp(cond.Value),
+			},
+		}
+	}
+
 	return map[string]any{
 		"bool": map[string]any{
-			"must_not": map[string]any{
-				"wildcard": map[string]any{
-					fieldName + keyword: vStr,
-				},
-			},
+			"must_not": inner,
 		},
 	}, nil
 }
@@ -1095,6 +1110,52 @@ func (c *logicViewDSLGenerator) likeContainsPattern(input string) string {
 		escaped.WriteRune(r)
 	}
 	return "*" + escaped.String() + "*"
+}
+
+// legacyLikeWildcardRegexp 还原改动前索引路径对 like 老写法的处理：% -> .*、_ -> .，
+// 反斜杠转义保留。只在条件被标记为老写法时用（见 filter_condition.MarkLegacyLikeWildcards），
+// 存量视图定义因此结果不变；新写法走 likeContainsPattern 的字面子串语义。
+func (c *logicViewDSLGenerator) legacyLikeWildcardRegexp(input string) string {
+	if input == "" {
+		return input
+	}
+
+	var result strings.Builder
+	escaped := false
+	runes := []rune(input)
+
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+
+		if escaped {
+			switch r {
+			case '%', '_', '\\':
+				result.WriteRune(r)
+			default:
+				result.WriteRune('\\')
+				result.WriteRune(r)
+			}
+			escaped = false
+		} else if r == '\\' {
+			if i == len(runes)-1 {
+				result.WriteRune(r)
+			} else {
+				escaped = true
+			}
+		} else if r == '%' {
+			result.WriteString(".*")
+		} else if r == '_' {
+			result.WriteString(".")
+		} else {
+			result.WriteRune(r)
+		}
+	}
+
+	if escaped {
+		result.WriteRune('\\')
+	}
+
+	return result.String()
 }
 
 // getKeywordSuffix text 类型在部分查询场景（如 eq/in）下，需使用 keyword 类型的子字段，返回关键字后缀，否则返回空字符串

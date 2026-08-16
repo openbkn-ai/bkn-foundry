@@ -18,6 +18,9 @@ type LikeCond struct {
 	Cfg    *interfaces.FilterCondCfg
 	Lfield *interfaces.Property
 	Value  string
+	// LegacyWildcards 为真时 Value 是未解析的老写法（% 当通配符），由各连接器按改动前的
+	// 语义渲染，不走「字面子串」这套。
+	LegacyWildcards bool
 }
 
 func (c *LikeCond) GetOperation() string { return OperationLike }
@@ -51,6 +54,9 @@ func (c *LikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	val, ok := cfg.Value.(string)
 	if !ok {
 		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
+	}
+	if cfg.LegacyLikeWildcards {
+		return &LikeCond{Cfg: cfg, Lfield: field, Value: val, LegacyWildcards: true}, nil
 	}
 	literal, err := ParseLikeValue(OperationLike, val)
 	if err != nil {
@@ -105,53 +111,40 @@ func ParseLikeValue(operation, value string) (string, error) {
 	return literal.String(), nil
 }
 
-// EscapeLegacyLikeWildcards 把条件树里 like / not_like 值中未转义的 % 就地转义成 \%，
-// 返回改写过的条件数。
+// MarkLegacyLikeWildcards 把条件树里用 % 当通配符的 like / not_like 标记为老写法，
+// 返回标记过的条件数。
 //
 // 只用于视图定义里存着的过滤条件：那份配置是服务端数据，调用方改不了，新契约直接报错会
-// 让一次升级把存量视图查废。改写后按字面量匹配，与改动前 SQL 连接器的行为一致（Special
-// 本来就会把 % 转义掉）。调用方传进来的条件不走这里，仍然硬拒并给出改用 regex 的指引。
-func EscapeLegacyLikeWildcards(cfg *interfaces.FilterCondCfg) int {
+// 让一次升级把存量视图查废。标记后由各连接器按**它自己改动前**的语义渲染——SQL 侧 %
+// 转义成字面量，索引侧翻译成正则通配符——所以存量视图的结果一行不变。这里不能统一改写
+// 成字面量：索引路径改动前是通配符匹配，按字面量渲染会让原本有结果的视图静默返回空集。
+//
+// 调用方传进来的条件不走这里，仍然硬拒并给出改用 regex 的指引。
+func MarkLegacyLikeWildcards(cfg *interfaces.FilterCondCfg) int {
 	if cfg == nil {
 		return 0
 	}
 
-	rewrittenCount := 0
+	markedCount := 0
 	for _, sub := range cfg.SubConds {
-		rewrittenCount += EscapeLegacyLikeWildcards(sub)
+		markedCount += MarkLegacyLikeWildcards(sub)
 	}
 
 	if cfg.Operation != OperationLike && cfg.Operation != OperationNotLike {
-		return rewrittenCount
+		return markedCount
 	}
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return rewrittenCount
+		return markedCount
 	}
 	value, ok := cfg.Value.(string)
 	if !ok {
-		return rewrittenCount
+		return markedCount
 	}
 	if _, err := ParseLikeValue(cfg.Operation, value); err == nil {
-		return rewrittenCount
+		return markedCount
 	}
 
-	var rewritten strings.Builder
-	keepNext := false
-	for _, r := range value {
-		switch {
-		case keepNext:
-			rewritten.WriteRune(r)
-			keepNext = false
-		case r == '\\':
-			rewritten.WriteRune(r)
-			keepNext = true
-		case r == '%':
-			rewritten.WriteString(`\%`)
-		default:
-			rewritten.WriteRune(r)
-		}
-	}
-	cfg.Value = rewritten.String()
+	cfg.LegacyLikeWildcards = true
 
-	return rewrittenCount + 1
+	return markedCount + 1
 }

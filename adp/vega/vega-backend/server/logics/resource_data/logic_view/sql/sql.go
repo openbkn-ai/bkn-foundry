@@ -228,10 +228,10 @@ func (g *logicViewSQLGenerator) buildFilterSQL(ctx context.Context, filters *int
 	// filters 来自视图定义里存的节点配置（resource / join / union 三种节点都走这里），
 	// 是服务端数据、调用方改不了。新的 like 契约拒绝未转义的 %，直接套到存量定义上会让
 	// 一次升级把视图查废，因此按老行为（当字面量）改写并告警。
-	if rewritten := filter_condition.EscapeLegacyLikeWildcards(filters); rewritten > 0 {
+	if marked := filter_condition.MarkLegacyLikeWildcards(filters); marked > 0 {
 		logger.Warnf("%d stored like/not_like condition(s) in this logic view use '%%' as a wildcard; "+
-			"matched as a literal. Escape it as '\\%%' or switch the condition to [regex] in the view definition.",
-			rewritten)
+			"kept on the pre-change behaviour of this backend. Escape it as '\\%%' or switch the condition to [regex] in the view definition.",
+			marked)
 	}
 
 	filterCond, err := filter_condition.NewFilterCondition(ctx, filters, fieldMap)
