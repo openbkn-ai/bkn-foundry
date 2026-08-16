@@ -348,7 +348,8 @@ class OpenAIClientRequest:
                         ModelFactory_ModelController_Model_Error_Error["code"],
                         "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     if get_logger():
                         get_logger().info(
                             f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
@@ -675,7 +676,8 @@ class BaiduTianchenClient:
                     ModelFactory_ModelController_Model_Error_Error["code"],
                     "ModelFactory.Stream.ModelConnectionFailed")
                 yield json.dumps(error_dict, ensure_ascii=False)
-                StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                StandLogger.error(
+                    f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                 return
             else:
                 StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
@@ -770,7 +772,8 @@ class BaiduTianchenClient:
                         ModelFactory_ModelController_Model_Error_Error["code"],
                         "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
@@ -1065,7 +1068,8 @@ class BaiduClient:
                             f'"prompt_tokens":0,"completion_tokens":0,'
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
                     yield json.dumps(error_dict, ensure_ascii=False)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
@@ -1180,7 +1184,8 @@ class BaiduClient:
                         ModelFactory_ModelController_Model_Error_Error["code"],
                         "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
@@ -1727,7 +1732,8 @@ class OtherClient:
                         ModelFactory_ModelController_Model_Error_Error["code"],
                         "ModelFactory.Stream.ModelConnectionFailed")
                     yield json.dumps(error_dict, ensure_ascii=False)
-                    StandLogger.error(json.dumps(error_dict, ensure_ascii=False))
+                    StandLogger.error(
+                        f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
                     StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")

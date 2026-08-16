@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi import status, Response
 from app.commons.errors.codes import ParamValidationErrors
 from app.commons.i18n import get_error_message
+from app.commons.locale import error_with_message
 from app.commons.snow_id import worker
 from app.controller import model_quota_controller
 from app.core.config import base_config
@@ -639,8 +640,10 @@ async def used_model_openai(request, user_id, language, func_module):
     else:
         stream = request["stream"]
         if not isinstance(stream, bool):
-            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["detail"] = "stream " + error_dict["detail"]
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_TypeError_Error,
+                "ModelFactory.Validation.BooleanParameter",
+                parameter="stream")
             StandLogger.error(error_dict["detail"])
             return JSONResponse(status_code=400, content=error_dict)
 
@@ -921,8 +924,10 @@ async def encode_endpoint(params_json, userId, language):
 async def get_monitor_data(userId, language, model_id, role=""):
     try:
         if not model_id:
-            error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
-            error_dict["deatil"] = "Param model_id is required"
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_ParamMissing_Error,
+                "ModelFactory.Validation.RequiredParameter",
+                parameters="model_id")
             return JSONResponse(status_code=400, content=error_dict)
         # Authorization (#213): callers without display permission cannot view model statistics.
         # check_display bypasses administrators and disabled authorization.
@@ -953,18 +958,19 @@ async def get_monitor_data(userId, language, model_id, role=""):
 async def edit_default_model(model_para, userId, language):
     global redis_util
     if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
-        error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-        error_dict['description'] = "Permission denied."
-        error_dict['detail'] = "Only administrators can edit the default model."
+        error_dict = error_with_message(
+            ModelFactory_Router_ParamError_TypeError_Error,
+            "ModelFactory.ModelController.EditDefaultModel.PermissionDenied")
         return JSONResponse(status_code=403, content=error_dict)
     key_list = ["model_id", "default"]
     for k in key_list:
         if k not in model_para:
             raise RequestValidationError([{"loc": ('body', k), "type": "value_error.missing"}])
     if not isinstance(model_para["default"], bool):
-        error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-        error_dict['description'] = "The default parameter is invalid."
-        error_dict['detail'] = "The default parameter must be a boolean."
+        error_dict = error_with_message(
+            ModelFactory_Router_ParamError_TypeError_Error,
+            "ModelFactory.Validation.BooleanParameter",
+            parameter="default")
         return JSONResponse(status_code=400, content=error_dict)
 
     try:
@@ -995,9 +1001,9 @@ async def edit_default_model(model_para, userId, language):
             old_model_id = old_default_data[0]["f_model_id"]
         # Reject a redundant default-model update.
         if old_model_id == model_id:
-            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict['description'] = "The model is already the default."
-            error_dict['detail'] = "The model is already the default and does not need to be set again."
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_TypeError_Error,
+                "ModelFactory.ModelController.EditDefaultModel.AlreadyDefault")
             return JSONResponse(status_code=400, content=error_dict)
 
         # Clear the old default before setting the new one.
@@ -1040,29 +1046,37 @@ async def get_overview_data(userId, language, model_id, start_time, end_time, ro
                 if not authorized:
                     return JSONResponse(status_code=403, content=NotPermissionError)
         if not start_time:
-            error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
-            error_dict["detail"] = "Param start_time is required"
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_ParamMissing_Error,
+                "ModelFactory.Validation.RequiredParameter",
+                parameters="start_time")
             return JSONResponse(status_code=400, content=error_dict)
         if not end_time:
-            error_dict = ModelFactory_Router_ParamError_ParamMissing_Error.copy()
-            error_dict["detail"] = "Param end_time is required"
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_ParamMissing_Error,
+                "ModelFactory.Validation.RequiredParameter",
+                parameters="end_time")
             return JSONResponse(status_code=400, content=error_dict)
 
         date_pattern = r'^\d{4}-\d{2}-\d{2}$'
         if not re.match(date_pattern, start_time):
-            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["detail"] = "Param start_time must be in YYYY-MM-DD format"
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_TypeError_Error,
+                "ModelFactory.Validation.DateFormat",
+                parameter="start_time")
             return JSONResponse(status_code=400, content=error_dict)
         if not re.match(date_pattern, end_time):
-            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["detail"] = "Param end_time must be in YYYY-MM-DD format"
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_TypeError_Error,
+                "ModelFactory.Validation.DateFormat",
+                parameter="end_time")
             return JSONResponse(status_code=400, content=error_dict)
         start_date = datetime.strptime(start_time, "%Y-%m-%d")
         end_date = datetime.strptime(end_time, "%Y-%m-%d")
         if start_date > end_date:
-            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["description"] = "Invalid date range"
-            error_dict["detail"] = "Param start_time must be earlier than or equal to end_time"
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_TypeError_Error,
+                "ModelFactory.Validation.DateRange")
             return JSONResponse(status_code=400, content=error_dict)
 
         core_metrics, trend_analysis, qps_analysis = llm_model_dao.get_overview_data(model_id, start_time, end_time,

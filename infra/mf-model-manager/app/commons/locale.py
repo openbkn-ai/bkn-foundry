@@ -12,6 +12,8 @@ ENGLISH_LOCALE = "en-US"
 SUPPORTED_LOCALES = (DEFAULT_LOCALE, ENGLISH_LOCALE)
 
 _effective_locale: ContextVar[str] = ContextVar("effective_locale", default=DEFAULT_LOCALE)
+_MESSAGE_KEY_FIELD = "_i18n_key"
+_MESSAGE_PARAMS_FIELD = "_i18n_params"
 
 
 def resolve_accept_language(header: str) -> str:
@@ -61,6 +63,21 @@ def reset_effective_locale(token: Token) -> None:
     _effective_locale.reset(token)
 
 
+def error_with_message(content: Dict[str, Any], message_key: str, **params: Any) -> Dict[str, Any]:
+    """Attach an internal locale key while preserving the public error code."""
+    localized = deepcopy(content)
+    localized[_MESSAGE_KEY_FIELD] = message_key
+    if params:
+        localized[_MESSAGE_PARAMS_FIELD] = params
+
+    from app.commons.i18n import lookup_error_message
+
+    message = lookup_error_message(message_key, ENGLISH_LOCALE)
+    if message:
+        _apply_catalog_message(localized, message, params)
+    return localized
+
+
 def localized_stream_error(code: str, message_key: Optional[str] = None) -> Dict[str, str]:
     """Build a localized SSE error without changing its existing error code."""
     from app.commons.i18n import lookup_error_message
@@ -87,15 +104,19 @@ def localized_error_content(
         return content, False
 
     localized = deepcopy(content)
+    message_key = localized.pop(_MESSAGE_KEY_FIELD, code)
+    message_params = localized.pop(_MESSAGE_PARAMS_FIELD, {})
+    if not isinstance(message_key, str):
+        message_key = code
+    if not isinstance(message_params, dict):
+        message_params = {}
     from app.commons.i18n import lookup_error_message
 
-    message = lookup_error_message(code, locale)
+    message = lookup_error_message(message_key, locale)
+    if not message and message_key != code:
+        message = lookup_error_message(code, locale)
     if message:
-        for field in ("description", "detail", "solution"):
-            if field == "detail":
-                localized[field] = _localize_detail(message, content.get(field))
-            elif field in message:
-                localized[field] = message[field]
+        _apply_catalog_message(localized, message, message_params, content.get("detail"))
     elif locale == ENGLISH_LOCALE:
         fallback_messages = lookup_error_message("ModelFactory.InternalError", locale) or {}
         for field, fallback in fallback_messages.items():
@@ -103,6 +124,19 @@ def localized_error_content(
                     not localized.get(field) or _contains_chinese(localized[field])):
                 localized[field] = fallback
     return localized, True
+
+
+def _apply_catalog_message(
+        content: Dict[str, Any], message: Dict[str, Any], params: Dict[str, Any],
+        original_detail: Any = None) -> None:
+    for field in ("description", "detail", "solution"):
+        if field == "detail" and not params:
+            content[field] = _localize_detail(message, original_detail)
+            continue
+        template = message.get("detail_template") if field == "detail" else None
+        value = template or message.get(field)
+        if isinstance(value, str):
+            content[field] = value.format(**params) if params else value
 
 
 def is_business_api_path(path: str) -> bool:

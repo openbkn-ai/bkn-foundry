@@ -8,6 +8,7 @@ import tiktoken
 
 from fastapi.responses import JSONResponse
 from app.commons.errors.codes import *
+from app.commons.locale import error_with_message
 from app.commons.snow_id import snow_id
 from app.commons.snow_id import worker
 from app.controller.llm_controller import used_model_stream
@@ -928,8 +929,10 @@ async def run_prompt_endpoint_stream(request, model_para, security_token=None):
     else:
         stream = model_para["stream"]
         if not isinstance(stream, bool):
-            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["detail"] = "stream " + error_dict["detail"]
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_TypeError_Error,
+                "ModelFactory.Validation.BooleanParameter",
+                parameter="stream")
             StandLogger.error(error_dict["detail"])
             return JSONResponse(status_code=400, content=error_dict)
     if "cache" not in model_para.keys():
@@ -937,8 +940,10 @@ async def run_prompt_endpoint_stream(request, model_para, security_token=None):
     else:
         cache = model_para["cache"]
         if not isinstance(cache, bool):
-            error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-            error_dict["detail"] = "cache " + error_dict["detail"]
+            error_dict = error_with_message(
+                ModelFactory_Router_ParamError_TypeError_Error,
+                "ModelFactory.Validation.BooleanParameter",
+                parameter="cache")
             StandLogger.error(error_dict["detail"])
             return JSONResponse(status_code=400, content=error_dict)
     if "inputs" not in model_para:

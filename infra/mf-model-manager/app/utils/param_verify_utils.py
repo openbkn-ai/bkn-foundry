@@ -5,6 +5,7 @@ from fractions import Fraction
 import func_timeout
 from fastapi.exceptions import RequestValidationError
 from app.commons.errors import *
+from app.commons.locale import error_with_message
 from app.dao.llm_model_dao import llm_model_dao
 from app.dao.prompt_dao import prompt_dao
 
@@ -16,85 +17,75 @@ async def llm_add_verify(schema_para, userId):
     # model_name
     model_name = schema_para.get("model_name", "")
     if not isinstance(model_name, str) or model_name == "":
-        LLMAdd2Error['description'] = "model_name is invalid"
-        LLMAdd2Error['detail'] = "model_name must be a non-empty string"
-        return LLMAdd2Error
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Validation.NonEmptyString", parameter="model_name")
     if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9\u4e00-\u9fa5]{,50}$',
                      schema_para["model_name"]):
-        LLMAdd2Error['description'] = "model_name is invalid"
-        LLMAdd2Error['detail'] = "The parameter supports Chinese, English, digits, and keyboard symbols, with a maximum of 50 characters"
-        return LLMAdd2Error
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="model_name")
     model_name_list = llm_model_dao.get_model_by_name(model_name)
     if len(model_name_list) > 0:
-        if model_name_list[0]["f_create_by"] == userId:
-            LLMAdd2Error['description'] = "The name already exists; choose another name"
-            LLMAdd2Error['detail'] = "The name already exists; choose another name"
-        else:
-            LLMAdd2Error['description'] = "The name is already used by another user; choose another name"
-            LLMAdd2Error['detail'] = "The name is already used by another user; choose another name"
         error_dict = LLMAdd2Error.copy()
         error_dict["code"] = "ModelFactory.ConnectController.LLMAdd.NameRepeat"
-        return error_dict
+        if model_name_list[0]["f_create_by"] == userId:
+            message_key = "ModelFactory.ConnectController.LLMAdd.NameRepeat"
+        else:
+            message_key = "ModelFactory.ConnectController.LLMAdd.NameRepeat.OtherUser"
+        return error_with_message(error_dict, message_key)
     if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9]{,50}$',
                      schema_para['model_config']['api_model']) or len(
         schema_para['model_config']['api_model'].replace(' ', '')) == 0:
-        LLMAdd2Error['description'] = "api_model is invalid"
-        LLMAdd2Error['detail'] = "The parameter supports English and keyboard symbols, with a maximum of 50 characters"
-        return LLMAdd2Error
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="api_model")
     if not isinstance(schema_para['max_model_len'], int) or schema_para['max_model_len'] <= 0:
-        LLMAdd2Error['description'] = "max_model_len is invalid"
-        LLMAdd2Error['detail'] = "max_model_len must be a positive integer"
-        return LLMAdd2Error
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Validation.PositiveInteger", parameter="max_model_len")
     if "model_parameters" in schema_para:
         if not isinstance(schema_para['model_parameters'], int) or schema_para['model_parameters'] <= 0:
-            LLMAdd2Error['description'] = "model_parameters is invalid"
-            LLMAdd2Error['detail'] = "model_parameters must be a positive integer"
-            return LLMAdd2Error
+            return error_with_message(
+                LLMAdd2Error, "ModelFactory.Validation.PositiveInteger", parameter="model_parameters")
     model_series_list = ["tome", "qwen", "openai", "internlm", "deepseek", "qianxun", "claude",
                          "chatglm", "llama", "others", "baidu", "baidu_tianchen"]
     try:
         if schema_para['model_series'] not in model_series_list:
-            LLMAdd2Error['description'] = f"model_series must be one of {model_series_list}"
-            LLMAdd2Error['detail'] = f"model_series must be one of {model_series_list}"
-            return LLMAdd2Error
+            return error_with_message(
+                LLMAdd2Error,
+                "ModelFactory.Validation.AllowedValues",
+                parameter="model_series",
+                values=", ".join(model_series_list))
 
         if schema_para['model_series'] == 'openai':
             if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9]+$',
                              schema_para['model_config']['api_key']) or len(
                 schema_para['model_config']["api_key"].replace(' ', '')) == 0:
-                LLMAdd2Error['description'] = "api_key is invalid"
-                LLMAdd2Error['detail'] = "The parameter supports English and keyboard symbols"
-                return LLMAdd2Error
+                return error_with_message(
+                    LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="api_key")
         elif schema_para['model_series'].lower() == 'tome':
             if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9]{,400}$',
                              schema_para['model_config']['api_url']) or len(
                 schema_para['model_config']["api_url"].replace(' ', '')) == 0:
-                LLMAdd2Error['description'] = "api_url is invalid"
-                LLMAdd2Error['detail'] = "The parameter supports English and keyboard symbols, with a maximum of 400 characters"
-                return LLMAdd2Error
+                return error_with_message(
+                    LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="api_url")
         elif schema_para['model_series'].lower() == "others":
             schema_para['model_config']["api_url"] = schema_para["model_config"]["api_url"]
             if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9]{,400}$',
                              schema_para['model_config']['api_url']) or len(
                 schema_para['model_config']["api_url"].replace(' ', '')) == 0:
-                LLMAdd2Error['description'] = "api_url is invalid"
-                LLMAdd2Error['detail'] = "The parameter supports English and keyboard symbols, with a maximum of 400 characters"
-                return LLMAdd2Error
+                return error_with_message(
+                    LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="api_url")
         else:
             schema_para['model_config']["api_url"] = schema_para["model_config"]["api_url"]
             if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9]{,400}$',
                              schema_para['model_config']['api_url']) or len(
                 schema_para['model_config']["api_url"].replace(' ', '')) == 0:
-                LLMAdd2Error['description'] = "api_url is invalid"
-                LLMAdd2Error['detail'] = "The parameter supports English and keyboard symbols, with a maximum of 400 characters"
-                return LLMAdd2Error
+                return error_with_message(
+                    LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="api_url")
             if "api_key" in schema_para['model_config']:
                 if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9]+$',
                                  schema_para['model_config']['api_key']) or len(
                     schema_para['model_config']["api_key"].replace(' ', '')) == 0:
-                    LLMAdd2Error['description'] = "api_key is invalid"
-                    LLMAdd2Error['detail'] = "The parameter supports English and keyboard symbols"
-                    return LLMAdd2Error
+                    return error_with_message(
+                        LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="api_key")
         if "quota" in schema_para.keys() and schema_para["quota"] is not True and schema_para["quota"] is not False:
             raise RequestValidationError([{"loc": ('body', "quota"), "type": "value_error.type_error"}])
         api_key = schema_para['model_config'].get("api_key", None)
@@ -102,14 +93,11 @@ async def llm_add_verify(schema_para, userId):
                                             schema_para['model_config']["api_model"], userId, api_key):
             error_dict = LLMAdd2Error.copy()
             error_dict["code"] = "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat"
-            error_dict["description"] = "A model with the same api_url and api_model {} already exists".format(
-                "" if api_key in ["", None] else "、api_key")
-            error_dict["detail"] = "A model with the same api_url and api_model {} already exists".format("" if api_key in ["", None] else "、api_key")
-            return error_dict
-    except Exception as e:
-        LLMAdd2Error['description'] = "config is invalid"
-        LLMAdd2Error['detail'] = str(e)
-        return LLMAdd2Error
+            return error_with_message(
+                error_dict, "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat")
+    except Exception:
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.ConnectController.LLMAdd.InvalidConfiguration")
 
 
 # Validate parameters for testing a model.

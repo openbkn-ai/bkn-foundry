@@ -5,6 +5,7 @@ from starlette.responses import JSONResponse
 
 from app.commons.errors import ModelFactory_Router_ParamError_TypeError_Error, \
     ModelFactory_Router_ParamError_FormatError_Error
+from app.commons.locale import error_with_message
 from app.controller.ossclient_controller import *
 from app.interfaces import logics
 from app.controller import model_quota_controller
@@ -21,8 +22,10 @@ async def remain_check(request: Request, model_id_list: str):
     try:
         model_id_list = json.loads(model_id_list)
     except Exception as e:
-        error_dict = ModelFactory_Router_ParamError_TypeError_Error.copy()
-        error_dict["detail"] = "model_id_list " + error_dict["detail"]
+        error_dict = error_with_message(
+            ModelFactory_Router_ParamError_TypeError_Error,
+            "ModelFactory.Validation.JsonArrayParameter",
+            parameter="model_id_list")
         StandLogger.error(error_dict["detail"])
         return JSONResponse(content=error_dict, status_code=400)
     return await model_quota_controller.remain_check(userId, model_id_list)

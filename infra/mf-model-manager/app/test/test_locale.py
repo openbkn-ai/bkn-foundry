@@ -7,6 +7,7 @@ import json
 import unittest
 
 from app.commons.locale import (
+    error_with_message,
     LocaleResponseMiddleware,
     internal_request_headers,
     localized_error_content,
@@ -144,6 +145,67 @@ class TestAcceptLanguageResolver(unittest.TestCase):
         self.assertEqual(chinese["description"], "提示词创建参数无效。")
         self.assertNotEqual(english["detail"], chinese["detail"])
 
+    def test_explicit_message_key_preserves_public_error_code(self):
+        content = error_with_message(
+            {
+                "code": ParamValidationErrors.ParamTypeError,
+                "description": "参数类型错误",
+                "detail": "参数类型错误",
+                "solution": "请检查参数",
+                "link": "",
+            },
+            "ModelFactory.ModelController.EditDefaultModel.PermissionDenied",
+        )
+
+        english, _ = localized_error_content(content, "en-US", 403)
+        chinese, _ = localized_error_content(content, "zh-CN", 403)
+
+        self.assertEqual(english["code"], ParamValidationErrors.ParamTypeError)
+        self.assertEqual(chinese["code"], ParamValidationErrors.ParamTypeError)
+        self.assertEqual(english["detail"], "Only administrators can edit the default model.")
+        self.assertEqual(chinese["detail"], "只有管理员可以编辑默认模型。")
+        self.assertNotIn("_i18n_key", english)
+        self.assertNotIn("_i18n_params", english)
+        self.assertNotIn("_i18n_key", chinese)
+        self.assertNotIn("_i18n_params", chinese)
+
+    def test_explicit_message_key_formats_parameter_name(self):
+        content = error_with_message(
+            {
+                "code": ParamValidationErrors.ParamTypeError,
+                "description": "参数类型错误",
+                "detail": "参数类型错误",
+                "solution": "请检查参数",
+                "link": "",
+            },
+            "ModelFactory.Validation.BooleanParameter",
+            parameter="stream",
+        )
+
+        english, _ = localized_error_content(content, "en-US")
+        chinese, _ = localized_error_content(content, "zh-CN")
+
+        self.assertEqual(english["detail"], "stream must be a boolean.")
+        self.assertEqual(chinese["detail"], "stream 必须是布尔值。")
+
+    def test_dynamic_model_conflicts_are_localized(self):
+        cases = {
+            "ModelFactory.ConnectController.LLMAdd.NameRepeat": (
+                "Model name already exists.", "模型名称已存在。"),
+            "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat": (
+                "Model configuration already exists.", "模型配置已存在。"),
+        }
+        for code, (english_description, chinese_description) in cases.items():
+            with self.subTest(code=code):
+                content = {"code": code, "description": "", "detail": "", "solution": "", "link": ""}
+                english, _ = localized_error_content(content, "en-US")
+                chinese, _ = localized_error_content(content, "zh-CN")
+
+                self.assertEqual(english["code"], code)
+                self.assertEqual(chinese["code"], code)
+                self.assertEqual(english["description"], english_description)
+                self.assertEqual(chinese["description"], chinese_description)
+
     def test_sse_error_keeps_code_and_uses_request_locale(self):
         code = "ModelFactory.LLM.Error"
         results = {}
@@ -225,22 +287,24 @@ class TestLocaleResponseMiddleware(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["solution"], "Obtain a valid access token and try again.")
         self.assertNotIn("无效", json.dumps(payload, ensure_ascii=False))
 
-    async def test_preserves_existing_english_message_for_unknown_error_code(self):
+    async def test_preserves_existing_message_for_unknown_provider_error_code(self):
+        content = {
+            "code": "Provider.Upstream.CustomError",
+            "description": "Provider request failed",
+            "detail": "The provider rejected the request",
+            "solution": "Check the provider configuration",
+            "link": "",
+        }
         localized, is_localized = localized_error_content(
-            {
-                "code": "ModelFactory.ConnectController.LLMAdd.NameRepeat",
-                "description": "Name already exists, please modify",
-                "detail": "Name already exists, please modify",
-                "solution": "Please check the input information",
-                "link": "",
-            },
+            content,
             "en-US",
         )
+        chinese, chinese_is_localized = localized_error_content(content, "zh-CN")
 
         self.assertTrue(is_localized)
-        self.assertEqual(localized["description"], "Name already exists, please modify")
-        self.assertEqual(localized["detail"], "Name already exists, please modify")
-        self.assertEqual(localized["solution"], "Please check the input information")
+        self.assertTrue(chinese_is_localized)
+        self.assertEqual(localized, content)
+        self.assertEqual(chinese, content)
 
     async def test_does_not_apply_business_cache_policy_to_health(self):
         async def app(scope, receive, send):
