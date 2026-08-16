@@ -37,10 +37,10 @@ const (
 )
 
 var deprecatedSeedRoleIDs = []string{
-	"e63e1c88-ad03-11e8-aa06-000c29358ad6", // 组织管理员
-	"f06ac18e-ad03-11e8-aa06-000c29358ad6", // 组织审计员
-	"00990824-4bf7-11f0-8fa7-865d5643e61f", // 数据管理员
-	"3fb94948-5169-11f0-b662-3a7bdba2913f", // AI管理员
+	"e63e1c88-ad03-11e8-aa06-000c29358ad6", // Organization administrator
+	"f06ac18e-ad03-11e8-aa06-000c29358ad6", // Organization auditor
+	"00990824-4bf7-11f0-8fa7-865d5643e61f", // Data administrator
+	"3fb94948-5169-11f0-b662-3a7bdba2913f", // AI administrator
 }
 
 // AdminUserID is the built-in admin user's id, exported so callers can protect
@@ -328,7 +328,7 @@ func seedGrants(enforcer *authz.Enforcer) error {
 
 // seedRoleBindings binds accessors (users/apps) to roles via Casbin's grouping
 // policy. Notably binds the admin UUID — backend services' tokenless S2S
-// fallback identity — to 超级管理员, so internal /in/v1 calls pass FilterResources
+// fallback identity to the super administrator, so internal /in/v1 calls pass FilterResources
 // (replicates ISF's super-admin grant). AssignRole is idempotent.
 func seedRoleBindings(enforcer *authz.Enforcer) error {
 	var rb roleBindingsFile
@@ -353,7 +353,7 @@ var legacyOperationRenames = []struct {
 	resourceType string
 	from, to     string
 }{
-	// 数据查询 was spelled data_query on these two types and query_data on
+	// Data query was spelled data_query on these two types and query_data on
 	// catalog/resource. One vocabulary, one spelling.
 	{"knowledge_network", "data_query", "query_data"},
 	{"stream_data_pipeline", "data_query", "query_data"},

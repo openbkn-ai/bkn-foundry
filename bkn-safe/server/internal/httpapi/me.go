@@ -129,10 +129,11 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		// scope 校验先于 resource_type 缺失校验:?scope=type&resource_id=m1 的真正
-		// 毛病是「要实例行又丢实例行」,补个 resource_type 也救不回来。若让
-		// "resource_id requires resource_type" 先命中,调用方会照文案加上
-		// resource_type 再撞一次 400,把真矛盾藏了一层。
+		// Validate scope before the missing resource_type case. A request such as
+		// ?scope=type&resource_id=m1 contradicts itself by requesting type rows
+		// while also supplying an instance id. Reporting the missing resource_type
+		// first would make callers add it only to hit another 400 and obscure the
+		// actual contradiction.
 		if scope == "type" && len(resourceIDs) > 0 {
 			replyPublicError(c, http.StatusBadRequest)
 			return

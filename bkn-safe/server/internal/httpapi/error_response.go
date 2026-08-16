@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // abortPublicError keeps authentication middleware on the same localized error
@@ -38,28 +37,6 @@ func replyInternalError(c *gin.Context) {
 	replyPublicError(c, http.StatusInternalServerError)
 }
 
-func localizedHTTPError(c *gin.Context, status int) *sharedrest.HTTPError {
-	// New() registers once during normal startup. Keeping this call here makes
-	// the helper safe for focused middleware tests that construct a bare router.
-	httperrors.Register()
-	return sharedrest.NewHTTPError(c.Request.Context(), status, httperrors.ForStatus(status))
-}
-
-type localizedErrorResponse struct {
-	sharedrest.BaseError
-	// Error retains BKN Safe's former field while callers migrate to the stable
-	// error_code contract. Its value is localized and duplicates description.
-	Error string `json:"error"`
-}
-
 func writeLocalizedError(c *gin.Context, status int, details any) {
-	err := localizedHTTPError(c, status)
-	if details != nil {
-		err.WithErrorDetails(details)
-	}
-	sharedrest.MarkLocalizedResponse(c)
-	c.JSON(status, localizedErrorResponse{
-		BaseError: err.BaseError,
-		Error:     err.BaseError.Description,
-	})
+	httperrors.Write(c, status, details)
 }

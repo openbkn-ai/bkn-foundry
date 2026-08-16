@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
 )
 
 // Routes mounts the rbac_basic write endpoints onto g, each behind core's RBAC
@@ -144,7 +146,7 @@ func bindPermReq(c *gin.Context) (permReq, bool) {
 // bindJSON binds and validates the request body, answering 400 on failure.
 func bindJSON(c *gin.Context, v any) bool {
 	if err := c.ShouldBindJSON(v); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		httperrors.Write(c, http.StatusBadRequest, nil)
 		return false
 	}
 	return true
@@ -153,16 +155,16 @@ func bindJSON(c *gin.Context, v any) bool {
 // writeErr maps a Services sentinel error to an HTTP status. An unrecognised
 // error is a 500 — the message is not leaked.
 func writeErr(c *gin.Context, err error) {
+	status := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, ErrNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		status = http.StatusNotFound
 	case errors.Is(err, ErrImmutable):
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		status = http.StatusForbidden
 	case errors.Is(err, ErrForbidden):
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		status = http.StatusForbidden
 	case errors.Is(err, ErrInvalid):
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		status = http.StatusBadRequest
 	}
+	httperrors.Write(c, status, nil)
 }

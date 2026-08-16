@@ -556,7 +556,7 @@ func (en *Enforcer) ResourcePolicies(resourceType, resourceID string) ([]Resourc
 
 // ObjectGrant is one accessor's grant set on one concrete resource instance:
 // the cross-product cell of the object-level authorization matrix (who can do
-// what on which specific object). Powers the admin "授权管理" overview.
+// what on which specific object). Powers the admin authorization overview.
 type ObjectGrant struct {
 	AccessorID   string
 	ResourceType string

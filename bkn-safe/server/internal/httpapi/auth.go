@@ -18,6 +18,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/locale"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // registerAuth mounts the hydra login/consent/device provider pages. hydra is
@@ -101,64 +103,145 @@ func brand(name string) string {
 	return `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>` + name + `</strong></div>`
 }
 
+const authMessagePrefix = "BknSafe.Auth."
+
+type authPageText struct {
+	AccountPlaceholder         string
+	PasswordPlaceholder        string
+	LoginButton                string
+	ChangePasswordTitle        string
+	FirstLoginPrompt           string
+	CurrentPasswordPlaceholder string
+	NewPasswordPlaceholder     string
+	ConfirmPasswordPlaceholder string
+	ChangeAndLoginButton       string
+	AuthorizeClient            string
+	ApplicationPermissions     string
+	BasicLogin                 string
+	AllowButton                string
+	DenyButton                 string
+	DeviceAuthorizationTitle   string
+	DeviceCodeLabel            string
+	DeviceCodePlaceholder      string
+	DeviceConfirmationNote     string
+	ConfirmButton              string
+	LoginSuccessTitle          string
+	DeviceAuthorizedNote       string
+}
+
+type authPageData struct {
+	Challenge  string
+	Account    string
+	ClientName string
+	Scopes     []string
+	UserCode   string
+	Error      string
+	Text       authPageText
+}
+
+func localizedAuthMessage(c *gin.Context, key string) string {
+	language := sharedrest.GetLanguageByCtx(c.Request.Context())
+	return locale.Translate(language, authMessagePrefix+key)
+}
+
+func localizedAuthPageData(c *gin.Context) authPageData {
+	message := func(key string) string { return localizedAuthMessage(c, key) }
+	return authPageData{Text: authPageText{
+		AccountPlaceholder:         message("AccountPlaceholder"),
+		PasswordPlaceholder:        message("PasswordPlaceholder"),
+		LoginButton:                message("LoginButton"),
+		ChangePasswordTitle:        message("ChangePasswordTitle"),
+		FirstLoginPrompt:           message("FirstLoginPrompt"),
+		CurrentPasswordPlaceholder: message("CurrentPasswordPlaceholder"),
+		NewPasswordPlaceholder:     message("NewPasswordPlaceholder"),
+		ConfirmPasswordPlaceholder: message("ConfirmPasswordPlaceholder"),
+		ChangeAndLoginButton:       message("ChangeAndLoginButton"),
+		AuthorizeClient:            message("AuthorizeClient"),
+		ApplicationPermissions:     message("ApplicationPermissions"),
+		BasicLogin:                 message("BasicLogin"),
+		AllowButton:                message("AllowButton"),
+		DenyButton:                 message("DenyButton"),
+		DeviceAuthorizationTitle:   message("DeviceAuthorizationTitle"),
+		DeviceCodeLabel:            message("DeviceCodeLabel"),
+		DeviceCodePlaceholder:      message("DeviceCodePlaceholder"),
+		DeviceConfirmationNote:     message("DeviceConfirmationNote"),
+		ConfirmButton:              message("ConfirmButton"),
+		LoginSuccessTitle:          message("LoginSuccessTitle"),
+		DeviceAuthorizedNote:       message("DeviceAuthorizedNote"),
+	}}
+}
+
 var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
 <div class="card">` + brand("BKN Studio") + `
 <form method="post" action="/login">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
-  <input name="account" placeholder="账号" value="{{.Account}}" autofocus autocomplete="username">
-  <input name="password" type="password" placeholder="密码" autocomplete="current-password">
+  <input name="account" placeholder="{{.Text.AccountPlaceholder}}" value="{{.Account}}" autofocus autocomplete="username">
+  <input name="password" type="password" placeholder="{{.Text.PasswordPlaceholder}}" autocomplete="current-password">
   {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
-  <button class="primary" type="submit">登录</button>
+  <button class="primary" type="submit">{{.Text.LoginButton}}</button>
 </form></div></body>`))
 
 var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Studio") + `<h3>修改密码</h3>
-<div class="label">首次登录请设置新密码</div>
+<div class="card">` + brand("BKN Studio") + `<h3>{{.Text.ChangePasswordTitle}}</h3>
+<div class="label">{{.Text.FirstLoginPrompt}}</div>
 {{if .Error}}<div class="note">{{.Error}}</div>{{end}}
 <form method="post" action="/change-password">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input type="hidden" name="account" value="{{.Account}}">
-  <input name="old_password" type="password" placeholder="当前密码" autofocus autocomplete="current-password">
-  <input name="new_password" type="password" placeholder="新密码" autocomplete="new-password">
-  <input name="confirm_password" type="password" placeholder="确认新密码" autocomplete="new-password">
-  <button class="primary" type="submit">修改并登录</button>
+  <input name="old_password" type="password" placeholder="{{.Text.CurrentPasswordPlaceholder}}" autofocus autocomplete="current-password">
+  <input name="new_password" type="password" placeholder="{{.Text.NewPasswordPlaceholder}}" autocomplete="new-password">
+  <input name="confirm_password" type="password" placeholder="{{.Text.ConfirmPasswordPlaceholder}}" autocomplete="new-password">
+  <button class="primary" type="submit">{{.Text.ChangeAndLoginButton}}</button>
 </form></div></body>`))
 
 var consentPage = template.Must(template.New("consent").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Studio") + `<h3>授权 {{.ClientName}}</h3>
-<div class="label">该应用将获得以下权限</div>
-<ul>{{range .Scopes}}<li>{{.}}</li>{{else}}<li>基础登录</li>{{end}}</ul>
+<div class="card">` + brand("BKN Studio") + `<h3>{{.Text.AuthorizeClient}} {{.ClientName}}</h3>
+<div class="label">{{.Text.ApplicationPermissions}}</div>
+<ul>{{range .Scopes}}<li>{{.}}</li>{{else}}<li>{{$.Text.BasicLogin}}</li>{{end}}</ul>
 <form method="post" action="/consent">
   <input type="hidden" name="consent_challenge" value="{{.Challenge}}">
-  <button class="primary" name="decision" value="allow" type="submit">同意授权</button>
-  <button class="ghost" name="decision" value="deny" type="submit">拒绝</button>
+  <button class="primary" name="decision" value="allow" type="submit">{{.Text.AllowButton}}</button>
+  <button class="ghost" name="decision" value="deny" type="submit">{{.Text.DenyButton}}</button>
 </form></div></body>`))
 
 var devicePage = template.Must(template.New("device").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Foundry") + `<h3>设备授权</h3>
-<div class="label">设备码</div>
+<div class="card">` + brand("BKN Foundry") + `<h3>{{.Text.DeviceAuthorizationTitle}}</h3>
+<div class="label">{{.Text.DeviceCodeLabel}}</div>
 <div class="code">{{if .UserCode}}{{.UserCode}}{{else}}— — — —{{end}}</div>
 <form method="post" action="/device">
   <input type="hidden" name="device_challenge" value="{{.Challenge}}">
-  {{if not .UserCode}}<input name="user_code" placeholder="输入设备码" autofocus>{{else}}<input type="hidden" name="user_code" value="{{.UserCode}}">{{end}}
-  <div class="note">仅当你正从该设备发起登录、且设备码一致时才继续;否则请关闭本页。</div>
-  <button class="primary" type="submit">确认</button>
+  {{if not .UserCode}}<input name="user_code" placeholder="{{.Text.DeviceCodePlaceholder}}" autofocus>{{else}}<input type="hidden" name="user_code" value="{{.UserCode}}">{{end}}
+  <div class="note">{{.Text.DeviceConfirmationNote}}</div>
+  <button class="primary" type="submit">{{.Text.ConfirmButton}}</button>
 </form></div></body>`))
 
 var deviceSuccessPage = template.Must(template.New("devicesuccess").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Foundry") + `<h3>登录成功</h3>
-<div class="note">设备已授权,可关闭此页面,返回命令行继续。</div>
+<div class="card">` + brand("BKN Foundry") + `<h3>{{.Text.LoginSuccessTitle}}</h3>
+<div class="note">{{.Text.DeviceAuthorizedNote}}</div>
 </div></body>`))
 
 // showDeviceSuccess is hydra's URLS_DEVICE_SUCCESS target: shown after the device
 // authorization is approved (the token is already issued to the CLI). Replaces
 // hydra's bare fallback page. Static — no challenge needed.
-func showDeviceSuccess(c *gin.Context) { renderHTML(c, deviceSuccessPage, nil) }
+func showDeviceSuccess(c *gin.Context) {
+	renderHTML(c, deviceSuccessPage, localizedAuthPageData(c))
+}
 
 func renderHTML(c *gin.Context, t *template.Template, data any) {
-	c.Status(http.StatusOK)
+	renderHTMLStatus(c, http.StatusOK, t, data)
+}
+
+func renderHTMLStatus(c *gin.Context, status int, t *template.Template, data any) {
+	c.Status(status)
 	c.Header("Content-Type", "text/html; charset=utf-8")
+	sharedrest.MarkLocalizedResponse(c)
 	_ = t.Execute(c.Writer, data)
+}
+
+func replyLocalizedAuthText(c *gin.Context, status int, messageID string) {
+	language := sharedrest.GetLanguageByCtx(c.Request.Context())
+	sharedrest.MarkLocalizedResponse(c)
+	c.String(status, locale.Translate(language, messageID))
 }
 
 func isExpiredLoginRequest(err error) bool {
@@ -173,10 +256,12 @@ func isExpiredLoginRequest(err error) bool {
 func showLogin(c *gin.Context) {
 	challenge := c.Query("login_challenge")
 	if challenge == "" {
-		c.String(http.StatusBadRequest, "missing login_challenge")
+		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
 		return
 	}
-	renderHTML(c, loginPage, map[string]any{"Challenge": challenge})
+	data := localizedAuthPageData(c)
+	data.Challenge = challenge
+	renderHTML(c, loginPage, data)
 }
 
 func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
@@ -184,7 +269,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 	account := c.PostForm("account")
 	password := c.PostForm("password")
 	if challenge == "" {
-		c.String(http.StatusBadRequest, "missing login_challenge")
+		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
 		return
 	}
 	redirectTo, user, err := p.Login(c.Request.Context(), challenge, account, password, false)
@@ -193,30 +278,33 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 			// Credentials are valid but a password change is required first.
 			// Render the change-password page directly (no server session); the
 			// form re-carries the challenge + account and re-collects the old pw.
-			renderHTML(c, changePasswordPage, map[string]any{"Challenge": challenge, "Account": account})
+			data := localizedAuthPageData(c)
+			data.Challenge = challenge
+			data.Account = account
+			renderHTML(c, changePasswordPage, data)
 			return
 		}
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
 			recordLogin(c, accessStore, nil, account, "failure", loginFailureCode(err))
 			// Re-render the login form with an inline error instead of a bare
 			// error page, keeping the entered account and the same challenge.
-			c.Status(http.StatusUnauthorized)
-			c.Header("Content-Type", "text/html; charset=utf-8")
-			_ = loginPage.Execute(c.Writer, map[string]any{"Challenge": challenge, "Account": account, "Error": "账号或密码错误"})
+			data := localizedAuthPageData(c)
+			data.Challenge = challenge
+			data.Account = account
+			data.Error = localizedAuthMessage(c, "InvalidCredentials")
+			renderHTMLStatus(c, http.StatusUnauthorized, loginPage, data)
 			return
 		}
 		slog.Error("login: accept failed", "err", err)
 		if isExpiredLoginRequest(err) {
-			c.Status(http.StatusUnauthorized)
-			c.Header("Content-Type", "text/html; charset=utf-8")
-			_ = loginPage.Execute(c.Writer, map[string]any{
-				"Challenge": challenge,
-				"Account":   account,
-				"Error":     "登录请求已过期，请返回应用重新登录",
-			})
+			data := localizedAuthPageData(c)
+			data.Challenge = challenge
+			data.Account = account
+			data.Error = localizedAuthMessage(c, "LoginRequestExpired")
+			renderHTMLStatus(c, http.StatusUnauthorized, loginPage, data)
 			return
 		}
-		c.String(http.StatusInternalServerError, "internal error")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
 	recordLogin(c, accessStore, user, account, "success", "")
@@ -229,10 +317,13 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 func showChangePassword(c *gin.Context) {
 	challenge := c.Query("login_challenge")
 	if challenge == "" {
-		c.String(http.StatusBadRequest, "missing login_challenge")
+		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
 		return
 	}
-	renderHTML(c, changePasswordPage, map[string]any{"Challenge": challenge, "Account": c.Query("account")})
+	data := localizedAuthPageData(c)
+	data.Challenge = challenge
+	data.Account = c.Query("account")
+	renderHTML(c, changePasswordPage, data)
 }
 
 // doChangePassword re-verifies the current password, sets the new one, and
@@ -244,33 +335,37 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.S
 	newPw := c.PostForm("new_password")
 	confirm := c.PostForm("confirm_password")
 	if challenge == "" {
-		c.String(http.StatusBadRequest, "missing login_challenge")
+		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
 		return
 	}
-	reRender := func(msg string) {
-		renderHTML(c, changePasswordPage, map[string]any{"Challenge": challenge, "Account": account, "Error": msg})
+	reRender := func(messageKey string) {
+		data := localizedAuthPageData(c)
+		data.Challenge = challenge
+		data.Account = account
+		data.Error = localizedAuthMessage(c, messageKey)
+		renderHTML(c, changePasswordPage, data)
 	}
 	switch {
 	case newPw == "" || newPw != confirm:
-		reRender("两次输入的新密码不一致或为空")
+		reRender("PasswordMismatch")
 		return
 	case newPw == oldPw:
-		reRender("新密码不能与当前密码相同")
+		reRender("PasswordReuse")
 		return
 	}
 	redirectTo, user, err := p.ChangePassword(c.Request.Context(), challenge, account, oldPw, newPw, false)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
 			recordLogin(c, accessStore, nil, account, "failure", loginFailureCode(err))
-			reRender("当前密码错误")
+			reRender("CurrentPasswordInvalid")
 			return
 		}
 		slog.Error("change-password: failed", "err", err)
 		if isExpiredLoginRequest(err) {
-			reRender("登录请求已过期，请返回应用重新登录")
+			reRender("LoginRequestExpired")
 			return
 		}
-		c.String(http.StatusInternalServerError, "internal error")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
 	recordLogin(c, accessStore, user, account, "success", "")
@@ -321,20 +416,20 @@ var firstPartyClients = map[string]bool{
 func showConsent(c *gin.Context, p *auth.Provider) {
 	challenge := c.Query("consent_challenge")
 	if challenge == "" {
-		c.String(http.StatusBadRequest, "missing consent_challenge")
+		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
 		return
 	}
 	cr, err := p.ConsentInfo(c.Request.Context(), challenge)
 	if err != nil {
 		slog.Error("consent: get failed", "err", err)
-		c.String(http.StatusInternalServerError, "internal error")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
 	if firstPartyClients[cr.ClientID] {
 		redirectTo, err := p.Consent(c.Request.Context(), challenge, c.ClientIP(), auth.ClientTypeWeb, false)
 		if err != nil {
 			slog.Error("consent: first-party auto-accept failed", "err", err)
-			c.String(http.StatusInternalServerError, "internal error")
+			replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 			return
 		}
 		c.Redirect(http.StatusFound, redirectTo)
@@ -344,7 +439,11 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 	if name == "" {
 		name = cr.ClientID
 	}
-	renderHTML(c, consentPage, map[string]any{"Challenge": challenge, "ClientName": name, "Scopes": cr.RequestedScope})
+	data := localizedAuthPageData(c)
+	data.Challenge = challenge
+	data.ClientName = name
+	data.Scopes = cr.RequestedScope
+	renderHTML(c, consentPage, data)
 }
 
 // doConsent applies the user's decision: allow -> grant scope + inject ext
@@ -352,7 +451,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 func doConsent(c *gin.Context, p *auth.Provider) {
 	challenge := c.PostForm("consent_challenge")
 	if challenge == "" {
-		c.String(http.StatusBadRequest, "missing consent_challenge")
+		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
 		return
 	}
 	ctx := c.Request.Context()
@@ -365,17 +464,17 @@ func doConsent(c *gin.Context, p *auth.Provider) {
 	}
 	if err != nil {
 		slog.Error("consent: decision failed", "err", err)
-		c.String(http.StatusInternalServerError, "internal error")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
 	c.Redirect(http.StatusFound, redirectTo)
 }
 
 func showDevice(c *gin.Context) {
-	renderHTML(c, devicePage, map[string]string{
-		"Challenge": c.Query("device_challenge"),
-		"UserCode":  c.Query("user_code"), // prefilled from verification_uri_complete
-	})
+	data := localizedAuthPageData(c)
+	data.Challenge = c.Query("device_challenge")
+	data.UserCode = c.Query("user_code") // prefilled from verification_uri_complete
+	renderHTML(c, devicePage, data)
 }
 
 // normalizeUserCode strips separators/whitespace a user (or the prefilled
@@ -399,12 +498,12 @@ func doDevice(c *gin.Context, h *auth.HydraAdmin) {
 	challenge := c.PostForm("device_challenge")
 	userCode := normalizeUserCode(c.PostForm("user_code"))
 	if challenge == "" || userCode == "" {
-		c.String(http.StatusBadRequest, "missing device_challenge or user_code")
+		replyLocalizedAuthText(c, http.StatusBadRequest, "BknSafe.InvalidRequest.Description")
 		return
 	}
 	redirectTo, err := h.AcceptUserCode(c.Request.Context(), challenge, userCode)
 	if err != nil {
-		c.String(http.StatusBadRequest, "无效的设备码")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"InvalidDeviceCode")
 		return
 	}
 	c.Redirect(http.StatusFound, redirectTo)

@@ -154,7 +154,8 @@ var (
 //
 // The socket owns the refusal, not the caller. That is the whole point of the
 // signature: an entitlement gap has to be indistinguishable from the route not
-// existing (ee-design.md §4.4/§4.5 — 缺证书 → 装作没有；缺权限 → 明确拒绝),
+// existing (ee-design.md §4.4/§4.5: no licence looks absent; insufficient
+// permission is explicitly denied),
 // and leaving that decision to each caller means each caller can get it wrong
 // independently. One of them did, and shipped a 403 carrying the feature name.
 //

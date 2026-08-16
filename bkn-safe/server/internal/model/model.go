@@ -24,7 +24,7 @@ type AccountType string
 const (
 	AccountTypeOther  AccountType = "other"
 	AccountTypeIDCard AccountType = "id_card"
-	// AccountTypeApp / AccountTypeContactor: ISF "应用账户" and "联系人" are stored
+	// AccountTypeApp / AccountTypeContactor: ISF application accounts and contacts are stored
 	// as User rows distinguished by account_type (no separate tables). Directory
 	// name resolution looks them up in the users table by id like any other user.
 	AccountTypeApp       AccountType = "app"
@@ -53,7 +53,7 @@ type User struct {
 }
 
 // Role source values. system|business roles are SEEDED built-ins (their UUIDs
-// are hardcoded in DA/flow-automation, e.g. 應用/數據/AI 管理員) and are
+// are hardcoded in DA/flow-automation, such as application, data, and AI administrators) and are
 // immutable via the API — they may only be changed by editing the seed files.
 // custom roles are created at runtime through the admin API and are freely
 // editable/deletable.
